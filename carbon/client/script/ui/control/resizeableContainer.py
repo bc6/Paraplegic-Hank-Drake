@@ -1,0 +1,456 @@
+import blue
+import bluepy
+import uthread
+import types
+import log
+import sys
+import base
+import uicls
+import uiutil
+import uiconst
+import trinity
+POINTINDEXTOALIGN = [uiconst.TOPLEFT,
+ uiconst.TOPRIGHT,
+ uiconst.BOTTOMRIGHT,
+ uiconst.BOTTOMLEFT,
+ uiconst.CENTERTOP,
+ uiconst.CENTERRIGHT,
+ uiconst.CENTERBOTTOM,
+ uiconst.CENTERLEFT,
+ uiconst.CENTER]
+POINTINDEXTOANCHOR = [uiconst.ANCH_TOPLEFT,
+ uiconst.ANCH_TOPRIGHT,
+ uiconst.ANCH_BOTTOMRIGHT,
+ uiconst.ANCH_BOTTOMLEFT,
+ uiconst.ANCH_CENTERTOP,
+ uiconst.ANCH_CENTERRIGHT,
+ uiconst.ANCH_CENTERBOTTOM,
+ uiconst.ANCH_CENTERLEFT,
+ uiconst.ANCH_CENTER]
+
+class ResizeableContainer(uicls.Container):
+    __guid__ = 'uicls.ResizeableContainerCore'
+    default_width = 256
+    default_height = 128
+    default_left = 0
+    default_top = 0
+    default_minWidth = 16
+    default_minHeight = 16
+    default_maxWidth = None
+    default_maxHeight = None
+    default_fixedHeight = None
+    default_fixedWidth = None
+    default_snapDistance = sys.maxint
+    default_name = 'resizeable_container'
+    default_idx = 0
+    default_align = uiconst.RELATIVE
+    default_state = uiconst.UI_NORMAL
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        self.fixedHeight = attributes.get('fixedHeight', self.default_fixedHeight)
+        self.fixedWidth = attributes.get('fixedWidth', self.default_fixedWidth)
+        self.minWidth = attributes.get('minWidth', self.default_minWidth)
+        self.minHeight = attributes.get('minHeight', self.default_minHeight)
+        self.maxWidth = attributes.get('maxWidth', self.default_maxWidth)
+        self.maxHeight = attributes.get('maxHeight', self.default_maxHeight)
+        self.snapDistance = attributes.get('snapDistance', self.default_snapDistance)
+        self.alignIndicator = uicls.Fill(parent=self, align=self.align, pos=(0, 0, 4, 4), color=(1, 1, 1, 0.5))
+        self.anchorIndicator = uicls.Fill(parent=self, align=self.align, pos=(0, 0, 4, 4), color=(1, 0, 0, 0.5), state=uiconst.UI_HIDDEN)
+        self.Prepare_ScaleAreas_()
+
+
+
+    def Prepare_ScaleAreas_(self):
+        if self.sr.resizers:
+            self.sr.resizers.Close()
+        self.sr.resizers = uicls.Container(name='resizers', parent=self, state=uiconst.UI_PICKCHILDREN, idx=0)
+        for (name, align, w, h, cursor,) in [('left_top',
+          uiconst.TOPLEFT,
+          8,
+          8,
+          15),
+         ('right_top',
+          uiconst.TOPRIGHT,
+          6,
+          6,
+          13),
+         ('right_bottom',
+          uiconst.BOTTOMRIGHT,
+          8,
+          8,
+          15),
+         ('left_bottom',
+          uiconst.BOTTOMLEFT,
+          8,
+          8,
+          13),
+         ('left',
+          uiconst.TOLEFT,
+          4,
+          0,
+          16),
+         ('right',
+          uiconst.TORIGHT,
+          4,
+          0,
+          16),
+         ('top',
+          uiconst.TOTOP,
+          0,
+          4,
+          17),
+         ('bottom',
+          uiconst.TOBOTTOM,
+          0,
+          4,
+          17)]:
+            r = uicls.Fill(name=name, parent=self.sr.resizers, state=uiconst.UI_NORMAL, align=align, pos=(0,
+             0,
+             w,
+             h), color=(0.0, 0.0, 0.0, 0.0))
+            r.OnMouseDown = (self.StartScale, r)
+            r.OnMouseUp = (self.EndScale, r)
+            r.cursor = cursor
+
+
+
+
+    def SetMinSize(self, minWidth, minHeight):
+        self.minWidth = minWidth
+        self.minHeight = minHeight
+
+
+
+    def SetMaxSize(self, maxWidth, maxHeight):
+        self.maxWidth = maxWidth
+        self.maxHeight = maxHeight
+
+
+
+    def GetMaxSize(self):
+        return (self.maxWidth, self.maxHeight)
+
+
+
+    def GetMinSize(self):
+        return (self.minWidth, self.minHeight)
+
+
+
+    def StartScale(self, sender, btn, *args):
+        if btn == uiconst.MOUSELEFT:
+            self.scaleSides = sender.name
+            self.preModifyCursorPos = (uicore.uilib.x, uicore.uilib.y)
+            self.OnStartScale(self)
+            self._scaling = True
+            uthread.new(self.Resize)
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def Resize(self, *args):
+        (rl, rt, rw, rh,) = (self.left,
+         self.top,
+         self.width,
+         self.height)
+        scaleSides = self.scaleSides
+        align = self.align
+        horizontalInverted = bool(align in (uiconst.TOPRIGHT,
+         uiconst.CENTERRIGHT,
+         uiconst.BOTTOMRIGHT,
+         uiconst.TORIGHT))
+        leftFactor = 0
+        widthFactor = 0
+        horizontalLock = None
+        if 'left' in scaleSides:
+            if not horizontalInverted:
+                leftFactor = 1
+                widthFactor = -1
+                horizontalLock = rl + rw
+            else:
+                leftFactor = 0
+                widthFactor = -1
+        if 'right' in scaleSides:
+            if not horizontalInverted:
+                leftFactor = 0
+                widthFactor = 1
+            else:
+                leftFactor = -1
+                widthFactor = 1
+                horizontalLock = rl + rw
+        centerHorizontal = bool(align in (uiconst.CENTER, uiconst.CENTERTOP, uiconst.CENTERBOTTOM))
+        if centerHorizontal:
+            leftFactor = 0
+            widthFactor *= 2
+        verticalInverted = bool(align in (uiconst.BOTTOMLEFT,
+         uiconst.CENTERBOTTOM,
+         uiconst.BOTTOMRIGHT,
+         uiconst.TOBOTTOM))
+        topFactor = 0
+        heightFactor = 0
+        verticalLock = None
+        if 'top' in scaleSides:
+            if not verticalInverted:
+                topFactor = 1
+                heightFactor = -1
+                verticalLock = rt + rh
+            else:
+                topFactor = 0
+                heightFactor = -1
+        if 'bottom' in scaleSides:
+            if not verticalInverted:
+                topFactor = 0
+                heightFactor = 1
+            else:
+                topFactor = -1
+                heightFactor = 1
+                verticalLock = rt + rh
+        centerVertical = bool(align in (uiconst.CENTER, uiconst.CENTERLEFT, uiconst.CENTERRIGHT))
+        if centerVertical:
+            topFactor = 0
+            heightFactor *= 2
+        while self._scaling and uicore.uilib.leftbtn and not self.destroyed:
+            diffx = uicore.uilib.x - self.preModifyCursorPos[0]
+            diffy = uicore.uilib.y - self.preModifyCursorPos[1]
+            newleft = rl + diffx * leftFactor
+            if self.fixedWidth:
+                newwidth = self.fixedWidth
+            else:
+                newwidth = rw + diffx * widthFactor
+            if self.maxWidth:
+                newwidth = min(newwidth, self.maxWidth)
+            if self.minWidth:
+                newwidth = max(newwidth, self.minWidth)
+            if horizontalLock is not None and newleft + newwidth != horizontalLock:
+                newleft = (horizontalLock - newwidth) * leftFactor
+            self.width = newwidth
+            self.left = newleft
+            newtop = rt + diffy * topFactor
+            if self.fixedHeight:
+                newheight = self.fixedHeight
+            else:
+                newheight = rh + diffy * heightFactor
+            if self.maxHeight:
+                newheight = min(newheight, self.maxHeight)
+            if self.minHeight:
+                newheight = max(newheight, self.minHeight)
+            if verticalLock is not None and newtop + newheight != verticalLock:
+                newtop = (verticalLock - newheight) * topFactor
+            self.height = newheight
+            self.top = newtop
+            self.OnScale(self)
+            blue.pyos.synchro.Yield()
+
+
+
+
+    def EndScale(self, sender, *args):
+        self._scaling = False
+        self.OnEndScale(self)
+
+
+
+    def OnStartScale(self, *args):
+        pass
+
+
+
+    def OnEndScale(self, *args):
+        pass
+
+
+
+    def OnScale(self, *args):
+        pass
+
+
+
+    def OnMouseDown(self, btn, *args):
+        if btn == uiconst.MOUSELEFT:
+            self.preModifyCursorPos = (uicore.uilib.x, uicore.uilib.y)
+            self.OnStartMove(self)
+            self.ClearAttachTo()
+            self._moving = True
+            uthread.new(self.Move)
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def Move(self, *args):
+        (rl, rt, rw, rh,) = (self.left,
+         self.top,
+         self.width,
+         self.height)
+        (pw, ph,) = self.parent.GetAbsoluteSize()
+        align = self.align
+        centerHorizontal = bool(align in (uiconst.CENTER, uiconst.CENTERTOP, uiconst.CENTERBOTTOM))
+        centerVertical = bool(align in (uiconst.CENTER, uiconst.CENTERLEFT, uiconst.CENTERRIGHT))
+        verticalInverted = bool(align in (uiconst.BOTTOMLEFT,
+         uiconst.CENTERBOTTOM,
+         uiconst.BOTTOMRIGHT,
+         uiconst.TOBOTTOM))
+        horizontalInverted = bool(align in (uiconst.TOPRIGHT,
+         uiconst.CENTERRIGHT,
+         uiconst.BOTTOMRIGHT,
+         uiconst.TORIGHT))
+        while self._moving and uicore.uilib.leftbtn and not self.destroyed:
+            diffx = uicore.uilib.x - self.preModifyCursorPos[0]
+            diffy = uicore.uilib.y - self.preModifyCursorPos[1]
+            if horizontalInverted:
+                diffx = -diffx
+            if verticalInverted:
+                diffy = -diffy
+            if centerHorizontal:
+                newleft = min((pw - rw) / 2, max(-(pw - rw) / 2, rl + diffx))
+            else:
+                newleft = min(pw - rw, max(0, rl + diffx))
+            if centerVertical:
+                newtop = min((ph - rh) / 2, max(-(ph - rh) / 2, rt + diffy))
+            else:
+                newtop = min(ph - rh, max(0, rt + diffy))
+            self.left = newleft
+            self.top = newtop
+            self.ResolveAnchoring()
+            blue.pyos.synchro.Yield()
+
+        self.OnEndMove(self)
+
+
+
+    def ResolveAnchoring(self, *args):
+        (al, at, aw, ah,) = self.GetAbsolute()
+        haw = aw / 2
+        hah = ah / 2
+        (pl, pt, pw, ph,) = self.parent.GetAbsolute()
+        hpw = pw / 2
+        hph = ph / 2
+        mypoints = [(al, at),
+         (al + aw, at),
+         (al + aw, at + ah),
+         (al, at + ah),
+         (al + haw, at),
+         (al + aw, at + hah),
+         (al + haw, at + ah),
+         (al, at + hah),
+         (al + haw, at + hah)]
+        parentpoints = [(pl, pt),
+         (pl + pw, pt),
+         (pl + pw, pt + ph),
+         (pl, pt + ph),
+         (pl + hpw, pt),
+         (pl + pw, pt + hph),
+         (pl + hpw, pt + ph),
+         (pl, pt + hph),
+         (pl + hpw, pt + hph)]
+        sortDist = []
+        v1 = trinity.TriVector()
+        v2 = trinity.TriVector()
+        for (pointIndex, point,) in enumerate(mypoints):
+            (v1.x, v1.y,) = point
+            (v2.x, v2.y,) = parentpoints[pointIndex]
+            snapDist = (v1 - v2).Length()
+            if snapDist < self.snapDistance:
+                sortDist.append((snapDist, (pointIndex,)))
+
+        excludeOthers = []
+        excludeOthers = self.GetAttachmentChain()
+        others = [ each for each in self.parent.children if isinstance(each, uicls.ResizeableContainerCore) ]
+        for each in others:
+            each.anchorIndicator.state = uiconst.UI_HIDDEN
+            each.alignIndicator.state = uiconst.UI_HIDDEN
+
+        otherContainers = [ each for each in others if each is not self if each not in excludeOthers ]
+        for other in otherContainers:
+            (ol, ot, ow, oh,) = other.GetAbsolute()
+            how = ow / 2
+            hoh = oh / 2
+            otherpoints = [(ol, ot),
+             (ol + ow, ot),
+             (ol + ow, ot + oh),
+             (ol, ot + oh),
+             (ol + how, ot),
+             (ol + ow, ot + hoh),
+             (ol + how, ot + oh),
+             (ol, ot + hoh),
+             (ol + how, ot + hoh)]
+            for (pointIndex, point,) in enumerate(mypoints):
+                (v1.x, v1.y,) = point
+                for (otherPointIndex, otherPoint,) in enumerate(otherpoints):
+                    (v2.x, v2.y,) = otherPoint
+                    snapDist = (v1 - v2).Length()
+                    if snapDist < self.snapDistance:
+                        sortDist.append((snapDist, (other, pointIndex, otherPointIndex)))
+
+
+
+        sortDist.sort()
+        if sortDist:
+            self._lastAnchorInfo = sortDist[0]
+            (dist, pointIndex,) = self._lastAnchorInfo
+            if len(pointIndex) == 1:
+                pointIndex = pointIndex[0]
+                self.alignIndicator.SetAlign(POINTINDEXTOALIGN[pointIndex])
+                self.alignIndicator.state = uiconst.UI_DISABLED
+            else:
+                (otherObj, pointIndex, otherPointIndex,) = pointIndex
+                self.anchorIndicator.state = uiconst.UI_DISABLED
+                self.anchorIndicator.SetAlign(POINTINDEXTOALIGN[pointIndex])
+                otherObj.anchorIndicator.state = uiconst.UI_DISABLED
+                otherObj.anchorIndicator.SetAlign(POINTINDEXTOALIGN[otherPointIndex])
+        else:
+            self._lastAnchorInfo = None
+
+
+
+    def OnStartMove(self, *args):
+        pass
+
+
+
+    def OnEndMove(self, *args):
+        if self._lastAnchorInfo:
+            (dist, pointIndex,) = self._lastAnchorInfo
+            if len(pointIndex) == 1:
+                pointIndex = pointIndex[0]
+                self.SetAlign(POINTINDEXTOALIGN[pointIndex])
+                self.left = 0
+                self.top = 0
+            else:
+                chain = self.GetAttachmentChain()
+                (otherObj, pointIndex, otherPointIndex,) = pointIndex
+                if otherObj not in chain:
+                    otherPoint = POINTINDEXTOANCHOR[otherPointIndex]
+                    myPoint = POINTINDEXTOANCHOR[pointIndex]
+                    self.SetAttachTo(otherObj, otherPoint, myPoint)
+        others = [ each for each in self.parent.children if isinstance(each, uicls.ResizeableContainerCore) ]
+        for each in others:
+            each.anchorIndicator.state = uiconst.UI_HIDDEN
+            each.alignIndicator.state = uiconst.UI_HIDDEN
+
+
+
+
+    def OnMove(self, *args):
+        pass
+
+
+
+    def GetAttachmentChain(self):
+
+        def GetChain(obj, chain):
+            if obj not in chain:
+                chain.append(obj)
+                attachments = obj.GetMyAttachments()
+                for a in attachments:
+                    GetChain(a, chain)
+
+
+
+        chain = []
+        GetChain(self, chain)
+        return chain
+
+
+
+

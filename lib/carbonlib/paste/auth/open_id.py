@@ -1,0 +1,205 @@
+__all__ = ['AuthOpenIDHandler']
+import cgi
+import urlparse
+import re
+import paste.request
+from paste import httpexceptions
+
+def quoteattr(s):
+    qs = cgi.escape(s, 1)
+    return '"%s"' % (qs,)
+
+
+from openid.store import filestore
+from openid.consumer import consumer
+from openid.oidutil import appendArgs
+
+class AuthOpenIDHandler(object):
+
+    def __init__(self, app, data_store_path, auth_prefix = '/oid', login_redirect = None, catch_401 = False, url_to_username = None):
+        store = filestore.FileOpenIDStore(data_store_path)
+        self.oidconsumer = consumer.OpenIDConsumer(store)
+        self.app = app
+        self.auth_prefix = auth_prefix
+        self.data_store_path = data_store_path
+        self.login_redirect = login_redirect
+        self.catch_401 = catch_401
+        self.url_to_username = url_to_username
+
+
+
+    def __call__(self, environ, start_response):
+        if environ['PATH_INFO'].startswith(self.auth_prefix):
+            request = dict(environ=environ, start=start_response, body=[])
+            request['base_url'] = paste.request.construct_url(environ, with_path_info=False, with_query_string=False)
+            path = re.sub(self.auth_prefix, '', environ['PATH_INFO'])
+            request['parsed_uri'] = urlparse.urlparse(path)
+            request['query'] = dict(paste.request.parse_querystring(environ))
+            path = request['parsed_uri'][2]
+            if path == '/' or not path:
+                return self.render(request)
+            else:
+                if path == '/verify':
+                    return self.do_verify(request)
+                if path == '/process':
+                    return self.do_process(request)
+                return self.not_found(request)
+        else:
+            if self.catch_401:
+                return self.catch_401_app_call(environ, start_response)
+            else:
+                return self.app(environ, start_response)
+
+
+
+    def catch_401_app_call(self, environ, start_response):
+        was_401 = []
+
+        def replacement_start_response(status, headers, exc_info = None):
+            if int(status.split(None, 1)) == 401:
+                was_401.append(1)
+
+                def dummy_writer(v):
+                    pass
+
+
+                return dummy_writer
+            else:
+                return start_response(status, headers, exc_info)
+
+
+        app_iter = self.app(environ, replacement_start_response)
+        if was_401:
+            try:
+                list(app_iter)
+
+            finally:
+                if hasattr(app_iter, 'close'):
+                    app_iter.close()
+
+            redir_url = paste.request.construct_url(environ, with_path_info=False, with_query_string=False)
+            exc = httpexceptions.HTTPTemporaryRedirect(redir_url)
+            return exc.wsgi_application(environ, start_response)
+        else:
+            return app_iter
+
+
+
+    def do_verify(self, request):
+        openid_url = request['query'].get('openid_url')
+        if not openid_url:
+            return self.render(request, 'Enter an identity URL to verify.', css_class='error', form_contents=openid_url)
+        oidconsumer = self.oidconsumer
+        (status, info,) = oidconsumer.beginAuth(openid_url)
+        if status in [consumer.HTTP_FAILURE, consumer.PARSE_ERROR]:
+            if status == consumer.HTTP_FAILURE:
+                fmt = 'Failed to retrieve <q>%s</q>'
+            else:
+                fmt = 'Could not find OpenID information in <q>%s</q>'
+            message = fmt % (cgi.escape(openid_url),)
+            return self.render(request, message, css_class='error', form_contents=openid_url)
+        if status == consumer.SUCCESS:
+            return_to = self.build_url(request, 'process', token=info.token)
+            redirect_url = oidconsumer.constructRedirect(info, return_to, trust_root=request['base_url'])
+            return self.redirect(request, redirect_url)
+
+
+
+    def do_process(self, request):
+        oidconsumer = self.oidconsumer
+        token = request['query'].get('token', '')
+        (status, info,) = oidconsumer.completeAuth(token, request['query'])
+        css_class = 'error'
+        openid_url = None
+        if status == consumer.FAILURE and info:
+            openid_url = info
+            fmt = 'Verification of %s failed.'
+            message = fmt % (cgi.escape(openid_url),)
+        elif status == consumer.SUCCESS:
+            css_class = 'alert'
+            if info:
+                openid_url = info
+                if self.url_to_username:
+                    username = self.url_to_username(request['environ'], openid_url)
+                else:
+                    username = openid_url
+                if 'paste.auth_tkt.set_user' in request['environ']:
+                    request['environ']['paste.auth_tkt.set_user'](username)
+                if not self.login_redirect:
+                    fmt = 'If you had supplied a login redirect path, you would have been redirected there.  You have successfully verified %s as your identity.'
+                    message = fmt % (cgi.escape(openid_url),)
+                else:
+                    request['environ']['paste.auth.open_id'] = openid_url
+                    request['environ']['PATH_INFO'] = self.login_redirect
+                    return self.app(request['environ'], request['start'])
+            else:
+                message = 'Verification cancelled'
+        else:
+            message = 'Verification failed.'
+        return self.render(request, message, css_class, openid_url)
+
+
+
+    def build_url(self, request, action, **query):
+        base = urlparse.urljoin(request['base_url'], self.auth_prefix + '/' + action)
+        return appendArgs(base, query)
+
+
+
+    def redirect(self, request, redirect_url):
+        response_headers = [('Content-type', 'text/plain'), ('Location', redirect_url)]
+        request['start']('302 REDIRECT', response_headers)
+        return ['Redirecting to %s' % redirect_url]
+
+
+
+    def not_found(self, request):
+        fmt = 'The path <q>%s</q> was not understood by this server.'
+        msg = fmt % (request['parsed_uri'],)
+        openid_url = request['query'].get('openid_url')
+        return self.render(request, msg, 'error', openid_url, status='404 Not Found')
+
+
+
+    def render(self, request, message = None, css_class = 'alert', form_contents = None, status = '200 OK', title = 'Python OpenID Consumer'):
+        response_headers = [('Content-type', 'text/html')]
+        request['start'](str(status), response_headers)
+        self.page_header(request, title)
+        if message:
+            request['body'].append("<div class='%s'>" % (css_class,))
+            request['body'].append(message)
+            request['body'].append('</div>')
+        self.page_footer(request, form_contents)
+        return request['body']
+
+
+
+    def page_header(self, request, title):
+        request['body'].append('<html>\n  <head><title>%s</title></head>\n  <style type="text/css">\n      * {\n        font-family: verdana,sans-serif;\n      }\n      body {\n        width: 50em;\n        margin: 1em;\n      }\n      div {\n        padding: .5em;\n      }\n      table {\n        margin: none;\n        padding: none;\n      }\n      .alert {\n        border: 1px solid #e7dc2b;\n        background: #fff888;\n      }\n      .error {\n        border: 1px solid #ff0000;\n        background: #ffaaaa;\n      }\n      #verify-form {\n        border: 1px solid #777777;\n        background: #dddddd;\n        margin-top: 1em;\n        padding-bottom: 0em;\n      }\n  </style>\n  <body>\n    <h1>%s</h1>\n    <p>\n      This example consumer uses the <a\n      href="http://openid.schtuff.com/">Python OpenID</a> library. It\n      just verifies that the URL that you enter is your identity URL.\n    </p>\n' % (title, title))
+
+
+
+    def page_footer(self, request, form_contents):
+        if not form_contents:
+            form_contents = ''
+        request['body'].append('    <div id="verify-form">\n      <form method="get" action=%s>\n        Identity&nbsp;URL:\n        <input type="text" name="openid_url" value=%s />\n        <input type="submit" value="Verify" />\n      </form>\n    </div>\n  </body>\n</html>\n' % (quoteattr(self.build_url(request, 'verify')), quoteattr(form_contents)))
+
+
+
+middleware = AuthOpenIDHandler
+
+def make_open_id_middleware(app, global_conf, data_store_path, auth_prefix = '/oid', login_redirect = None, catch_401 = False, url_to_username = None, apply_auth_tkt = False, auth_tkt_logout_path = None):
+    from paste.deploy.converters import asbool
+    from paste.util import import_string
+    catch_401 = asbool(catch_401)
+    if url_to_username and isinstance(url_to_username, basestring):
+        url_to_username = import_string.eval_import(url_to_username)
+    apply_auth_tkt = asbool(apply_auth_tkt)
+    new_app = AuthOpenIDHandler(app, data_store_path=data_store_path, auth_prefix=auth_prefix, login_redirect=login_redirect, catch_401=catch_401, url_to_username=url_to_username or None)
+    if apply_auth_tkt:
+        from paste.auth import auth_tkt
+        new_app = auth_tkt.make_auth_tkt_middleware(new_app, global_conf, logout_path=auth_tkt_logout_path)
+    return new_app
+
+
+

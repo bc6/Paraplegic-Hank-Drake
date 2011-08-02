@@ -1,0 +1,580 @@
+from time import strftime, gmtime
+import blue
+import login
+import os
+import sys
+import trinity
+import uix
+import uthread
+import util
+import shutil
+import log
+import uicls
+import uiconst
+import service
+DEBUGMODE = False
+MAX_ICON_RANGE = 200
+
+def Msg(msg):
+    eve.Message('CustomNotify', {'notify': msg})
+    log.general.Log(msg, log.LGNOTICE)
+    print msg
+
+
+
+class WebTools(service.Service):
+    __guid__ = 'svc.webtools'
+    __exportedcalls__ = {'SetVars': [],
+     'GetVars': [],
+     'GoSlimLogin': [],
+     'IconsRender': [],
+     'NothingRender': []}
+    __dependencies__ = ['settings']
+    __notifyevents__ = ['OnClientReady']
+
+    def __init__(self):
+        service.Service.__init__(self)
+        self.Reset()
+
+
+
+    def Run(self, memStream = None):
+        service.Service.Run(self, memStream)
+
+
+
+    def Stop(self, stream):
+        service.Service.Stop(self)
+
+
+
+    def Reset(self):
+        self.renderVars = []
+        self.events = set()
+
+
+
+    def OnClientReady(self, what):
+        self.events.add(what)
+
+
+
+    def WaitForEvent(self, *events):
+        found = False
+        while not found:
+            blue.pyos.synchro.Yield()
+            for event in events:
+                if event in self.events:
+                    found = True
+
+
+
+
+
+    def TypesRender(self):
+        self.DoRenderTypes(32)
+        self.DoRenderTypes(64)
+
+
+
+    def DoRenderTypes(self, sz, blueprintCopy = False):
+        folderLabel = 'Types' if not blueprintCopy else 'BPCs'
+        filePath = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '/EVE/capture/Screenshots/%s/' % folderLabel
+        dr = DirectoryRoutines()
+        dr.GenericCheckCreateDirectory(filePath)
+        CSAA_FMT = trinity.TRIMULTISAMPLE_NONE
+        CSAA_QTY = 0
+        baseTexture = trinity.TriSurfaceManaged(trinity.device.CreateRenderTarget, sz, sz, trinity.TRIFMT_A8R8G8B8, CSAA_FMT, CSAA_QTY, 0)
+        toRender = []
+        godma = sm.GetService('godma')
+        BAD_TYPES = (29494, 29193)
+        if not blueprintCopy:
+            for t in cfg.invtypes:
+                if t.published and (t.graphicID or t.iconID or t.categoryID == const.categoryBlueprint) and t.typeID not in BAD_TYPES:
+                    toRender.append(t.typeID)
+
+        else:
+            for t in cfg.invtypes:
+                if t.published and t.categoryID == const.categoryBlueprint and t.typeID not in BAD_TYPES:
+                    toRender.append(t.typeID)
+
+        toRender.sort()
+        photoSvc = sm.GetService('photo')
+        print 'Rendering out %s %s' % ('types' if not blueprintCopy else 'BPCs', len(toRender))
+        numSkipped = 0
+        if blueprintCopy:
+            fileName = 'bpc_%s_%s.png'
+        else:
+            fileName = '%s_%s.png'
+        for (counter, typeID,) in enumerate(toRender):
+            name = filePath + fileName % (typeID, sz)
+            if os.path.isfile(name):
+                numSkipped += 1
+                continue
+            sys.stdout.write('.')
+            renderJob = trinity.CreateRenderJob()
+            desktop = uicls.UIRoot(name='WebTools', width=sz, height=sz, renderTarget=baseTexture, renderJob=renderJob, clearBackground=True)
+            desktop.backgroundColor = (0, 0, 0, 0)
+            icon = uicls.Icon(parent=desktop, pos=(0,
+             0,
+             sz,
+             sz), ignoreSize=True, state=uiconst.UI_DISABLED)
+            techIcon = uicls.Icon(parent=desktop, pos=(0, 0, 16, 16), align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL)
+            icon.LoadIconByTypeID(typeID, ignoreSize=True, isCopy=blueprintCopy)
+            icon.SetSize(sz, sz)
+            uix.GetTechLevelIcon(techIcon, 1, typeID)
+            blue.resMan.Wait()
+            i = 0
+            while photoSvc.byTypeID_IsRunning:
+                if i > 20:
+                    print 'waited for photoservice for a long time... %s' % i
+                blue.pyos.synchro.Sleep(50)
+                i += 1
+
+            desktop.UpdateAlignmentAsRoot()
+            renderJob.ScheduleOnce()
+            renderJob.WaitForFinish()
+            baseTexture.SaveSurfaceToFile(name, trinity.TRIIFF_PNG)
+            blue.pyos.synchro.Yield()
+            if counter % 1000 == 0:
+                msg = '%s / %s' % (counter, len(toRender))
+                print '\n',
+                print msg
+                eve.Message('CustomNotify', {'notify': msg})
+            desktop.Close()
+
+        msg = 'Done rendering out type icons in size %sx%s to folder %s.<br>Rendered %s types and skipped %s types' % (sz,
+         sz,
+         filePath,
+         len(toRender) - numSkipped,
+         numSkipped)
+        Msg(msg)
+
+
+
+    def IconsRender(self):
+        Msg('Rendering type icons...')
+        self.TypesRender()
+        Msg('Rendering categories...')
+        self.IconsCategoriesRender()
+        Msg('Rendering corp logos...')
+        self.IconsCorporationRender()
+        Msg('Rendering icon sheets...')
+        self.IconsIconRender()
+        Msg('All icons have been rendered. All done!')
+        self.GenerateReport()
+        Msg('IEC_report.txt report file has been generated.')
+
+
+
+    def NothingRender(self):
+        pass
+
+
+
+    def SetVars(self, renderVars):
+        rv = util.KeyVal(username='', password='', routine='', parameter='')
+        if renderVars is not None:
+            if len(renderVars) >= 3:
+                rv.username = renderVars[0]
+                rv.password = renderVars[1]
+                rv.routine = renderVars[2]
+            if len(renderVars) == 4:
+                rv.parameter = renderVars[3]
+        self.renderVars = rv
+
+
+
+    def GetVars(self):
+        return self.renderVars
+
+
+
+    def GoSlimLogin(self):
+        if blue.pyos.packaged:
+            raise RuntimeError('You can not build the IEC package on a packaged client you have to use a perforce client.')
+        rv = self.renderVars
+        if rv:
+            func = getattr(self, '%sRender' % rv.routine.capitalize(), None)
+            if func:
+                self.GoLogin(rv.username, rv.password)
+                self.WaitForEvent('login')
+                self.GoCharsel()
+                self.WaitForEvent('worldspace', 'inflight')
+                self.GoRoutine(rv.routine, func)
+
+
+
+    def GoLogin(self, username, password):
+        sm.GetService('loading').GoBlack()
+        s1 = sm.GetService('sceneManager').GetActiveScene1()
+        if s1 is not None:
+            s1.display = 0
+        s2 = sm.GetService('sceneManager').GetActiveScene2()
+        if s2 is not None:
+            s2.display = 0
+        sm.GetService('overviewPresetSvc')
+        sm.GetService('gameui').OpenExclusive('login')
+        user = username
+        pwd = util.PasswordString(password)
+        sm.GetService('loading').ProgressWnd(mls.UI_LOGIN_LOGGINGIN, mls.UI_LOGIN_CONNECTINGCLUSTER, 1, 100)
+        blue.pyos.synchro.Yield()
+        eve.Message('OnConnecting')
+        blue.pyos.synchro.Yield()
+        eve.Message('OnConnecting2')
+        blue.pyos.synchro.Yield()
+        serverName = util.GetServerName()
+        eve.serverName = serverName
+        server = login.GetServerIP(serverName)
+        loginparam = [user,
+         pwd,
+         server,
+         26000,
+         0]
+        try:
+            sm.GetService('connection').Login(loginparam)
+        except:
+            raise 
+        sm.GetService('device').PrepareMain()
+        blue.pyos.synchro.Yield()
+        blue.pyos.synchro.Yield()
+        blue.pyos.synchro.Yield()
+        blue.pyos.synchro.Yield()
+
+
+
+    def GoCharsel(self):
+        chars = sm.GetService('cc').GetCharactersToSelect()
+        characterid = None
+        for char in chars:
+            characterid = char.characterID
+            break
+
+        if characterid:
+            sm.GetService('sessionMgr').PerformSessionChange('charsel', sm.RemoteSvc('charUnboundMgr').SelectCharacterID, characterid)
+
+
+
+    def GoRoutine(self, routine, func):
+        uthread.pool('Webtools :: GoRoutine :: %sRender' % routine.capitalize(), func)
+
+
+
+    def IconsIconRender(self):
+        x = IconRoutines()
+        x.TotalBatchRender(icons=1)
+
+
+
+    def IconsCorporationRender(self):
+        x = IconRoutines()
+        x.TotalBatchRender(corporation=1)
+
+
+
+    def IconsCategoriesRender(self):
+        x = IconRoutines()
+        x.TotalBatchRender(categories=1)
+
+
+
+    def GenericQuit(self):
+        self.settings.SaveSettings()
+        blue.pyos.Quit('User requesting close')
+
+
+
+    def GenerateReport(self):
+        rootPath = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '/EVE/capture/Screenshots/'
+        lines = []
+        for (rootDir, dirs, files,) in os.walk(rootPath):
+            if files:
+                numBytes = 0
+                for fileName in files:
+                    pathName = '%s/%s' % (rootDir, fileName)
+                    numBytes += os.path.getsize(pathName)
+
+                lines.append('%s\n\n\t%.3f MB in %d files\n\n' % (rootDir, numBytes / 1024.0 / 1024.0, len(files)))
+
+        output = open(rootPath + 'IEC_report.txt', 'w')
+        output.write(''.join(lines))
+        output.close()
+
+
+
+
+class IconRoutines():
+    __guid__ = 'webroutines.IconRoutines'
+    __exportedcalls__ = {'RenderIconSheets': [],
+     'RenderCategory': [],
+     'RenderAlliances': [],
+     'RenderCorporations': []}
+
+    def __init__(self, ext = None):
+        if ext is None:
+            ext = 'png'
+        self.exportExtension = ext
+        self.fileFormat = getattr(trinity, 'TRIIFF_%s' % self.exportExtension.upper())
+
+
+
+    def BatchRender(self, toRender, folder, save = 1, iconsize = 64):
+        (categoryid, groupid,) = toRender
+        BAD_TURRET_TYPES = (4044, 4045, 4049, 22691, 28610, 16132)
+        manyTypes = []
+        if categoryid:
+            manyTypes = [ each for each in cfg.invtypes if each.Group().Category().id == categoryid if each.Group().id != const.groupStrategicCruiser ]
+        elif groupid:
+            manyTypes = [ each for each in cfg.invtypes if each.Group().id == groupid if each.typeID not in BAD_TURRET_TYPES ]
+        lr = LoggingRoutines()
+        lr.CreateLogFile('batchrender_types_%s_%s' % (iconsize, len(manyTypes)))
+        lr.WriteLogFile('%s types in %sx%s to render: ' % (len(manyTypes), iconsize, iconsize))
+        notRender = []
+        for invtype in manyTypes:
+            lr.WriteLogFile(' - rendering typeID %s: %s' % (invtype.typeID, invtype.typeName))
+            print 'BatchRender %s' % invtype.typeName
+            try:
+                self.RenderType(invtype.typeID, folder, save, iconsize)
+            except Exception as e:
+                lr.WriteLogFile('Failed to render typeID %s: %s' % (invtype.typeID, invtype.typeName))
+                lr.WriteLogFile('Error: %s' % e)
+                sys.exc_clear()
+            blue.pyos.BeNice(150)
+
+        for each in notRender:
+            lr.WriteLogFile(each)
+
+        lr.CloseLogFile()
+
+
+
+    def RenderType(self, typeID, folder = 'testing', save = 1, iconsize = 64, recursive = 0):
+        folder = folder.replace(' ', '')
+        dev = trinity.device
+        triapp = trinity.app
+        root = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '/EVE/capture/Screenshots'
+        filePath = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '/EVE/capture/Screenshots/Renders/'
+        dr = DirectoryRoutines()
+        dr.GenericCheckCreateDirectory(filePath)
+        typeinfo = cfg.invtypes.Get(typeID)
+        group = typeinfo.Group()
+        categoryID = group.categoryID
+        if not typeinfo.GraphicFile():
+            return 
+        fullpath = ''
+        path_current = 'cache:/Pictures/Gids/' + sm.GetService('photo').GetPictureFileName(typeinfo, iconsize)
+        fullpath_current = sm.GetService('photo').CheckAvail(path_current)
+        if fullpath_current:
+            fullpath = path_current
+        targetFile = filePath + '%s.%s' % (typeID, self.exportExtension)
+        if os.path.isfile(targetFile):
+            print 'render for typeID %d already exists' % typeID
+            return 
+        file = blue.ResFile()
+        if not file.Open(fullpath):
+            if categoryID == const.categoryPlanetaryInteraction:
+                if group.id not in (const.groupPlanetaryLinks, const.groupPlanetaryCustomsOffices):
+                    sm.GetService('photo').GetPinPhoto(typeID, typeinfo=typeinfo, size=iconsize)
+                elif group.id == const.groupPlanetaryCustomsOffices:
+                    sm.GetService('photo').GetPhoto(typeID, typeinfo, size=iconsize)
+                else:
+                    return 
+            elif categoryID == const.categoryModule and group.groupID in const.turretModuleGroups:
+                sm.GetService('photo').GetTurretPhoto(typeID, typeinfo, size=iconsize, transparentBackground=False, usePreviewScene=True)
+            else:
+                sm.GetService('photo').GetPhoto(typeID, typeinfo, size=iconsize)
+            if not recursive:
+                del file
+                self.RenderType(typeID, folder=folder.split('_')[0], save=save, iconsize=iconsize, recursive=1)
+                return 
+        if file:
+            del file
+        sur = dev.CreateOffscreenPlainSurface(iconsize, iconsize, trinity.TRIFMT_A8R8G8B8, trinity.TRIPOOL_SYSTEMMEM)
+        blue.pyos.synchro.Sleep(100)
+        try:
+            sur.LoadSurfaceFromFile(util.ResFile(fullpath))
+        except:
+            print 'failed Rendering typeID: %s, size: %s %s' % (typeID, iconsize, fullpath)
+        sur.SaveSurfaceToFile(targetFile, self.fileFormat)
+
+
+
+    def RenderCategory(self, category, save = 1):
+        self.BatchRender((category, None), '%s' % cfg.invcategories.Get(category).categoryName.lower(), save, 512)
+
+
+
+    def RenderTech3Ships(self, move = True):
+        Msg('Copying T3 ships')
+        tech3IconMap = ((90, 29986),
+         (91, 29984),
+         (92, 29988),
+         (93, 29990))
+        outputRoot = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '/EVE/capture/Screenshots/Renders/%d.png'
+        resRoot = blue.os.respath + '/UI/Texture/Icons/%d_256_1.png'
+        for (iconNum, typeID,) in tech3IconMap:
+            try:
+                shutil.copy(resRoot % iconNum, outputRoot % typeID)
+            except Exception as e:
+                Msg('Error copying T3 icon for typeID %d: %s' % (typeID, e))
+
+
+
+
+    def TotalBatchRender(self, icons = None, categories = None, corporation = None):
+        dr = DirectoryRoutines()
+        dr.DeleteCachedFile(None, 'Gids', 1)
+        if icons:
+            outputRoot = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '/EVE/capture/Screenshots/Icons/items'
+            resRoot = blue.os.respath + 'UI/Texture/Icons'
+            try:
+                shutil.copytree(resRoot, outputRoot)
+            except Exception as e:
+                Msg('Error copying icons folder: %s' % e)
+        if corporation:
+            outputRoot = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '/EVE/capture/Screenshots/Icons/corporations'
+            resRoot = blue.os.respath + 'UI/Texture/Corps'
+            try:
+                shutil.copytree(resRoot, outputRoot)
+            except Exception as e:
+                Msg('Error copying corps folder: %s' % e)
+        if categories:
+            outputRoot = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '/EVE/capture/Screenshots/Renders'
+            dr.GenericCheckCreateDirectory(outputRoot)
+            renderCategories = [const.categoryDrone,
+             const.categoryShip,
+             const.categoryStation,
+             const.categoryStructure,
+             const.categoryDeployable,
+             const.categorySovereigntyStructure,
+             const.categoryPlanetaryInteraction]
+            for categoryID in renderCategories:
+                Msg('Rendering category %s' % categoryID)
+                self.RenderCategory(categoryID)
+
+            for groupID in const.turretModuleGroups:
+                Msg('Render turret group: %s' % cfg.invgroups.Get(groupID).groupName)
+                self.BatchRender((None, groupID), 'turrets', True, 512)
+
+            self.RenderTech3Ships()
+
+
+
+    def GetLoHi(self, resPath):
+        f = blue.ResFile()
+        retVal = {'lo': 1,
+         'hi': 1}
+        for x in xrange(1, MAX_ICON_RANGE):
+            check = f.FileExists('%s%s.dds' % (resPath, x if x >= 10 else '0%s' % x))
+            if check:
+                if x > retVal['hi']:
+                    retVal['hi'] = x
+                if x < retVal['lo']:
+                    retVal['lo'] = x
+
+        f.Close()
+        return retVal.itervalues()
+
+
+
+
+class LoggingRoutines():
+    __guid__ = 'webroutines.LoggingRoutines'
+    __exportedcalls__ = {'CreateLogFile': [],
+     'WriteToLogfile': []}
+
+    def __init__(self):
+        self.logfile = None
+
+
+
+    def CreateLogFile(self, ex = ''):
+        logfilepath = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '/EVE/logs/RenderLogs/'
+        logfilename = '%s_%s_renderlog.txt' % (strftime('%Y.%m.%d-%H.%M', gmtime()), ex)
+        dr = DirectoryRoutines()
+        dr.GenericCheckCreateDirectory(logfilepath)
+        filename = logfilepath + logfilename
+        self.logfile = blue.os.CreateInstance('blue.ResFile')
+        if not self.logfile.Open(filename, 0):
+            self.logfile.Create(filename)
+        self.WriteLogFile('#')
+        self.WriteLogFile('# Started at ' + strftime('%Y.%m.%d-%H.%M', gmtime()))
+        self.WriteLogFile('#')
+
+
+
+    def WriteLogFile(self, line):
+        if self.logfile:
+            self.logfile.Write(line.encode('utf8') + '\n')
+
+
+
+    def CloseLogFile(self):
+        if self.logfile:
+            self.WriteLogFile('#')
+            self.WriteLogFile('# Ended at ' + strftime('%Y.%m.%d-%H.%M', gmtime()))
+            self.WriteLogFile('#')
+            self.logfile.Close()
+
+
+
+
+class DirectoryRoutines():
+    __guid__ = 'webroutines.DirectoryRoutines'
+
+    def __init__(self):
+        self.createdDirectories = {}
+
+
+
+    def DeleteCachedFile(self, itemID, folder = 'Portraits', flush = 0):
+        resPath = blue.os.cachepath + 'Pictures/%s/' % folder
+        for (rRoot, dirs, files,) in os.walk(resPath):
+            for rFile in files:
+                rFile = str(rFile)
+                if flush or rFile.startswith(str(itemID)):
+                    try:
+                        os.remove(str(rRoot) + str(rFile))
+                    except:
+                        sys.exc_clear()
+
+
+
+
+
+    def GenericCheckCreateDirectory(self, name, dry_run = 0):
+        if DEBUGMODE:
+            self.createdDirectories = {}
+        name = os.path.normpath(name)
+        created_dirs = []
+        if os.path.isdir(name) or name == '':
+            return created_dirs
+        if self.createdDirectories.get(os.path.abspath(name)):
+            return created_dirs
+        (head, tail,) = os.path.split(name)
+        tails = [tail]
+        while head and tail and not os.path.isdir(head):
+            (head, tail,) = os.path.split(head)
+            tails.insert(0, tail)
+
+        for d in tails:
+            head = os.path.join(head, d)
+            abs_head = os.path.abspath(head)
+            if self.createdDirectories.get(abs_head):
+                continue
+            if not dry_run:
+                try:
+                    os.mkdir(head)
+                    created_dirs.append(head)
+                except OSError as exc:
+                    raise "could not create '%s': %s" % (head, exc[-1])
+            self.createdDirectories[abs_head] = 1
+
+        return created_dirs
+
+
+
+exports = {'webroutines.DirectoryRoutines': DirectoryRoutines,
+ 'webroutines.IconRoutines': IconRoutines,
+ 'webroutines.LoggingRoutines': LoggingRoutines}
+

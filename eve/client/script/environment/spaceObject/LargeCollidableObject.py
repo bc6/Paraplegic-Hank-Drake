@@ -1,0 +1,24 @@
+import spaceObject
+import sys
+from string import split
+DEG2RAD = 0.0174532925199
+
+class LargeCollidableObject(spaceObject.SpaceObject):
+    __guid__ = 'spaceObject.LargeCollidableObject'
+
+    def Assemble(self):
+        self.SetStaticRotation()
+
+
+
+    def LoadModel(self, fileName = None, useInstance = False):
+        slimItem = sm.StartService('michelle').GetBallpark().GetInvItem(self.id)
+        filename = cfg.invtypes.Get(slimItem.typeID).GraphicFile()
+        filename_and_turret_type = split(filename, ' ')
+        originalFileName = filename_and_turret_type[0]
+        spaceObject.SpaceObject.LoadModel(self, originalFileName, useInstance)
+
+
+
+exports = {'spaceObject.LargeCollidableObject': LargeCollidableObject}
+

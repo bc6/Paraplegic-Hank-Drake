@@ -1,0 +1,163 @@
+import xtriui
+import uix
+import uiutil
+import uiconst
+import util
+import _weakref
+import weakref
+import blue
+import base
+import uthread
+import types
+import listentry
+import stackless
+import lg
+import html
+import draw
+import sys
+import dbg
+import trinity
+import uicls
+import uiutil
+import uiconst
+SCROLLMARGIN = 0
+MINCOLUMNWIDTH = 24
+
+class Scroll(uicls.ScrollCore):
+    __guid__ = 'uicls.Scroll'
+    headerFontSize = 10
+    sortGroups = False
+
+    def ApplyAttributes(self, attributes):
+        uicls.ScrollCore.ApplyAttributes(self, attributes)
+        sm.GetService('window').CheckControlAppearance(self)
+
+
+
+    def Prepare_ScrollControls_(self):
+        self.sr.scrollcontrols = uicls.ScrollControls(name='__scrollcontrols', parent=self.sr.maincontainer, align=uiconst.TORIGHT, width=10, state=uiconst.UI_HIDDEN, idx=0)
+        self.sr.scrollcontrols.Startup(self)
+
+
+
+    def Prepare_Underlay_(self):
+        self.sr.underlay = uicls.BumpedUnderlay(parent=self, name='background')
+
+
+
+    def Startup(self, minZ = None):
+        pass
+
+
+
+    def HideBackground(self, alwaysHidden = 0):
+        frame = None
+        if uiutil.GetAttrs(self, 'sr', 'underlay'):
+            self.sr.underlay.state = uiconst.UI_HIDDEN
+            frame = self.sr.underlay
+        if frame and getattr(frame, 'parent'):
+            underlayFrame = frame.parent.FindChild('underlayFrame')
+            underlayFill = frame.parent.FindChild('underlayFill')
+            if underlayFrame:
+                underlayFrame.state = uiconst.UI_HIDDEN
+            if underlayFill:
+                underlayFill.state = uiconst.UI_HIDDEN
+        if alwaysHidden:
+            self.SetNoBackgroundFlag(alwaysHidden)
+
+
+
+    def OnMouseWheel(self, *etc):
+        if getattr(self, 'wheeling', 0):
+            return 1
+        if len(uicore.layer.dragging.children):
+            return 1
+        if len(uicore.layer.menu.children):
+            focus = uicore.registry.GetFocus()
+            if focus and isinstance(focus, uicls.ScrollCore):
+                if focus.name not in ('combodropdown', '_comboDropDown'):
+                    return 1
+        self.wheeling = 1
+        self.Scroll(uicore.uilib.dz / 240.0)
+        self.wheeling = 0
+        return 1
+
+
+
+    def GetNoItemNode(self, text, sublevel = 0, *args):
+        return listentry.Get('Generic', {'label': text,
+         'sublevel': sublevel})
+
+
+
+    def RecyclePanel(self, panel, fromWhere = None):
+        if panel.__guid__ == 'listentry.VirtualContainerRow':
+            subnodes = [ node for node in panel.sr.node.internalNodes if node is not None ]
+            for node in subnodes:
+                node.panel = None
+
+        uicls.ScrollCore.RecyclePanel(self, panel, fromWhere)
+
+
+
+
+class ScrollControls(uicls.ScrollControlsCore):
+    __guid__ = 'uicls.ScrollControls'
+
+    def ApplyAttributes(self, attributes):
+        uicls.ScrollControlsCore.ApplyAttributes(self, attributes)
+
+
+
+    def Prepare_(self):
+        uicls.Line(parent=self, align=uiconst.TOLEFT, color=(1.0, 1.0, 1.0, 0.06))
+        self.Prepare_ScrollHandle_()
+        self.Prepare_ScrollButtons_()
+
+
+
+    def Prepare_ScrollButtons_(self):
+        btn = uicls.ScrollBtn(name='scrollBtnTop', parent=self, width=10, height=12, align=uiconst.CENTERTOP, state=uiconst.UI_NORMAL)
+        self.sr.scrollUpBtn = btn
+        icon = uicls.Icon(icon='ui_38_16_105', align=uiconst.CENTER, parent=btn, state=uiconst.UI_DISABLED, pos=(1, 0, 0, 0))
+        btn = uicls.ScrollBtn(name='scrollBtnBottom', parent=self, width=10, height=12, align=uiconst.CENTERBOTTOM, state=uiconst.UI_NORMAL)
+        self.sr.scrollDownBtn = btn
+        icon = uicls.Icon(icon='ui_38_16_104', align=uiconst.CENTER, parent=btn, state=uiconst.UI_DISABLED, pos=(1, 0, 0, 0))
+
+
+
+    def Prepare_ScrollHandle_(self):
+        subparent = uicls.Container(name='subparent', parent=self, align=uiconst.TOALL, padding=(-1, 8, 0, 8))
+        self.sr.scrollhandle = uicls.ScrollHandle(name='__scrollhandle', parent=subparent, align=uiconst.TOPLEFT, pos=(0, 0, 0, 0), state=uiconst.UI_NORMAL)
+
+
+
+    def Startup(self, dad):
+        uicls.ScrollControlsCore.Startup(self, dad)
+        self.sr.scrollUpBtn.Startup(dad, 1)
+        self.sr.scrollDownBtn.Startup(dad, -1)
+
+
+
+
+class ScrollHandle(uicls.ScrollHandleCore):
+    __guid__ = 'uicls.ScrollHandle'
+
+    def Prepare_(self):
+        dotFrame = uicls.Frame(name='dotFrame', parent=self, texturePath='res:/UI/Texture/Shared/windowButtonDOT.png', cornerSize=2, color=(1.0, 1.0, 1.0, 1.0), padding=(2, 1, 1, 1), spriteEffect=trinity.TR2_SFX_DOT, blendMode=trinity.TR2_SBM_ADD)
+        uicls.Sprite(parent=self, name='fill', texturePath='res:/UI/Texture/Shared/windowButtonGradient.png', state=uiconst.UI_DISABLED, padding=(2, 1, 1, 1), align=uiconst.TOALL, filter=False)
+        self.Prepare_Hilite_()
+
+
+
+    def Prepare_Hilite_(self):
+        self.sr.hilite = uicls.Fill(parent=self, color=(1.0, 1.0, 1.0, 0.3), padding=(2, 1, 1, 1), state=uiconst.UI_HIDDEN, idx=0)
+
+
+
+
+class ColumnHeader(uicls.ScrollColumnHeaderCore):
+    __guid__ = 'uicls.ScrollColumnHeader'
+    letterspace = 2
+
+

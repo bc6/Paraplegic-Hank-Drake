@@ -1,0 +1,189 @@
+import uicls
+import math
+import trinity
+import uix
+import util
+import blue
+import xtriui
+import mathUtil
+import mathUtil
+import uiconst
+
+class ScanningCone:
+    __guid__ = 'map.ScanningCone'
+
+    def __init__(self):
+        pass
+
+
+
+    def Cleanup(self):
+        self.cone = None
+        for each in uicore.layer.main.children[:]:
+            if each.name in ('coneRangeBracket', 'coneAngleBracket'):
+                each.trackTransform = None
+                each.Close()
+
+        scene = trinity.device.scene
+        for each in scene.models[:]:
+            if each.name == 'scanningCone':
+                scene.models.remove(each)
+
+
+
+
+    def Startup(self):
+        self.Cleanup()
+        cone = blue.os.LoadObject('res:/UI/Shared/Maps/scanningCone.blue')
+        cone.name = 'scanningCone'
+        scene = trinity.device.scene
+        scene.models.append(cone)
+        self.cone = cone
+        self.coneAngle = 90.0
+        self.coneRange = 100000.0
+        for each in cone.children:
+            if each.name == 'cone':
+                self.coneObject = each
+
+        self.AddAngleBracket()
+        self.AddRangeBracket()
+
+
+
+    def AddAngleBracket(self):
+        bracket = ConeControlBracket(trinity.UIBracket())
+        bracket.width = 16
+        bracket.height = 16
+        bracket.name = 'coneAngleBracket'
+        bracket.callback = self.ChangeConeAngle
+        bracket._angleMode = True
+        uicls.Fill(parent=bracket)
+        tracker = trinity.TriTransform()
+        tracker.translation.z = -1.0
+        tracker.translation.y = 1.0
+        self.cone.children.append(tracker)
+        uicore.layer.main.children.append(bracket)
+        bracket.trackTransform = tracker
+        self.ChangeConeAngle(0, bracket)
+
+
+
+    def AddRangeBracket(self):
+        bracket = ConeControlBracket(trinity.UIBracket())
+        bracket.width = 16
+        bracket.height = 16
+        bracket.name = 'coneRangeBracket'
+        bracket.callback = self.ChangeConeRange
+        bracket._rangeMode = True
+        uicls.Fill(parent=bracket)
+        tracker = trinity.TriTransform()
+        tracker.translation.z = -1.0
+        self.cone.children.append(tracker)
+        uicore.layer.main.children.append(bracket)
+        bracket.trackTransform = tracker
+        self.ChangeConeRange(0, bracket)
+
+
+
+    def ChangeConeRange(self, add, bracket):
+        r = self.coneRange
+        step = r / 10.0
+        if add == 1:
+            r += step
+        elif add == -1:
+            r -= step
+        self.SetConeRange(r, bracket)
+
+
+
+    def SetConeRange(self, rnge, bracket = None):
+        print 'SetConeRange',
+        print rnge
+        rnge = max(1000.0, rnge)
+        self.cone.scaling.SetXYZ(rnge, rnge, rnge)
+        if bracket:
+            bracket.sr.readout.text = 'Range: %s' % util.FmtDist(self.cone.scaling.z)
+        settings.user.ui.Set('scannerConeRange', rnge)
+        self.coneRange = rnge
+
+
+
+    def ChangeConeAngle(self, add, bracket):
+        coneAngle = self.coneAngle
+        if add == 1:
+            coneAngle += 1.0
+        elif add == -1:
+            coneAngle -= 1.0
+        self.SetConeAngle(coneAngle, bracket)
+
+
+
+    def SetConeAngle(self, angle, bracket = None):
+        angle = max(5.0, min(angle, 180.0))
+        rad = self.cone.scaling.z
+        baseDist = math.cos(mathUtil.DegToRad(angle / 2.0)) * rad
+        oppDist = math.sin(mathUtil.DegToRad(angle / 2.0)) * rad
+        baseDistPortion = baseDist / rad
+        oppDistPortion = oppDist / rad
+        self.coneObject.scaling.z = baseDistPortion
+        self.coneObject.scaling.x = self.coneObject.scaling.y = oppDistPortion
+        if bracket:
+            bracket.sr.readout.text = 'Angle: %s' % angle
+            bracket.trackTransform.translation.z = -baseDistPortion
+            bracket.trackTransform.translation.y = oppDistPortion
+        settings.user.ui.Set('scannerConeAngle', angle)
+        self.coneAngle = angle
+
+
+
+
+class ConeControlBracket(uicls.Container):
+    __guid__ = 'xtriui.ConeControlBracket'
+
+    def init(self):
+        self._drag = False
+        self._rangeMode = False
+        self._angleMode = False
+        self.sr.readout = uicls.Label(text='', parent=self, state=uiconst.UI_DISABLED, left=20)
+
+
+
+    def OnMouseDown(self, *args):
+        self._drag = True
+
+
+
+    def OnMouseUp(self, *args):
+        self._drag = False
+        uicore.uilib.SetCursor(uiconst.UICURSOR_NONE)
+        (l, t, w, h,) = self.GetAbsolute()
+        uicore.uilib.SetCursorPos(l + w / 2, t + h / 2)
+
+
+
+    def OnMouseMove(self, *args):
+        if self._drag:
+            dx = uicore.uilib.dx
+            dy = uicore.uilib.dy
+            (l, t, w, h,) = self.GetAbsolute()
+            if self._rangeMode:
+                invert = 0
+                if l + w / 2 > uicore.desktop.width / 2:
+                    invert = 1
+                if dx:
+                    if dx > 1:
+                        self.callback([-1, 1][invert], self)
+                    elif dx < 1:
+                        self.callback([1, -1][invert], self)
+                    uicore.uilib.SetCursor(uiconst.UICURSOR_NONE)
+            elif self._angleMode:
+                if dy:
+                    if dy > 1:
+                        self.callback(-1, self)
+                    elif dy < 1:
+                        self.callback(1, self)
+                    uicore.uilib.SetCursor(uiconst.UICURSOR_NONE)
+
+
+
+

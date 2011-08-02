@@ -1,0 +1,272 @@
+import mathUtil
+import blue
+import uicls
+import uiconst
+import uiutil
+import fontConst
+import weakref
+
+class SliderCore(uicls.Container):
+    __guid__ = 'uicls.SliderCore'
+    default_name = 'slider'
+    default_align = uiconst.TOTOP
+    default_height = 16
+    default_sliderID = ''
+    default_minValue = None
+    default_maxValue = None
+    default_config = ''
+    default_displayName = ''
+    default_increments = []
+    default_getvaluefunc = None
+    default_setlabelfunc = None
+    default_endsliderfunc = None
+    default_onsetvaluefunc = None
+    default_startVal = None
+    default_font = fontConst.DEFAULT_FONT
+    default_fontsize = fontConst.DEFAULT_FONTSIZE
+    default_labeltab = 4
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        self.value = None
+        self.label = None
+        self.top = 0
+        self.dragging = 0
+        self.handle = None
+        self.increments = attributes.get('increments', self.default_increments)
+        self.displayName = attributes.get('displayName', self.default_displayName)
+        self.config = attributes.get('config', self.default_config)
+        self.startVal = attributes.get('startVal', self.default_startVal)
+        self.maxValue = attributes.get('maxValue', self.default_maxValue)
+        self.minValue = attributes.get('minValue', self.default_minValue)
+        self.sliderID = attributes.get('sliderID', self.default_sliderID)
+        self.font = attributes.get('font', self.default_font)
+        self.fontsize = attributes.get('fontsize', self.default_fontsize)
+        self.labeltab = attributes.get('labeltab', self.default_labeltab)
+        self.SetSliderLabel = attributes.get('setlabelfunc', self.default_setlabelfunc)
+        self.GetSliderValue = attributes.get('getvaluefunc', self.default_getvaluefunc)
+        self.EndSetSliderValue = attributes.get('endsliderfunc', self.default_endsliderfunc)
+        self.OnSetValue = attributes.get('onsetvaluefunc', self.default_onsetvaluefunc)
+        self.Prepare_()
+
+
+
+    def Prepare_(self):
+        self.Prepare_Handle_()
+        self.Prepare_Underlay_()
+        self.Prepare_Label_()
+        self.Prepare_Increments_()
+        self.SetIncrements(self.increments)
+        if self.config:
+            if len(self.config) == 3:
+                (cfgName, prefsType, defaultValue,) = self.config
+                if prefsType is not None:
+                    si = uiutil.GetAttrs(settings, *prefsType)
+                    if si:
+                        value = si.Get(cfgName, defaultValue)
+                    else:
+                        value = defaultValue
+                else:
+                    value = defaultValue
+                self.name = self.config[0]
+            else:
+                value = settings.user.ui.Get(self.config, (self.maxValue - self.minValue) * 0.5)
+                if value is None:
+                    value = 0.0
+                self.name = self.config
+            self.SetValue(value, updateHandle=True)
+        elif self.startVal is not None:
+            self.SetValue(self.startVal, updateHandle=True)
+        else:
+            self.state = uiconst.UI_NORMAL
+
+
+
+    def Prepare_Underlay_(self):
+        frame = uicls.Frame(parent=self, align=uiconst.TOBOTTOM, pos=(0, 0, 0, 12), padding=(0, 0, 0, 2), frameConst=uiconst.FRAME_BORDER1_SHADOW_CORNER8, color=(1.0, 1.0, 1.0, 0.5))
+
+
+
+    def Prepare_Handle_(self):
+        self.handle = uicls.Icon(name='diode', parent=self, align=uiconst.BOTTOMLEFT, state=uiconst.UI_NORMAL, pos=(0, 0, 16, 16), icon='ui_1_16_111')
+        self.handle.OnMouseDown = self.OnHandleMouseDown
+        self.handle.OnMouseUp = self.OnHandleMouseUp
+        self.handle.OnMouseMove = self.OnHandleMouseMove
+
+
+
+    def Prepare_Label_(self):
+        self.label = uicls.Label(parent=self, font=self.font, fontsize=self.fontsize, pos=(self.labeltab,
+         2,
+         0,
+         0))
+        self.height = 32
+
+
+
+    def Prepare_Increments_(self):
+        for each in self.children[:]:
+            if each.name.startswith('increment'):
+                each.Close()
+
+        if self.increments:
+            (l, t, w, h,) = self.GetAbsolute()
+            maxX = w - self.handle.width
+            i = 0
+            for each in self.increments[1]:
+                height = 4
+                shift = 10
+                if i in (0, len(self.increments[1]) - 1):
+                    height = 6
+                    shift = 11
+                uicls.Line(parent=self, align=uiconst.RELATIVE, pos=(int(each * maxX) + self.handle.width / 2,
+                 self.height - shift,
+                 1,
+                 height))
+                name = ('increment_fraction',)
+                i += 1
+
+
+
+
+    def SetIncrements(self, increments, draw = 1):
+        if len(increments) < 3:
+            return 
+        self.increments = [[], []]
+        for inc in increments:
+            self.increments[0].append(inc)
+            self.increments[1].append((inc - self.minValue) / float(self.maxValue - self.minValue))
+
+        if draw:
+            self.Prepare_Increments_()
+
+
+
+    def GetValue(self):
+        return self.value
+
+
+
+    def MorphTo(self, value, time = 150.0):
+        if getattr(self, 'morphTo', None) is not None:
+            self.pendingMorph = (value, time)
+            return 
+        self.morphTo = value
+        startPos = self.value
+        endPos = value
+        (start, ndt,) = (blue.os.GetTime(), 0.0)
+        while ndt != 1.0:
+            ndt = min(blue.os.TimeDiffInMs(start) / time, 1.0)
+            newVal = mathUtil.Lerp(startPos, endPos, ndt)
+            self.SetValue(newVal, updateHandle=True)
+            blue.pyos.synchro.Yield()
+
+        self.morphTo = None
+        if getattr(self, 'pendingMorph', None):
+            (value, time,) = self.pendingMorph
+            self.MorphTo(value, time)
+        self.pendingMorph = None
+
+
+
+    def SlideTo(self, value, update = 1):
+        print 'not supported, pass updateHandle=True into SetValue instead'
+
+
+
+    def UpdateHandle(self, nValue):
+        (l, t, w, h,) = self.GetAbsolute()
+        maxX = w - self.handle.width
+        left = max(0, int(maxX * nValue))
+        if self.increments:
+            steps = [ int(incproportion * maxX) for incproportion in self.increments[1] ]
+            left = self.FindClosest(left, steps)
+        self.handle.left = int(left)
+        self.handle.state = uiconst.UI_NORMAL
+
+
+
+    def SetValue(self, value, updateHandle = False):
+        if self.increments:
+            value = self.FindClosest(self.RoundValue(value), self.increments[1])
+        value = max(self.minValue, min(self.maxValue, value))
+        normalizedValue = (value - self.minValue) / (-self.minValue + self.maxValue)
+        self.value = value
+        if self.GetSliderValue:
+            self.GetSliderValue(self.sliderID, value)
+        self.UpdateLabel()
+        if updateHandle:
+            self.UpdateHandle(normalizedValue)
+        if self.OnSetValue:
+            self.OnSetValue(self)
+
+
+
+    def RoundValue(self, value):
+        return float('%.2f' % value)
+
+
+
+    def FindClosest(self, check, values):
+        mindiff = self.maxValue - self.minValue
+        found = self.maxValue - self.minValue
+        for value in values:
+            diff = abs(value - check)
+            if diff < mindiff:
+                mindiff = diff
+                found = value
+
+        return found
+
+
+
+    def UpdateLabel(self):
+        if self.label:
+            if self.SetSliderLabel:
+                self.SetSliderLabel(self.label, self.sliderID, self.displayName, self.GetValue())
+            elif self.displayName:
+                self.label.text = '%s %.2f' % (self.displayName, self.GetValue())
+            else:
+                self.label.text = '%.2f' % self.GetValue()
+
+
+
+    def OnHandleMouseDown(self, *blah):
+        self.dragging = 1
+
+
+
+    def OnHandleMouseUp(self, *blah):
+        uicore.uilib.UnclipCursor()
+        self.dragging = 0
+        if self.config:
+            if len(self.config) == 3:
+                (cfgName, prefsType, defaultValue,) = self.config
+                if prefsType:
+                    si = uiutil.GetAttrs(settings, *prefsType)
+                    if si:
+                        value = si.Set(cfgName, self.value)
+            settings.user.ui.Set(self.config, self.value)
+        if self.EndSetSliderValue:
+            self.EndSetSliderValue(self)
+
+
+
+    def OnHandleMouseMove(self, *blah):
+        if self.dragging:
+            (l, t, w, h,) = self.GetAbsolute()
+            (hl, ht, hw, ww,) = self.handle.GetAbsolute()
+            localMousePos = uicore.uilib.x - l - hw / 2
+            maxX = w - hw
+            localMousePos = max(0, min(maxX, localMousePos))
+            if self.increments:
+                steps = [ int(incproportion * maxX) for incproportion in self.increments[1] ]
+                localMousePos = self.FindClosest(localMousePos, steps)
+            if self.handle.left == localMousePos:
+                return 
+            self.handle.left = localMousePos
+            self.SetValue(self.minValue + (-self.minValue + self.maxValue) * (localMousePos / float(maxX)))
+
+
+
+

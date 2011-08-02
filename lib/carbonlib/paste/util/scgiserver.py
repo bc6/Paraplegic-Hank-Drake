@@ -1,0 +1,116 @@
+import sys
+import time
+from scgi import scgi_server
+
+def debug(msg):
+    timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
+    sys.stderr.write('[%s] %s\n' % (timestamp, msg))
+
+
+
+class SWAP(scgi_server.SCGIHandler):
+    app_obj = None
+    prefix = None
+
+    def __init__(self, *args, **kwargs):
+        args = (self,) + args
+        scgi_server.SCGIHandler.__init__(*args, **kwargs)
+
+
+
+    def handle_connection(self, conn):
+        input = conn.makefile('r')
+        output = conn.makefile('w')
+        environ = self.read_env(input)
+        environ['wsgi.input'] = input
+        environ['wsgi.errors'] = sys.stderr
+        environ['wsgi.version'] = (1, 0)
+        environ['wsgi.multithread'] = False
+        environ['wsgi.multiprocess'] = True
+        environ['wsgi.run_once'] = False
+        if environ.get('HTTPS', 'off') in ('on', '1'):
+            environ['wsgi.url_scheme'] = 'https'
+        else:
+            environ['wsgi.url_scheme'] = 'http'
+        prefix = self.prefix
+        path = environ['REQUEST_URI'][len(prefix):].split('?', 1)[0]
+        environ['SCRIPT_NAME'] = prefix
+        environ['PATH_INFO'] = path
+        headers_set = []
+        headers_sent = []
+        chunks = []
+
+        def write(data):
+            chunks.append(data)
+
+
+
+        def start_response(status, response_headers, exc_info = None):
+            if exc_info:
+                try:
+                    if headers_sent:
+                        raise exc_info[0], exc_info[1], exc_info[2]
+
+                finally:
+                    exc_info = None
+
+            elif headers_set:
+                raise AssertionError('Headers already set!')
+            headers_set[:] = [status, response_headers]
+            return write
+
+
+        result = self.app_obj(environ, start_response)
+        try:
+            for data in result:
+                chunks.append(data)
+
+            if not headers_set:
+                status = '500 Server Error'
+                response_headers = [('Content-type', 'text/html')]
+                chunks = ['XXX start_response never called']
+            else:
+                (status, response_headers,) = headers_sent[:] = headers_set
+            output.write('Status: %s\r\n' % status)
+            for header in response_headers:
+                output.write('%s: %s\r\n' % header)
+
+            output.write('\r\n')
+            for data in chunks:
+                output.write(data)
+
+
+        finally:
+            if hasattr(result, 'close'):
+                result.close()
+
+        try:
+            input.close()
+            output.close()
+            conn.close()
+        except IOError as err:
+            debug('IOError while closing connection ignored: %s' % err)
+
+
+
+
+def serve_application(application, prefix, port = None, host = None, max_children = None):
+
+    class SCGIAppHandler(SWAP):
+
+        def __init__(self, *args, **kwargs):
+            self.prefix = prefix
+            self.app_obj = application
+            SWAP.__init__(self, *args, **kwargs)
+
+
+
+    kwargs = dict(handler_class=SCGIAppHandler)
+    for kwarg in ('host', 'port', 'max_children'):
+        if locals()[kwarg] is not None:
+            kwargs[kwarg] = locals()[kwarg]
+
+    scgi_server.SCGIServer(**kwargs).serve()
+
+
+

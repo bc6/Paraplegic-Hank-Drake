@@ -1,0 +1,405 @@
+import trinity
+import blue
+import spaceObject
+import uthread
+import random
+import timecurves
+import nodemanager
+from string import split
+CONSTRUCTION_MATERIAL = 'res:/Texture/MinmatarShared/Gradientbuild.dds'
+ONLINE_GLOW_OFF = trinity.TriVector(0.0, 0.0, 0.0)
+ONLINE_GLOW_MID = trinity.TriVector(0.004, 0.0, 0.0)
+
+def FindCurves(tf, typename):
+    curves = tf.Find(('trinity.TriScalarCurve', 'trinity.TriVectorCurve', 'trinity.TriRotationCurve', 'trinity.TriColorCurve'), -1, 1)
+    ret = []
+    for curve in curves:
+        if curve.name[:len(typename)] == typename:
+            ret.append(curve)
+
+    return ret
+
+
+
+def ReverseTimeCurves(curves):
+    for curve in curves:
+        length = curve.length
+        if length > 0.0:
+            curve.Sort()
+            curve.ScaleTime(-1.0)
+            for key in curve.keys:
+                key.time = key.time + length
+
+            curve.Sort()
+
+
+
+
+def ResetTimeCurves(curves):
+    for curve in curves:
+        curve.start = blue.os.GetTime()
+
+
+
+
+class PlayerOwnedStructure(spaceObject.LargeCollidableStructure):
+    __guid__ = 'spaceObject.PlayerOwnedStructure'
+
+    def __init__(self):
+        spaceObject.SpaceObject.__init__(self)
+        self.savedShaders = {}
+        (self.buildAnim, self.onlineAnim,) = (None, None)
+
+
+
+    def LoadModel(self):
+        self.LogInfo('================ POS LoadModel ')
+        if self.IsAnchored():
+            self.LoadStationModel(True)
+        else:
+            spaceObject.SpaceObject.LoadModel(self, 'res:/Model/deployables/nanocontainer/NanoContainer.blue')
+
+
+
+    def LoadStationModel(self, builtAlready):
+        spaceObject.SpaceObject.LoadModel(self)
+        if hasattr(self.model, 'ChainAnimationEx'):
+            self.model.ChainAnimationEx('NormalLoop', 0, 0, 1)
+        if not self.IsOnline():
+            (self.buildAnim, self.onlineAnim,) = self.PrepareModelForConstruction(builtAlready, False)
+            self.OfflineAnimation(0)
+            if hasattr(self.model, 'EndAnimation'):
+                self.model.EndAnimation()
+        else:
+            self.ResetAfterConstruction()
+
+
+
+    def Assemble(self):
+        bp = sm.StartService('michelle').GetBallpark()
+        if bp.slimItems[self.id].groupID == const.groupMoonMining:
+            self.SetStaticDirection()
+
+
+
+    def DelayedRemove(self, model, delay):
+        model.name = model.name + '_removing'
+        blue.pyos.synchro.Sleep(delay)
+        model.display = False
+        self.RemoveAndClearModel(model)
+
+
+
+    def RemoveFloatAlphathreshold(self, effect):
+        removes = nodemanager.FindNodes(effect.parameters, 'AlphaThreshold', 'trinity.TriFloatParameter')
+        for each in removes:
+            effect.parameters.fremove(each)
+
+
+
+
+    def FindOrMakeAlphathreshold(self, effect, v1, v2, v3, v4):
+        nodes = nodemanager.FindNodes(effect.parameters, 'AlphaThreshold', 'trinity.TriVector4Parameter')
+        res = None
+        if nodes:
+            res = nodes[0]
+        else:
+            res = trinity.TriVector4Parameter()
+            res.name = 'AlphaThreshold'
+        if res:
+            res.v1 = v1
+            res.v2 = v2
+            res.v3 = v3
+            res.v4 = v4
+        return res
+
+
+
+    def PrepareAreasForConstruction(self, areas, alphaParams, prefix):
+        sovShaders = False
+        slimItem = sm.StartService('michelle').GetBallpark().GetInvItem(self.id)
+        groupID = None
+        if slimItem is not None:
+            groupID = cfg.invtypes.Get(slimItem.typeID).groupID
+            if groupID in [const.groupSovereigntyDisruptionStructures, const.groupInfrastructureHub]:
+                sovShaders = True
+        for each in areas:
+            if 'alpha_' not in each.effect.effectFilePath:
+                effectFilePathInsertPos = each.effect.effectFilePath.rfind('/')
+                if effectFilePathInsertPos != -1:
+                    filePath = each.effect.effectFilePath
+                    if prefix + each.effect.name not in self.savedShaders:
+                        self.savedShaders[prefix + str(id(each))] = filePath
+                    if sovShaders:
+                        skp = filePath[(effectFilePathInsertPos + 1):].lower().find('skinned_')
+                        if skp >= 0:
+                            each.effect.effectFilePath = filePath[:(effectFilePathInsertPos + 1)] + 'alpha_' + filePath[(effectFilePathInsertPos + 9):]
+                        else:
+                            each.effect.effectFilePath = filePath[:(effectFilePathInsertPos + 1)] + 'alpha_' + filePath[(effectFilePathInsertPos + 1):]
+                    else:
+                        each.effect.effectFilePath = filePath[:(effectFilePathInsertPos + 1)] + 'alpha_' + filePath[(effectFilePathInsertPos + 1):]
+                    alphaParam = self.FindOrMakeAlphathreshold(each.effect, 1.0, 0.0, 0.0, 0.0)
+                    alphaParams.append(alphaParam)
+                    each.effect.parameters.fremove(alphaParam)
+                    each.effect.parameters.append(alphaParam)
+                    alphaMap = trinity.TriTexture2DParameter()
+                    alphaMap.name = 'AlphaThresholdMap'
+                    alphaMap.resourcePath = CONSTRUCTION_MATERIAL
+                    each.effect.resources.append(alphaMap)
+                    each.effect.RebuildCachedData()
+
+
+
+
+    def ResetAreasAfterConstruction(self, areas, prefix):
+        if not len(self.savedShaders):
+            return 
+        for each in areas:
+            if prefix + str(id(each)) in self.savedShaders:
+                each.effect.effectFilePath = self.savedShaders[(prefix + str(id(each)))]
+                each.effect.RebuildCachedData()
+
+
+
+
+    def ResetAfterConstruction(self):
+        model = self.model
+        if model.highDetailMesh is not None and model.mediumDetailMesh is not None and model.lowDetailMesh is not None:
+            self.ResetAreasAfterConstruction(model.highDetailMesh.object.opaqueAreas, 'high_opaque')
+            self.ResetAreasAfterConstruction(model.highDetailMesh.object.decalAreas, 'high_decal')
+            self.ResetAreasAfterConstruction(model.highDetailMesh.object.transparentAreas, 'high_transparent')
+            self.ResetAreasAfterConstruction(model.mediumDetailMesh.object.opaqueAreas, 'medium_opaque')
+            self.ResetAreasAfterConstruction(model.mediumDetailMesh.object.decalAreas, 'medium_decal')
+            self.ResetAreasAfterConstruction(model.mediumDetailMesh.object.transparentAreas, 'medium_transparent')
+            self.ResetAreasAfterConstruction(model.lowDetailMesh.object.opaqueAreas, 'low_opaque')
+            self.ResetAreasAfterConstruction(model.lowDetailMesh.object.decalAreas, 'low_decal')
+            self.ResetAreasAfterConstruction(model.lowDetailMesh.object.transparentAreas, 'low_transparent')
+        else:
+            self.ResetAreasAfterConstruction(model.mesh.opaqueAreas, 'high_opaque')
+            self.ResetAreasAfterConstruction(model.mesh.decalAreas, 'high_decal')
+            self.ResetAreasAfterConstruction(model.mesh.transparentAreas, 'high_transparent')
+
+
+
+    def PrepareModelForConstruction(self, builtAlready, onlineAlready):
+        self.LogInfo('  PrepareModelForConstruction - Built:', builtAlready, ' Online:', onlineAlready)
+        if not self.model:
+            return (None, None)
+        if not hasattr(self.model, 'curveSets'):
+            return (None, None)
+        model = self.model
+        lodsAvailable = model.highDetailMesh is not None and model.mediumDetailMesh is not None and model.lowDetailMesh is not None
+        alphaParams = []
+        if lodsAvailable:
+            model.highDetailMesh.Freeze()
+            model.mediumDetailMesh.Freeze()
+            model.lowDetailMesh.Freeze()
+            self.PrepareAreasForConstruction(model.highDetailMesh.object.opaqueAreas, alphaParams, 'high_opaque')
+            self.PrepareAreasForConstruction(model.highDetailMesh.object.decalAreas, alphaParams, 'high_decal')
+            self.PrepareAreasForConstruction(model.highDetailMesh.object.transparentAreas, alphaParams, 'high_transparent')
+            self.PrepareAreasForConstruction(model.mediumDetailMesh.object.opaqueAreas, alphaParams, 'medium_opaque')
+            self.PrepareAreasForConstruction(model.mediumDetailMesh.object.decalAreas, alphaParams, 'medium_decal')
+            self.PrepareAreasForConstruction(model.mediumDetailMesh.object.transparentAreas, alphaParams, 'medium_transparent')
+            self.PrepareAreasForConstruction(model.lowDetailMesh.object.opaqueAreas, alphaParams, 'low_opaque')
+            self.PrepareAreasForConstruction(model.lowDetailMesh.object.decalAreas, alphaParams, 'low_decal')
+            self.PrepareAreasForConstruction(model.lowDetailMesh.object.transparentAreas, alphaParams, 'low_transparent')
+        else:
+            self.PrepareAreasForConstruction(model.mesh.opaqueAreas, alphaParams, 'high_opaque')
+            self.PrepareAreasForConstruction(model.mesh.decalAreas, alphaParams, 'high_decal')
+            self.PrepareAreasForConstruction(model.mesh.transparentAreas, alphaParams, 'high_transparent')
+        buildCurve = trinity.TriCurveSet()
+        buildCurve.name = 'Build'
+        buildCurve.playOnLoad = False
+        buildCurve.Stop()
+        buildCurve.scaledTime = 0.0
+        model.curveSets.append(buildCurve)
+        curve = trinity.TriScalarCurve()
+        curve.value = 1.0
+        curve.extrapolation = trinity.TRIEXT_CONSTANT
+        buildCurve.curves.append(curve)
+        curve.AddKey(0.0, 1.0, 0.0, 0.0, trinity.TRIINT_HERMITE)
+        curve.AddKey(10.0, 0.0, 0.0, 0.0, trinity.TRIINT_HERMITE)
+        curve.Sort()
+        for alphaParam in alphaParams:
+            binding = trinity.TriValueBinding()
+            binding.sourceAttribute = 'value'
+            binding.destinationAttribute = 'v1'
+            binding.scale = 1.0
+            binding.sourceObject = curve
+            binding.destinationObject = alphaParam
+            buildCurve.bindings.append(binding)
+            binding = None
+
+        glows = nodemanager.FindNodes(model, 'GlowColor', 'trinity.TriVector4Parameter')
+        finalColor = trinity.TriVector(1.0, 1.0, 1.0)
+        if glows:
+            tup = glows[0].value
+            finalColor.x = tup[0]
+            finalColor.y = tup[1]
+            finalColor.z = tup[2]
+        onlineCurve = trinity.TriCurveSet()
+        onlineCurve.name = 'Online'
+        onlineCurve.playOnLoad = False
+        onlineCurve.Stop()
+        onlineCurve.scaledTime = 0.0
+        model.curveSets.append(onlineCurve)
+        curve = trinity.TriVectorCurve()
+        onlineCurve.curves.append(curve)
+        curve.value = finalColor
+        curve.extrapolation = trinity.TRIEXT_CONSTANT
+        curve.AddKey(0.0, ONLINE_GLOW_OFF, trinity.TriVector(0.0, 0.0, 0.0), trinity.TriVector(0.0, 0.0, 0.0), trinity.TRIINT_HERMITE)
+        curve.AddKey(1.9, ONLINE_GLOW_MID, trinity.TriVector(0.0, 0.0, 0.0), trinity.TriVector(0.0, 0.0, 0.0), trinity.TRIINT_LINEAR)
+        curve.AddKey(2.0, finalColor, trinity.TriVector(0.0, 0.0, 0.0), trinity.TriVector(0.0, 0.0, 0.0), trinity.TRIINT_HERMITE)
+        curve.Sort()
+        for each in glows:
+            binding = trinity.TriValueBinding()
+            binding.sourceAttribute = 'value'
+            binding.destinationAttribute = 'value'
+            binding.scale = 1.0
+            binding.sourceObject = curve
+            binding.destinationObject = each
+            onlineCurve.bindings.append(binding)
+            binding = None
+
+        if builtAlready:
+            buildCurve.Stop()
+            buildCurve.scale = 0.0
+            buildCurve.scaledTime = buildCurve.GetMaxCurveDuration()
+            buildCurve.PlayFrom(buildCurve.scaledTime)
+            self.LogInfo('  PrepareModelForConstruction - Already Built, set curve to:', buildCurve.scaledTime)
+        if onlineAlready:
+            onlineCurve.Stop()
+            onlineCurve.scale = 0.0
+            onlineCurve.scaledTime = onlineCurve.GetMaxCurveDuration()
+            onlineCurve.PlayFrom(onlineCurve.scaledTime)
+            self.LogInfo('  PrepareModelForConstruction - Already Online, Set curve Time to:', onlineCurve.scaledTime)
+        trinity.WaitForResourceLoads()
+        if lodsAvailable:
+            for each in model.highDetailMesh.object.opaqueAreas:
+                each.effect.PopulateParameters()
+
+            for each in model.mediumDetailMesh.object.opaqueAreas:
+                each.effect.PopulateParameters()
+
+            for each in model.lowDetailMesh.object.opaqueAreas:
+                each.effect.PopulateParameters()
+
+        else:
+            for each in model.mesh.opaqueAreas:
+                each.effect.PopulateParameters()
+
+        return (buildCurve, onlineCurve)
+
+
+
+    def SetCapsuleGraphics(self, animate = 0):
+        self.LogInfo('  SetCapsuleGraphics - Animate:', animate)
+        safeModel = self.model
+        spaceObject.SpaceObject.LoadModel(self, 'res:/Model/deployables/nanocontainer/NanoContainer.blue')
+        self.Assemble()
+        self.Display(1)
+        if animate == 1:
+            if self.buildAnim:
+                self.buildAnim.scale = -1.0
+                self.buildAnim.PlayFrom(self.buildAnim.GetMaxCurveDuration())
+            uthread.pool('PlayerOwnedStructure::DelayedRemove', self.DelayedRemove, safeModel, int(self.buildAnim.GetMaxCurveDuration() * 1000))
+        else:
+            self.DelayedRemove(safeModel, 0)
+        if animate == 1:
+            if self.IsControlTower():
+                self.PlayGeneralAudioEvent('wise:/msg_ct_disassembly_play')
+            else:
+                self.PlayGeneralAudioEvent('wise:/msg_pos_disassembly_play')
+
+
+
+    def IsControlTower(self):
+        slimItem = sm.StartService('michelle').GetBallpark().GetInvItem(self.id)
+        if slimItem is not None:
+            groupID = cfg.invtypes.Get(slimItem.typeID).groupID
+            return groupID == const.groupControlTower
+        return False
+
+
+
+    def SetBuiltStructureGraphics(self, animate = 0):
+        safeModel = self.model
+        self.LoadStationModel(False)
+        cameraSvc = sm.GetService('camera')
+        cameraSvc.ClearBoundingInfoForID(self.id)
+        if cameraSvc.LookingAt() == self.id:
+            cameraSvc.LookAt(self.id)
+        if animate == 1:
+            self.Assemble()
+            self.buildAnim.scale = 1.0
+            self.buildAnim.Play()
+            self.Display(1)
+        else:
+            self.buildAnim.Stop()
+            self.buildAnim.scale = 0.0
+            self.buildAnim.scaledTime = self.buildAnim.GetMaxCurveDuration()
+            self.buildAnim.PlayFrom(self.buildAnim.scaledTime)
+            self.DelayedRemove(safeModel, 0)
+        if animate == 1:
+            if self.IsControlTower():
+                self.PlayGeneralAudioEvent('wise:/msg_ct_assembly_play')
+            else:
+                self.PlayGeneralAudioEvent('wise:/msg_pos_assembly_play')
+            uthread.pool('PlayerOwnedStructure::DelayedRemove', self.DelayedRemove, safeModel, 35000)
+
+
+
+    def IsAnchored(self):
+        self.LogInfo('Anchor State = ', not self.isFree)
+        return not self.isFree
+
+
+
+    def IsOnline(self):
+        slimItem = sm.StartService('michelle').GetBallpark().GetInvItem(self.id)
+        res = sm.StartService('pwn').GetStructureState(slimItem)[0] in ('online', 'invulnerable', 'vulnerable', 'reinforced')
+        self.LogInfo('Online State = ', res)
+        return res
+
+
+
+    def OnlineAnimation(self, animate = 0):
+        if animate:
+            if getattr(self, 'graphicsOffline', 0):
+                if not hasattr(self, 'onlineAnim'):
+                    (self.buildAnim, self.onlineAnim,) = self.PrepareModelForConstruction(True, True)
+                self.onlineAnim.scale = 1.0
+                self.onlineAnim.Play()
+                if self.IsControlTower():
+                    self.PlayGeneralAudioEvent('wise:/msg_ct_online_play')
+                else:
+                    self.PlayGeneralAudioEvent('wise:/msg_pos_online_play')
+            self.graphicsOffline = False
+        if hasattr(self.model, 'ChainAnimationEx'):
+            self.ResetAfterConstruction()
+            self.model.ChainAnimationEx('NormalLoop', 0, 0, 1)
+
+
+
+    def OfflineAnimation(self, animate = 0):
+        if hasattr(self.model, 'curveSets'):
+            if not hasattr(self, 'onlineAnim') or not self.onlineAnim:
+                (self.buildAnim, self.onlineAnim,) = self.PrepareModelForConstruction(True, True)
+            self.onlineAnim.scale = -1.0
+            self.onlineAnim.PlayFrom(self.onlineAnim.GetMaxCurveDuration())
+        else:
+            onlineCurves = FindCurves(self.model, 'online')
+            ReverseTimeCurves(onlineCurves)
+        self.graphicsOffline = True
+        if animate:
+            if self.IsControlTower():
+                self.PlayGeneralAudioEvent('wise:/msg_ct_online_play')
+            else:
+                self.PlayGeneralAudioEvent('wise:/msg_pos_offline_play')
+        if hasattr(self.model, 'EndAnimation'):
+            self.model.EndAnimation()
+
+
+
+exports = {'spaceObject.PlayerOwnedStructure': PlayerOwnedStructure}
+

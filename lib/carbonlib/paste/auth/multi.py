@@ -1,0 +1,47 @@
+
+class MultiHandler(object):
+
+    def __init__(self, application):
+        self.application = application
+        self.default = application
+        self.binding = {}
+        self.predicate = []
+
+
+
+    def add_method(self, name, factory, *args, **kwargs):
+        self.binding[name] = factory(self.application, *args, **kwargs)
+
+
+
+    def add_predicate(self, name, checker):
+        self.predicate.append((checker, self.binding[name]))
+
+
+
+    def set_default(self, name):
+        self.default = self.binding[name]
+
+
+
+    def set_query_argument(self, name, key = '*authmeth', value = None):
+        lookfor = '%s=%s' % (key, value or name)
+        self.add_predicate(name, lambda environ: lookfor in environ.get('QUERY_STRING', ''))
+
+
+
+    def __call__(self, environ, start_response):
+        for (checker, binding,) in self.predicate:
+            if checker(environ):
+                return binding(environ, start_response)
+
+        return self.default(environ, start_response)
+
+
+
+middleware = MultiHandler
+__all__ = ['MultiHandler']
+if '__main__' == __name__:
+    import doctest
+    doctest.testmod(optionflags=doctest.ELLIPSIS)
+

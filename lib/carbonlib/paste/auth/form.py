@@ -1,0 +1,52 @@
+from paste.request import construct_url, parse_formvars
+TEMPLATE = '<html>\n  <head><title>Please Login!</title></head>\n  <body>\n    <h1>Please Login</h1>\n    <form action="%s" method="post">\n      <dl>\n        <dt>Username:</dt>\n        <dd><input type="text" name="username"></dd>\n        <dt>Password:</dt>\n        <dd><input type="password" name="password"></dd>\n      </dl>\n      <input type="submit" name="authform" />\n      <hr />\n    </form>\n  </body>\n</html>\n'
+
+class AuthFormHandler(object):
+
+    def __init__(self, application, authfunc, template = None):
+        self.application = application
+        self.authfunc = authfunc
+        self.template = template or TEMPLATE
+
+
+
+    def __call__(self, environ, start_response):
+        username = environ.get('REMOTE_USER', '')
+        if username:
+            return self.application(environ, start_response)
+        if 'POST' == environ['REQUEST_METHOD']:
+            formvars = parse_formvars(environ, include_get_vars=False)
+            username = formvars.get('username')
+            password = formvars.get('password')
+            if username and password:
+                if self.authfunc(environ, username, password):
+                    environ['AUTH_TYPE'] = 'form'
+                    environ['REMOTE_USER'] = username
+                    environ['REQUEST_METHOD'] = 'GET'
+                    environ['CONTENT_LENGTH'] = ''
+                    environ['CONTENT_TYPE'] = ''
+                    del environ['paste.parsed_formvars']
+                    return self.application(environ, start_response)
+        content = self.template % construct_url(environ)
+        start_response('200 OK', [('Content-Type', 'text/html'), ('Content-Length', str(len(content)))])
+        return [content]
+
+
+
+middleware = AuthFormHandler
+__all__ = ['AuthFormHandler']
+
+def make_form(app, global_conf, realm, authfunc, **kw):
+    from paste.util.import_string import eval_import
+    import types
+    authfunc = eval_import(authfunc)
+    template = kw.get('template')
+    if template is not None:
+        template = eval_import(template)
+    return AuthFormHandler(app, authfunc, template)
+
+
+if '__main__' == __name__:
+    import doctest
+    doctest.testmod(optionflags=doctest.ELLIPSIS)
+

@@ -1,0 +1,41 @@
+
+class FileMixin(object):
+
+    def flush(self):
+        pass
+
+
+
+    def next(self):
+        return self.readline()
+
+
+
+    def readline(self, size = None):
+        output = []
+        while 1:
+            next = self.read(1)
+            if not next:
+                return ''.join(output)
+            output.append(next)
+            if size and size > 0 and len(output) >= size:
+                return ''.join(output)
+            if next == '\n':
+                return ''.join(output)
+
+
+
+
+    def xreadlines(self):
+        return self
+
+
+
+    def writelines(self, lines):
+        for line in lines:
+            self.write(line)
+
+
+
+
+

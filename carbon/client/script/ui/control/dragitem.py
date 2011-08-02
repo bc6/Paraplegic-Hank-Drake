@@ -1,0 +1,32 @@
+import uicls
+import uiconst
+import uiutil
+import blue
+
+class DragContainerCore(uicls.Container):
+    __guid__ = 'uicls.DragContainerCore'
+    _dragInited = False
+
+    def _OnClose(self, *args):
+        if getattr(self, 'dragSound', None):
+            sm.GetService('audio').StopSoundLoop(self.dragSound)
+        uicls.Container._OnClose(self, *args)
+        self.dragData = None
+
+
+
+    def InitiateDrag(self, mouseOffset):
+        if not self or self.destroyed or self._dragInited:
+            return 
+        self._dragInited = True
+        (mx, my,) = mouseOffset
+        while uicore.uilib.leftbtn and not self.destroyed:
+            self.state = uiconst.UI_DISABLED
+            self.left = uicore.uilib.x - mx
+            self.top = uicore.uilib.y - my
+            blue.pyos.synchro.Yield()
+
+
+
+
+

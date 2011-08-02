@@ -1,0 +1,119 @@
+import autoexec_common
+import blue
+import sys
+import os
+import log
+blue.os.respath = blue.os.respath.replace('tools/thinClient', 'client')
+Done = False
+
+def Startup(servicesToRun, builtinSetupHook, startInline = [], serviceManagerClass = 'ServiceManager'):
+    global Done
+    blue.pyos.logMemory = 1
+    args = blue.pyos.GetArg()[1:]
+    autoexec_common.LogStarting('ThinClient')
+    additionalScriptDirs = ['script:/../../../client/script/', 'script:/../../../../carbon/client/script/', 'script:/../../../../carbon/tools/thinClient/script/']
+    for argument in args:
+        if argument.startswith('/cache='):
+            cachepath = argument[len('/cache='):]
+            blue.os.cachepath = cachepath + os.sep
+            log.general.Log('Cache directory set to: ' + blue.os.cachepath, log.LGNOTICE)
+        elif argument.startswith('/randomcache'):
+            import tempfile
+            cachepath = tempfile.mkdtemp()
+            blue.os.cachepath = cachepath + os.sep
+            log.general.Log('Cache directory set to: ' + blue.os.cachepath, log.LGNOTICE)
+        if argument.startswith('-startOrchestrator'):
+            additionalScriptDirs.extend(['bin:/../../carbon/tools/orchestrator/slave/script/', 'bin:/../tools/orchestrator/slave/script/'])
+            servicesToRun += ('orchestratorSlave',)
+            break
+
+    if '/automaton' in args:
+        additionalScriptDirs.extend(['script:/../../../../carbon/backend/script/', 'script:/../../../backend/script/'])
+    if not blue.pyos.packaged and '/jessica' in args:
+        additionalScriptDirs.extend(['script:/../../../../carbon/tools/jessica/script/', 'script:/../../../../carbon/backend/script/', 'script:/../../../backend/script/'])
+        useExtensions = '/noJessicaExtensions' not in args
+        if useExtensions:
+            additionalScriptDirs.extend(['script:/../../../../carbon/tools/jessicaExtensions/script/', 'script:/../../../tools/jessicaExtensions/script/', 'script:/../tools/jessicaExtensions/script/'])
+    import nasty
+    nasty.Startup(additionalScriptDirs)
+    errorMsg = {'resetsettings': [mls.UI_GENERIC_CANTCLEARSETTINGS, mls.UI_GENERIC_CANTCLEARSETTINGSHDR, 'Cannot clear settings'],
+     'clearcache': [mls.UI_GENERIC_CANTCLEARCACHE, mls.UI_GENERIC_CANTCLEARCACHEHDR, 'Cannot clear cache']}
+    for (clearType, clearPath,) in [('resetsettings', blue.os.settingspath), ('clearcache', blue.os.cachepath)]:
+        if getattr(prefs, clearType, 0):
+            if clearType == 'resetsettings':
+                prefs.DeleteValue(clearType)
+            if os.path.exists(clearPath):
+                i = 0
+                while 1:
+                    newDir = clearPath[:-1] + '_backup%s' % i
+                    if not os.path.isdir(newDir):
+                        try:
+                            os.makedirs(newDir)
+                        except:
+                            blue.win32.MessageBox(errorMsg[clearType][0], errorMsg[clearType][1], 272)
+                            blue.pyos.Quit(errorMsg[clearType][2])
+                            return False
+                        break
+                    i += 1
+
+                for filename in os.listdir(clearPath):
+                    if filename != 'Settings':
+                        try:
+                            os.rename(clearPath + filename, '%s_backup%s/%s' % (clearPath[:-1], i, filename))
+                        except:
+                            blue.win32.MessageBox(errorMsg[clearType][0], errorMsg[clearType][1], 272)
+                            blue.pyos.Quit(errorMsg[clearType][2])
+                            return False
+
+                prefs.DeleteValue(clearType)
+
+    mydocs = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL)
+    paths = [blue.os.cachepath]
+    for path in paths:
+        try:
+            os.makedirs(path)
+        except OSError as e:
+            sys.exc_clear()
+
+    import __builtin__
+    import base
+    session = base.CreateUserSession()
+    __builtin__.session = session
+    __builtin__.charsession = session
+    builtinSetupHook()
+    autoexec_common.LogStarted('ThinClient')
+    import bluepy
+    import numerical
+    bluepy.frameClock = numerical.FrameClock()
+    blue.os.frameClock = bluepy.frameClock
+    import service
+    smClass = getattr(service, serviceManagerClass)
+    srvMng = smClass(startInline=['DB2', 'machoNet'] + startInline)
+    if hasattr(prefs, 'http') and prefs.http:
+        print 'http'
+        srvMng.Run(('http',))
+    srvMng.Run(servicesToRun)
+    title = '[%s] %s %s %s.%s pid=%s' % (boot.region.upper(),
+     boot.codename,
+     boot.role,
+     boot.version,
+     boot.build,
+     blue.os.pid)
+    blue.os.SetAppTitle(title)
+    Done = True
+    if bluepy.IsRunningStartupTest():
+        bluepy.TerminateStartupTest()
+
+
+
+def StartClient(servicesToRun, builtinSetupHook, startInline = [], serviceManagerClass = 'ServiceManager'):
+    boot.role = 'client'
+    t = blue.pyos.CreateTasklet(Startup, (servicesToRun,
+     builtinSetupHook,
+     startInline,
+     serviceManagerClass), {})
+    t.context = '^boot::autoexec_thinClient'
+    import Jessica
+
+
+

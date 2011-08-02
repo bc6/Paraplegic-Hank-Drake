@@ -1,0 +1,18 @@
+import blue
+import svc
+from sceneManager import SCENE_TYPE_INTERIOR
+if boot.role == 'client' and '/skiprun' not in blue.pyos.GetArg():
+
+    class EveGraphicClient(svc.graphicClient):
+        __guid__ = 'svc.eveGraphicClient'
+        __replaceservice__ = 'graphicClient'
+        __dependencies__ = svc.graphicClient.__dependencies__[:]
+
+        def _AppSetRenderingScene(self, scene):
+            sceneManager = sm.GetService('sceneManager')
+            sceneManager.SetSceneType(SCENE_TYPE_INTERIOR)
+            sceneManager.SetActiveScenes(None, scene)
+
+
+
+

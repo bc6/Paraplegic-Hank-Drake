@@ -1,0 +1,236 @@
+import time as time_mod
+try:
+    from hashlib import md5
+except ImportError:
+    from md5 import md5
+import Cookie
+from paste import request
+from urllib import quote as url_quote
+from urllib import unquote as url_unquote
+
+class AuthTicket(object):
+
+    def __init__(self, secret, userid, ip, tokens = (), user_data = '', time = None, cookie_name = 'auth_tkt', secure = False):
+        self.secret = secret
+        self.userid = userid
+        self.ip = ip
+        self.tokens = ','.join(tokens)
+        self.user_data = user_data
+        if time is None:
+            self.time = time_mod.time()
+        else:
+            self.time = time
+        self.cookie_name = cookie_name
+        self.secure = secure
+
+
+
+    def digest(self):
+        return calculate_digest(self.ip, self.time, self.secret, self.userid, self.tokens, self.user_data)
+
+
+
+    def cookie_value(self):
+        v = '%s%08x%s!' % (self.digest(), int(self.time), url_quote(self.userid))
+        if self.tokens:
+            v += self.tokens + '!'
+        v += self.user_data
+        return v
+
+
+
+    def cookie(self):
+        c = Cookie.SimpleCookie()
+        c[self.cookie_name] = self.cookie_value().encode('base64').strip().replace('\n', '')
+        c[self.cookie_name]['path'] = '/'
+        if self.secure:
+            c[self.cookie_name]['secure'] = 'true'
+        return c
+
+
+
+
+class BadTicket(Exception):
+
+    def __init__(self, msg, expected = None):
+        self.expected = expected
+        Exception.__init__(self, msg)
+
+
+
+
+def parse_ticket(secret, ticket, ip):
+    ticket = ticket.strip('"')
+    digest = ticket[:32]
+    try:
+        timestamp = int(ticket[32:40], 16)
+    except ValueError as e:
+        raise BadTicket('Timestamp is not a hex integer: %s' % e)
+    try:
+        (userid, data,) = ticket[40:].split('!', 1)
+    except ValueError:
+        raise BadTicket('userid is not followed by !')
+    userid = url_unquote(userid)
+    if '!' in data:
+        (tokens, user_data,) = data.split('!', 1)
+    else:
+        tokens = ''
+        user_data = data
+    expected = calculate_digest(ip, timestamp, secret, userid, tokens, user_data)
+    if expected != digest:
+        raise BadTicket('Digest signature is not correct', expected=(expected, digest))
+    tokens = tokens.split(',')
+    return (timestamp,
+     userid,
+     tokens,
+     user_data)
+
+
+
+def calculate_digest(ip, timestamp, secret, userid, tokens, user_data):
+    secret = maybe_encode(secret)
+    userid = maybe_encode(userid)
+    tokens = maybe_encode(tokens)
+    user_data = maybe_encode(user_data)
+    digest0 = md5(encode_ip_timestamp(ip, timestamp) + secret + userid + '\x00' + tokens + '\x00' + user_data).hexdigest()
+    digest = md5(digest0 + secret).hexdigest()
+    return digest
+
+
+
+def encode_ip_timestamp(ip, timestamp):
+    ip_chars = ''.join(map(chr, map(int, ip.split('.'))))
+    t = int(timestamp)
+    ts = ((t & 4278190080L) >> 24,
+     (t & 16711680) >> 16,
+     (t & 65280) >> 8,
+     t & 255)
+    ts_chars = ''.join(map(chr, ts))
+    return ip_chars + ts_chars
+
+
+
+def maybe_encode(s, encoding = 'utf8'):
+    if isinstance(s, unicode):
+        s = s.encode(encoding)
+    return s
+
+
+
+class AuthTKTMiddleware(object):
+
+    def __init__(self, app, secret, cookie_name = 'auth_tkt', secure = False, include_ip = True, logout_path = None, httponly = False, no_domain_cookie = True, current_domain_cookie = True, wildcard_cookie = True):
+        self.app = app
+        self.secret = secret
+        self.cookie_name = cookie_name
+        self.secure = secure
+        self.httponly = httponly
+        self.include_ip = include_ip
+        self.logout_path = logout_path
+        self.no_domain_cookie = no_domain_cookie
+        self.current_domain_cookie = current_domain_cookie
+        self.wildcard_cookie = wildcard_cookie
+
+
+
+    def __call__(self, environ, start_response):
+        cookies = request.get_cookies(environ)
+        if self.cookie_name in cookies:
+            cookie_value = cookies[self.cookie_name].value
+        else:
+            cookie_value = ''
+        if cookie_value:
+            if self.include_ip:
+                remote_addr = environ['REMOTE_ADDR']
+            else:
+                remote_addr = '0.0.0.0'
+            try:
+                (timestamp, userid, tokens, user_data,) = parse_ticket(self.secret, cookie_value, remote_addr)
+                tokens = ','.join(tokens)
+                environ['REMOTE_USER'] = userid
+                if environ.get('REMOTE_USER_TOKENS'):
+                    tokens = environ['REMOTE_USER_TOKENS'] + ',' + tokens
+                environ['REMOTE_USER_TOKENS'] = tokens
+                environ['REMOTE_USER_DATA'] = user_data
+                environ['AUTH_TYPE'] = 'cookie'
+            except BadTicket:
+                pass
+        set_cookies = []
+
+        def set_user(userid, tokens = '', user_data = ''):
+            set_cookies.extend(self.set_user_cookie(environ, userid, tokens, user_data))
+
+
+
+        def logout_user():
+            set_cookies.extend(self.logout_user_cookie(environ))
+
+
+        environ['paste.auth_tkt.set_user'] = set_user
+        environ['paste.auth_tkt.logout_user'] = logout_user
+        if self.logout_path and environ.get('PATH_INFO') == self.logout_path:
+            logout_user()
+
+        def cookie_setting_start_response(status, headers, exc_info = None):
+            headers.extend(set_cookies)
+            return start_response(status, headers, exc_info)
+
+
+        return self.app(environ, cookie_setting_start_response)
+
+
+
+    def set_user_cookie(self, environ, userid, tokens, user_data):
+        if not isinstance(tokens, basestring):
+            tokens = ','.join(tokens)
+        if self.include_ip:
+            remote_addr = environ['REMOTE_ADDR']
+        else:
+            remote_addr = '0.0.0.0'
+        ticket = AuthTicket(self.secret, userid, remote_addr, tokens=tokens, user_data=user_data, cookie_name=self.cookie_name, secure=self.secure)
+        cur_domain = environ.get('HTTP_HOST', environ.get('SERVER_NAME'))
+        wild_domain = '.' + cur_domain
+        cookie_options = ''
+        if self.secure:
+            cookie_options += '; secure'
+        if self.httponly:
+            cookie_options += '; HttpOnly'
+        cookies = []
+        if self.no_domain_cookie:
+            cookies.append(('Set-Cookie', '%s=%s; Path=/%s' % (self.cookie_name, ticket.cookie_value(), cookie_options)))
+        if self.current_domain_cookie:
+            cookies.append(('Set-Cookie', '%s=%s; Path=/; Domain=%s%s' % (self.cookie_name,
+              ticket.cookie_value(),
+              cur_domain,
+              cookie_options)))
+        if self.wildcard_cookie:
+            cookies.append(('Set-Cookie', '%s=%s; Path=/; Domain=%s%s' % (self.cookie_name,
+              ticket.cookie_value(),
+              wild_domain,
+              cookie_options)))
+        return cookies
+
+
+
+    def logout_user_cookie(self, environ):
+        cur_domain = environ.get('HTTP_HOST', environ.get('SERVER_NAME'))
+        wild_domain = '.' + cur_domain
+        expires = 'Sat, 01-Jan-2000 12:00:00 GMT'
+        cookies = [('Set-Cookie', '%s=""; Expires="%s"; Path=/' % (self.cookie_name, expires)), ('Set-Cookie', '%s=""; Expires="%s"; Path=/; Domain=%s' % (self.cookie_name, expires, cur_domain)), ('Set-Cookie', '%s=""; Expires="%s"; Path=/; Domain=%s' % (self.cookie_name, expires, wild_domain))]
+        return cookies
+
+
+
+
+def make_auth_tkt_middleware(app, global_conf, secret = None, cookie_name = 'auth_tkt', secure = False, include_ip = True, logout_path = None):
+    from paste.deploy.converters import asbool
+    secure = asbool(secure)
+    include_ip = asbool(include_ip)
+    if secret is None:
+        secret = global_conf.get('secret')
+    if not secret:
+        raise ValueError("You must provide a 'secret' (in global or local configuration)")
+    return AuthTKTMiddleware(app, secret, cookie_name, secure, include_ip, logout_path or None)
+
+
+

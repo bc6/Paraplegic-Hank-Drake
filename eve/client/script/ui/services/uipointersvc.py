@@ -1,0 +1,444 @@
+import blue
+import uthread
+import service
+import util
+import sys
+import log
+import uiconst
+import uicls
+UIPOINTER_WIDTH = 180
+UIPOINTER_HEIGHT = 45
+UIPOINTER_ARROW_WIDTH = 10
+UIPOINTER_ARROW_HEIGHT = 15
+WAITING_FOR_ELEMENT_TO_COME_BACK_SEC = 2000
+
+class UIPointerSvc(service.Service):
+    __exportedcalls__ = {}
+    __guid__ = 'svc.uipointerSvc'
+    __notifyevents__ = ['ProcessSessionChange']
+    __servicename__ = 'UIPointers'
+    __displayname__ = 'UI Pointer Service'
+    __dependencies__ = []
+
+    def __init__(self):
+        service.Service.__init__(self)
+        self.running = True
+        self.currentPointer = None
+        self.oldObscurers = None
+
+
+
+    def Run(self, memStream = None):
+        self.elementUrl = []
+
+
+
+    def Stop(self, memStream = None):
+        self.running = False
+        self.ClearPointers()
+
+
+
+    def ProcessSessionChange(self, isremote, sess, change):
+        pass
+
+
+
+    def UpdatePointer(self):
+        while self.currentPointer is not None:
+            uiPointerElement = self.currentPointer['uiPointerElement']
+            pointToElement = self.currentPointer['pointToElement']
+            considerations = self.currentPointer['considerations']
+            oldPointLeft = self.currentPointer['oldPointLeft']
+            oldPointUp = self.currentPointer['oldPointUp']
+            oldPointDown = self.currentPointer['oldPointDown']
+            uiPointerText = self.currentPointer['uiPointerText']
+            if pointToElement is None or pointToElement.destroyed:
+                self.HidePointer()
+                blue.pyos.synchro.Sleep(WAITING_FOR_ELEMENT_TO_COME_BACK_SEC)
+                rediscoveredElement = self.FindElementToPointTo()
+                if rediscoveredElement is None or rediscoveredElement.destroyed:
+                    continue
+                else:
+                    pointToElement = rediscoveredElement
+                self.currentPointer['pointToElement'] = rediscoveredElement
+            (cumTop, cumLeft, pointLeft, pointUp, pointDown, isObscured,) = self.GetLocation(pointToElement, considerations)
+            if uicore.layer.systemmenu.isopen or cumTop <= 0 and cumLeft <= 0 or pointToElement.state == uiconst.UI_HIDDEN:
+                self.HidePointer()
+            else:
+                self.ShowPointer()
+            if pointLeft != oldPointLeft or pointUp != oldPointUp or pointDown != oldPointDown:
+                self.ClearPointers()
+                elementContainer = self.SpawnPointer(cumTop, cumLeft, pointLeft, pointUp, pointDown, pointToElement, uiPointerText)
+                self.currentPointer = {'uiPointerElement': elementContainer,
+                 'pointToElement': pointToElement,
+                 'considerations': considerations,
+                 'oldPointLeft': pointLeft,
+                 'oldPointUp': pointUp,
+                 'oldPointDown': pointDown,
+                 'uiPointerText': uiPointerText}
+            uiPointerElement.top = cumTop
+            uiPointerElement.left = cumLeft
+            blue.pyos.synchro.Sleep(20)
+
+
+
+
+    def FindDeep(self, element, idOfItemToFind):
+        if hasattr(element, 'name') and element.name == idOfItemToFind:
+            return element
+        else:
+            if hasattr(element, 'children'):
+                for child in element.children:
+                    results = self.FindDeep(child, idOfItemToFind)
+                    if results is not None:
+                        return results
+
+                return 
+            return 
+
+
+
+    def GetLocation(self, element, directive):
+        try:
+            parent = element
+            while hasattr(parent, 'parent'):
+                if parent is None or parent.state == uiconst.UI_HIDDEN:
+                    return (-999,
+                     -999,
+                     False,
+                     False,
+                     False,
+                     False)
+                parent = parent.parent
+
+            width = 0
+            if directive == 'shipui' and element.parent.name == 'slotsContainer':
+                if element.parent.name == 'slotsContainer':
+                    slotsContainer = element.parent
+                    (cumTop, cumLeft,) = (slotsContainer.absoluteTop + element.top, slotsContainer.absoluteLeft + element.left + 5)
+            elif directive == 'bracket':
+                parent = element.parent
+                (cumTop, cumLeft,) = (parent.absoluteTop + element.top, parent.absoluteLeft + element.left - 2)
+            elif directive == 'neocom':
+                (cumTop, cumLeft,) = (element.absoluteTop, element.absoluteLeft - 2)
+            elif hasattr(element, 'absoluteTop') and hasattr(element, 'absoluteLeft'):
+                (cumTop, cumLeft,) = (element.absoluteTop - 2, element.absoluteLeft - 2)
+            else:
+                (cumTop, cumLeft,) = (element.parent.absoluteTop + element.top - 2, element.parent.absoluteLeft + element.left - 2)
+            pointLeft = True
+            height = element.height
+            if height == 0:
+                height = element.absoluteBottom - element.absoluteTop
+            cumTop += height / 2 - UIPOINTER_HEIGHT / 2
+            if cumLeft - UIPOINTER_WIDTH <= 0:
+                neocom = None
+                if directive == 'neocom':
+                    for item in uicore.layer.neocom.children:
+                        if item.name == 'neocom':
+                            neocom = item
+                            break
+
+                    if neocom is not None:
+                        width = neocom.width
+                    else:
+                        width = element.width
+                        if width == 0:
+                            width = element.absoluteRight - element.absoluteLeft
+                else:
+                    width = element.width
+                    if width == 0:
+                        width = element.absoluteRight - element.absoluteLeft
+                cumLeft = cumLeft + width + 2
+            else:
+                pointLeft = False
+                cumLeft -= UIPOINTER_WIDTH - 2
+            pointUp = False
+            pointDown = False
+            if cumTop < 0:
+                pointUp = True
+                cumTop += height + UIPOINTER_HEIGHT / 2 + UIPOINTER_ARROW_HEIGHT
+                if hasattr(element, 'absoluteLeft') and hasattr(element, 'absoluteRight'):
+                    cumLeft = element.absoluteLeft - UIPOINTER_WIDTH / 2 + (element.absoluteRight - element.absoluteLeft) / 2
+                else:
+                    cumLeft = element.parent.absoluteLeft + element.left - UIPOINTER_WIDTH / 2
+                if cumLeft < 0:
+                    cumLeft = 0
+                elif cumLeft + UIPOINTER_WIDTH > uicore.desktop.width:
+                    cumLeft = uicore.desktop.width - UIPOINTER_WIDTH
+                if directive == 'bracket':
+                    cumTop -= 8
+            elif cumTop + UIPOINTER_HEIGHT > uicore.desktop.height:
+                pointDown = True
+                cumTop = element.absoluteTop - UIPOINTER_ARROW_HEIGHT * 2 - UIPOINTER_HEIGHT
+                cumLeft = element.absoluteLeft - UIPOINTER_WIDTH / 2 + (element.absoluteRight - element.absoluteLeft) / 2
+                if cumLeft < 0:
+                    cumLeft = 0
+                elif cumLeft + UIPOINTER_WIDTH > uicore.desktop.width:
+                    cumLeft = uicore.desktop.width - UIPOINTER_WIDTH
+            elif pointLeft == False:
+                if directive == 'bracket':
+                    cumLeft -= UIPOINTER_ARROW_WIDTH - 3
+                    cumTop -= 3
+                else:
+                    cumLeft -= UIPOINTER_ARROW_WIDTH
+            elif directive == 'bracket':
+                cumLeft += UIPOINTER_ARROW_WIDTH
+                cumTop -= 3
+            else:
+                cumLeft += UIPOINTER_ARROW_WIDTH
+            isObscured = self.CheckIsElementObscured(cumTop, cumLeft, pointLeft, element)
+            return (cumTop,
+             cumLeft,
+             pointLeft,
+             pointUp,
+             pointDown,
+             isObscured)
+        except:
+            log.LogException()
+            sys.exc_clear()
+            return (-999,
+             -999,
+             False,
+             False,
+             False,
+             False)
+
+
+
+    def CheckIsElementObscured(self, top, left, pointLeft, element):
+        globalLayer = uicore.layer.main
+        abovemain = uicore.layer.abovemain
+        candidates = self.GetObscureCandidates(globalLayer, element, False)
+        candidates.extend(self.GetObscureCandidates(abovemain, element, True))
+        (left, top, width, height,) = element.GetAbsolute()
+        elementPoints = []
+        elementPoints.append(util.KeyVal(x=left, y=top))
+        elementPoints.append(util.KeyVal(x=left, y=top + height))
+        elementPoints.append(util.KeyVal(x=left + width, y=top))
+        elementPoints.append(util.KeyVal(x=left + width, y=top + height))
+        occluded = False
+        occludors = []
+        for candidate in candidates:
+            (absLeft, absTop, width, height,) = candidate.GetAbsolute()
+            absRight = absLeft + width
+            absBottom = absTop + height
+            for point in elementPoints:
+                if point.x > absLeft and point.x < absRight and point.y > absTop and point.y < absBottom:
+                    occluded = True
+                    occludors.append(candidate)
+                    break
+
+
+        self.UpdateObscurers(occludors)
+        return occluded
+
+
+
+    def GetObscureCandidates(self, layer, pointToElement, topLayer):
+        parentWindow = self.GetElementsParent(pointToElement)
+        parentIdx = self.GetElementIdx(parentWindow)
+        if parentIdx is None:
+            return []
+        list = []
+        for window in layer.children:
+            windowIdx = self.GetElementIdx(window)
+            if windowIdx is None:
+                return []
+            if hasattr(window, 'name') and window.name not in ('UIPointer',
+             'locationInfo',
+             'snapIndicator',
+             'windowhilite',
+             parentWindow.name) and hasattr(window, 'state') and window.state != uiconst.UI_HIDDEN and hasattr(window, 'absoluteTop') and hasattr(window, 'absoluteBottom') and hasattr(window, 'absoluteRight') and hasattr(window, 'absoluteLeft'):
+                if not topLayer and windowIdx < parentIdx:
+                    list.append(window)
+                elif topLayer:
+                    list.append(window)
+
+        return list
+
+
+
+    def UpdateObscurers(self, obscurers):
+        oldObscurers = self.oldObscurers
+        if oldObscurers == None:
+            oldObscurers = []
+        for window in oldObscurers:
+            if window not in obscurers:
+                window.opacity = 1.0
+
+        for window in obscurers:
+            window.opacity = 0.6
+
+        self.oldObscurers = obscurers
+
+
+
+    def GetElementIdx(self, element):
+        if element.name == 'aura9':
+            return 0
+        parent = element.parent
+        if not parent:
+            return None
+        elementIndex = 0
+        for child in parent.children:
+            if child == element:
+                break
+            elementIndex += 1
+
+        return elementIndex
+
+
+
+    def GetElementsParent(self, element):
+        parentWindow = element
+        while True:
+            if not hasattr(parentWindow.parent, 'parent'):
+                break
+            elif not hasattr(parentWindow.parent.parent, 'parent'):
+                break
+            elif not hasattr(parentWindow.parent.parent.parent, 'parent'):
+                break
+            else:
+                parentWindow = parentWindow.parent
+
+        return parentWindow
+
+
+
+    def FindElementToPointTo(self):
+        if len(self.elementUrl) == 1:
+            pointToElement = self.FindDeep(uicore.desktop, self.elementUrl[0])
+        else:
+            parent = uicore.desktop
+            for path in self.elementUrl[:(len(self.elementUrl) - 1)]:
+                parent = self.FindDeep(parent, path)
+
+            pointToElement = self.FindDeep(parent, self.elementUrl[(len(self.elementUrl) - 1)])
+        return pointToElement
+
+
+
+    def PointTo(self, pointToID, uiPointerText):
+        if pointToID is None or pointToID == '':
+            self.ClearPointers()
+            return 
+        self.ClearPointers()
+        self.elementUrl = pointToID.split('.')
+        pointToElement = self.FindElementToPointTo()
+        if pointToElement is not None and pointToElement.state != uiconst.UI_HIDDEN:
+            parent = pointToElement
+            considerations = None
+            while hasattr(parent, 'parent') and pointToElement.parent is not None and hasattr(parent.parent, 'name'):
+                parent = parent.parent
+                if parent.name == 'neocom' and self.elementUrl[(len(self.elementUrl) - 1)] != 'undock':
+                    considerations = 'neocom'
+                    break
+                elif parent.name == 'shipui':
+                    considerations = 'shipui'
+                    break
+                elif parent.name == 'l_bracket':
+                    considerations = 'bracket'
+                    break
+
+            (cumTop, cumLeft, pointLeft, pointUp, pointDown, isObscured,) = self.GetLocation(pointToElement, considerations)
+            elementContainer = self.SpawnPointer(cumTop, cumLeft, pointLeft, pointUp, pointDown, pointToElement, uiPointerText)
+            self.currentPointer = {'uiPointerElement': elementContainer,
+             'pointToElement': pointToElement,
+             'considerations': considerations,
+             'oldPointLeft': pointLeft,
+             'oldPointUp': pointUp,
+             'oldPointDown': pointDown,
+             'uiPointerText': uiPointerText}
+            uthread.new(self.UpdatePointer)
+        else:
+            reason = "The element with the id/name '%s' can not be found" % pointToID
+            if pointToElement is not None:
+                reason = "The element with the id/name '%s' is invisible" % pointToID
+            self.LogInfo('Not displaying UI Pointer because:', reason)
+
+
+
+    def ClearPointers(self):
+        if self.currentPointer is not None:
+            self.currentPointer['uiPointerElement'].Close()
+            if self.currentPointer['uiPointerElement'] in uicore.layer.hint.children:
+                uicore.layer.hint.children.remove(self.currentPointer['uiPointerElement'])
+            self.currentPointer = None
+            self.UpdateObscurers([])
+
+
+
+    def SpawnPointer(self, cumTop, cumLeft, pointLeft, pointUp, pointDown, element, text):
+        layer = uicore.layer.hint
+        pointerState = uiconst.UI_DISABLED
+        if uicore.layer.systemmenu.isopen or cumTop <= 0 and cumLeft <= 0 or element.state == uiconst.UI_HIDDEN:
+            pointerState = uiconst.UI_HIDDEN
+        elementContainer = uicls.Container(parent=layer, name='UIPointer', idx=-1, top=cumTop, left=cumLeft, width=UIPOINTER_WIDTH, height=UIPOINTER_HEIGHT, align=uiconst.TOPLEFT, state=pointerState)
+        spriteID = 'UIPointerImg'
+        sprite = uicls.Sprite(name=spriteID, parent=elementContainer, align=uiconst.TOALL, state=uiconst.UI_DISABLED, color=(1.0, 1.0, 1.0, 1.0), texturePath='res:/UI/Texture/UI_pointer_backgr.dds')
+        rectTop = 128
+        if pointLeft:
+            rectTop = 0
+        sprite.rectWidth = UIPOINTER_WIDTH
+        sprite.rectHeight = UIPOINTER_HEIGHT
+        sprite.rectTop = rectTop
+        arrowSprite = uicls.Sprite(name='arrow', parent=elementContainer, align=uiconst.RELATIVE, state=uiconst.UI_DISABLED, color=(1.0, 1.0, 1.0, 1.0), texturePath='res:/UI/Texture/UI_pointer_arrows.dds')
+        arrowSprite.rectWidth = 128
+        arrowSprite.rectHeight = 128
+        maxTextWidth = UIPOINTER_WIDTH - 23
+        label = uicls.Label(text=text, parent=elementContainer, align=uiconst.CENTER, width=maxTextWidth, fontsize=12, state=uiconst.UI_DISABLED, color=(0.0, 0.0, 0.0, 1.0), shadow=None, idx=0)
+        if label.textwidth < maxTextWidth:
+            label.left = (maxTextWidth - label.textwidth) / 2
+        elementContainer.height = max(elementContainer.height, label.textheight + 2 * const.defaultPadding)
+        if pointUp:
+            arrowSprite.width = UIPOINTER_ARROW_HEIGHT
+            arrowSprite.height = UIPOINTER_ARROW_WIDTH
+            arrowSprite.rectTop = 0
+            arrowSprite.rectLeft = 0
+            arrowSprite.left = UIPOINTER_WIDTH / 2 - UIPOINTER_ARROW_WIDTH / 2
+            arrowSprite.top = -UIPOINTER_ARROW_HEIGHT
+            sprite.top = -4
+            elementContainer.height -= 4
+            sprite.left = 0
+        elif pointDown:
+            arrowSprite.width = UIPOINTER_ARROW_HEIGHT
+            arrowSprite.height = UIPOINTER_ARROW_WIDTH
+            arrowSprite.rectTop = 128
+            arrowSprite.rectLeft = 0
+            arrowSprite.left = UIPOINTER_WIDTH / 2 - UIPOINTER_ARROW_WIDTH / 2
+            arrowSprite.top = elementContainer.height
+            sprite.left = 0
+        elif pointLeft:
+            arrowSprite.width = UIPOINTER_ARROW_WIDTH
+            arrowSprite.height = UIPOINTER_ARROW_HEIGHT
+            arrowSprite.rectTop = 0
+            arrowSprite.rectLeft = 128
+            arrowSprite.left = -UIPOINTER_ARROW_WIDTH
+            arrowSprite.top = UIPOINTER_HEIGHT / 2 - UIPOINTER_ARROW_WIDTH / 2
+            sprite.top = 0
+            sprite.left = -3
+        else:
+            arrowSprite.width = UIPOINTER_ARROW_WIDTH
+            arrowSprite.height = UIPOINTER_ARROW_HEIGHT
+            arrowSprite.rectTop = 128
+            arrowSprite.rectLeft = 128
+            arrowSprite.left = UIPOINTER_WIDTH
+            arrowSprite.top = UIPOINTER_HEIGHT / 2 - UIPOINTER_ARROW_WIDTH / 2
+        return elementContainer
+
+
+
+    def HidePointer(self):
+        if self.currentPointer != None and 'uiPointerElement' in self.currentPointer and self.currentPointer['uiPointerElement'].state != uiconst.UI_HIDDEN:
+            self.currentPointer['uiPointerElement'].state = uiconst.UI_HIDDEN
+
+
+
+    def ShowPointer(self):
+        if self.currentPointer != None and 'uiPointerElement' in self.currentPointer:
+            self.currentPointer['uiPointerElement'].state = uiconst.UI_NORMAL
+
+
+
+

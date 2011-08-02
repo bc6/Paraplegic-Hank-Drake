@@ -1,0 +1,283 @@
+import sys
+import imp
+import gc
+import __builtin__
+import zipimport
+memory_query_func = None
+verbose_output = False
+ModuleType = type(sys)
+proxies = set()
+proxyTally = 0
+reals = set()
+ignored = set()
+existing = set((k for (k, v,) in sys.modules.iteritems() if v))
+
+def report(arg = ''):
+    global verbose_output
+    global proxyTally
+    global memory_query_func
+    loaded = arg.startswith('load ')
+    if loaded:
+        if memory_query_func is not None:
+            print 'lazyimport: %s (now using %0.3f Mb)' % (arg, memory_query_func())
+        else:
+            print 'lazyimport: %s' % arg
+    elif memory_query_func is not None:
+        print 'lazyimport report: %s (now using %0.3f Mb)' % (arg, memory_query_func())
+    else:
+        print 'lazyimport report: %s' % arg
+    if verbose_output or not loaded:
+        print 'proxy imported %d %r' % (len(proxies), sorted(proxies))
+        print 'proxy imported (maximum size reached) %d' % proxyTally
+        print 'fully imported (pre lazyimport) %d %r' % (len(existing), sorted(existing))
+        print 'fully imported (via lazyimport) %d %r' % (len(reals), sorted(reals))
+        print 'fully imported (via allowed bypass) %d %r' % (len(ignored), sorted(ignored))
+        modules = set((k for (k, v,) in sys.modules.iteritems() if v))
+        diff = modules - reals - proxies - ignored - existing
+        print 'fully imported (lost track of these) %d %r' % (len(diff), sorted(diff))
+        builtins = set(sys.builtin_module_names)
+        diff = builtins & proxies
+        print 'builtins (proxied) %d %r' % (len(diff), diff)
+        diff = builtins & (reals | existing)
+        print 'builtins (fully imported) %d %r' % (len(diff), diff)
+        diff = builtins - proxies - reals - existing
+        print 'builtins (not imported) %d %r' % (len(diff), diff)
+
+
+
+def loadModule(proxy, name, loader):
+    mod = sys.modules.get(name, None)
+    if mod is not proxy and isinstance(mod, ModuleType):
+        return mod
+    mod = loader.load_module(name)
+    replaceModule(proxy, mod)
+    reals.add(name)
+    try:
+        proxies.remove(name)
+    except KeyError:
+        pass
+    report('load ' + name)
+    return mod
+
+
+
+def replaceModule(proxy, mod):
+    for e in gc.get_referrers(proxy):
+        if isinstance(e, dict):
+            for (k, v,) in e.iteritems():
+                if v is proxy:
+                    e[k] = mod
+
+
+
+
+
+class ModuleProxy(object):
+
+    def __init__(self, name, loader):
+        global proxyTally
+        object.__setattr__(self, '_args', (name, loader))
+        proxies.add(name)
+        proxyTally += 1
+
+
+
+    def __getattribute__(self, key):
+        if key in ('_args',):
+            return object.__getattribute__(self, key)
+        mod = loadModule(self, *self._args)
+        return getattr(mod, key)
+
+
+
+    def __setattr__(self, key, value):
+        mod = loadModule(self, *self._args)
+        setattr(mod, key, value)
+
+
+
+    def __dir__(self):
+        return dir(loadModule(self, *self._args))
+
+
+
+    def __repr__(self):
+        return '<ModuleProxy %r>' % (self._args,)
+
+
+
+
+class StandardLoader(object):
+
+    def __init__(self, pathname, desc):
+        (self.pathname, self.desc,) = (pathname, desc)
+
+
+
+    def __repr__(self):
+        return '<StandardLoader %r,%r>' % (self.pathname, self.desc)
+
+
+
+    def load_module(self, fullname):
+        try:
+            f = open(self.pathname, 'U')
+        except:
+            f = None
+        try:
+            return imp.load_module(fullname, f, self.pathname, self.desc)
+
+        finally:
+            if f:
+                f.close()
+
+
+
+
+
+class OnDemandLoader(object):
+
+    def __init__(self, real_loader):
+        self.real_loader = real_loader
+
+
+
+    def load_module(self, fullname):
+        mod = sys.modules.get(fullname)
+        if not mod:
+            mod = ModuleProxy(fullname, self.real_loader)
+            sys.modules[fullname] = mod
+        return mod
+
+
+
+
+class OnDemandImporter(object):
+
+    def find_module(self, fullname, path = None):
+        if path:
+            (head, tail,) = fullname.rsplit('.', 1)
+            if not sys.modules.get(head):
+                return None
+        else:
+            tail = fullname
+        try:
+            (f, pathname, desc,) = imp.find_module(tail, path)
+            if f:
+                f.close()
+        except ImportError:
+            return None
+        if ignore_module(fullname, pathname):
+            return None
+        real_loader = StandardLoader(pathname, desc)
+        return OnDemandLoader(real_loader)
+
+
+
+
+class OnDemandZipImporter(object):
+
+    def __init__(self, path):
+        importer = zipimport.zipimporter(path)
+        self.real_importer = importer
+        self.is_package = importer.is_package
+        self.get_code = importer.get_code
+        self.get_source = importer.get_source
+        self.get_data = importer.get_data
+        self.get_filename = importer.get_filename
+
+
+
+    def find_module(self, fullname, path = None):
+        result = self.real_importer.find_module(fullname, path)
+        if result is None:
+            return 
+        return self
+
+
+
+    def load_module(self, fullname):
+        if ignore_module(fullname, self.real_importer.archive):
+            return self.real_importer.load_module(fullname)
+        mod = sys.modules.get(fullname)
+        if not mod:
+            mod = ModuleProxy(fullname, self.real_importer)
+            sys.modules[fullname] = mod
+        return mod
+
+
+
+onDemandImporter = OnDemandImporter()
+RealReload = reload
+
+def LazyReload(module):
+    if type(module) is ModuleType:
+        return RealReload(module)
+
+
+
+def install():
+    if onDemandImporter not in sys.meta_path:
+        sys.meta_path.append(onDemandImporter)
+        try:
+            idx = sys.path_hooks.index(zipimport.zipimporter)
+            sys.path_hooks[idx] = OnDemandZipImporter
+        except ValueError:
+            pass
+        __builtin__.reload = LazyReload
+
+
+
+def uninstall():
+    try:
+        sys.meta_path.remove(onDemandImporter)
+        try:
+            idx = sys.path_hooks.index(OnDemandZipImporter)
+            sys.path_hooks[idx] = zipimport.zipimporter
+        except ValueError:
+            pass
+    except ValueError:
+        return 
+    __builtin__.reload = RealReload
+
+
+
+def ignore_module(fullname, pathname = None):
+    ignore = False
+    if fullname in ignorenames:
+        ignore = True
+    for pkg in ignorepkg:
+        if fullname.startswith(pkg):
+            ignore = True
+
+    if pathname:
+        for path in ignorepath:
+            if path in pathname.lower():
+                ignore = True
+
+    if ignore:
+        ignored.add(fullname)
+    return ignore
+
+
+
+def set_memory_query_func(f):
+    global memory_query_func
+    memory_query_func = f
+
+
+
+def set_verbose_output(flag):
+    global verbose_output
+    verbose_output = flag
+
+
+ignorenames = set()
+ignorenames |= set(['autoexec_ue3', 'sitecustomize', 'dust.startmini'])
+ignorenames |= set(['devMenu'])
+ignorenames |= set(['encodings'])
+ignorenames |= set(['warnings'])
+ignorepkg = set(['deelite'])
+ignorepath = set(['deelite.zip', 'dust\\ui', 'dust/ui'])
+install()
+

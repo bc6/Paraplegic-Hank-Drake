@@ -1,0 +1,507 @@
+import trinity
+import util
+import metaMaterials as Materials
+SOURCE_AREA_TYPE_OPAQUE = 0
+SOURCE_AREA_TYPE_DECAL = 1
+STATIC_SHADOW_ALPHATEST_EFFECT_PATH = 'res:/Graphics/Effect/Managed/Interior/Static/ShadowAlphaTest.fx'
+STATIC_SHADOW_OPAQUE_EFFECT_PATH = 'res:/Graphics/Effect/Managed/Interior/Static/Shadow.fx'
+STATIC_NORMALDEPTH_DECAL_EFFECT_PATH = 'res:/Graphics/Effect/Managed/Interior/Static/LightPrepassDecal.fx'
+STATIC_NORMALDEPTH_OPAQUE_EFFECT_PATH = 'res:/Graphics/Effect/Managed/Interior/Static/LightPrepass.fx'
+STATIC_PREPASS_EMISSIVE_EFFECT_PATH = 'res:/Graphics/Effect/Managed/Interior/Static/StaticStandardWithGlowEnlighten_Prepass.fx'
+SKINNED_SHADOW_ALPHATEST_EFFECT_PATH = 'res:/Graphics/Effect/Managed/Interior/Avatar/ShadowAlphaTest.fx'
+SKINNED_SHADOW_OPAQUE_EFFECT_PATH = 'res:/Graphics/Effect/Managed/Interior/Avatar/Shadow.fx'
+SKINNED_NORMALDEPTH_DECAL_EFFECT_PATH = 'res:/Graphics/Effect/Managed/Interior/Avatar/LightPrepassDecal.fx'
+SKINNED_NORMALDEPTH_OPAQUE_EFFECT_PATH = 'res:/Graphics/Effect/Managed/Interior/Avatar/LightPrepass.fx'
+ENABLE_MATERIAL_RES_SUPPORT = True
+
+def FindResourceByName(effect, resourceName):
+    for res in effect.resources:
+        if res.name == resourceName:
+            return res
+
+
+
+
+def FindParameterByName(effect, parameterName):
+    for param in effect.parameters:
+        if param.name == parameterName:
+            return param
+
+
+
+
+def CopyResource(res):
+    if res is None:
+        return 
+    newRes = res.CloneTo()
+    if res.resourcePath == '' and res.resource is not None:
+        newRes.SetResource(res.resource)
+    return newRes
+
+
+
+def CopyResourceByName(effect, resourceName):
+    originalRes = FindResourceByName(effect, resourceName)
+    return CopyResource(originalRes)
+
+
+
+def CopyVector4Parameter(effect, parameterName):
+    newParameter = trinity.Tr2Vector4Parameter()
+    newParameter.name = parameterName
+    originalParam = FindParameterByName(effect, parameterName)
+    if originalParam is not None:
+        newParameter.value = originalParam.value
+    else:
+        return 
+    return newParameter
+
+
+
+def CopyFloatParameter(effect, parameterName):
+    newParameter = trinity.TriFloatParameter()
+    newParameter.name = parameterName
+    originalParam = FindParameterByName(effect, parameterName)
+    if originalParam is not None:
+        newParameter.value = originalParam.value
+    else:
+        return 
+    return newParameter
+
+
+
+def CopyAreaForPrePassShadows(area, sourceAreaType = SOURCE_AREA_TYPE_OPAQUE):
+    originalEffect = area.effect
+    if originalEffect is None:
+        return 
+    newArea = trinity.Tr2MeshArea()
+    newArea.name = area.name
+    newArea.index = area.index
+    newArea.count = area.count
+    newEffect = trinity.Tr2Effect()
+    if 'skinned' in originalEffect.effectFilePath.lower():
+        if sourceAreaType == SOURCE_AREA_TYPE_DECAL:
+            newEffect.effectFilePath = SKINNED_SHADOW_ALPHATEST_EFFECT_PATH
+        elif 'alphatest' in originalEffect.effectFilePath.lower():
+            newEffect.effectFilePath = SKINNED_SHADOW_ALPHATEST_EFFECT_PATH
+        else:
+            newEffect.effectFilePath = SKINNED_SHADOW_OPAQUE_EFFECT_PATH
+    elif sourceAreaType == SOURCE_AREA_TYPE_DECAL:
+        newEffect.effectFilePath = STATIC_SHADOW_ALPHATEST_EFFECT_PATH
+    elif 'alphatest' in originalEffect.effectFilePath.lower():
+        newEffect.effectFilePath = STATIC_SHADOW_ALPHATEST_EFFECT_PATH
+    else:
+        newEffect.effectFilePath = STATIC_SHADOW_OPAQUE_EFFECT_PATH
+    newEffect.name = originalEffect.name
+    newParam = CopyVector4Parameter(area.effect, 'TransformUV0')
+    if newParam is not None:
+        newEffect.parameters.append(newParam)
+    if sourceAreaType == SOURCE_AREA_TYPE_DECAL:
+        newParam = CopyVector4Parameter(area.effect, 'MaterialDiffuseColor')
+        if newParam is not None:
+            newEffect.parameters.append(newParam)
+        newParam = CopyResourceByName(area.effect, 'DiffuseMap')
+        if newParam is not None:
+            newEffect.resources.append(newParam)
+        newParam = CopyFloatParameter(area.effect, 'CutMaskInfluence')
+        if newParam is not None:
+            newEffect.parameters.append(newParam)
+    newArea.effect = newEffect
+    return newArea
+
+
+
+def ConvertDepthNormalAreaToTr2ShaderMaterial(area):
+    if area.effect is None:
+        return 0
+    if type(area.effect) is trinity.Tr2ShaderMaterial:
+        return 0
+    originalEffect = area.effect
+    newMaterial = trinity.Tr2ShaderMaterial()
+    newMaterial.highLevelShaderName = 'NormalDepth'
+    if 'skinned' in originalEffect.effectFilePath.lower():
+        if 'decal' in originalEffect.effectFilePath.lower():
+            newMaterial.name = 'Skinned_Cutout_NormalDepth'
+            newMaterial.defaultSituation = 'AlphaCutout'
+        elif 'alphatest' in originalEffect.effectFilePath.lower():
+            newMaterial.name = 'Skinned_Cutout_NormalDepth'
+            newMaterial.defaultSituation = 'AlphaCutout'
+        else:
+            newMaterial.name = 'Skinned_Opaque_NormalDepth'
+            newMaterial.defaultSituation = ''
+    elif 'decal' in originalEffect.effectFilePath.lower():
+        newMaterial.name = 'Cutout_NormalDepth'
+        newMaterial.defaultSituation = 'AlphaCutout'
+    elif 'alphatest' in originalEffect.effectFilePath.lower():
+        newMaterial.name = 'Cutout_NormalDepth'
+        newMaterial.defaultSituation = 'AlphaCutout'
+    else:
+        newMaterial.name = 'Opaque_NormalDepth'
+        newMaterial.defaultSituation = ''
+    newParam = CopyResourceByName(area.effect, 'NormalMap')
+    if newParam is not None:
+        newMaterial.parameters['NormalMap'] = newParam
+    newParam = CopyResourceByName(area.effect, 'SpecularMap')
+    if newParam is not None:
+        newMaterial.parameters['SpecularMap'] = newParam
+    newParam = CopyVector4Parameter(area.effect, 'TransformUV0')
+    if newParam is not None:
+        newMaterial.parameters['TransformUV0'] = newParam
+    newParam = CopyVector4Parameter(area.effect, 'MaterialSpecularCurve')
+    if newParam is not None:
+        newMaterial.parameters['MaterialSpecularCurve'] = newParam
+    newParam = CopyVector4Parameter(area.effect, 'MaterialLibraryID')
+    if newParam is None:
+        newParam = trinity.Tr2Vector4Parameter()
+        newParam.name = 'MaterialLibraryID'
+        newParam.value = (11, 0, 0, 0)
+    newMaterial.parameters['MaterialLibraryID'] = newParam
+    if 'decal' in originalEffect.effectFilePath.lower():
+        newParam = CopyVector4Parameter(area.effect, 'MaterialDiffuseColor')
+        if newParam is not None:
+            newMaterial.parameters['MaterialDiffuseColor'] = newParam
+        newParam = CopyResourceByName(area.effect, 'DiffuseMap')
+        if newParam is not None:
+            newMaterial.parameters['DiffuseMap'] = newParam
+        newParam = CopyFloatParameter(area.effect, 'CutMaskInfluence')
+        if newParam is not None:
+            newMaterial.parameters['CutMaskInfluence'] = newParam
+    area.effect = newMaterial
+    return 1
+
+
+
+def CopyAreaForPrePassDepthNormal(area, sourceAreaType = SOURCE_AREA_TYPE_OPAQUE):
+    originalEffect = area.effect
+    if originalEffect is None:
+        return 
+    newArea = trinity.Tr2MeshArea()
+    newArea.name = area.name
+    newArea.index = area.index
+    newArea.count = area.count
+    newArea.effect = area.effect
+    ConvertDepthNormalAreaToTr2ShaderMaterial(newArea)
+    return newArea
+
+
+
+def CopyArea(area):
+    newArea = area.CloneTo()
+    if newArea.effect is not None:
+        newArea.effect.effectFilePath = area.effect.effectFilePath
+        newArea.effect.resources.removeAt(-1)
+        for r in area.effect.resources:
+            newRes = CopyResource(r)
+            if newRes is not None:
+                newArea.effect.resources.append(newRes)
+
+    return newArea
+
+
+
+def CopyAreaForPrePassOpaque(area):
+    newArea = CopyArea(area)
+    if newArea.effect is not None:
+        p = newArea.effect.effectFilePath.replace('/Exterior/', '/Interior/')
+        if not p.endswith('_Prepass.fx'):
+            p = p.replace('.fx', '_Prepass.fx')
+        if 'Emissive' in p:
+            p = STATIC_PREPASS_EMISSIVE_EFFECT_PATH
+        newArea.effect.effectFilePath = p
+    return newArea
+
+
+
+def CopyAreaForPrePassDecal(area):
+    newArea = CopyArea(area)
+    if newArea.effect is not None:
+        p = newArea.effect.effectFilePath.replace('/Exterior/', '/Interior/')
+        if not p.endswith('_Prepass.fx'):
+            p = p.replace('.fx', '_Prepass.fx')
+        if 'Emissive' in p:
+            p = STATIC_PREPASS_EMISSIVE_EFFECT_PATH
+        newArea.effect.effectFilePath = p
+    return newArea
+
+
+
+def CopyCommonMaterialParams(mat, fx):
+    param = CopyResourceByName(fx, 'DiffuseMap')
+    if param is not None:
+        mat.parameters['DiffuseMap'] = param
+    param = CopyResourceByName(fx, 'SpecularMap')
+    if param is not None:
+        mat.parameters['SpecularMap'] = param
+    param = CopyResourceByName(fx, 'NormalMap')
+    if param is not None:
+        mat.parameters['NormalMap'] = param
+    param = CopyVector4Parameter(fx, 'MaterialDiffuseColor')
+    if param is not None:
+        mat.parameters['MaterialDiffuseColor'] = param
+    param = CopyVector4Parameter(fx, 'MaterialSpecularColor')
+    if param is not None:
+        mat.parameters['MaterialSpecularColor'] = param
+    param = CopyVector4Parameter(fx, 'MaterialSpecularCurve')
+    if param is not None:
+        mat.parameters['MaterialSpecularCurve'] = param
+    param = CopyVector4Parameter(fx, 'MaterialSpecularFactors')
+    if param is not None:
+        mat.parameters['MaterialSpecularFactors'] = param
+
+
+
+def CopyGlowMaterialParams(mat, fx):
+    param = CopyResourceByName(fx, 'GlowMap')
+    if param is not None:
+        mat.parameters['GlowMap'] = param
+    param = CopyVector4Parameter(fx, 'MaterialGlowColor')
+    if param is not None:
+        mat.parameters['MaterialGlowColor'] = param
+
+
+
+def ConvertAreaToTr2ShaderMaterial(area, defaultSituation = None):
+    fx = area.effect
+    if hasattr(fx, 'effectFilePath'):
+        fxpath = area.effect.effectFilePath.lower()
+        newMaterial = trinity.Tr2ShaderMaterial()
+        if defaultSituation is not None:
+            newMaterial.defaultSituation = defaultSituation
+        if 'unpacked_staticstandardwithglowenlighten' in fxpath:
+            newMaterial.highLevelShaderName = 'StaticStandardWithGlowEnlighten'
+            if defaultSituation is None:
+                newMaterial.defaultSituation = 'Unpacked'
+            else:
+                newMaterial.defaultSituation = defaultSituation + ' Unpacked'
+            CopyCommonMaterialParams(newMaterial, fx)
+            CopyGlowMaterialParams(newMaterial, fx)
+            area.effect = newMaterial
+            return 1
+        if 'unpacked_staticfresnelreflectionenlighten' in fxpath:
+            newMaterial.highLevelShaderName = 'StaticFresnelReflectionEnlighten'
+            if defaultSituation is None:
+                newMaterial.defaultSituation = 'Unpacked'
+            else:
+                newMaterial.defaultSituation = defaultSituation + ' Unpacked'
+            CopyCommonMaterialParams(newMaterial, fx)
+            area.effect = newMaterial
+            return 1
+        if 'staticdecalalphatestenlighten' in fxpath:
+            newMaterial.highLevelShaderName = 'StaticDecalAlphaTestEnlighten'
+            CopyCommonMaterialParams(newMaterial, fx)
+            area.effect = newMaterial
+            return 1
+        if 'staticdecalenlighten' in fxpath:
+            newMaterial.highLevelShaderName = 'StaticDecalEnlighten'
+            CopyCommonMaterialParams(newMaterial, fx)
+            area.effect = newMaterial
+            return 1
+        if 'staticemissive' in fxpath:
+            newMaterial.highLevelShaderName = 'StaticEmissive'
+            param = CopyResourceByName(fx, 'DiffuseMap')
+            if param is not None:
+                newMaterial.parameters['DiffuseMap'] = param
+            param = CopyVector4Parameter(fx, 'MaterialDiffuseColor')
+            if param is not None:
+                newMaterial.parameters['MaterialDiffuseColor'] = param
+            area.effect = newMaterial
+            return 1
+        if 'staticfresnelreflectionenlighten' in fxpath:
+            newMaterial.highLevelShaderName = 'StaticFresnelReflectionEnlighten'
+            CopyCommonMaterialParams(newMaterial, fx)
+            area.effect = newMaterial
+            return 1
+        if 'staticfresnelreflectionsh' in fxpath:
+            newMaterial.highLevelShaderName = 'StaticFresnelReflectionSH'
+            CopyCommonMaterialParams(newMaterial, fx)
+            area.effect = newMaterial
+            return 1
+        if 'skinnedavatarbrdf' in fxpath:
+            newMaterial.highLevelShaderName = 'SkinnedAvatarBrdf'
+            CopyCommonMaterialParams(newMaterial, fx)
+            param = CopyVector4Parameter(fx, 'MaterialLibraryID')
+            if param is not None:
+                newMaterial.parameters['MaterialLibraryID'] = param
+            param = CopyVector4Parameter(fx, 'TransformUV0')
+            if param is not None:
+                newMaterial.parameters['TransformUV0'] = param
+            param = CopyFloatParameter(fx, 'CutMaskInfluence')
+            if param is not None:
+                newMaterial.parameters['CutMaskInfluence'] = param
+            param = CopyResourceByName(fx, 'FresnelLookupMap')
+            if param is not None:
+                newMaterial.parameters['FresnelLookupMap'] = param
+            param = CopyResourceByName(fx, 'CutMaskMap')
+            if param is not None:
+                newMaterial.parameters['CutMaskMap'] = param
+            area.effect = newMaterial
+            return 1
+        if 'skinnedavatar' in fxpath:
+            newMaterial.highLevelShaderName = 'SkinnedAvatar'
+            CopyCommonMaterialParams(newMaterial, fx)
+            param = CopyVector4Parameter(fx, 'FresnelFactors')
+            if param is not None:
+                newMaterial.parameters['FresnelFactors'] = param
+            area.effect = newMaterial
+            return 1
+        if 'staticstandardwithglowenlighten' in fxpath:
+            newMaterial.highLevelShaderName = 'StaticStandardWithGlowEnlighten'
+            CopyCommonMaterialParams(newMaterial, fx)
+            CopyGlowMaterialParams(newMaterial, fx)
+            area.effect = newMaterial
+            return 1
+        if 'staticstandardwithglowsh' in fxpath:
+            newMaterial.highLevelShaderName = 'StaticStandardWithGlowSH'
+            CopyCommonMaterialParams(newMaterial, fx)
+            CopyGlowMaterialParams(newMaterial, fx)
+            area.effect = newMaterial
+            return 1
+        print 'Area ' + area.name + ' using ' + fxpath + ' not converted to Tr2ShaderMaterial, conversion not yet supported'
+    return 0
+
+
+
+def Tr2ShaderMaterialFixup(mesh):
+    for area in mesh.depthNormalAreas:
+        ConvertDepthNormalAreaToTr2ShaderMaterial(area)
+
+    for area in mesh.opaquePrepassAreas:
+        ConvertAreaToTr2ShaderMaterial(area, 'Prepass')
+
+    for area in mesh.decalPrepassAreas:
+        ConvertAreaToTr2ShaderMaterial(area, 'Prepass')
+
+    for area in mesh.transparentAreas:
+        ConvertAreaToTr2ShaderMaterial(area)
+
+    mesh.BindLowLevelShaders([])
+
+
+
+def SetupDepthAreas(mesh):
+    if len(mesh.depthAreas):
+        return 
+    for area in mesh.opaqueAreas:
+        newArea = CopyAreaForPrePassShadows(area, SOURCE_AREA_TYPE_OPAQUE)
+        if newArea is not None:
+            mesh.depthAreas.append(newArea)
+
+    for area in mesh.decalAreas:
+        newArea = CopyAreaForPrePassShadows(area, SOURCE_AREA_TYPE_DECAL)
+        if newArea is not None:
+            mesh.depthAreas.append(newArea)
+
+
+
+
+def SetupDepthNormalAreas(mesh):
+    if len(mesh.depthNormalAreas):
+        return 
+    for area in mesh.opaqueAreas:
+        newArea = CopyAreaForPrePassDepthNormal(area, SOURCE_AREA_TYPE_OPAQUE)
+        if newArea is not None:
+            mesh.depthNormalAreas.append(newArea)
+
+    for area in mesh.decalAreas:
+        newArea = CopyAreaForPrePassDepthNormal(area, SOURCE_AREA_TYPE_DECAL)
+        if newArea is not None:
+            mesh.depthNormalAreas.append(newArea)
+
+
+
+
+def SetupOpaquePrepassAreas(mesh):
+    if len(mesh.opaquePrepassAreas):
+        return 
+    for area in mesh.opaqueAreas:
+        newArea = CopyAreaForPrePassOpaque(area)
+        if newArea is not None:
+            mesh.opaquePrepassAreas.append(newArea)
+
+
+
+
+def SetupDecalPrepassAreas(mesh):
+    if len(mesh.decalPrepassAreas):
+        return 
+    for area in mesh.decalAreas:
+        newArea = CopyAreaForPrePassDecal(area)
+        if newArea is not None:
+            mesh.decalPrepassAreas.append(newArea)
+
+
+
+
+def AddPrepassAreasToStandardMesh(mesh):
+    SetupDepthAreas(mesh)
+    SetupDepthNormalAreas(mesh)
+    SetupOpaquePrepassAreas(mesh)
+    SetupDecalPrepassAreas(mesh)
+    for area in mesh.transparentAreas:
+        if area.effect and type(area.effect) is trinity.Tr2Effect:
+            area.effect.effectFilePath = area.effect.effectFilePath.replace('/Exterior/', '/Interior/')
+
+    Tr2ShaderMaterialFixup(mesh)
+
+
+
+def TryAndBindApexShaderEffect(effect):
+    if effect and hasattr(effect, 'BindLowLevelShader'):
+        effect.BindLowLevelShader([])
+
+
+
+def ApexClothingActorFixup(dynamic):
+    for mesh in dynamic.clothMeshes:
+        TryAndBindApexShaderEffect(mesh.effect)
+        TryAndBindApexShaderEffect(mesh.depthEffect)
+        TryAndBindApexShaderEffect(mesh.depthNormalEffect)
+        TryAndBindApexShaderEffect(mesh.effectReversed)
+        TryAndBindApexShaderEffect(mesh.depthEffectReversed)
+        TryAndBindApexShaderEffect(mesh.depthNormalEffectReversed)
+
+
+
+
+def AddPrepassAreasToDynamic(dynamic):
+    meshes = Materials.GetMeshList(dynamic)
+    if not meshes:
+        return 
+    for mesh in meshes:
+        AddPrepassAreasToStandardMesh(mesh)
+
+    if ENABLE_MATERIAL_RES_SUPPORT:
+        materialRes = Materials.LoadMaterialResFromObject(dynamic)
+        Materials.ApplyMaterialRes(dynamic, materialRes)
+    if hasattr(dynamic, 'clothMeshes'):
+        ApexClothingActorFixup(dynamic)
+
+
+
+def AddPrepassAreasToStatic(static):
+    if static.displayTargetMesh:
+        mesh = trinity.Tr2Mesh()
+        mesh.name = 'EnlightenAreas'
+        mesh.geometryResPath = static.geometryResPath
+        static.detailMeshes.append(mesh)
+        for area in static.enlightenAreas:
+            newArea = trinity.Tr2MeshArea()
+            newArea.name = area.name
+            newArea.index = area.index
+            newArea.count = area.count
+            newArea.effect = area.effect
+            mesh.opaqueAreas.append(newArea)
+            area.effect = None
+
+        static.detailMeshes.append(mesh)
+    for mesh in static.detailMeshes:
+        AddPrepassAreasToStandardMesh(mesh)
+
+    if ENABLE_MATERIAL_RES_SUPPORT:
+        materialRes = Materials.LoadMaterialResFromObject(static)
+        Materials.ApplyMaterialRes(static, materialRes)
+
+
+exports = {'prepassConversion.AddPrepassAreasToStatic': AddPrepassAreasToStatic,
+ 'prepassConversion.AddPrepassAreasToDynamic': AddPrepassAreasToDynamic}
+
