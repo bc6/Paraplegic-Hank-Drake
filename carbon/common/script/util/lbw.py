@@ -167,7 +167,7 @@ def WriteInteger(f, i):
     elif i >= -32768 and i < 32768:
         Write_BYTE(f, P_DWORD)
         Write_DWORD(f, i)
-    elif i >= -2147483648 and i < 2147483648L:
+    elif i >= -0x80000000 and i < 2147483648L:
         Write_BYTE(f, P_INT)
         Write_INT(f, i)
     else:

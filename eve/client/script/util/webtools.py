@@ -85,17 +85,20 @@ class WebTools(service.Service):
         CSAA_FMT = trinity.TRIMULTISAMPLE_NONE
         CSAA_QTY = 0
         baseTexture = trinity.TriSurfaceManaged(trinity.device.CreateRenderTarget, sz, sz, trinity.TRIFMT_A8R8G8B8, CSAA_FMT, CSAA_QTY, 0)
+        renderJob = trinity.CreateRenderJob()
+        desktop = uicls.UIRoot(name='WebTools', width=sz, height=sz, renderTarget=baseTexture, renderJob=renderJob, clearBackground=True)
+        desktop.backgroundColor = (0, 0, 0, 0)
         toRender = []
         godma = sm.GetService('godma')
         BAD_TYPES = (29494, 29193)
         if not blueprintCopy:
             for t in cfg.invtypes:
-                if t.published and (t.graphicID or t.iconID or t.categoryID == const.categoryBlueprint) and t.typeID not in BAD_TYPES:
+                if (t.graphicID or t.iconID or t.categoryID == const.categoryBlueprint) and t.typeID not in BAD_TYPES:
                     toRender.append(t.typeID)
 
         else:
             for t in cfg.invtypes:
-                if t.published and t.categoryID == const.categoryBlueprint and t.typeID not in BAD_TYPES:
+                if t.categoryID == const.categoryBlueprint and t.typeID not in BAD_TYPES:
                     toRender.append(t.typeID)
 
         toRender.sort()
@@ -112,14 +115,12 @@ class WebTools(service.Service):
                 numSkipped += 1
                 continue
             sys.stdout.write('.')
-            renderJob = trinity.CreateRenderJob()
-            desktop = uicls.UIRoot(name='WebTools', width=sz, height=sz, renderTarget=baseTexture, renderJob=renderJob, clearBackground=True)
-            desktop.backgroundColor = (0, 0, 0, 0)
+            desktop.Flush()
             icon = uicls.Icon(parent=desktop, pos=(0,
              0,
              sz,
-             sz), ignoreSize=True, state=uiconst.UI_DISABLED)
-            techIcon = uicls.Icon(parent=desktop, pos=(0, 0, 16, 16), align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL)
+             sz), ignoreSize=True, state=uiconst.UI_DISABLED, idx=1)
+            techIcon = uicls.Icon(parent=desktop, pos=(0, 0, 16, 16), align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL, idx=0)
             icon.LoadIconByTypeID(typeID, ignoreSize=True, isCopy=blueprintCopy)
             icon.SetSize(sz, sz)
             uix.GetTechLevelIcon(techIcon, 1, typeID)
@@ -134,15 +135,15 @@ class WebTools(service.Service):
             desktop.UpdateAlignmentAsRoot()
             renderJob.ScheduleOnce()
             renderJob.WaitForFinish()
-            baseTexture.SaveSurfaceToFile(name, trinity.TRIIFF_PNG)
             blue.pyos.synchro.Yield()
+            baseTexture.SaveSurfaceToFile(name, trinity.TRIIFF_PNG)
             if counter % 1000 == 0:
                 msg = '%s / %s' % (counter, len(toRender))
                 print '\n',
                 print msg
                 eve.Message('CustomNotify', {'notify': msg})
-            desktop.Close()
 
+        desktop.Close()
         msg = 'Done rendering out type icons in size %sx%s to folder %s.<br>Rendered %s types and skipped %s types' % (sz,
          sz,
          filePath,

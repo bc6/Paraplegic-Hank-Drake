@@ -46,9 +46,9 @@ def Proc0(loops = LOOPS):
     global Char2Glob
     global Array2Glob
     global PtrGlb
-    global BoolGlob
-    global Array1Glob
     global PtrGlbNext
+    global Array1Glob
+    global BoolGlob
     starttime = clock()
     for i in range(loops):
         pass

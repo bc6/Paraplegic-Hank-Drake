@@ -355,12 +355,13 @@ class EveIcon(uicls.Sprite):
             graphic = invtype.Icon()
             if graphic and graphic.iconFile:
                 icon = graphic.iconFile.strip()
+            actSize = size or 64
             if itemID and group.id in (const.groupRegion, const.groupConstellation, const.groupSolarSystem):
                 if not (util.IsSolarSystem(itemID) or util.IsConstellation(itemID) or util.IsRegion(itemID)):
                     log.LogError('Not valid itemID for 2D map, itemID: ', itemID, ', typeID: ', typeID)
                     log.LogTraceback()
                 level = [const.groupRegion, const.groupConstellation, const.groupSolarSystem].index(group.id) + 1
-                imagePath = sm.GetService('photo').Get2DMap([itemID], level, level + 1, size or 64)
+                imagePath = sm.GetService('photo').Get2DMap([itemID], level, level + 1, actSize)
                 if imagePath:
                     icon = imagePath
                 else:
@@ -371,16 +372,21 @@ class EveIcon(uicls.Sprite):
                 elif not icon:
                     icon = 'ui_7_64_15'
             elif group.categoryID == const.categoryModule and group.id in const.turretModuleGroups:
-                imagePath = sm.GetService('photo').GetTurretPhoto(typeID, invtype, size or 64)
-                if imagePath:
-                    icon = imagePath
+                sm.GetService('photo').OrderByTypeID([[typeID,
+                  self,
+                  actSize,
+                  itemID,
+                  isBlueprint,
+                  isCopy]])
+                isBlueprint = None
+                icon = None
             elif (typeID == const.typePlanetaryLaunchContainer or group.id not in self.TYPE_DISALLOWED_GROUPS) and (group.id in self.TYPE_ALLOWED_GROUPS or group.categoryID in self.TYPE_ALLOWED_CATEGORIES):
                 if group.id == const.groupCharacter:
-                    sm.GetService('photo').GetPortrait(itemID, size or 64, self)
+                    sm.GetService('photo').GetPortrait(itemID, actSize, self)
                 else:
                     sm.GetService('photo').OrderByTypeID([[typeID,
                       self,
-                      size or 64,
+                      actSize,
                       itemID,
                       isBlueprint,
                       isCopy]])
@@ -389,7 +395,7 @@ class EveIcon(uicls.Sprite):
         if icon:
             self.LoadIcon(icon=icon, ignoreSize=ignoreSize)
         if isBlueprint:
-            sm.GetService('photo').DoBlueprint(self, typeID, size=64, isCopy=isCopy)
+            sm.GetService('photo').DoBlueprint(self, typeID, size=actSize, isCopy=isCopy)
 
 
 

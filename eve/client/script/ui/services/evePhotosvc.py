@@ -678,6 +678,9 @@ class EvePhoto(svc.photo):
                         photopath = self.GetSunPhoto(itemID, typeID, typeinfo, size)
                     elif group.id in [const.groupPlanet, const.groupMoon]:
                         photopath = self.GetPlanetPhoto(itemID, typeID, typeinfo, size)
+                    elif group.categoryID == const.categoryModule and group.id in const.turretModuleGroups:
+                        bgColor = BLUEPRINT_TRANSPARENT_COLOR if doBlueprint else None
+                        photopath = self.GetTurretPhoto(typeID, typeinfo=typeinfo, size=size, bgColor=bgColor)
                     else:
                         photopath = self.GetPhoto(typeID, typeinfo=typeinfo, size=size, transparentBackground=doBlueprint, bgColor=BLUEPRINT_TRANSPARENT_COLOR)
                 except Exception as e:
@@ -1042,14 +1045,6 @@ class EvePhoto(svc.photo):
 
     def GetTurretPhoto(self, typeID, typeinfo = None, size = 128, bgColor = None, transparentBackground = True, usePreviewScene = False):
         self.LogInfo('Getting Photo with typeID: ', typeID)
-        if transparentBackground:
-            outputPath = 'Pictures/Gids/nobg_'
-        else:
-            outputPath = 'Pictures/Gids/'
-        renderPath = outputPath + self.GetPictureFileName(typeinfo, size)
-        cachePath = 'cache:/' + renderPath
-        if self.CheckAvail(cachePath) is not None:
-            return cachePath
         if usePreviewScene:
             model = trinity.Load('res:/dx9/model/ship/IconPreview/PreviewTurretShip.red')
         else:
@@ -1077,7 +1072,7 @@ class EvePhoto(svc.photo):
         boundingSphereRadius = boundingSphere[3] * 0.9
         boundingSphereCenter = boundingSphere[:3]
         surface = self.TakeSnapShotUsingBoundingSphere(scene, size, boundingSphereRadius, boundingSphereCenter, cameraAngle=(0.7, -0.6, 0.0), transparentBackground=transparentBackground, bgColor=bgColor, fov=0.5)
-        return self._SaveSurfaceToFile(surface, renderPath)
+        return self._SaveSurfaceToFile(surface, 'Pictures/Gids/' + self.GetPictureFileName(typeinfo, size))
 
 
 
