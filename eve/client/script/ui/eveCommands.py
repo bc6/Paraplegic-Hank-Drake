@@ -1644,9 +1644,6 @@ class EveCommandService(svc.cmd):
                 break
 
         sm.GetService('space').Indicate(cmd.GetDescription(), '<center>%s' % mls.UI_CMD_CLICKTARGET, delayMs)
-        focus = uicore.registry.GetFocus()
-        if hasattr(focus, 'GetCombatCommandItemID'):
-            self.ExecuteCombatCommand(focus.GetCombatCommandItemID(), None)
 
 
 

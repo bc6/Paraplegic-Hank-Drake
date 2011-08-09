@@ -280,7 +280,7 @@ class OverView(form.ActionPanel):
         scroll.OnSelectionChange = self.OnScrollSelectionChange
         scroll.debug = 0
         scroll.OnChar = self.OnChar
-        scroll.GetCombatCommandItemID = self.GetCombatCommandItemID
+        scroll.OnKeyUp = self.OnKeyUp
         (columns, displayColumns,) = sm.GetService('tactical').GetColumns()
         self.sr.scroll = scroll
         self.OnOverviewTabChanged(None, {})
@@ -296,11 +296,11 @@ class OverView(form.ActionPanel):
 
 
 
-    def GetCombatCommandItemID(self, *args):
+    def OnKeyUp(self, *args):
         selected = self.sr.scroll.GetSelected()
         if not selected:
             return 
-        return selected[0].itemID
+        uicore.cmd.ExecuteCombatCommand(selected[0].itemID, uiconst.UI_CLICK)
 
 
 

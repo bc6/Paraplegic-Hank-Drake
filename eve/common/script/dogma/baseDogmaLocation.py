@@ -1743,7 +1743,15 @@ class BaseDogmaLocation():
                 if isinstance(itemKey, tuple):
                     typeID = itemKey[2]
                 else:
-                    typeID = self.inventory2.GetItem(itemKey)[const.ixTypeID]
+                    try:
+                        typeID = self.inventory2.GetItem(itemKey)[const.ixTypeID]
+                    except RuntimeError as e:
+                        if len(e.args) and e.args[0].startswith('GetItem: Item not here'):
+                            log.LogError("OnLocationRequiredSkillAttributeChanged::inventory item doesn't exist", itemKey)
+                        else:
+                            log.LogException('PropagateOwnerRequiredSkillAttributeChanged - failed to get the item type')
+                        sys.exc_clear()
+                        continue
                 self.LogError("OnLocationRequiredSkillAttributeChanged::dogmaItem doesn't exist", itemKey)
                 sys.exc_clear()
             if typeID is not None and skillIDs.intersection(self.dogmaStaticMgr.GetRequiredSkills(typeID)):

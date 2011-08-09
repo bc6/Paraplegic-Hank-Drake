@@ -2396,8 +2396,12 @@ class MachoNetService(service.Service):
                         uthread.worker('machoNet::TransportReader::LayTracks', self.TransportReader, self.transportsByID[transportID])
                         self.externalAddressesByNodeID[response.nodeID] = (address, response.serviceMask)
                         if self.clusterStartupPhase:
-                            isPolaris = response.nodeID == self.machoNet.GetNodeFromAddress(const.cluster.SERVICE_POLARIS, 0)
-                            sm.ScatterEvent('OnNewNode', response.nodeID, response.myaddress, response.isProxy, isPolaris, response.serviceMask)
+                            if boot.role == 'proxy':
+                                polarisID = self.session.ConnectToSolServerService('machoNet').GetNodeFromAddress(const.cluster.SERVICE_POLARIS, 0)
+                            else:
+                                polarisID = self.GetNodeFromAddress(const.cluster.SERVICE_POLARIS, 0)
+                            isPolaris = response.nodeID == polarisID
+                            sm.ScatterEvent('OnNewNode', response.nodeID, address, response.isProxy, isPolaris, response.serviceMask)
                         blue.net.EnumerateTransport(transport.transport.socket.getSocketDescriptor(), transport.transportID, transport.transportName, 0, 0, transport.nodeID)
                     others = response.others
                     for (otherAddress, otherNodeID,) in others:
@@ -4087,7 +4091,11 @@ class MachoNetService(service.Service):
                             raise 
                         self.externalAddressesByNodeID[theMessage.nodeID] = (theMessage.myaddress, theMessage.serviceMask)
                         if self.clusterStartupPhase:
-                            isPolaris = theMessage.nodeID == self.machoNet.GetNodeFromAddress(const.cluster.SERVICE_POLARIS, 0)
+                            if boot.role == 'proxy':
+                                polarisID = self.session.ConnectToSolServerService('machoNet').GetNodeFromAddress(const.cluster.SERVICE_POLARIS, 0)
+                            else:
+                                polarisID = self.GetNodeFromAddress(const.cluster.SERVICE_POLARIS, 0)
+                            isPolaris = theMessage.nodeID == polarisID
                             sm.ScatterEvent('OnNewNode', theMessage.nodeID, theMessage.myaddress, theMessage.isProxy, isPolaris, theMessage.serviceMask)
                     else:
                         isPolaris = macho.mode == 'server' and self.GetNodeID() == self.GetNodeFromAddress(const.cluster.SERVICE_POLARIS, 0)

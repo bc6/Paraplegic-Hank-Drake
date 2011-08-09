@@ -102,9 +102,14 @@ class LocationDogmaItem(dogmax.BaseDogmaItem):
     def _FlushEffects(self):
         stackTraceCount = 0
         for fittedItem in self.fittedItems.itervalues():
-            if fittedItem.itemID == self.itemID:
-                continue
-            stackTraceCount += fittedItem.FlushEffects()
+            try:
+                if fittedItem.itemID == self.itemID:
+                    continue
+                stackTraceCount += fittedItem.FlushEffects()
+            except ReferenceError:
+                self.broker.LogWarn('Failed to _FlushEffects for a fitted dogmaitem that is no longer around - we should have cleaned this up')
+                log.LogException(channel='svc.dogmaIM')
+                sys.exc_clear()
 
         stackTraceCount += super(dogmax.LocationDogmaItem, self)._FlushEffects()
         return stackTraceCount
