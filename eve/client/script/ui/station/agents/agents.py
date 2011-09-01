@@ -300,7 +300,7 @@ class Agents(service.Service):
     def __GetConversation(self, wnd, actionID):
         if wnd is None or wnd.destroyed or wnd.sr is None:
             return (None, None, None)
-        tmp = wnd.sr.agentMoniker.DoAction(actionID)
+        tmp = wnd.sr.agentMoniker.DoAction(actionID, util.GetActiveShip())
         if wnd is None or wnd.destroyed or wnd.sr is None:
             return (None, None, None)
         (ret, wnd.sr.oob,) = tmp
@@ -422,6 +422,10 @@ class Agents(service.Service):
         restrictions = self.GetAgentMoniker(agentID).GetDungeonShipRestrictions(dungeonID)
         title = mls.AGT_STANDARDMISSION_GETJOURNALINFO_DUNGEONOBJECTIVE_PERMITTEDSHIPS_HEADER
         ship = sm.GetService('godma').GetItem(eve.session.shipid)
+        ship = None
+        shipID = util.GetActiveShip()
+        if shipID is not None:
+            ship = sm.GetService('clientDogmaIM').GetDogmaLocation().GetDogmaItem(shipID)
         if ship:
             shipGroupID = getattr(ship, 'groupID', None)
             if shipGroupID:

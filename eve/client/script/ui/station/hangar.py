@@ -82,7 +82,7 @@ class ItemHangar(form.VirtualInvWindow):
 
 
     def IsMine(self, rec):
-        return rec.locationID == eve.session.stationid and rec.ownerID == eve.session.charid and rec.flagID == const.flagHangar and cfg.invtypes.Get(rec.typeID).categoryID != const.categoryShip
+        return rec.locationID == session.stationid2 and rec.ownerID == eve.session.charid and rec.flagID == const.flagHangar and cfg.invtypes.Get(rec.typeID).categoryID != const.categoryShip
 
 
 
@@ -134,7 +134,7 @@ class ShipHangar(form.VirtualInvWindow):
 
 
     def IsMine(self, rec):
-        return rec.locationID == eve.session.stationid and rec.ownerID == eve.session.charid and rec.flagID == const.flagHangar and cfg.invtypes.Get(rec.typeID).Group().Category().id == const.categoryShip
+        return rec.locationID == session.stationid2 and rec.ownerID == eve.session.charid and rec.flagID == const.flagHangar and cfg.invtypes.Get(rec.typeID).Group().Category().id == const.categoryShip
 
 
 

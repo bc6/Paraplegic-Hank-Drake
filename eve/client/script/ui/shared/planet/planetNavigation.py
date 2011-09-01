@@ -50,6 +50,7 @@ class PlanetCamera(object):
 
     def Close(self):
         self.oldCameraPos = None
+        self.cameraAuto = False
         sm.StartService('renderCallbackManager').RemovePostRenderCallbackFunction(self._RenderCallback)
 
 

@@ -105,31 +105,26 @@ class CloneJump(service.Service):
 
 
     def DestroyInstalledClone(self, cloneID):
-        if getattr(eve.session, 'shipid', None) is None:
-            eve.Message('CannotPerformActionWithoutShip')
-            return 
+        text = None
         myClones = self.GetClones()
         if myClones:
             myClones = myClones.Index('jumpCloneID')
-        else:
-            myClones = []
-        shipClones = self.GetShipClones()
-        if shipClones:
-            shipClones = shipClones.Index('jumpCloneID')
-        else:
-            shipClones = []
-        text = None
-        if cloneID in myClones:
-            if myClones[cloneID].locationID == eve.session.stationid:
-                text = mls.UI_INFLIGHT_DESTROYINSTALLEDCLONE1
-            else:
-                cfg.evelocations.Prime([myClones[cloneID].locationID])
-                text = mls.UI_INFLIGHT_DESTROYINSTALLEDCLONE2 % {'location': cfg.evelocations.Get(myClones[cloneID].locationID).name}
-        elif cloneID in shipClones:
-            cfg.eveowners.Prime([shipClones[cloneID].ownerID])
-            cfg.evelocations.Prime([shipClones[cloneID].locationID])
-            text = mls.UI_INFLIGHT_DESTROYINSTALLEDCLONE3 % {'name': cfg.eveowners.Get(shipClones[cloneID].ownerID).name,
-             'location': cfg.evelocations.Get(shipClones[cloneID].locationID).name}
+            if cloneID in myClones:
+                if myClones[cloneID].locationID == eve.session.stationid:
+                    text = mls.UI_INFLIGHT_DESTROYINSTALLEDCLONE1
+                else:
+                    cfg.evelocations.Prime([myClones[cloneID].locationID])
+                    text = mls.UI_INFLIGHT_DESTROYINSTALLEDCLONE2 % {'location': cfg.evelocations.Get(myClones[cloneID].locationID).name}
+        if not text:
+            if util.GetActiveShip():
+                shipClones = self.GetShipClones()
+                if shipClones:
+                    shipClones = shipClones.Index('jumpCloneID')
+                    if cloneID in shipClones:
+                        cfg.eveowners.Prime([shipClones[cloneID].ownerID])
+                        cfg.evelocations.Prime([shipClones[cloneID].locationID])
+                        text = mls.UI_INFLIGHT_DESTROYINSTALLEDCLONE3 % {'name': cfg.eveowners.Get(shipClones[cloneID].ownerID).name,
+                         'location': cfg.evelocations.Get(shipClones[cloneID].locationID).name}
         if not text:
             return 
         ret = eve.Message('AskAreYouSure', {'cons': mls.UI_INFLIGHT_DESTROYINSTALLEDCLONE4 % {'text': text}}, uiconst.YESNO)

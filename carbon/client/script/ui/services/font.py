@@ -17,21 +17,7 @@ globals().update(ft.constants)
 FTException = ft.Exception
 tmp = 1
 exports = {}
-for state in ['b',
- 'i',
- 'shadow',
- 'u',
- 'strong',
- 's',
- 'em',
- 'tt',
- 'code',
- 'strike',
- 'sup',
- 'sub',
- 'samp',
- 'kbd',
- 'o']:
+for state in ['b', 'i', 'u']:
     exports['fontflags.' + state] = tmp
     tmp *= 2
 

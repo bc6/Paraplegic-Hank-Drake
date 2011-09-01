@@ -1730,7 +1730,11 @@ class Scanner(uicls.Window):
         self.sr.analyzeBtn.Disable()
         self.sr.analyzeBtn.opacity = 0.25
         scanSvc = sm.GetService('scanSvc')
-        scanSvc.RequestScans()
+        try:
+            scanSvc.RequestScans()
+        except UserError as e:
+            self.CheckButtonStates()
+            raise e
         self.LoadResultList()
 
 

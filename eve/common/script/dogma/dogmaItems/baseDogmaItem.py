@@ -209,20 +209,6 @@ class BaseDogmaItem(dogmax.SlimDogmaItem):
                 log.LogException()
                 sys.exc_clear()
 
-        activeDungeonEffectsByItem = dogmaLM.activeDungeonEffectsByItem
-        for effectTuple in activeDungeonEffectsByItem.get(itemID, [])[:]:
-            if not isinstance(effectTuple, tuple):
-                continue
-            (effectBeaconID, effectID,) = effectTuple
-            try:
-                dogmaLM.StopMultiEffectOnItem(effectBeaconID, effectID, itemID)
-            except Exception:
-                stackTraceCount += 1
-                log.LogException()
-                sys.exc_clear()
-
-        if itemID in activeDungeonEffectsByItem:
-            del activeDungeonEffectsByItem[itemID]
         return stackTraceCount
 
 

@@ -30,7 +30,7 @@ class BaseTemplate(uicls.Container):
     def PlayIntro(self, videoPath):
         if not videoPath:
             return 
-        video = uicls.VideoSprite(parent=self, videoPath=videoPath, align=uiconst.TOALL, padding=(-15, -75, -15, -75), positionComponent=getattr(self.uiDesktop, 'positionComponent', None))
+        video = uicls.VideoSprite(parent=self, videoPath=videoPath, align=uiconst.TOALL, padding=(-51, -139, -51, -139), positionComponent=getattr(self.uiDesktop, 'positionComponent', None))
         while not video.isFinished:
             blue.synchro.Yield()
 
@@ -60,10 +60,9 @@ class SOV(BaseTemplate):
         text += '<fontsize=25>%s</b>' % data.middleText
         label = uicls.Label(parent=self, text=text, align=uiconst.CENTER, pos=(0, -20, 230, 0))
         uicore.animations.BlinkIn(label)
-        uicls.Sprite(name='scopeNewsLogo', parent=self, texturePath='res:/UI/Texture/classes/CQMainScreen/scopeNewsLogo.png', align=uiconst.BOTTOMLEFT, pos=(30, 10, 252, 114))
-        autoText = uicls.AutoTextScroll(parent=self, align=uiconst.TOBOTTOM, scrollSpeed=70, height=80, fontSize=50, padBottom=28, padLeft=100, textList=[data.bottomText], fadeColor=BG_GRAY)
-        uicls.Fill(bgParent=autoText, color=BG_GRAY)
-        uicore.animations.BlinkIn(autoText)
+        banner = uicls.TextBanner(parent=self, align=uiconst.TOBOTTOM, padTop=10, scrollText=False, text=data.bottomText, fontSize=30, leftContWidth=310)
+        uicls.Sprite(parent=banner.leftCont, pos=(30, -20, 252, 114), texturePath='res:/UI/Texture/Classes/CQMainScreen/scopeNewsLogo.png')
+        uicore.animations.BlinkIn(banner)
         blue.pyos.synchro.Sleep(TEMPLATE_DURATION)
 
 
@@ -80,8 +79,8 @@ class CareerAgent(BaseTemplate):
         self.PlayIntro(data.get('introVideoPath', None))
         self.leftCont = uicls.Container(parent=self, align=uiconst.TOLEFT, width=640, padRight=10)
         self.rightCont = uicls.ScreenFrame5(parent=self, align=uiconst.TOALL)
-        heading = uicls.ScreenHeading1(parent=self.leftCont, appear=True, align=uiconst.TOTOP, height=100, leftContWidth=0, gradientColor=(0.35, 0.35, 0.35, 1.0))
-        uicls.Label(parent=heading.mainCont, align=uiconst.CENTER, text='<b>%s' % uiutil.UpperCase(data.headingText), fontsize=80)
+        headingCont = uicls.Container(parent=self.leftCont, align=uiconst.TOTOP, height=100, bgColor=(0.35, 0.35, 0.35, 1.0))
+        uicls.Label(parent=headingCont, text=data.headingText, fontsize=80, align=uiconst.CENTER, color=util.Color.WHITE, uppercase=True)
         blue.pyos.synchro.Sleep(300)
         uicls.ScreenHeading2(parent=self.leftCont, appear=True, align=uiconst.TOTOP, text=data.subHeadingText)
         frame = uicls.ScreenFrame4(parent=self.leftCont, align=uiconst.TOALL, appear=True, padTop=10)
@@ -285,16 +284,22 @@ class Plex(BaseTemplate):
         if data is None:
             return 
         self.PlayIntro(data.get('introVideoPath', None))
-        banner = uicls.TextBanner(parent=self, align=uiconst.TOBOTTOM, padTop=10, scrollText=False, text=data.bottomText, fontSize=35, leftContWidth=310)
-        uicls.Sprite(parent=banner.leftCont, pos=(10, -20, 300, 100), texturePath='res:/UI/Texture/Classes/CQMainScreen/concordLogo.png')
-        uicore.animations.BlinkIn(banner, sleep=True)
-        frame = uicls.ScreenFrame4(parent=self, align=uiconst.TOALL)
-        blue.pyos.synchro.Sleep(300)
-        video = uicls.VideoSprite(parent=frame.mainCont, videoPath=data.videoPath, align=uiconst.TOALL, positionComponent=getattr(self.uiDesktop, 'positionComponent', None))
-        uicore.animations.BlinkIn(frame.mainCont)
-        while not video.isFinished:
-            blue.synchro.Yield()
-
+        leftFrame = uicls.ScreenFrame5(parent=self, align=uiconst.TOLEFT, width=700)
+        uicls.Sprite(name='plexLogo', parent=leftFrame.mainCont, align=uiconst.TOPLEFT, pos=(10, 30, 262, 326), texturePath='res:/UI/Texture/Classes/CQMainScreen/plexLogo.png')
+        uicls.Label(name='heading', parent=leftFrame.mainCont, pos=(310, 20, 380, 0), text='<b>' + data.headingText, fontsize=70)
+        uicls.Label(name='subHeading', parent=leftFrame.mainCont, pos=(310, 85, 380, 0), text=data.subHeadingText, fontsize=35)
+        greenCont = uicls.Container(name='trainCont', parent=leftFrame.mainCont, align=uiconst.TOPLEFT, bgColor=(0, 0.3, 0, 1.0), pos=(310, 143, 370, 50))
+        uicls.Label(parent=greenCont, text='<b>%s' % data.buttonText, fontsize=20, align=uiconst.CENTER)
+        uicls.Label(parent=leftFrame.mainCont, pos=(10, 250, 690, 0), text=data.mainText, fontsize=35)
+        uicls.Sprite(parent=leftFrame.mainCont, align=uiconst.BOTTOMRIGHT, pos=(10, 30, 300, 100), texturePath='res:/UI/Texture/Classes/CQMainScreen/concordLogo.png')
+        leftFrame.mainCont.opacity = 0.0
+        blue.synchro.Sleep(300)
+        uicore.animations.BlinkIn(leftFrame.mainCont, sleep=True)
+        rightFrame = uicls.ScreenFrame1(parent=self, align=uiconst.TORIGHT, width=540)
+        blue.synchro.Sleep(300)
+        self.auraSprite = uicls.Sprite(name='aura', parent=rightFrame.mainCont, texturePath='res:/UI/Texture/Classes/CQMainScreen/aura.png', align=uiconst.CENTER, width=470, height=470)
+        uthread.new(BlinkSprite, self.auraSprite)
+        blue.pyos.synchro.Sleep(TEMPLATE_DURATION)
 
 
 
@@ -310,7 +315,7 @@ class AuraMessage(BaseTemplate):
         self.PlayIntro(data.get('introVideoPath', None))
         leftFrame = uicls.ScreenFrame5(parent=self, align=uiconst.TOPLEFT, pos=(80, 50, 450, 450))
         self.auraSprite = uicls.Sprite(name='aura', parent=leftFrame.mainCont, texturePath='res:/UI/Texture/Classes/CQMainScreen/aura.png', align=uiconst.TOALL)
-        uthread.new(self.AnimBlinkAura)
+        uthread.new(BlinkSprite, self.auraSprite)
         rightFrame = uicls.ScreenFrame2(parent=self, align=uiconst.TOPRIGHT, pos=(80, 50, 550, 300))
         blue.pyos.synchro.Sleep(600)
         uicore.animations.BlinkIn(rightFrame.mainCont)
@@ -321,16 +326,6 @@ class AuraMessage(BaseTemplate):
         lblBody = uicls.Label(parent=rightFrame.mainCont, text=data.subHeadingText, fontsize=35, align=uiconst.TOTOP, padTop=10)
         rightFrame.height = lblHead.height + lblBody.height + 65
         blue.pyos.synchro.Sleep(TEMPLATE_DURATION)
-
-
-
-    def AnimBlinkAura(self):
-        while not self.destroyed:
-            num = random.randint(2, 4)
-            uicore.animations.SpGlowFadeOut(self.auraSprite, duration=0.4 / num, loops=num)
-            uicore.animations.SpColorMorphTo(self.auraSprite, startColor=(0.3, 0.3, 0.3, 1.0), endColor=util.Color.WHITE, duration=1.0)
-            blue.pyos.synchro.Sleep(random.randint(3000, 5000))
-
 
 
 
@@ -350,6 +345,33 @@ class CloneStatus(BaseTemplate):
         sf = uicls.ScreenFrame2(parent=top, padding=10)
         blue.pyos.synchro.Sleep(30)
         blue.pyos.synchro.Sleep(3000)
+        blue.pyos.synchro.Sleep(TEMPLATE_DURATION)
+
+
+
+
+class VirtualGoodsStore(BaseTemplate):
+    __guid__ = 'cqscreen.templates.VirtualGoodsStore'
+    default_name = 'VirtualGoodsStoreTemplate'
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def Play(self, data):
+        self.PlayIntro(data.get('introVideoPath', None))
+        frame = uicls.ScreenFrame5(parent=self, align=uiconst.TOALL)
+        uicls.Label(name='headingLabel', parent=frame.mainCont, align=uiconst.CENTERTOP, fontsize=80, text=data.headingText, top=30)
+        uicore.animations.BlinkIn(frame.mainCont, sleep=True)
+        blue.synchro.Sleep(300)
+        img1 = uicls.Sprite(name='img1', parent=frame.mainCont, pos=(10, 130, 380, 285), align=uiconst.TOPLEFT)
+        uicore.animations.BlinkIn(img1, duration=0.05, sleep=True)
+        img2 = uicls.Sprite(name='img2', parent=frame.mainCont, pos=(0, 130, 380, 285), align=uiconst.CENTERTOP)
+        uicore.animations.BlinkIn(img2, duration=0.05, sleep=True)
+        img3 = uicls.Sprite(name='img3', parent=frame.mainCont, pos=(10, 130, 380, 285), align=uiconst.TOPRIGHT)
+        uicore.animations.BlinkIn(img3, duration=0.05, sleep=True)
+        for (i, sprite,) in enumerate((img1, img2, img3)):
+            imgPath = sm.GetService('photo').GetStorebanner(i + 1, prefs.languageID, sprite)
+            if imgPath is None:
+                sm.GetService('photo').GetStorebanner(i + 1, 'EN', sprite)
+
         blue.pyos.synchro.Sleep(TEMPLATE_DURATION)
 
 
@@ -438,6 +460,16 @@ class Scene3dCont(uicls.Container):
         pitchCurve.extrapolation = trinity.TRIEXT_CONSTANT
         pitchCurve.AddKey(0.0, -10.0, 0, 0, trinity.TRIINT_HERMITE)
         pitchCurve.AddKey(self.duration, 10.0, 0, 0, trinity.TRIINT_HERMITE)
+
+
+
+
+def BlinkSprite(sprite):
+    while not sprite.destroyed:
+        num = random.randint(2, 4)
+        uicore.animations.SpGlowFadeOut(sprite, duration=0.4 / num, loops=num)
+        uicore.animations.SpColorMorphTo(sprite, startColor=(0.3, 0.3, 0.3, 1.0), endColor=util.Color.WHITE, duration=1.0)
+        blue.pyos.synchro.Sleep(random.randint(3000, 5000))
 
 
 

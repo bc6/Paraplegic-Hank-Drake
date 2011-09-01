@@ -21,7 +21,7 @@ class ShipHologramComponentManager(service.Service):
     __displayname__ = 'Ship Hologram Component Client Service'
     __componentTypes__ = ['shipHologram']
     __notifyevents__ = ['OnActiveShipModelChange']
-    __dependencies__ = ['station', 'godma']
+    __dependencies__ = ['station']
 
     def __init__(self):
         service.Service.__init__(self)
@@ -153,7 +153,8 @@ class ShipHologramComponentManager(service.Service):
             boundingRadius = 30.0
         scale *= 0.6 + 0.4 * boundingRadius / 970.0
         param.w = scale
-        if getattr(self.godma.GetItem(activeShipID), 'groupID', None) == const.groupCapsule:
+        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+        if getattr(dogmaLocation.GetDogmaItem(activeShipID), 'groupID', None) == const.groupCapsule:
             param.w *= 0.6
         param = effect.parameters['Color']
         param.x = hologramComponent.color[0]

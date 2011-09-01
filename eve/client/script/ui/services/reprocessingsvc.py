@@ -86,10 +86,7 @@ class ReprocessingSvc(service.Service):
 
 
     def ReprocessDlg(self, items = None, outputOwner = None, outputFlag = None):
-        if eve.session.shipid:
-            uthread.new(self.uthread_ReprocessDlg, items, outputOwner, outputFlag)
-        elif eve.Message('AskActivateShip', {}, uiconst.YESNO, suppress=uiconst.ID_YES) == uiconst.ID_YES:
-            sm.GetService('station').SelectShipDlg()
+        uthread.new(self.uthread_ReprocessDlg, items, outputOwner, outputFlag)
 
 
 
@@ -395,12 +392,13 @@ class ReprocessingDialog(uicls.Window):
     def LoadItems(self, items):
         self.items = {}
         self.quotes = {}
+        activeShipID = util.GetActiveShip()
         for item in items:
             if item.flagID == const.flagReward:
                 continue
             if item.groupID == const.groupMineral:
                 continue
-            if item.itemID in (eve.session.shipid, eve.session.charid):
+            if item.itemID in (activeShipID, eve.session.charid):
                 continue
             self.items[item.itemID] = item
 
@@ -416,7 +414,8 @@ class ReprocessingDialog(uicls.Window):
                 itemKeys.append(item.rec.itemID)
 
         if len(itemKeys):
-            self.quotes = sm.GetService('reprocessing').GetReprocessingSvc().GetQuotes(itemKeys)
+            activeShipID = util.GetActiveShip()
+            self.quotes = sm.GetService('reprocessing').GetReprocessingSvc().GetQuotes(itemKeys, activeShipID)
             self._ReprocessingDialog__LoadQuotes()
             uiutil.FindChild(self, 'reprocessingServiceReprocessBtn').Enable()
 
@@ -653,7 +652,8 @@ class ReprocessingDialog(uicls.Window):
 
     def AddItem(self, item):
         self.LogInfo('AddItem item:', item)
-        if item.itemID in (eve.session.shipid, eve.session.charid):
+        activeShipID = util.GetActiveShip()
+        if item.itemID in (activeShipID, eve.session.charid):
             return 
         if item.flagID == const.flagReward:
             return 
@@ -664,7 +664,7 @@ class ReprocessingDialog(uicls.Window):
         if self is None or self.destroyed:
             return 
         self.items[item.itemID] = item
-        quote = uthread.parallel([(sm.GetService('reprocessing').GetReprocessingSvc().GetQuotes, ([item.itemID],))])[0]
+        quote = uthread.parallel([(sm.GetService('reprocessing').GetReprocessingSvc().GetQuotes, ([item.itemID], activeShipID))])[0]
         if self is None or self.destroyed:
             return 
         if quote.has_key(item.itemID):
@@ -680,7 +680,8 @@ class ReprocessingDialog(uicls.Window):
 
     def UpdateItem(self, item, change):
         self.LogInfo('UpdateItem item:', item)
-        if item.itemID in (eve.session.shipid, eve.session.charid):
+        activeShipID = util.GetActiveShip()
+        if item.itemID in (activeShipID, eve.session.charid):
             return 
         if item.flagID == const.flagReward:
             return 
@@ -691,7 +692,7 @@ class ReprocessingDialog(uicls.Window):
         if self is None or self.destroyed:
             return 
         self.items[item.itemID] = item
-        quote = uthread.parallel([(sm.GetService('reprocessing').GetReprocessingSvc().GetQuotes, ([item.itemID],))])[0]
+        quote = uthread.parallel([(sm.GetService('reprocessing').GetReprocessingSvc().GetQuotes, ([item.itemID], activeShipID))])[0]
         if self is None or self.destroyed:
             return 
         if quote.has_key(item.itemID):
@@ -709,7 +710,7 @@ class ReprocessingDialog(uicls.Window):
         if self.reprocessing == 1:
             return 
         self.LogInfo('RemoveItem item:', item)
-        if item.itemID in (eve.session.shipid, eve.session.charid):
+        if item.itemID in (util.GetActiveShip(), eve.session.charid):
             return 
         if item.flagID == const.flagReward:
             return 
@@ -748,7 +749,7 @@ class ReprocessingDialog(uicls.Window):
                 if entry is None or not entry.checked:
                     continue
                 itemID = entry.itemID
-                if itemID == session.shipid:
+                if itemID == util.GetActiveShip():
                     eve.Message('CannotReprocessActive')
                 if not self.quotes.has_key(itemID):
                     continue

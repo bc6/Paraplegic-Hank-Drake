@@ -163,7 +163,11 @@ class Generic(uicls.SE_BaseClassCore):
         if self.sr.node:
             self.sr.node.scroll.SelectNode(self.sr.node)
             if self.sr.node.Get('OnDblClick', None):
-                self.sr.node.OnDblClick(self)
+                if isinstance(self.sr.node.OnDblClick, tuple):
+                    func = self.sr.node.OnDblClick[0]
+                    func(self, *self.sr.node.OnDblClick[1:])
+                else:
+                    self.sr.node.OnDblClick(self)
             elif getattr(self, 'confirmOnDblClick', None):
                 uicore.registry.Confirm()
             elif self.sr.node.Get('typeID', None):
@@ -1114,7 +1118,7 @@ class Text(uicls.SE_BaseClassCore):
         self.sr.text = self.sr.label = uicls.Label(text='', parent=self, left=8, top=0, state=uiconst.UI_DISABLED, color=None, singleline=1, align=uiconst.CENTERLEFT)
         self.sr.infoicon = uicls.InfoIcon(size=16, left=2, top=2, parent=self, idx=0, align=uiconst.TOPRIGHT)
         self.sr.infoicon.OnClick = self.ShowInfo
-        self.sr.icon = uicls.Icon(icon='ui_9_24_14', parent=self, pos=(1, 2, 24, 24), align=uiconst.TOPLEFT, idx=0, ignoreSize=True)
+        self.sr.icon = uicls.Icon(parent=self, pos=(1, 2, 24, 24), align=uiconst.TOPLEFT, idx=0, ignoreSize=True)
         self.sr.line = uicls.Container(name='lineparent', align=uiconst.TOBOTTOM, parent=self, idx=0, height=1)
         uicls.Fill(parent=self.sr.line)
 
@@ -1922,7 +1926,7 @@ class IconEntry(uicls.SE_BaseClassCore):
     def GetBlink(self):
         if self.sr.Get('blink', None):
             return self.sr.blink
-        blink = uicls.Sprite(parent=self, name='hiliteFrame', padding=(-46, -50, -46, -50), state=uiconst.UI_HIDDEN, texturePath='res:/UI/Texture/selectionglow.dds', color=(0.28, 0.3, 0.35, 1.0), align=uiconst.TOALL, blendMode=trinity.TR2_SBM_ADDX2)
+        blink = uicls.Fill(bgParent=self, name='hiliteFrame', state=uiconst.UI_HIDDEN, color=(0.28, 0.3, 0.35, 1.0), align=uiconst.TOALL)
         self.sr.blink = blink
         self.r = 0.28
         self.g = 0.3

@@ -3,19 +3,22 @@ import iocp
 import log
 import sys
 from log import LGINFO, LGNOTICE, LGWARN, LGERR
+import _slsocket as _socket
 if iocp.UsingIOCP():
     import carbonio
-    from carbonio import _socket
-    sys.modules['stacklessio'] = carbonio
+    select = None
+    _socket.use_carbonio(True)
+    carbonio._socket = _socket
     print 'Network layer using: CarbonIO'
     log.general.Log('Network layer using: CarbonIO', LGINFO)
-    select = None
     if iocp.LoggingCarbonIO():
         print 'installing CarbonIO logging callbacks'
         blue.net.InstallLoggingCallbacks()
 else:
-    from stacklessio import _socket, select
-    sys.modules['carbonio'] = None
+    import stacklessio
+    import slselect as select
+    _socket.use_carbonio(False)
+    stacklessio._socket = _socket
     print 'Network layer using: StacklessIO'
     log.general.Log('Network layer using: StacklessIO', LGINFO)
 sys.modules['_socket'] = _socket

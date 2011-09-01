@@ -876,7 +876,6 @@ def ColorStarsByFleetMembers(colorInfo, starColorMode):
 def ColorStarsByCorpMembers(colorInfo, starColorMode):
     corp = sm.RemoteSvc('map').GetMyExtraMapInfo()
     if corp is not None:
-        corp = corp[:2]
         solarsystems = {}
         for each in corp:
             if each.locationID not in solarsystems:

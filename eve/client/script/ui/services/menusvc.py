@@ -340,7 +340,7 @@ class MenuSvc(service.Service):
         checkIfShipPlanetaryCommoditiesHold = categoryID == const.categoryShip and bool(godmaSM.GetType(invItem.typeID).specialPlanetaryCommoditiesHoldCapacity)
         checkViewOnly = bool(viewOnly)
         checkIfAtStation = util.IsStation(invItem.locationID)
-        checkIfActiveShip = invItem.itemID == session.shipid
+        checkIfActiveShip = invItem.itemID == util.GetActiveShip()
         checkIfInHangarAtStation = not (bool(checkIfInHangar) and invItem.locationID != session.stationid)
         checkContainer = invItem.groupID in (const.groupWreck,
          const.groupCargoContainer,
@@ -354,7 +354,7 @@ class MenuSvc(service.Service):
         checkPlasticWrap = invItem.typeID == const.typePlasticWrap
         checkIsStation = util.IsStation(invItem.itemID)
         checkIfMineOrCorps = invItem.ownerID in [session.corpid, session.charid]
-        checkIfImInStation = bool(session.stationid)
+        checkIfImInStation = bool(session.stationid2)
         checkIfIsMine = invItem.ownerID == session.charid
         checkIfIsShip = invItem.categoryID == const.categoryShip
         checkIfIsCapsule = invItem.groupID == const.groupCapsule
@@ -362,7 +362,7 @@ class MenuSvc(service.Service):
         checkIfIsStructure = invItem.categoryID == const.categoryStructure
         checkIfIsSovStructure = categoryID == const.categorySovereigntyStructure
         checkIfIsHardware = invCategory.IsHardware()
-        checkActiveShip = bool(session.shipid)
+        checkActiveShip = util.GetActiveShip() is not None
         checkIfRepackable = categoryID in const.repackableCategorys or groupID in const.repackableGroups
         checkIfNoneLocation = invItem.flagID == const.flagNone
         checkIfAnchorable = invGroup.anchorable
@@ -383,6 +383,7 @@ class MenuSvc(service.Service):
         checkIfLockedInALSC = invItem.flagID == const.flagLocked
         checkIfUnlockedInALSC = invItem.flagID == const.flagUnlocked
         checkSameLocation = self.CheckSameLocation(invItem)
+        checkSameStation = self.CheckSameStation(invItem)
         checkHasMarketGroup = cfg.invtypes.Get(invItem.typeID).marketGroupID is not None
         checkIsPublished = cfg.invtypes.Get(invItem.typeID).published
         checkRepairService = bool(session.stationid) and bool(serviceMask & const.stationServiceRepairFacilities)
@@ -516,7 +517,7 @@ class MenuSvc(service.Service):
                 if checkIfAtStation and checkIfInHangar and checkPlasticWrap:
                     menuEntries += [[mls.UI_CMD_BREAK, self.Break, [invItem]]]
                     menuEntries += [[mls.UI_CMD_DELIVER, self.DeliverCourierContract, [invItem]]]
-            if checkSameLocation and checkIfIsShip and checkIfImInStation and checkIfAtStation and checkIfInHangar and checkIfIsMine and not checkMultiSelection:
+            if checkSameStation and checkIfIsShip and checkIfImInStation and checkIfAtStation and checkIfInHangar and checkIfIsMine and not checkMultiSelection:
                 if not checkIfActiveShip and checkIfMineOrCorps:
                     menuEntries += [[mls.UI_CMD_MAKEACTIVE, self.ItemLockFunction, (invItem,
                        mls.UI_GENERIC_ACTIVATED.lower(),
@@ -550,19 +551,19 @@ class MenuSvc(service.Service):
                 menuEntries += [[mls.UI_CMD_ASSEMBLESHIP, self.AssembleShip, [invItem]]]
             if checkIfIsShip and checkIfInSpace and checkLocationCorpHangarArrayEquivalent and checkLocationInSpace and not checkSingleton:
                 menuEntries += [[mls.UI_CMD_ASSEMBLESHIP, self.AssembleShip, [invItem]]]
-            if checkIfImInStation and checkIfIsHardware and checkActiveShip and checkSameLocation and not checkImplant and not checkBooster:
+            if checkIfImInStation and checkIfIsHardware and checkActiveShip and checkSameStation and not checkImplant and not checkBooster:
                 menuEntries += [[mls.UI_CMD_FITTOACTIVESHIP, self.TryFit, [invItem]]]
             if checkIfInSpace and not checkIfInDroneBay and checkIfDrone and checkMAInRange:
                 menuEntries += [[mls.UI_CMD_MOVETODRONEBAY, self.FitDrone, [invItem]]]
         menuEntries += [None]
-        if checkIfImInStation and checkIfInHangar and checkIfIsShip and checkSingleton and checkSameLocation:
+        if checkIfImInStation and checkIfInHangar and checkIfIsShip and checkSingleton and checkSameStation:
             menuEntries += [[mls.UI_CMD_OPENCARGOHOLD, self.OpenCargohold, [invItem]]]
             if checkIfShipMAShip:
                 menuEntries += [[mls.UI_CMD_OPENSHIPMAINTENANCEBAY, self.OpenShipMaintenanceBayShip, (invItem.itemID, mls.UI_SHIPMAINTENANCEBAY)]]
             if checkIfShipCHShip:
                 menuEntries += [[mls.UI_CMD_OPENCORPHANGARS, self.OpenShipCorpHangars, (invItem.itemID, 'Corporate Hangars')]]
             menuEntries += [[mls.UI_CMD_OPENDRONEBAY, self.OpenDroneBay, [invItem]]]
-        if checkIfImInStation and checkIfInHangar and checkIfIsShip and checkSingleton and checkSameLocation:
+        if checkIfImInStation and checkIfInHangar and checkIfIsShip and checkSingleton and checkSameStation:
             if checkIfShipFuelBay:
                 menuEntries += [[mls.UI_CMD_OPENFUELBAY, self.OpenSpecialCargoBay, (invItem.itemID, const.flagSpecializedFuelBay)]]
             if checkIfShipOreHold:
@@ -590,7 +591,7 @@ class MenuSvc(service.Service):
             if checkIfShipPlanetaryCommoditiesHold:
                 menuEntries += [[mls.UI_CMD_OPENPLANETARYCOMMODITIESHOLD, self.OpenSpecialCargoBay, (invItem.itemID, const.flagSpecializedPlanetaryCommoditiesHold)]]
         menuEntries += [None]
-        if checkSameLocation and checkIfImInStation and checkIfInHangar and checkIfIsShip and checkIfIsMine and checkSingleton and not checkMultiSelection and not checkViewOnly:
+        if checkSameStation and checkIfImInStation and checkIfInHangar and checkIfIsShip and checkIfIsMine and checkSingleton and not checkMultiSelection and not checkViewOnly:
             menuEntries += [[mls.UI_CMD_CHANGENAME, self.ItemLockFunction, (invItem,
                mls.UI_GENERIC_RENAMED.lower(),
                self.SetName,
@@ -613,7 +614,7 @@ class MenuSvc(service.Service):
                     menuEntries += [[mls.UI_CMD_LAUNCHSHIPFROMBAY, self.LaunchSMAContents, [invItem]]]
                 if checkIfInShipMAShip2:
                     menuEntries += [[mls.UI_CMD_BOARDSHIPFROMBAY, self.BoardSMAShip, (invItem.locationID, invItem.itemID)]]
-        if checkIfImInStation and checkSameLocation and checkIfIsShip and checkIfActiveShip:
+        if checkIfImInStation and checkSameStation and checkIfIsShip and checkIfActiveShip:
             menuEntries += [[mls.UI_CMD_UNDOCKFROMSTATION, self.ExitStation, (invItem,)]]
         if not util.IsNPC(session.corpid) and checkIfIsMyCorps:
             deliverToMenu = []
@@ -1162,6 +1163,22 @@ class MenuSvc(service.Service):
                     if roleRequired & roles == roleRequired:
                         canTake = True
         return bool(canTake)
+
+
+
+    def CheckSameStation(self, invItem):
+        inSameLocation = 0
+        if session.stationid2:
+            if invItem.locationID == session.stationid2:
+                inSameLocation = 1
+            elif util.IsPlayerItem(invItem.locationID):
+                inSameLocation = 1
+            else:
+                office = sm.StartService('corp').GetOffice_NoWireTrip()
+                if office is not None:
+                    if invItem.locationID == office.itemID:
+                        inSameLocation = 1
+        return inSameLocation
 
 
 
@@ -5217,6 +5234,15 @@ class MenuSvc(service.Service):
 
 
 
+    def FitShip(self, invItem):
+        window = sm.GetService('window')
+        wnd = window.GetWindow('fitting')
+        if wnd is not None:
+            wnd.CloseX()
+        window.GetWindow('fitting', decoClass=form.FittingWindow, create=1, maximize=1, shipID=invItem.itemID)
+
+
+
     def LaunchDrones(self, invItems, *args):
         sm.GetService('godma').GetStateManager().SendDroneSettings()
         util.LaunchFromShip(invItems)
@@ -5439,19 +5465,20 @@ class MenuSvc(service.Service):
 
 
 
-    def TryFit(self, invItems):
-        if not session.shipid:
-            return 
+    def TryFit(self, invItems, shipID = None):
+        if not shipID:
+            shipID = util.GetActiveShip()
+            if not shipID:
+                return 
         godma = sm.services['godma']
-        ship = godma.GetItem(session.shipid)
-        if not ship:
-            return 
+        invCache = sm.GetService('invCache')
+        shipInv = invCache.GetInventoryFromId(shipID, locationID=session.stationid2)
+        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
         godmaSM = godma.GetStateManager()
-        invCassi = sm.StartService('invCache')
         useRigs = None
-        shipInv = eve.GetInventoryFromId(session.shipid)
         charges = set()
         for invItem in invItems[:]:
+            dogmaLocation.CheckSkillRequirementsForType(invItem.typeID, 'FittingHasSkillPrerequisites')
             if invItem.categoryID == const.categoryModule:
                 moduleEffects = cfg.dgmtypeeffects.get(invItem.typeID, [])
                 for mEff in moduleEffects:
@@ -5460,41 +5487,18 @@ class MenuSvc(service.Service):
                             useRigs = True if self.RigFittingCheck(invItem) else False
                         if not useRigs:
                             invItems.remove(invItem)
-                            invCassi.UnlockItem(invItem.itemID)
+                            invCache.UnlockItem(invItem.itemID)
                             break
 
-            elif invItem.categoryID == const.categorySubSystem:
-                if godmaSM.CheckFutileSubSystemSwitch(invItem.typeID, invItem.itemID):
-                    invItems.remove(invItem)
-                    invCassi.UnlockItem(invItem.itemID)
             elif invItem.categoryID == const.categoryCharge:
                 charges.add(invItem)
                 invItems.remove(invItem)
 
         if len(invItems) > 0:
-            ship.inventory.moniker.MultiAdd([ invItem.itemID for invItem in invItems ], invItems[0].locationID, flag=const.flagAutoFit)
-            for invItem in invItems:
-                uthread.new(godma.GetStateManager().DelayedOnlineAttempt, session.shipid, invItem.itemID)
-
+            shipInv.moniker.MultiAdd([ invItem.itemID for invItem in invItems ], invItems[0].locationID, flag=const.flagAutoFit)
         if charges:
-            if len(invItems):
-                count = 0
-                while count < 1000:
-                    count += 1
-                    blue.pyos.synchro.Sleep(100)
-                    for item in invItems:
-                        if not godmaSM.GetAttributeValueByID(item.itemID, const.attributeIsOnline):
-                            if count % 20 == 0:
-                                self.LogInfo('After', count / 10, "seconds, I'm still waiting for all modules to come online")
-                            break
-                    else:
-                        break
-
-                else:
-                    self.LogWarn("I've waited for", count / 10, "seconds for all the added modules to come online, but they didn't. Continuing, but expect errors...")
-
             shipStuff = shipInv.List()
-            shipStuff.sort(key=lambda r: (r.flagID, godmaSM.IsSubLocation(r.itemID)))
+            shipStuff.sort(key=lambda r: (r.flagID, isinstance(r.itemID, tuple)))
             loadedSlots = set()
         for invItem in charges:
             chargeDgmType = godmaSM.GetType(invItem.typeID)
@@ -5504,7 +5508,8 @@ class MenuSvc(service.Service):
                     continue
                 if not cfg.IsShipFittingFlag(row.flagID):
                     continue
-                if godmaSM.IsInWeaponBank(row.itemID) and godmaSM.IsSlaveModule(row.itemID):
+                dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+                if dogmaLocation.IsInWeaponBank(row.locationID, row.itemID) and dogmaLocation.GetSlaveModules(row.locationID, row.itemID):
                     continue
                 if row.categoryID == const.categoryCharge:
                     continue
@@ -5526,7 +5531,7 @@ class MenuSvc(service.Service):
                             if godmaSM.GetType(row.typeID).capacity <= chargeDgmType.volume * squatter.stacksize:
                                 break
                     else:
-                        godmaSM.LoadAmmoToModules([row.itemID], invItem.typeID, invItem.itemID, invItem.locationID)
+                        dogmaLocation.LoadAmmoToModules(shipID, [row.itemID], invItem.typeID, invItem.itemID, invItem.locationID)
                         leftOvers = not isCrystalOrScript and invItem.stacksize > godmaSM.GetType(row.typeID).capacity / chargeDgmType.volume
                         loadedSlots.add(row)
                         blue.pyos.synchro.Sleep(100)
@@ -5553,7 +5558,7 @@ class MenuSvc(service.Service):
                     knowCantDoThatWithSomeoneElsesStuff = 1
                 continue
             name = cfg.evelocations.Get(invItem.itemID).name
-            sm.StartService('window').OpenCargo(invItem.itemID, name, "%s's %s" % (name, mls.UI_GENERIC_CARGO), invItem.typeID)
+            sm.StartService('window').OpenCargo(invItem, name, "%s's %s" % (name, mls.UI_GENERIC_CARGO), invItem.typeID)
 
 
 

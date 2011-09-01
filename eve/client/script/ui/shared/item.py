@@ -11,7 +11,7 @@ class InvItem(uicls.Container):
     __guid__ = 'xtriui.InvItem'
     __groups__ = []
     __categories__ = []
-    __notifyevents__ = ['ProcessSessionChange', 'OnSessionChanged', 'OnLockedItemChangeUI']
+    __notifyevents__ = ['ProcessActiveShipChanged', 'OnSessionChanged', 'OnLockedItemChangeUI']
     default_name = 'InvItem'
     default_left = 64
     default_top = 160
@@ -49,10 +49,9 @@ class InvItem(uicls.Container):
 
 
 
-    def ProcessSessionChange(self, isRemote, session, change):
+    def ProcessActiveShipChanged(self, shipID, oldShipID):
         if not self.destroyed and self.sr and self.sr.node:
-            if 'shipid' in change and getattr(self, 'isShip', 0) and self and not self.destroyed:
-                self.Load(self.sr.node)
+            self.Load(self.sr.node)
 
 
 
@@ -165,7 +164,7 @@ class InvItem(uicls.Container):
         self.name = uix.GetItemName(node.item, self.sr.node)
         self.quantity = self.rec.stacksize
         listFlag = self.sr.node.viewMode in ('list', 'details')
-        if eve.session.shipid == self.sr.node.item.itemID:
+        if util.GetActiveShip() == self.sr.node.item.itemID:
             left = [-7, -4][listFlag]
             top = [-7, 1][listFlag]
             uicls.Frame(parent=self.sr.temp, weight=2, idx=0, padding=(left,
@@ -456,8 +455,8 @@ class InvItem(uicls.Container):
             eve.Message('CantDoThatWithSomeoneElsesStuff')
             return 
         name = self.sr.node.name
-        if sm.StartService('menu').CheckSameLocation(self.rec):
-            sm.GetService('window').OpenCargo(self.rec.itemID, name, "%s's cargo" % name, self.rec.typeID)
+        if sm.StartService('menu').CheckSameStation(self.rec):
+            sm.GetService('window').OpenCargo(self.rec, name, "%s's cargo" % name, self.rec.typeID)
 
 
 
@@ -532,6 +531,7 @@ class InvItem(uicls.Container):
         shift = uicore.uilib.Key(uiconst.VK_SHIFT)
         mergeData = []
         stateMgr = sm.StartService('godma').GetStateManager()
+        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
         singletons = []
         for invItem in mergeToMe:
             if invItem.stacksize == 1:
@@ -551,33 +551,34 @@ class InvItem(uicls.Container):
                  self.rec.itemID,
                  quantity,
                  invItem))
-            if type(invItem.itemID) is tuple:
-                flag = invItem.itemID[1]
-                chargeIDs = stateMgr.GetSubLocationsInBank(invItem.itemID)
-                if chargeIDs:
-                    for chargeID in chargeIDs:
-                        charge = stateMgr.GetItem(chargeID)
-                        if charge.flagID == flag:
-                            continue
-                        mergeData.append((charge.itemID,
-                         self.rec.itemID,
-                         charge.stacksize,
-                         charge))
-
-            else:
-                crystalIDs = stateMgr.GetCrystalsInBank(invItem.itemID)
-                if crystalIDs:
-                    for crystalID in crystalIDs:
-                        if crystalID == invItem.itemID:
-                            continue
-                        crystal = stateMgr.GetItem(crystalID)
-                        if crystal.singleton:
-                            singletons.append(crystalID)
-                        else:
-                            mergeData.append((crystal.itemID,
+            if invItem.categoryID == const.categoryCharge and cfg.IsShipFittingFlag(invItem.flagID):
+                if type(invItem.itemID) is tuple:
+                    flag = invItem.itemID[1]
+                    chargeIDs = dogmaLocation.GetSubLocationsInBank(invItem.locationID, invItem.itemID)
+                    if chargeIDs:
+                        for chargeID in chargeIDs:
+                            charge = dogmaLocation.dogmaItems[chargeID]
+                            if charge.flagID == flag:
+                                continue
+                            mergeData.append((charge.itemID,
                              self.rec.itemID,
-                             crystal.stacksize,
-                             crystal))
+                             dogmaLocation.GetAttributeValue(chargeID, const.attributeQuantity),
+                             charge))
+
+                else:
+                    crystalIDs = dogmaLocation.GetCrystalsInBank(invItem.locationID, invItem.itemID)
+                    if crystalIDs:
+                        for crystalID in crystalIDs:
+                            if crystalID == invItem.itemID:
+                                continue
+                            crystal = dogmaLocation.GetItem(crystalID)
+                            if crystal.singleton:
+                                singletons.append(crystalID)
+                            else:
+                                mergeData.append((crystal.itemID,
+                                 self.rec.itemID,
+                                 crystal.stacksize,
+                                 crystal))
 
 
         if singletons and util.GetAttrs(self, 'sr', 'node', 'rec', 'flagID'):
@@ -656,7 +657,8 @@ class ItemWithVolume(Item):
             return 
         volume = cfg.GetItemVolume(self.rec)
         self.sr.node.Set('sort_%s' % mls.UI_GENERIC_VOLUME, volume)
-        unit = Tr(cfg.eveunits.Get(const.unitVolume).displayName, 'dbo.eveUnits.displayName', const.unitVolume)
+        u = cfg.dgmunits.Get(const.unitVolume)
+        unit = Tr(u.displayName, 'dogma.units.displayName', u.dataID)
         label = '<t>%s %s' % (util.FmtAmt(volume), unit)
         if self.sr.node.viewMode in ('list', 'details'):
             self.sr.label.text += label

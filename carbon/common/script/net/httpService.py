@@ -23,6 +23,7 @@ import os
 import bluepy
 import util
 import traceback
+import iocp
 globals().update(service.consts)
 mime = {'txt': 'text/plain',
  'htm': 'text/html',
@@ -1204,17 +1205,25 @@ class ConnectionService(service.Service):
             if not error.payload:
                 raise error
             targetNodeID = error.payload
-            if request.tunnelinfo:
-                s = self.session.ConnectToProxyServerService('tcpRawProxyService', request.tunnelinfo.nodeID)
-                url = 'http://%s%s' % (s.GetESPTunnelingAddressByNodeID(targetNodeID), request.path)
-                if len(request.args):
-                    url += '?%s&' % request.args
+            notFoundMacho = True
+            (current_host, current_port,) = request.Host()
+            if isinstance(targetNodeID, int):
+                if sm.IsServiceRunning('tcpRawProxyService'):
+                    tcpproxy = sm.services['tcpRawProxyService']
                 else:
-                    url += '?'
-                if url[-1] == '?':
-                    url = url[:-1]
-                response.Redirect(url)
-            else:
+                    proxyID = sm.services['machoNet'].GetConnectedProxyNodes()[0]
+                    tcpproxy = sm.StartService('debug').session.ConnectToRemoteService('tcpRawProxyService', proxyID)
+                (host, ports,) = tcpproxy.GetESPTunnelingAddressByNodeID()
+                port = ports.get(targetNodeID)
+                if str(host).lower() != str(current_host).lower() or port != int(current_port):
+                    notFoundMacho = False
+                    protocol = 'https' if iocp.UsingHTTPS() else 'http'
+                    url = '%s://%s:%s%s' % (protocol,
+                     host,
+                     port,
+                     request.FullPath())
+                    response.Redirect(url)
+            if notFoundMacho:
                 response.Clear()
                 response.Write('<html><head>')
                 response.Write('\t<title>Failed macho redirect</title>')

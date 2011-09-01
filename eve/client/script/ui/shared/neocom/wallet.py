@@ -949,7 +949,7 @@ class WalletContainer(uicls.Container):
                  const.refDuplicating,
                  const.refReverseEngineering]
                 for refType in sm.GetService('account').GetEntryTypes():
-                    if refType.entryTypeID not in SKIP_REF_TYPES:
+                    if refType.entryTypeID not in SKIP_REF_TYPES and refType.entryTypeID < const.refMaxEve:
                         reflist.append((refType.entryTypeName.lower(), [refType.entryTypeName, refType.entryTypeID]))
 
                 reflist = uiutil.SortListOfTuples(reflist)
@@ -2568,6 +2568,8 @@ class TransferMoneyWnd(uicls.Window):
         fromAccountKey = None
         amount = self.amount.GetValue()
         reason = self.reason.GetValue()
+        if amount <= 0:
+            return 
         if getattr(self, 'aurCB', None) and self.aurCB.GetValue():
             if self.isCorpTransfer:
                 raise UserError('AurToOrFromCorp')

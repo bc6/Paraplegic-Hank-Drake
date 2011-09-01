@@ -14,7 +14,7 @@ import trinity
 
 class FittingSlot(uicls.FittingSlotLayout):
     __guid__ = 'xtriui.FittingSlot'
-    __notifyevents__ = ['OnRefreshModuleBanks']
+    __notifyevents__ = ['OnRefreshModuleBanks', 'OnDogmaAttributeChanged']
 
     def ApplyAttributes(self, attributes):
         uicls.FittingSlotLayout.ApplyAttributes(self, attributes)
@@ -40,7 +40,6 @@ class FittingSlot(uicls.FittingSlotLayout):
         self.locationFlag = flag
         self.powerType = powerType
         self._emptyHint = self.PrimeToEmptySlotHint()
-        sm.GetService('inv').Register(self)
         self.invReady = 1
         self.sr.groupMark.parent.left = int(self.sr.groupMark.parent.left * scaleFactor)
         self.sr.groupMark.parent.top = int(self.sr.groupMark.parent.top * scaleFactor)
@@ -55,11 +54,33 @@ class FittingSlot(uicls.FittingSlotLayout):
 
 
 
+    def OnDogmaAttributeChanged(self, shipID, itemID, attributeID, value):
+        try:
+            if self.module is not None and self.module.itemID == itemID and attributeID == const.attributeIsOnline:
+                self.UpdateOnlineDisplay()
+            elif attributeID == const.attributeQuantity:
+                if not isinstance(itemID, tuple):
+                    return 
+                (shipID, flagID, typeID,) = itemID
+                if shipID != self.shell.shipID or flagID != self.flag:
+                    return 
+                if not value:
+                    self.SetFitting(self.module)
+                else:
+                    chargeKey = self.shell.GetSubLocation(shipID, flagID)
+                    if chargeKey is None:
+                        self.LogError('Slot::Got OnDogmaAttributeChange for non zero value but no chargeKey', shipID, itemID, value)
+                    charge = self.shell.dogmaItems[chargeKey]
+                    self.SetFitting(charge)
+        except ReferenceError:
+            sys.exc_clear()
+
+
+
     def SetGroup(self):
-        if not session.shipid:
-            return 
         allGroupsDict = settings.user.ui.Get('linkedWeapons_groupsDict', {})
-        groupDict = allGroupsDict.get(session.shipid, {})
+        shipID = util.GetActiveShip()
+        groupDict = allGroupsDict.get(shipID, {})
         ret = self.GetBankGroup(groupDict)
         if ret is None:
             self.sr.groupMark.parent.state = uiconst.UI_HIDDEN
@@ -84,17 +105,29 @@ class FittingSlot(uicls.FittingSlotLayout):
         self.sr.groupMark.LoadIcon('ui_73_16_%s' % (176 + groupNumber))
         self.sr.groupMark.hint = mls.UI_SHARED_WEAPONLINK_GROUPNUM % {'groupNumber': groupNumber}
         groupDict[ret.masterID] = groupNumber
-        allGroupsDict[session.shipid] = groupDict
+        allGroupsDict[shipID] = groupDict
         settings.user.ui.Set('linkedWeapons_groupsDict', allGroupsDict)
+
+
+
+    def IsOnlineable(self):
+        if self.module is None:
+            return False
+        try:
+            return const.effectOnline in self.shell.dogmaStaticMgr.effectsByType[self.module.typeID]
+        except ReferenceError:
+            pass
 
 
 
     def GetBankGroup(self, groupDict):
         module = getattr(self, 'module', None)
-        if not module:
+        try:
+            if not module:
+                return 
+        except ReferenceError:
             return 
-        stateManager = sm.StartService('godma').GetStateManager()
-        isInWeaponBank = stateManager.IsInWeaponBank(self.module.itemID)
+        isInWeaponBank = self.shell.IsInWeaponBank(self.module.locationID, self.module.itemID)
         if not isInWeaponBank:
             return 
         masterID = isInWeaponBank
@@ -114,9 +147,9 @@ class FittingSlot(uicls.FittingSlotLayout):
             btn.Close()
 
         self.utilButtons = []
-        if not self.module or not sm.StartService('godma').GetStateManager().IsItemLoaded(self.module.itemID):
+        if not self.module:
             return 
-        toggleLabel = mls.UI_CMD_PUTOFFLINE if bool(util.GetAttrs(self, 'module', 'online', 'isActive')) is True else mls.UI_CMD_PUTONLINE
+        toggleLabel = mls.UI_CMD_PUTOFFLINE if bool(self.module.IsOnline) is True else mls.UI_CMD_PUTONLINE
         (myrad, cos, sin, cX, cY,) = self.radCosSin
         btns = []
         if self.charge:
@@ -140,6 +173,7 @@ class FittingSlot(uicls.FittingSlotLayout):
                 break
 
         isSubSystem = cfg.invtypes.Get(self.typeID).categoryID == const.categorySubSystem
+        isOnlinable = self.IsOnlineable()
         if isRig:
             btns += [(mls.UI_CMD_DESTROY,
               'ui_38_16_200',
@@ -168,7 +202,7 @@ class FittingSlot(uicls.FittingSlotLayout):
               0), (toggleLabel,
               'ui_38_16_207',
               self.ToggleOnline,
-              bool(util.GetAttrs(self, 'module', 'online')),
+              isOnlinable,
               1)]
         rad = myrad - 34
         i = 0
@@ -244,13 +278,16 @@ class FittingSlot(uicls.FittingSlotLayout):
         chargehint = ''
         if invItem and self.IsCharge(invItem.typeID):
             self.charge = invItem
-            chargehint = '%s %s: %s' % (cfg.invtypes.Get(invItem.typeID).name, mls.UI_GENERIC_QTY, invItem.stacksize)
-            ship = sm.services['godma'].GetStateManager().GetItem(session.shipid)
-            cap = ship.GetCapacity(self.flag)
-            if cap.capacity == 0:
+            chargeQty = self.shell.GetQuantity(invItem.itemID)
+            chargehint = '%s %s: %s' % (cfg.invtypes.Get(invItem.typeID).name, mls.UI_GENERIC_QTY, chargeQty)
+            if self.module is None:
                 portion = 1.0
             else:
-                portion = cap.used / cap.capacity
+                cap = self.shell.GetCapacity(self.module.locationID, const.attributeCapacity, self.flag)
+                if cap.capacity == 0:
+                    portion = 1.0
+                else:
+                    portion = cap.used / cap.capacity
             step = max(0, min(4, int(portion * 5.0)))
             self.sr.chargeIndicator.rectTop = 10 * step
             self.sr.chargeIndicator.state = uiconst.UI_NORMAL
@@ -271,7 +308,7 @@ class FittingSlot(uicls.FittingSlotLayout):
             self.module = invItem
             self.fitted = 1
             self.charge = None
-            if cfg.IsChargeCompatible(invItem):
+            if invItem.groupID in cfg.__chargecompatiblegroups__:
                 self.isChargeable = 1
                 self.sr.chargeIndicator.rectTop = 0
                 self.sr.chargeIndicator.state = uiconst.UI_NORMAL
@@ -282,7 +319,7 @@ class FittingSlot(uicls.FittingSlotLayout):
         if self.typeID:
             modulehint = '%s' % cfg.invtypes.Get(self.typeID).name
             if self.charge:
-                modulehint += '<br>%s %s: %s' % (cfg.invtypes.Get(self.charge.typeID).name, mls.UI_GENERIC_QTY, self.charge.stacksize)
+                modulehint += '<br>%s %s: %s' % (cfg.invtypes.Get(self.charge.typeID).name, mls.UI_GENERIC_QTY, chargeQty)
         else:
             modulehint = self._emptyHint
         self.hint = modulehint
@@ -335,9 +372,9 @@ class FittingSlot(uicls.FittingSlotLayout):
 
 
     def UpdateOnlineDisplay(self):
-        if getattr(self, 'module', None) and sm.StartService('godma').GetStateManager().IsItemLoaded(self.module.itemID) and getattr(self.module, 'online', None):
-            isActive = self.module.online.isActive
-            if isActive:
+        if getattr(self, 'module', None) is not None and self.IsOnlineable():
+            isActive = const.effectOnline in self.shell.dogmaStaticMgr.effectsByType[self.module.typeID]
+            if self.module.IsOnline():
                 self.sr.flagIcon.color.a = 1.0
                 if util.GetAttrs(self, 'sr', 'onlineButton') and self.sr.onlineButton.hint == mls.UI_CMD_PUTONLINE:
                     self.sr.onlineButton.hint = mls.UI_CMD_PUTOFFLINE
@@ -353,15 +390,14 @@ class FittingSlot(uicls.FittingSlotLayout):
 
 
     def ToggleOnline(self, *args):
-        if not self.module or not self.module.effects:
+        if self.module is None:
             return 
-        if 'rigSlot' in self.module.effects:
+        if self.module.flagID in xrange(const.flagRigSlot0, const.flagRigSlot7 + 1):
             return 
-        isActive = util.GetAttrs(self, 'module', 'online', 'isActive')
-        if isActive:
-            self.ChangeOnline(0)
+        if self.module.IsOnline():
+            self.shell.OfflineModule(self.module.itemID)
         else:
-            self.ChangeOnline(1)
+            self.shell.OnlineModule(self.module.itemID)
 
 
 
@@ -396,11 +432,6 @@ class FittingSlot(uicls.FittingSlotLayout):
         else:
             self.SetFitting(item)
 
-
-
-
-    def UpdateItem(self, item, *etc):
-        self.SetFitting(item)
 
 
 
@@ -440,21 +471,19 @@ class FittingSlot(uicls.FittingSlotLayout):
              const.effectRigSlot):
                 validFitting = True
                 if effect.effectID == self.powerType:
-                    ship = sm.GetService('godma').GetItem(eve.session.shipid)
+                    ship = self.shell.GetShip()
                     if ship:
                         shift = uicore.uilib.Key(uiconst.VK_SHIFT)
-                        isFitted = item.locationID == session.shipid and item.flagID != const.flagCargo
+                        isFitted = item.locationID == self.shell.shipID and item.flagID != const.flagCargo
                         if isFitted and shift:
                             if getattr(self, 'module', None):
                                 if self.module.typeID == item.typeID:
-                                    stateManager = sm.GetService('godma').GetStateManager()
-                                    stateManager.LinkWeapons(self.module.itemID, item.itemID, item.typeID)
+                                    self.shell.LinkWeapons(self.module.locationID, self.module.itemID, item.itemID)
                                     return 
                                 else:
                                     eve.Message('CustomNotify', {'notify': mls.UI_SHARED_WEAPONLINK_NOTSAME})
                                     return 
-                        newItemID = ship.inventory.moniker.Add(item.itemID, item.locationID, qty=1, flag=self.locationFlag)
-                        uthread.new(sm.services['godma'].GetStateManager().DelayedOnlineAttempt, session.shipid, newItemID)
+                        self.shell.TryFit(item, self.locationFlag)
                     return 
                 eve.Message('ItemDoesntFitPower', {'item': cfg.invtypes.Get(item.typeID).name,
                  'slotpower': cfg.dgmeffects.Get(self.powerType).displayName,
@@ -487,28 +516,23 @@ class FittingSlot(uicls.FittingSlotLayout):
             if eve.session.role & (service.ROLE_GML | service.ROLE_WORLDMOD):
                 m += [(str(self.id), self.CopyItemIDToClipboard, (self.id,)), None]
             m += [(mls.UI_CMD_SHOWINFO, self.ShowInfo)]
-            if 'rigSlot' in self.module.effects:
-                if eve.session.stationid is not None:
+            if self.shell.dogmaStaticMgr.TypeHasEffect(self.module.typeID, const.effectRigSlot):
+                if session.stationid2 is not None:
                     m += [(mls.UI_CMD_DESTROY, self.Unfit)]
-            elif eve.session.stationid is not None:
+            elif session.stationid2 is not None:
                 m += [(mls.UI_CMD_UNFIT, self.Unfit)]
-            for key in self.module.effects.iterkeys():
-                effect = self.module.effects[key]
-                if effect.effectName == 'online':
-                    m.append(None)
-                    if self.module.online.isActive:
-                        m.append((mls.UI_CMD_PUTOFFLINE, self.ChangeOnline, (0,)))
-                    else:
-                        m.append((mls.UI_CMD_PUTONLINE, self.ChangeOnline, (1,)))
-
+            if self.IsOnlineable():
+                if self.module.IsOnline():
+                    m.append((mls.UI_CMD_PUTOFFLINE, self.ChangeOnline, (0,)))
+                else:
+                    m.append((mls.UI_CMD_PUTONLINE, self.ChangeOnline, (1,)))
             m += self.GetGroupMenu()
             return m
 
 
 
     def GetGroupMenu(self, *args):
-        stateManager = sm.StartService('godma').GetStateManager()
-        masterID = stateManager.IsInWeaponBank(self.id)
+        masterID = self.shell.IsInWeaponBank(self.module.locationID, self.id)
         if masterID:
             return [(mls.UI_CMD_UNLINK, self.UnlinkModule, (masterID,))]
         return []
@@ -522,22 +546,18 @@ class FittingSlot(uicls.FittingSlotLayout):
 
 
     def ChangeOnline(self, on = 1):
-        stateManager = sm.StartService('godma').GetStateManager()
-        masterID = stateManager.IsInWeaponBank(self.id)
+        masterID = False
         if masterID:
             if not on:
                 ret = eve.Message('CustomQuestion', {'header': mls.UI_GENERIC_CONFIRM,
                  'question': mls.UI_SHARED_WEAPONLINK_OFFLINE}, uiconst.YESNO)
                 if ret != uiconst.ID_YES:
                     return 
-        for key in self.module.effects.keys():
-            effect = self.module.effects[key]
-            if effect.effectName == 'online':
-                if on:
-                    effect.Activate()
-                else:
-                    effect.Deactivate()
-
+        if self.module.IsOnline():
+            self.module.dogmaLocation.OfflineModule(self.module.itemID)
+        else:
+            self.module.dogmaLocation.OnlineModule(self.module.itemID)
+        self.UpdateOnlineDisplay()
 
 
 
@@ -558,65 +578,66 @@ class FittingSlot(uicls.FittingSlotLayout):
 
 
     def UnfitModule(self, *args):
-        stateManager = sm.GetService('godma').GetStateManager()
-        if session.stationid:
-            stateManager.UnloadModuleToContainer(self.id, (const.containerHangar,))
+        if session.stationid2:
+            containerHangar = eve.GetInventory(const.containerHangar).Add(self.module.itemID, self.module.locationID)
         else:
-            stateManager.UnloadModuleToContainer(self.id, (session.shipid,), flag=const.flagCargo)
+            self.shell.UnloadModuleToContainer(session.shipid, self.id, (session.shipid,), flag=const.flagCargo)
 
 
 
     def Unfit(self, *args):
+        if self.module is not None:
+            shipID = self.module.locationID
+            shipInv = sm.GetService('invCache').GetInventoryFromId(self.module.locationID, locationID=session.stationid2)
+        elif self.charge is not None:
+            shipID = self.charge.locationID
+            shipInv = sm.GetService('invCache').GetInventoryFromId(self.charge.locationID, locationID=session.stationid2)
+        else:
+            return 
         if self.powerType == const.effectRigSlot:
-            ship = sm.GetService('godma').GetItem(eve.session.shipid)
-            if ship is None:
-                return 
             ret = eve.Message('RigUnFittingInfo', {}, uiconst.OKCANCEL)
             if ret != uiconst.ID_OK:
                 return 
-            ship.inventory.DestroyFitting(self.id)
+            shipInv.DestroyFitting(self.id)
         elif self.charge:
-            stateMgr = sm.StartService('godma').GetStateManager()
             if type(self.charge.itemID) is tuple:
-                chargeIDs = stateMgr.GetSubLocationsInBank(self.charge.itemID)
+                chargeIDs = self.shell.GetSubLocationsInBank(shipID, self.charge.itemID)
                 if chargeIDs:
-                    if eve.session.stationid:
-                        eve.GetInventory(const.containerHangar).MultiAdd(chargeIDs, eve.session.shipid, flag=const.flagHangar, fromManyFlags=True)
+                    if session.stationid2:
+                        eve.GetInventory(const.containerHangar).MultiAdd(chargeIDs, shipID, flag=const.flagHangar, fromManyFlags=True)
                     else:
-                        eve.GetInventoryFromId(eve.session.shipid).MultiAdd(chargeIDs, eve.session.shipid, flag=const.flagCargo)
-                elif eve.session.stationid:
-                    self.shell.inventory.RemoveChargeToHangar(self.charge.itemID)
+                        eve.GetInventoryFromId(eve.session.shipid).MultiAdd(chargeIDs, shipID, flag=const.flagCargo)
+                elif session.stationid2:
+                    shipInv.RemoveChargeToHangar(self.charge.itemID)
                 else:
-                    self.shell.inventory.RemoveChargeToCargo(self.charge.itemID)
+                    shipInv.RemoveChargeToCargo(self.charge.itemID)
             else:
-                crystalIDs = stateMgr.GetCrystalsInBank(self.charge.itemID)
-            if crystalIDs:
-                if eve.session.stationid:
-                    eve.GetInventory(const.containerHangar).MultiAdd(crystalIDs, eve.session.shipid, flag=const.flagHangar, fromManyFlags=True)
+                crystalIDs = self.shell.GetCrystalsInBank(shipID, self.charge.itemID)
+                if crystalIDs:
+                    if session.stationid2:
+                        eve.GetInventory(const.containerHangar).MultiAdd(crystalIDs, shipID, flag=const.flagHangar, fromManyFlags=True)
+                    else:
+                        shipInv.MultiAdd(crystalIDs, shipID, flag=const.flagCargo)
+                elif session.stationid2:
+                    eve.GetInventory(const.containerHangar).Add(self.charge.itemID, shipID)
                 else:
-                    eve.GetInventoryFromId(eve.session.shipid).MultiAdd(crystalIDs, eve.session.shipid, flag=const.flagCargo)
-            elif eve.session.stationid:
-                eve.GetInventory(const.containerHangar).Add(self.charge.itemID, eve.session.shipid)
-            else:
-                eve.GetInventoryFromId(eve.session.shipid).Add(self.charge.itemID, eve.session.shipid, qty=None, flag=const.flagCargo)
+                    shipInv.Add(self.charge.itemID, shipID, qty=None, flag=const.flagCargo)
         else:
-            stateManager = sm.StartService('godma').GetStateManager()
-            masterID = stateManager.IsInWeaponBank(self.id)
+            masterID = self.shell.IsInWeaponBank(shipID, self.id)
             if masterID:
                 ret = eve.Message('CustomQuestion', {'header': mls.UI_GENERIC_CONFIRM,
                  'question': mls.UI_SHARED_WEAPONLINK_UNFIT}, uiconst.YESNO)
                 if ret != uiconst.ID_YES:
                     return 
-            if eve.session.stationid:
-                eve.GetInventory(const.containerHangar).Add(self.id, eve.session.shipid)
+            if session.stationid2:
+                eve.GetInventory(const.containerHangar).Add(self.id, shipID)
             else:
-                eve.GetInventoryFromId(eve.session.shipid).Add(self.id, eve.session.shipid, qty=None, flag=const.flagCargo)
+                shipInv.Add(self.id, shipID, qty=None, flag=const.flagCargo)
 
 
 
     def UnlinkModule(self, masterID):
-        stateMgr = sm.StartService('godma').GetStateManager()
-        stateMgr.DestroyWeaponBank(masterID)
+        self.shell.DestroyWeaponBank(self.module.locationID, masterID)
 
 
 
@@ -688,14 +709,12 @@ class FittingSlot(uicls.FittingSlotLayout):
             return l
         shift = uicore.uilib.Key(uiconst.VK_SHIFT)
         if shift:
-            godmaStateManager = sm.StartService('godma').stateManager
-            isGroupable = godmaStateManager.IsGroupable(self.module.groupID)
+            isGroupable = self.module.groupID in const.dgmGroupableGroupIDs
             if not isGroupable:
                 return []
             if getattr(self, 'module', None):
                 sm.ScatterEvent('OnStartSlotLinkingMode', self.module.typeID)
-        l.append(uix.GetItemData(self.module, 'list'))
-        return l
+        return self.shell.GetDragData(self.module.itemID)
 
 
 
@@ -714,22 +733,21 @@ class FittingSlot(uicls.FittingSlotLayout):
                     chargeTypeID = item.typeID
                 if chargeTypeID == item.typeID:
                     chargeItems.append(item)
-            elif sm.GetService('godma').GetStateManager().IsInWeaponBank(item.itemID):
+            elif self.shell.IsInWeaponBank(item.locationID, item.itemID):
                 ret = eve.Message('CustomQuestion', {'header': mls.UI_GENERIC_CONFIRM,
                  'question': mls.UI_SHARED_WEAPONLINK_UNFIT}, uiconst.YESNO)
                 if ret == uiconst.ID_YES:
                     eve.Message('DragDropSlot')
                     uthread.new(self.Add, item)
             elif item.categoryID == const.categorySubSystem and getattr(self, 'module', None) is not None:
-                if not sm.GetService('godma').GetStateManager().CheckFutileSubSystemSwitch(item.typeID, item.itemID):
-                    eve.Message('DragDropSlot')
-                    uthread.new(self.Add, item)
+                uthread.new(self.Add, item)
             else:
                 eve.Message('DragDropSlot')
                 uthread.new(self.Add, item)
 
         if len(chargeItems):
-            sm.GetService('godma').GetStateManager().DropLoadChargeToModule(self.id, chargeTypeID, chargeItems=chargeItems)
+            chargeTypeID = chargeItems[0].typeID
+            self.shell.DropLoadChargeToModule(self.module.itemID, chargeTypeID, chargeItems)
 
 
 
@@ -748,7 +766,7 @@ class FittingSlot(uicls.FittingSlotLayout):
     def GetChargeDragNodes(self, *args):
         if not self.charge:
             return []
-        return [uix.GetItemData(self.charge, 'list')]
+        return self.shell.GetDragData(self.charge.itemID)
 
 
 

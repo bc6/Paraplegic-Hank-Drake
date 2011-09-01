@@ -213,6 +213,8 @@ class EveSceneRenderJobInterior(SceneRenderJobBase):
          iVis.TransparentLightVolumeShadowResolutionVisualization,
          iVis.TransparentLightVolumeShadowRelativeResolutionVisualization]),
        iVis.PrePassLightingOnlyVisualization,
+       iVis.PrePassLightingDiffuseVisualization,
+       iVis.PrePassLightingSpecularVisualization,
        iVis.PrePassLightNormalVisualization,
        iVis.PrePassLightDepthVisualization,
        iVis.PrePassLightWorldPositionVisualization,
@@ -1017,7 +1019,7 @@ class EveSceneRenderJobInterior(SceneRenderJobBase):
                     if update is not None:
                         update.SetCallback(self._GetUpdateLUTCallback())
                         self.SetLUTInfluence(self.postProcessingParameters['lut']['influence'])
-                self.postProcessShader.defaultSituation += ' LUT'
+                    self.postProcessShader.defaultSituation += ' LUT'
             else:
                 self.RemoveStep('UPDATE_LUT')
             if self.noiseEnabled:
@@ -1026,7 +1028,7 @@ class EveSceneRenderJobInterior(SceneRenderJobBase):
                      self.postProcessingParameters['noise']['darkIntensity'],
                      self.postProcessingParameters['noise']['brightAmount'],
                      self.postProcessingParameters['noise']['brightIntensity'])
-                self.postProcessShader.defaultSituation += ' Noise'
+                    self.postProcessShader.defaultSituation += ' Noise'
                 noise = trinity.TriTexture2DParameter()
                 noise.name = 'NoiseMap'
                 noise.resourcePath = 'res:/Texture/Global/noise.dds'

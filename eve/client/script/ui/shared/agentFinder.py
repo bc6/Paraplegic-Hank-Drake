@@ -354,7 +354,7 @@ class AgentFinderWnd(uicls.Window):
                     continue
             if solarsystemID != -1 and agentSolarSystemID != solarsystemID:
                 continue
-            sec = self.mapSvc.GetSecurityStatus(agent.solarsystemID)
+            sec = self.mapSvc.GetSecurityStatus(agentSolarSystemID)
             secStatus = util.FmtSystemSecStatus(sec)
             secClass = util.SecurityClassFromLevel(secStatus)
             if securityStatus != -1 and secClass != securityStatus:

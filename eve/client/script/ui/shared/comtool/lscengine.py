@@ -551,7 +551,8 @@ class LargeScaleChat(service.Service):
             if role >= CHTMODE_SPEAKER:
                 if channel.window and not channel.window.destroyed:
                     spammers = getattr(sm.GetService('LSC'), 'spammerList', set())
-                    isBlocked = sm.GetService('addressbook').IsBlocked(whoCharID) or sm.GetService('addressbook').IsBlocked(whoCorpID) or sm.GetService('addressbook').IsBlocked(whoAllianceID)
+                    addressBookSvc = sm.GetService('addressbook')
+                    isBlocked = whoCharID != session.charid and (addressBookSvc.IsBlocked(whoCharID) or addressBookSvc.IsBlocked(whoCorpID) or addressBookSvc.IsBlocked(whoAllianceID))
                     if not isBlocked and whoCharID not in spammers:
                         if whoCharID not in channel.recentSpeakerList:
                             channel.window.AddRecentSpeaker(whoCharID, whoCorpID, whoAllianceID, whoWarFactionID)
@@ -1208,7 +1209,7 @@ class LargeScaleChat(service.Service):
 
             util.CSPAChargedAction('CSPAChatCheck', sm.RemoteSvc('LSC'), 'Invite', otherID, channelID, channelName, addAllowed)
         else:
-            (info, acl, memberList,) = sm.RemoteSvc('LSC').CreateChannel('Private Chat', joinExisting=False, temporary=True)
+            (info, acl, memberList,) = sm.RemoteSvc('LSC').CreateChannel('Private Chat', joinExisting=False, temporary=True, noCallThrottling=True)
             channelID = info.channelID
             self._LargeScaleChat__InvalidateChannelList(channelID)
             self.joiningChannels[channelID] = 1

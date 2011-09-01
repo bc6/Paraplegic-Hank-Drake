@@ -372,12 +372,16 @@ class SystemMapSvc(service.Service):
 
     def OnSolarsystemMapSettingsChange(self, change, *args):
         if self.map.ViewingSystemMap() and change == 'brackets':
+            bracketWnd = uicore.layer.systemmap
+            bracketWnd.display = False
             self.LoadBookmarks()
             self.LoadProbesAndScanResult()
             self.LoadSolarsystemBrackets(1)
             self.LoadBeacons()
             self.LoadSovereigntyStructures()
             self.LoadDungeons()
+            blue.synchro.Yield()
+            bracketWnd.display = True
 
 
 

@@ -293,7 +293,7 @@ class PreviewWnd(uicls.Window):
                     ts.ForceStateDeactive()
                     ts.EnterStateIdle()
 
-                self.sr.subtitle.text = '%s%s (%s)' % (raceName, groupOb.groupName, mls.UI_GENERIC_AXISLENGTH % {'length': util.FmtDist(model.boundingSphereRadius)})
+                self.sr.subtitle.text = '%s (%s)' % (groupOb.groupName, mls.UI_GENERIC_AXISLENGTH % {'length': util.FmtDist(model.boundingSphereRadius)})
         else:
             self.sr.sceneContainer.PrepareSpaceScene()
             fileName = typeOb.GraphicFile()

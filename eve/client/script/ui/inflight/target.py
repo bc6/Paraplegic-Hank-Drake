@@ -383,7 +383,7 @@ class Target(uicls.Container):
     def AddWeapon(self, moduleInfo):
         if self is None or self.destroyed:
             return 
-        icon = uicls.Icon(parent=self.sr.assigned, align=uiconst.RELATIVE, width=16, height=16, state=uiconst.UI_HIDDEN, typeID=moduleInfo.typeID, size=16)
+        icon = uicls.Icon(parent=self.sr.assigned, align=uiconst.RELATIVE, width=16, height=16, state=uiconst.UI_HIDDEN, typeID=moduleInfo.typeID, size=32)
         icon.sr.moduleID = moduleInfo.itemID
         icon.OnClick = (self.ClickWeapon, icon)
         self.ArrangeWeapons()

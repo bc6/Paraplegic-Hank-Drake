@@ -543,6 +543,7 @@ class ContractsSvc(service.Service):
             ret = self.contractSvc.CompleteContract(contractID, const.conStatusFinished)
             if contractID in self.contractsInProgress:
                 del self.contractsInProgress[contractID]
+            eve.Message('ConCourierContractDelivered')
         return ret
 
 
@@ -965,7 +966,6 @@ class ContractsSvc(service.Service):
             raise UserError('ConContractNotFoundForCrate')
         contractID = info.contractID
         self.CompleteContract(contractID)
-        eve.Message('ConCourierContractDelivered')
 
 
 
@@ -2600,7 +2600,7 @@ class CreateContract(uicls.Window):
                     type = cfg.invtypes.Get(self.data.items[i][0])
                     if type.groupID in ILLEGAL_ITEMGROUPS:
                         raise UserError('ConIllegalType')
-                    if i == eve.session.shipid:
+                    if i in (eve.session.shipid, util.GetActiveShip()):
                         raise UserError('ConCannotTradeCurrentShip')
                     isContainer = type.categoryID == const.categoryShip or type.groupID in (const.groupCargoContainer,
                      const.groupSecureCargoContainer,
@@ -3624,6 +3624,8 @@ class ContractDetailsWindow(uicls.Window):
             titleParent.height = title.textheight + 6
             if len(items) == 1 and not forceList:
                 item = items[0]
+                typeID = item.itemTypeID
+                itemID = item.itemID
                 type = cfg.invtypes.Get(item.itemTypeID)
                 typeName = type.typeName
                 group = cfg.invgroups.Get(type.groupID)
@@ -3647,24 +3649,36 @@ class ContractDetailsWindow(uicls.Window):
                     else:
                         details = mls.UI_CONTRACTS_ITEMDETAILS_BLUEPRINTORIGINAL % {'ME': item.materialLevel or 0,
                          'PE': item.productivityLevel or 0}
-                preview = ''
-                if group.categoryID in const.previewCategories or type.groupID in const.previewGroups:
-                    preview = '<a href=preview:%s><img src="icon:ui_38_16_89" size=16 alt="%s"></a>' % (item.itemTypeID, mls.UI_CMD_PREVIEW)
-                html = '\n                    <p>\n                    <img style=margin-right:10;margin-bottom:4 src="typeicon:typeID=%s&bumped=1&showTechLevel=1&isCopy=%s" align=left>\n                    <font size=20 margin-left=20>%s%s</font>\n                    <a href=showinfo:%s%s><img src="icon:ui_38_16_208" size=16 alt="%s"></a>%s\n                    <br>\n                    %s / %s \n                    <br>\n                    <font color=red>%s</font>%s\n                    </p>\n                ' % (item.itemTypeID,
-                 '1' if getattr(item, 'copy', False) else '0',
-                 typeName,
-                 q,
-                 item.itemTypeID,
-                 iid,
-                 mls.UI_CMD_SHOWINFO,
-                 preview,
-                 categoryName,
-                 groupName,
-                 self.GetItemDamageText(item),
-                 details)
                 descParent = uicls.Container(name='desc', parent=self.sr.main, align=uiconst.TOTOP, left=const.defaultPadding, top=const.defaultPadding, height=100)
-                desc = uicls.Edit(parent=descParent, readonly=1, hideBackground=1)
-                desc.SetValue('<html><body>%s</body></html>' % html)
+                leftParent = picParent = uicls.Container(name='leftParent', parent=descParent, align=uiconst.TOLEFT, width=72)
+                picParent = uicls.Container(name='picParent', parent=leftParent, align=uiconst.TOPRIGHT, width=64, height=64, state=uiconst.UI_NORMAL)
+                infoParent = uicls.Container(name='infoParent', parent=descParent, align=uiconst.TOALL, padding=(8,
+                 2,
+                 const.defaultPadding,
+                 0))
+                if getattr(item, 'copy', False):
+                    isCopy = True
+                else:
+                    isCopy = False
+                icon = uicls.DraggableIcon(parent=picParent, typeID=typeID, isCopy=isCopy, state=uiconst.UI_DISABLED)
+                techSprite = uix.GetTechLevelIcon(None, 0, typeID)
+                c = uicls.Container(name='techIcon', align=uiconst.TOPLEFT, parent=icon, width=16, height=16, idx=0)
+                c.children.append(techSprite)
+                if util.IsPreviewable(typeID):
+                    setattr(picParent, 'typeID', typeID)
+                    picParent.cursor = uiconst.UICURSOR_MAGNIFIER
+                    picParent.OnClick = (self.OnPreviewClick, picParent)
+                captionText = '%s%s' % (typeName, q)
+                self.caption = uicls.CaptionLabel(parent=infoParent, text=captionText, uppercase=False, letterspace=0, padRight=16)
+                self.infolink = uicls.InfoIcon(itemID=itemID, typeID=typeID, size=16, left=0, top=const.defaultPadding, parent=infoParent, idx=0)
+                self.infolink.left = self.caption.textwidth + 8
+                categoryAndGroupText = '%s / %s' % (categoryName, groupName)
+                self.categoryAndGroup = uicls.Label(parent=infoParent, top=self.caption.textheight, text=categoryAndGroupText)
+                if self.GetItemDamageText(item):
+                    damageAndTextilsText = '<color=red>%s</color> %s' % (self.GetItemDamageText(item), details)
+                else:
+                    damageAndTextilsText = details
+                self.damageAndTextils = uicls.Label(parent=infoParent, top=self.categoryAndGroup.textheight + self.categoryAndGroup.top, text=damageAndTextilsText)
                 return False
             else:
                 if fixedSize:
@@ -3762,6 +3776,24 @@ class ContractDetailsWindow(uicls.Window):
                     hint = mls.UI_GENERIC_NOITEMSFOUND
                 self.sr.scroll.ShowHint(hint)
                 return not fixedSize
+
+
+
+    def OnPreviewClick(self, wnd, *args):
+        sm.GetService('preview').PreviewType(getattr(wnd, 'typeID'))
+
+
+
+    def UpdateTexts(self):
+        if hasattr(self, 'caption'):
+            self.infolink.left = self.caption.textwidth + 8
+            self.categoryAndGroup.top = self.caption.textheight
+            self.damageAndTextils.top = self.categoryAndGroup.top + self.categoryAndGroup.textheight
+
+
+
+    def _OnResize(self, *args):
+        self.UpdateTexts()
 
 
 

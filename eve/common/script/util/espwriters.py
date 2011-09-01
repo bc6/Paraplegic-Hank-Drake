@@ -533,12 +533,16 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
                     line.append(self.ItemID(r.ownerID))
                 else:
                     line.append(self.ItemID(r.ownerID) + ': ' + ownerName)
+            else:
+                line.append('')
             if location:
                 locationName = self.cache.EspItemName(2, r.locationID)
                 if locationName == '':
                     line.append(self.ItemID(r.locationID))
                 else:
                     line.append(self.ItemID(r.locationID) + ': ' + locationName)
+            else:
+                line.append('')
             line.append('%d: %s' % (r.flagID, self.config.GetFlags(r.flagID).flagName))
             line.append(attr)
             act = ''
@@ -674,167 +678,53 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
 
 
 
-    def OwnerEventReference(self, row, ownerID):
-        eventTypeID = row.eventTypeID
-        eventGroupID = self.cache.Index(const.cacheEventTypes, eventTypeID).eventGroupID
-        referenceID = row.referenceID
-        if eventGroupID == 1 and eventTypeID in (305, 306):
-            if eventTypeID == 305:
-                return ['', 'User Account', 'The users account is not active, all training paused on all characters! (skills, RP)']
-            if eventTypeID == 306:
-                return ['', 'User Account', 'The users account has been reactivated, all training resumed on all characters! (skills, RP)']
-        if eventGroupID == 31:
-            refID = ''
-            refType = ''
-            refText = 'Unknown event type %d' % eventTypeID
-            if eventTypeID in (329, 330):
-                refID = self.ItemID(referenceID)
-                refText = ''
-            elif eventTypeID in (326, 331):
-                refID = 'OfferID: %d ' % referenceID
-                refText = self.GetTooltip(href='/gd/store.py', ajax='/gm/store.py?action=OfferTooltip&offerID=%d' % referenceID, title='Offer Details', caption='Offer Details')
-            elif eventTypeID in (327, 328):
-                rx = self.DB2.SQLBigInt('*', 'zevent.genericEvents', "eventTable = 'O'", '', 'eventID', row.eventID)
-                refID = '%s %s' % ('Gave' if eventTypeID == 327 else 'Took', 'ISK' if rx[0].int_1 == const.creditsISK else 'AURUM')
-                refType = '%10.2f' % (rx[0].money_1 or 0.0,)
-                if rx[0].bigint_1 is not None:
-                    refText = self.Link('/gm/accounting.py', 'Transaction ID: %s' % rx[0].bigint_1, {'action': 'TxDetail',
-                     'transactionID': rx[0].bigint_1})
-                else:
-                    refText = ''
-            elif eventTypeID in (const.eventOfferEdit, const.eventOfferPublished, const.eventOfferClosed):
-                rx = self.DB2.SQLBigInt('*', 'zevent.genericEvents', "eventTable = 'O'", '', 'eventID', row.eventID)
-                refID = str(referenceID)
-                refText = self.GetTooltip(href='/gd/store.py', ajax='/gm/store.py?action=OfferTooltip&offerID=%d' % referenceID, title='Offer Details', caption='Offer Details')
-            elif eventTypeID == const.eventOfferDeleted:
-                refID = str(referenceID)
-                refText = 'it was deleted, and lost for all time!'
-            return [refID, refType, refText]
-        if referenceID is None:
-            return ['', '', '']
-        if eventGroupID == 3 or eventTypeID in (2, 113, 116):
-            if referenceID >= const.minSolarSystem and referenceID <= const.maxSolarSystem:
-                referenceType = 'System'
-                referenceName = self.SystemLink(referenceID)
-            elif referenceID >= const.minStation and referenceID <= const.maxStation:
-                referenceType = 'Station'
-                referenceName = self.StationLink(referenceID)
-            else:
-                referenceName = self.LocationName(referenceID)
-                if referenceName is None:
-                    referenceName = self.OwnerName(referenceID)
-                    if referenceName is None:
-                        referenceName = ''
-                        referenceType = 'Item'
-                    else:
-                        referenceType = 'Owner'
-                else:
-                    referenceType = 'Location'
-            return [self.ItemID(referenceID), referenceType, referenceName]
-        if eventGroupID in (4, 6, 20, 22):
-            nt = self.cache.EspItemNameType(1, referenceID)
-            referenceName = nt[0]
-            referenceTypeID = nt[1]
-            referenceType = ''
-            if referenceTypeID:
-                group = cfg.invtypes.Get(referenceTypeID).Group()
-                if group.groupID == const.groupFaction:
-                    referenceType = mls.UI_GENERIC_FACTION
-                    referenceName = self.FactionLink(referenceID, referenceName)
-                elif group.groupID == const.groupCorporation:
-                    if referenceID < const.minPlayerOwner:
-                        referenceType = 'NPC Corporation'
-                    else:
-                        referenceType = 'Corporation'
-                    referenceName = self.CorporationLink(referenceID, referenceName)
-                elif group.groupID == const.groupCharacter:
-                    if referenceID < const.minPlayerOwner:
-                        referenceType = 'NPC Character'
-                    else:
-                        referenceType = 'Character'
-                    referenceName = self.CharacterLink(referenceID, referenceName)
-            return [self.ItemID(referenceID), referenceType, referenceName]
-        if eventGroupID == 9:
-            return [self.IsNone(referenceID, ''), 'Mission', '']
-        if eventTypeID in (12, 14, 15, 16, 44) or eventTypeID in (206, 207, 210):
-            return [self.ItemID(referenceID), 'Character', self.CharacterLink(referenceID)]
-        if eventGroupID == 2 and eventTypeID in (149, 150):
-            return [self.ItemID(referenceID), 'Corporation', self.CorporationLink(referenceID)]
-        if eventGroupID == 11:
-            if eventTypeID in (const.eventResearchBlueprintOfferExpired,
-             const.eventResearchBlueprintAccepted,
-             const.eventResearchBlueprintOfferInvalid,
-             const.eventResearchBlueprintRejected,
-             const.eventResearchBlueprintOfferRejectedTooLowStandings,
-             const.eventResearchBlueprintOfferRejectedRecently,
-             const.eventResearchBlueprintOfferRejectedInvalidBlueprint,
-             const.eventResearchBlueprintOfferRejectedIncompatibleAgent,
-             const.eventResearchBlueprintOffered):
-                return [self.TypeLink(referenceID), 'Blueprint type', cfg.invtypes.Get(referenceID).typeName]
-            else:
-                if eventTypeID == const.eventResearchStarted:
-                    return [self.TypeLink(referenceID), mls.LOG_RESEARCHFIELD, cfg.invtypes.Get(referenceID).typeName]
-                if eventTypeID == const.eventResearchStopped:
-                    return [referenceID, mls.LOG_RESEARCH_POINTS_LOST, '']
-                if eventTypeID == const.eventResearchPointsEdited:
-                    return [self.ItemID(referenceID), 'Character', self.CharacterLink(referenceID)]
-                return ['', '', '']
-        if eventTypeID in (143, 144, 145, 146):
-            if 'dungeonID' in row.__columns__:
-                dungeonName = self.cache.IndexText(const.cacheDungeonDungeons, row.dungeonID)
-                return [referenceID, 'Dungeon Instance', self.Link('/gd/dungeons.py', dungeonName, {'action': 'Dungeon',
-                  'dungeonID': row.dungeonID})]
-        if eventGroupID == 16:
-            tutorialIx = sm.GetService('tutorialSvc').GetTutorialsIx()
-            if referenceID in tutorialIx:
-                return [referenceID, 'Tutorial', self.Link('/gd/tutorials.py', tutorialIx[referenceID].tutorialName, {'action': 'TutorialVersion',
-                  'tutorialID': referenceID})]
-            else:
-                return [referenceID, 'Tutorial', 'Deleted tutorial %d' % referenceID]
-        if eventGroupID == 18:
-            if referenceID >= const.minStation and referenceID <= const.maxStation:
-                referenceType = 'Station'
-                referenceName = self.StationLink(referenceID)
-            else:
-                referenceType = 'Ship'
-                referenceName = self.LocationName(referenceID)
-            return [self.ItemID(referenceID), referenceType, referenceName]
-        if eventTypeID in (const.eventCertificateGranted, const.eventCertificateGrantedGM, const.eventCertificateRevokedGM):
-            certstr = self.GetCertificateString(referenceID)
-            return [self.Link('/gd/certificates.py', referenceID, {'action': 'ViewCertificate',
-              'certificateID': referenceID}), mls.UI_SHARED_CERTIFICATES, self.Link('/gd/certificates.py', certstr, {'action': 'ViewCertificate',
-              'certificateID': referenceID})]
-        if eventTypeID in (94, 95):
-            return [self.ItemID(referenceID), 'Implant', '']
-        if eventTypeID == const.eventUnrentOfficeGM:
-            return [self.ItemID(referenceID), 'Station', self.StationLink(referenceID)]
-        if eventGroupID == 25:
-            return [self.Link('/gm/users.py', referenceID, {'action': 'LookupRedeemToken',
-              'tokenID': referenceID}), '', '']
-        if eventGroupID == const.eventgroupPlanet:
-            if eventTypeID in (286, 287, 288, 289, 290):
-                return [self.Link('/gm/owner.py', str(referenceID), {'action': 'PlanataryLaunchesInv',
-                  'ownID': ownerID or 0,
-                  'launchID': referenceID}), mls.UI_PI_LAUNCHES, '']
-            else:
-                return [self.ItemID(referenceID), mls.PLANET, self.PlanetLink(referenceID)]
-        if eventGroupID == const.eventgroupAlliance:
-            if util.IsCorporation(referenceID):
-                return [self.ItemID(referenceID), 'Corporation', self.CorporationLink(referenceID)]
-            else:
-                return [self.Link('', str(referenceID), {'action': 'OwnerEvent',
-                  'eventID': referenceID}), 'Alliance Event', '']
-        if eventTypeID in (113, 140, 141, 142):
-            referenceText = ''
-            if 'uiItemID' in row.__columns__:
-                if row.uiItemID:
-                    referenceText = self.ItemID(row.uiItemID)
-                    referenceText = self.SplitAdd(referenceText, self.TypeLink(row.uiTypeID))
-            return [self.Link('', referenceID, {'action': 'ItemEvent',
-              'eventID': referenceID}), 'Item Event', referenceText]
-        if eventGroupID == const.eventgroupReward:
-            return [self.Link('/gm/tale.py', referenceID, {'taleID': referenceID}), 'Tale ID', 'Tale ID']
-        return [referenceID, '', '']
+    def GetPickerAgent(self, ctrlID, ctrlLabel = None, minLength = 4):
+        return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/agentds.py', minLength=minLength)
+
+
+
+    def GetPickerType(self, ctrlID, ctrlLabel = None, minLength = 4):
+        return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/typeds.py', minLength=minLength)
+
+
+
+    def GetPickerCharacter(self, ctrlID, ctrlLabel = None, minLength = 3):
+        return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/characterds.py', minLength=minLength)
+
+
+
+    def GetPickerUser(self, ctrlID, ctrlLabel = None, minLength = 3):
+        return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/userds.py', minLength=minLength)
+
+
+
+    def GetPickerAffiliate(self, ctrlID, ctrlLabel = None, minLength = 3):
+        return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/affiliateds.py', minLength=minLength)
+
+
+
+    def GetPickerStation(self, ctrlID, ctrlLabel = None, minLength = 3):
+        return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/stationds.py', minLength=minLength)
+
+
+
+    def GetPickerCorporation(self, ctrlID, ctrlLabel = None, minLength = 3):
+        return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/corporationds.py', minLength=minLength)
+
+
+
+    def GetPickerRegion(self, ctrlID, ctrlLabel = None, minLength = 3):
+        return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/regionds.py', minLength=minLength)
+
+
+
+    def GetPickerConstellation(self, ctrlID, ctrlLabel = None, minLength = 3):
+        return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/constellationds.py', minLength=minLength)
+
+
+
+    def GetPickerSolarSystem(self, ctrlID, ctrlLabel = None, minLength = 3):
+        return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/solarsystemds.py', minLength=minLength)
 
 
 
@@ -932,7 +822,7 @@ if macho.mode == 'server':
         def AppUserCharactersLocation(self, coreStatic, appStatic):
             if coreStatic.characterID > const.minDustCharacter:
                 return ''
-            return self.CharacterLocationText(coreStatic.characterID, appStatic.locationID, appStatic.locationTypeID, appStatic.locationLocationID)
+            return self.CharacterLocationText(coreStatic.characterID, appStatic.locationID, appStatic.locationTypeID, appStatic.locationLocationID, appStatic.activeShipID, appStatic.activeShipTypeID)
 
 
 
@@ -1556,7 +1446,7 @@ if macho.mode == 'server':
 
 
 
-        def CharacterLocationText(self, characterID, locationID, locationTypeID, locationLocationID):
+        def CharacterLocationText(self, characterID, locationID, locationTypeID, locationLocationID, activeShipID = None, activeShipTypeID = None):
             solarSystemID = None
             if util.IsSolarSystem(locationLocationID):
                 solarSystemID = locationLocationID
@@ -1583,6 +1473,11 @@ if macho.mode == 'server':
                      'characterID': characterID,
                      'shipID': shipID})
                     s += '<br>' + self.FontProperty(mls.TYPE) + ': %s' % cfg.invtypes.Get(locationTypeID).typeName
+                elif activeShipID:
+                    s += '<br>' + self.FontHeaderProperty(mls.SHIP.upper()) + ':<br>%s' % self.Link('/gm/character.py', cfg.evelocations.Get(activeShipID).locationName, {'action': 'Ship',
+                     'characterID': characterID,
+                     'shipID': activeShipID})
+                    s += '<br>' + self.FontProperty(mls.TYPE) + ': %s' % cfg.invtypes.Get(activeShipTypeID).typeName
             except:
                 s = '<font color=red>Invalid Location: %s</font>' % locationID
             return s
@@ -1726,21 +1621,9 @@ if macho.mode == 'server':
 
 
         def TypeImage(self, typeID, width = 64):
-            image = '/img/type.jpg'
-            t = cfg.invtypes.GetIfExists(typeID)
-            if t is not None:
-                if t.categoryID in (const.categoryBlueprint,
-                 const.categoryDeployable,
-                 const.categoryDrone,
-                 const.categoryShip,
-                 const.categoryStructure,
-                 const.categoryStation,
-                 const.categorySovereigntyStructure,
-                 const.categoryPlanetaryInteraction):
-                    image = 'http://wiki.eveonline.com/wikiEN/images_icons/%sx%s/%s.png' % (width, width, typeID)
-                elif t.iconID:
-                    image = 'http://wiki.eveonline.com/wikiEN/images_icons/iconID_%s.png' % t.iconID
-            return image
+            imageServerURL = sm.GetService('machoNet').GetClientConfigVals().get('imageserverurl')
+            imgURL = imageServerURL + 'Type/%s_64.png' % typeID
+            return imgURL
 
 
 

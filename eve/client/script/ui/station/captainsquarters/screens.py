@@ -78,8 +78,8 @@ ARGB_FORMAT = trinity.TRIFORMAT.TRIFMT_A8R8G8B8
 XRGB_FORMAT = trinity.TRIFORMAT.TRIFMT_X8R8G8B8
 if blue.win32.IsTransgaming():
     AUTO_MIPMAP = False
-CqMainScreen = (1280,
- 720,
+CqMainScreen = (1408,
+ 792,
  XRGB_FORMAT,
  LIVE_UPDATES,
  AUTO_MIPMAP,
@@ -90,14 +90,14 @@ CqStationLogo = (256,
  STATIC_IMAGE,
  AUTO_MIPMAP,
  UpdateStationLogo)
-CqPIScreen = (540,
- 720,
+CqPIScreen = (594,
+ 792,
  XRGB_FORMAT,
  LIVE_UPDATES,
  AUTO_MIPMAP,
  UpdatePIScreen)
-CqCorpFinderScreen = (540,
- 720,
+CqCorpFinderScreen = (594,
+ 792,
  XRGB_FORMAT,
  LIVE_UPDATES,
  AUTO_MIPMAP,

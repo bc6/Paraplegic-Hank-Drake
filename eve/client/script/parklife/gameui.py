@@ -352,9 +352,11 @@ class GameUI(service.Service):
 
 
 
-    def KillCargoView(self, id_):
+    def KillCargoView(self, id_, guidsToKill = None):
+        if guidsToKill is None:
+            guidsToKill = ('form.DockedCargoView', 'form.InflightCargoView', 'form.LootCargoView', 'form.DroneBay', 'form.CorpHangar', 'form.ShipCorpHangars', 'form.CorpHangarArray', 'form.SpecialCargoBay', 'form.PlanetInventory')
         for each in sm.GetService('window').GetWindows()[:]:
-            if getattr(each, '__guid__', None) in ('form.DockedCargoView', 'form.InflightCargoView', 'form.LootCargoView', 'form.DroneBay', 'form.CorpHangar', 'form.ShipCorpHangars', 'form.CorpHangarArray', 'form.SpecialCargoBay', 'form.PlanetInventory') and getattr(each, 'itemID', None) == id_:
+            if getattr(each, '__guid__', None) in guidsToKill and getattr(each, 'itemID', None) == id_:
                 if not each.destroyed:
                     if hasattr(each, 'SelfDestruct'):
                         each.SelfDestruct()
@@ -592,6 +594,10 @@ class GameUI(service.Service):
 
 
     def GoCharacterCreation(self, canReturnToCharsel = 1, charID = None, gender = None, bloodlineID = None, fromCharSel = 1, askUseLowShader = 1, dollState = None, *args):
+        if charID is not None:
+            change = {'worldspaceid': [session.worldspaceid, None]}
+            sm.GetService('entityClient').ProcessSessionChange(False, session, change)
+            self.OnSessionChanged(False, session, change)
         factory = sm.GetService('character').factory
         factory.compressTextures = False
         factory.allowTextureCache = False
@@ -636,6 +642,8 @@ class GameUI(service.Service):
                 self.OpenExclusive('charcontrol', 1)
             eve.SynchronizeClock()
             sm.GetService('wallet')
+        if uicore.layer.shipui.isopen:
+            uicore.layer.shipui.CloseView()
         if util.IsStation(session.stationid):
             self._GoStation(change)
         uthread.new(sm.GetService('loading').FadeFromBlack, 3000)

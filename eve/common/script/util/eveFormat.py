@@ -381,8 +381,12 @@ def FmtRef(entryTypeID, o1, o2, arg1, pretty = 1, amount = 0.0, constants = None
                  'name2': GetName(o2)}
             if entryTypeID == constants.refStorePurchase:
                 return mls.UI_SHARED_FORMAT_PURCHASEFROMSTORE
+            if entryTypeID == constants.refStoreRefund:
+                return mls.UI_SHARED_FORMAT_REFUNDFROMSTORE
             if entryTypeID == constants.refPlexConversion:
                 return mls.UI_SHARED_FORMAT_PLEXCONVERSION
+            if entryTypeID == constants.refAurumGiveAway:
+                return mls.UI_SHARED_FORMAT_AURUMGIVEAWAY
             if pretty:
                 return '-'
             return mls.UI_SHARED_FORMAT_UNKNOWNREFERENCE % {'ID': entryTypeID,
@@ -637,6 +641,8 @@ def GetName(ownerID):
         else:
             if ownerID < 0:
                 return cfg.invtypes.Get(-ownerID).name
+            if boot.role == 'client' and sm.GetService('agents').IsAgent(ownerID):
+                return sm.GetService('agents').GetAgentDisplayName(ownerID)
             return cfg.eveowners.Get(ownerID).name
     except:
         sys.exc_clear()

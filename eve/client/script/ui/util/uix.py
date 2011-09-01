@@ -165,7 +165,8 @@ def GetItemData(rec, viewMode, viewOnly = 0, container = None, scrollID = None, 
         data.Set('sort_%s' % mls.UI_GENERIC_VOLUME, 0)
     else:
         volume = cfg.GetItemVolume(rec)
-        unit = Tr(cfg.eveunits.Get(const.unitVolume).displayName, 'dbo.eveUnits.displayName', const.unitVolume)
+        u = cfg.dgmunits.Get(const.unitVolume)
+        unit = Tr(u.displayName, 'dogma.units.displayName', u.dataID)
         data.volume = '%s %s' % (util.FmtAmt(volume), unit)
         data.Set('sort_%s' % mls.UI_GENERIC_VOLUME, volume)
     data.scrollID = scrollID

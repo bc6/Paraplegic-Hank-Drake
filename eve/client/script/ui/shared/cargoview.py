@@ -34,7 +34,7 @@ class ShipCargoView(form.VirtualInvWindow):
 
     def DoGetShell(self):
         try:
-            return eve.GetInventoryFromId(self.itemID)
+            return sm.GetService('invCache').GetInventoryFromId(self.itemID, locationID=session.stationid2)
         except UserError:
             self.SelfDestruct()
             if self.sr.Get('cookie', None):

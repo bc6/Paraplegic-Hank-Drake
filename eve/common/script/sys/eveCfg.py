@@ -19,7 +19,6 @@ import math
 globals().update(service.consts)
 from sys import *
 import standingUtil
-TOTAL_STEPS = 26
 
 class Standings():
     __guid__ = 'sys.Standings'
@@ -223,46 +222,8 @@ class EveConfig(util.config):
         self.fmtMapping[AUR] = lambda value, value2: util.FmtAUR(value)
         self.fmtMapping[DIST] = lambda value, value2: util.FmtDist(value)
         self.fmtMapping[TYPEIDANDQUANTITY] = self._EveConfig__FormatTypeIDAndQuantity
-        self.invcategories = Recordset(InvCategory, 'categoryID')
-        self.invgroups = Recordset(InvGroup, 'groupID')
-        self.invmetagroups = Recordset(InvMetaGroup, 'metaGroupID')
-        self.invtypes = Recordset(InvType, 'typeID')
-        self.invbptypes = Recordset(Row, 'blueprintTypeID')
-        self.dgmattribs = Recordset(DgmAttribute, 'attributeID')
-        self.dgmeffects = Recordset(DgmEffect, 'effectID')
-        self.dgmtypeattribs = dbutil.CFilterRowset(None, None)
-        self.dgmtypeeffects = dbutil.CFilterRowset(None, None)
-        self.invmetatypes = Recordset(Row, 'typeID')
-        self.eveunits = Recordset(Row, 'unitID', 'GetUnits', 'GetUnits')
-        self.eveowners = Recordset(EveOwners, 'ownerID', 'GetOwnersEx', 'GetMultiOwnersEx')
-        self.evelocations = Recordset(EveLocations, 'locationID', 'GetLocationsEx', 'GetMultiLocationsEx')
-        self.corptickernames = Recordset(CrpTickerNames, 'corporationID', 'GetCorpTickerNamesEx', 'GetMultiCorpTickerNamesEx')
-        self.allianceshortnames = Recordset(AllShortNames, 'allianceID', 'GetAllianceShortNamesEx', 'GetMultiAllianceShortNamesEx')
-        self.ramaltypes = Recordset(Row, 'assemblyLineTypeID')
-        self.ramaltypesdetailpercategory = dbutil.CFilterRowset(None, None)
-        self.ramaltypesdetailpergroup = dbutil.CFilterRowset(None, None)
-        self.ramactivities = Recordset(RamActivity, 'activityID', None, None)
-        self.ramtyperequirements = {}
-        self.invtypematerials = dbutil.CFilterRowset(None, None)
-        self.ramcompletedstatuses = Recordset(RamCompletedStatus, 'completedStatusID')
-        self.mapcelestialdescriptions = Recordset(MapCelestialDescription, 'celestialID')
         self.crystalgroups = []
-        self.certificates = Recordset(Certificate, 'certificateID', 'GetCertificates')
-        self.certificaterelationships = Recordset(Row, 'relationshipID', 'GetCertificateRelationships')
-        self.locationwormholeclasses = Recordset(Row, 'locationID', 'GetLocationWormholeClasses')
-        self.locationscenes = Recordset(Row, 'locationID', 'GetLocationScene')
         self.planetattributes = Recordset(Row, None)
-        self.schematics = Recordset(Schematic, 'schematicID')
-        self.schematicstypemap = dbutil.CFilterRowset(None, None)
-        self.schematicspinmap = dbutil.CFilterRowset(None, None)
-        self.schematicsByPin = dbutil.CFilterRowset(None, None)
-        self.schematicsByType = dbutil.CFilterRowset(None, None)
-        self.billtypes = Recordset(Billtype, 'billTypeID')
-        self.ownericons = Recordset(Row, 'ownerID')
-        self.bloodlineNames = dbutil.CFilterRowset(None, None)
-        self.overviewDefaults = Recordset(OverviewDefault, 'overviewID')
-        self.overviewDefaultGroups = {}
-        self.positions = Recordset(Position, 'itemID', 'GetPositionEx', 'GetPositionsEx')
 
 
 
@@ -288,11 +249,13 @@ class EveConfig(util.config):
         self.dgmeffects = None
         self.dgmtypeattribs = None
         self.dgmtypeeffects = None
-        self.eveunits = None
+        self.dgmunits = None
         self.eveowners = None
         self.evelocations = None
         self.corptickernames = None
         self.allianceshortnames = None
+        self.factions = None
+        self.npccorporations = None
         self.crystalgroups = None
         self.certificates = None
         self.certificaterelationships = None
@@ -305,7 +268,6 @@ class EveConfig(util.config):
         self.schematicsByPin = None
         self.schematicsByType = None
         self.billtypes = None
-        self.ownericons = None
         self.bloodlineNames = None
         self.overviewDefaults = None
         self.overviewDefaultGroups = None
@@ -375,14 +337,16 @@ class EveConfig(util.config):
 
     def AppGetStartupData(self):
         configSvc = sm.GetService('config')
-        initdata = configSvc.GetInitValsServer()
+        initdata = configSvc.GetInitVals()
         self.GotInitData(initdata)
 
 
 
-    def ReportLoginProgress(self, section, stepNum):
+    def ReportLoginProgress(self, section, stepNum, totalSteps = None):
+        if totalSteps is not None:
+            self.totalLogonSteps = totalSteps
         if macho.mode == 'client':
-            sm.ChainEvent('ProcessLoginProgress', 'loginprogress::miscinitdata', section, stepNum, TOTAL_STEPS)
+            sm.ChainEvent('ProcessLoginProgress', 'loginprogress::miscinitdata', section, stepNum, self.totalLogonSteps)
         else:
             cfg.LogInfo(section, stepNum)
 
@@ -390,32 +354,22 @@ class EveConfig(util.config):
 
     def GotInitData(self, initdata):
         cfg.LogInfo('App GotInitData')
-        util.config.GotInitData(self, initdata, TOTAL_STEPS)
-        self.LoadFromBulk(initdata['config.BulkData.units'].GetCachedObject(), self.eveunits)
-        self.ReportLoginProgress('owners', 5)
-        self.LoadFromBulk(initdata['config.BulkData.owners'].GetCachedObject(), self.eveowners)
-        self.ReportLoginProgress('tickernames', 6)
-        self.LoadFromBulk(initdata['config.BulkData.tickernames'].GetCachedObject(), self.corptickernames)
-        self.ReportLoginProgress('allianceshortnames', 7)
-        self.LoadFromBulk(initdata['config.BulkData.allianceshortnames'].GetCachedObject(), self.allianceshortnames)
-        self.ReportLoginProgress('locations', 8)
-        self.LoadFromBulk(initdata['config.BulkData.locations'].GetCachedObject(), self.evelocations)
-        self.ReportLoginProgress('categories', 9)
-        self.LoadFromBulk(initdata['config.BulkData.categories'].GetCachedObject(), self.invcategories)
-        self.ReportLoginProgress('metagroups', 11)
-        self.LoadFromBulk(initdata['config.BulkData.metagroups'].GetCachedObject(), self.invmetagroups)
-        self.ReportLoginProgress('groups', 11)
-        self.LoadFromBulk(initdata['config.BulkData.groups'].GetCachedObject(), self.invgroups)
-        self.ReportLoginProgress('types', 12)
-        self.LoadFromBulk(initdata['config.BulkData.types'].GetCachedObject(), self.invtypes)
-        self.ReportLoginProgress('bptypes', 13)
-        self.LoadFromBulk(initdata['config.BulkData.bptypes'].GetCachedObject(), self.invbptypes)
-        self.ReportLoginProgress('reactiontypes', 14)
-        self.invtypereactions = initdata['config.BulkData.invtypereactions'].GetCachedObject().Filter('reactionTypeID')
-        self.ReportLoginProgress('dogma attributes', 15)
+        util.config.GotInitData(self, initdata)
+        self.dgmunits = self.LoadBulk('dgmunits', const.cacheDogmaUnits, Recordset(Row, 'unitID'))
+        self.ReportLoginProgress('coreInitData1', self.totalLogonSteps - const.cfgLogonSteps / 2)
+        self.invbptypes = self.LoadBulk('invbptypes', const.cacheInvBlueprintTypes, Recordset(Row, 'blueprintTypeID'))
+        self.invcategories = self.LoadBulk('invcategories', const.cacheInvCategories, Recordset(InvCategory, 'categoryID'))
+        self.invmetagroups = self.LoadBulk('invmetagroups', const.cacheInvMetaGroups, Recordset(InvMetaGroup, 'metaGroupID'))
+        self.invgroups = self.LoadBulk('invgroups', const.cacheInvGroups, Recordset(InvGroup, 'groupID'))
+        self.invtypes = self.LoadBulk('invtypes', const.cacheInvTypes, Recordset(InvType, 'typeID'))
+        self.invtypereactions = self.LoadBulk('invtypereactions', const.cacheInvTypeReactions, None, 'reactionTypeID')
+        self.invmetatypes = self.LoadBulk('invmetatypes', const.cacheInvMetaTypes, Recordset(Row, 'typeID'))
+        self.invmetatypesByParent = self.LoadBulk('invmetatypesByParent', const.cacheInvMetaTypes, None, 'parentTypeID')
+        invcontrabandtypes = self.LoadBulk(None, const.cacheInvContrabandTypes)
         self.invcontrabandTypesByFaction = {}
         self.invcontrabandFactionsByType = {}
-        for each in initdata['config.InvContrabandTypes'].GetCachedObject():
+        self.bulkIDsToCfgNames[const.cacheInvContrabandTypes] = ['invcontrabandTypesByFaction', 'invcontrabandFactionsByType']
+        for each in invcontrabandtypes:
             if each.factionID not in self.invcontrabandTypesByFaction:
                 self.invcontrabandTypesByFaction[each.factionID] = {}
             self.invcontrabandTypesByFaction[each.factionID][each.typeID] = each
@@ -423,32 +377,19 @@ class EveConfig(util.config):
                 self.invcontrabandFactionsByType[each.typeID] = {}
             self.invcontrabandFactionsByType[each.typeID][each.factionID] = each
 
-        self.ReportLoginProgress('dogma attributes', 16)
-        self.LoadFromBulk(initdata['config.BulkData.dgmattribs'].GetCachedObject(), self.dgmattribs)
-        self.ReportLoginProgress('dogma effects', 17)
-        self.LoadFromBulk(initdata['config.BulkData.dgmeffects'].GetCachedObject(), self.dgmeffects)
-        self.ReportLoginProgress('dogma type attributes', 18)
-        self.dgmtypeattribs = initdata['config.BulkData.dgmtypeattribs'].GetCachedObject().Filter('typeID')
-        self.ReportLoginProgress('dogma type effects', 19)
-        self.dgmtypeeffects = initdata['config.BulkData.dgmtypeeffects'].GetCachedObject().Filter('typeID')
-        self.ReportLoginProgress('ship types', 20)
-        self.shiptypes = initdata['config.BulkData.shiptypes'].GetCachedObject().Index('shipTypeID')
-        self.ReportLoginProgress('static data', 21)
-        self.ReportLoginProgress('static owners', 22)
-        self.eveowners.Hint(None, initdata['config.StaticOwners'].GetCachedObject())
-        self.ReportLoginProgress('static locations', 23)
-        self.evelocations.Hint(None, initdata['config.StaticLocations'].GetCachedObject())
-        self.ReportLoginProgress('metatypes', 24)
-        self.LoadFromBulk(initdata['config.BulkData.invmetatypes'].GetCachedObject(), self.invmetatypes)
-        self.invmetatypesByParent = initdata['config.BulkData.invmetatypes'].GetCachedObject().Filter('parentTypeID')
-        self.ReportLoginProgress('ramaltypes', 25)
-        self.LoadFromBulk(initdata['config.BulkData.ramaltypes'].GetCachedObject(), self.ramaltypes)
-        self.ramaltypesdetailpercategory = initdata['config.BulkData.ramaltypesdetailpercategory'].GetCachedObject().Filter('assemblyLineTypeID')
-        self.ramaltypesdetailpergroup = initdata['config.BulkData.ramaltypesdetailpergroup'].GetCachedObject().Filter('assemblyLineTypeID')
-        self.LoadFromBulk(initdata['config.BulkData.ramactivities'].GetCachedObject(), self.ramactivities)
-        self.LoadFromBulk(initdata['config.BulkData.ramcompletedstatuses'].GetCachedObject(), self.ramcompletedstatuses)
-        self.invtypematerials = initdata['config.BulkData.invtypematerials'].GetCachedObject().Filter('typeID')
-        ramtyperequirements = initdata['config.BulkData.ramtyperequirements'].GetCachedObject()
+        self.ReportLoginProgress('coreInitData2', self.totalLogonSteps - const.cfgLogonSteps / 2 + 1)
+        self.dgmattribs = self.LoadBulk('dgmattribs', const.cacheDogmaAttributes, Recordset(DgmAttribute, 'attributeID'))
+        self.dgmeffects = self.LoadBulk('dgmeffects', const.cacheDogmaEffects, Recordset(DgmEffect, 'effectID'))
+        self.dgmtypeattribs = self.LoadBulk('dgmtypeattribs', const.cacheDogmaTypeAttributes, None, 'typeID')
+        self.dgmtypeeffects = self.LoadBulk('dgmtypeeffects', const.cacheDogmaTypeEffects, None, 'typeID')
+        self.shiptypes = self.LoadBulk('shiptypes', const.cacheShipTypes, Recordset(Row, 'shipTypeID'))
+        self.ramaltypes = self.LoadBulk('ramaltypes', const.cacheRamAssemblyLineTypes, Recordset(Row, 'assemblyLineTypeID'))
+        self.ramaltypesdetailpercategory = self.LoadBulk('ramaltypesdetailpercategory', const.cacheRamAssemblyLineTypesCategory, None, 'assemblyLineTypeID', virtualColumns=[('activityID', RamActivityVirtualColumn)])
+        self.ramaltypesdetailpergroup = self.LoadBulk('ramaltypesdetailpergroup', const.cacheRamAssemblyLineTypesGroup, None, 'assemblyLineTypeID', virtualColumns=[('activityID', RamActivityVirtualColumn)])
+        self.ramactivities = self.LoadBulk('ramactivities', const.cacheRamActivities, Recordset(RamActivity, 'activityID'))
+        self.ramcompletedstatuses = self.LoadBulk('ramcompletedstatuses', const.cacheRamCompletedStatuses, Recordset(RamCompletedStatus, 'completedStatus'))
+        self.invtypematerials = self.LoadBulk('invtypematerials', const.cacheInvTypeMaterials, None, 'typeID')
+        ramtyperequirements = self.LoadBulk('ramtyperequirements', const.cacheRamTypeRequirements)
         d = {}
         for row in ramtyperequirements:
             key = (row.typeID, row.activityID)
@@ -458,26 +399,44 @@ class EveConfig(util.config):
                 d[key] = [row]
 
         self.ramtyperequirements = d
-        self.ReportLoginProgress('mapcelestialdescriptions', 26)
-        self.LoadFromBulk(initdata['config.BulkData.mapcelestialdescriptions'].GetCachedObject(), self.mapcelestialdescriptions)
-        self.LoadFromBulk(initdata['config.BulkData.certificates'].GetCachedObject(), self.certificates)
-        self.LoadFromBulk(initdata['config.BulkData.certificaterelationships'].GetCachedObject(), self.certificaterelationships)
-        self.LoadFromBulk(initdata['config.BulkData.locationwormholeclasses'].GetCachedObject(), self.locationwormholeclasses)
-        self.LoadFromBulk(initdata['config.BulkData.locationscenes'].GetCachedObject(), self.locationscenes)
-        self.LoadFromBulk(initdata['config.BulkData.schematics'].GetCachedObject(), self.schematics)
-        self.schematicstypemap = initdata['config.BulkData.schematicstypemap'].GetCachedObject().Filter('schematicID')
-        self.schematicspinmap = initdata['config.BulkData.schematicspinmap'].GetCachedObject().Filter('schematicID')
-        self.schematicsByPin = initdata['config.BulkData.schematicspinmap'].GetCachedObject().Filter('pinTypeID')
-        self.schematicsByType = initdata['config.BulkData.schematicstypemap'].GetCachedObject().Filter('typeID')
-        self.groupsByCategories = initdata['config.BulkData.groups'].GetCachedObject().Filter('categoryID')
-        self.typesByGroups = initdata['config.BulkData.types'].GetCachedObject().Filter('groupID')
-        self.typesByMarketGroups = initdata['config.BulkData.types'].GetCachedObject().Filter('marketGroupID')
-        self.LoadFromBulk(initdata['config.BulkData.billtypes'].GetCachedObject(), self.billtypes)
-        self.LoadFromBulk(initdata['config.BulkData.ownericons'].GetCachedObject(), self.ownericons)
-        self.LoadFromBulk(initdata['config.BulkData.overviewDefaults'].GetCachedObject(), self.overviewDefaults)
-        self.overviewDefaultGroups = initdata['config.BulkData.overviewDefaultGroups'].GetCachedObject().Filter('overviewID')
-        self.bloodlineNames = initdata['config.BulkData.bloodlineNames'].GetCachedObject().Filter('bloodlineID')
-        self.LoadFromBulk(initdata['config.BulkData.positions'].GetCachedObject(), self.positions)
+        self.mapcelestialdescriptions = self.LoadBulk('mapcelestialdescriptions', const.cacheMapCelestialDescriptions, Recordset(MapCelestialDescription, 'itemID'))
+        self.certificates = self.LoadBulk('certificates', const.cacheCertificates, Recordset(Certificate, 'certificateID'))
+        self.certificaterelationships = self.LoadBulk('certificaterelationships', const.cacheCertificateRelationships, Recordset(Row, 'relationshipID'))
+        self.certificateRelationshipsByChildID = self.LoadBulk('certificateRelationshipsByChildID', const.cacheCertificateRelationships, Recordset(Row, 'relationshipID'))
+        self.locationwormholeclasses = self.LoadBulk('locationwormholeclasses', const.cacheMapLocationWormholeClasses, Recordset(Row, 'locationID'))
+        self.locationscenes = self.LoadBulk('locationscenes', const.cacheMapLocationScenes, Recordset(Row, 'locationID'))
+        self.ReportLoginProgress('coreInitData3', self.totalLogonSteps - const.cfgLogonSteps / 2 + 2)
+        self.schematics = self.LoadBulk('schematics', const.cachePlanetSchematics, Recordset(Schematic, 'schematicID'))
+        self.schematicstypemap = self.LoadBulk('schematicstypemap', const.cachePlanetSchematicsTypeMap, None, 'schematicID')
+        self.schematicspinmap = self.LoadBulk('schematicspinmap', const.cachePlanetSchematicsPinMap, None, 'schematicID')
+        self.schematicsByPin = self.LoadBulk('schematicsByPin', const.cachePlanetSchematicsPinMap, None, 'pinTypeID')
+        self.schematicsByType = self.LoadBulk('schematicsByType', const.cachePlanetSchematicsTypeMap, None, 'typeID')
+        self.groupsByCategories = self.LoadBulk('groupsByCategories', const.cacheInvGroups, None, 'categoryID')
+        self.typesByGroups = self.LoadBulk('typesByGroups', const.cacheInvTypes, None, 'groupID')
+        self.typesByMarketGroups = self.LoadBulk('typesByMarketGroups', const.cacheInvTypes, None, 'marketGroupID')
+        self.billtypes = self.LoadBulk('billtypes', const.cacheActBillTypes, Recordset(Billtype, 'billTypeID'))
+        self.overviewDefaults = self.LoadBulk('overviewDefaults', const.cacheChrDefaultOverviews, Recordset(OverviewDefault, 'overviewID'))
+        self.overviewDefaultGroups = self.LoadBulk('overviewDefaultGroups', const.cacheChrDefaultOverviewGroups, None, 'overviewID')
+        self.bloodlineNames = self.LoadBulk('bloodlineNames', const.cacheChrBloodlineNames, None, 'bloodlineID')
+        self.factions = self.LoadBulk('factions', const.cacheChrFactions, Recordset(Row, 'factionID'))
+        self.npccorporations = self.LoadBulk('npccorporations', const.cacheCrpNpcCorporations, Recordset(Row, 'corporationID'))
+        self.corptickernames = self.LoadBulk('corptickernames', const.cacheCrpTickerNamesStatic, Recordset(CrpTickerNames, 'corporationID', 'GetCorpTickerNamesEx', 'GetMultiCorpTickerNamesEx'), tableID=const.cacheCrpNpcCorporations)
+        self.LoadEveOwners()
+        self.LoadEveLocations()
+        allianceshortnameRowHeader = blue.DBRowDescriptor((('allianceID', const.DBTYPE_I4), ('shortName', const.DBTYPE_WSTR)))
+        self.allianceshortnameRowset = dbutil.CRowset(allianceshortnameRowHeader, [])
+        self.allianceshortnames = Recordset(AllShortNames, 'allianceID', 'GetAllianceShortNamesEx', 'GetMultiAllianceShortNamesEx')
+        self.ConvertData(self.allianceshortnameRowset, self.allianceshortnames)
+        positionRowHeader = blue.DBRowDescriptor((('itemID', const.DBTYPE_I8),
+         ('x', const.DBTYPE_R5),
+         ('y', const.DBTYPE_R5),
+         ('z', const.DBTYPE_R5),
+         ('yaw', const.DBTYPE_R4),
+         ('pitch', const.DBTYPE_R4),
+         ('roll', const.DBTYPE_R4)))
+        positionRowset = dbutil.CRowset(positionRowHeader, [])
+        self.positions = Recordset(Position, 'itemID', 'GetPositionEx', 'GetPositionsEx')
+        self.ConvertData(positionRowset, self.positions)
         self.__containercategories__ = (const.categoryStation,
          const.categoryShip,
          const.categoryTrading,
@@ -745,6 +704,85 @@ class EveConfig(util.config):
 
 
 
+    def LoadEveOwners(self):
+        npccharacters = self.LoadBulk(None, const.cacheChrNpcCharacters, Recordset(Row, 'characterID'))
+        rowDescriptor = blue.DBRowDescriptor((('ownerID', const.DBTYPE_I4), ('ownerName', const.DBTYPE_WSTR), ('typeID', const.DBTYPE_I2)))
+        self.eveowners = Recordset(EveOwners, 'ownerID', 'GetOwnersEx', 'GetMultiOwnersEx')
+        self.eveowners.header = ['ownerID', 'ownerName', 'typeID']
+        bloodlinesToTypes = {const.bloodlineDeteis: const.typeCharacterDeteis,
+         const.bloodlineCivire: const.typeCharacterCivire,
+         const.bloodlineSebiestor: const.typeCharacterSebiestor,
+         const.bloodlineBrutor: const.typeCharacterBrutor,
+         const.bloodlineAmarr: const.typeCharacterAmarr,
+         const.bloodlineNiKunni: const.typeCharacterNiKunni,
+         const.bloodlineGallente: const.typeCharacterGallente,
+         const.bloodlineIntaki: const.typeCharacterIntaki,
+         const.bloodlineStatic: const.typeCharacterStatic,
+         const.bloodlineModifier: const.typeCharacterModifier,
+         const.bloodlineAchura: const.typeCharacterAchura,
+         const.bloodlineJinMei: const.typeCharacterJinMei,
+         const.bloodlineKhanid: const.typeCharacterKhanid,
+         const.bloodlineVherokior: const.typeCharacterVherokior}
+        for row in self.factions:
+            self.eveowners.data[row.factionID] = blue.DBRow(rowDescriptor, [row.factionID, row.factionName, const.typeFaction])
+
+        for row in self.npccorporations:
+            self.eveowners.data[row.corporationID] = blue.DBRow(rowDescriptor, [row.corporationID, row.corporationName, const.typeCorporation])
+
+        for row in npccharacters:
+            self.eveowners.data[row.characterID] = blue.DBRow(rowDescriptor, [row.characterID, row.characterName, bloodlinesToTypes[row.bloodlineID]])
+
+        self.eveowners.data[1] = blue.DBRow(rowDescriptor, [1, 'EVE System', 0])
+
+
+
+    def LoadEveLocations(self):
+        regions = self.LoadBulk(None, const.cacheMapRegionsTable, Recordset(Row, 'regionID'))
+        constellations = self.LoadBulk(None, const.cacheMapConstellationsTable, Recordset(Row, 'constellationID'))
+        solarsystems = self.LoadBulk(None, const.cacheMapSolarSystemsTable, Recordset(Row, 'solarSystemID'))
+        stations = self.LoadBulk(None, 2209987, Recordset(Row, 'stationID'))
+        rowDescriptor = blue.DBRowDescriptor((('locationID', const.DBTYPE_I4),
+         ('locationName', const.DBTYPE_WSTR),
+         ('x', const.DBTYPE_R5),
+         ('y', const.DBTYPE_R5),
+         ('z', const.DBTYPE_R5)))
+        self.evelocations = Recordset(EveLocations, 'locationID', 'GetLocationsEx', 'GetMultiLocationsEx')
+        self.evelocations.header = ['locationID',
+         'locationName',
+         'x',
+         'y',
+         'z']
+        for row in regions:
+            self.evelocations.data[row.regionID] = blue.DBRow(rowDescriptor, [row.regionID,
+             row.regionName,
+             row.x,
+             row.y,
+             -row.z])
+
+        for row in constellations:
+            self.evelocations.data[row.constellationID] = blue.DBRow(rowDescriptor, [row.constellationID,
+             row.constellationName,
+             row.x,
+             row.y,
+             -row.z])
+
+        for row in solarsystems:
+            self.evelocations.data[row.solarSystemID] = blue.DBRow(rowDescriptor, [row.solarSystemID,
+             row.solarSystemName,
+             row.x,
+             row.y,
+             -row.z])
+
+        for row in stations:
+            self.evelocations.data[row.stationID] = blue.DBRow(rowDescriptor, [row.stationID,
+             row.stationName,
+             row.x,
+             row.y,
+             -row.z])
+
+
+
+
 
 class InvGroup(Row):
     __guid__ = 'sys.InvGroup'
@@ -902,7 +940,7 @@ class InvType(Row):
 
 
     def ShipType(self):
-        return cfg.shiptypes[self.id]
+        return cfg.shiptypes.Get(self.id)
 
 
 
@@ -912,6 +950,8 @@ class InvType(Row):
         else:
             if name == 'name':
                 name = 'typeName'
+            if name == 'categoryID':
+                return cfg.invgroups.Get(self.groupID).categoryID
             value = Row.__getattr__(self, name)
             if name == 'typeName':
                 return Tr(value, 'inventory.types.typeName', self.dataID)
@@ -943,6 +983,11 @@ def Singleton(item):
 
 
 
+def RamActivityVirtualColumn(row):
+    return cfg.ramaltypes.Get(row.assemblyLineTypeID).activityID
+
+
+
 def IsSystem(ownerID):
     return ownerID <= 10000
 
@@ -950,6 +995,16 @@ def IsSystem(ownerID):
 
 def IsNPC(ownerID):
     return ownerID < 90000000 and ownerID > 10000
+
+
+
+def IsNPCCorporation(ownerID):
+    return ownerID < 2000000 and ownerID >= 1000000
+
+
+
+def IsNPCCharacter(ownerID):
+    return ownerID < 4000000 and ownerID >= 3000000
 
 
 
@@ -1240,7 +1295,12 @@ class EveOwners(Row):
             return cfg.invtypes.Get(self.typeID).groupID
         value = Row.__getattr__(self, name)
         if name == 'ownerName' and IsSystemOrNPC(self.ownerID):
-            return Tr(value, 'dbo.eveNames.itemName', self.ownerID)
+            if self.IsFaction():
+                return Tr(value, 'character.factions.factionName', self.ownerID)
+            if self.IsCorporation():
+                return Tr(value, 'corporation.npcCorporations.corporationName', self.ownerID)
+            if self.IsCharacter():
+                return Tr(value, 'character.npcCharacters.characterName', self.ownerID)
         return value
 
 
@@ -1314,6 +1374,8 @@ class DgmAttribute(Row):
     def __getattr__(self, name):
         value = Row.__getattr__(self, name)
         if name == 'displayName':
+            if len(value) == 0:
+                value = self.attributeName
             value = Tr(value, 'dogma.attributes.displayName', self.dataID)
         return value
 
@@ -1326,6 +1388,8 @@ class DgmEffect(Row):
     def __getattr__(self, name):
         value = Row.__getattr__(self, name)
         if name == 'displayName':
+            if len(value) == 0:
+                value = self.effectName
             value = Tr(value, 'dogma.effects.displayName', self.dataID)
         if name == 'description':
             value = Tr(value, 'dogma.effects.description', self.dataID)
@@ -1378,19 +1442,19 @@ class RamCompletedStatus(Row):
 
     def __getattr__(self, name):
         if name == 'name':
-            name = 'completedStatusName'
+            name = 'completedStatusText'
         value = Row.__getattr__(self, name)
-        if name == 'completedStatusName':
-            value = Tr(value, 'dbo.ramCompletedStatuses.completedStatusText', self.completedStatusID)
+        if name == 'completedStatusText':
+            value = Tr(value, 'dbo.ramCompletedStatuses.completedStatusText', self.completedStatus)
         elif name == 'description':
-            return Tr(value, 'dbo.ramCompletedStatuses.description', self.completedStatusID)
+            return Tr(value, 'dbo.ramCompletedStatuses.description', self.completedStatus)
         return value
 
 
 
     def __str__(self):
         try:
-            return 'RamCompletedStatus ID: %d, "%s"' % (self.completedStatusID, self.completedStatusName)
+            return 'RamCompletedStatus ID: %d, "%s"' % (self.completedStatus, self.completedStatusText)
         except:
             sys.exc_clear()
             return 'RamCompletedStatus containing crappy data'
@@ -1429,13 +1493,13 @@ class MapCelestialDescription(Row):
     def __getattr__(self, name):
         value = Row.__getattr__(self, name)
         if name == 'description':
-            value = Tr(value, 'dbo.mapCelestialDescriptions.description', self.celestialID)
+            value = Tr(value, 'map.itemDescriptions.description', self.dataID)
         return value
 
 
 
     def __str__(self):
-        return 'MapCelestialDescriptions ID: %d' % self.celestialID
+        return 'MapCelestialDescriptions ID: %d' % self.itemID
 
 
 
@@ -1517,7 +1581,7 @@ class Billtype(Row):
     def __getattr__(self, name):
         value = Row.__getattr__(self, name)
         if name == 'billTypeName':
-            value = Tr(value, 'dbo.actBillTypes.billTypeName', self.billTypeID)
+            value = Tr(value, 'accounting.billTypes.billTypeName', self.dataID)
         return value
 
 
@@ -2000,10 +2064,20 @@ def GetCurrencyTypeFromKey(accountKeyID):
         return const.creditsISK
 
 
+
+def GetActiveShip():
+    if session.stationid2:
+        shipID = sm.GetService('clientDogmaIM').GetDogmaLocation().shipID
+    else:
+        shipID = session.shipid
+    return shipID
+
+
 exports = {'util.GraphicFile': GraphicFile,
  'util.IconFile': IconFile,
  'util.StackSize': StackSize,
  'util.Singleton': Singleton,
+ 'util.RamActivityVirtualColumn': RamActivityVirtualColumn,
  'util.IsNPC': IsNPC,
  'util.IsSystem': IsSystem,
  'util.IsSystemOrNPC': IsSystemOrNPC,
@@ -2047,5 +2121,8 @@ exports = {'util.GraphicFile': GraphicFile,
  'util.GetPlanetWarpInPoint': GetPlanetWarpInPoint,
  'util.IsPlaceable': IsPlaceable,
  'util.IsOrbital': IsOrbital,
- 'util.GetCurrencyTypeFromKey': GetCurrencyTypeFromKey}
+ 'util.GetCurrencyTypeFromKey': GetCurrencyTypeFromKey,
+ 'util.GetActiveShip': GetActiveShip,
+ 'util.DgmAttribute': DgmAttribute,
+ 'util.DgmEffect': DgmEffect}
 

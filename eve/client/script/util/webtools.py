@@ -324,7 +324,7 @@ class IconRoutines():
         BAD_TURRET_TYPES = (4044, 4045, 4049, 22691, 28610, 16132)
         manyTypes = []
         if categoryid:
-            manyTypes = [ each for each in cfg.invtypes if each.Group().Category().id == categoryid if each.Group().id != const.groupStrategicCruiser ]
+            manyTypes = [ each for each in cfg.invtypes if each.Group().Category().id == categoryid if categoryid != const.categoryApparel if each.Group().id != const.groupStrategicCruiser ]
         elif groupid:
             manyTypes = [ each for each in cfg.invtypes if each.Group().id == groupid if each.typeID not in BAD_TURRET_TYPES ]
         lr = LoggingRoutines()
@@ -422,6 +422,13 @@ class IconRoutines():
 
 
 
+    def RenderApparel(self):
+        import cc
+        assetRenderer = cc.AssetRenderer(showUI=False)
+        assetRenderer.RenderLoop(fromWebtools=True)
+
+
+
     def TotalBatchRender(self, icons = None, categories = None, corporation = None):
         dr = DirectoryRoutines()
         dr.DeleteCachedFile(None, 'Gids', 1)
@@ -458,6 +465,10 @@ class IconRoutines():
                 self.BatchRender((None, groupID), 'turrets', True, 512)
 
             self.RenderTech3Ships()
+            try:
+                self.RenderApparel()
+            except Exception as e:
+                Msg('Failed to render all apparel')
 
 
 

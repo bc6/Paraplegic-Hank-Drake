@@ -284,6 +284,7 @@ class CoreServiceCall():
                                 raise 
                             sys.exc_clear()
                             self.LogMethodCall(cachedResultRecord['lret'], service, method, args, keywords)
+                            sm.GetService('objectCaching').UpdateVersionCheckPeriod(cacheKey)
                             return cachedResultRecord['lret']
 
                     finally:
@@ -790,12 +791,7 @@ class MachoServiceConnection():
                      attribute,
                      str(args),
                      str(kwargs))
-                    with macho.Throttle(key) as t:
-                        if not hasattr(t, 'result'):
-                            t.result = doCall()
-                        else:
-                            sm.GetService('machoNet').LogInfo('No need to cross the wire for', key, 'got', t.result)
-                        return t.result
+                    return macho.ThrottledCall(key, doCall)
                 del kwargs['noCallThrottling']
             return doCall()
 

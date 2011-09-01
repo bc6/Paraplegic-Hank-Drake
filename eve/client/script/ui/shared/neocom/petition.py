@@ -709,7 +709,6 @@ class PetitionSvc(service.Service):
                             btnparent.children[4].state = uiconst.UI_NORMAL
                 elif not p.claimed:
                     btnparent.children[3].state = uiconst.UI_NORMAL
-            btnparent.width = sum([ btn.width for btn in btnparent.children if btn.state == uiconst.UI_NORMAL ])
 
 
 
@@ -1320,7 +1319,8 @@ class MessageField(uicls.SE_BaseClassCore):
         data = node
         self.msg = data.msg
         self.p = data.p
-        self.sr.subject.text = '%s<br>%s' % (cfg.eveowners.Get(self.msg.senderID).name, util.FmtDate(self.msg.sentDate))
+        sender = '%s<br>' % cfg.eveowners.Get(self.msg.senderID).name if self.msg.senderID is not None else ''
+        self.sr.subject.text = '%s%s' % (sender, util.FmtDate(self.msg.sentDate))
         if node.Get('selected', 0):
             self.sr.selection.state = uiconst.UI_DISABLED
         else:

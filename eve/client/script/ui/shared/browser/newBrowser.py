@@ -385,6 +385,7 @@ class EveBrowserWindow(uicls.Window):
             self.AddToAllTrustedSites('EVE_REGIONID', eve.session.regionid)
         if eve.session.solarsystemid or eve.session.solarsystemid2:
             self.AddToAllTrustedSites('EVE_SOLARSYSTEMNAME', (eve.session.solarsystemid or eve.session.solarsystemid2) and cfg.evelocations.Get(eve.session.solarsystemid or eve.session.solarsystemid2).name)
+            self.AddToAllTrustedSites('EVE_SOLARSYSTEMID', '%s' % (eve.session.solarsystemid or eve.session.solarsystemid2))
         if eve.session.constellationid:
             self.AddToAllTrustedSites('EVE_CONSTELLATIONNAME', eve.session.constellationid and cfg.evelocations.Get(eve.session.constellationid).name)
             self.AddToAllTrustedSites('EVE_CONSTELLATIONID', eve.session.constellationid)

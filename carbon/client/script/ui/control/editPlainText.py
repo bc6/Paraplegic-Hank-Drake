@@ -27,6 +27,7 @@ HTMLCONVERSION = {'fontsize': 'font size',
  '/color': '/font',
  'url': 'a href',
  '/url': '/a'}
+HTMLFONTTAG = {('fontsize', 'size'), ('color', 'color')}
 ENDLINKCHARS = u' ,'
 TEXTSIDEMARGIN = 6
 TEXTLINEMARGIN = 1
@@ -214,16 +215,29 @@ class EditPlainTextCore(uicls.Scroll):
         tag = tag.replace('"', '')
         tag = tag.replace("'", '')
         tag = tag.lower()
-        if tag.startswith('font color'):
-            self._fontTagStack.append('/color')
-            tag = tag.replace('font color=', 'color=')
-        elif tag.startswith('font size'):
-            self._fontTagStack.append('/fontsize')
-            tag = tag.replace('font size', 'fontsize')
-        elif tag == '/font' and self._fontTagStack:
-            tag = self._fontTagStack.pop()
-        else:
-            tag = tag.replace('a href=', 'url=').replace('/a', '/url')
+        if tag.startswith('font '):
+            fontcolor = self.GetTagValue('color=', tag)
+            if fontcolor:
+                self.ParseTag('color=' + fontcolor)
+            fontsize = self.GetTagValue('size=', tag)
+            if fontsize:
+                self.ParseTag('fontsize=' + fontsize)
+            tagStack = getattr(self, 'tagStack_font', [])
+            tagStack.append(tag)
+            setattr(self, 'tagStack_font', tagStack)
+            return 
+        if tag.startswith('/font'):
+            tagStack = getattr(self, 'tagStack_font', [])
+            if tagStack:
+                closeFontTag = tagStack.pop()
+                fontcolor = self.GetTagValue('color=', closeFontTag)
+                if fontcolor:
+                    self.ParseTag('/color')
+                fontsize = self.GetTagValue('size=', closeFontTag)
+                if fontsize:
+                    self.ParseTag('/fontsize')
+            return 
+        tag = tag.replace('a href=', 'url=').replace('/a', '/url')
         if tag[0] == '/':
             stackName = tag[1:]
         elif '=' in tag:
@@ -271,8 +285,43 @@ class EditPlainTextCore(uicls.Scroll):
 
 
 
+    def GetTagValue(self, tagtofind, tagstring):
+        start = tagstring.find(tagtofind)
+        if start != -1:
+            end = tagstring.find(' ', start)
+            if end == -1:
+                end = tagstring.find('>', start)
+            if end == -1:
+                end = len(tagstring)
+            return tagstring[(start + len(tagtofind)):end]
+
+
+
+    def GetColorSyntax(self, color, html):
+        if type(color) is types.IntType:
+            c = trinity.TriColor()
+            c.FromInt(color)
+            color = (c.r,
+             c.g,
+             c.b,
+             c.a)
+        else:
+            color = color
+        if html:
+            colorString = '"#%02x%02x%02x%02x"' % (color[3] * 255,
+             color[0] * 255,
+             color[1] * 255,
+             color[2] * 255)
+        else:
+            colorString = '0x%02x%02x%02x%02x' % (color[3] * 255,
+             color[0] * 255,
+             color[1] * 255,
+             color[2] * 255)
+        return colorString
+
+
+
     def GetValue(self, html = 1):
-        tagState = {}
 
         def FormatValue(value, html):
             if html:
@@ -287,71 +336,103 @@ class EditPlainTextCore(uicls.Scroll):
             return fmttag
 
 
+        tagStacks = {}
+        for (tag, defaultAttrName,) in VALUETAGS:
+            if defaultAttrName:
+                tagStacks[tag] = [getattr(self, defaultAttrName, None)]
+            else:
+                tagStacks[tag] = [None]
+
+        tagStacks['fontCombined'] = []
+        for (tag, paramName,) in BOOLTAGS:
+            tagStacks[tag] = [False]
+
+        lastParams = None
         retString = ''
         for glyphString in self.sr.paragraphs:
             for charData in glyphString:
                 (advance, align, color, sbit, char, asc, des, params,) = charData
-                for (paramName, defaultAttrName,) in VALUETAGS:
-                    if defaultAttrName:
-                        defaultValue = getattr(self, defaultAttrName, None)
-                    else:
-                        defaultValue = None
-                    state = tagState.get(paramName, None)
-                    setvalue = params.get(paramName, None)
-                    if setvalue != state:
-                        if state:
-                            retString += '<%s>' % FormatTag('/%s' % paramName, html)
-                            tagState[paramName] = None
-                        if setvalue:
-                            if not defaultValue or defaultValue != setvalue:
-                                if paramName == 'color':
-                                    if type(params.color) is types.IntType:
-                                        c = trinity.TriColor()
-                                        c.FromInt(params.color)
-                                        color = (c.r,
-                                         c.g,
-                                         c.b,
-                                         c.a)
-                                    else:
-                                        color = params.color
-                                    if html:
-                                        colorString = '"#%02x%02x%02x%02x"' % (color[3] * 255,
-                                         color[0] * 255,
-                                         color[1] * 255,
-                                         color[2] * 255)
-                                    else:
-                                        colorString = '0x%02x%02x%02x%02x' % (color[3] * 255,
-                                         color[0] * 255,
-                                         color[1] * 255,
-                                         color[2] * 255)
-                                    retString += '<%s=%s>' % (FormatTag(paramName, html), colorString)
-                                else:
-                                    retString += '<%s=%s>' % (FormatTag(paramName, html), FormatValue(setvalue, html))
-                                tagState[paramName] = setvalue
+                if lastParams is not params:
+                    lastParams = params
+                    for (tag, paramName,) in BOOLTAGS:
+                        tagStack = tagStacks[tag]
+                        paramValue = params.get(paramName, False)
+                        if paramValue != tagStack[-1]:
+                            if len(tagStack) > 1:
+                                retString += '<%s>' % FormatTag('/%s' % tag, html)
+                                tagStack.pop()
 
-                for (tag, paramName,) in BOOLTAGS:
-                    state = tagState.get(tag, False)
-                    if not params.get(paramName, False) and state:
-                        retString += '<%s>' % FormatTag('/%s' % tag, html)
-                        tagState[tag] = False
-                    if params.get(paramName, False) and not state:
-                        retString += '<%s>' % FormatTag('%s' % tag, html)
-                        tagState[tag] = True
+                    if html:
+                        htmlFontTagCombined = ''
+                        for (fmtTag, htmlTag,) in HTMLFONTTAG:
+                            paramValue = params.Get(fmtTag, None)
+                            if paramValue:
+                                if fmtTag == 'color':
+                                    paramValue = self.GetColorSyntax(paramValue, html)
+                                else:
+                                    paramValue = FormatValue(paramValue, html)
+                                if htmlFontTagCombined:
+                                    htmlFontTagCombined += ' '
+                                htmlFontTagCombined += '%s=%s' % (htmlTag, paramValue)
+
+                        if htmlFontTagCombined:
+                            htmlFontTagCombined = '<font %s>' % htmlFontTagCombined
+                            currentStack = tagStacks['fontCombined']
+                            if not currentStack or currentStack[-1] != htmlFontTagCombined:
+                                if len(currentStack):
+                                    retString += '</font>'
+                                    currentStack.pop()
+                                currentStack.append(htmlFontTagCombined)
+                                retString += htmlFontTagCombined
+                    for (paramName, defaultAttrName,) in VALUETAGS:
+                        if html and paramName in ('font', 'color', 'fontsize'):
+                            continue
+                        currentStack = tagStacks[paramName]
+                        currentStackValue = currentStack[-1]
+                        currentParamValue = params.get(paramName, None)
+                        if currentParamValue != currentStackValue:
+                            if len(currentStack) > 1:
+                                retString += '<%s>' % FormatTag('/%s' % paramName, html)
+                                currentStack.pop()
+                            if currentParamValue:
+                                if paramName == 'color':
+                                    formattedValue = self.GetColorSyntax(currentParamValue, html)
+                                else:
+                                    formattedValue = FormatValue(currentParamValue, html)
+                                retString += '<%s=%s>' % (FormatTag(paramName, html), formattedValue)
+                                currentStack.append(currentParamValue)
+
+                    for (tag, paramName,) in BOOLTAGS:
+                        tagStack = tagStacks[tag]
+                        paramValue = params.get(paramName, False)
+                        if paramValue != tagStack[-1] and paramValue:
+                            retString += '<%s>' % FormatTag('%s' % tag, html)
+                            tagStack.append(True)
 
                 retString += self.Decode(char)
 
             if glyphString is not self.sr.paragraphs[-1]:
                 retString += '<br>'
 
-        for (paramName, defaultAttrName,) in VALUETAGS:
-            state = tagState.get(paramName, None)
-            if state:
-                retString += '<%s>' % FormatTag('/%s' % paramName, html)
-
         for (tag, paramName,) in BOOLTAGS:
-            state = tagState.get(tag, False)
-            if state:
+            tagStack = tagStacks[tag]
+            while len(tagStack) > 1:
                 retString += '<%s>' % FormatTag('/%s' % tag, html)
+                tagStack.pop()
+
+
+        for (paramName, defaultAttrName,) in VALUETAGS:
+            tagStack = tagStacks[paramName]
+            while len(tagStack) > 1:
+                retString += '<%s>' % FormatTag('/%s' % paramName, html)
+                tagStack.pop()
+
+
+        if html:
+            currentStack = tagStacks['fontCombined']
+            while currentStack:
+                currentStack.pop()
+                retString += '</font>'
 
         if not uiutil.StripTags(retString):
             return ''
@@ -421,8 +502,7 @@ class EditPlainTextCore(uicls.Scroll):
 
 
     def GetMenuDelegate(self, node = None):
-        m = []
-        m.append((mls.UI_CMD_COPYALL, self.CopyAll))
+        m = [(mls.UI_CMD_COPYALL, self.CopyAll)]
         if self.HasSelection():
             m.append((mls.UI_CMD_COPYSELECTED, self.Copy))
             if not self.readonly:
@@ -1383,7 +1463,8 @@ class EditPlainTextCore(uicls.Scroll):
 
 
 
-    def OnClipperResize(self, *args, **kw):
+    def OnClipperResize(self, width, height):
+        self.RefreshNodes()
         self.DoSizeUpdateDelayed()
 
 

@@ -1143,7 +1143,7 @@ class Info(service.Service):
             capt = ''
             if wnd.sr.factioninfo is None:
                 wnd.sr.factioninfo = sm.GetService('faction').GetFactionEx(itemID)
-            desc = Tr(wnd.sr.factioninfo.description, 'dbo.chrFactions.description', wnd.sr.factioninfo.factionID)
+            desc = Tr(wnd.sr.factioninfo.description, 'character.factions.description', wnd.sr.factioninfo.dataID)
         actionMenu = self.GetActionMenu(itemID, typeID, wnd.sr.rec, wnd)
         infoicon = wnd.sr.headerIcon
         if actionMenu:
@@ -1492,7 +1492,7 @@ class Info(service.Service):
                 shipAttr = [ each for each in attrs if each in attrDict ]
                 if shipAttr:
                     wnd.sr.data[mls.UI_GENERIC_ATTRIBUTES]['items'].append(listentry.Get('Header', {'label': caption}))
-                    bd = self.GetBarData(info, caption)
+                    bd = self.GetBarData(itemID, info, caption)
                     if bd:
                         wnd.sr.data[mls.UI_GENERIC_ATTRIBUTES]['items'].append(listentry.Get('StatusBar', bd))
                     self.GetAttrItemInfo(itemID, typeID, wnd.sr.data[mls.UI_GENERIC_ATTRIBUTES]['items'], attrList=shipAttr)
@@ -1504,15 +1504,12 @@ class Info(service.Service):
                  'label': bwsAttr.displayName,
                  'text': baseWarpSpeed,
                  'iconID': bwsAttr.iconID}))
-            wnd.sr.data[mls.UI_GENERIC_FITTING]['items'].append(listentry.Get('StatusBar', {'label': mls.UI_GENERIC_CPU,
-             'status': info.cpuLoad,
-             'total': info.cpuOutput}))
-            wnd.sr.data[mls.UI_GENERIC_FITTING]['items'].append(listentry.Get('StatusBar', {'label': mls.UI_GENERIC_POWERGRID,
-             'status': info.powerLoad,
-             'total': info.powerOutput}))
-            wnd.sr.data[mls.UI_GENERIC_FITTING]['items'].append(listentry.Get('StatusBar', {'label': mls.UI_GENERIC_CALIBRATION,
-             'status': info.upgradeLoad,
-             'total': info.upgradeCapacity}))
+            GAV = self.GetGAVFunc(itemID, info)
+            for (label, loadAttributeID, outputAttributeID,) in ((mls.UI_GENERIC_CPU, const.attributeCpuLoad, const.attributeCpuOutput), (mls.UI_GENERIC_POWERGRID, const.attributePowerLoad, const.attributePowerOutput), (mls.UI_GENERIC_CALIBRATION, const.attributeUpgradeLoad, const.attributeUpgradeCapacity)):
+                wnd.sr.data[mls.UI_GENERIC_FITTING]['items'].append(listentry.Get('StatusBar', {'label': label,
+                 'status': GAV(loadAttributeID),
+                 'total': GAV(outputAttributeID)}))
+
             recommendedCerts = sm.StartService('certificates').GetCertificateRecommendationsByShipTypeID(typeID)
             tempList = []
             for cert in recommendedCerts:
@@ -1601,7 +1598,7 @@ class Info(service.Service):
                          'iconID': cfg.invtypes.Get(each.typeID).iconID}))
 
             else:
-                shiptypeinfo = cfg.shiptypes[typeID]
+                shiptypeinfo = cfg.shiptypes.Get(typeID)
                 fmHeaderDone = 1
                 for key in ['weaponTypeID', 'miningTypeID']:
                     moduleTypeID = getattr(shiptypeinfo, key, None)
@@ -1613,7 +1610,7 @@ class Info(service.Service):
                          'typeID': moduleTypeID,
                          'iconID': invtype.iconID}))
 
-            shiptypeinfo = cfg.shiptypes[typeID]
+            shiptypeinfo = cfg.shiptypes.Get(typeID)
             self.GetReqSkillInfo(typeID, wnd.sr.data[mls.UI_GENERIC_SKILLS]['items'])
             self.GetMetaTypeInfo(typeID, wnd.sr.data[mls.UI_GENERIC_VARIATIONS]['items'], wnd)
             self.InitVariationBottom(wnd)
@@ -1921,6 +1918,7 @@ class Info(service.Service):
             isCopy = None
             if wnd.sr.blueprintInfo:
                 bpi = wnd.sr.blueprintInfo
+                wnd.sr.blueprintInfo = None
             elif wnd.sr.abstractinfo is not None:
                 bpi = {}
                 bpi['manufacturingTime'] = blueprintType.productionTime
@@ -2783,28 +2781,42 @@ class Info(service.Service):
 
 
 
-    def GetBarData(self, info, caption):
-        barData = {mls.UI_GENERIC_STRUCTURE: {'attributeID': const.attributeHp,
-                                    'label': mls.UI_GENERIC_STRUCTURE,
-                                    'status': max(0, info.hp - info.damage),
-                                    'total': info.hp},
-         mls.UI_GENERIC_ARMOR: {'attributeID': const.attributeArmorHP,
-                                'label': mls.UI_GENERIC_ARMOR,
-                                'status': max(0, info.armorHP - info.armorDamage),
-                                'total': info.armorHP},
-         mls.UI_GENERIC_SHIELD: {'attributeID': const.attributeShieldCapacity,
-                                 'label': mls.UI_GENERIC_SHIELD,
-                                 'status': info.shieldCharge,
-                                 'total': info.shieldCapacity},
-         mls.UI_GENERIC_CAPACITOR: {'attributeID': const.attributeCapacitorCapacity,
-                                    'label': mls.UI_GENERIC_CAPACITY,
-                                    'status': info.charge,
-                                    'total': info.capacitorCapacity},
-         mls.UI_GENERIC_PROPULSION: None,
-         mls.UI_GENERIC_TARGETING: None,
-         mls.UI_INFOWND_SHAREDFAC: None,
-         mls.UI_INFOWND_JUMPDRIVESYS: None}.get(caption, None)
-        return barData
+    def GetGAVFunc(self, itemID, info):
+        GAV = None
+        if info.itemID is not None:
+            GAV = lambda attributeID: getattr(info, cfg.dgmattribs.Get(attributeID).attributeName)
+        elif itemID:
+            dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+            if dogmaLocation.IsItemLoaded(itemID):
+                GAV = lambda attributeID: dogmaLocation.GetAttributeValue(itemID, attributeID)
+        if GAV is None:
+            GAV = lambda attributeID: getattr(info, cfg.dgmattribs.Get(attributeID).attributeName)
+        return GAV
+
+
+
+    def GetBarData(self, itemID, info, caption):
+        GAV = self.GetGAVFunc(itemID, info)
+        if caption == mls.UI_GENERIC_STRUCTURE:
+            return {'attributeID': const.attributeHp,
+             'label': caption,
+             'status': max(0, GAV(const.attributeHp) - GAV(const.attributeDamage)),
+             'total': GAV(const.attributeHp)}
+        if caption == mls.UI_GENERIC_ARMOR:
+            return {'attributeID': const.attributeDamage,
+             'label': caption,
+             'status': max(0, GAV(const.attributeArmorHP) - GAV(const.attributeArmorDamage)),
+             'total': GAV(const.attributeArmorHP)}
+        if caption == mls.UI_GENERIC_SHIELD:
+            return {'attributeID': const.attributeShieldCapacity,
+             'label': caption,
+             'status': GAV(const.attributeShieldCharge),
+             'total': GAV(const.attributeShieldCapacity)}
+        if caption == mls.UI_GENERIC_CAPACITOR:
+            return {'attributeID': const.attributeCapacitorCapacity,
+             'label': caption,
+             'status': GAV(const.attributeCharge),
+             'total': GAV(const.attributeCapacitorCapacity)}
 
 
 
@@ -3363,6 +3375,11 @@ class Info(service.Service):
                  mls.UI_GENERIC_PACKAGED)
             return self.GetAttrInfo(attrDict, scrolllist, attrList, banAttrs=banAttrs, itemID=itemID)
         else:
+            dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+            if dogmaLocation.IsItemLoaded(itemID):
+                attrDict = self.GetAttrDict(typeID)
+                attrDict.update(dogmaLocation.GetDisplayAttributes(itemID, attrDict.keys()))
+                return self.GetAttrInfo(attrDict, scrolllist, attrList, banAttrs=banAttrs, itemID=itemID)
             return self.GetAttrTypeInfo(typeID, scrolllist, attrList, banAttrs=banAttrs, itemID=itemID)
 
 
@@ -3796,8 +3813,9 @@ class Info(service.Service):
             return ''
         if unitID == const.unitLength:
             return ''
-        if unitID in cfg.eveunits and fmt == 'd':
-            return Tr(cfg.eveunits.Get(unitID).displayName, 'dbo.eveUnits.displayName', unitID)
+        if unitID in cfg.dgmunits and fmt == 'd':
+            u = cfg.dgmunits.Get(unitID)
+            return Tr(u.displayName, 'dogma.units.displayName', u.dataID)
         return ''
 
 

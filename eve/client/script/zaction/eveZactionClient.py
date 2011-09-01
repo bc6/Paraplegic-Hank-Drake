@@ -1,11 +1,7 @@
-import blue
-import stackless
 import svc
-import service
-import log
-import zaction
-import base
-import util
+import miscUtil
+import yaml
+import const
 
 class eveZactionClient(svc.zactionClient):
     __guid__ = 'svc.eveZactionClient'
@@ -26,6 +22,19 @@ class eveZactionClient(svc.zactionClient):
         self.mouseInputService = sm.GetService('mouseInput')
         if self.mouseInputService is not None:
             self.mouseInputService.RegisterCallback(const.INPUT_TYPE_LEFTCLICK, self.OnClick)
+        self._LoadAnimationData()
+
+
+
+    def _LoadAnimationData(self):
+        ANIMATION_METADATA_PATH = 'res:/Animation/animInfo.yaml'
+        if miscUtil.CommonResourceExists(ANIMATION_METADATA_PATH):
+            animTypeFile = miscUtil.GetCommonResource(ANIMATION_METADATA_PATH)
+            self._animTypeData = yaml.load(animTypeFile)
+            animTypeFile.close()
+            self.ProcessAnimationDictionary(self.GetAnimationData())
+        else:
+            raise IOError, 'MISSING FILE, animation data: ' + ANIMATION_METADATA_PATH
 
 
 
@@ -35,14 +44,6 @@ class eveZactionClient(svc.zactionClient):
         else:
             targetList = []
         self.clientProperties['TargetList'] = targetList
-
-
-
-    def ProcessSessionChange(self, isRemote, session, change):
-        if 'charid' in change:
-            svc.zactionClient.ProcessSessionChange(self, isRemote, session, change)
-            self._animTypeData = self.zactionServer.GetAnimationData()
-            self.ProcessAnimationDictionary(self.GetAnimationData())
 
 
 

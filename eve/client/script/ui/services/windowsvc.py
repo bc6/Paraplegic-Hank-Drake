@@ -1356,17 +1356,22 @@ class WindowMgr(service.Service):
 
 
 
-    def OpenCargo(self, id_, name, displayname = None, typeid = None):
-        if eve.session.stationid:
+    def OpenCargo(self, item, name, displayname = None, typeid = None):
+        if session.stationid2:
+            if item.groupID == const.groupCapsule:
+                if eve.Message('AskActivateShip', {}, uiconst.YESNO, suppress=uiconst.ID_YES) == uiconst.ID_YES:
+                    sm.GetService('station').SelectShipDlg()
+                return 
             decoClass = form.DockedCargoView
         elif eve.session.solarsystemid:
             decoClass = form.InflightCargoView
         else:
             self.LogError('Not inflight or docked???')
             return 
-        self.LogInfo('OpenCargo', id_, name, displayname)
-        wnd = self.GetWindow('shipCargo_%s' % id_, create=1, maximize=1, decoClass=decoClass, _id=id_, displayName=name)
-        if wnd and id_ == eve.session.shipid:
+        itemID = item.itemID
+        self.LogInfo('OpenCargo', itemID, name, displayname)
+        wnd = self.GetWindow('shipCargoe%s' % itemID, create=1, maximize=1, decoClass=decoClass, _id=itemID, displayName=name)
+        if wnd and itemID == eve.session.shipid:
             wnd.scope = 'station_inflight'
 
 

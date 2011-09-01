@@ -293,12 +293,10 @@ class Uilib(object):
         self._triuiRegsByMsgID = {}
         self._mouseButtonStates = {}
         self._mouseDownPosition = {}
-        self._unresolvedKeyDown = None
-        self._lastKeyDown = None
-        self._charsThatCanBlock = set()
         self._appfocusitem = None
         self._modkeysOff = tuple([ 0 for x in uiconst.MODKEYS ])
         self._expandMenu = None
+        self._keyDownAcceleratorThread = None
         self._pickProjection = trinity.TriProjection()
         self._pickView = trinity.TriView()
         self._pickViewport = trinity.TriViewport()
@@ -553,11 +551,6 @@ class Uilib(object):
 
 
 
-    def RegisterCharsThatCanBlock(self, vkey, *args):
-        self._charsThatCanBlock.add(vkey)
-
-
-
     def RegisterObject(self, pyObject, renderObject):
         self.renderObjectToPyObjectDict[renderObject] = pyObject
 
@@ -659,203 +652,170 @@ class Uilib(object):
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def OnAppEvent(self, msgID, wParam, lParam):
-        returnValue = 0
-        currentMouseOver = self.GetMouseOver()
-        if msgID == WM_MOUSEMOVE:
-            mouseX = lParam & 65535
-            mouseY = lParam >> 16
-            if self.x != mouseX or self.y != mouseY:
-                self.dx = mouseX - self.x
-                self.dy = mouseY - self.y
-                self.x = mouseX
-                self.y = mouseY
-                self.z = 0
+        try:
+            returnValue = 0
+            currentMouseOver = self.GetMouseOver()
+            if msgID == WM_MOUSEMOVE:
+                mouseX = lParam & 65535
+                mouseY = lParam >> 16
+                if self.x != mouseX or self.y != mouseY:
+                    self.dx = mouseX - self.x
+                    self.dy = mouseY - self.y
+                    self.x = mouseX
+                    self.y = mouseY
+                    self.z = 0
+                    mouseCaptureItem = self.GetMouseCapture()
+                    if mouseCaptureItem:
+                        self._TryExecuteHandler(uiconst.UI_MOUSEMOVE, mouseCaptureItem, param=(wParam, lParam))
+                    elif currentMouseOver:
+                        self._TryExecuteHandler(uiconst.UI_MOUSEMOVE, currentMouseOver, param=(wParam, lParam))
+            elif msgID == WM_LBUTTONDOWN:
+                self._expandMenu = uiconst.MOUSELEFT
+                self._mouseButtonStates[uiconst.MOUSELEFT] = True
+                self._mouseDownPosition[uiconst.MOUSELEFT] = (self.x, self.y, self.z)
+                if self.exclusiveMouseFocusActive:
+                    self._TryExecuteHandler(uiconst.UI_MOUSEDOWN, self.GetMouseCapture(), (uiconst.MOUSELEFT,), param=(uiconst.MOUSELEFT, wParam))
+                else:
+                    self._TryExecuteHandler(uiconst.UI_MOUSEDOWN, currentMouseOver, (uiconst.MOUSELEFT,), param=(uiconst.MOUSELEFT, wParam))
+                    self.SetCapture(currentMouseOver, retainFocus=self.exclusiveMouseFocusActive)
+                    if not uiutil.IsUnder(currentMouseOver, uicore.layer.menu):
+                        uiutil.Flush(uicore.layer.menu)
+                        currentFocus = uicore.registry.GetFocus()
+                        if currentFocus != currentMouseOver:
+                            uicore.registry.SetFocus(currentMouseOver)
+            elif msgID == WM_MBUTTONDOWN:
+                self._expandMenu = None
+                self._mouseButtonStates[uiconst.MOUSEMIDDLE] = True
+                self._mouseDownPosition[uiconst.MOUSEMIDDLE] = (self.x, self.y, self.z)
+                self._TryExecuteHandler(uiconst.UI_MOUSEDOWN, currentMouseOver, (uiconst.MOUSEMIDDLE,), param=(uiconst.MOUSEMIDDLE, wParam))
+                uthread.new(self.CheckAccelerators, uiconst.VK_MBUTTON, lParam)
+            elif msgID == WM_RBUTTONDOWN:
+                self._expandMenu = uiconst.MOUSERIGHT
+                self._mouseButtonStates[uiconst.MOUSERIGHT] = True
+                self._mouseDownPosition[uiconst.MOUSERIGHT] = (self.x, self.y, self.z)
+                if self.exclusiveMouseFocusActive:
+                    self._TryExecuteHandler(uiconst.UI_MOUSEDOWN, self.GetMouseCapture(), (uiconst.MOUSERIGHT,), param=(uiconst.MOUSERIGHT, wParam))
+                else:
+                    self._TryExecuteHandler(uiconst.UI_MOUSEDOWN, currentMouseOver, (uiconst.MOUSERIGHT,), param=(uiconst.MOUSERIGHT, wParam))
+                currentFocus = uicore.registry.GetFocus()
+                if currentFocus is not currentMouseOver:
+                    uicore.registry.SetFocus(currentMouseOver)
+            elif msgID == WM_XBUTTONDOWN:
+                if wParam & 65536:
+                    self._mouseButtonStates[uiconst.MOUSEXBUTTON1] = True
+                    self._TryExecuteHandler(uiconst.UI_MOUSEDOWN, currentMouseOver, (uiconst.MOUSEXBUTTON1,), param=(uiconst.MOUSEXBUTTON1, wParam))
+                    uthread.new(self.CheckAccelerators, uiconst.VK_XBUTTON1, lParam)
+                else:
+                    self._mouseButtonStates[uiconst.MOUSEXBUTTON2] = True
+                    self._TryExecuteHandler(uiconst.UI_MOUSEDOWN, currentMouseOver, (uiconst.MOUSEXBUTTON2,), param=(uiconst.MOUSEXBUTTON2, wParam))
+                    uthread.new(self.CheckAccelerators, uiconst.VK_XBUTTON2, lParam)
+            elif msgID == WM_LBUTTONUP:
+                self._mouseButtonStates[uiconst.MOUSELEFT] = False
                 mouseCaptureItem = self.GetMouseCapture()
                 if mouseCaptureItem:
-                    self._TryExecuteHandler(uiconst.UI_MOUSEMOVE, mouseCaptureItem, param=(wParam, lParam))
-                elif currentMouseOver:
-                    self._TryExecuteHandler(uiconst.UI_MOUSEMOVE, currentMouseOver, param=(wParam, lParam))
-        elif msgID == WM_LBUTTONDOWN:
-            self._expandMenu = uiconst.MOUSELEFT
-            self._mouseButtonStates[uiconst.MOUSELEFT] = True
-            self._mouseDownPosition[uiconst.MOUSELEFT] = (self.x, self.y, self.z)
-            if self.exclusiveMouseFocusActive:
-                self._TryExecuteHandler(uiconst.UI_MOUSEDOWN, self.GetMouseCapture(), (uiconst.MOUSELEFT,), param=(uiconst.MOUSELEFT, wParam))
-            else:
-                self._TryExecuteHandler(uiconst.UI_MOUSEDOWN, currentMouseOver, (uiconst.MOUSELEFT,), param=(uiconst.MOUSELEFT, wParam))
-                self.SetCapture(currentMouseOver, retainFocus=self.exclusiveMouseFocusActive)
-                if not uiutil.IsUnder(currentMouseOver, uicore.layer.menu):
-                    uiutil.Flush(uicore.layer.menu)
-                    currentFocus = uicore.registry.GetFocus()
-                    if currentFocus != currentMouseOver:
-                        uicore.registry.SetFocus(currentMouseOver)
-        elif msgID == WM_MBUTTONDOWN:
-            self._expandMenu = None
-            self._mouseButtonStates[uiconst.MOUSEMIDDLE] = True
-            self._mouseDownPosition[uiconst.MOUSEMIDDLE] = (self.x, self.y, self.z)
-            self._TryExecuteHandler(uiconst.UI_MOUSEDOWN, currentMouseOver, (uiconst.MOUSEMIDDLE,), param=(uiconst.MOUSEMIDDLE, wParam))
-            uthread.new(self.CheckAccelerators, uiconst.VK_MBUTTON, lParam)
-        elif msgID == WM_RBUTTONDOWN:
-            self._expandMenu = uiconst.MOUSERIGHT
-            self._mouseButtonStates[uiconst.MOUSERIGHT] = True
-            self._mouseDownPosition[uiconst.MOUSERIGHT] = (self.x, self.y, self.z)
-            if self.exclusiveMouseFocusActive:
-                self._TryExecuteHandler(uiconst.UI_MOUSEDOWN, self.GetMouseCapture(), (uiconst.MOUSERIGHT,), param=(uiconst.MOUSERIGHT, wParam))
-            else:
-                self._TryExecuteHandler(uiconst.UI_MOUSEDOWN, currentMouseOver, (uiconst.MOUSERIGHT,), param=(uiconst.MOUSERIGHT, wParam))
-            currentFocus = uicore.registry.GetFocus()
-            if currentFocus is not currentMouseOver:
-                uicore.registry.SetFocus(currentMouseOver)
-        elif msgID == WM_XBUTTONDOWN:
-            if wParam & 65536:
-                self._mouseButtonStates[uiconst.MOUSEXBUTTON1] = True
-                self._TryExecuteHandler(uiconst.UI_MOUSEDOWN, currentMouseOver, (uiconst.MOUSEXBUTTON1,), param=(uiconst.MOUSEXBUTTON1, wParam))
-                uthread.new(self.CheckAccelerators, uiconst.VK_XBUTTON1, lParam)
-            else:
-                self._mouseButtonStates[uiconst.MOUSEXBUTTON2] = True
-                self._TryExecuteHandler(uiconst.UI_MOUSEDOWN, currentMouseOver, (uiconst.MOUSEXBUTTON2,), param=(uiconst.MOUSEXBUTTON2, wParam))
-                uthread.new(self.CheckAccelerators, uiconst.VK_XBUTTON2, lParam)
-        elif msgID == WM_LBUTTONUP:
-            self._mouseButtonStates[uiconst.MOUSELEFT] = False
-            mouseCaptureItem = self.GetMouseCapture()
-            if mouseCaptureItem:
-                if not self.exclusiveMouseFocusActive:
-                    if getattr(mouseCaptureItem, 'expandOnLeft', 0) and not self.rightbtn and self._expandMenu == uiconst.MOUSELEFT and getattr(mouseCaptureItem, 'GetMenu', None):
-                        (x, y, z,) = self._mouseDownPosition[uiconst.MOUSELEFT]
-                        if abs(self.x - x) < 3 and abs(self.y - y) < 3:
-                            uthread.new(menu.ShowMenu, mouseCaptureItem)
-                    self._expandMenu = False
-                self._TryExecuteHandler(uiconst.UI_MOUSEUP, mouseCaptureItem, (uiconst.MOUSELEFT,), param=(uiconst.MOUSELEFT, wParam))
-                if not self.exclusiveMouseFocusActive:
-                    self.ReleaseCapture()
-                if currentMouseOver is not mouseCaptureItem:
-                    self._TryExecuteHandler(uiconst.UI_MOUSEEXIT, mouseCaptureItem, param=(wParam, lParam))
-                    self._TryExecuteHandler(uiconst.UI_MOUSEENTER, currentMouseOver, param=(wParam, lParam))
-                else:
-                    self._clickTimer = None
-                    self._clickCount += 1
-                    if self._clickCount == 1:
-                        self._TryExecuteHandler(uiconst.UI_CLICK, currentMouseOver, param=(wParam, lParam))
-                        self.SetClickObject(currentMouseOver)
-                        self._clickPosition = (self.x, self.y)
+                    if not self.exclusiveMouseFocusActive:
+                        if getattr(mouseCaptureItem, 'expandOnLeft', 0) and not self.rightbtn and self._expandMenu == uiconst.MOUSELEFT and getattr(mouseCaptureItem, 'GetMenu', None):
+                            (x, y, z,) = self._mouseDownPosition[uiconst.MOUSELEFT]
+                            if abs(self.x - x) < 3 and abs(self.y - y) < 3:
+                                uthread.new(menu.ShowMenu, mouseCaptureItem)
+                        self._expandMenu = False
+                    self._TryExecuteHandler(uiconst.UI_MOUSEUP, mouseCaptureItem, (uiconst.MOUSELEFT,), param=(uiconst.MOUSELEFT, wParam))
+                    if not self.exclusiveMouseFocusActive:
+                        self.ReleaseCapture()
+                    if currentMouseOver is not mouseCaptureItem:
+                        self._TryExecuteHandler(uiconst.UI_MOUSEEXIT, mouseCaptureItem, param=(wParam, lParam))
+                        self._TryExecuteHandler(uiconst.UI_MOUSEENTER, currentMouseOver, param=(wParam, lParam))
                     else:
-                        (x, y,) = self._clickPosition
-                        clickObject = self.GetClickObject()
-                        if clickObject is currentMouseOver and abs(self.x - x) < 5 and abs(self.y - y) < 5:
-                            (dblHandlerArgs, dblHandler,) = self.FindEventHandler(clickObject, 'OnDblClick')
-                            (tripHandlerArgs, tripleHandler,) = self.FindEventHandler(clickObject, 'OnTripleClick')
-                            if dblHandler or tripleHandler:
-                                if dblHandler and self._clickCount == 2:
-                                    self._TryExecuteHandler(uiconst.UI_DBLCLICK, clickObject, param=(wParam, lParam))
-                                elif tripleHandler and self._clickCount == 3:
-                                    self._TryExecuteHandler(uiconst.UI_TRIPLECLICK, clickObject, param=(wParam, lParam))
-                        else:
-                            self._clickCount = 0
-                self._clickTimer = base.AutoTimer(CLICKCOUNTRESETTIME, self.ResetClickCounter)
-        elif msgID == WM_RBUTTONUP:
-            self._mouseButtonStates[uiconst.MOUSERIGHT] = False
-            if self.exclusiveMouseFocusActive:
-                self._TryExecuteHandler(uiconst.UI_MOUSEUP, self.GetMouseCapture(), (uiconst.MOUSERIGHT,), param=(uiconst.MOUSERIGHT, wParam))
-            elif not self.leftbtn and self._expandMenu == uiconst.MOUSERIGHT and getattr(currentMouseOver, 'GetMenu', None):
-                (x, y, z,) = self._mouseDownPosition[uiconst.MOUSERIGHT]
-                if abs(self.x - x) < 3 and abs(self.y - y) < 3:
-                    uthread.new(menu.ShowMenu, currentMouseOver)
-            self._expandMenu = None
-            self._TryExecuteHandler(uiconst.UI_MOUSEUP, currentMouseOver, (uiconst.MOUSERIGHT,), param=(uiconst.MOUSERIGHT, wParam))
-        elif msgID == WM_MBUTTONUP:
-            self._mouseButtonStates[uiconst.MOUSEMIDDLE] = False
-            self._TryExecuteHandler(uiconst.UI_MOUSEUP, currentMouseOver, (uiconst.MOUSEMIDDLE,), param=(uiconst.MOUSEMIDDLE, wParam))
-        elif msgID == WM_XBUTTONUP:
-            if wParam & 65536:
-                self._mouseButtonStates[uiconst.MOUSEXBUTTON1] = False
-                self._TryExecuteHandler(uiconst.UI_MOUSEUP, currentMouseOver, (uiconst.MOUSEXBUTTON1,), param=(uiconst.MOUSEXBUTTON1, wParam))
-            else:
-                self._mouseButtonStates[uiconst.MOUSEXBUTTON2] = False
-                self._TryExecuteHandler(uiconst.UI_MOUSEUP, currentMouseOver, (uiconst.MOUSEXBUTTON2,), param=(uiconst.MOUSEXBUTTON2, wParam))
-        elif msgID == WM_MOUSEWHEEL:
-            mouseZ = wParam >> 16
-            self.dz = mouseZ
-            calledOn = None
-            focus = uicore.registry.GetFocus()
-            if focus:
-                calledOn = self._TryExecuteHandler(uiconst.UI_MOUSEWHEEL, focus, (mouseZ,), param=(wParam, lParam))
-            if calledOn is None and self.mouseOver:
-                mo = self.mouseOver
-                (mwHandlerArgs, mwHandler,) = self.FindEventHandler(mo, 'OnMouseWheel')
-                while not mwHandler:
-                    if not mo.parent or mo is uicore.uilib.desktop:
-                        break
-                    mo = mo.parent
+                        self._TryExecuteClickHandler(wParam, lParam)
+            elif msgID == WM_RBUTTONUP:
+                self._mouseButtonStates[uiconst.MOUSERIGHT] = False
+                if self.exclusiveMouseFocusActive:
+                    self._TryExecuteHandler(uiconst.UI_MOUSEUP, self.GetMouseCapture(), (uiconst.MOUSERIGHT,), param=(uiconst.MOUSERIGHT, wParam))
+                elif not self.leftbtn and self._expandMenu == uiconst.MOUSERIGHT and getattr(currentMouseOver, 'GetMenu', None):
+                    (x, y, z,) = self._mouseDownPosition[uiconst.MOUSERIGHT]
+                    if abs(self.x - x) < 3 and abs(self.y - y) < 3:
+                        uthread.new(menu.ShowMenu, currentMouseOver)
+                self._expandMenu = None
+                self._TryExecuteHandler(uiconst.UI_MOUSEUP, currentMouseOver, (uiconst.MOUSERIGHT,), param=(uiconst.MOUSERIGHT, wParam))
+            elif msgID == WM_MBUTTONUP:
+                self._mouseButtonStates[uiconst.MOUSEMIDDLE] = False
+                self._TryExecuteHandler(uiconst.UI_MOUSEUP, currentMouseOver, (uiconst.MOUSEMIDDLE,), param=(uiconst.MOUSEMIDDLE, wParam))
+            elif msgID == WM_XBUTTONUP:
+                if wParam & 65536:
+                    self._mouseButtonStates[uiconst.MOUSEXBUTTON1] = False
+                    self._TryExecuteHandler(uiconst.UI_MOUSEUP, currentMouseOver, (uiconst.MOUSEXBUTTON1,), param=(uiconst.MOUSEXBUTTON1, wParam))
+                else:
+                    self._mouseButtonStates[uiconst.MOUSEXBUTTON2] = False
+                    self._TryExecuteHandler(uiconst.UI_MOUSEUP, currentMouseOver, (uiconst.MOUSEXBUTTON2,), param=(uiconst.MOUSEXBUTTON2, wParam))
+            elif msgID == WM_MOUSEWHEEL:
+                mouseZ = wParam >> 16
+                self.dz = mouseZ
+                calledOn = None
+                focus = uicore.registry.GetFocus()
+                if focus:
+                    calledOn = self._TryExecuteHandler(uiconst.UI_MOUSEWHEEL, focus, (mouseZ,), param=(wParam, lParam))
+                if calledOn is None and self.mouseOver:
+                    mo = self.mouseOver
                     (mwHandlerArgs, mwHandler,) = self.FindEventHandler(mo, 'OnMouseWheel')
+                    while not mwHandler:
+                        if not mo.parent or mo is uicore.uilib.desktop:
+                            break
+                        mo = mo.parent
+                        (mwHandlerArgs, mwHandler,) = self.FindEventHandler(mo, 'OnMouseWheel')
 
-                if mo:
-                    self._TryExecuteHandler(uiconst.UI_MOUSEWHEEL, mo, (mouseZ,), param=(wParam, lParam))
-        elif msgID in (WM_KEYDOWN, WM_SYSKEYDOWN):
-            focus = uicore.registry.GetFocus()
-            if focus:
-                self._TryExecuteHandler(uiconst.UI_KEYDOWN, focus, (wParam, lParam), param=(wParam, lParam))
-            if self._unresolvedKeyDown:
-                (_wParam, _lParam,) = self._unresolvedKeyDown
-                self._unresolvedKeyDown = None
-                self.CheckAccelerators(_wParam, _lParam)
-            self._unresolvedKeyDown = (wParam, lParam)
-            self._lastKeyDown = (wParam, lParam)
-            uthread.new(self.CheckKeyDown, wParam, lParam)
-        elif msgID == WM_CHAR:
-            char = wParam
-            ignoreChar = False
-            (lastwParam, lastlParam,) = self._lastKeyDown
-            if char <= 32:
-                ctrl = trinity.app.Key(uiconst.VK_CONTROL)
-                if char not in (uiconst.VK_RETURN, uiconst.VK_BACK, uiconst.VK_SPACE) or ctrl:
-                    ignoreChar = True
-            elif lastwParam in self._charsThatCanBlock:
-                alt = trinity.app.Key(uiconst.VK_MENU)
-                shift = trinity.app.Key(uiconst.VK_SHIFT)
-                ctrl = trinity.app.Key(uiconst.VK_CONTROL)
-                function = uicore.cmd.GetFuncByShortcut((ctrl,
-                 alt,
-                 shift,
-                 lastwParam))
-                if function is not None:
-                    ignoreChar = True
-            if not ignoreChar:
-                calledOn = self.ResolveOnChar(wParam, lParam)
-                if calledOn:
-                    self._unresolvedKeyDown = None
-        elif msgID in (WM_KEYUP, WM_SYSKEYUP):
-            focus = uicore.registry.GetFocus()
-            if focus:
-                self._TryExecuteHandler(uiconst.UI_KEYUP, focus, (wParam, lParam), param=(wParam, lParam))
-            if wParam == uiconst.VK_SNAPSHOT:
-                uicore.cmd.PrintScreen()
-        elif msgID == WM_ACTIVATE:
-            self.CheckAppFocus(hasFocus=wParam > 0)
-            self.CheckCallbacks(obj=uicore.registry.GetFocus(), msgID=uiconst.UI_ACTIVE, param=(wParam, lParam))
-        elif msgID == WM_ACTIVATEAPP:
-            if self.activateAppHandler:
-                returnValue = self.activateAppHandler(wParam, lParam)
-        elif msgID == WM_INPUTLANGCHANGE:
-            if self.inputLangChangeHandler:
-                returnValue = self.inputLangChangeHandler(wParam, lParam)
-        elif msgID == WM_IME_SETCONTEXT:
-            if self.imeSetContextHandler:
-                returnValue = self.imeSetContextHandler(wParam, lParam)
-        elif msgID == WM_IME_STARTCOMPOSITION:
-            if self.imeStartCompositionHandler:
-                returnValue = self.imeStartCompositionHandler(wParam, lParam)
-        elif msgID == WM_IME_COMPOSITION:
-            if self.imeCompositionHandler:
-                returnValue = self.imeCompositionHandler(wParam, lParam)
-        elif msgID == WM_IME_ENDCOMPOSITION:
-            if self.imeEndCompositionHandler:
-                returnValue = self.imeEndCompositionHandler(wParam, lParam)
-        elif msgID == WM_IME_NOTIFY:
-            if self.imeNotifyHandler:
-                returnValue = self.imeNotifyHandler(wParam, lParam)
-        else:
-            returnValue = None
-        return returnValue
+                    if mo:
+                        self._TryExecuteHandler(uiconst.UI_MOUSEWHEEL, mo, (mouseZ,), param=(wParam, lParam))
+            elif msgID in (WM_KEYDOWN, WM_SYSKEYDOWN):
+                focus = uicore.registry.GetFocus()
+                if focus:
+                    self._TryExecuteHandler(uiconst.UI_KEYDOWN, focus, (wParam, lParam), param=(wParam, lParam))
+                self._keyDownAcceleratorThread = uthread.new(self.CheckAccelerators, wParam, lParam)
+            elif msgID == WM_CHAR:
+                char = wParam
+                ignoreChar = False
+                if char <= 32:
+                    ctrl = trinity.app.Key(uiconst.VK_CONTROL)
+                    if char not in (uiconst.VK_RETURN, uiconst.VK_BACK, uiconst.VK_SPACE) or ctrl:
+                        ignoreChar = True
+                if not ignoreChar:
+                    calledOn = self.ResolveOnChar(wParam, lParam)
+                    if calledOn and self._keyDownAcceleratorThread:
+                        self._keyDownAcceleratorThread.kill()
+            elif msgID in (WM_KEYUP, WM_SYSKEYUP):
+                focus = uicore.registry.GetFocus()
+                if focus:
+                    self._TryExecuteHandler(uiconst.UI_KEYUP, focus, (wParam, lParam), param=(wParam, lParam))
+                if wParam == uiconst.VK_SNAPSHOT:
+                    uicore.cmd.PrintScreen()
+            elif msgID == WM_ACTIVATE:
+                self.CheckAppFocus(hasFocus=wParam > 0)
+                self.CheckCallbacks(obj=uicore.registry.GetFocus(), msgID=uiconst.UI_ACTIVE, param=(wParam, lParam))
+            elif msgID == WM_ACTIVATEAPP:
+                if self.activateAppHandler:
+                    returnValue = self.activateAppHandler(wParam, lParam)
+            elif msgID == WM_INPUTLANGCHANGE:
+                if self.inputLangChangeHandler:
+                    returnValue = self.inputLangChangeHandler(wParam, lParam)
+            elif msgID == WM_IME_SETCONTEXT:
+                if self.imeSetContextHandler:
+                    returnValue = self.imeSetContextHandler(wParam, lParam)
+            elif msgID == WM_IME_STARTCOMPOSITION:
+                if self.imeStartCompositionHandler:
+                    returnValue = self.imeStartCompositionHandler(wParam, lParam)
+            elif msgID == WM_IME_COMPOSITION:
+                if self.imeCompositionHandler:
+                    returnValue = self.imeCompositionHandler(wParam, lParam)
+            elif msgID == WM_IME_ENDCOMPOSITION:
+                if self.imeEndCompositionHandler:
+                    returnValue = self.imeEndCompositionHandler(wParam, lParam)
+            elif msgID == WM_IME_NOTIFY:
+                if self.imeNotifyHandler:
+                    returnValue = self.imeNotifyHandler(wParam, lParam)
+            else:
+                returnValue = None
+            return returnValue
+        except:
+            log.LogException()
 
 
 
@@ -905,12 +865,30 @@ class Uilib(object):
 
 
 
-    def CheckKeyDown(self, wParam, lParam):
-        blue.pyos.synchro.Yield()
-        if self._unresolvedKeyDown:
-            (wParam, lParam,) = self._unresolvedKeyDown
-            self._unresolvedKeyDown = None
-            self.CheckAccelerators(wParam, lParam)
+    def _TryExecuteClickHandler(self, wParam, lParam):
+        self._clickTimer = None
+        self._clickCount += 1
+        currentMouseOver = self.GetMouseOver()
+        if self._clickCount > 1:
+            clickObject = self.GetClickObject()
+            if clickObject is None:
+                self.ResetClickCounter()
+                return 
+            (x, y,) = self._clickPosition
+            distanceOK = abs(self.x - x) < 5 and abs(self.y - y) < 5
+            clickPosOK = clickObject is currentMouseOver and distanceOK
+            (dblHandlerArgs, dblHandler,) = self.FindEventHandler(clickObject, 'OnDblClick')
+            (tripHandlerArgs, tripleHandler,) = self.FindEventHandler(clickObject, 'OnTripleClick')
+            if self._clickCount == 2 and dblHandler and clickPosOK:
+                self._TryExecuteHandler(uiconst.UI_DBLCLICK, currentMouseOver, param=(wParam, lParam))
+            elif self._clickCount == 3 and tripleHandler and clickPosOK:
+                self._TryExecuteHandler(uiconst.UI_TRIPLECLICK, currentMouseOver, param=(wParam, lParam))
+            self._clickCount = 1
+        if self._clickCount == 1:
+            self._TryExecuteHandler(uiconst.UI_CLICK, currentMouseOver, param=(wParam, lParam))
+            self.SetClickObject(currentMouseOver)
+            self._clickPosition = (self.x, self.y)
+        self._clickTimer = base.AutoTimer(CLICKCOUNTRESETTIME, self.ResetClickCounter)
 
 
 

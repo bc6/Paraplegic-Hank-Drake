@@ -273,7 +273,8 @@ class VivoxService(service.Service):
         self.LogInfo('JoinChannel', channelID)
         if not self.LoggedIn():
             if self.vivoxLoginState != vivoxConstants.VXCLOGINSTATE_LOGGINGIN:
-                self.autoJoinQueue = [channelID]
+                if channelID not in self.autoJoinQueue:
+                    self.autoJoinQueue.append(channelID)
                 self.LogInfo('Not logged in calling login')
                 self.Login()
             return 
@@ -540,14 +541,17 @@ class VivoxService(service.Service):
             self.LogInfo('Not logged in calling login')
             self.Login()
             return 
-        if self.members.has_key('Echo'):
+        if 'Echo' in self.members:
             self.LeaveEchoChannel()
             return 
         if self.AppCanJoinEchoChannel():
             for channel in self.members.keys():
                 self._LeaveChannel(channel)
 
-            self.autoJoinQueue = ['Echo']
+            if 'Echo' not in self.autoJoinQueue:
+                self.autoJoinQueue = ['Echo']
+            else:
+                self.LogError('Wait a second, I already have the echo channel in my autoJoinQueue!')
         else:
             sm.ScatterEvent('OnEchoChannel', False)
 
@@ -642,7 +646,9 @@ class VivoxService(service.Service):
                 self.addToAclQueue.append(channelName)
                 uthread.pool('Vivox::FailedJoinChannel', self.AppAddToACL, channelName)
                 return 
-        self.LogInfo('Failed to join channel ', channelName, errorMessage, errorCode)
+        if channelName in self.autoJoinQueue:
+            self.autoJoinQueue.remove(channelName)
+        self.LogInfo('Failed to join channel ', channelName, errorMessage, errorCode, self.autoJoinQueue)
 
 
 

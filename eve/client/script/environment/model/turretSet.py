@@ -3,6 +3,7 @@ import blue
 import log
 import turret
 import audio2
+import util
 TURRETSET_SHADERTYPE_INVALID = 0
 TURRETSET_SHADERTYPE_OVERRIDE = 1
 TURRETSET_SHADERTYPE_HALFOVERRIDE = 2
@@ -335,12 +336,18 @@ class TurretSet():
         turretsFitted = {}
         modules = []
         groupID = None
-        if shipID == eve.session.shipid:
-            ship = sm.StartService('godma').GetItem(shipID)
-            modules = [ [module.itemID,
-             module.typeID,
-             module.flagID - const.flagHiSlot0 + 1,
-             module.isOnline] for module in ship.modules ]
+        if shipID == util.GetActiveShip():
+            dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+            dogmaLocation.LoadItem(shipID)
+            ship = dogmaLocation.GetDogmaItem(shipID)
+            modules = []
+            for module in ship.GetFittedItems().itervalues():
+                if module.groupID in const.turretModuleGroups:
+                    modules.append([module.itemID,
+                     module.typeID,
+                     module.flagID - const.flagHiSlot0 + 1,
+                     module.IsOnline()])
+
             shipTypeID = ship.typeID
             groupID = ship.groupID
         else:

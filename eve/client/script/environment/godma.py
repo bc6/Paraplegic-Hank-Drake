@@ -14,8 +14,6 @@ import sys
 from timerstuff import ClockThis
 import inventoryFlagsCommon
 import log
-from collections import defaultdict
-GROUPALL_THROTTLE_TIMER = 2 * const.SEC
 
 def remDups(x, y):
     if x[-1] != y:
@@ -47,8 +45,6 @@ class Godma(service.Service):
      'OnEffectMessage',
      'OnDamageMessage',
      'OnDamageMessages',
-     'OnWeaponBanksChanged',
-     'OnWeaponGroupDestroyed',
      'OnSkillPointsRemovedDueToShipLoss',
      'OnMultiEvent',
      'ProcessGodmaPrimeLocation',
@@ -370,23 +366,6 @@ class Godma(service.Service):
 
 
 
-    def OnWeaponBanksChanged(self, shipID, info):
-        self.stateManager.OnWeaponBanksChanged(shipID, info)
-
-
-
-    def OnWeaponGroupDestroyed(self, itemID):
-        self.stateManager.OnWeaponGroupDestroyed(itemID)
-
-
-
-    def OnModuleBankDestroyed(self, masterID):
-        slaveModulesByMasterModule = self.stateManager.slaveModulesByMasterModule.get(session.shipid)
-        slaveModules = slaveModulesByMasterModule.get(masterID, [])
-        self.SetGroupNumbers()
-
-
-
     def ProcessSessionChange(self, isRemote, session, change):
         self.skillHandler = None
         self.GetStateManager().ProcessSessionChange(isRemote, session, change)
@@ -394,7 +373,12 @@ class Godma(service.Service):
 
 
     def OnItemChange(self, *args):
-        self.GetStateManager().OnItemChange(*args)
+        try:
+            self.GetStateManager().OnItemChange(*args)
+
+        finally:
+            sm.GetService('clientDogmaIM').GodmaItemChanged(*args)
+
 
 
 
@@ -980,21 +964,7 @@ class StateManager():
         self.heatAttributes = {'heatAbsorbtionRateHi': 'heatHi',
          'heatAbsorbtionRateMed': 'heatMed',
          'heatAbsorbtionRateLow': 'heatLow'}
-        self.groupableModuleGroups = [const.groupEnergyWeapon,
-         const.groupProjectileWeapon,
-         const.groupHybridWeapon,
-         const.groupMissileLauncher,
-         const.groupMissileLauncherAssault,
-         const.groupMissileLauncherCitadel,
-         const.groupMissileLauncherCruise,
-         const.groupMissileLauncherDefender,
-         const.groupMissileLauncherHeavy,
-         const.groupMissileLauncherHeavyAssault,
-         const.groupMissileLauncherRocket,
-         const.groupMissileLauncherSiege,
-         const.groupMissileLauncherStandard]
-        self.lastGroupAllRequest = None
-        self.lastUngroupAllRequest = None
+        self.dogmaLocation = None
 
 
 
@@ -1051,13 +1021,10 @@ class StateManager():
             if 'stationid' in change or 'solarsystemid' in change or 'shipid' in change or 'charid' in change:
                 self.priming = True
                 sm.ChainEvent('ProcessUIGodmaClearingState')
-                if change.has_key('shipid') and change['shipid'][0] and not change['shipid'][1] and not change.has_key('charid'):
-                    self.PurgeInventories([], skipCapacityEvent=True)
-                else:
-                    self.PurgeInventories([session.charid, session.shipid], skipCapacityEvent=True)
+                self.PurgeInventories([session.charid, session.shipid], skipCapacityEvent=True)
                 self.dogmaLM = None
                 self.godma.LogInfo('ProcessSessionChange: Prime (pre)')
-                self.Prime()
+                self.Prime(change.get('shipid', (None, None))[1])
                 self.godma.LogInfo('ProcessSessionChange: Prime (post)')
                 self.priming = False
             if session.stationid or session.solarsystemid:
@@ -1113,7 +1080,7 @@ class StateManager():
                     sm.ScatterEvent('OnGodmaItemChange', self.invitems[item.itemID], change)
                 if oldLocationID != item.locationID:
                     if oldLocationID in self.itemsByLocationID:
-                        self.itemsByLocationID[oldLocationID].remove(item.itemID)
+                        self.itemsByLocationID[oldLocationID].discard(item.itemID)
                     if item.locationID in self.itemsByLocationID:
                         self.itemsByLocationID[item.locationID].add(item.itemID)
         elif self.invByID.has_key(item.locationID):
@@ -1157,8 +1124,7 @@ class StateManager():
 
 
 
-    def GetAndProcessLocationInfo(self):
-        cData = self.dogmaLM.GetLocationInfo()
+    def ProcessLocationInfo(self, cData):
         for (locationID, datas,) in cData.iteritems():
             for data in datas:
                 self.ProcessGodmaPrimeLocation(locationID, data)
@@ -2177,186 +2143,8 @@ class StateManager():
 
 
 
-    def UnlinkModule(self, moduleID):
-        slaveID = self.dogmaLM.UnlinkModule(moduleID)
-        self.slaveModulesByMasterModule[session.shipid][moduleID].remove(slaveID)
-        if not self.slaveModulesByMasterModule[session.shipid][moduleID]:
-            del self.slaveModulesByMasterModule[session.shipid][moduleID]
-        self.SetGroupNumbers()
-        sm.ScatterEvent('OnRefreshModuleBanks')
-        return slaveID
-
-
-
-    def MergeGroups(self, moduleID1, moduleID2):
-        info = self.dogmaLM.MergeGroups(moduleID1, moduleID2)
-        self.OnWeaponBanksChanged(session.shipid, info)
-
-
-
-    def LinkWeapons(self, toItemID, fromItemID, itemType, merge = False):
-        if not self.IsGroupable(cfg.invtypes.Get(itemType).groupID):
-            return False
-        masterID = self.GetMasterModuleID(session.shipid, toItemID)
-        if masterID is None:
-            masterID = toItemID
-        if self.IsInWeaponBank(fromItemID) is not None:
-            if merge:
-                info = self.dogmaLM.MergeModuleGroups(masterID, fromItemID)
-            else:
-                info = self.dogmaLM.PeelAndLink(masterID, fromItemID)
-        else:
-            info = self.dogmaLM.LinkWeapons(masterID, fromItemID)
-        self.OnWeaponBanksChanged(session.shipid, info)
-
-
-
-    def LinkAllWeapons(self):
-        info = self.dogmaLM.LinkAllWeapons()
-        self.OnWeaponBanksChanged(session.shipid, info)
-        self.lastGroupAllRequest = blue.os.GetTime()
-
-
-
-    def UnlinkAllWeapons(self):
-        info = self.dogmaLM.UnlinkAllModules()
-        self.OnWeaponBanksChanged(session.shipid, info)
-        self.lastUngroupAllRequest = blue.os.GetTime()
-
-
-
-    def GetGroupAllOpacity(self, attributeName):
-        lastRequest = getattr(self, attributeName)
-        if lastRequest is None:
-            return 1.0
-        timeDiff = blue.os.GetTime() - lastRequest
-        waitTime = min(GROUPALL_THROTTLE_TIMER, GROUPALL_THROTTLE_TIMER - timeDiff)
-        opacity = max(0, 1 - float(waitTime) / GROUPALL_THROTTLE_TIMER)
-        return opacity
-
-
-
-    def GetGroupableTypes(self):
-        groupableTypes = defaultdict(lambda : 0)
-        shipInv = sm.GetService('invCache').GetInventoryFromId(session.shipid)
-        for flag in xrange(const.flagHiSlot0, const.flagHiSlot7 + 1):
-            for item in shipInv.List(flag):
-                if not self.IsGroupable(item.groupID):
-                    continue
-                module = self.GetItem(item.itemID)
-                if not module.isOnline:
-                    continue
-                groupableTypes[item.typeID] += 1
-
-
-        return groupableTypes
-
-
-
-    def CanGroupAll(self):
-        groupableTypes = self.GetGroupableTypes()
-        groups = {}
-        for module in self.GetItem(session.shipid).modules:
-            if not self.IsGroupable(module.groupID):
-                continue
-            if not module.isOnline:
-                continue
-            if not self.IsInWeaponBank(module.itemID) and groupableTypes[module.typeID] > 1:
-                return True
-            masterID = self.GetMasterModuleID(session.shipid, module.itemID)
-            if masterID is None:
-                masterID = module.itemID
-            if module.typeID not in groups:
-                groups[module.typeID] = masterID
-            else:
-                if groups[module.typeID] != masterID:
-                    return True
-
-        return False
-
-
-
-    def GetMasterModuleID(self, shipID, slaveID):
-        for (masterID, slaves,) in self.slaveModulesByMasterModule.get(shipID, {}).iteritems():
-            if slaveID in slaves:
-                return masterID
-
-
-
-
-    def LoadAmmoToBank(self, masterModuleID, chargeTypeID, itemID, chargeLocationID, qty):
-        try:
-            self.GetDogmaLM().LoadAmmoToBank(masterModuleID, chargeTypeID, itemID, chargeLocationID, qty)
-        except StandardError as e:
-            raise 
-
-
-
-    def LoadAmmoToModules(self, moduleIDs, chargeTypeID, itemID, ammoLocationID, qty = None):
-        try:
-            self.GetDogmaLM().LoadAmmoToModules(moduleIDs, chargeTypeID, itemID, ammoLocationID, qty)
-        except StandardError as e:
-            raise 
-
-
-
-    def CreateWeaponBanks(self, weaponBanks):
-        self.slaveModulesByMasterModule = {session.shipid: weaponBanks}
-        self.godma.LogInfo('Creating weapon banks', weaponBanks)
-        self.SetGroupNumbers()
-
-
-
-    def SetGroupNumbers(self):
-        allGroupsDict = settings.user.ui.Get('linkedWeapons_groupsDict', {})
-        groupsDict = allGroupsDict.get(session.shipid, {})
-        for masterID in groupsDict.keys():
-            if masterID not in self.slaveModulesByMasterModule[session.shipid]:
-                del groupsDict[masterID]
-
-        for masterID in self.slaveModulesByMasterModule[session.shipid]:
-            if masterID in groupsDict:
-                continue
-            for i in xrange(1, 9):
-                if i not in groupsDict.values():
-                    groupsDict[masterID] = i
-                    break
-
-
-        settings.user.ui.Set('linkedWeapons_groupsDict', allGroupsDict)
-
-
-
-    def OnWeaponBanksChanged(self, shipID, info):
-        self.CreateWeaponBanks(info)
-        sm.ScatterEvent('OnRefreshModuleBanks')
-
-
-
-    def DestroyWeaponBank(self, itemID):
-        self.dogmaLM.DestroyWeaponBank(itemID)
-        self.OnWeaponGroupDestroyed(itemID)
-
-
-
-    def OnWeaponGroupDestroyed(self, itemID):
-        del self.slaveModulesByMasterModule[session.shipid][itemID]
-        self.SetGroupNumbers()
-        sm.ScatterEvent('OnRefreshModuleBanks')
-
-
-
-    def GetSlaveModules(self, itemID):
-        slaveModulesByMasterModule = self.slaveModulesByMasterModule.get(session.shipid, {})
-        if itemID in slaveModulesByMasterModule:
-            return slaveModulesByMasterModule[itemID].copy()
-        else:
-            return None
-
-
-
-    def GetMaxDamagedModuleInGroup(self, itemID):
-        moduleIDs = self.GetModulesInBank(itemID)
+    def GetMaxDamagedModuleInGroup(self, shipID, itemID):
+        moduleIDs = self.dogmaLocation.GetModulesInBank(shipID, itemID)
         if moduleIDs is None:
             return (itemID, self.GetItem(itemID).damage)
         maxDamage = 0
@@ -2365,136 +2153,9 @@ class StateManager():
             if damage > maxDamage:
                 maxDamage = damage
 
-        masterID = self.GetMasterModuleID(session.shipid, itemID)
+        masterID = self.dogmaLocation.GetMasterModuleID(shipID, itemID)
         masterID = masterID if masterID is not None else itemID
         return (masterID, maxDamage)
-
-
-
-    def IsSlaveModule(self, itemID):
-        return self.GetMasterModuleID(session.shipid, itemID)
-
-
-
-    def IsMasterModule(self, itemID):
-        return itemID in self.slaveModulesByMasterModule.get(session.shipid, {})
-
-
-
-    def GetAllSlaveModulesByMasterModule(self):
-        slaveModulesByMasterModule = self.slaveModulesByMasterModule.get(session.shipid, {})
-        return slaveModulesByMasterModule
-
-
-
-    def IsInWeaponBank(self, itemID):
-        slaveModulesByMasterModule = self.slaveModulesByMasterModule.get(session.shipid, {})
-        masterID = self.GetMasterModuleID(session.shipid, itemID)
-        if masterID:
-            return masterID
-        if itemID in slaveModulesByMasterModule:
-            return itemID
-
-
-
-    def IsFlagInWeaponBank(self, flag):
-        ship = self.GetItem(session.shipid)
-        for module in ship.GetSlotOccupants(flag):
-            if self.IsInWeaponBank(module.itemID):
-                return True
-
-        return False
-
-
-
-    def GetModulesInBank(self, itemID):
-        slaveModulesByMasterModule = self.slaveModulesByMasterModule.get(session.shipid, {})
-        masterID = self.GetMasterModuleID(session.shipid, itemID)
-        if masterID is None and itemID in slaveModulesByMasterModule:
-            masterID = itemID
-        elif masterID is None:
-            return 
-        moduleIDs = self.GetSlaveModules(masterID)
-        moduleIDs.add(masterID)
-        return list(moduleIDs)
-
-
-
-    def GetCrystalsInBank(self, itemID):
-        ret = []
-        item = self.GetItem(itemID)
-        if item is None:
-            return []
-        if item.categoryID == const.categoryCharge:
-            ship = self.GetItem(session.shipid)
-            slotOccupants = ship.GetSlotOccupants(item.flagID)
-            for occupant in slotOccupants:
-                if occupant.itemID != itemID:
-                    itemID = occupant.itemID
-                    break
-
-        moduleIDs = self.GetModulesInBank(itemID)
-        if not moduleIDs:
-            return []
-        flags = []
-        for moduleID in moduleIDs:
-            module = self.GetItem(moduleID)
-            flags.append(module.flagID)
-
-        ship = self.GetItem(session.shipid)
-        if ship:
-            for module in ship.modules:
-                if module.flagID in flags and module.itemID not in moduleIDs:
-                    ret.append(module.itemID)
-
-        return ret
-
-
-
-    def GetSubLocationsInBank(self, itemID):
-        ret = []
-        item = self.GetItem(itemID)
-        if type(itemID) is tuple:
-            flag = itemID[1]
-            locationID = itemID[0]
-            if locationID != session.shipid:
-                return ret
-            ship = self.GetItem(locationID)
-            slotOccupants = ship.GetSlotOccupants(item.flagID)
-            for occupant in slotOccupants:
-                if occupant.itemID != itemID:
-                    itemID = occupant.itemID
-                    break
-
-        moduleIDs = self.GetModulesInBank(itemID)
-        if not moduleIDs:
-            return []
-        for moduleID in moduleIDs:
-            module = self.GetItem(moduleID)
-            charge = self.GetSubLocation(session.shipid, module.flagID)
-            if charge:
-                ret.append(charge.itemID)
-
-        return ret
-
-
-
-    def GetModulesSlaves(self, itemID):
-        slaveModulesByMasterModule = self.slaveModulesByMasterModule.get(session.shipid, {})
-        slaves = slaveModulesByMasterModule.get(itemID, set())
-        return slaves
-
-
-
-    def IsGroupable(self, groupID):
-        if groupID in self.groupableModuleGroups:
-            return True
-        return False
-
-
-
-    def GetGroupableModuleGroups(self):
-        return self.groupableModuleGroups
 
 
 
@@ -2580,68 +2241,67 @@ class StateManager():
 
 
 
-    def Prime(self):
+    def Prime(self, shipID = None):
         self.godma.LogInfo('Prime')
         self.priming = True
         self.primingChannel = uthread.Channel(('godma::Prime', session.shipid))
         self.InitializeData()
         dogmaLM = self.GetDogmaLM()
-        shipID = session.shipid
-        self.godma.LogInfo('Prime:', shipID)
-        parallelCalls = []
+        self.godma.LogInfo('Godma Prime, shipID:', shipID)
+        getShipInfo = False
         if shipID is not None and not self.invByID.has_key(shipID):
-            shipRows = dogmaLM.ShipGetInfo()
-        else:
-            shipRows = None
+            getShipInfo = True
+        getCharInfo = False
         if not self.invByID.has_key(session.charid):
-            charRows = dogmaLM.CharGetInfo()
-        else:
-            charRows = None
+            getCharInfo = True
         charInv = eve.GetInventoryFromId(session.charid, 1)
         if shipID is not None:
             shipInv = eve.GetInventoryFromId(shipID, 1)
         else:
             shipInv = None
-        if shipID is not None:
-            weaponBanks = dogmaLM.GetWeaponBankInfoForShip()
+        if getCharInfo or getShipInfo:
+            allInfo = dogmaLM.GetAllInfo(getCharInfo, getShipInfo)
         else:
-            weaponBanks = None
-        if session.solarsystemid:
-            uthread.pool('godma::Prime::GetAndProcessLocationInfo', self.GetAndProcessLocationInfo)
-        self.godma.LogNotice('Prime reply received:', shipID, shipRows is not None, charRows is not None, charInv is not None, shipInv is not None)
+            allInfo = None
+        if allInfo is None:
+            self.godma.LogInfo('Prime no dogma call needed')
+        elif allInfo.locationInfo is not None:
+            self.ProcessLocationInfo(allInfo.locationInfo)
+        self.godma.LogNotice('Prime reply received:', shipID, allInfo.Get('shipInfo', None) is not None, allInfo.Get('charInfo', None) is not None, charInv is not None, shipInv is not None)
         charID = session.charid
         if shipID is not None:
             if not self.invByID.has_key(shipID):
                 skips = set()
-                if shipRows.has_key(shipID):
-                    skips.add(shipID)
-                    row = shipRows[shipID]
-                    self.UpdateItem(row.invItem, row)
-                if shipRows.has_key(charID):
-                    skips.add(charID)
-                    row = shipRows[charID]
-                    self.UpdateItem(row.invItem, row)
-                for itemID in shipRows.iterkeys():
-                    if itemID in skips:
-                        continue
-                    row = shipRows[itemID]
-                    self.UpdateItem(row.invItem, row)
+                if allInfo is not None:
+                    if shipID in allInfo.shipInfo:
+                        skips.add(shipID)
+                        row = allInfo.shipInfo[shipID]
+                        self.UpdateItem(row.invItem, row)
+                    if charID in allInfo.shipInfo:
+                        skips.add(charID)
+                        row = allInfo.shipInfo[charID]
+                        self.UpdateItem(row.invItem, row)
+                    for itemID in allInfo.shipInfo.iterkeys():
+                        if itemID in skips:
+                            continue
+                        row = allInfo.shipInfo[itemID]
+                        self.UpdateItem(row.invItem, row)
 
             else:
                 self.invitems[shipID].locationID = session.solarsystemid or session.stationid
             self.invByID[shipID] = shipInv
-            self.CreateWeaponBanks(weaponBanks)
         if not self.invByID.has_key(charID):
             skips = set()
-            if charRows.has_key(charID):
-                skips.add(charID)
-                row = charRows[charID]
-                self.UpdateItem(row.invItem, row)
-            for itemID in charRows.iterkeys():
-                if itemID in skips:
-                    continue
-                row = charRows[itemID]
-                self.UpdateItem(row.invItem, row)
+            if allInfo is not None:
+                if charID in allInfo.charInfo:
+                    skips.add(charID)
+                    row = allInfo.charInfo[charID]
+                    self.UpdateItem(row.invItem, row)
+                for itemID in allInfo.charInfo.iterkeys():
+                    if itemID in skips:
+                        continue
+                    row = allInfo.charInfo[itemID]
+                    self.UpdateItem(row.invItem, row)
 
         else:
             self.invitems[charID].locationID = shipID or session.stationid
@@ -2662,6 +2322,10 @@ class StateManager():
 
         if shipID is not None:
             sm.ScatterEvent('OnCapacityChange', shipID)
+        if session.charid:
+            self.dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+            if allInfo is not None:
+                self.dogmaLocation.MakeShipActive(allInfo.activeShipID)
 
 
 
@@ -2760,7 +2424,7 @@ class StateManager():
             item = self.sublocationsByKey[itemKey]
         if item is None or not self.attributesByItemAttribute.has_key(itemKey):
             if itemKey not in self.attributesByItemAttribute:
-                self.godma.LogError('ApplyAttributeChange - item not found', item, ownerID, itemKey, attributeID, time, newValue, oldValue, scatterAttr)
+                self.godma.LogInfo('ApplyAttributeChange - item not found', item, ownerID, itemKey, attributeID, time, newValue, oldValue, scatterAttr)
             return 
         attributeName = cfg.dgmattribs.Get(attributeID).attributeName
         att = getattr(item, attributeName, 'not there')
@@ -2999,63 +2663,12 @@ class StateManager():
         self.PurgeInventories([], skipCapacityEvent=True)
         self.dogmaLM = None
         self.godma.LogInfo('OnJumpCloneTransitionCompleted: Prime (pre)')
-        self.Prime()
+        self.Prime(session.shipid)
         self.godma.LogInfo('OnJumpCloneTransitionCompleted: Prime (post)')
         self.priming = False
         if session.stationid or session.solarsystemid:
             dogmaLM = self.GetDogmaLM()
             dogmaLM.Bind()
-
-
-
-    def UnloadChargeToContainer(self, itemID, containerArgs, flag, quantity = None):
-        itemIDs = []
-        if type(itemID) == tuple:
-            itemIDs = self.GetSubLocationsInBank(itemID)
-        else:
-            itemIDs = self.GetCrystalsInBank(itemID)
-        if len(itemIDs) == 0:
-            itemIDs = [itemID]
-        inv = eve.GetInventoryFromId(*containerArgs)
-        if getattr(inv, 'typeID', None) is not None and cfg.invtypes.Get(inv.typeID).groupID == const.groupAuditLogSecureContainer:
-            flag = settings.user.ui.Get('defaultContainerLock_%s' % inv.itemID, None)
-        try:
-            inv.MultiAdd(itemIDs, session.shipid, flag=flag, fromManyFlags=True, qty=quantity)
-        except UserError as e:
-            if e.msg == 'NotEnoughCargoSpace' and len(itemIDs) > 1:
-                eve.Message('NotEnoughCargoSpaceToUnloadBank')
-            else:
-                raise 
-
-
-
-    def UnloadModuleToContainer(self, itemID, containerArgs, flag = None):
-        if self.IsInWeaponBank(itemID):
-            ret = eve.Message('CustomQuestion', {'header': mls.UI_GENERIC_CONFIRM,
-             'question': mls.UI_SHARED_WEAPONLINK_UNFIT}, uiconst.YESNO)
-            if ret != uiconst.ID_YES:
-                return 
-        item = self.GetItem(itemID)
-        containerInv = eve.GetInventoryFromId(*containerArgs)
-        if item is not None:
-            subLocation = self.GetSubLocation(item.locationID, item.flagID)
-            if subLocation is not None:
-                containerInv.Add(subLocation.itemID, subLocation.locationID, qty=None, flag=flag)
-            ship = self.GetItem(item.locationID)
-            crystal = None
-            for occupant in ship.GetSlotOccupants(item.flagID):
-                if occupant.itemID == itemID:
-                    continue
-                containerInv.Add(occupant.itemID, item.locationID, qty=None, flag=flag)
-
-        if getattr(containerInv, 'typeID', None) is not None and cfg.invtypes.Get(containerInv.typeID).groupID == const.groupAuditLogSecureContainer:
-            flag = settings.user.ui.Get('defaultContainerLock_%s' % containerInv.itemID, None)
-        if containerArgs[0] == session.shipid:
-            containerInv.Add(itemID, item.locationID, qty=None, flag=flag)
-        elif flag is not None:
-            containerInv.Add(itemID, item.locationID, qty=None, flag=flag)
-        else:
-            containerInv.Add(itemID, item.locationID)
 
 
 
@@ -3191,69 +2804,6 @@ class StateManager():
 
     def GetAmmoTypeForModule(self, moduleID):
         return self.chargeTypeByModule.get(moduleID, None)
-
-
-
-    def DropLoadChargeToModule(self, itemID, chargeTypeID, chargeItems, qty = None, preferSingletons = False):
-        if uicore.uilib.Key(uiconst.VK_SHIFT):
-            maxQty = 0
-            for item in chargeItems:
-                if item.typeID != chargeTypeID:
-                    continue
-                maxQty += item.stacksize
-
-            if maxQty == 0:
-                errmsg = mls.UI_INFLIGHT_NOMOREUNITS
-            else:
-                errmsg = mls.UI_INFLIGHT_NOROOMFORMORE
-            qty = None
-            ret = uix.QtyPopup(int(maxQty), 0, int(maxQty), errmsg)
-            if ret is not None:
-                qty = ret['qty']
-                if qty <= 0:
-                    return 
-        self.LoadChargeToModule(itemID, chargeTypeID, chargeItems=chargeItems, qty=qty, preferSingletons=preferSingletons)
-
-
-
-    def LoadChargeToModule(self, itemID, chargeTypeID, chargeItems = None, qty = None, preferSingletons = False):
-        masterID = self.GetMasterModuleID(session.shipid, itemID)
-        if masterID is None:
-            masterID = itemID
-        if chargeItems is None:
-            shipInv = eve.GetInventoryFromId(session.shipid)
-            chargeItems = []
-            for item in shipInv.List(const.flagCargo):
-                if item.typeID == chargeTypeID:
-                    chargeItems.append(item)
-
-        if not chargeItems:
-            raise UserError('CannotLoadNotEnoughCharges')
-        chargeLocationID = chargeItems[0].locationID
-        for item in chargeItems:
-            if cfg.IsShipFittingFlag(item.flagID):
-                raise UserError('CantMoveChargesBetweenModules')
-
-        if preferSingletons:
-            for item in chargeItems[:]:
-                if not item.singleton:
-                    chargeItems.remove(item)
-
-        if qty is not None:
-            totalQty = 0
-            i = 0
-            for item in chargeItems:
-                if totalQty >= qty:
-                    break
-                i += 1
-                totalQty += item.stacksize
-
-            chargeItems = chargeItems[:i]
-        itemIDs = []
-        for item in chargeItems:
-            itemIDs.append(item.itemID)
-
-        self.LoadAmmoToBank(masterID, chargeTypeID, itemIDs, chargeLocationID, qty)
 
 
 

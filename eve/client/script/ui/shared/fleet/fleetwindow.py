@@ -201,6 +201,7 @@ class FleetWindow(uicls.Window):
             ret.extend([None, [mls.UI_FLEET_BROADCASTS, self.broadcastMenuItems]])
             ret.append((mls.UI_FLEET_BROADCASTSETTINGS, lambda : sm.GetService('window').GetWindow('broadcastsettings', decoClass=form.BroadcastSettings, maximize=1, create=1)))
             ret.append(([mls.UI_FLEET_SETHEIRARCHY, mls.UI_FLEET_SETFLAT][(not self.isFlat)], self.ToggleFlat))
+            ret.extend([None, [mls.UI_FLEET_EXPORTLOOTHISTORY, self.ExportLootHistory]])
             if fleetSvc.IsCommanderOrBoss():
                 ret.append(None)
                 ret.append((mls.UI_FLEET_SHOWFLEETCOMPOSITION, fleetSvc.OpenFleetCompositionWindow))
@@ -374,6 +375,47 @@ class FleetWindow(uicls.Window):
         icon = uicls.Icon(align=uiconst.RELATIVE, left=6, top=0, icon=iconName, width=16, height=16)
         icon.state = uiconst.UI_DISABLED
         self.sr.lastVoiceEventCont.children.append(icon)
+
+
+
+    def ExportLootHistory(self):
+        lootHistory = sm.GetService('fleet').GetLootHistory()
+        rows = []
+        for kv in lootHistory:
+            t = cfg.invtypes.Get(kv.typeID)
+            row = [util.FmtDate(kv.time, 'ss'),
+             cfg.eveowners.Get(kv.charID).name,
+             t.name,
+             kv.quantity,
+             cfg.invgroups.Get(t.groupID).name]
+            rows.append(row)
+
+        fileNameExtension = 'Loot'
+        header = 'Time\tCharacter\tItem Type\tQuantity\tItem Group'
+        self.ExportToDisk(header, rows, fileNameExtension)
+
+
+
+    def ExportToDisk(self, header, rows, fileNameExtension):
+        date = util.FmtDate(blue.os.GetTime())
+        f = blue.os.CreateInstance('blue.ResFile')
+        directory = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '\\EVE\\logs\\Fleetlogs\\'
+        filename = '%s - %s.txt' % (fileNameExtension, date.replace(':', '.'))
+        fullPath = directory + filename
+        if not f.Open(fullPath, 0):
+            f.Create(fullPath)
+        f.Write('%s\r\n' % header)
+        for r in rows:
+            row = ''
+            for col in r:
+                row += '%s\t' % unicode(col).encode('utf-8')
+
+            f.Write('%s\r\n' % row)
+
+        f.Write('\r\n')
+        f.Close()
+        eve.Message('FleetExportInfo', {'filename': filename,
+         'folder': directory})
 
 
 

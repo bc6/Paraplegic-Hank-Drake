@@ -379,7 +379,7 @@ class FontAttribPanel(uicls.FontAttribPanelCore):
         uiutil.Update(colorpar)
         (colorpar.left, colorpar.top,) = (self.sr.color.absoluteLeft, [self.sr.color.absoluteTop + self.sr.color.height, self.sr.color.absoluteTop - colorpar.height][(self.sr.color.absoluteTop + self.sr.color.height + colorpar.height > uicore.desktop.height)])
         colorpar.state = uiconst.UI_NORMAL
-        self.sr.colorscroll = _weakref.ref(colorscroll)
+        self.sr.colorpar = _weakref.ref(colorscroll)
         uicore.event.RegisterForTriuiEvents(uiconst.UI_MOUSEUP, self.OnGlobalClick)
         self.expanding = 0
         self.expanded = 1

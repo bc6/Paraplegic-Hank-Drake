@@ -56,6 +56,9 @@ class BaseDogmaLocation():
         self.externalsByPilot = {}
         self.extraTracebacks = True
         self.delayAttributePropagation = {}
+        self.checkShipOnlineModulesPending = set()
+        self.ignoreOwnerEvents = {}
+        self.slaveModulesByMasterModule = {}
         self.instanceRowDescriptor = blue.DBRowDescriptor((('instanceID', const.DBTYPE_I8),
          ('online', const.DBTYPE_BOOL),
          ('damage', const.DBTYPE_R5),
@@ -66,6 +69,9 @@ class BaseDogmaLocation():
          ('incapacitated', const.DBTYPE_BOOL)))
         l = [0] + [0] * (len(self.instanceRowDescriptor) - 1)
         self.fakeInstanceRow = blue.DBRow(self.instanceRowDescriptor, l)
+        self.RegisterCallback(const.attributeCpuLoad, self.OnCpuAttributeChanged)
+        self.RegisterCallback(const.attributePowerLoad, self.OnPowerAttributeChanged)
+        self.RegisterCallback(const.attributeSkillPoints, self.OnSkillPointsChanged)
 
 
 
@@ -91,6 +97,7 @@ class BaseDogmaLocation():
                 if dogmaItem is not None:
                     dogmaItem.PostLoadAction()
             except Exception as e:
+                log.LogException('Failed to load a dogma item %s' % str(itemKey))
                 self.failedLoadingItems[itemKey] = 'Exception: ' + strx(e)
                 raise 
 
@@ -107,6 +114,11 @@ class BaseDogmaLocation():
             self.dogmaItems[itemKey] = dogmaItem = dogmax.DBLessDogmaItem(weakref.proxy(self), itemKey)
             dogmaItem.Load()
             self.FitItemToLocation(itemKey[0], itemKey, itemKey[1])
+            (locationID, flagID, typeID,) = itemKey
+            try:
+                dogmaItem.attributes[const.attributeQuantity] = self.instanceFlagQuantityCache[locationID][flagID].quantity
+            except KeyError:
+                sys.exc_clear()
             return dogmaItem
         if item is None:
             item = self.GetItem(itemKey)
@@ -123,19 +135,26 @@ class BaseDogmaLocation():
 
 
 
+    def GetDogmaItem(self, itemID):
+        return self.dogmaItems[itemID]
+
+
+
     def LoadPilot(self, shipID):
-        self.LogError('LoadPilot being called in BaseDogmaLocation', shipID)
+        pass
 
 
 
     def FitItemToLocation(self, locationID, itemID, flagID):
-        isItemLoaded = itemID in self.dogmaItems
+        self.LogInfo('FitItemtoLocation', locationID, itemID, flagID)
+        wasItemLoaded = itemID in self.dogmaItems
+        if locationID not in self.dogmaItems:
+            self.LoadItem(locationID)
+            if not wasItemLoaded:
+                self.LogInfo('Neither location not item loaded, returning early', locationID, itemID)
+                return 
         if itemID not in self.dogmaItems:
             self.LoadItem(itemID)
-            if not isItemLoaded:
-                return 
-        if not isItemLoaded:
-            self.LoadItem(locationID)
             return 
         locationDogmaItem = self.dogmaItems.get(locationID, None)
         if locationDogmaItem is None:
@@ -165,13 +184,8 @@ class BaseDogmaLocation():
         self.RecalculateAffectedLocationModifiers(itemID, dogmaItem.typeID, dogmaItem.groupID, oldLocationID)
         locationCategoryID = locationDogmaItem.categoryID
         pilotID = dogmaItem.ownerID
-        if locationCategoryID == const.categoryShip and dogmaItem.attributes.get(const.attributeIsOnline, 0):
-            if pilotID is None:
-                if locationID not in self.onlineByShip:
-                    self.onlineByShip[locationID] = {}
-                self.onlineByShip[locationID][flagID] = itemID
-            else:
-                self.StartModuleOnlineEffect(itemID, pilotID, dogmaItem.locationID, '', '')
+        if locationCategoryID == const.categoryShip and dogmaItem.attributes.get(const.attributeIsOnline, False) and self.dogmaStaticMgr.TypeHasEffect(dogmaItem.typeID, const.effectOnline):
+            self.StartModuleOnlineEffect(dogmaItem.itemID, pilotID, dogmaItem.locationID)
         return oldInfo
 
 
@@ -474,7 +488,7 @@ class BaseDogmaLocation():
                 effectsCompleted.add(effectID)
 
         except Exception:
-            log.LogException('Failed to start passive effect')
+            log.LogException('Failed to start passive effect %s on %s' % (effectID, itemID))
             return effectsCompleted
 
 
@@ -484,13 +498,67 @@ class BaseDogmaLocation():
 
 
 
+    def GetActiveEffectEnvironment(self, itemKey, effectID):
+        dogmaItem = self.dogmaItems[itemKey]
+        if effectID not in dogmaItem.activeEffects:
+            return None
+        return dogmaItem.activeEffects[effectID][const.ACT_IDX_ENV]
+
+
+
     def GetEffect(self, effectID):
         return self.dogmaStaticMgr.effects[effectID]
 
 
 
+    def GetSubLocation(self, locationID, flag):
+        if not self.IsItemLoaded(locationID):
+            raise RuntimeError('GetSubLocation called for unloaded location', locationID, flag)
+        try:
+            return self.dogmaItems[locationID].subLocations[flag]
+        except (KeyError, AttributeError):
+            return None
+
+
+
     def IsItemSubLocation(self, itemKey):
         return type(itemKey) is tuple
+
+
+
+    def SetWeaponBanks(self, shipID, data):
+        self.slaveModulesByMasterModule[shipID] = defaultdict(set)
+        if data is None:
+            return 
+        for (masterID, slaveIDs,) in data.iteritems():
+            for slaveID in slaveIDs:
+                self.slaveModulesByMasterModule[shipID][masterID].add(slaveID)
+
+
+
+
+
+    def GetMasterModuleID(self, shipID, slaveID):
+        for (masterID, slaves,) in self.slaveModulesByMasterModule.get(shipID, {}).iteritems():
+            if slaveID in slaves:
+                return masterID
+
+
+
+
+    def GetSlaveModules(self, moduleID, shipID):
+        if shipID in self.slaveModulesByMasterModule and moduleID in self.slaveModulesByMasterModule[shipID]:
+            return self.slaveModulesByMasterModule[shipID][moduleID].copy()
+
+
+
+    def IsModuleMaster(self, moduleID, shipID):
+        return moduleID in self.slaveModulesByMasterModule.get(shipID, {})
+
+
+
+    def IsModuleSlave(self, moduleID, shipID):
+        return self.GetMasterModuleID(shipID, moduleID) is not None
 
 
 
@@ -525,7 +593,15 @@ class BaseDogmaLocation():
 
 
 
+    def UnregisterExternalDronesForShip(self, shipID):
+        pass
+
+
+
     def UnloadItem(self, itemKey, item = None):
+        if itemKey in self.unloadingItems:
+            self.LogInfo('Item already being unloaded', itemKey)
+            return 
         self.unloadingItems.add(itemKey)
         try:
             self._UnloadItem(itemKey, item)
@@ -547,6 +623,12 @@ class BaseDogmaLocation():
             self.RemoveItem(itemKey)
             self.LogInfo('_UnloadItem::Deleting dogmaItem', itemKey)
             del self.dogmaItems[itemKey]
+
+
+
+    def RemoveSubLocationFromLocation(self, itemKey):
+        locationID = itemKey[0]
+        self.dogmaItems[locationID].RemoveSubLocation(itemKey)
 
 
 
@@ -625,6 +707,109 @@ class BaseDogmaLocation():
             attributeID = self.dogmaStaticMgr.attributesByName[attributeID].attributeID
         if attributeID in self.attributeChangeCallbacksByAttributeID:
             del self.attributeChangeCallbacksByAttributeID[attributeID]
+
+
+
+    def OnSkillPointsChanged(self, attributeID, itemID, newValue, oldValue = None):
+        self.OnAttributeChanged(const.attributeSkillLevel, itemID)
+
+
+
+    def OnCpuAttributeChanged(self, attributeID, itemID, newValue, oldValue = None):
+        self.OnFittingChanged(itemID, const.attributeCpuLoad, const.attributeCpuOutput)
+
+
+
+    def OnPowerAttributeChanged(self, attributeID, itemID, newValue, oldValue = None):
+        self.OnFittingChanged(itemID, const.attributePowerLoad, const.attributePowerOutput)
+
+
+
+    def OnFittingChanged(self, itemID, loadAttributeID, outputAttributeID):
+        if isinstance(itemID, tuple):
+            return 
+        if itemID not in self.pilotsByShipID:
+            return 
+        load = self.GetAttributeValue(itemID, loadAttributeID)
+        output = self.GetAttributeValue(itemID, outputAttributeID)
+        if output - load < 1e-07:
+            self.CheckShipOnlineModules(itemID)
+
+
+
+    def CheckShipOnlineModules(self, shipID):
+        try:
+            self.checkShipOnlineModulesPending.remove(shipID)
+        except KeyError:
+            pass
+        if self.IsItemLoading(shipID):
+            return 
+        if self.broker is None:
+            return 
+        if not self.IsShipLoaded(shipID):
+            return 
+        if shipID in self.unloadingItems:
+            return 
+        dogmaItem = self.dogmaItems[shipID]
+        if dogmaItem.categoryID != const.categoryShip:
+            return 
+        powerLoad = self.GetAttributeValue(shipID, const.attributePowerLoad)
+        powerOutput = self.GetAttributeValue(shipID, const.attributePowerOutput)
+        cpuLoad = self.GetAttributeValue(shipID, const.attributeCpuLoad)
+        cpuOutput = self.GetAttributeValue(shipID, const.attributeCpuOutput)
+        powerUsage = powerLoad / max(powerOutput, 1e-07)
+        cpuUsage = cpuLoad / max(cpuOutput, 1e-07)
+        if powerUsage > 1.0 and (cpuUsage <= 1.0 or cpuUsage > 1.0 and powerUsage > cpuUsage):
+            candidates = []
+            if self.IsShipLoaded(shipID):
+                for (moduleID, moduleDogmaItem,) in dogmaItem.GetFittedItems().iteritems():
+                    if (moduleID, const.effectOnline) in self.deactivatingEffects:
+                        continue
+                    if not moduleDogmaItem.IsOnline():
+                        continue
+                    used = self.GetAttributeValue(moduleID, const.attributePower)
+                    if used:
+                        candidates.append((used, moduleID))
+
+            self.broker.LogInfo('CheckShipOnlineModules', shipID, 'powerUsage', powerUsage, 'cpuUsage', cpuUsage)
+            if len(candidates):
+                mc = max(candidates)
+                itemKey = mc[1]
+                if (itemKey, const.effectOnline) in self.deactivatingEffects:
+                    self.broker.LogInfo('Low on power, already taking module offline so skipping', mc)
+                else:
+                    self.broker.LogInfo('Low on power, taking module offline', mc)
+                    self.StopEffect(const.effectOnline, itemKey)
+            else:
+                self.broker.LogError('The ship', shipID, "has something modifying it's powerLoad that isn't an online effect")
+        elif cpuUsage > 1.0:
+            candidates = []
+            if self.IsShipLoaded(shipID):
+                for (moduleID, moduleDogmaItem,) in dogmaItem.GetFittedItems().iteritems():
+                    if (moduleID, const.effectOnline) in self.deactivatingEffects:
+                        continue
+                    if not moduleDogmaItem.IsOnline():
+                        continue
+                    used = self.GetAttributeValue(moduleID, const.attributeCpu)
+                    if used > 0:
+                        candidates.append((used, moduleID))
+
+            self.broker.LogInfo('CheckShipOnlineModules', shipID, 'powerUsage', powerUsage, 'cpuUsage', cpuUsage)
+            if len(candidates):
+                mc = max(candidates)
+                itemKey = mc[1]
+                if (itemKey, const.effectOnline) in self.deactivatingEffects:
+                    self.broker.LogInfo('Low on cpu, already taking module offline so skipping', mc)
+                else:
+                    self.broker.LogInfo('Low on cpu, taking module offline', mc)
+                    self.OfflineModule(itemKey)
+            else:
+                self.broker.LogError('The ship', shipID, "has something modifying it's cpuLoad that isn't an online effect")
+
+
+
+    def OfflineModule(self, moduleID):
+        self.StopEffect(const.effectOnline, moduleID)
 
 
 
@@ -943,6 +1128,15 @@ class BaseDogmaLocation():
 
 
 
+    def IsShipLoaded(self, shipID):
+        dogmaItem = self.dogmaItems.get(shipID, None)
+        if dogmaItem is None:
+            return False
+        else:
+            return dogmaItem.categoryID == const.categoryShip
+
+
+
     def AddModifier(self, op, itemid, attributeid, itemid2, attributeid2):
         if not itemid:
             return 
@@ -1086,7 +1280,7 @@ class BaseDogmaLocation():
 
 
 
-    def StartModuleOnlineEffect(self, itemID, pilotID, locationID, locationName, timerName, context = None):
+    def StartModuleOnlineEffect(self, itemID, pilotID, locationID, context = None, raiseUserError = False):
         environment = dogmax.Environment(itemID, pilotID, locationID, None, None, const.effectOnline, weakref.proxy(self), None)
         if context is not None:
             for (k, v,) in context.iteritems():
@@ -1099,6 +1293,8 @@ class BaseDogmaLocation():
                 self.LogInfo('Tried to online', itemID, 'in', locationID, 'but failed because of', e)
             else:
                 self.SetAttributeValue(itemID, const.attributeIsOnline, 0)
+            if raiseUserError:
+                raise 
             sys.exc_clear()
 
 
@@ -1744,7 +1940,7 @@ class BaseDogmaLocation():
                     typeID = itemKey[2]
                 else:
                     try:
-                        typeID = self.inventory2.GetItem(itemKey)[const.ixTypeID]
+                        typeID = self.GetItem(itemKey)[const.ixTypeID]
                     except RuntimeError as e:
                         if len(e.args) and e.args[0].startswith('GetItem: Item not here'):
                             log.LogError("OnLocationRequiredSkillAttributeChanged::inventory item doesn't exist", itemKey)
@@ -1822,6 +2018,63 @@ class BaseDogmaLocation():
 
 
 
+    def LogAttribute(self, itemID, attributeID, reason, force = 0):
+        if type(attributeID) is str:
+            attribute = self.dogmaStaticMgr.attributesByName[attributeID]
+            attributeID = attribute.attributeID
+        else:
+            attribute = self.dogmaStaticMgr.attributes[attributeID]
+        rep = ['Something was wrong with attribute %s on item %s, reason: %s' % (attribute.attributeName, self.GetLocName(itemID), reason)]
+        if not attribute.stackable:
+            stackText = 'Not stackable, '
+        else:
+            stackText = 'Stackable, '
+        if not attribute.highIsGood:
+            stackText += 'lower value is better.'
+        else:
+            stackText += 'higher value is better.'
+        rep.append(stackText)
+        try:
+            val = self.GetAttributeValue(itemID, attributeID)
+        except StandardError:
+            val = 'No idea!'
+            sys.exc_clear()
+        rep.append('Value:%s' % val)
+        if self.IsItemSubLocation(itemID):
+            (locationID, typeID,) = (itemID[0], itemID[2])
+            groupID = cfg.invtypes.Get(typeID).groupID
+            locationItem = self.broker.i2.GetItemMx(10, 5, locationID)
+            ownerID = locationItem.ownerID
+        elif itemID in self.dogmaItems:
+            dogmaItem = self.dogmaItems[itemID]
+            if dogmaItem.location is not None:
+                locationID = dogmaItem.location.itemID
+            else:
+                locationID = None
+            (typeID, groupID, ownerID,) = (dogmaItem.typeID, dogmaItem.groupID, dogmaItem.ownerID)
+        else:
+            item = self.broker.i2.GetItemMx(10, 5, itemID)
+            (locationID, typeID, groupID, ownerID,) = (item.locationID,
+             item.typeID,
+             item.groupID,
+             item.ownerID)
+        modifierInfo = self.LogModifiers(itemID, attributeID, locationID, ownerID, typeID, groupID, force)
+        rep.extend(modifierInfo)
+        oval = self.dogmaStaticMgr.GetTypeAttribute(typeID, attributeID, 'No idea!')
+        rep.append('Original Value:%s' % oval)
+        rep.append('Attribute modified by:')
+        return rep
+
+
+
+    def GetLocName(self, locid):
+        dogmaItem = self.dogmaItems.get(locid, None)
+        if dogmaItem is None:
+            return 'Unknown Item'
+        return cfg.invtypes.Get(dogmaItem.typeID).typeName
+
+
+
     def LogInfo(self, *args):
         return self.broker.LogInfo(self.locationID, *args)
 
@@ -1851,6 +2104,11 @@ class BaseDogmaLocation():
             del self.ignoreOwnerEvents[ownerID]
 
 
+
+
+class EmbarkOnlineError(UserError):
+    __guid__ = 'dogmax.EmbarkOnlineError'
+    propagate = True
 
 exports = {'dogmax.BaseDogmaLocation': BaseDogmaLocation}
 

@@ -37,6 +37,7 @@ class ClientEffectCompiler(svc.baseEffectCompiler):
         self.dogma.LoadExpressions()
         svc.baseEffectCompiler.Run(self, *args)
         self.effects = EffectDict(self)
+        self.SetupEffects()
         self.groupsByName = util.Rowset(cfg.invgroups.header, cfg.invgroups.data.values()).Index('groupName')
         self.typesByName = util.Rowset(cfg.invtypes.header, cfg.invtypes.data.values()).Index('typeName')
         self.flagsByEffect = {}

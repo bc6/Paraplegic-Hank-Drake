@@ -31,9 +31,23 @@ def CharGetDogmaLocation():
 
 
 
+def GetStationDogmaLocation():
+    moniker = Moniker('dogmaIM', (session.stationid2, const.groupStation))
+    moniker.SetSessionCheck({'stationid2': session.stationid2})
+    return moniker
+
+
+
 def GetShipAccess():
     moniker = Moniker('ship', GetLocationBindParams())
     moniker.SetSessionCheck(GetLocationSessionCheck())
+    return moniker
+
+
+
+def GetStationShipAccess():
+    moniker = Moniker('ship', (session.stationid2, const.groupStation))
+    moniker.SetSessionCheck({'stationid2': session.stationid2})
     return moniker
 
 
@@ -219,13 +233,16 @@ def GetPlanet(planetID):
 
 exports = {'moniker.GetAgent': GetAgent,
  'moniker.CharGetDogmaLocation': CharGetDogmaLocation,
+ 'moniker.GetStationDogmaLocation': GetStationDogmaLocation,
  'moniker.GetShipAccess': GetShipAccess,
+ 'moniker.GetStationShipAccess': GetStationShipAccess,
  'moniker.GetEntityAccess': GetEntityAccess,
  'moniker.GetPOSMgr': GetPOSMgr,
  'moniker.CharGetSkillHandler': CharGetSkillHandler,
  'moniker.GetCorpStationManager': GetCorpStationManager,
  'moniker.GetCorpStationManagerEx': GetCorpStationManagerEx,
  'moniker.GetInventoryMgr': GetInventoryMgr,
+ 'moniker.GetStationInventoryMgr': GetStationInventoryMgr,
  'moniker.GetAggressionManager': GetAggressionManager,
  'moniker.GetBallPark': GetBallPark,
  'moniker.GetMinigameController': GetMinigameController,

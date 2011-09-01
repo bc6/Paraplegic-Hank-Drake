@@ -107,7 +107,8 @@ class NeocomSvc(service.Service):
      'ProcessRookieStateChange',
      'OnSystemStatusChanged',
      'OnSovereigntyChanged',
-     'OnPostCfgDataChanged']
+     'OnPostCfgDataChanged',
+     'OnEntitySelectionChanged']
 
     def __init__(self):
         service.Service.__init__(self)
@@ -143,6 +144,11 @@ class NeocomSvc(service.Service):
 
 
     def OnSovereigntyChanged(self, solarSystemID, allianceID):
+        self.UpdateLocationText()
+
+
+
+    def OnEntitySelectionChanged(self, entityID):
         self.UpdateLocationText()
 
 
@@ -533,7 +539,7 @@ class NeocomSvc(service.Service):
                 continue
             if service == 'navyoffices' and not sm.StartService('facwar').CheckStationElegibleForMilitia():
                 continue
-            if not info[4] or info[4] and eve.session.stationid:
+            if not info[4] or info[4] and session.stationid2:
                 iconmapping.append((sortby, (service,
                   info[1],
                   info[2],
@@ -631,7 +637,7 @@ class NeocomSvc(service.Service):
             self.bottomline.Close()
             self.bottomline = None
         self.exitbtn.parent.state = uiconst.UI_HIDDEN
-        if eve.session.stationid:
+        if session.stationid2:
             self.exitbtn.OnClick = (self.BtnClick, self.exitbtn)
             self.exitbtn.parent.state = uiconst.UI_NORMAL
             self.exitbtn.OnMouseEnter = (self.BtnEnter, self.exitbtn)
@@ -803,7 +809,7 @@ class NeocomSvc(service.Service):
                     btn.sr.nme.text = ''
 
             self.wnd.sr.exitbtnText.text = ['', '<center><b>%s</b>' % mls.UI_GENERIC_UNDOCK][BIG]
-            if eve.session.stationid:
+            if session.stationid2:
                 uicore.effect.MorphUI(self.exitbtn.parent, 'height', [max(BUTTONHEIGHT, bh), 60][BIG], time)
                 uicore.effect.MorphUI(self.exitbtn, 'left', [[[0, 0], [37, 37]], [[0, -37], [37, -37]]][LEFT][BIG][self.ahidden], time)
                 uicore.effect.MorphUI(self.exitbtn, 'width', [BUTTONHEIGHT, 54][BIG], time, 1, 1)
@@ -894,12 +900,11 @@ class NeocomSvc(service.Service):
 
 
 
-    def UpdateWindowPush(self, data, setNeoWidth = None, action = None):
+    def UpdateWindowPush(self, data, setNeoWidth = None, action = None, time = 150.0):
         if data:
             (wndsOnLeft, wndsOnLeftOffset, wndsOnRight, wndsOnRightOffset,) = data
         else:
             wndsOnLeft = wndsOnLeftOffset = wndsOnRight = wndsOnRightOffset = []
-        time = 150.0
         mbLeftPush = 0
         mbRightPush = 0
         mb = sm.GetService('window').GetWindow('mapbrowser', create=0)
@@ -1727,14 +1732,14 @@ class NeocomSvc(service.Service):
 
     def DropInHangar(self, dragObj, nodes, *args):
         inv = []
-        stateMgr = sm.GetService('godma').GetStateManager()
+        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
         for node in nodes:
             if node.Get('__guid__', None) in ('xtriui.InvItem', 'listentry.InvItem'):
                 if cfg.IsShipFittingFlag(node.rec.flagID):
                     if node.rec.categoryID == const.categoryCharge:
-                        stateMgr.UnloadChargeToContainer(node.rec.itemID, (const.containerHangar,), const.flagHangar)
+                        dogmaLocation.UnloadChargeToContainer(node.rec.locationID, node.rec.itemID, (const.containerHangar,), const.flagHangar)
                     else:
-                        stateMgr.UnloadModuleToContainer(node.rec.itemID, (const.containerHangar,), const.flagHangar)
+                        dogmaLocation.UnloadModuleToContainer(node.rec.locationID, node.rec.itemID, (const.containerHangar,), const.flagHangar)
                 else:
                     locationID = node.rec.locationID
                     inv.append(node.itemID)

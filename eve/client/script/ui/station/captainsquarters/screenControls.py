@@ -461,7 +461,7 @@ class LabelCont(uicls.Container):
 
     def OnMouseEnter(self, *args):
         if self.clickFunc:
-            uicore.animations.FadeIn(self.hoverFill, endVal=0.5)
+            uicore.animations.FadeIn(self.hoverFill, endVal=0.5, duration=0.3)
 
 
 
@@ -493,11 +493,14 @@ class TextBanner(uicls.Container):
     def ApplyAttributes(self, attributes):
         uicls.Container.ApplyAttributes(self, attributes)
         text = attributes.get('text', '')
+        textList = attributes.get('textList', None)
+        if textList is None:
+            textList = [text]
         fontSize = attributes.get('fontSize', self.default_fontSize)
         leftContWidth = attributes.get('leftContWidth', self.default_leftContWidth)
         color = attributes.get('color', self.default_color)
         self.leftCont = uicls.Container(name='leftCont', parent=self, align=uiconst.TOLEFT, width=leftContWidth)
-        autoText = uicls.AutoTextScroll(parent=self, align=uiconst.TOALL, scrollSpeed=70, fontSize=fontSize, textList=[text], fadeColor=color, padTop=12, padBottom=12)
+        autoText = uicls.AutoTextScroll(parent=self, align=uiconst.TOALL, scrollSpeed=70, fontSize=fontSize, textList=textList, fadeColor=color)
         uicls.Sprite(bgParent=self, texturePath='res:/UI/Texture/Classes/CQMainScreen/autoTextGradientLeft.png', color=color)
 
 

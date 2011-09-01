@@ -71,10 +71,7 @@ class StationNav(uicls.Container):
 
 
     def OnDblClick(self, *args):
-        if eve.session.shipid and sm.GetService('godma').GetItem(eve.session.shipid).groupID != const.groupCapsule:
-            uicore.cmd.OpenCargoHoldOfActiveShip()
-        elif eve.Message('AskActivateShip', {}, uiconst.YESNO, suppress=uiconst.ID_YES) == uiconst.ID_YES:
-            sm.GetService('station').SelectShipDlg()
+        uicore.cmd.OpenCargoHoldOfActiveShip()
 
 
 

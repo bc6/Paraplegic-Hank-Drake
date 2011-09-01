@@ -97,12 +97,8 @@ class CorpMembers(uicls.Container):
         if not self.sr.Get('inited', 0):
             self.sr.inited = 1
             toppar = uicls.Container(name='options', parent=self, align=uiconst.TOTOP, height=54)
-            icon = uicls.Button(parent=toppar, icon='ui_77_32_41', iconSize=20, align=uiconst.BOTTOMRIGHT, left=6, func=self.Navigate, args=1)
-            icon.hint = mls.UI_GENERIC_VIEWMORE
-            self.sr.fwdBtn = icon
-            icon = uicls.Button(parent=toppar, icon='ui_77_32_42', iconSize=20, align=uiconst.BOTTOMRIGHT, left=26, func=self.Navigate, args=-1)
-            icon.hint = mls.UI_GENERIC_PREVIOUS
-            self.sr.backBtn = icon
+            self.sr.fwdBtn = uicls.Button(parent=toppar, icon='ui_77_32_41', iconSize=20, align=uiconst.BOTTOMRIGHT, left=6, func=self.Navigate, args=1, hint=mls.UI_GENERIC_VIEWMORE)
+            self.sr.backBtn = uicls.Button(parent=toppar, icon='ui_77_32_42', iconSize=20, align=uiconst.BOTTOMRIGHT, left=32, func=self.Navigate, args=-1, hint=mls.UI_GENERIC_PREVIOUS)
             uicls.Container(name='push', parent=toppar, align=uiconst.TOTOP, height=6)
             optlist = [['10', 10],
              ['25', 25],

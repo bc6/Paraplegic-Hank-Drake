@@ -894,6 +894,10 @@ class EditCore(parser.ParserBase, uicls.Scroll):
     def SetSelectionRange(self, fromCharIndex, toCharIndex):
         if fromCharIndex == toCharIndex:
             (fromCharIndex, toCharIndex,) = (None, None)
+        elif toCharIndex < fromCharIndex:
+            copy_fromCharIndex = fromCharIndex
+            fromCharIndex = toCharIndex
+            toCharIndex = copy_fromCharIndex
         self.globalSelectionRange = (fromCharIndex, toCharIndex)
         self.CheckCursorAndSelectionUpdate()
 
@@ -1265,30 +1269,43 @@ class EditCore(parser.ParserBase, uicls.Scroll):
             elif vkey == uiconst.VK_UP:
                 if not ctrl:
                     self.OnUp()
-                    posInLine = self.globalCursorPos - node.startCursorIndex
-                    if node.idx > 0:
-                        nodeAbove = self.GetNode(node.idx - 1)
-                        if nodeAbove and nodeAbove.endCursorIndex is not None:
-                            newCursorPos = min(nodeAbove.endCursorIndex, nodeAbove.startCursorIndex + posInLine)
-                        else:
-                            newCursorPos = 0
-                        if shift:
-                            (selectionStartIndex, selectionEndIndex,) = self.globalSelectionRange
-                            if selectionStartIndex is None:
-                                self.SetSelectionRange(newCursorPos, self.globalCursorPos)
-                            elif self.globalCursorPos == selectionStartIndex:
-                                self.SetSelectionRange(newCursorPos, selectionEndIndex)
+                    if self.globalSelectionRange == (None, None):
+                        self.Scroll(1 + 10 * shift)
+                    else:
+                        posInLine = self.globalCursorPos - node.startCursorIndex
+                        if node.idx > 0:
+                            aboveIdx = node.idx - 1
+                            nodeAbove = None
+                            while aboveIdx:
+                                nodeAbove = self.GetNode(aboveIdx)
+                                if nodeAbove and nodeAbove.startCursorIndex != nodeAbove.endCursorIndex:
+                                    break
+                                aboveIdx -= 1
+
+                            if nodeAbove and nodeAbove.endCursorIndex is not None:
+                                newCursorPos = min(nodeAbove.endCursorIndex, nodeAbove.startCursorIndex + posInLine)
                             else:
-                                self.SetSelectionRange(selectionStartIndex, newCursorPos)
+                                newCursorPos = 0
+                            if shift:
+                                (selectionStartIndex, selectionEndIndex,) = self.globalSelectionRange
+                                if selectionStartIndex is None:
+                                    self.SetSelectionRange(newCursorPos, self.globalCursorPos)
+                                elif self.globalCursorPos == selectionStartIndex:
+                                    self.SetSelectionRange(newCursorPos, selectionEndIndex)
+                                else:
+                                    self.SetSelectionRange(selectionStartIndex, newCursorPos)
             elif vkey == uiconst.VK_DOWN:
                 if not ctrl:
                     self.OnDown()
-                    posInLine = self.globalCursorPos - node.startCursorIndex
-                    nodeBelow = self.GetNode(node.idx + 1)
-                    if nodeBelow and nodeBelow.startCursorIndex is not None:
-                        newCursorPos = nodeBelow.startCursorIndex + min(posInLine, nodeBelow.letterCountInLine)
+                    if self.globalSelectionRange == (None, None):
+                        self.Scroll(-1 - 10 * shift)
                     else:
-                        newCursorPos = self._maxGlobalCursorIndex
+                        posInLine = self.globalCursorPos - node.startCursorIndex
+                        nodeBelow = self.GetNode(node.idx + 1)
+                        if nodeBelow and nodeBelow.startCursorIndex is not None:
+                            newCursorPos = nodeBelow.startCursorIndex + min(posInLine, nodeBelow.letterCountInLine)
+                        else:
+                            newCursorPos = self._maxGlobalCursorIndex
                     if shift:
                         (selectionStartIndex, selectionEndIndex,) = self.globalSelectionRange
                         if selectionStartIndex is None:
@@ -1327,9 +1344,10 @@ class EditCore(parser.ParserBase, uicls.Scroll):
                         self.SetSelectionRange(selectionStartIndex, newCursorPos)
             self.SetCursorPos(newCursorPos)
             self.EvalAttributeState()
-            (node, obj, npos,) = self.GetNodeAndTextObjectFromGlobalCursor()
-            if node:
-                self.ShowNodeIdx(node.idx)
+            if self.globalSelectionRange != (None, None):
+                (node, obj, npos,) = self.GetNodeAndTextObjectFromGlobalCursor()
+                if node:
+                    self.ShowNodeIdx(node.idx)
         if self.readonly:
             return 
         if ctrl:

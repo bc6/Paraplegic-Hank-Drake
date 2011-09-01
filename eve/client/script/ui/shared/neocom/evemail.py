@@ -267,8 +267,10 @@ class MailForm(uicls.Container):
 
 
     def OnClose_(self, *args):
-        settings.user.ui.Set('evemail_leftContWidth', self.sr.leftCont.width)
-        settings.user.ui.Set('evemail_readingContHeight', self.sr.readingPaneCont.height)
+        if self.sr.leftCont:
+            settings.user.ui.Set('evemail_leftContWidth', self.sr.leftCont.width)
+        if self.sr.readingPaneCont:
+            settings.user.ui.Set('evemail_readingContHeight', self.sr.readingPaneCont.height)
         sm.UnregisterNotify(self)
         sm.GetService('mailSvc').SaveChangesToDisk()
 

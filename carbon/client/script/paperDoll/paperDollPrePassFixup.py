@@ -29,9 +29,16 @@ MATERIAL_ID_EXACT = {0: 72,
  10: 74,
  11: 74,
  13: 70}
+MATERIAL_ID_TRANSPARENT_HACK_EXACT = {0: 74,
+ 5: 72,
+ 10: 74,
+ 11: 74,
+ 13: 70}
 
-def FindMaterialID(materialID, specPower1, specPower2):
-    exact = MATERIAL_ID_EXACT.get(materialID, -1)
+def FindMaterialID(materialID, specPower1, specPower2, materialLookupTable = MATERIAL_ID_EXACT):
+    if materialLookupTable is None:
+        materialLookupTable = MATERIAL_ID_EXACT
+    exact = materialLookupTable.get(materialID, -1)
     if exact != -1:
         return exact
     specPower2 += 1
@@ -156,7 +163,7 @@ def GetEffectParameter(effect, name, default):
 
 
 
-def CopyAreaForPrePassDepthNormal(area, sourceAreaType = SOURCE_AREA_TYPE_OPAQUE):
+def CopyAreaForPrePassDepthNormal(area, sourceAreaType = SOURCE_AREA_TYPE_OPAQUE, materialLookupTable = None):
     originalEffect = area.effect
     if originalEffect is None:
         return 
@@ -205,7 +212,7 @@ def CopyAreaForPrePassDepthNormal(area, sourceAreaType = SOURCE_AREA_TYPE_OPAQUE
          MaterialSpecularCurve.w)
     param = trinity.Tr2FloatParameter()
     param.name = 'MaterialLibraryID'
-    param.value = FindMaterialID(MaterialLibraryID, 1 + MaterialSpecularCurve[3], MaterialSpecularCurve[1])
+    param.value = FindMaterialID(MaterialLibraryID, 1 + MaterialSpecularCurve[3], MaterialSpecularCurve[1], materialLookupTable=materialLookupTable)
     newMaterial.parameters['MaterialLibraryID'] = param
     MaterialLibraryID = FindParameterByName(area.effect, 'Material2LibraryID')
     if MaterialLibraryID is not None:
@@ -408,7 +415,7 @@ def AddPrepassAreasToStandardMesh(mesh, processDepthAreas, processDepthNormalAre
 
     newAreas = []
 
-    def AddAreasForRegularPLP(area):
+    def AddAreasForRegularPLP(area, materialLookupTable = None):
         if area.effect is not None and hasattr(area.effect, 'effectFilePath') and 'glass' in area.effect.effectFilePath.lower():
             newArea = CopyArea(area)
             if newArea is not None:
@@ -416,7 +423,7 @@ def AddPrepassAreasToStandardMesh(mesh, processDepthAreas, processDepthNormalAre
                 newAreas.append(newArea)
             return 
         if processDepthNormalAreas:
-            newArea = CopyAreaForPrePassDepthNormal(area, SOURCE_AREA_TYPE_DECAL)
+            newArea = CopyAreaForPrePassDepthNormal(area, SOURCE_AREA_TYPE_DECAL, materialLookupTable=materialLookupTable)
             if newArea is not None:
                 mesh.depthNormalAreas.append(newArea)
         if processDepthAreas:
@@ -449,7 +456,7 @@ def AddPrepassAreasToStandardMesh(mesh, processDepthAreas, processDepthNormalAre
         if hasattr(area.effect, 'effectFilePath') and 'glass' in area.effect.effectFilePath.lower():
             continue
         if USE_DECAL_PLP_FOR_TRANSPARENT_AREAS and not IsEyeRelated(area):
-            AddAreasForRegularPLP(area)
+            AddAreasForRegularPLP(area, materialLookupTable=MATERIAL_ID_TRANSPARENT_HACK_EXACT)
             area.effect = None
         else:
             newArea = CopyAreaOnly(area)

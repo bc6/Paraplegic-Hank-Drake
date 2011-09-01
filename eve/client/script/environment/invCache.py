@@ -19,6 +19,10 @@ from collections import defaultdict
 SEC = 10000000L
 MIN = SEC * 60L
 HOUR = MIN * 60L
+CAPACITY_ATTRIBUTES = (const.attributeCapacity,
+ const.attributeDroneCapacity,
+ const.attributeShipMaintenanceBayCapacity,
+ const.attributeCorporateHangarCapacity)
 
 class invCache(service.Service):
     __guid__ = 'svc.invCache'
@@ -42,12 +46,16 @@ class invCache(service.Service):
      'OnItemChange',
      'OnCapacityChange',
      'OnPasswordChanged',
-     'DoBallRemove']
+     'DoBallRemove',
+     'OnDogmaAttributeChanged',
+     'ProcessActiveShipChanged']
 
     def __init__(self):
         service.Service.__init__(self)
         self._invCache__invmgr = None
         self._invCache__invlocID = 0
+        self._invCache__stationinvmgr = None
+        self._invCache__stationID = 0
         self._invCache__itemhdr = None
         self.inventories = {}
         self.containerGlobal = None
@@ -85,7 +93,7 @@ class invCache(service.Service):
         try:
             if not session.charid:
                 return self.InvalidateCache()
-            if change.has_key('corprole') and eve.session.stationid:
+            if change.has_key('corprole') and session.stationid2:
                 self.LogInfo('ProcessSessionChange corprole in station')
                 office = sm.GetService('corp').GetOffice()
                 if office is not None:
@@ -97,7 +105,7 @@ class invCache(service.Service):
                 if change['shipid'][0] in self.inventories:
                     del self.inventories[change['shipid'][0]]
                 return 
-            if not (change.has_key('stationid') or change.has_key('solarsystemid')):
+            if not (change.has_key('stationid2') or change.has_key('solarsystemid')):
                 return 
             self.InvalidateCache()
 
@@ -162,6 +170,15 @@ class invCache(service.Service):
                 self._invCache__invlocID = eve.session.locationid
                 self._invCache__invmgr = moniker.GetInventoryMgr()
             return self._invCache__invmgr
+        if key == 'stationInventoryMgr':
+            while session.IsMutating() and not session.IsChanging():
+                self.LogInfo('Sleeping while waiting for a session change or mutation to complete')
+                blue.pyos.synchro.Sleep(250)
+
+            if self._invCache__stationinvmgr is None or self._invCache__stationID != session.stationid2:
+                self._invCache__stationID = session.stationid2
+                self._invCache__stationinvmgr = moniker.GetStationInventoryMgr(session.stationid2)
+            return self._invCache__stationinvmgr
         if self.__dict__.has_key(key):
             return self.__dict__[key]
         raise AttributeError, key
@@ -194,7 +211,7 @@ class invCache(service.Service):
                     oldItem[k] = v
 
                 (keyIs, keyWas,) = (None, None)
-                if eve.session.stationid:
+                if session.stationid2:
                     if item.locationID == eve.session.stationid:
                         if item.ownerID == eve.session.charid:
                             keyIs = (const.containerHangar, None)
@@ -202,7 +219,7 @@ class invCache(service.Service):
                             keyIs = (const.containerCorpMarket, item.ownerID)
                         else:
                             keyIs = (const.containerHangar, item.ownerID)
-                    if oldItem.locationID == eve.session.stationid:
+                    if oldItem.locationID == session.stationid2:
                         if oldItem.ownerID == eve.session.charid:
                             keyWas = (const.containerHangar, None)
                         elif oldItem.flagID == const.flagCorpMarket:
@@ -425,8 +442,15 @@ class invCache(service.Service):
 
 
     def GetInventory(self, containerid, param1 = None):
-        if self._invCache__invlocID != eve.session.locationid:
+        if containerid == const.containerHangar:
+            if self._invCache__stationID != session.stationid2:
+                self.InvalidateCache()
+            inventoryMgr = self.stationInventoryMgr
+            sessionCheckParams = {'stationid2': self._invCache__stationID}
+        elif self._invCache__invlocID != eve.session.locationid:
             self.InvalidateCache()
+        inventoryMgr = self.inventorymgr
+        sessionCheckParams = {'locationid': self._invCache__invlocID}
         specials = [const.containerWallet,
          const.containerStationCharacters,
          const.containerOffices,
@@ -445,26 +469,36 @@ class invCache(service.Service):
             return inv
         key = (containerid, param1)
         if not self.inventories.has_key(key):
-            inv = self.inventorymgr.GetInventory(containerid, param1)
-            inv.SetSessionCheck({'locationid': self._invCache__invlocID})
+            inv = inventoryMgr.GetInventory(containerid, param1)
+            inv.SetSessionCheck(sessionCheckParams)
             self.inventories[key] = invCacheContainer(inv, key)
         return self.inventories[key]
 
 
 
-    def GetInventoryFromId(self, itemid, passive = 0):
+    def GetInventoryFromId(self, itemid, passive = 0, locationID = None):
         if itemid is None:
             log.LogTraceback('Thou shalt not send None in as itemid to GetInventoryFromId')
             raise IndexError
+        if locationID is None:
+            locationID = session.locationid
         try:
-            if self._invCache__invlocID != eve.session.locationid:
-                self.InvalidateCache()
+            if locationID == session.locationid:
+                if locationID != self._invCache__invlocID:
+                    self.InvalidateCache()
+                inventoryMgr = self.inventorymgr
+                sessionCheckParams = {'locationid': self._invCache__invlocID}
+            elif locationID == session.stationid2:
+                if locationID != self._invCache__stationID:
+                    self.InvalidateCache()
+                inventoryMgr = self.stationInventoryMgr
+                sessionCheckParams = {'stationid2': self._invCache__stationID}
             key = (itemid, None)
             if self.inventories.has_key(key):
                 return self.inventories[key]
             else:
-                inv = self.inventorymgr.GetInventoryFromId(itemid, passive)
-                inv.SetSessionCheck({'locationid': self._invCache__invlocID})
+                inv = inventoryMgr.GetInventoryFromId(itemid, passive)
+                inv.SetSessionCheck(sessionCheckParams)
                 self.inventories[key] = invCacheContainer(inv, key)
                 return self.inventories[key]
         except UserError as e:
@@ -492,6 +526,7 @@ class invCache(service.Service):
 
     def InvalidateCache(self):
         self._invCache__invmgr = None
+        self._invCache__stationinvmgr = None
         self.containerGlobal = None
         for containerGuard in self.inventories.itervalues():
             containerGuard.moniker = None
@@ -540,6 +575,30 @@ class invCache(service.Service):
                     return (office.stationID, office.officeFolderID, office.officeID)
 
         return (None, None, None)
+
+
+
+    def FetchItem(self, itemID, fromLocationID):
+        if util.IsStation(fromLocationID):
+            inv = self.inventories.get((const.containerHangar, None), None)
+        else:
+            inv = self.inventories.get((fromLocationID, None), None)
+        if inv is None:
+            self.LogInfo('invCache::FetchItem - Could not find inventory', itemID, fromLocationID)
+            return 
+        return inv.cachedItems.get(itemID, fromLocationID)
+
+
+
+    def OnDogmaAttributeChanged(self, shipID, itemID, attributeID, value):
+        if attributeID in CAPACITY_ATTRIBUTES:
+            sm.ScatterEvent('OnCapacityChange', itemID)
+
+
+
+    def ProcessActiveShipChanged(self, shipID, oldShipID):
+        if shipID:
+            sm.ScatterEvent('OnCapacityChange', shipID)
 
 
 
@@ -762,7 +821,7 @@ class invCacheContainer():
         inv = eve.GetInventoryFromId(itemKey[0])
         useHangar = False
         useCargoBay = False
-        if session.stationid:
+        if session.stationid2:
             if itemKey[0] == self.itemID:
                 useCargoBay = True
             else:
@@ -778,7 +837,14 @@ class invCacheContainer():
 
 
     def Add(self, itemID, sourceID, **kw):
+        activeShipID = util.GetActiveShip()
+        if itemID == activeShipID:
+            raise UserError('CanNotPlaceActiveShipInAnotherHangar')
         self.GetItemID()
+        if self.itemID == activeShipID:
+            flagID = kw.get('flag', None)
+            if flagID is not None and cfg.IsShipFittingFlag(flagID) or flagID == const.flagAutoFit:
+                sm.GetService('clientDogmaIM').GetDogmaLocation().CheckCanFit(self.itemID, itemID, flagID, sourceID)
         if sm.GetService('corp').IsItemIDLocked(itemID):
             raise UserError('CrpItemIsLocked')
         if itemID == self.itemID:
@@ -788,9 +854,12 @@ class invCacheContainer():
         sm.GetService('invCache').TryLockItem(itemID, 'lockAddItemToContainer', {'containerType': cfg.invtypes.Get(self.GetTypeID()).typeName}, 1)
         try:
             if type(itemID) is tuple:
-                itemID = self.MakeDBLessItemReal(itemID)
+                itemID = self.MakeDBLessItemReal(itemID, kw.get('qty', None))
                 if itemID is None:
                     return 
+                sourceID = session.shipid
+                if session.stationid:
+                    sourceID = session.stationid
             success = True
 
         finally:
@@ -800,6 +869,7 @@ class invCacheContainer():
         if 'qty' in kw and kw['qty'] == 0:
             self.LogError('Trying to add a stack with 0 quantity to a container. Fix your code.')
             return 
+        self.InjectCapacityToKwargs(kw)
         if oldItemID != itemID:
             sm.GetService('invCache').TryLockItem(itemID, 'lockAddItemToContainer', {'containerType': cfg.invtypes.Get(self.GetTypeID()).typeName}, 1)
         try:
@@ -812,7 +882,16 @@ class invCacheContainer():
 
 
     def MultiAdd(self, itemIDs, sourceID, **kw):
+        activeShipID = util.GetActiveShip()
+        if activeShipID in itemIDs:
+            raise UserError('CanNotPlaceActiveShipInAnotherHangar')
         self.GetItemID()
+        if self.itemID == activeShipID:
+            flagID = kw.get('flag', None)
+            if flagID is not None and cfg.IsShipFittingFlag(flagID) or flagID == const.flagAutoFit:
+                for itemID in itemIDs:
+                    sm.GetService('clientDogmaIM').GetDogmaLocation().CheckCanFit(self.itemID, itemID, flagID, sourceID)
+
         lockedItems = set()
         itemIDsToConvert = []
         for itemID in itemIDs:
@@ -828,6 +907,7 @@ class invCacheContainer():
 
         if not len(lockedItems):
             return 
+        self.InjectCapacityToKwargs(kw)
         preferMerge = self.itemID == session.shipid
         try:
             chargeIDs = set()
@@ -963,6 +1043,13 @@ class invCacheContainer():
 
 
 
+    def InjectCapacityToKwargs(self, kwargs):
+        if self.itemID == util.GetActiveShip():
+            cap = self.GetCapacity(flag=kwargs.get('flag', None))
+            kwargs['capacity'] = cap.capacity
+
+
+
     def List(self, *args, **kw):
         flag = None
         if args is not None and len(args):
@@ -1091,7 +1178,6 @@ class invCacheContainer():
                 return capacity
         if listing is None:
             listing = self.List()
-        typeID = self.GetTypeID()
         capacityAttributeID = None
         if flag == const.flagDroneBay:
             capacityAttributeID = const.attributeDroneCapacity
@@ -1106,18 +1192,25 @@ class invCacheContainer():
             capacityAttributeID = const.attributeCapacitySecondary
         elif self.item.groupID == const.groupSilo:
             capacityAttributeID = const.attributeCapacity
+        typeID = self.GetTypeID()
+        dogmaIM = sm.GetService('clientDogmaIM')
         if capacityAttributeID is not None:
-            actualCapacity = None
-            attribs = [ x for x in cfg.dgmtypeattribs.get(typeID, []) if x.attributeID == capacityAttributeID ]
-            if len(attribs):
-                actualCapacity = attribs[0].value
-            else:
-                if self.item.groupID == const.groupSilo and self.item.categoryID == const.categoryStructure:
-                    actualCapacity = util.Moniker('posMgr', eve.session.solarsystemid).GetSiloCapacityByItemID(itemID)
-                if not actualCapacity:
-                    actualCapacity = cfg.dgmattribs.Get(capacityAttributeID).defaultValue
+            actualCapacity = dogmaIM.GetCapacityForItem(itemID, capacityAttributeID)
+            if actualCapacity is None:
+                attribs = [ x for x in cfg.dgmtypeattribs.get(typeID, []) if x.attributeID == capacityAttributeID ]
+                if len(attribs):
+                    actualCapacity = attribs[0].value
+                else:
+                    if self.item.groupID == const.groupSilo and self.item.categoryID == const.categoryStructure:
+                        actualCapacity = util.Moniker('posMgr', eve.session.solarsystemid).GetSiloCapacityByItemID(itemID)
+                    if not actualCapacity:
+                        actualCapacity = cfg.dgmattribs.Get(capacityAttributeID).defaultValue
         else:
-            actualCapacity = cfg.invtypes.Get(typeID).capacity
+            actualCapacity = None
+            if flag == const.flagCargo:
+                actualCapacity = dogmaIM.GetCapacityForItem(itemID, const.attributeCapacity)
+            if actualCapacity is None:
+                actualCapacity = cfg.invtypes.Get(typeID).capacity
         used = 0.0
         isCargoLink = cfg.invtypes.Get(typeID).groupID == const.groupPlanetaryCustomsOffices
         for each in listing:

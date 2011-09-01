@@ -470,6 +470,8 @@ class SessionMgr(base.SessionMgr):
                         chars[i.itemID] = self.GetSessionValuesFromItemID(item.itemID, inventory2, item)
 
             elif item.groupID == const.groupCharacter:
+                if const.ixLocationID in change and item.customInfo == const.eventUndock:
+                    continue
                 chars[item.itemID] = self.GetSessionValuesFromItemID(item.itemID, inventory2, item)
 
         if len(chars) == 0:

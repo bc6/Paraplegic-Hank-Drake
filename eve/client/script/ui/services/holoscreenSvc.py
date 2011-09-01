@@ -14,30 +14,30 @@ import uix
 import uicls
 import uiconst
 import urllib2
+import os
 
 class HoloscreenSvc(service.Service):
     __guid__ = 'svc.holoscreen'
     __displayname__ = 'Holoscreen service'
     RSS_FEEDS = ['http://www.eveonline.com/feed/rdfnews.asp?tid=7', 'http://www.eveonline.com/feed/rdfnews.asp?tid=4']
-    __notifyevents__ = ['OnCorporationMemberChanged']
+    __notifyevents__ = ['OnSessionChanged']
 
     def Run(self, memStream = None):
         self.mainScreen = None
         self.corpFinderScreen = None
         self.piScreen = None
-        self.templates = []
+        self.playlist = []
         self.currTemplate = 0
         self.mainScreenDesktop = None
         self.corpFinderScreenDesktop = None
         self.piScreenDesktop = None
         self.playThread = None
         self.holoscreenMgr = sm.RemoteSvc('holoscreenMgr')
-        self.SetDefaultTemplates()
 
 
 
     def Restart(self):
-        self.SetDefaultTemplates()
+        self.SetDefaultPlaylist()
         if self.mainScreenDesktop:
             self.mainScreenDesktop.Flush()
         if self.mainScreen:
@@ -92,9 +92,10 @@ class HoloscreenSvc(service.Service):
 
 
 
-    def OnCorporationMemberChanged(self, memberID, change):
-        if 'corporationID' in change and memberID == session.charid:
-            self.ReloadCorpFinderScreen(change['corporationID'][1])
+    def OnSessionChanged(self, isremote, sess, change):
+        if 'corpid' in change and change['corpid'][1]:
+            if self.corpFinderScreen is not None:
+                self.corpFinderScreen.ConstructCorpLogo(change['corpid'][1])
 
 
 
@@ -131,6 +132,7 @@ class HoloscreenSvc(service.Service):
 
 
     def PlayTemplates(self):
+        self.SetDefaultPlaylist()
         self.playThread = uthread.new(self._PlayTemplates)
         self.mainScreen.SetNewsTickerData(*self.GetNewsTickerData())
 
@@ -155,11 +157,14 @@ class HoloscreenSvc(service.Service):
 
 
     def GetNextTemplate(self):
-        if self.currTemplate >= len(self.templates):
+        if self.currTemplate >= len(self.playlist):
             self.currTemplate = 0
-        (template, dataFunc,) = self.templates[self.currTemplate]
+        (template, dataSource,) = self.playlist[self.currTemplate]
         try:
-            returnData = dataFunc()
+            if callable(dataSource):
+                returnData = dataSource()
+            else:
+                returnData = dataSource
         except:
             log.LogException()
             returnData = None
@@ -168,12 +173,12 @@ class HoloscreenSvc(service.Service):
 
 
     def SetTemplates(self, templateList):
-        self.templates = templateList
+        self.playlist = templateList
 
 
 
-    def SetDefaultTemplates(self):
-        self.templates = ((cqscreen.templates.SOV, self.GetSOVTemplateData),
+    def SetDefaultPlaylist(self):
+        self.playlist = [(cqscreen.templates.SOV, self.GetSOVTemplateData),
          (cqscreen.templates.CareerAgent, self.GetCareerAgentTemplateData),
          (cqscreen.templates.Incursion, self.GetIncursionTemplateData),
          (cqscreen.templates.ShipExposure, self.GetShipExposureTemplateData),
@@ -182,7 +187,30 @@ class HoloscreenSvc(service.Service):
          (cqscreen.templates.CharacterInfo, self.GetWantedTemplateData),
          (cqscreen.templates.Plex, self.GetPlexTemplateData),
          (cqscreen.templates.AuraMessage, self.GetSkillTrainingTemplateData),
-         (cqscreen.templates.AuraMessage, self.GetCloneStatusTemplateData))
+         (cqscreen.templates.AuraMessage, self.GetCloneStatusTemplateData),
+         (cqscreen.templates.VirtualGoodsStore, self.GetVirtualGoodsStoreTemplateData)]
+        customVideos = self.GetCustomVideoPlaylist()
+        if customVideos:
+            self.playlist = customVideos + self.playlist
+
+
+
+    def GetCustomVideoPlaylist(self):
+        path = blue.os.cachepath + 'CQScreenVideos'
+        if not os.path.isdir(path):
+            try:
+                os.mkdir(path)
+            except:
+                pass
+            return None
+        playlist = []
+        for fileName in os.listdir(path):
+            if fileName.endswith('.bik'):
+                videoPath = str(path + '/' + fileName)
+                data = util.KeyVal(videoPath=videoPath)
+                playlist.append((cqscreen.templates.FullscreenVideo, data))
+
+        return playlist
 
 
 
@@ -495,8 +523,10 @@ class HoloscreenSvc(service.Service):
     def GetPlexTemplateData(self):
         data = util.KeyVal()
         data.introVideoPath = 'res:/video/cq/LOGO_CONCORD.bik'
-        data.bottomText = mls.UI_HOLOSCREEN_PLEX_NEWSFEED
-        data.videoPath = 'res:/video/cq/CQ_TEMPLATE_PLEX_SALE.bik'
+        data.headingText = mls.UI_SHARED_PLEX_PURCHASE
+        data.subHeadingText = mls.UI_SHARED_PILOTLICENSEEXTENSION
+        data.buttonText = mls.UI_HOLOSCREEN_MARKET_AVAILABLE
+        data.mainText = mls.UI_HOLOSCREEN_PLEX_MIDDLE
         data.clickFunc = sm.GetService('marketutils').ShowMarketDetails
         data.clickArgs = (const.typePilotLicence, None)
         data.clickFuncLabel = mls.UI_HOLOSCREEN_PLEX_LABEL
@@ -542,6 +572,17 @@ class HoloscreenSvc(service.Service):
         data.subHeadingText = mls.UI_HOLOSCREEN_CLONESTATUSMIDDLE
         data.clickFunc = uicore.cmd.OpenMedical
         data.clickFuncLabel = mls.UI_HOLOSCREEN_CLONE_LABEL
+        return data
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetVirtualGoodsStoreTemplateData(self):
+        data = util.KeyVal()
+        data.introVideoPath = 'res:/video/cq/LOGO_QUAFE.bik'
+        data.headingText = '<b>' + mls.UI_HOLOSCREEN_STOREGRANDOPENING
+        data.clickFunc = uicore.cmd.OpenStore
+        data.clickFuncLabel = mls.UI_CMD_OPENSTORE
         return data
 
 

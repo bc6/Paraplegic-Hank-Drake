@@ -535,34 +535,33 @@ class Channel(uicls.Window):
             m.append((mls.UI_CMD_BLINKON, settings.user.ui.Set, (prefsName, 1)))
         if sm.GetService('vivox').Enabled() and sm.GetService('vivox').LoggedIn():
             m += [None]
-            excludedFromVoiceTupleChannels = ['incursion']
+            fleetChannels = ['fleet', 'wing', 'squad']
             excludedFromVoiceChannels = ['regionid',
              'solarsystemid',
              'constellationid',
              'allianceid',
-             'warfactionid']
-            excludedFromVoice = None
+             'warfactionid',
+             'incursion']
+            excludedFromVoice = False
+            isFleetChannel = False
             if type(self.channelID) == types.TupleType:
                 if util.IsNPC(self.channelID[0][1]):
-                    excludedFromVoice = 1
-                if type(self.channelID[0][0]) == types.StringType:
-                    for excludedChannelName in excludedFromVoiceTupleChannels:
-                        if self.channelID[0][0].startswith(excludedChannelName):
-                            excludedFromVoice = 1
+                    excludedFromVoice = True
+                for excludedChannelName in excludedFromVoiceChannels:
+                    if self.channelID[0][0].startswith(excludedChannelName):
+                        excludedFromVoice = True
+                        break
+
+                for fleetChannelName in fleetChannels:
+                    if self.channelID[0][0].startswith(fleetChannelName):
+                        isFleetChannel = True
+                        break
 
             elif type(self.channelID) == types.IntType:
-                for i in excludedFromVoiceChannels:
-                    if i in str(self.channelID):
-                        excludedFromVoice = 1
-                        break
-
+                excludedFromVoice = self.channelID >= 0 and self.channelID <= 1000
             else:
-                for i in excludedFromVoiceChannels:
-                    if i in self.channelID[0][0]:
-                        excludedFromVoice = 1
-                        break
-
-            if not excludedFromVoice and (self.channelID > 1000 or self.channelID < 0):
+                raise RuntimeError('LSC only supports channel IDs of tuple or int type.')
+            if not excludedFromVoice:
                 if sm.GetService('vivox').IsVoiceChannel(self.channelID):
                     m.append((mls.UI_CMD_LEAVEAUDIO, self.VivoxLeaveAudio))
                     currentSpeakingChannel = sm.GetService('vivox').GetSpeakingChannel()
@@ -570,6 +569,9 @@ class Channel(uicls.Window):
                         currentSpeakingChannel = (currentSpeakingChannel,)
                     if currentSpeakingChannel != self.channelID:
                         m.append((mls.UI_CMD_MAKESPEAKINGCHANNEL, self.VivoxSetAsSpeakingChannel))
+                elif isFleetChannel:
+                    if sm.GetService('fleet').GetOptions().isVoiceEnabled:
+                        m.append((mls.UI_CMD_JOINAUDIO, self.VivoxJoinAudio))
                 else:
                     m.append((mls.UI_CMD_JOINAUDIO, self.VivoxJoinAudio))
         return m

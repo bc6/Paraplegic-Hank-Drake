@@ -1214,7 +1214,7 @@ class FleetSvc(service.Service):
 
 
 
-    def OnFleetMemberChanged(self, charID, fleetID, oldWingID, oldSquadID, oldRole, oldJob, oldBooster, newWingID, newSquadID, newRole, newJob, newBooster):
+    def OnFleetMemberChanged(self, charID, fleetID, oldWingID, oldSquadID, oldRole, oldJob, oldBooster, newWingID, newSquadID, newRole, newJob, newBooster, isOnlyMember):
         self.members[charID] = util.KeyVal()
         self.members[charID].charID = charID
         self.members[charID].wingID = newWingID
@@ -1237,7 +1237,7 @@ class FleetSvc(service.Service):
             sm.ScatterEvent('OnMyFleetInfoChanged')
             if oldRole != newRole:
                 sm.GetService('vivox').LeaveChannelByType('inst')
-            if oldJob & const.fleetJobCreator == 0 and newJob & const.fleetJobCreator > 0:
+            if oldJob & const.fleetJobCreator == 0 and newJob & const.fleetJobCreator > 0 and not isOnlyMember:
                 self.RemoveAndUpdateFleetFinderAdvert('NewBoss')
         if newJob != oldJob or newRole != oldRole:
             info = self.GetMemberInfo(charID)

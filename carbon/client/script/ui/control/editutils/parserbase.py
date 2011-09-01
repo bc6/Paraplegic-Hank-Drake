@@ -42,10 +42,12 @@ class ParserBaseCore(object):
         self.sr.window = None
         if self.sr.Get('content', None):
             parent = self.sr.content.parent
+            idx = self.sr.content.parent.children.index(self.sr.content)
         else:
             parent = self
-        self.sr.overlays_content = uicls.Container(parent=parent, name='overlays_content', align=uiconst.TOPLEFT)
-        self.sr.underlays_content = uicls.Container(parent=parent, name='underlays_content', align=uiconst.TOPLEFT)
+            idx = -1
+        self.sr.underlays_content = uicls.Container(parent=parent, name='underlays_content', align=uiconst.TOPLEFT, idx=idx + 1)
+        self.sr.overlays_content = uicls.Container(parent=parent, name='overlays_content', align=uiconst.TOPLEFT, idx=idx)
         self.sr.background = uicls.Container(parent=parent, name='background')
         self.sr.cacheContainer = uicls.Container(name='cacheContainer', parent=self, state=uiconst.UI_HIDDEN)
 
@@ -72,11 +74,6 @@ class ParserBaseCore(object):
     def OnStartTag(self, tag, attrs):
         if not self or not getattr(self, 'sr', None):
             return 
-        if self.htmldebug:
-            print '>>>>',
-            print 'OnStartTag',
-            print tag,
-            print self.name
         closeTags = parser.HtmlOptionalClose.get(tag, ())
         if self.attrStack[-1]['tag'] in closeTags:
             self.OnEndTag(self.attrStack[-1]['tag'])
@@ -99,15 +96,6 @@ class ParserBaseCore(object):
     def OnEndTag(self, tag):
         if not self or not getattr(self, 'sr', None):
             return 
-        if self.htmldebug:
-            print '<<<<',
-            print 'OnEndTag',
-            print tag,
-            print self.name,
-            print self.attrStack[-1]['bufferStack'] is None,
-            print self.blockBufferClose,
-            print self.divs,
-            print self.sr.table
         if self.attrStack[-1]['bufferStack'] is not None:
             if tag == 'table' and self.sr.table:
                 self.blockBufferClose = max(0, self.blockBufferClose - 1)
@@ -116,11 +104,6 @@ class ParserBaseCore(object):
             if tag in 'div' and self.sr.table is None or tag in ('td', 'th', 'tr') and self.sr.table and not self.blockBufferClose and not self.divs:
                 self.attrStack[-1]['bufferStack'].append(('FlushBuffer', (None,)))
             else:
-                if self.htmldebug:
-                    print '<<<<< adding to openbuffer, closing',
-                    print tag,
-                    print self.name,
-                    print self.blockBufferClose
                 self.attrStack[-1]['bufferStack'].append(('OnEndTag', (tag,)))
                 return 
         closeTags = parser.HtmlAutoClose.get(tag, ())
@@ -138,10 +121,6 @@ class ParserBaseCore(object):
         if not self or not getattr(self, 'sr', None):
             return 
         if self.attrStack[-1]['bufferStack'] is not None:
-            if self.htmldebug:
-                print '>>>>> adding to openbuffer OnData',
-                print data,
-                print self.blockBufferClose
             self.attrStack[-1]['bufferStack'].append(('OnData', (data,)))
             return 
         (tag, attrs,) = (self.attrStack[-1]['tag'], self.attrStack[-1]['attr'])
@@ -149,19 +128,6 @@ class ParserBaseCore(object):
         self.sr.buffer = u''
         if not data:
             return 
-        if self.htmldebug:
-            print '----',
-            print 'OnData',
-            print self.name,
-            print '-',
-            print tag,
-            print '-',
-            print data,
-            try:
-                print attrs.__dict__
-            except:
-                sys.exc_clear()
-                print '--'
         f = getattr(self, 'OnData_%s' % (tag or ''), None)
         if f:
             f(data, attrs)
@@ -169,11 +135,8 @@ class ParserBaseCore(object):
             data = self.StripText(data)
             if data:
                 self.AddTextToBuffer(data, fromW='Ondata')
-        elif self.htmldebug:
-            print 'NonString data outside any tag',
-            print self.name,
-            print repr(data)
-        log.LogWarn('NonString data outside any tag', repr(data))
+        else:
+            log.LogWarn('NonString data outside any tag', repr(data))
 
 
 
@@ -242,20 +205,15 @@ class ParserBaseCore(object):
 
 
 
-    def LoadFont(self, force = 0):
-        fontFlag = self.attrStack[-1]['fontflags']
-        fontFlag &= ~(fontflags.b | fontflags.i | fontflags.o | fontflags.u | fontflags.strike)
+    def GetFontFlagFromStack(self):
+        fontFlag = 0
         if self.attrStack[-1]['font-style'] == 'i':
             fontFlag |= fontflags.i
-        if self.attrStack[-1]['font-weight'] == 'b':
+        if self.attrStack[-1]['font-weight'] == 'b' or self.a:
             fontFlag |= fontflags.b
-        if 'u' in self.attrStack[-1]['text-decoration']:
+        if 'u' in self.attrStack[-1]['text-decoration'] or self.a:
             fontFlag |= fontflags.u
-        if 's' in self.attrStack[-1]['text-decoration']:
-            fontFlag |= fontflags.strike
-        if 'o' in self.attrStack[-1]['text-decoration']:
-            fontFlag |= fontflags.o
-        self.attrStack[-1]['fontflags'] = fontFlag
+        return fontFlag
 
 
 
@@ -332,7 +290,6 @@ class ParserBaseCore(object):
         attrEntry['font-size'] = getattr(self, 'defaultFontSize', 12)
         attrEntry['font-style'] = ''
         attrEntry['font-weight'] = ''
-        attrEntry['fontflags'] = 0
         attrEntry['basefontsize'] = 3
         attrEntry['text-decoration'] = ''
         attrEntry['color'] = getattr(self, 'defaultFontColor', (1.0, 1.0, 1.0, 0.75))
@@ -389,7 +346,6 @@ class ParserBaseCore(object):
         attrEntry['background-position'] = []
         self.attrStack.append(attrEntry)
         self.css.Reset()
-        self.LoadFont(force=1)
         self.Reset()
 
 
@@ -516,7 +472,6 @@ class ParserBaseCore(object):
 
 
     def AddTextToBuffer(self, text, width = None, fromW = None):
-        self.LoadFont()
         self.AddObjectToBuffer(self.GetTextObject(text, width))
 
 
@@ -531,7 +486,7 @@ class ParserBaseCore(object):
             obj.lcolor = self.attrStack[-1]['alink-color'] or obj.color
         else:
             obj.color = self.attrStack[-1]['color']
-        obj.fontFlags = self.attrStack[-1]['fontflags']
+        obj.fontFlags = self.GetFontFlagFromStack()
         obj.valign = self.attrStack[-1]['vertical-align']
         obj.type = '<text>'
         obj.width = width
@@ -1293,67 +1248,38 @@ class ParserBaseCore(object):
 
     def OnStart_b(self, attrs):
         self.OnStart_default('b', attrs)
-        self.FontFlag('b')
+        self.attrStack[-1]['font-weight'] = 'b'
+
+
+
+    def OnEnd_b(self):
+        self.OnEnd_default('b')
+        self.attrStack[-1]['font-weight'] = ''
 
 
 
     def OnStart_i(self, attrs):
         self.OnStart_default('i', attrs)
-        self.FontFlag('i')
+        self.attrStack[-1]['font-style'] = 'i'
 
 
 
-    def OnStart_shadow(self, attrs):
-        self.OnStart_default('shadow', attrs)
-        self.FontFlag('shadow')
+    def OnEnd_i(self):
+        self.OnEnd_default('i')
+        self.attrStack[-1]['font-style'] = ''
 
 
 
     def OnStart_u(self, attrs):
         self.OnStart_default('u', attrs)
-        self.FontFlag('u')
+        if 'u' not in self.attrStack[-1]['text-decoration']:
+            self.attrStack[-1]['text-decoration'] += 'u'
 
 
 
-    def OnStart_strong(self, attrs):
-        self.OnStart_default('strong', attrs)
-        self.FontFlag('strong')
-
-
-
-    def OnStart_s(self, attrs):
-        self.OnStart_default('s', attrs)
-        self.FontFlag('s')
-
-
-
-    def OnStart_em(self, attrs):
-        self.OnStart_default('em', attrs)
-        self.FontFlag('em')
-
-
-
-    def OnStart_tt(self, attrs):
-        self.OnStart_default('tt', attrs)
-        self.FontFlag('tt')
-
-
-
-    def OnStart_strike(self, attrs):
-        self.OnStart_default('strike', attrs)
-        self.FontFlag('strike')
-
-
-
-    def OnStart_samp(self, attrs):
-        self.OnStart_default('samp', attrs)
-        self.FontFlag('samp')
-
-
-
-    def OnStart_kbd(self, attrs):
-        self.OnStart_default('kbd', attrs)
-        self.FontFlag('kbd')
+    def OnEnd_u(self):
+        self.OnEnd_default('u')
+        self.attrStack[-1]['text-decoration'] = self.attrStack[-1]['text-decoration'].replace('u', '')
 
 
 
@@ -1365,23 +1291,6 @@ class ParserBaseCore(object):
             else:
                 self.FlushBuffer()
 
-
-
-
-    def FontFlag(self, tag):
-        f = getattr(fontflags, tag, 0)
-        if f:
-            self.attrStack[-1]['fontflags'] |= f
-            if fontflags.i & f:
-                self.attrStack[-1]['font-style'] = 'i'
-            if fontflags.b & f:
-                self.attrStack[-1]['font-weight'] = 'b'
-            if fontflags.u & f:
-                self.attrStack[-1]['text-decoration'] += 'u'
-            if fontflags.strike & f:
-                self.attrStack[-1]['text-decoration'] += 's'
-            if fontflags.o & f:
-                self.attrStack[-1]['text-decoration'] += 'o'
 
 
 
@@ -2155,7 +2064,6 @@ class ParserBaseCore(object):
 
     def OnStart_colgroup(self, attrs):
         if self.sr.table is None:
-            print 'parsing error, no open table to add colgroup into'
             return 
         s = {}
         s['colgroup-width'] = attrs.width
@@ -2184,10 +2092,8 @@ class ParserBaseCore(object):
 
     def OnStart_col(self, attrs):
         if self.sr.table is None:
-            print 'parsing error, no open table to add col into'
             return 
         if not self.attrStack[-1].has_key('cols'):
-            print 'parsing error, no open colgroup to add col into'
             return 
         for i in xrange(attrs.span or 1):
             self.attrStack[-1]['cols'].append(attrs.width)
@@ -2197,7 +2103,6 @@ class ParserBaseCore(object):
 
     def OnStart_tr(self, attrs):
         if self.sr.table is None:
-            print 'parsing error, no open table to add tr into'
             return 
         attrs.cols = []
         if unicode(attrs.height).isdigit():
@@ -2269,7 +2174,6 @@ class ParserBaseCore(object):
 
     def OnStart_td(self, attrs):
         if self.sr.table is None:
-            print 'parsing error, no open table to add td into'
             return 
         if not getattr(self.sr.table, 'rows', None):
             attrs.height = getattr(attrs, 'height', None)
@@ -2313,7 +2217,6 @@ class ParserBaseCore(object):
 
     def OnStart_th(self, attrs):
         if self.sr.table is None:
-            print 'parsing error, no open table to add th into'
             return 
         if not getattr(self.sr.table, 'rows', None):
             attrs.height = getattr(attrs, 'height', None)
@@ -2357,16 +2260,12 @@ class ParserBaseCore(object):
 
 
     def OnStart_a(self, attrs):
-        s = {'font-weight': 'b',
-         'text-decoration': 'u',
-         'color': self.attrStack[-1]['link-color'],
+        s = {'color': self.attrStack[-1]['link-color'],
          'link-color': None}
         visited = settings.public.ui.VisitedURLs or []
         self.OnStart_default('a', attrs, s)
         self.CheckForMailAddress(attrs)
         self.attrStack[-1]['link-color'] = self.attrStack[-1]['link-color'] or self.attrStack[-1]['color']
-        if attrs.href:
-            attrs.href = attrs.href
         attrs.color = [self.attrStack[-1]['link-color'], self.attrStack[-1]['vlink-color'] or self.attrStack[-1]['link-color']][(attrs.href in visited)]
         self.a = attrs
 
@@ -2402,8 +2301,6 @@ class ParserBaseCore(object):
             amap['coords'] = []
             self.areamap.append(amap)
         else:
-            print 'no name attribute set in tag map',
-            print self.name
             return 
 
 
@@ -2419,9 +2316,6 @@ class ParserBaseCore(object):
 
 
     def OnStart_area(self, attrs):
-        if self.attrStack[-1]['tag'] != 'map':
-            print 'unexpected area tag',
-            print self.name
         if attrs.shape and attrs.coords and attrs.href:
             if attrs.shape != 'rect':
                 return 

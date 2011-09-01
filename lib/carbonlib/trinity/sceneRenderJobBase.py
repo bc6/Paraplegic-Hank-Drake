@@ -239,6 +239,7 @@ class SceneRenderJobBase(object):
         self.currentMultiViewStageKey = None
         self.view = None
         self.projection = None
+        self.viewport = None
         self._ManualInit(name)
 
 
@@ -300,6 +301,23 @@ class SceneRenderJobBase(object):
 
 
 
+    def SetViewport(self, viewport):
+        if viewport is None:
+            self.RemoveStep('SET_VIEWPORT')
+            self.viewport = None
+        else:
+            self.AddStep('SET_VIEWPORT', trinity.TriStepSetViewport(viewport))
+            self.viewport = blue.BluePythonWeakRef(viewport)
+
+
+
+    def GetViewport(self):
+        if self.viewport is None:
+            return 
+        return self.viewport.object
+
+
+
     def SetCameraView(self, view):
         if view is None:
             self.RemoveStep('SET_VIEW')
@@ -320,6 +338,13 @@ class SceneRenderJobBase(object):
                 self.originalProjection = blue.BluePythonWeakRef(proj)
             else:
                 self.projection = blue.BluePythonWeakRef(proj)
+
+
+
+    def GetCameraProjection(self):
+        if self.projection is None:
+            return 
+        return self.projection.object
 
 
 

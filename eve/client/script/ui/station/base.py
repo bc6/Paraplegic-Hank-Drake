@@ -38,11 +38,12 @@ class StationSvc(service.Service):
     __notifyevents__ = ['OnCharNowInStation',
      'OnCharNoLongerInStation',
      'OnStationOwnerChanged',
-     'OnGodmaItemChange',
+     'OnDogmaItemChange',
      'ProcessStationServiceItemChange',
      'ProcessSessionChange',
      'OnCharacterHandler',
-     'ProcessShipEffect']
+     'OnDogmaAttributeChanged',
+     'ProcessActiveShipChanged']
 
     def Run(self, memStream = None):
         self.LogInfo('Starting Station Service')
@@ -377,8 +378,8 @@ class StationSvc(service.Service):
         if self.hangarScene is not None:
             stationModel = self.hangarScene.objects[0]
             stationModel.enableShadow = False
-        if eve.session.shipid:
-            self.ShowShip(eve.session.shipid)
+        if util.GetActiveShip() is not None:
+            self.ShowShip(util.GetActiveShip())
         if not (eve.rookieState and eve.rookieState < 5):
             self.LoadLobby()
         if self.station is None and eve.session.stationid:
@@ -393,7 +394,7 @@ class StationSvc(service.Service):
         self.loading = 0
         self.sprite = None
         if not reloading:
-            if eve.session.shipid == None:
+            if util.GetActiveShip() is None:
                 sm.GetService('tutorial').OpenTutorialSequence_Check(uix.cloningWhenPoddedTutorial)
             if sm.GetService('skills').GetSkillPoints() >= 1500000:
                 sm.GetService('tutorial').OpenTutorialSequence_Check(uix.cloningTutorial)
@@ -454,7 +455,7 @@ class StationSvc(service.Service):
 
 
     def GetActiveShip(self):
-        return eve.session.shipid
+        return util.GetActiveShip()
 
 
 
@@ -464,40 +465,17 @@ class StationSvc(service.Service):
             return 
         if self.activatingShip:
             return 
+        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+        dogmaLocation.CheckSkillRequirementsForType(invitem.typeID, 'SkillHasPrerequisites')
         techLevel = sm.StartService('godma').GetTypeAttribute(invitem.typeID, const.attributeTechLevel)
         if techLevel is not None and int(techLevel) == 3:
             if eve.Message('AskActivateTech3Ship', {}, uiconst.YESNO, suppress=uiconst.ID_YES) != uiconst.ID_YES:
                 return 
         self.activatingShip = 1
         try:
-            try:
-                shipsvc = sm.GetService('gameui').GetShipAccess()
-                if eve.session.shipid != shipid:
-                    sm.GetService('gameui').KillCargoView(eve.session.shipid)
-                    sm.GetService('sessionMgr').PerformSessionChange('board', shipsvc.Board, shipid, session.shipid or session.stationid, violateSafetyTimer=onSessionChanged)
-            except UserError as what:
-                if self.activeShipItem and not secondTry:
-                    self.TryActivateShip(self.activeShipItem, secondTry=1)
-                if what.args[0] == 'CallGroupLocked':
-                    sys.exc_clear()
-                    eve.Message('Busy')
-                    return 
-                if what.args[0] == 'TooFewSubSystemsToUndock':
-                    groupIDs = what.args[1]
-                    slimItem = sm.StartService('godma').GetItem(shipid)
-                    sm.services['window'].GetWindow('AssembleShip', create=1, decoClass=form.AssembleShip, ship=invitem, groupIDs=groupIDs)
-                    return 
-                raise 
-            except RuntimeError as what:
-                if self.activeShipItem and not secondTry:
-                    self.TryActivateShip(self.activeShipItem, secondTry=1)
-                if what.args[0] == 'RequiredParameterException':
-                    sys.exc_clear()
-                    eve.Message('Busy')
-                    return 
-                raise 
+            dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+            dogmaLocation.MakeShipActive(shipid)
             self.activeShipItem = invitem
-            self.ShowActiveShip()
             if invitem.groupID != const.groupRookieship:
                 sm.GetService('tutorial').OpenTutorialSequence_Check(uix.insuranceTutorial)
 
@@ -515,27 +493,11 @@ class StationSvc(service.Service):
             return 
         self.leavingShip = 1
         try:
-            try:
-                shipsvc = sm.GetService('gameui').GetShipAccess()
-                sm.GetService('gameui').KillCargoView(shipid)
-                capsuleID = sm.GetService('sessionMgr').PerformSessionChange('leaveship', shipsvc.LeaveShip, violateSafetyTimer=onSessionChanged)
-                self.ShowShip(capsuleID)
-            except UserError as what:
-                if self.activeShipItem and not secondTry:
-                    self.TryLeaveShip(self.activeShipItem, secondTry=1)
-                if what.args[0] == 'CallGroupLocked':
-                    sys.exc_clear()
-                    eve.Message('Busy')
-                    return 
-                raise 
-            except RuntimeError as what:
-                if self.activeShipItem and not secondTry:
-                    self.TryLeaveShip(self.activeShipItem, secondTry=1)
-                if what.args[0] == 'RequiredParameterException':
-                    sys.exc_clear()
-                    eve.Message('Busy')
-                    return 
-                raise 
+            shipsvc = sm.GetService('gameui').GetShipAccess()
+            sm.GetService('gameui').KillCargoView(shipid)
+            capsuleID = shipsvc.LeaveShip(shipid)
+            dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+            dogmaLocation.MakeShipActive(capsuleID)
 
         finally:
             self.leavingShip = 0
@@ -545,7 +507,7 @@ class StationSvc(service.Service):
 
     def ShowShip(self, shipID):
         self.WaitForShip(shipID)
-        hangarInv = eve.GetInventory(const.containerHangar)
+        hangarInv = sm.GetService('invCache').GetInventory(const.containerHangar)
         hangarItems = hangarInv.List()
         for each in hangarItems:
             if each.itemID == shipID:
@@ -575,46 +537,53 @@ class StationSvc(service.Service):
 
     def ShowActiveShip(self):
         if getattr(self, '__alreadyShowingActiveShip', False):
+            log.LogTraceback("We're already in the process of showing the active ship")
             return 
-        setattr(self, '__alreadyShowingActiveShip', True)
-        invitem = self.activeShipItem
-        scene2 = getattr(self, 'hangarScene', None)
-        if scene2:
-            for each in scene2.objects:
-                if getattr(each, 'name', None) == str(self.activeShip):
-                    scene2.objects.remove(each)
-
+        self._StationSvc__alreadyShowingActiveShip = True
         try:
-            techLevel = sm.GetService('godma').GetTypeAttribute(invitem.typeID, const.attributeTechLevel)
-            if techLevel == 3.0:
-                try:
-                    slimItem = sm.GetService('godma').GetItem(self.activeShipItem.itemID)
-                    newModel = self.GetTech3ShipFromSlimItem(slimItem)
-                except:
-                    log.LogException('failed bulding modular ship')
-                    sys.exc_clear()
-                    return 
-            else:
-                modelPath = cfg.invtypes.Get(invitem.typeID).GraphicFile()
-                newFilename = modelPath.lower().replace(':/model', ':/dx9/model')
-                newFilename = newFilename.replace('.blue', '.red')
-                newModel = trinity.Load(newFilename)
-        except Exception as e:
-            log.LogException(str(e))
-            sys.exc_clear()
-        newModel.FreezeHighDetailMesh()
-        self.PositionShipModel(newModel)
-        if hasattr(newModel, 'ChainAnimationEx'):
-            newModel.ChainAnimationEx('NormalLoop', 0, 0, 1.0)
-        self.activeShip = invitem.itemID
-        self.activeshipmodel = newModel
-        self.FitHardpoints(0)
-        newModel.display = 1
-        newModel.name = str(invitem.itemID)
-        if sm.GetService('godma').GetItem(self.GetActiveShip()).groupID != const.groupCapsule:
-            scene2.objects.append(newModel)
-        sm.ScatterEvent('OnActiveShipModelChange', newModel)
-        delattr(self, '__alreadyShowingActiveShip')
+            invitem = self.activeShipItem
+            scene2 = getattr(self, 'hangarScene', None)
+            if scene2:
+                for each in scene2.objects:
+                    if getattr(each, 'name', None) == str(self.activeShip):
+                        scene2.objects.remove(each)
+
+            try:
+                techLevel = sm.GetService('godma').GetTypeAttribute(invitem.typeID, const.attributeTechLevel)
+                if techLevel == 3.0:
+                    try:
+                        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+                        dogmaItem = dogmaLocation.dogmaItems[self.activeShipItem.itemID]
+                        newModel = self.MakeModularShipFromShipItem(dogmaItem)
+                    except:
+                        log.LogException('failed bulding modular ship')
+                        sys.exc_clear()
+                        return 
+                else:
+                    modelPath = cfg.invtypes.Get(invitem.typeID).GraphicFile()
+                    newFilename = modelPath.lower().replace(':/model', ':/dx9/model')
+                    newFilename = newFilename.replace('.blue', '.red')
+                    newModel = trinity.Load(newFilename)
+            except Exception as e:
+                log.LogException(str(e))
+                sys.exc_clear()
+                return 
+            newModel.FreezeHighDetailMesh()
+            self.PositionShipModel(newModel)
+            if hasattr(newModel, 'ChainAnimationEx'):
+                newModel.ChainAnimationEx('NormalLoop', 0, 0, 1.0)
+            self.activeShip = invitem.itemID
+            self.activeshipmodel = newModel
+            self.FitHardpoints(0)
+            newModel.display = 1
+            newModel.name = str(invitem.itemID)
+            if sm.GetService('clientDogmaIM').GetDogmaLocation().dogmaItems[util.GetActiveShip()].groupID != const.groupCapsule:
+                scene2.objects.append(newModel)
+            sm.ScatterEvent('OnActiveShipModelChange', newModel)
+
+        finally:
+            self._StationSvc__alreadyShowingActiveShip = False
+
 
 
 
@@ -658,19 +627,29 @@ class StationSvc(service.Service):
         model.modelTranslationCurve = blue.os.LoadObject('res:/dx9/scene/hangar/ship_modelTranslationCurve.red')
         model.modelTranslationCurve.ZCurve.offset -= boundingBoxZCenter
         scaleMultiplier = 0.35 + 0.65 * (1 - val)
-        if val > 0.6:
+        capitalShips = [const.groupDreadnought,
+         const.groupSupercarrier,
+         const.groupTitan,
+         const.groupFreighter,
+         const.groupJumpFreighter,
+         const.groupCarrier,
+         const.groupCapitalIndustrialShip,
+         const.groupIndustrialCommandShip]
+        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+        if getattr(dogmaLocation.GetDogmaItem(self.GetActiveShip()), 'groupID', None) in capitalShips:
             scaleMultiplier = 0.35 + 0.25 * (1 - val)
             model.modelRotationCurve = blue.os.LoadObject('res:/dx9/scene/hangar/ship_modelRotationCurve.red')
             model.modelRotationCurve.PitchCurve.speed *= scaleMultiplier
             model.modelRotationCurve.RollCurve.speed *= scaleMultiplier
             model.modelRotationCurve.YawCurve.speed *= scaleMultiplier
-        else:
-            scaleMultiplier = 0.35 + 0.65 * (1 - val / 0.6)
-            model.modelRotationCurve = blue.os.LoadObject('res:/dx9/scene/hangar/ship_modelRotationCurveSpinning.red')
-            model.modelRotationCurve.PitchCurve.speed *= scaleMultiplier
-            model.modelRotationCurve.RollCurve.speed *= scaleMultiplier
-            model.modelRotationCurve.YawCurve.start = blue.os.GetTime()
-            model.modelRotationCurve.YawCurve.ScaleTime(6 * val + 1)
+        elif val > 0.6:
+            val = 0.6
+        scaleMultiplier = 0.35 + 0.65 * (1 - val / 0.6)
+        model.modelRotationCurve = blue.os.LoadObject('res:/dx9/scene/hangar/ship_modelRotationCurveSpinning.red')
+        model.modelRotationCurve.PitchCurve.speed *= scaleMultiplier
+        model.modelRotationCurve.RollCurve.speed *= scaleMultiplier
+        model.modelRotationCurve.YawCurve.start = blue.os.GetTime()
+        model.modelRotationCurve.YawCurve.ScaleTime(6 * val + 1)
 
 
 
@@ -721,15 +700,16 @@ class StationSvc(service.Service):
 
 
 
-    def OnGodmaItemChange(self, item, change):
+    def OnDogmaItemChange(self, item, change):
         if session.stationid is None:
             return 
         if item.groupID in const.turretModuleGroups:
             self.FitHardpoints()
         if item.locationID == change.get(const.ixLocationID, None) and item.flagID == change.get(const.ixFlag):
             return 
-        if item.locationID == session.shipid and cfg.IsShipFittingFlag(item.flagID) and item.categoryID == const.categorySubSystem:
-            sm.GetService('station').ShowShip(eve.session.shipid)
+        activeShipID = util.GetActiveShip()
+        if item.locationID == activeShipID and cfg.IsShipFittingFlag(item.flagID) and item.categoryID == const.categorySubSystem:
+            sm.GetService('station').ShowShip(activeShipID)
 
 
 
@@ -747,7 +727,7 @@ class StationSvc(service.Service):
         if not self.activeshipmodel or self.refreshingfitting:
             return 
         self.refreshingfitting = 1
-        turret.TurretSet.FitTurrets(eve.session.shipid, self.activeshipmodel)
+        turret.TurretSet.FitTurrets(util.GetActiveShip(), self.activeshipmodel)
         self.refreshingfitting = 0
 
 
@@ -1004,15 +984,15 @@ class StationSvc(service.Service):
                             break
                         return 
 
+        shipID = util.GetActiveShip()
+        if shipID is None:
+            shipID = self.ShipPicker()
+            if shipID is None:
+                eve.Message('NeedShipToUndock')
+                return 
+            sm.GetService('clientDogmaIM').GetDogmaLocation().MakeShipActive(shipID)
         self.exitingstation = 1
         self.dockaborted = 0
-        activeShip = self.GetActiveShip()
-        if not activeShip:
-            activeShip = eve.session.shipid
-        if not activeShip:
-            self.SelectShipDlg()
-            if not self.exitingstation:
-                return 
         uthread.new(self.LoadSvc, None)
         lobby = self.GetLobby()
         if lobby is not None and not lobby.destroyed:
@@ -1037,11 +1017,11 @@ class StationSvc(service.Service):
             self.dockaborted = 0
             return 
         sm.GetService('loading').ProgressWnd(msg[i][0], msg[i][1], i + 2, len(msg) + 1)
-        self.UndockAttempt()
+        self.UndockAttempt(shipID)
 
 
 
-    def UndockAttempt(self):
+    def UndockAttempt(self, shipID):
         systemCheckSupressed = settings.user.suppress.Get('suppress.FacWarWarningUndock', None) == uiconst.ID_OK
         if not systemCheckSupressed and eve.session.warfactionid:
             isSafe = sm.StartService('facwar').CheckForSafeSystem(eve.stationItem, eve.session.warfactionid)
@@ -1051,25 +1031,26 @@ class StationSvc(service.Service):
                     self.exitingstation = 0
                     self.AbortUndock()
                     return 
-        self.DoUndockAttempt(False, True)
+        self.DoUndockAttempt(False, True, shipID)
 
 
 
-    def DoUndockAttempt(self, ignoreContraband, observedSuppressed = False):
+    def DoUndockAttempt(self, ignoreContraband, observedSuppressed, shipID):
         stationID = session.stationid
         try:
             shipsvc = sm.GetService('gameui').GetShipAccess()
-            sm.GetService('logger').AddText(mls.UI_STATION_UNDOCKINGFROMTO % {'from': cfg.evelocations.Get(eve.session.stationid).name,
+            sm.GetService('logger').AddText(mls.UI_STATION_UNDOCKINGFROMTO % {'from': cfg.evelocations.Get(eve.session.stationid2).name,
              'to': cfg.evelocations.Get(eve.session.solarsystemid2).name})
             if observedSuppressed:
                 ignoreContraband = settings.user.suppress.Get('suppress.ShipContrabandWarningUndock', None) == uiconst.ID_OK
-            sm.GetService('sessionMgr').PerformSessionChange('undock', shipsvc.Undock, ignoreContraband)
+            onlineModules = sm.GetService('clientDogmaIM').GetDogmaLocation().GetOnlineModules(shipID)
+            sm.GetService('sessionMgr').PerformSessionChange('undock', shipsvc.Undock, shipID, ignoreContraband, onlineModules=onlineModules)
             self.CloseFitting()
         except Exception as e:
             doRaise = True
             if isinstance(e, UserError) and e.msg == 'ShipContrabandWarningUndock':
                 if eve.Message(e.msg, e.dict, uiconst.OKCANCEL) == uiconst.ID_OK:
-                    self.DoUndockAttempt(True)
+                    self.DoUndockAttempt(True, False, shipID)
                     sys.exc_clear()
                     return 
                 settings.user.suppress.Set('suppress.ShipContrabandWarningUndock', None)
@@ -1090,6 +1071,21 @@ class StationSvc(service.Service):
         wnd = sm.GetService('window').GetWindow('fitting')
         if wnd:
             wnd.CloseX()
+
+
+
+    def ShipPicker(self):
+        hangarInv = eve.GetInventory(const.containerHangar)
+        items = hangarInv.List()
+        tmplst = []
+        for item in items:
+            if item[const.ixCategoryID] == const.categoryShip and item[const.ixSingleton]:
+                tmplst.append((cfg.invtypes.Get(item[const.ixTypeID]).name, item[const.ixItemID], item[const.ixTypeID]))
+
+        ret = uix.ListWnd(tmplst, 'item', mls.UI_STATION_SELECTSHIP, None, 1)
+        if ret is None:
+            return 
+        return ret[1]
 
 
 
@@ -1124,11 +1120,11 @@ class StationSvc(service.Service):
         maximumWait = 10000
         sleepUnit = 100
         iterations = maximumWait / sleepUnit
-        while eve.session.shipid != shipID and iterations:
+        while util.GetActiveShip() != shipID and iterations:
             iterations -= 1
             blue.pyos.synchro.Sleep(sleepUnit)
 
-        if eve.session.shipid != shipID:
+        if util.GetActiveShip() != shipID:
             raise RuntimeError('Ship never came :(')
         self.LogInfo('Waited for ship for %d iterations.' % (maximumWait / sleepUnit - iterations))
 
@@ -1148,27 +1144,44 @@ class StationSvc(service.Service):
 
 
 
-    def ProcessShipEffect(self, godmaStm, effectState):
-        if self.activeshipmodel and effectState.effectName == 'online':
-            shipItem = sm.GetService('godma').GetItem(session.shipid)
-            module = None
+    def OnDogmaAttributeChanged(self, shipID, itemID, attributeID, value):
+        if self.activeshipmodel and attributeID == const.attributeIsOnline and shipID == util.GetActiveShip():
+            dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
             slot = None
-            for mod in shipItem.modules:
-                if mod.itemID == effectState.itemID:
-                    module = mod
-                    slot = mod.flagID - const.flagHiSlot0 + 1
-                    break
+            for module in dogmaLocation.GetDogmaItem(shipID).GetFittedItems().itervalues():
+                if module.itemID != itemID:
+                    continue
+                slot = module.flagID - const.flagHiSlot0 + 1
+                sceneShip = self.activeshipmodel
+                for turretSet in sceneShip.turretSets:
+                    if turretSet.locatorName.split('_')[-1] == str(slot):
+                        if module.IsOnline():
+                            turretSet.EnterStateIdle()
+                        else:
+                            turretSet.EnterStateDeactive()
 
-            if module:
-                if slot is not None:
-                    sceneShip = self.activeshipmodel
-                    for turretSet in sceneShip.turretSets:
-                        if turretSet.locatorName.split('_')[-1] == str(slot):
-                            if effectState.active:
-                                turretSet.EnterStateIdle()
-                            else:
-                                turretSet.EnterStateDeactive()
 
+
+
+
+    def ProcessActiveShipChanged(self, shipID, oldShipID):
+        if oldShipID:
+            sm.GetService('gameui').KillCargoView(oldShipID, ['form.InflightCargoView'])
+        if session.stationid is not None and self.station is not None:
+            self.ShowShip(shipID)
+
+
+
+    def MakeModularShipFromShipItem(self, ship):
+        subSystemIds = {}
+        for fittedItem in ship.GetFittedItems().itervalues():
+            if fittedItem.categoryID == const.categorySubSystem:
+                subSystemIds[fittedItem.groupID] = fittedItem.typeID
+
+        if len(subSystemIds) < const.visibleSubSystems:
+            sm.GetService('window').GetWindow('AssembleShip', create=1, decoClass=form.AssembleShip, ship=ship, groupIDs=subSystemIds.keys())
+            return 
+        return sm.GetService('t3ShipSvc').GetTech3ShipFromDict(ship.typeID, subSystemIds)
 
 
 

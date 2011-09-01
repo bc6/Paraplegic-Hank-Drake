@@ -54,7 +54,8 @@ startServices = ['http',
  'taleDistributionMgr',
  'http',
  'http2',
- 'devToolsProvider']
+ 'devToolsProvider',
+ 'sentinel']
 if prefs.GetValue('enableDust', 0):
     dustServices = ['catma',
      'dust',

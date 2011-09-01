@@ -63,8 +63,11 @@ def _MachoResolveAdditional(self, sess):
                     return 'You must have a corpid in your session to use this service'
                 else:
                     return mn.GetNodeFromAddress(const.cluster.SERVICE_CHATX, sess.corpid % 200)
-            else:
-                raise RuntimeError('This service is crap (%s)' % self.__logname__)
+            elif self.__machoresolve__ == 'bulk':
+                if sess.userid is None:
+                    return 'You must have a userid in your session to use this service'
+                return mn.GetNodeFromAddress(const.cluster.SERVICE_BULK, sess.userid % const.BULKNODE_MOD)
+            raise RuntimeError('This service is crap (%s)' % self.__logname__)
 
 
 

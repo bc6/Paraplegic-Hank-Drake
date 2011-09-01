@@ -1523,7 +1523,7 @@ class MarketActionWindow(uicls.Window):
     def CheckHeights(self, t, what = None):
         t.parent.height = t.textheight + t.top * 2
         theight = sum([ each.height for each in t.parent.parent.children if each.align == uiconst.TOTOP ])
-        self.SetMinSize([self.Width(), theight + 56], 1)
+        self.SetMinSize([self.width, theight + 56], 1)
 
 
 

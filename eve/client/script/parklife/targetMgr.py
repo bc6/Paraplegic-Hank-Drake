@@ -618,8 +618,8 @@ class TargetMgr(service.Service):
                 self.origin.state = uiconst.UI_HIDDEN
             uicore.layer.target.width = 20
             vertOffset = prefs.GetValue('tournamentVOffset', 10)
-            horizOffset = prefs.GetValue('tournamentHOffset', 10)
-            vertPush = prefs.GetValue('tournamentSpacing', 4)
+            horizOffset = prefs.GetValue('tournamentHOffset', 20)
+            vertPush = prefs.GetValue('tournamentSpacing', 10)
             for target in uicore.layer.target.children:
                 if getattr(target, '__guid__', None) != 'xtriui.Target':
                     continue

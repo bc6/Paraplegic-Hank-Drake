@@ -155,7 +155,7 @@ class EditPlainText(uicls.EditPlainTextCore):
                  {'type': 'edit',
                   'label': mls.GENERIC_LINK,
                   'text': 'http://',
-                  'labelwidth': 100,
+                  'width': 170,
                   'required': 1,
                   'key': 'txt',
                   'frame': 1}]
@@ -201,10 +201,8 @@ class EditPlainText(uicls.EditPlainTextCore):
                         self.sr.searchbutt = uicls.Button(parent=editParent, label=mls.UI_CMD_SEARCH, func=self.OnSearch, btn_default=0, align=uiconst.TOPRIGHT)
                     else:
                         self.sr.searchbutt.state = uiconst.UI_NORMAL
-                    edit.width = 55
                 elif self.sr.searchbutt != None:
                     self.sr.searchbutt.state = uiconst.UI_HIDDEN
-                    edit.width = 0
 
 
 

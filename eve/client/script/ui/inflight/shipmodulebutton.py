@@ -52,6 +52,7 @@ class ModuleButton(uicls.Container):
         self.online = False
         self.goingOnline = 0
         self.stateManager = None
+        self.dogmaLocation = None
         self.autorepeat = 0
         self.autoreload = 0
         self.sr.accuracyTimer = None
@@ -81,6 +82,7 @@ class ModuleButton(uicls.Container):
         self.sr.moduleInfo = moduleinfo
         self.locationFlag = moduleinfo.flagID
         self.stateManager = sm.StartService('godma').GetStateManager()
+        self.dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
         self.grey = grey
         self.typeName = uix.GetItemName(self.sr.moduleInfo)
         for each in ['glow',
@@ -158,7 +160,7 @@ class ModuleButton(uicls.Container):
         self.autoreload = settings.char.autoreload.Get(self.sr.moduleInfo.itemID, 1)
         if not getattr(self, 'isDeactivating', False):
             self.state = uiconst.UI_NORMAL
-        self.slaves = self.stateManager.GetSlaveModules(self.sr.moduleInfo.itemID)
+        self.slaves = self.dogmaLocation.GetSlaveModules(self.sr.moduleInfo.itemID, session.shipid)
         moduleDamage = self.GetModuleDamage()
         if moduleDamage:
             self.SetDamage(moduleDamage / moduleinfo.hp)
@@ -351,7 +353,7 @@ class ModuleButton(uicls.Container):
     def UnloadToCargo(self, itemID):
         self.reloadingAmmo = True
         try:
-            sm.GetService('godma').GetStateManager().UnloadChargeToContainer(itemID, (session.shipid,), const.flagCargo)
+            self.dogmaLocation.UnloadChargeToContainer(session.shipid, itemID, (session.shipid,), const.flagCargo)
 
         finally:
             self.reloadingAmmo = False
@@ -365,7 +367,7 @@ class ModuleButton(uicls.Container):
         matchingAmmo = [ (item.stacksize, item) for item in self.GetMatchingAmmo(self.sr.moduleInfo.typeID) if item.typeID == typeID ]
         matchingAmmo = uiutil.SortListOfTuples(matchingAmmo)
         matchingAmmo.reverse()
-        sm.GetService('godma').GetStateManager().LoadChargeToModule(self.sr.moduleInfo.itemID, typeID, chargeItems=matchingAmmo)
+        self.dogmaLocation.LoadChargeToModule(self.sr.moduleInfo.itemID, typeID, chargeItems=matchingAmmo)
 
 
 
@@ -375,7 +377,7 @@ class ModuleButton(uicls.Container):
         self.reloadingAmmo = True
         lastChargeTypeID = self.stateManager.GetAmmoTypeForModule(self.sr.moduleInfo.itemID)
         try:
-            self.stateManager.LoadChargeToModule(self.sr.moduleInfo.itemID, lastChargeTypeID, preferSingletons=preferSingletons)
+            self.dogmaLocation.LoadChargeToModule(self.sr.moduleInfo.itemID, lastChargeTypeID, preferSingletons=preferSingletons)
 
         finally:
             self.reloadingAmmo = False
@@ -420,7 +422,7 @@ class ModuleButton(uicls.Container):
             return 
         self.changingAmmo = 1
         try:
-            sm.GetService('godma').GetStateManager().LoadChargeToModule(itemID, ammoType, qty=quantity)
+            self.dogmaLocation.LoadChargeToModule(itemID, ammoType, qty=quantity)
 
         finally:
             if self and not self.destroyed:
@@ -513,7 +515,7 @@ class ModuleButton(uicls.Container):
                 m.append((mls.UI_CMD_AUTORELOADOFF, self.SetAutoReload, (0,)))
         overloadLock = settings.user.ui.Get('lockOverload', 0)
         itemID = self.sr.moduleInfo.itemID
-        slaves = self.stateManager.GetModulesSlaves(itemID)
+        slaves = self.dogmaLocation.GetSlaveModules(itemID, session.shipid)
         for key in self.sr.moduleInfo.effects.iterkeys():
             effect = self.sr.moduleInfo.effects[key]
             if self.IsEffectRepeatable(effect) and groupID not in (const.groupMiningLaser, const.groupStripMiner):
@@ -583,7 +585,7 @@ class ModuleButton(uicls.Container):
 
 
     def OnAmmoInBankChanged(self, masterID):
-        slaves = self.stateManager.GetModulesSlaves(masterID)
+        slaves = self.dogmaLocation.GetSlaveModules(masterID, session.shipid)
         if self.sr.moduleInfo.itemID in slaves:
             self.SetCharge(self.sr.moduleInfo)
 
@@ -601,7 +603,7 @@ class ModuleButton(uicls.Container):
 
 
     def UnlinkModule(self):
-        self.stateManager.DestroyWeaponBank(self.sr.moduleInfo.itemID)
+        self.dogmaLocation.DestroyWeaponBank(session.shipid, self.sr.moduleInfo.itemID)
 
 
 
@@ -661,7 +663,7 @@ class ModuleButton(uicls.Container):
         shiplayer = uicore.layer.shipui
         if not shiplayer:
             return 
-        self.stateManager.LoadChargeToModule(self.sr.moduleInfo.itemID, chargeTypeID)
+        self.dogmaLocation.LoadChargeToModule(self.sr.moduleInfo.itemID, chargeTypeID)
         uthread.new(self.CheckPending)
 
 
@@ -728,7 +730,7 @@ class ModuleButton(uicls.Container):
         if not self or self.destroyed:
             return 
         itemID = self.sr.moduleInfo.itemID
-        slaves = self.stateManager.GetModulesSlaves(itemID)
+        slaves = self.dogmaLocation.GetSlaveModules(itemID, session.shipid)
         if slaves:
             self.sr.stackParent.state = uiconst.UI_DISABLED
             self.sr.stacklabel.text = len(slaves) + 1
@@ -760,7 +762,7 @@ class ModuleButton(uicls.Container):
 
 
     def _ChangeOnline(self, on):
-        masterID = self.stateManager.IsInWeaponBank(self.sr.moduleInfo.itemID)
+        masterID = self.dogmaLocation.IsInWeaponBank(session.shipid, self.sr.moduleInfo.itemID)
         if masterID:
             if not on:
                 ret = eve.Message('CustomQuestion', {'header': 'OFFLINE',
@@ -822,7 +824,7 @@ class ModuleButton(uicls.Container):
 
 
     def AreModulesOffline(self):
-        slaves = self.stateManager.GetModulesSlaves(self.sr.moduleInfo.itemID)
+        slaves = self.dogmaLocation.GetSlaveModules(self.sr.moduleInfo.itemID, session.shipid)
         if not slaves:
             return False
         self.isMaster = 1
@@ -959,7 +961,7 @@ class ModuleButton(uicls.Container):
                 chargeItems.append(chargeItem)
 
         if len(chargeItems) > 0:
-            self.stateManager.DropLoadChargeToModule(self.sr.moduleInfo.itemID, chargeTypeID, chargeItems=chargeItems)
+            self.dogmaLocation.DropLoadChargeToModule(self.sr.moduleInfo.itemID, chargeTypeID, chargeItems=chargeItems)
 
 
 
@@ -1032,7 +1034,7 @@ class ModuleButton(uicls.Container):
             self.sr.accuracyTimer = None
             return 
         info = ''
-        slaves = self.stateManager.GetModulesSlaves(self.sr.moduleInfo.itemID)
+        slaves = self.dogmaLocation.GetSlaveModules(self.sr.moduleInfo.itemID, session.shipid)
         if slaves:
             numModules = len(slaves) + 1
             info += '<b>%s</b><br>' % (mls.UI_SHARED_WEAPONLINK_WEAPONGROUP % {'numModules': numModules})

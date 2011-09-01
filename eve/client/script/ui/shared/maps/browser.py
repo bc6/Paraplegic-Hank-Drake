@@ -124,8 +124,8 @@ class MapBrowser(uicls.Container):
         pilmap.OnSelectItem = self.OnMapSelection
         pilmap.GetParentMenu = self.GetMenu
         pilmapList = []
+        basesize = self.absoluteRight - self.absoluteLeft
         if drawlevel == DRAWLVLSYS:
-            basesize = self.absoluteRight - self.absoluteLeft
             pilmap.width = pilmap.height = basesize
             pilmap.left = pilmap.top = (pilmap.width - basesize) / 2
             pilmap.align = uiconst.RELATIVE
@@ -134,17 +134,16 @@ class MapBrowser(uicls.Container):
             uicls.Line(parent=mapparent, align=uiconst.TOBOTTOM, color=(0.0, 0.0, 0.0, 0.5))
             uicls.Line(parent=mapparent, align=uiconst.TOBOTTOM, color=(1.0, 1.0, 1.0, 0.5))
             pilmapList = mapparent.children
-            drawsize = max(uiutil.GetBuffersize(basesize), 512)
             self.SetLoadExternalPointer(mapparent, self.ids[idlevel][0])
             addstuff = mapparent
         else:
             uicls.Line(parent=pilmap.overlays, align=uiconst.TOBOTTOM, color=(0.0, 0.0, 0.0, 0.5))
             uicls.Line(parent=pilmap.overlays, align=uiconst.TOBOTTOM, color=(1.0, 1.0, 1.0, 0.5))
             pilmapList = self.children
-            drawsize = 256
             self.SetLoadExternalPointer(pilmap, self.ids[idlevel][0])
             addstuff = pilmap.overlays
-        pilmap.Draw(ids, idlevel, drawlevel, drawsize)
+        pilmap.Draw(ids, idlevel, drawlevel, basesize)
+        uicore.animations.FadeIn(pilmap, duration=0.3)
         pilmapList.append(pilmap)
         listicon = xtriui.ListSurroundingsBtn(parent=addstuff, align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL, pos=(0, 0, 16, 16), idx=0, showIcon=True)
         locConsts = {0: {const.typeUniverse: ''},

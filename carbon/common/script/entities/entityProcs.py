@@ -17,6 +17,7 @@ class EntityProcSvc(service.Service):
         GameWorld.RegisterPythonActionProc('SetEntityPosition', self._SetEntityPosition, ('ENTID', 'ALIGN_POSITION', 'ALIGN_ROTATION', 'MotionState'))
         GameWorld.RegisterPythonActionProc('GetEntitySceneID', self._GetEntitySceneID, ('ENTID',))
         GameWorld.RegisterPythonActionProc('GetBonePosRot', self._GetBonePosRot, ('ENTID', 'boneName', 'posProp', 'rotProp'))
+        GameWorld.RegisterPythonActionProc('SetAllowedToMove', self._SetAllowedToMove, ('ENTID', 'allowedToMove'))
 
 
 
@@ -79,6 +80,15 @@ class EntityProcSvc(service.Service):
 
 
 
+    def _SetAllowedToMove(self, ENTID, allowedToMove):
+        entity = self.entityService.FindEntityByID(ENTID)
+        if entity is not None:
+            movementComponent = entity.GetComponent('movement')
+            if movementComponent is not None:
+                movementComponent.allowMovement = allowedToMove
+
+
+
 MotionStateList = [('No Change', MOTIONSTATE_NO_CHANGE, ''), ('Key Frame', MOTIONSTATE_KEY_FRAME, ''), ('Character', MOTIONSTATE_CHARACTER, '')]
 
 def CreateLocatorList(self):
@@ -96,5 +106,6 @@ exports = {'actionProperties.MotionState': ('list', MotionStateList),
  'actionProcTypes.SetEntityPosition': zaction.ProcTypeDef(isMaster=True, procCategory='Entity', properties=[zaction.ProcPropertyTypeDef('MotionState', 'I', userDataType='MotionState', isPrivate=True)]),
  'actionProcTypes.GetEntitySceneID': zaction.ProcTypeDef(isMaster=True, procCategory='Entity'),
  'actionProcTypes.GetBonePosRot': zaction.ProcTypeDef(isMaster=True, procCategory='Entity', properties=[zaction.ProcPropertyTypeDef('boneName', 'S', userDataType='Bone Name', isPrivate=True), zaction.ProcPropertyTypeDef('posProp', 'S', userDataType='Position Property', isPrivate=True), zaction.ProcPropertyTypeDef('rotProp', 'S', userDataType='Rotation Property', isPrivate=True)]),
- 'actionProcTypes.TeleportToLocator': zaction.ProcTypeDef(isMaster=True, procCategory='Entity', properties=[zaction.ProcPropertyTypeDef('TargetType', 'I', userDataType='TargetTypeList', isPrivate=True), zaction.ProcPropertyTypeDef('LocatorName', 'S', userDataType='LocatorList', isPrivate=True)])}
+ 'actionProcTypes.TeleportToLocator': zaction.ProcTypeDef(isMaster=True, procCategory='Entity', properties=[zaction.ProcPropertyTypeDef('TargetType', 'I', userDataType='TargetTypeList', isPrivate=True), zaction.ProcPropertyTypeDef('LocatorName', 'S', userDataType='LocatorList', isPrivate=True)]),
+ 'actionProcTypes.SetAllowedToMove': zaction.ProcTypeDef(isMaster=True, procCategory='Entity', properties=[zaction.ProcPropertyTypeDef('allowedToMove', 'B', userDataType=None, isPrivate=True)])}
 

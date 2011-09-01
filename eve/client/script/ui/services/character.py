@@ -1171,11 +1171,8 @@ class Character(service.Service):
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def EnableClothSimulation(self, value):
-        self.factory.clothSimulationActive = value
-        characters = []
-        character = self.characters.get(0, None)
-        if character is not None:
-            characters.append(character)
+        self.factory.clothSimulationActive = bool(value)
+        characters = list(self.characters.values())
         for character in sm.GetService('paperDollClient').paperDollManager:
             characters.append(character)
 

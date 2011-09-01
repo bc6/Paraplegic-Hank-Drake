@@ -301,6 +301,16 @@ class PrePassLightOverdrawVisualization(VisualizerStepBase):
     visualizationMode = trinity.Tr2InteriorVisualizerMethod.VM_LIGHT_PRE_PASS_LIGHT_OVERDRAW
 
 
+class PrePassLightingDiffuseVisualization(VisualizerStepBase):
+    displayName = 'PrePass Diffuse Lighting Only'
+    visualizationMode = trinity.Tr2InteriorVisualizerMethod.VM_LIGHT_PRE_PASS_DIFFUSE_LIGHTING
+
+
+class PrePassLightingSpecularVisualization(VisualizerStepBase):
+    displayName = 'PrePass Specular Lighting Only'
+    visualizationMode = trinity.Tr2InteriorVisualizerMethod.VM_LIGHT_PRE_PASS_SPECULAR_LIGHTING
+
+
 class OcclusionVisualization(VisualizerStepBase):
     displayName = 'Occlusion Geometry'
     visualizationMode = trinity.Tr2InteriorVisualizerMethod.VM_OCCLUSION

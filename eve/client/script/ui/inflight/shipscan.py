@@ -38,7 +38,7 @@ class ShipScan(uicls.Window):
         else:
             proportion = 1.0
         self.sr.gauge.width = int(proportion * self.sr.gaugeParent.width)
-        self.sr.capacityText.text = '%s/%s %s' % (util.FmtAmt(full, showFraction=1), util.FmtAmt(total, showFraction=1), cfg.eveunits.Get(const.unitCapacitorUnits).displayName)
+        self.sr.capacityText.text = '%s/%s %s' % (util.FmtAmt(full, showFraction=1), util.FmtAmt(total, showFraction=1), cfg.dgmunits.Get(const.unitCapacitorUnits).displayName)
         scrolllist = []
         for info in moduleList:
             if type(info) == type(()):

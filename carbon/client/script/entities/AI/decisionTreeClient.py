@@ -107,7 +107,7 @@ class DecisionTreeClient(zaction.zactionCommonBase):
             list = self.rootNode.GetChildren()
             component.rootID = list[0][1].ID
             component.treeInstance = GameWorld.DecisionTreeInstance(entity.entityID, component.TreeInstanceID)
-        self.treeManager.AddTreeInstance(component.treeInstance)
+        self.treeManager.AddTreeInstanceWithDebug(component.treeInstance, self.createDebugItems)
         if component.treeState is not None and component.stepState is not None:
             component.treeInstance.SetTreeState(*component.treeState)
             component.treeInstance.SetStepState(*component.stepState)

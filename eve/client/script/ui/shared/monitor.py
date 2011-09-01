@@ -217,7 +217,8 @@ class Monitor(service.Service):
                 wnd.SetTopparentHeight(0)
             main = wnd.sr.maincontainer
             topcontainer = uicls.Container(name='push', parent=main, align=uiconst.TOTOP, height=46, clipChildren=1)
-            w = wnd.sr.telemetryButton = uicls.Button(parent=topcontainer, label='Telemetry', align=uiconst.TOPRIGHT, autowidth=1, autoheight=1, func=self.RunTelemetry)
+            if eve.session.role & (service.ROLE_QA | service.ROLE_PROGRAMMER) or not blue.pyos.packaged:
+                w = wnd.sr.telemetryButton = uicls.Button(parent=topcontainer, label='Telemetry', align=uiconst.TOPRIGHT, autowidth=1, autoheight=1, func=self.RunTelemetry)
             w = wnd.sr.fpsText = uicls.Label(text='', parent=topcontainer, align=uiconst.TOPLEFT, top=0, left=8, autowidth=1, autoheight=1)
             w = wnd.sr.vmText = uicls.Label(text='', parent=topcontainer, align=uiconst.TOPLEFT, top=14, left=8, autowidth=1, autoheight=1)
             w = wnd.sr.cacheText = uicls.Label(text='', parent=topcontainer, align=uiconst.TOPLEFT, top=28, left=8, autowidth=1, autoheight=1)

@@ -4,22 +4,18 @@ import blue
 import bluepy
 import form
 import string
-import random
 import trinity
-import types
 import uix
 import uthread
 import util
 import sys
-import bracket
-import hint
-import maputils
-from mapcommon import *
+from mapcommon import COLORCURVE_SECURITY, STARMAP_SCALE, SOLARSYSTEM_JUMP, JUMP_COLORS, LINESET_EFFECT
 import mapcommon
 import geo2
 import cPickle
 import log
 import uiconst
+import uiutil
 TRANSLATETBL = '                               ! #$%&\\  ()*+,-./0123456789:;<=>?@abcdefghijklmnopqrstuvwxyz[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~                  \x91\x92             \xa0\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xab\xac\xad\xae\xaf\xb0\xb1\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc\xbd\xbe\xbfaaaaaa\xc6ceeeeiiii\xd0nooooo\xd7\xd8\xd9\xda\xdb\xdc\xdd\xde\xdfaaaaaa\xe6ceeeeiiii\xf0nooooo\xf7ouuuuy\xfey'
 SEC = 10000000L
 MIN = SEC * 60L
@@ -105,7 +101,12 @@ class MapSvc(service.Service):
                 return 
             blue.synchro.Yield()
 
+        mapbrowser = False
         if not self.IsOpen():
+            mb = sm.GetService('window').GetWindow('mapbrowser', create=0)
+            if mb and uiutil.IsVisible(mb):
+                mb.Hide(time=0.0)
+                mapbrowser = True
             self.MinimizeWindows()
             sm.GetService('bracket').Hide()
             self.OpenMapsPalette()
@@ -114,6 +115,10 @@ class MapSvc(service.Service):
             settings.user.ui.Set('activeMap', mapMode)
             sm.GetService(mapMode).InitMap()
             sm.ScatterEvent('OnMapModeChangeDone', mapMode)
+        if mapbrowser:
+            mb.Show(time=0.0)
+        if uicore.layer.charcontrol.isopen:
+            uicore.layer.charcontrol.CloseView()
         sm.GetService('starmap').DecorateNeocom()
 
 
@@ -122,12 +127,17 @@ class MapSvc(service.Service):
         if getattr(self, 'busy', 0):
             return 
         self.busy = 1
+        mapbrowser = False
         if self.IsOpen():
             if 'starmap' in sm.GetActiveServices():
                 sm.GetService('starmap').CleanUp()
             if 'systemmap' in sm.GetActiveServices():
                 sm.GetService('systemmap').CleanUp()
             self.activeMap = ''
+            mb = sm.GetService('window').GetWindow('mapbrowser', create=0)
+            if mb and uiutil.IsVisible(mb):
+                mb.Hide(time=0.0)
+                mapbrowser = True
             if len(self.minimizedWindows) > 0:
                 windowSvc = sm.GetService('window')
                 for wndName in self.minimizedWindows:
@@ -152,6 +162,8 @@ class MapSvc(service.Service):
         activeScene = sm.GetService('sceneManager').GetActiveScene2()
         if activeScene:
             activeScene.display = 1
+        if mapbrowser:
+            mb.Show(time=0.0)
 
 
 

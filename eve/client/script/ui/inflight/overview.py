@@ -730,7 +730,7 @@ class TacticalItem(xtriui.UpdateEntry, listentry.Generic):
                 if not self.sr.node.Get('fmt_' + tr):
                     d = self.sr.node.Get('sort_' + tr)
                     if d:
-                        fmtd = '%.7f %s' % (d, cfg.eveunits.Get(112).displayName)
+                        fmtd = '%.7f %s' % (d, cfg.dgmunits.Get(112).displayName)
                         if fmtd:
                             self.sr.node.Set('fmt_' + tr, fmtd)
                 newLabel += (self.sr.node.Get('fmt_' + tr) or '') + '<t>'

@@ -70,7 +70,7 @@ class EveNavigationService(svc.navigation):
         player = self.entityClient.GetPlayerEntity()
         if player:
             isPathing = isinstance(player.movement.avatar.GetActiveMoveMode(), GameWorld.PathToMode)
-            if self.hasControl and trinity.app.IsActive():
+            if self.hasControl and trinity.app.IsActive() and player.movement.allowMovement:
                 curKeyState = self.GetKeyState()
                 (fwdActive, backActive, moveLActive, moveRActive,) = curKeyState
                 isKeyPressed = fwdActive or backActive or moveLActive or moveRActive

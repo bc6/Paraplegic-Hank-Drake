@@ -12,9 +12,13 @@ class DroneDogmaItem(dogmax.BaseDogmaItem):
 
     def SetLocation(self, locationID, locationDogmaItem, flagID):
         locationDogmaItem.RegisterDrone(self.itemID)
-        self.ownerID = self.dogmaLocation.pilotsByShipID.get(locationID, None)
-        if self.ownerID is not None:
-            self.dogmaLocation.RegisterExternalForOwner(self.itemID, self.ownerID)
+        newOwnerID = self.dogmaLocation.pilotsByShipID.get(locationID, None)
+        if newOwnerID != self.ownerID:
+            if self.ownerID is not None:
+                self.dogmaLocation.UnregisterExternalForOwner(self.itemID, self.ownerID)
+            self.ownerID = newOwnerID
+            if newOwnerID is not None:
+                self.dogmaLocation.RegisterExternalForOwner(self.itemID, newOwnerID)
 
 
 

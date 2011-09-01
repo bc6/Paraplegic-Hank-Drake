@@ -72,6 +72,8 @@ class DataConfig(service.Service):
     def ProcessInitialData(self, initdat):
         self.LogInfo('Processing intial data')
         cfg.GotInitData(initdat)
+        if boot.role == 'client' and prefs.clusterMode in ('MASTER', 'LOCAL'):
+            sm.GetService('bulkSvc').GetUnsubmittedChanges()
 
 
 
@@ -85,6 +87,8 @@ class DataConfig(service.Service):
         keyColumnName = cfgEntry.GetKeyColumn()
         keyID = getattr(updatedRow, keyColumnName)
         cfgEntry.data[keyID] = updatedRow
+        if cfgEntryName == 'worldspaces':
+            cfg._worldspacesDistrictsCache = {}
 
 
 
@@ -93,6 +97,8 @@ class DataConfig(service.Service):
         keyColumnName = cfgEntry.GetKeyColumn()
         keyID = getattr(deletedRow, keyColumnName)
         del cfgEntry.data[keyID]
+        if cfgEntryName == 'worldspaces':
+            cfg._worldspacesDistrictsCache = {}
 
 
 
@@ -123,6 +129,9 @@ class Config():
         self.servicebroker = None
         self.client = 0
         self.server = 0
+        self.totalLogonSteps = 10
+        self.bulkIDsToCfgNames = {}
+        self.bulkEntries = []
         import __builtin__
         __builtin__.const = const
         self.fmtMapping = {}
@@ -134,44 +143,6 @@ class Config():
         self.fmtMapping[ADD_A] = lambda value, value2: (value[0] in ('a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U') and 'an ' or 'a ') + value
         self.fmtMapping[ADD_THE] = lambda value, value2: 'the ' + value
         self.fmtMapping[MLS] = lambda value, value2: self._GetMls(value, value2)
-        self.graphics = sys.Recordset(sys.Row, 'graphicID', None, None)
-        self.icons = sys.Recordset(sys.Row, 'iconID', None, None)
-        self.sounds = sys.Recordset(sys.Row, 'soundID', None, None)
-        self.detailMeshes = sys.Recordset(sys.Row, 'detailGraphicID', None, None)
-        self.detailMeshesByTarget = dbutil.CFilterRowset(None, None)
-        self.worldspaces = sys.Recordset(sys.Row, 'worldSpaceTypeID', None, None)
-        self.worldspaceObjects = sys.Recordset(sys.Row, 'objectID', None, None)
-        self.worldspaceObjectsByWorldspaceID = dbutil.CFilterRowset(None, None)
-        self.worldspaceLights = dbutil.CFilterRowset(None, None)
-        self.worldspacePhysicalPortals = dbutil.CFilterRowset(None, None)
-        self.worldspaceEnlightenAreas = dbutil.CFilterRowset(None, None)
-        self.worldspaceOccluders = dbutil.CFilterRowset(None, None)
-        self.worldspaceLocators = dbutil.CFilterRowset(None, None)
-        self.entitySpawns = sys.Recordset(sys.Row, 'spawnID', None, None)
-        self.ingredients = sys.Recordset(sys.Row, 'ingredientID', None, None)
-        self.treeNodes = sys.Recordset(sys.Row, 'treeNodeID', None, None)
-        self.treeLinks = dbutil.CFilterRowset(None, None)
-        self.treeNodeProperties = sys.Recordset(sys.Row, 'propertyID', None, None)
-        self.actionTreeSteps = dbutil.CFilterRowset(None, None)
-        self.actionTreeProcs = dbutil.CFilterRowset(None, None)
-        self.actionObjects = sys.Recordset(sys.Row, 'actionObjectID', None, None)
-        self.actionStations = sys.Recordset(sys.Row, 'actionStationTypeID', None, None)
-        self.actionStationActions = dbutil.CFilterRowset(None, None)
-        self.actionObjectStations = dbutil.CFilterRowset(None, None)
-        self.actionObjectExits = dbutil.CFilterRowset(None, None)
-        self.perceptionSenses = sys.Recordset(sys.Row, 'senseID', None, None)
-        self.perceptionStimTypes = sys.Recordset(sys.Row, 'stimTypeID', None, None)
-        self.perceptionSubjects = sys.Recordset(sys.Row, 'subjectID', None, None)
-        self.perceptionTargets = sys.Recordset(sys.Row, 'targetID', None, None)
-        self.perceptionBehaviorSenses = dbutil.CFilterRowset(None, None)
-        self.perceptionBehaviorDecays = dbutil.CFilterRowset(None, None)
-        self.perceptionBehaviorFilters = dbutil.CFilterRowset(None, None)
-        self.paperdollModifierLocations = sys.Recordset(sys.Row, 'modifierLocationID', None, None)
-        self.paperdollResources = sys.Recordset(sys.Row, 'paperdollResourceID', None, None)
-        self.paperdollSculptingLocations = sys.Recordset(sys.Row, 'sculptLocationID', None, None)
-        self.paperdollColors = sys.Recordset(sys.Row, 'colorID', None, None)
-        self.paperdollColorNames = sys.Recordset(sys.Row, 'colorNameID', None, None)
-        self.paperdollColorRestrictions = sys.Recordset(sys.Row, 'colorNameID', None, None)
         self.messages = mls.LoadMessages()
 
 
@@ -246,6 +217,8 @@ class Config():
         if boot.role != 'server':
             return 
         self.AppGetStartupData()
+        if self.IsBulkMgrNode():
+            sm.GetService('bulkMgr').DoneInitializingBulk()
 
 
 
@@ -254,7 +227,7 @@ class Config():
 
 
 
-    def ReportLoginProgress(self, section, stepNum):
+    def ReportLoginProgress(self, section, stepNum, totalSteps = None):
         pass
 
 
@@ -277,56 +250,151 @@ class Config():
 
 
 
-    def GotInitData(self, initdata, totalSteps = 1):
+    def ConvertData(self, src, dst):
+        if type(src) == dbutil.CRowset:
+            dst.data.clear()
+            dst.header = src.columns
+            keycol = src.columns.index(dst.keycolumn)
+            for i in src:
+                dst.data[i[keycol]] = i
+
+        else:
+            dst.data.clear()
+            dst.header = src[0]
+            keycol = dst.header.index(dst.keycolumn)
+            for i in src[1]:
+                dst.data[i[keycol]] = i
+
+
+
+
+    def GetRawBulkData(self, bulkID):
+        if macho.mode == 'client':
+            bulkSvc = sm.GetService('bulkSvc')
+            if bulkSvc.BulkExists(bulkID):
+                return bulkSvc.LoadBulkFromFile(bulkID)
+            else:
+                self.LogError('#################################################')
+                self.LogError('# Bulk file you are requesting does not exist even though the ')
+                self.LogError('# server should have made sure we gotten all the bulk files.')
+                self.LogError('# This can for example happen if you are running client against ')
+                self.LogError('# an old server that does not know about a newly added bulk file.')
+                self.LogError('# bulkID in question:', bulkID)
+                self.LogError('#################################################')
+                return None
+        else:
+            cache = sm.GetService('cache')
+            return cache.Rowset(bulkID)
+
+
+
+    def GetBulkData(self, bulkID, rowset, rawDataFunction, virtualColumns):
+        rawData = rawDataFunction(bulkID)
+        if rawData is None:
+            return 
+        if virtualColumns is not None:
+            rawData.header.virtual = virtualColumns
+        self.ConvertData(rawData, rowset)
+        return rowset
+
+
+
+    def LoadBulk(self, cfgName, bulkID, rowset = None, filterParams = None, tableID = None, rawDataFunctionRef = None, virtualColumns = None):
+        if cfgName is not None:
+            if bulkID not in self.bulkIDsToCfgNames:
+                self.bulkIDsToCfgNames[bulkID] = []
+            self.bulkIDsToCfgNames[bulkID].append(cfgName)
+        if rawDataFunctionRef is None:
+            rawDataFunction = self.GetRawBulkData
+        else:
+            rawDataFunction = rawDataFunctionRef
+        if self.IsBulkMgrNode():
+            sm.GetService('bulkMgr').AddToBulk(bulkID, tableID)
+        self.bulkEntries.append((bulkID, tableID))
+        if rowset is None and filterParams is None:
+            rawData = rawDataFunction(bulkID)
+            if rawData is None:
+                return 
+            if virtualColumns is not None:
+                rawData.header.virtual = virtualColumns
+            return rawData
+        if rowset is None:
+            rawData = rawDataFunction(bulkID)
+            if rawData is None:
+                return 
+            if virtualColumns is not None:
+                rawData.header.virtual = virtualColumns
+            if isinstance(filterParams, str):
+                rowset = rawData.Filter(filterParams)
+            elif len(filterParams) != 3:
+                raise RuntimeError('Error loading filtered bulk data', bulkID, 'Filtered list must be of length 3')
+            rowset = rawData.Filter(filterParams[0], indexName=filterParams[1], allowDuplicateCompoundKeys=filterParams[2])
+        else:
+            self.GetBulkData(bulkID, rowset, rawDataFunction, virtualColumns)
+        return rowset
+
+
+
+    def IsBulkMgrNode(self):
+        if macho.mode != 'server':
+            return False
+        return sm.GetService('bulkMgr').IsBulkMgrNode()
+
+
+
+    def GotInitData(self, initdata):
         self.LogInfo('GotInitData')
         if macho.mode == 'client':
-            sm.ChainEvent('ProcessLoginProgress', 'loginprogress::miscinitdata', 'messages', 3, totalSteps)
+            sm.ChainEvent('ProcessLoginProgress', 'loginprogress::miscinitdata', 'messages', 2, self.totalLogonSteps)
         if boot.role == 'client':
             mls.LoadTranslations(session.languageID)
-        self.ReportLoginProgress('graphics', 4)
-        self.LoadFromBulk(initdata['config.BulkData.graphics'].GetCachedObject(), self.graphics)
-        self.LoadFromBulk(initdata['config.BulkData.icons'].GetCachedObject(), self.icons)
-        self.LoadFromBulk(initdata['config.BulkData.sounds'].GetCachedObject(), self.sounds)
-        self.LoadFromBulk(initdata['config.BulkData.detailMeshes'].GetCachedObject(), self.detailMeshes)
-        self.detailMeshesByTarget = initdata['config.BulkData.detailMeshes'].GetCachedObject().Filter('targetGraphicID')
-        self.LoadFromBulk(initdata['config.BulkData.worldspaces'].GetCachedObject(), self.worldspaces)
-        self.LoadFromBulk(initdata['config.BulkData.worldspaceObjects'].GetCachedObject(), self.worldspaceObjects)
-        self.worldspaceLights = initdata['config.BulkData.worldspaceLights'].GetCachedObject().Filter('worldSpaceTypeID')
-        self.worldspacePhysicalPortals = initdata['config.BulkData.worldspacePhysicalPortals'].GetCachedObject().Filter('worldSpaceTypeID')
-        self.worldspaceEnlightenAreas = initdata['config.BulkData.worldspaceEnlightenAreas'].GetCachedObject().Filter('worldSpaceTypeID', indexName='objectID', allowDuplicateCompoundKeys=True)
-        self.worldspaceObjectsByWorldspaceID = initdata['config.BulkData.worldspaceObjects'].GetCachedObject().Filter('worldSpaceTypeID')
-        self.worldspaceOccluders = initdata['config.BulkData.worldspaceOccluders'].GetCachedObject().Filter('worldSpaceTypeID')
-        self.worldspaceLocators = initdata['config.BulkData.worldspaceLocators'].GetCachedObject().Filter('worldSpaceTypeID')
-        self.entityGeneratorsByWorldSpace = initdata['config.BulkData.entityGenerators'].GetCachedObject().Filter('worldSpaceTypeID')
-        self.entitySpawnByGenerator = initdata['config.BulkData.entitySpawns'].GetCachedObject().Filter('generatorID')
-        self.entitySpawnInitsBySpawn = initdata['config.BulkData.entitySpawnInits'].GetCachedObject().Filter('spawnID')
-        self.LoadFromBulk(initdata['config.BulkData.entitySpawns'].GetCachedObject(), self.entitySpawns)
-        self.entityIngredientInitialValues = initdata['config.BulkData.entityIngredientInitialValues'].GetCachedObject().Filter('ingredientID')
-        self.entityIngredientsByParentID = initdata['config.BulkData.entityIngredients'].GetCachedObject().Filter('parentID')
-        self.LoadFromBulk(initdata['config.BulkData.entityIngredients'].GetCachedObject(), self.ingredients)
-        self.LoadFromBulk(initdata['config.BulkData.treeNodes'].GetCachedObject(), self.treeNodes)
-        self.treeLinks = initdata['config.BulkData.treeLinks'].GetCachedObject().Filter('parentTreeNodeID')
-        self.LoadFromBulk(initdata['config.BulkData.treeNodeProperties'].GetCachedObject(), self.treeNodeProperties)
-        self.actionTreeSteps = initdata['config.BulkData.actionTreeSteps'].GetCachedObject().Filter('actionID')
-        self.actionTreeProcs = initdata['config.BulkData.actionTreeProcs'].GetCachedObject().Filter('actionID')
-        self.LoadFromBulk(initdata['config.BulkData.paperdollModifierLocations'].GetCachedObject(), self.paperdollModifierLocations)
-        self.LoadFromBulk(initdata['config.BulkData.paperdollResources'].GetCachedObject(), self.paperdollResources)
-        self.LoadFromBulk(initdata['config.BulkData.paperdollSculptingLocations'].GetCachedObject(), self.paperdollSculptingLocations)
-        self.LoadFromBulk(initdata['config.BulkData.paperdollColors'].GetCachedObject(), self.paperdollColors)
-        self.LoadFromBulk(initdata['config.BulkData.paperdollColorNames'].GetCachedObject(), self.paperdollColorNames)
-        self.paperdollColorRestrictions = initdata['config.BulkData.paperdollColorRestrictions'].GetCachedObject().Filter('colorNameID')
-        self.LoadFromBulk(initdata['config.BulkData.actionObjects'].GetCachedObject(), self.actionObjects)
-        self.LoadFromBulk(initdata['config.BulkData.actionStations'].GetCachedObject(), self.actionStations)
-        self.actionStationActions = initdata['config.BulkData.actionStationActions'].GetCachedObject().Filter('actionStationTypeID')
-        self.actionObjectStations = initdata['config.BulkData.actionObjectStations'].GetCachedObject().Filter('actionObjectID')
-        self.actionObjectExits = initdata['config.BulkData.actionObjectExits'].GetCachedObject().Filter('actionObjectID', indexName='actionStationInstanceID', allowDuplicateCompoundKeys=True)
-        self.LoadFromBulk(initdata['config.BulkData.perceptionSenses'].GetCachedObject(), self.perceptionSenses)
-        self.LoadFromBulk(initdata['config.BulkData.perceptionStimTypes'].GetCachedObject(), self.perceptionStimTypes)
-        self.LoadFromBulk(initdata['config.BulkData.perceptionSubjects'].GetCachedObject(), self.perceptionSubjects)
-        self.LoadFromBulk(initdata['config.BulkData.perceptionTargets'].GetCachedObject(), self.perceptionTargets)
-        self.perceptionBehaviorSenses = initdata['config.BulkData.perceptionBehaviorSenses'].GetCachedObject()
-        self.perceptionBehaviorDecays = initdata['config.BulkData.perceptionBehaviorDecays'].GetCachedObject()
-        self.perceptionBehaviorFilters = initdata['config.BulkData.perceptionBehaviorFilters'].GetCachedObject()
+        self.ReportLoginProgress('coreInitData1', self.totalLogonSteps - const.cfgLogonSteps)
+        self.graphics = self.LoadBulk('graphics', const.cacheResGraphics, sys.Recordset(sys.Row, 'graphicID'))
+        self.icons = self.LoadBulk('icons', const.cacheResIcons, sys.Recordset(sys.Row, 'iconID'))
+        self.sounds = self.LoadBulk('sounds', const.cacheResSounds, sys.Recordset(sys.Row, 'soundID'))
+        self.detailMeshes = self.LoadBulk('detailMeshes', const.cacheResDetailMeshes, sys.Recordset(sys.Row, 'detailGraphicID'))
+        self.detailMeshesByTarget = self.LoadBulk('detailMeshesByTarget', const.cacheResDetailMeshes, None, 'targetGraphicID')
+        self._worldspacesDistrictsCache = {}
+        self.worldspaces = self.LoadBulk('worldspaces', const.cacheWorldSpaces, sys.Recordset(sys.Worldspaces, 'worldSpaceTypeID'))
+        self.worldspaceObjects = self.LoadBulk('worldspaceObjects', const.cacheWorldSpaceObjects, sys.Recordset(sys.Row, 'objectID'))
+        self.worldspaceLights = self.LoadBulk('worldspaceLights', const.cacheWorldSpaceLights, None, 'worldSpaceTypeID')
+        self.worldspacePhysicalPortals = self.LoadBulk('worldspacePhysicalPortals', const.cacheWorldSpacePhysicalPortals, None, 'worldSpaceTypeID')
+        self.worldspaceEnlightenAreas = self.LoadBulk('worldspaceEnlightenAreas', const.cacheWorldSpaceEnlightenAreas, None, ['worldSpaceTypeID', 'objectID', True])
+        self.worldspaceObjectsByWorldspaceID = self.LoadBulk('worldspaceObjectsByWorldspaceID', const.cacheWorldSpaceObjects, None, 'worldSpaceTypeID')
+        self.worldspaceOccluders = self.LoadBulk('worldspaceOccluders', const.cacheWorldSpaceOccluders, None, 'worldSpaceTypeID')
+        self.worldspaceLocators = self.LoadBulk('worldspaceLocators', const.cacheWorldSpaceLocators, None, 'worldSpaceTypeID')
+        self.ReportLoginProgress('coreInitData2', self.totalLogonSteps - const.cfgLogonSteps + 1)
+        self.entityGeneratorsByWorldSpace = self.LoadBulk('entityGeneratorsByWorldSpace', const.cacheEntityGenerators, None, 'worldSpaceTypeID')
+        self.entitySpawnByGenerator = self.LoadBulk('entitySpawnByGenerator', const.cacheEntitySpawns, None, 'generatorID')
+        self.entitySpawnInitsBySpawn = self.LoadBulk('entitySpawnInitsBySpawn', const.cacheEntitySpawnOverrides, None, 'spawnID')
+        self.entitySpawns = self.LoadBulk('entitySpawns', const.cacheEntitySpawns, sys.Recordset(sys.Row, 'spawnID'))
+        self.entityIngredientInitialValues = self.LoadBulk('entityIngredientInitialValues', const.cacheEntityIngredientInitialValues, None, 'ingredientID')
+        self.entityIngredientsByParentID = self.LoadBulk('entityIngredientsByParentID', const.cacheEntityIngredients, None, 'parentID')
+        self.ingredients = self.LoadBulk('ingredients', const.cacheEntityIngredients, sys.Recordset(sys.Row, 'ingredientID'))
+        self.treeNodes = self.LoadBulk('treeNodes', const.cacheTreeNodes, sys.Recordset(sys.Row, 'treeNodeID'))
+        self.treeLinks = self.LoadBulk('treeLinks', const.cacheTreeLinks, None, 'parentTreeNodeID')
+        self.treeNodeProperties = self.LoadBulk('treeNodeProperties', const.cacheTreeProperties, sys.Recordset(sys.Row, 'propertyID'))
+        self.actionTreeSteps = self.LoadBulk('actionTreeSteps', const.cacheActionTreeSteps, None, 'actionID')
+        self.actionTreeProcs = self.LoadBulk('actionTreeProcs', const.cacheActionTreeProcs, None, 'actionID')
+        self.actionObjects = self.LoadBulk('actionObjects', const.cacheActionObjects, sys.Recordset(sys.Row, 'actionObjectID'))
+        self.actionStations = self.LoadBulk('actionStations', const.cacheActionStations, sys.Recordset(sys.Row, 'actionStationTypeID'))
+        self.actionStationActions = self.LoadBulk('actionStationActions', const.cacheActionStationActions, None, 'actionStationTypeID')
+        self.actionObjectStations = self.LoadBulk('actionObjectStations', const.cacheActionObjectStations, None, 'actionObjectID')
+        self.actionObjectExits = self.LoadBulk('actionObjectExits', const.cacheActionObjectExits, None, ['actionObjectID', 'actionStationInstanceID', True])
+        self.ReportLoginProgress('coreInitData3', self.totalLogonSteps - const.cfgLogonSteps + 2)
+        self.paperdollModifierLocations = self.LoadBulk('paperdollModifierLocations', const.cachePaperdollModifierLocations, sys.Recordset(sys.Row, 'modifierLocationID'))
+        self.paperdollResources = self.LoadBulk('paperdollResources', const.cachePaperdollResources, sys.Recordset(sys.Row, 'paperdollResourceID'))
+        self.paperdollSculptingLocations = self.LoadBulk('paperdollSculptingLocations', const.cachePaperdollSculptingLocations, sys.Recordset(sys.Row, 'sculptLocationID'))
+        self.paperdollColors = self.LoadBulk('paperdollColors', const.cachePaperdollColors, sys.Recordset(sys.Row, 'colorID'))
+        self.paperdollColorNames = self.LoadBulk('paperdollColorNames', const.cachePaperdollColorNames, sys.Recordset(sys.Row, 'colorNameID'))
+        self.paperdollColorRestrictions = self.LoadBulk('paperdollColorRestrictions', const.cachePaperdollColorRestrictions, None, 'colorNameID')
+        self.perceptionSenses = self.LoadBulk('perceptionSenses', const.cachePerceptionSenses, sys.Recordset(sys.Row, 'senseID'))
+        self.perceptionStimTypes = self.LoadBulk('perceptionStimTypes', const.cachePerceptionStimTypes, sys.Recordset(sys.Row, 'stimTypeID'))
+        self.perceptionSubjects = self.LoadBulk('perceptionSubjects', const.cachePerceptionSubjects, sys.Recordset(sys.Row, 'subjectID'))
+        self.perceptionTargets = self.LoadBulk('perceptionTargets', const.cachePerceptionTargets, sys.Recordset(sys.Row, 'targetID'))
+        self.perceptionBehaviorSenses = self.LoadBulk('perceptionBehaviorSenses', const.cachePerceptionBehaviorSenses)
+        self.perceptionBehaviorDecays = self.LoadBulk('perceptionBehaviorDecays', const.cachePerceptionBehaviorDecays)
+        self.perceptionBehaviorFilters = self.LoadBulk('perceptionBehaviorFilters', const.cachePerceptionBehaviorFilters)
 
 
 
@@ -777,6 +845,33 @@ class Row(util.Row):
 
     def __int__(self):
         return self.__dict__['id']
+
+
+
+
+class Worldspaces(Row):
+    __guid__ = 'sys.Worldspaces'
+
+    def __getattr__(self, name):
+        value = Row.__getattr__(self, name)
+        if name == 'districtID' and value is None:
+            try:
+                return cfg._worldspacesDistrictsCache[Row.__getattr__(self, 'worldSpaceTypeID')]
+            except KeyError:
+                parentID = Row.__getattr__(self, 'parentWorldSpaceTypeID')
+                if parentID is None:
+                    districtID = None
+                else:
+                    districtID = cfg.worldspaces.Get(parentID).districtID
+                cfg._worldspacesDistrictsCache[Row.__getattr__(self, 'worldSpaceTypeID')] = districtID
+                return districtID
+        else:
+            return value
+
+
+
+    def __str__(self):
+        return 'Worldspaces ID: %d, districtID: %d' % (self.worldSpaceTypeID, self.districtID)
 
 
 

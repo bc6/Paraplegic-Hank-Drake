@@ -361,11 +361,7 @@ class EveIcon(uicls.Sprite):
                     log.LogError('Not valid itemID for 2D map, itemID: ', itemID, ', typeID: ', typeID)
                     log.LogTraceback()
                 level = [const.groupRegion, const.groupConstellation, const.groupSolarSystem].index(group.id) + 1
-                imagePath = sm.GetService('photo').Get2DMap([itemID], level, level + 1, actSize)
-                if imagePath:
-                    icon = imagePath
-                else:
-                    icon = 'ui_9_64_14'
+                imagePath = sm.GetService('photo').Do2DMap(self, [itemID], level, level + 1, actSize)
             elif group.id in (const.groupStrategicCruiser,) or not itemID and group.id in (const.groupPlanet, const.groupMoon):
                 if isBlueprint:
                     icon = STRAGEGIC_CRUISER_BLUEPRINT_ICON_MAP[typeID]
@@ -663,6 +659,14 @@ class InfoIcon(EveIcon):
 
     def ShowInfo(self, typeID, itemID, abstractinfo, *args):
         sm.GetService('info').ShowInfo(typeID=typeID, itemID=itemID, abstractinfo=abstractinfo)
+
+
+
+    def UpdateInfoLink(self, typeID, itemID, abstractinfo = None):
+        self.OnClick = (self.ShowInfo,
+         typeID,
+         itemID,
+         abstractinfo)
 
 
 

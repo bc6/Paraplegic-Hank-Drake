@@ -375,8 +375,6 @@ class ManufacturingSvc(service.Service):
 
 
     def GetQuoteDialog(self, quoteData):
-        if session.shipid <= 0:
-            raise UserError('RamNoShip')
         if not quoteData.assemblyLine:
             raise UserError('RamPleasePickAnInstalltion')
         if not quoteData.blueprint:
@@ -1599,7 +1597,7 @@ class Manufacturing(uicls.Window, BlueprintData):
         self.sr.stateID = None
         if now >= jobdata.endProductionTime:
             if jobdata.completed == 1:
-                self.sr.stateText = cfg.ramcompletedstatuses.Get(jobdata.completedStatus).completedStatusName
+                self.sr.stateText = cfg.ramcompletedstatuses.Get(jobdata.completedStatus).completedStatusText
                 self.sr.stateID = const.ramJobStatusDelivered
             if jobdata.completed == 0:
                 if jobdata.pauseProductionTime is not None:
@@ -1696,8 +1694,6 @@ class Manufacturing(uicls.Window, BlueprintData):
     def Deliver(self, *args):
         if getattr(self, 'delivering', 0):
             return 
-        if not eve.session.shipid:
-            raise UserError('CantDoThatNoShip')
         self.delivering = 1
         self.sr.activeDetails = None
         try:
@@ -1726,8 +1722,6 @@ class Manufacturing(uicls.Window, BlueprintData):
             return 
         if getattr(self, 'cancelling', 0):
             return 
-        if not eve.session.shipid:
-            raise UserError('CantDoThatNoShip')
         self.cancelling = 1
         self.sr.activeDetails = None
         try:
@@ -2700,7 +2694,6 @@ class InstallationWindow(uicls.Window):
         else:
             self.sr.installationDetails = None
         if assemblyLine:
-            lineType = cfg.ramaltypes.Get(assemblyLine.assemblyLineTypeID)
             installationName = cfg.evelocations.Get(installationDetails.containerID).name
             if not installationName:
                 installationName = cfg.invtypes.Get(installationDetails.containerTypeID).name

@@ -4,6 +4,7 @@ import blue
 import geo2
 import log
 import sys
+import const
 
 class MovementClientComponent:
     __guid__ = 'movement.MovementClientComponent'
@@ -15,6 +16,7 @@ class MovementClientComponent:
         self.IsFlyMode = False
         self.flySpeed = 0.15
         self.relay = None
+        self.allowMovement = True
 
 
 

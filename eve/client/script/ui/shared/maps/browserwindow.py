@@ -51,20 +51,20 @@ class MapBrowserWnd(uicls.Window):
 
 
 
-    def Hide(self, *args):
+    def Hide(self, *args, **kwargs):
         data = sm.GetService('neocom').PrepareForWindowPush()
         self.state = uiconst.UI_HIDDEN
         if data:
-            sm.GetService('neocom').UpdateWindowPush(data)
+            sm.GetService('neocom').UpdateWindowPush(data, **kwargs)
 
 
 
-    def Show(self, *args):
+    def Show(self, *args, **kwargs):
         data = sm.GetService('neocom').PrepareForWindowPush()
         self.state = uiconst.UI_NORMAL
         uiutil.SetOrder(self, 0)
         if data:
-            sm.GetService('neocom').UpdateWindowPush(data)
+            sm.GetService('neocom').UpdateWindowPush(data, **kwargs)
 
 
 

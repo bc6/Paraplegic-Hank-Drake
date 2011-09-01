@@ -249,7 +249,7 @@ class TypeCompare(uicls.Window):
                     shipAttr = [ each for each in self.attrDict if each.attributeID in attrs ]
                     if shipAttr:
                         scrolllist.append(listentry.Get('Header', {'label': caption}))
-                        bd = sm.GetService('info').GetBarData(info, caption)
+                        bd = sm.GetService('info').GetBarData(None, info, caption)
                         attr = None
                         if bd:
                             attr = cfg.dgmattribs.Get(bd.get('attributeID'))

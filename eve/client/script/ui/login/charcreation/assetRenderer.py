@@ -381,7 +381,7 @@ PIERCINGPAIRGROUPS = {ccConst.p_earslow: ('Head_End', (0.65,
                    math.pi / 2 + 0.4,
                    math.pi / 2 + 0.05), 'SoftCenterRimSides')}
 HAIRBG = (0.2, 0.2, 0.2, 1.0)
-MANNEQUINBG = (0.2, 0.2, 0.2, 1.0)
+MANNEQUINBG = (0.4, 0.4, 0.4, 1.0)
 GREENSCREEN = (0.0, 1.0, 0.0, 1.0)
 GLASSESBG = (0.0, 0.0, 0.0, 1.0)
 
@@ -434,7 +434,7 @@ class AssetRenderer(object):
 
 
 
-    def __init__(self):
+    def __init__(self, showUI = True):
         trinity.SetFpsEnabled(False)
         if uicore.layer.charactercreation.isopen:
             uicore.layer.charactercreation.TearDown()
@@ -445,7 +445,7 @@ class AssetRenderer(object):
             each.Close()
 
         uicore.device.ForceSize()
-        self.oldNonRandomize = prefs.NoRandomize
+        self.oldNonRandomize = getattr(prefs, 'NoRandomize', False)
         prefs.NoRandomize = True
         self.factory = sm.GetService('character').factory
         self.factory.compressTextures = False
@@ -500,8 +500,16 @@ class AssetRenderer(object):
             cb = self.AddCheckbox(each, col3)
             self.altCheckboxes.append(cb)
 
-        uicls.Button(parent=uicore.layer.main, label='Render', align=uiconst.CENTERBOTTOM, func=self.RenderLoopAll, top=20)
-        uicls.Button(parent=uicore.layer.main, label='Try one item', align=uiconst.BOTTOMLEFT, func=self.RenderLoopTry, top=20, left=20)
+        b1 = uicls.Button(parent=uicore.layer.main, label='Render', align=uiconst.CENTERBOTTOM, func=self.RenderLoopAll, top=20)
+        b2 = uicls.Button(parent=uicore.layer.main, label='Try one item', align=uiconst.BOTTOMLEFT, func=self.RenderLoopTry, top=20, left=20)
+        if not showUI:
+            for each in [col1,
+             col2,
+             col3,
+             b1,
+             b2]:
+                each.display = False
+
 
 
 
@@ -515,7 +523,7 @@ class AssetRenderer(object):
 
 
 
-    def RenderLoop(self, tryout = False):
+    def RenderLoop(self, tryout = False, fromWebtools = False):
         uicore.device.ForceSize()
         if getattr(self, 'renderJob', None):
             if self.renderJob in trinity.device.scheduledRecurring:
@@ -528,7 +536,10 @@ class AssetRenderer(object):
         uicore.layer.charactercreation.Flush()
         trinity.SetRightHanded(True)
         charID = 0
-        uicore.layer.main.display = False
+        for (layerName, layer,) in uicore.layer.__dict__.iteritems():
+            if isinstance(layer, uicls.LayerCore):
+                layer.display = False
+
         sm.GetService('sceneManager').SetSceneType(0)
         uicore.layer.charactercreation.SetupScene(ccConst.SCENE_PATH_CUSTOMIZATION)
         scene = uicore.layer.charactercreation.scene
@@ -559,18 +570,21 @@ class AssetRenderer(object):
         renderInteriorSceneStep.name = 'Render Scene'
         trinity.device.scheduledRecurring.insert(0, rj)
         self.renderJob = rj
-        for cb in (self.greenscreenCB,
-         self.greyCB,
-         self.blackCB,
-         self.mannequinBGCB):
-            if cb.GetValue():
-                rj.Clear(cb.color, 1.0)
+        if fromWebtools:
+            rj.Clear(MANNEQUINBG, 1.0)
         else:
-            if self.otherCB.GetValue() and self.otherEdit.GetValue():
-                text = self.otherEdit.GetValue()
-                evalText = eval(text)
-                if text and type(evalText) is tuple and len(evalText) == 4:
-                    rj.Clear(evalText, 1.0)
+            for cb in (self.greenscreenCB,
+             self.greyCB,
+             self.blackCB,
+             self.mannequinBGCB):
+                if cb.GetValue():
+                    rj.Clear(cb.color, 1.0)
+            else:
+                if self.otherCB.GetValue() and self.otherEdit.GetValue():
+                    text = self.otherEdit.GetValue()
+                    evalText = eval(text)
+                    if text and type(evalText) is tuple and len(evalText) == 4:
+                        rj.Clear(evalText, 1.0)
 
         SWEETSPOTY = 1.7
         blue.pyos.synchro.Sleep(2000)
@@ -578,8 +592,8 @@ class AssetRenderer(object):
             if not cb.GetValue():
                 continue
             altCategory = cb.name
-            for (gender, genderID, genderCB,) in [('female', 0, self.femaleCB), ('male', 1, self.maleCB)]:
-                if not genderCB.GetValue():
+            for (gender, genderID, genderCB,) in [('female', 0, getattr(self, 'femaleCB', None)), ('male', 1, getattr(self, 'maleCB', None))]:
+                if genderCB and not genderCB.GetValue():
                     continue
                 uicore.layer.charactercreation.genderID = genderID
                 for bloodlineCB in self.bloodlines:
@@ -648,23 +662,24 @@ class AssetRenderer(object):
 
 
 
-        for (gender, genderID, genderCB,) in [('female', 0, self.femaleCB), ('male', 1, self.maleCB)]:
-            if not genderCB.GetValue():
+        for (gender, genderID, genderCB,) in [('male', 1, getattr(self, 'maleCB', None)), ('female', 0, getattr(self, 'femaleCB', None))]:
+            if not fromWebtools and genderCB and not genderCB.GetValue():
                 continue
-            uicore.layer.charactercreation.genderID = genderID
-            if self.mannequinCB.GetValue():
+            if fromWebtools or getattr(self, 'mannequinCB', None) and self.mannequinCB.GetValue():
                 mannequin = paperDoll.PaperDollCharacter(self.factory)
                 mannequin.doll = paperDoll.Doll('mannequin', gender=ccUtil.GenderIDToPaperDollGender(genderID))
+                if genderID == ccConst.GENDERID_MALE:
+                    mannequin.doll.Load('res:/Graphics/Character/DNAFiles/Mannequin/MaleMannequin.prs', self.factory)
+                else:
+                    mannequin.doll.Load('res:/Graphics/Character/DNAFiles/Mannequin/FemaleMannequin.prs', self.factory)
+                while mannequin.doll.busyUpdating:
+                    blue.synchro.Yield()
+
                 doll = mannequin.doll
                 resolution = ccConst.TEXTURE_RESOLUTIONS[1]
                 doll.overrideLod = paperDoll.LOD_SKIN
                 doll.textureResolution = resolution
-                mannequinModifier = 'archetypes/mannequinshape'
-                doll.AddResource(mannequinModifier, 1.0, self.factory)
                 mannequin.Spawn(scene, usePrepass=False)
-                while doll.busyUpdating:
-                    blue.synchro.Yield()
-
                 avatar = mannequin.avatar
                 networkPath = ccConst.CHARACTER_CREATION_NETWORK
                 self.factory.CreateGWAnimation(avatar, networkPath)
@@ -680,8 +695,15 @@ class AssetRenderer(object):
                 avatar.animationUpdater.network.update = False
                 blue.pyos.synchro.Sleep(500)
                 for checkBox in self.checkboxes:
-                    if not checkBox.GetValue():
+                    if not fromWebtools and not checkBox.GetValue():
                         continue
+                    if genderID == ccConst.GENDERID_MALE:
+                        mannequin.doll.Load('res:/Graphics/Character/DNAFiles/Mannequin/MaleMannequin.prs', self.factory)
+                    else:
+                        mannequin.doll.Load('res:/Graphics/Character/DNAFiles/Mannequin/FemaleMannequin.prs', self.factory)
+                    while mannequin.doll.busyUpdating:
+                        blue.synchro.Yield()
+
                     lightScene = trinity.Load('res:/Graphics/Character/Global/PaperdollSettings/LightSettings/Normal.red')
                     ccUtil.SetupLighting(scene, lightScene, lightColorScene, lightIntensity)
                     category = checkBox.name
@@ -693,7 +715,7 @@ class AssetRenderer(object):
                             continue
                         asset = GetPaperDollResource(typeID, genderID)
                         path = asset.resPath
-                        modifier = doll.AddItemType(self.factory, path, weight=1.0)
+                        modifier = doll.SetItemType(self.factory, path, weight=1.0)
                         mannequin.Update()
                         while doll.busyUpdating:
                             blue.synchro.Yield()
@@ -706,7 +728,10 @@ class AssetRenderer(object):
                         ss.SetupSkinnedObject(avatar)
                         paperDoll.SkinSpotLightShadows.instance = ss
                         blue.pyos.synchro.Sleep(500)
-                        outputPath = 'C:/Temp/Thumbnails/%s_%s.png' % (typeID, itemType[0])
+                        if fromWebtools:
+                            outputPath = '%s/EVE/capture/Screenshots/Renders/%s.png' % (blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL), typeID)
+                        else:
+                            outputPath = 'C:/Temp/Thumbnails/%s_%s.png' % (typeID, itemType[0])
                         self.SaveScreenShot(outputPath)
                         doll.RemoveResource(modifier.GetResPath(), self.factory)
                         if tryout:
@@ -716,7 +741,7 @@ class AssetRenderer(object):
                 if avatar and avatar in scene.dynamics:
                     scene.dynamics.remove(avatar)
             for bloodlineCB in self.bloodlines:
-                if not bloodlineCB.GetValue():
+                if fromWebtools or not bloodlineCB.GetValue():
                     continue
                 characterSvc.RemoveCharacter(charID)
                 bloodlineID = bloodlineCB.bloodlineID

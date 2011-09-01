@@ -1212,7 +1212,7 @@ class CharacterSheet(service.Service):
         wnd.sr.scroll.Load(contentList=scrolllist, headers=[mls.UI_GENERIC_DATE,
          mls.UI_GENERIC_SKILL,
          mls.UI_GENERIC_ACTION,
-         mls.UI_GENERIC_LEVEL], noContentHint=mls.UI_GENERIC_NORECORDSFOUND)
+         mls.UI_GENERIC_LEVEL], noContentHint=mls.UI_GENERIC_NORECORDSFOUND, reversesort=True)
 
 
 

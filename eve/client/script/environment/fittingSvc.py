@@ -15,7 +15,7 @@ class fittingSvc(service.Service):
     __exportedcalls__ = {'GetFittingDictForActiveShip': [],
      'ChangeOwner': []}
     __dependencies__ = ['godma']
-    __startupdependencies__ = ['settings']
+    __startupdependencies__ = ['settings', 'invCache']
     __notifyevents__ = ['OnSkillFinished']
 
     def __init__(self):
@@ -59,26 +59,22 @@ class fittingSvc(service.Service):
 
 
     def GetFittingDictForActiveShip(self):
-        stateMgr = sm.StartService('godma').GetStateManager()
-        ship = stateMgr.GetItem(session.shipid)
+        shipID = util.GetActiveShip()
+        shipInv = self.invCache.GetInventoryFromId(shipID, locationID=session.stationid2)
         fitData = []
-        for module in ship.modules:
-            if module.categoryID != const.categoryCharge:
-                fitData.append((module.typeID, module.flagID, 1))
-
-        shipInv = eve.GetInventoryFromId(eve.session.shipid)
-        dronesByType = {}
-        for drone in shipInv.ListDroneBay():
-            typeID = drone.typeID
-            if typeID not in dronesByType:
-                dronesByType[typeID] = 0
-            dronesByType[typeID] += drone.stacksize
+        dronesByType = defaultdict(int)
+        for item in shipInv.List():
+            if cfg.IsShipFittingFlag(item.flagID) and item.categoryID in (const.categoryModule, const.categorySubSystem):
+                fitData.append((item.typeID, item.flagID, 1))
+            elif item.categoryID == const.categoryDrone and item.flagID == const.flagDroneBay:
+                typeID = item.typeID
+                dronesByType[typeID] += item.stacksize
 
         flag = const.flagDroneBay
         for (drone, quantity,) in dronesByType.iteritems():
             fitData.append((drone, flag, quantity))
 
-        return (ship.typeID, fitData)
+        return (shipInv.GetItem().typeID, fitData)
 
 
 
@@ -210,13 +206,13 @@ class fittingSvc(service.Service):
         if fitting is None:
             raise UserError('FittingDoesNotExist')
         itemTypes = defaultdict(lambda : 0)
-        stateMgr = sm.GetService('godma').GetStateManager()
-        ship = stateMgr.GetItem(session.shipid)
         modulesByFlag = {}
         dronesByType = {}
-        shipInv = sm.GetService('invCache').GetInventoryFromId(session.shipid)
+        shipInv = self.invCache.GetInventoryFromId(util.GetActiveShip(), locationID=session.stationid2)
         rigsToFit = False
+        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
         for (typeID, flag, qty,) in fitting.fitData:
+            dogmaLocation.CheckSkillRequirementsForType(typeID, 'FittingHasSkillPrerequisites')
             if cfg.IsShipFittingFlag(flag):
                 modulesByFlag[flag] = typeID
                 if const.flagRigSlot0 <= flag <= const.flagRigSlot7:
@@ -241,7 +237,7 @@ class fittingSvc(service.Service):
 
         if rigsToFit or self.HasRigFitted():
             eve.Message('RigsNotAutomaticallyFitted')
-        inv = sm.GetService('invCache').GetInventoryFromId(const.containerHangar)
+        inv = self.invCache.GetInventoryFromId(const.containerHangar)
         itemsToFit = defaultdict(set)
         for item in inv.List():
             if item.typeID in itemTypes:
@@ -252,7 +248,7 @@ class fittingSvc(service.Service):
                 itemsToFit[item.typeID].add(item.itemID)
                 itemTypes[item.typeID] -= quantityToTake
 
-        failedToLoad = shipInv.FitFitting(itemsToFit, session.stationid, itemTypes.keys(), modulesByFlag, dronesByType)
+        failedToLoad = shipInv.FitFitting(util.GetActiveShip(), itemsToFit, session.stationid2, modulesByFlag, dronesByType)
         for (typeID, qty,) in failedToLoad:
             itemTypes[typeID] += qty
 
@@ -268,9 +264,9 @@ class fittingSvc(service.Service):
 
 
     def HasRigFitted(self):
-        ship = sm.GetService('godma').GetStateManager().GetItem(session.shipid)
-        for flag in xrange(const.flagRigSlot0, const.flagRigSlot0 + int(ship.rigSlots)):
-            if ship.GetSlotOccupants(flag):
+        shipInv = self.invCache.GetInventoryFromId(util.GetActiveShip(), locationID=session.stationid2)
+        for item in shipInv.List():
+            if const.flagRigSlot0 <= item.flagID <= const.flagRigSlot7:
                 return True
 
         return False
@@ -394,7 +390,7 @@ class fittingSvc(service.Service):
                 continue
             (typeID, qty,) = typeInfo
             (typeID, qty,) = (int(typeID), int(qty))
-            powerEffectID = sm.services['godma'].GetPowerEffectForType(typeID)
+            powerEffectID = self.godma.GetPowerEffectForType(typeID)
             if powerEffectID is not None:
                 startSlot = effectSlots[powerEffectID]
                 for flag in xrange(startSlot, startSlot + qty):

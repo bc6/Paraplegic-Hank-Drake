@@ -19,11 +19,6 @@ import bluepy
 import const
 from nasty import nasty
 
-def GetVersionArg():
-    return 'buildno=' + GetVersion()
-
-
-
 def GetVersion():
     subbuild = None
     try:
@@ -49,10 +44,8 @@ TEST_SERVER2 = '87.237.38.51'
 TEST_SERVER3 = '87.237.38.60'
 WEB_EVE = 'http://www.eveonline.com'
 WEB_MYEVE = 'http://www.eveonline.com'
-WEB_SECURE = 'https://secure.eveonline.com/?'
 WEB_ACCOUNT = 'https://secure.eveonline.com/'
 WEB_SUPPORT = 'http://www.eveonline.com/mb/support.asp'
-WEB_PATCHNOTES = 'http://www.eveonline.com/updates/patchnotes.asp?' + GetVersionArg()
 WEB_MBPATCHNOTES = 'http://www.eveonline.com/mb/patchnotes.asp'
 SERVERS = [('Tranquility', LIVE_SERVER),
  ('Test Server (Singularity)', TEST_SERVER1),
@@ -69,10 +62,8 @@ if boot.region == 'optic':
     TEST_SERVER3 = None
     WEB_EVE = 'http://eve.gtgame.com.cn'
     WEB_MYEVE = 'http://myeve.eve.gtgame.com.cn'
-    WEB_SECURE = 'http://bill.gtgame.com.cn/portal/center/index.jsp?'
     WEB_ACCOUNT = 'http://passport.cdcgames.net/account/login.aspx'
-    WEB_SUPPORT = 'http://bill.gtgame.com.cn/portal/customer/eveindex.jsp?' + GetVersionArg()
-    WEB_PATCHNOTES = 'http://eve.gtgame.com.cn/patches/patchnotes.asp?' + GetVersionArg()
+    WEB_SUPPORT = 'http://bill.gtgame.com.cn/portal/customer/eveindex.jsp'
     WEB_MBPATCHNOTES = 'http://eve.gtgame.com.cn/mb/patchnotes.asp'
     SERVERS = [(u'\u6668\u66e6\uff08\u7535\u4fe1\uff09', LIVE_SERVER1), (u'\u6668\u66e6\uff08\u7f51\u901a\uff09', LIVE_SERVER2)]
 
@@ -849,7 +840,7 @@ class Login(uicls.LayerCore):
 
 
     def LoadNews(self, *args):
-        newsURL = WEB_MYEVE + '/mb/news.asp?' + GetVersionArg()
+        newsURL = WEB_MYEVE + '/mb/news.asp?' + sm.GetService('patch').GetWebRequestParameters()
         if boot.region == 'optic':
             newsURL = WEB_EVE + '/gamenews/index.htm'
         self.mainBrowser.GoTo(newsURL)

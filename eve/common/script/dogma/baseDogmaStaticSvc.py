@@ -98,6 +98,11 @@ class BaseDogmaStaticSvc(service.Service):
                 levelAttribute = self.attributesByName[(att.attributeName + 'Level')]
                 self.requiredSkillAttributes[att.attributeID] = levelAttribute.attributeID
 
+        self.shipHardwareModifierAttribs = [(const.attributeHiSlots, const.attributeHiSlotModifier),
+         (const.attributeMedSlots, const.attributeMedSlotModifier),
+         (const.attributeLowSlots, const.attributeLowSlotModifier),
+         (const.attributeTurretSlotsLeft, const.attributeTurretHardpointModifier),
+         (const.attributeLauncherSlotsLeft, const.attributeLauncherHardPointModifier)]
 
 
 
@@ -291,6 +296,11 @@ class BaseDogmaStaticSvc(service.Service):
 
     def GetDefaultEffect(self, typeID):
         return self.defaultEffectByType[typeID]
+
+
+
+    def GetShipHardwareModifierAttribs(self):
+        return self.shipHardwareModifierAttribs
 
 
 

@@ -153,10 +153,9 @@ class FittingSlot(Slots):
 
 
 class CargoSlots(uicls.Container):
-    __guid__ = 'xtriui.CargoDroneSlots'
+    __guid__ = 'xtriui.CargoSlots'
 
-    def Startup(self, *args):
-        (name, iconpath, flag,) = args
+    def Startup(self, name, iconpath, flag, dogmaLocation):
         self.flag = flag
         self.sr.icon = uicls.Icon(parent=self, size=32, state=uiconst.UI_DISABLED, ignoreSize=True, icon=iconpath)
         self.sr.hint = name
@@ -168,6 +167,7 @@ class CargoSlots(uicls.Container):
         self.sr.statustext2 = uicls.Label(text='status', parent=self.sr.statusCont, name='cargo_statustext', left=0, top=14, idx=0, state=uiconst.UI_DISABLED, mousehilite=1, align=uiconst.TOPRIGHT)
         m3TextCont = uicls.Container(name='m3Cont', parent=self, align=uiconst.TOLEFT, width=12)
         self.sr.m3Text = uicls.Label(text='m3', parent=m3TextCont, name='m3', left=4, top=14, idx=0, state=uiconst.UI_NORMAL, mousehilite=1)
+        self.dogmaLocation = dogmaLocation
         sm.GetService('inv').Register(self)
         self.invReady = 1
 
@@ -250,6 +250,8 @@ class CargoSlots(uicls.Container):
         if len(itemlist) == 0:
             return 
         itemLocation = itemlist[0].item.locationID
+        shipID = util.GetActiveShip()
+        inventory = sm.GetService('invCache').GetInventoryFromId(shipID, session.stationid2)
         if len(itemlist) == 1:
             qty = getattr(itemlist[0].rec, 'quantity', 1)
             if uicore.uilib.Key(uiconst.VK_SHIFT) and qty > 1:
@@ -257,8 +259,8 @@ class CargoSlots(uicls.Container):
                 if ret is None:
                     return 
                 qty = ret['qty']
-            return eve.GetInventoryFromId(eve.session.shipid).Add(itemlist[0].itemID, itemLocation, qty=qty, flag=self.flag)
-        return eve.GetInventoryFromId(eve.session.shipid).MultiAdd([ item.itemID for item in itemlist ], itemLocation, flag=self.flag)
+            return inventory.Add(itemlist[0].itemID, itemLocation, qty=qty, flag=self.flag)
+        return inventory.MultiAdd([ item.itemID for item in itemlist ], itemLocation, flag=self.flag)
 
 
 
@@ -282,6 +284,11 @@ class CargoSlots(uicls.Container):
 class CargoDroneSlots(CargoSlots):
     __guid__ = 'xtriui.CargoDroneSlots'
 
+    def GetCapacity(self, flag = None):
+        return self.dogmaLocation.GetCapacity(util.GetActiveShip(), const.attributeDroneCapacity, const.flagDroneBay)
+
+
+
 
 class CargoCargoSlots(CargoSlots):
     __guid__ = 'xtriui.CargoCargoSlots'
@@ -291,14 +298,20 @@ class CargoCargoSlots(CargoSlots):
         if len(nodes) == 1:
             item = nodes[0].item
             if cfg.IsShipFittingFlag(item.flagID):
-                stateMgr = sm.GetService('godma').GetStateManager()
+                dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+                shipID = util.GetActiveShip()
                 if cfg.IsFittableCategory(item.categoryID):
-                    stateMgr.UnloadModuleToContainer(item.itemID, (session.shipid,))
+                    dogmaLocation.UnloadModuleToContainer(shipID, item.itemID, (shipID,))
                     return 
                 if item.categoryID == const.categoryCharge:
-                    stateMgr.UnloadChargeToContainer(item.itemID, (session.shipid,), const.flagCargo)
+                    dogmaLocation.UnloadChargeToContainer(shipID, item.itemID, (shipID,), const.flagCargo)
                     return 
         CargoSlots.OnDropData(self, dragObj, nodes)
+
+
+
+    def GetCapacity(self, flag = None):
+        return self.dogmaLocation.GetCapacity(util.GetActiveShip(), const.attributeCapacity, const.flagCargo)
 
 
 

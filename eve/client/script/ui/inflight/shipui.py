@@ -774,10 +774,11 @@ class ShipUI(uicls.LayerCore):
             if node.Get('__guid__', None) == 'listentry.PlaceEntry':
                 bms.append(node)
             elif node.rec and cfg.IsShipFittingFlag(node.rec.flagID):
+                dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
                 if node.rec.categoryID == const.categoryCharge:
-                    sm.GetService('godma').GetStateManager().UnloadChargeToContainer(node.itemID, (session.shipid,), const.flagCargo)
+                    dogmaLocation.UnloadChargeToContainer(session.shipid, node.itemID, (session.shipid,), const.flagCargo)
                 else:
-                    sm.GetService('godma').GetStateManager().UnloadModuleToContainer(node.itemID, (session.shipid,))
+                    dogmaLocation.UnloadModuleToContainer(session.shipid, node.itemID, (session.shipid,), const.flagCargo)
             elif node.Get('__guid__', None) in ('xtriui.InvItem', 'listentry.InvItem'):
                 inv.append(node)
 
@@ -844,7 +845,7 @@ class ShipUI(uicls.LayerCore):
                     wnd.CloseX()
             else:
                 shipName = cfg.evelocations.Get(eve.session.shipid).name
-                sm.GetService('window').OpenCargo(eve.session.shipid, shipName, '%s%s %s' % (shipName, mls.AGT_AGENTMGR_FORMATMESSAGE_APPEND_APOSTROPHE_AND_S, mls.UI_GENERIC_CARGO))
+                sm.GetService('cmd').OpenCargoHoldOfActiveShip()
 
 
 
@@ -979,9 +980,8 @@ class ShipUI(uicls.LayerCore):
             self.InitDrawSlots(xstep, ystep, vgridrange, hgridrange, grid, myOrder, slotType='shipslot')
             self.InitOverloadBtns(grid, shipmodules)
             self.InitGroupAllButtons()
-            godmaStateManager = sm.StartService('godma').GetStateManager()
-            IsSlave = godmaStateManager.IsSlaveModule
-            groupableModuleGroups = godmaStateManager.GetGroupableModuleGroups()
+            dogmaLocation = sm.StartService('clientDogmaIM').GetDogmaLocation()
+            IsSlave = lambda itemID: dogmaLocation.IsModuleSlave(itemID, session.shipid)
             for moduleInfo in shipmodules:
                 if IsSlave(moduleInfo.itemID):
                     self.totalSlaves += 1
@@ -1014,11 +1014,11 @@ class ShipUI(uicls.LayerCore):
     def OnGroupAllButtonClicked(self, *args):
         if settings.user.ui.Get('lockModules', 0):
             return 
-        stateMgr = sm.GetService('godma').GetStateManager()
-        if stateMgr.CanGroupAll():
-            stateMgr.LinkAllWeapons()
+        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+        if dogmaLocation.CanGroupAll(session.shipid):
+            dogmaLocation.LinkAllWeapons(session.shipid)
         else:
-            stateMgr.UnlinkAllWeapons()
+            dogmaLocation.UnlinkAllWeapons(session.shipid)
 
 
 
@@ -1168,8 +1168,8 @@ class ShipUI(uicls.LayerCore):
         if self.destroyed:
             return 
         icon = uiutil.GetChild(self.sr.slotsContainer, 'groupAllIcon')
-        stateMgr = sm.GetService('godma').GetStateManager()
-        for (typeID, qty,) in stateMgr.GetGroupableTypes().iteritems():
+        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+        for (typeID, qty,) in dogmaLocation.GetGroupableTypes(session.shipid).iteritems():
             if qty > 1:
                 break
         else:
@@ -1177,7 +1177,7 @@ class ShipUI(uicls.LayerCore):
             return 
 
         icon.state = uiconst.UI_NORMAL
-        if stateMgr.CanGroupAll():
+        if dogmaLocation.CanGroupAll(session.shipid):
             icon.LoadIcon('ui_73_16_252')
             hint = mls.UI_CMD_GROUPALLWEAPONS
         else:
@@ -1195,8 +1195,8 @@ class ShipUI(uicls.LayerCore):
     def UpdateGroupAllButton(self):
         if not self or self.destroyed:
             return 
-        GetOpacity = sm.GetService('godma').GetStateManager().GetGroupAllOpacity
-        if sm.GetService('godma').GetStateManager().CanGroupAll():
+        GetOpacity = sm.GetService('clientDogmaIM').GetDogmaLocation().GetGroupAllOpacity
+        if sm.GetService('clientDogmaIM').GetDogmaLocation().CanGroupAll(session.shipid):
             attributeName = 'lastGroupAllRequest'
         else:
             attributeName = 'lastUngroupAllRequest'
@@ -1361,8 +1361,7 @@ class ShipUI(uicls.LayerCore):
                 continue
             if getattr(each.sr, 'module', None) is not None:
                 moduleType = each.sr.module.GetModuleType()
-                godmaStateManager = sm.StartService('godma').GetStateManager()
-                isGroupable = godmaStateManager.IsGroupable(each.sr.module.sr.moduleInfo.groupID)
+                isGroupable = each.sr.module.sr.moduleInfo.groupID in const.dgmGroupableGroupIDs
                 if isGroupable:
                     each.linkDragging = 1
                     if each.sr.module.sr.moduleInfo.itemID == itemID:
@@ -1404,7 +1403,7 @@ class ShipUI(uicls.LayerCore):
         shift = uicore.uilib.Key(uiconst.VK_SHIFT)
         if toModule and fromModule and toModule[0] == fromModule[0]:
             self.LinkWeapons(toModule, fromModule, toFlag, fromFlag, merge=not shift)
-            if not sm.GetService('godma').GetStateManager().IsMasterModule(toModule[1]):
+            if not sm.GetService('clientDogmaIM').GetDogmaLocation().IsModuleMaster(toModule[1], session.shipid):
                 self.SwapSlots(fromFlag, toFlag)
         else:
             self.SwapSlots(toFlag, fromFlag)
@@ -1416,10 +1415,10 @@ class ShipUI(uicls.LayerCore):
         module2 = self.GetModuleType(slotFlag2)
         shift = uicore.uilib.Key(uiconst.VK_SHIFT)
         if shift and module1 is None and module2 is not None:
-            stateMgr = sm.GetService('godma').GetStateManager()
-            if stateMgr.IsInWeaponBank(module2[1]):
-                moduleID = stateMgr.UnlinkModule(module2[1])
-                slotFlag2 = stateMgr.GetItem(moduleID).flagID
+            dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+            if dogmaLocation.IsInWeaponBank(session.shipid, module2[1]):
+                moduleID = dogmaLocation.UngroupModule(session.shipid, module2[1])
+                slotFlag2 = dogmaLocation.GetItem(moduleID).flagID
         current = self.GetSlotOrder()[:]
         flag1Idx = current.index(slotFlag1)
         flag2Idx = current.index(slotFlag2)
@@ -1433,17 +1432,17 @@ class ShipUI(uicls.LayerCore):
 
 
     def LinkWeapons(self, master, slave, slotFlag1, slotFlag2, merge = False):
-        godmaStateManager = sm.StartService('godma').GetStateManager()
+        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
         groupID = cfg.invtypes.Get(master[0]).groupID
-        areTurrets = godmaStateManager.IsGroupable(groupID)
-        slaves = godmaStateManager.GetModulesSlaves(slave[1])
+        areTurrets = groupID in const.dgmGroupableGroupIDs
+        slaves = dogmaLocation.GetSlaveModules(slave[1], session.shipid)
         swapSlots = 0
         if slaves:
             swapSlots = 1
         if not areTurrets:
             eve.Message('CustomNotify', {'notify': mls.UI_SHARED_WEAPONLINK_NOTTHISTYPE})
             return 
-        weaponLinked = sm.GetService('godma').GetStateManager().LinkWeapons(master[1], slave[1], master[0], merge=merge)
+        weaponLinked = dogmaLocation.LinkWeapons(session.shipid, master[1], slave[1], merge=merge)
         if weaponLinked and swapSlots:
             self.SwapSlots(slotFlag1, slotFlag2)
 
@@ -1583,8 +1582,8 @@ class ShipUI(uicls.LayerCore):
 
 
     def ProcessShipEffect(self, godmaStm, effectState):
-        statemanager = sm.StartService('godma').GetStateManager()
-        masterID = statemanager.IsInWeaponBank(effectState.itemID)
+        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+        masterID = dogmaLocation.IsInWeaponBank(session.shipid, effectState.itemID)
         if masterID:
             module = self.GetModule(masterID)
         else:
@@ -1605,7 +1604,7 @@ class ShipUI(uicls.LayerCore):
                 self.CheckGroupAllButton()
             if each[0] != 'damage':
                 continue
-            (masterID, damage,) = sm.GetService('godma').GetStateManager().GetMaxDamagedModuleInGroup(each[1].itemID)
+            (masterID, damage,) = sm.GetService('godma').GetStateManager().GetMaxDamagedModuleInGroup(session.shipid, each[1].itemID)
             module = self.GetModule(masterID)
             if module is None:
                 continue
@@ -1746,6 +1745,8 @@ class ShipUI(uicls.LayerCore):
         ship = sm.GetService('godma').GetItem(eve.session.shipid)
         if ship is None:
             raise RuntimeError('ShipUI being inited with no ship state!')
+        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+        dogmaLocation.LoadItem(eve.session.shipid)
         self.InitSpeed()
         uthread.new(self.UpdateGauges)
         if not (eve.rookieState and eve.rookieState < 21) and not sm.GetService('planetUI').IsOpen():
@@ -2408,15 +2409,15 @@ class ShipUIContainer(uicls.Container):
         maxspeedButton = uicls.Sprite(parent=overlayContainer, name='maxspeedButton', pos=(164, 152, 18, 18), align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL, texturePath='res:/UI/Texture/classes/ShipUI/fullthrottleBtn.png')
         mainDot = uicls.Sprite(parent=self, name='mainDot', pos=(0, 0, 160, 160), align=uiconst.CENTER, state=uiconst.UI_DISABLED, texturePath='res:/UI/Texture/classes/ShipUI/mainDOT.png', spriteEffect=trinity.TR2_SFX_DOT, blendMode=trinity.TR2_SBM_ADD)
         mainContainer = uicls.Container(parent=self, name='mainContainer', pos=(0, 0, 256, 256), align=uiconst.CENTER, state=uiconst.UI_PICKCHILDREN)
-        powercore = uicls.Container(parent=mainContainer, name='powercore', pos=(98, 97, 60, 60), align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL)
+        powercore = uicls.Container(parent=mainContainer, name='powercore', pos=(98, 97, 60, 60), align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL, pickRadius=30)
         subContainer = uicls.Container(parent=self, name='subContainer', pos=(0, 0, 160, 160), align=uiconst.CENTER, state=uiconst.UI_PICKCHILDREN)
-        block_64 = uicls.Container(parent=subContainer, name='block_64', pos=(0, 0, 64, 64), align=uiconst.CENTER, state=uiconst.UI_NORMAL)
-        circlepickclipper_92 = uicls.Container(parent=subContainer, name='circlepickclipper_92', pos=(0, 0, 92, 92), align=uiconst.CENTER, state=uiconst.UI_PICKCHILDREN)
+        block_64 = uicls.Container(parent=subContainer, name='block_64', pos=(0, 0, 64, 64), align=uiconst.CENTER, state=uiconst.UI_NORMAL, pickRadius=32)
+        circlepickclipper_92 = uicls.Container(parent=subContainer, name='circlepickclipper_92', pos=(0, 0, 92, 92), align=uiconst.CENTER, state=uiconst.UI_PICKCHILDREN, pickRadius=46)
         heatPick = uicls.Container(parent=circlepickclipper_92, name='heatPick', pos=(0, 0, 92, 46), align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL)
         subpar = uicls.Container(parent=circlepickclipper_92, name='subpar', pos=(0, 0, 60, 80), align=uiconst.CENTER, state=uiconst.UI_PICKCHILDREN)
         powerPick = uicls.Container(parent=subpar, name='powerPick', pos=(6, 55, 48, 20), align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL)
         cpuPick = uicls.Container(parent=subpar, name='cpuPick', pos=(0, 70, 60, 20), align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL)
-        block_88 = uicls.Container(parent=subContainer, name='block_88', pos=(0, 0, 88, 88), align=uiconst.CENTER, state=uiconst.UI_NORMAL)
+        block_88 = uicls.Container(parent=subContainer, name='block_88', pos=(0, 0, 88, 88), align=uiconst.CENTER, state=uiconst.UI_NORMAL, pickRadius=44)
         (color, bgColor, comp, compsub,) = sm.GetService('window').GetWindowColors()
         (r, g, b, a,) = color
         mainShape = uicls.Sprite(parent=self, name='shipuiMainShape', pos=(0, 0, 160, 160), align=uiconst.CENTER, state=uiconst.UI_DISABLED, texturePath='res:/UI/Texture/classes/ShipUI/mainUnderlay.png', color=(r,

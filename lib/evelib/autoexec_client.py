@@ -1,5 +1,7 @@
 import autoexec_client_core
 import eveLog
+import stackless
+stackless.getcurrent().block_trap = True
 appCacheDirs = ['Browser',
  'Browser/Img',
  'Map',

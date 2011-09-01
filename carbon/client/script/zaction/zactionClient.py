@@ -19,7 +19,13 @@ class ClientActionComponent:
         self.stepState = None
         self.treeInstance = None
         self.TreeInstanceID = const.ztree.GENERATE_TREE_INSTANCE_ID
-        self.defaultAction = int(state.get(const.zaction.ACTIONTREE_RECIPE_DEFAULT_ACTION_NAME, sm.GetService('zactionClient').defaultAction))
+        self.defaultAction = None
+        try:
+            defaultAction = state.get(const.zaction.ACTIONTREE_RECIPE_DEFAULT_ACTION_NAME)
+            if defaultAction:
+                self.defaultAction = int(defaultAction)
+        except:
+            log.LogException()
 
 
 
@@ -42,6 +48,7 @@ class zactionClient(zaction.zactionCommon):
     def __init__(self):
         self.zactionServer = None
         self.clientProperties = {}
+        self.treeSetup = False
         treeManager = GameWorld.ActionTreeManagerClient()
         treeManager.Initialize()
         treeManager.EnableBlueNet()
@@ -54,6 +61,14 @@ class zactionClient(zaction.zactionCommon):
 
 
 
+    def GetZactionServer(self):
+        if self.zactionServer:
+            return self.zactionServer
+        self.zactionServer = sm.RemoteSvc('zactionServer')
+        return self.zactionServer
+
+
+
     def GetClientProperties(self):
         return self.clientProperties
 
@@ -61,10 +76,9 @@ class zactionClient(zaction.zactionCommon):
 
     def ProcessSessionChange(self, isRemote, session, change):
         if 'charid' in change:
-            if not self.zactionServer:
-                self.zactionServer = sm.RemoteSvc('zactionServer')
-                self.defaultAction = self.zactionServer.GetDefaultStartingAction()
+            if not self.treeSetup:
                 self.SetupActionTree(self.GetTreeSystemID())
+                self.treeSetup = True
 
 
 
@@ -124,16 +138,19 @@ class zactionClient(zaction.zactionCommon):
 
 
     def RegisterComponent(self, entity, component):
-        self.treeManager.AddTreeInstance(component.treeInstance)
+        self.treeManager.AddTreeInstanceWithDebug(component.treeInstance, self.createDebugItems)
         if component.treeState is not None and component.stepState is not None:
             component.treeInstance.SetTreeState(*component.treeState)
             component.treeInstance.SetStepState(*component.stepState)
             component.treeState = None
             component.stepState = None
         elif component.treeInstance.IsActionEnded():
-            treeNode = self.treeManager.GetTreeNodeByID(component.GetDefaultAction())
-            if treeNode is not None:
-                component.treeInstance.ForceAction(treeNode)
+            if component.GetDefaultAction():
+                treeNode = self.treeManager.GetTreeNodeByID(component.GetDefaultAction())
+                if treeNode is not None:
+                    component.treeInstance.ForceAction(treeNode)
+            else:
+                self.LogError('Failed to find default action for entity %d' % entity.entityID)
 
 
 
@@ -156,7 +173,8 @@ class zactionClient(zaction.zactionCommon):
                 clientProps = self.GetClientProperties()
             entity = self.entityService.FindEntityByID(entID)
             if not self.entityService.IsClientSideOnly(entity.scene.sceneID):
-                uthread.new(self.zactionServer.RequestActionStart, entID, actionID, interrupt, self.GetClientProperties())
+                requestThread = uthread.new(self.GetZactionServer().RequestActionStart, entID, actionID, interrupt, self.GetClientProperties())
+                requestThread.context = 'ZactionClient::StartAction'
             actionTreeInst.DoActionByID(actionID, interrupt, clientProps)
         else:
             self.LogError('StartAction called with ' + str(entID) + ', ' + str(actionID) + ', but could not find entity tree instance.')
@@ -166,7 +184,8 @@ class zactionClient(zaction.zactionCommon):
     def QA_RequestForceAction(self, entID, actionID):
         actionTreeInst = self.treeManager.GetTreeInstanceByEntID(entID)
         if actionTreeInst is not None:
-            uthread.new(self.zactionServer.QA_RequestForceActionStart, entID, actionID)
+            requestThread = uthread.new(self.GetZactionServer().QA_RequestForceActionStart, entID, actionID)
+            requestThread.context = 'ZactionClient::QA_RequestForceAction'
         else:
             self.LogError('StartAction called with ' + str(entID) + ', ' + str(actionID) + ', but could not find entity tree instance.')
 

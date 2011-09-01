@@ -197,7 +197,11 @@ class VirtualInvWindow(uicls.Window):
 
 
     def OnSessionChanged(self, isRemote, session, change):
-        if not self.destroyed and 'solarsystemid2' in change and eve.session.solarsystemid2 and self is not None:
+        if not self or self.destroyed:
+            return 
+        if 'solarsystemid2' in change and session.solarsystemid2:
+            self.Refresh()
+        elif 'stationid2' in change and session.stationid2:
             self.Refresh()
 
 
@@ -249,8 +253,9 @@ class VirtualInvWindow(uicls.Window):
 
     def Add(self, itemID, sourceLocation, quantity, dividing = False):
         dropLocation = self.GetShell().GetItem().itemID
+        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
         stateMgr = sm.StartService('godma').GetStateManager()
-        item = stateMgr.GetItem(itemID)
+        item = dogmaLocation.dogmaItems.get(itemID)
         if dropLocation == sourceLocation and not dividing:
             if getattr(item, 'flagID', None):
                 if item.flagID == self.locationFlag:
@@ -265,9 +270,9 @@ class VirtualInvWindow(uicls.Window):
                 if item and self.locationFlag == const.flagCargo and cfg.IsShipFittingFlag(item.flagID):
                     containerArgs = self.GetContainerArgs()
                     if item.categoryID == const.categoryCharge:
-                        return stateMgr.UnloadChargeToContainer(item.itemID, containerArgs, self.locationFlag, quantity)
+                        return dogmaLocation.UnloadChargeToContainer(item.locationID, item.itemID, containerArgs, self.locationFlag, quantity)
                     if item.categoryID == const.categoryModule:
-                        return stateMgr.UnloadModuleToContainer(item.itemID, containerArgs, self.locationFlag)
+                        return stateMgr.UnloadModuleToContainer(item.locationID, item.itemID, containerArgs, self.locationFlag)
                 return self.GetShell().Add(itemID, sourceLocation, qty=quantity, flag=self.locationFlag)
             flag = None
             shell = self.GetShell()
@@ -688,27 +693,28 @@ class VirtualInvWindow(uicls.Window):
             if len(inv) == 1:
                 if hasattr(inv[0].item, 'flagID') and cfg.IsShipFittingFlag(inv[0].item.flagID):
                     itemKey = inv[0].item.itemID
-                    stateMgr = sm.StartService('godma').GetStateManager()
+                    locationID = inv[0].item.locationID
+                    dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
                     containerArgs = self.GetContainerArgs()
-                    if inv[0].item.locationID == session.shipid:
+                    if inv[0].item.locationID == util.GetActiveShip():
                         if self.oneWay and eve.Message('ConfirmOneWayItemMove', {}, uiconst.OKCANCEL) != uiconst.ID_OK:
                             return 
                         if inv[0].item.categoryID == const.categoryCharge:
-                            return stateMgr.UnloadChargeToContainer(itemKey, containerArgs, self.locationFlag)
+                            return dogmaLocation.UnloadChargeToContainer(locationID, itemKey, containerArgs, self.locationFlag)
                         if inv[0].item.categoryID == const.categoryModule:
-                            return stateMgr.UnloadModuleToContainer(itemKey, containerArgs, self.locationFlag)
+                            return dogmaLocation.UnloadModuleToContainer(locationID, itemKey, containerArgs, self.locationFlag)
                 self._Add(inv[0].item, sourceLocation=sourceLocation)
             else:
                 if self.oneWay and eve.Message('ConfirmOneWayItemMove', {}, uiconst.OKCANCEL) != uiconst.ID_OK:
                     return 
                 else:
                     itemIDs = [ node.itemID for node in inv ]
-                    stateManager = sm.StartService('godma').GetStateManager()
-                    masters = stateManager.GetAllSlaveModulesByMasterModule()
+                    dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+                    masters = dogmaLocation.GetAllSlaveModulesByMasterModule(sourceLocation)
                     if masters:
                         inBank = 0
                         for itemID in itemIDs:
-                            if stateManager.IsInWeaponBank(itemID):
+                            if dogmaLocation.IsInWeaponBank(sourceLocation, itemID):
                                 inBank = 1
                                 break
 
@@ -729,16 +735,21 @@ class VirtualInvWindow(uicls.Window):
                         flag = settings.user.ui.Get('defaultContainerLock_%s' % shell.itemID, None)
                         if flag is None:
                             flag = const.flagLocked
-                        return self.GetShell().MultiAdd(itemIDs, sourceLocation, flag=flag)
+                        return self._MultiAdd(itemIDs, sourceLocation, flag=flag)
                     if self.locationFlag:
-                        return self.GetShell().MultiAdd(itemIDs, sourceLocation, flag=self.locationFlag)
-                    return self.GetShell().MultiAdd(itemIDs, sourceLocation)
+                        return self._MultiAdd(itemIDs, sourceLocation, flag=self.locationFlag)
+                    return self._MultiAdd(itemIDs, sourceLocation)
         addum = [ node.bm.bookmarkID for node in bms ]
         if addum:
             if len(addum) > 5:
                 eve.Message('CannotMoveBookmarks')
                 return 
             uthread.new(self.AddBookmarks, addum)
+
+
+
+    def _MultiAdd(self, itemIDs, sourceLocation, flag = None):
+        return self.GetShell().MultiAdd(itemIDs, sourceLocation, flag=flag)
 
 
 
@@ -1009,7 +1020,9 @@ class VirtualInvWindow(uicls.Window):
                             if getattr(self, 'hasCapacity', 0):
                                 cap = self.GetCapacity()
                                 capacity = cap.capacity - cap.used
-                                maxQty = min(itemQuantity, int(capacity / (cfg.GetItemVolume(item, 1) or 1)))
+                                itemvolume = cfg.GetItemVolume(item, 1) or 1
+                                maxQty = capacity / itemvolume + 1e-07
+                                maxQty = min(itemQuantity, int(maxQty))
                             else:
                                 maxQty = itemQuantity
                             if maxQty == itemQuantity:
@@ -1029,7 +1042,9 @@ class VirtualInvWindow(uicls.Window):
                         return 
                     if locationID != eve.session.locationid:
                         return 
-                    self.Add(item.itemID, item.locationID, quantity)
+                    if sourceLocation is None:
+                        sourceLocation = item.locationID
+                    self.Add(item.itemID, sourceLocation, quantity)
                     return 
             except UserError as what:
                 if what.args[0] in ('NotEnoughCargoSpace', 'NotEnoughCargoSpaceOverload', 'NotEnoughDroneBaySpace', 'NotEnoughDroneBaySpaceOverload', 'NoSpaceForThat', 'NoSpaceForThatOverload', 'NotEnoughChargeSpace', 'NotEnoughSpecialBaySpace', 'NotEnoughSpecialBaySpaceOverload'):

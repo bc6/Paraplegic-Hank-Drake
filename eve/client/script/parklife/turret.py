@@ -67,6 +67,8 @@ class TurretSvc(service.Service):
         ship = sm.GetService('michelle').GetBall(eve.session.shipid)
         if ship is None:
             return 
+        if not hasattr(ship, 'turrets'):
+            return 
         for turretSet in ship.turrets:
             turretSet.SetTargetsAvailable(len(targets) != 0)
 

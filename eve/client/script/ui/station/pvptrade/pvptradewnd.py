@@ -251,6 +251,8 @@ class PVPOfferView(form.VirtualInvWindow):
 
 
     def _Add(self, rec, *args, **kwargs):
+        if rec.itemID == util.GetActiveShip():
+            raise UserError('PeopleAboardShip')
         if cfg.invtypes.Get(rec.typeID).Group().Category().id == const.categoryShip:
             foundShip = 0
             hangar = eve.GetInventory(const.containerHangar).List()
@@ -262,6 +264,16 @@ class PVPOfferView(form.VirtualInvWindow):
                 return 
             sm.GetService('gameui').KillCargoView(rec.itemID)
         form.VirtualInvWindow._Add(self, rec, *args, **kwargs)
+
+
+
+    def _MultiAdd(self, itemIDs, sourceLocation, flag = None):
+        activeShipID = util.GetActiveShip()
+        for itemID in itemIDs:
+            if itemID == activeShipID:
+                raise UserError('PeopleAboardShip')
+
+        form.VirtualInvWindow._MultiAdd(self, itemIDs, sourceLocation, flag=flag)
 
 
 

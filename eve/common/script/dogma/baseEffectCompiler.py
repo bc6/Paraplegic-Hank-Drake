@@ -106,6 +106,25 @@ class BaseEffectCompiler(service.Service):
 
 
 
+    def SetupEffects(self):
+        import dogmaXP
+        for item in dogmaXP.__dict__.values():
+            if hasattr(item, '__effectIDs__'):
+                inst = item()
+                for effectID in inst.__effectIDs__:
+                    if type(effectID) is str:
+                        effectName = effectID
+                        effectID = getattr(const, effectName, None)
+                        if effectID is None:
+                            self.LogError('Namespace item', item, 'has non-existant effect name reference', effectName)
+                            continue
+                    self.effects[effectID] = inst
+
+                SetGlobal(item.__guid__, 'dogma', sm.services['dogma'])
+
+
+
+
     def ParseEffect(self, effectID):
         dogmaStaticMgr = self.GetDogmaStaticMgr()
         dogma = sm.services['dogma']

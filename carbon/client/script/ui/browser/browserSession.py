@@ -3,6 +3,7 @@ import corebrowserutil
 import blue
 import uthread
 import browserConst
+import uiconst
 
 class CoreBrowserSession():
 
@@ -328,6 +329,8 @@ class CoreBrowserSession():
 
     def OnKeyDown(self, vkey, flag):
         if self.browser is not None and self.browser.alive:
+            if vkey == uiconst.VK_RETURN:
+                return 
             self.browser.InjectKeyDown(vkey, flag)
 
 
@@ -340,6 +343,8 @@ class CoreBrowserSession():
 
     def OnChar(self, char, flag):
         if self.browser is not None and self.browser.alive:
+            if char == uiconst.VK_RETURN:
+                self.browser.InjectKeyDown(char, flag)
             self.browser.InjectChar(char, flag)
             return True
 

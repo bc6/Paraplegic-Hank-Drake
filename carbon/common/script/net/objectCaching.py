@@ -679,6 +679,19 @@ class CoreObjectCachingSvc(service.Service):
 
 
 
+    def UpdateVersionCheckPeriod(self, cacheKey):
+        try:
+            cacheEntry = self.cachedMethodCalls.get(cacheKey, None)
+            if cacheEntry is None:
+                self.LogWarn('ObjectCaching unable to update validity period for cache key', cacheKey, 'key not valid')
+            else:
+                self.LogInfo('ObjectCaching resetting validity period for cache key', cacheKey)
+                cacheEntry['version'][0] = blue.os.GetTime()
+        except Exception as e:
+            log.LogException('ObjectCaching unknown exception while resetting validity period')
+
+
+
     def __ShouldVersionCheck(self, details, info):
         vc = self._CoreObjectCachingSvc__GetVersionCheckType(details)
         now = blue.os.GetTime()
@@ -706,7 +719,6 @@ class CoreObjectCachingSvc(service.Service):
             maxAge = int(vc)
         age = now - info['version'][0]
         if maxAge <= age:
-            info['version'][0] = now
             return 1
         else:
             return 0

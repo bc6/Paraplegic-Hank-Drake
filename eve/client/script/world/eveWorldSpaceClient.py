@@ -46,23 +46,24 @@ class EveWorldSpaceClient(svc.worldSpaceClient):
 
     def GetWorldSpaceTypeIDFromWorldSpaceID(self, worldSpaceID):
         if util.IsStation(worldSpaceID):
-            return 32580
             stationType = cfg.invtypes.Get(eve.stationItem.stationTypeID)
             stationRace = stationType['raceID']
+            configVals = sm.GetService('machoNet').GetClientConfigVals()
             if stationRace == const.raceCaldari:
-                return 32581
-            else:
-                if stationRace == const.raceMinmatar:
-                    return 32580
-                if stationRace == const.raceAmarr:
-                    return 32578
-                if stationRace == const.raceGallente:
-                    return 32579
-                if stationRace == const.raceJove:
-                    return 32579
-                msg = 'Trying to load world space for race with ID %s. Race not found. Loading Minmatar world space instead.' % stationRace
-                self.LogWarn(msg)
-                return 32580
+                if configVals.get('CaldariCQEnabled', '0') == '1':
+                    return const.typeCaldariCaptainsQuarters
+            elif stationRace == const.raceMinmatar:
+                return const.typeMinmatarCaptainsQuarters
+            if stationRace == const.raceAmarr:
+                if configVals.get('AmarrCQEnabled', '0') == '1':
+                    return const.typeAmarrCaptainsQuarters
+            elif stationRace == const.raceGallente:
+                if configVals.get('GallenteCQEnabled', '0') == '1':
+                    return const.typeGallenteCaptainsQuarters
+            elif stationRace == const.raceJove:
+                if configVals.get('GallenteCQEnabled', '0') == '1':
+                    return const.typeGallenteCaptainsQuarters
+            return const.typeMinmatarCaptainsQuarters
         return sm.RemoteSvc('worldSpaceServer').GetWorldSpaceTypeIDFromWorldSpaceID(worldSpaceID)
 
 

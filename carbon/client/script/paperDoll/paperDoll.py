@@ -672,13 +672,15 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
 
 
     def GetMapCachePath(self):
-        return blue.rot.PathToFilename('cache:/Avatars/cachedMaps')
+        cachePath = '{0}/{1}'.format(blue.os.ResolvePath(u'cache:'), 'Avatars/cachedMaps')
+        return cachePath
 
 
 
     def GetCacheFilePath(self, cachePath, hashKey, textureWidth, mapType):
         hashKey = str(hashKey).replace('-', '_')
-        return os.path.join(cachePath, str(textureWidth), '{0}{1}.dds'.format(mapType, hashKey))
+        cachedPath = '{0}/{1}/{2}{3}.dds'.format(cachePath, textureWidth, mapType, hashKey)
+        return cachedPath
 
 
 
@@ -686,13 +688,11 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
     def FindCachedTexture(self, hashKey, textureWidth, mapType):
         cachePath = self.GetMapCachePath()
         filePath = self.GetCacheFilePath(cachePath, hashKey, textureWidth, mapType)
-        if os.path.exists(filePath):
-            rotPath = str(blue.rot.FilenameToPath(filePath))
-            try:
-                cachedTexture = blue.resMan.GetResource(rotPath)
-                return cachedTexture
-            except:
-                sys.exc_clear()
+        rf = blue.ResFile()
+        if rf.FileExists(filePath):
+            rotPath = blue.rot.FilenameToPath(filePath)
+            cachedTexture = blue.resMan.GetResourceW(rotPath)
+            return cachedTexture
 
 
 
@@ -2239,7 +2239,7 @@ class Doll(object):
         if type(itemType) is not tuple:
             itemType = factory.GetItemType(itemType)
         self.RemoveResource(itemType[0], factory)
-        self.AddItemType(factory, itemType, weight, rawColorVariation)
+        return self.AddItemType(factory, itemType, weight, rawColorVariation)
 
 
 
@@ -2686,16 +2686,17 @@ class Doll(object):
 
     def CompositeTextures(self, factory, hashKey, updateRuleBundle):
         if not updateRuleBundle.blendShapesOnly and factory.allowTextureCache:
-            textureCache = []
-            for i in xrange(len(PD.MAPS)):
+            textureCache = {}
+            mapCount = len(PD.MAPS)
+            for i in xrange(mapCount):
                 tex = factory.FindCachedTexture(hashKey, self.mapBundle.baseResolution[0], PD.MAPS[i])
-                textureCache.insert(i + 1, tex)
+                textureCache[i] = tex
 
-            while any(map(lambda x: x is not None and x.isLoading, textureCache)):
+            while any(map(lambda x: x is not None and x.isLoading, textureCache.values())):
                 blue.synchro.Yield()
 
-            for i in xrange(len(textureCache)):
-                if textureCache[i] and textureCache[i].isGood:
+            for i in xrange(mapCount):
+                if textureCache.get(i) and textureCache[i].isGood:
                     self.mapBundle.SetMapByTypeIndex(i, textureCache[i], hashKey)
 
         if self.compressionSettings is not None:

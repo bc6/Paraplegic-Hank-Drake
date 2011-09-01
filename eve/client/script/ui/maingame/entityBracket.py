@@ -28,6 +28,7 @@ class EntityBracket(uicls.BoundingBoxBracket):
         self.animButtonsThread = None
         self.animTreeThread = None
         self.treeCont = None
+        self.updateThread = None
         self.mainCont = uicls.Container(name='mainCont', parent=self)
         self.buttonCont = uicls.Container(name='buttonCont', parent=self.mainCont, align=uiconst.TOTOP, state=uiconst.UI_DISABLED)
         rotation = 0.0
@@ -69,6 +70,10 @@ class EntityBracket(uicls.BoundingBoxBracket):
         if self.hideThread:
             self.hideThread.kill()
             self.hideThread = None
+        if self.updateThread:
+            self.updateThread.kill()
+        self.updateThread = uthread.new(self.UpdateThread)
+        self.updateThread.context = 'EntityBracket::UpdateThread'
         if self.buttonCont.state == uiconst.UI_DISABLED:
             self.ShowActions()
         self.AnimBlinkCornersIn()
@@ -83,7 +88,6 @@ class EntityBracket(uicls.BoundingBoxBracket):
         self.SetOrder(0)
         btnOffsetY = 45
         btnOffsetX = 20
-        btnHeight = 45
         aoSvc = sm.GetService('actionObjectClientSvc')
         actionList = aoSvc.GetActionList(session.charid, self.entity.entityID)
         isMultiAction = len(actionList) > 1
@@ -96,7 +100,7 @@ class EntityBracket(uicls.BoundingBoxBracket):
         for (actionID, (label, isEnabled,),) in actionList.iteritems():
             isAtLeft = (i + 1 + isAtTop + len(actionList)) % 2
             if isMultiAction:
-                button = ActionObjectButton(parent=self.buttonCont, align=align, top=i * btnOffsetY, height=btnHeight, func=self.OnButtonClicked, actionID=actionID, text=label, isEnabled=isEnabled, isReversed=isAtLeft, scalingCenter=(isAtLeft, float(not isAtTop)), opacity=0.0)
+                button = ActionObjectButton(parent=self.buttonCont, align=align, top=i * btnOffsetY, func=self.OnButtonClicked, actionID=actionID, text=label, isEnabled=isEnabled, isReversed=isAtLeft, scalingCenter=(isAtLeft, float(not isAtTop)), opacity=0.0)
                 self.buttonCont.state = uiconst.UI_NORMAL
                 leftAbs = (1, -1)[isAtLeft]
                 button.left = (btnOffsetX + button.width / 2) * leftAbs
@@ -117,6 +121,7 @@ class EntityBracket(uicls.BoundingBoxBracket):
         if isMultiAction:
             self.animTreeThread = uthread.new(self.AnimShowTree, isAtTop, btnOffsetX, btnOffsetY)
         sm.ScatterEvent('OnEntityBracketShowActions', self)
+        uicore.uilib.RegisterForTriuiEvents(uiconst.UI_CLICK, self.OnGlobalMouseClick)
 
 
 
@@ -183,6 +188,9 @@ class EntityBracket(uicls.BoundingBoxBracket):
         if self.hideThread:
             self.hideThread.kill()
         self.hideThread = uthread.new(self.HideThread)
+        if self.updateThread:
+            self.updateThread.kill()
+            self.updateThread = None
 
 
 
@@ -193,6 +201,19 @@ class EntityBracket(uicls.BoundingBoxBracket):
                 break
 
         self.AnimFadeOut()
+
+
+
+    def UpdateThread(self):
+        while True:
+            blue.pyos.synchro.Sleep(250)
+            aoSvc = sm.GetService('actionObjectClientSvc')
+            actionList = aoSvc.GetActionList(session.charid, self.entity.entityID)
+            for b in self.buttonCont.children:
+                if hasattr(b, 'SetEnabled'):
+                    b.SetEnabled(actionList[b.actionID][1])
+
+
 
 
 
@@ -210,6 +231,12 @@ class EntityBracket(uicls.BoundingBoxBracket):
     def OnGlobalMouseUp(self, *args):
         if not uiutil.IsUnder(uicore.uilib.mouseOver, self):
             self.OnMouseExit()
+
+
+
+    def OnGlobalMouseClick(self, *args):
+        if not uiutil.IsUnder(uicore.uilib.mouseOver, self):
+            uthread.new(self.AnimFadeOut)
 
 
 
@@ -301,10 +328,11 @@ class ActionObjectButton(uicls.Transform):
     default_state = uiconst.UI_NORMAL
     default_scale = (1.0, 1.0)
     default_scalingCenter = (1.0, 0.5)
-    default_height = 45
+    default_height = 35
     default_isReversed = False
+    GRADIENT_ALPHA_DISABLED = 0.1
     GRADIENT_ALPHA_IDLE = 0.3
-    GRADIENT_ALPHA_HOVER = 0.5
+    GRADIENT_ALPHA_HOVER = 0.7
     GRADIENT_ALPHA_MOUSEDOWN = 0.9
     WEDGE_TOP = -4
 
@@ -315,15 +343,9 @@ class ActionObjectButton(uicls.Transform):
         self.actionID = attributes.actionID
         self.isEnabled = attributes.isEnabled
         isReversed = attributes.get('isReversed', self.default_isReversed)
-        if self.isEnabled:
-            color = COLOR_BRACKET
-        else:
-            color = (142 / 255.0,
-             122 / 255.0,
-             101 / 255.0,
-             1.0)
-        colorEdges = util.Color(*color)
-        colorEdges = colorEdges.SetBrightness(0.5).GetRGBA()
+        color = COLOR_BRACKET
+        colorGradient = util.Color(*color).SetBrightness(0.4).SetAlpha(self.GRADIENT_ALPHA_IDLE).GetRGBA()
+        colorEdges = util.Color(*color).SetBrightness(0.5).GetRGBA()
         self.mainTransform = uicls.Transform(name='mainTransform', parent=self, align=uiconst.TOALL, scalingCenter=(0.5, 0.5), scale=((1, -1)[isReversed], 1.0))
         topCont = uicls.Container(name='topCont', parent=self.mainTransform, align=uiconst.TOTOP, height=5, state=uiconst.UI_DISABLED)
         uicls.Sprite(name='topGradientLeft', parent=topCont, texturePath='res:/UI/Texture/Classes/EntityBracket/topGradientLeft.png', align=uiconst.TOLEFT, width=57, color=colorEdges)
@@ -338,18 +360,16 @@ class ActionObjectButton(uicls.Transform):
         uicls.Sprite(name='bottom', parent=bottomCont, texturePath='res:/UI/Texture/Classes/EntityBracket/bottom.png', align=uiconst.TOALL, color=colorEdges)
         self.gradient = uicls.Container(name='gradientCont', parent=self.mainTransform, state=uiconst.UI_DISABLED, padTop=-3, padBottom=-3)
         gradientTopCont = uicls.Container(name='gradientTopCont', align=uiconst.TOTOP, parent=self.gradient, height=4)
-        uicls.Sprite(name='gradientTopWedge', parent=gradientTopCont, texturePath='res:/UI/Texture/Classes/EntityBracket/gradientTopWedge.png', align=uiconst.TORIGHT, width=55, color=color)
-        uicls.Sprite(name='gradientTop', parent=gradientTopCont, texturePath='res:/UI/Texture/Classes/EntityBracket/gradientTop.png', align=uiconst.TOALL, color=color)
+        uicls.Sprite(name='gradientTopWedge', parent=gradientTopCont, texturePath='res:/UI/Texture/Classes/EntityBracket/gradientTopWedge.png', align=uiconst.TORIGHT, width=55, color=colorGradient)
+        uicls.Sprite(name='gradientTop', parent=gradientTopCont, texturePath='res:/UI/Texture/Classes/EntityBracket/gradientTop.png', align=uiconst.TOALL, color=colorGradient)
         gradientBottomCont = uicls.Container(name='gradientBottomCont', align=uiconst.TOBOTTOM, parent=self.gradient, height=3)
-        uicls.Sprite(name='gradientBottomWedge', parent=gradientBottomCont, texturePath='res:/UI/Texture/Classes/EntityBracket/gradientBottomWedge.png', align=uiconst.TOLEFT, width=57, color=color)
-        uicls.Sprite(name='gradientBottom', parent=gradientBottomCont, texturePath='res:/UI/Texture/Classes/EntityBracket/gradientBottom.png', align=uiconst.TOALL, color=color)
-        uicls.Sprite(name='gradientTopWedge', parent=self.gradient, texturePath='res:/UI/Texture/Classes/EntityBracket/gradientMiddle.png', align=uiconst.TOALL, color=color)
-        if self.isEnabled:
-            self.gradient.opacity = self.GRADIENT_ALPHA_IDLE
-        else:
-            self.gradient.opacity = 0.1
+        uicls.Sprite(name='gradientBottomWedge', parent=gradientBottomCont, texturePath='res:/UI/Texture/Classes/EntityBracket/gradientBottomWedge.png', align=uiconst.TOLEFT, width=57, color=colorGradient)
+        uicls.Sprite(name='gradientBottom', parent=gradientBottomCont, texturePath='res:/UI/Texture/Classes/EntityBracket/gradientBottom.png', align=uiconst.TOALL, color=colorGradient)
+        uicls.Sprite(name='gradientTopWedge', parent=self.gradient, texturePath='res:/UI/Texture/Classes/EntityBracket/gradientMiddle.png', align=uiconst.TOALL, color=colorGradient)
         self.label = uicls.Label(parent=self, align=uiconst.CENTER, text=text, top=1, fontsize=16, color=color)
         self.width = max(self.label.width + 60, 150)
+        if not self.isEnabled:
+            self.mainTransform.opacity = self.label.opacity = 0.2
 
 
 
@@ -379,6 +399,18 @@ class ActionObjectButton(uicls.Transform):
         if not self.isEnabled:
             return 
         uicore.animations.FadeTo(self.gradient, self.gradient.opacity, self.GRADIENT_ALPHA_HOVER, duration=0.3)
+
+
+
+    def SetEnabled(self, enabled):
+        if self.isEnabled != enabled:
+            self.isEnabled = enabled
+            endVal = 1.0
+            if not enabled:
+                endVal = 0.2
+            self.StopAnimations()
+            uicore.animations.FadeTo(self.mainTransform, endVal, duration=0.3)
+            uicore.animations.FadeTo(self.label, endVal, duration=0.3)
 
 
 

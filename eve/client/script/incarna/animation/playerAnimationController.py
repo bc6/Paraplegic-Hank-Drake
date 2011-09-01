@@ -141,7 +141,8 @@ class PlayerAnimationController(animation.BipedAnimationController):
         if not isPathing:
             if speed > const.FLOAT_TOLERANCE:
                 if self.aoClient.IsEntityUsingActionObject(self.entityRef.entityID):
-                    if self.delayTimerActive is False:
+                    canStand = self.entityRef.movement.allowMovement
+                    if self.delayTimerActive is False and canStand:
                         self.aoClient.ExitActionObject(self.entityRef.entityID)
                     return 
                 if self.cameraBoundRotation:

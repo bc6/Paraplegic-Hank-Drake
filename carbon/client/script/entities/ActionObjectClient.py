@@ -95,6 +95,7 @@ class ActionObjectClientSvc(svc.actionObjectSvc):
 
     def _PlayTutorialVoiceOver(self, messageKey, targetList):
         sm.GetService('tutorial').Action_Play_MLS_Audio(messageKey)
+        return True
 
 
 

@@ -324,20 +324,20 @@ class ImageSlider(uicls.Container):
         self.boundaryLeft = 0
         self.boundaryRight = len(self.data) - self.visiblecount
         prv = uicls.Container(name='ImgSliderPrev', align=uiconst.TOLEFT, width=h / 2, parent=self)
+        prv.OnClick = (self.Browse, -1)
+        prv.hint = 'previous'
+        self.sr.prev = prv
         uicls.Frame(parent=prv, color=(1.0, 1.0, 1.0, 0.125))
         uicls.Container(name='push', align=uiconst.TOLEFT, width=2, parent=self)
-        bbtn = uicls.Icon(icon='ui_38_16_223', parent=prv, size=16, left=0, top=0, align=uiconst.CENTER)
-        bbtn.OnClick = (self.Browse, -1)
-        bbtn.hint = 'previous'
-        self.sr.prev = prv
+        uicls.Icon(icon='ui_38_16_223', parent=prv, size=16, left=0, top=0, align=uiconst.CENTER, state=uiconst.UI_DISABLED)
         uicls.Fill(parent=prv, color=(0.0, 0.0, 0.0, 0.25))
         nxt = uicls.Container(name='ImgSliderNext', align=uiconst.TORIGHT, width=h / 2, parent=self)
+        nxt.OnClick = (self.Browse, 1)
+        nxt.hint = 'next'
+        self.sr.next = nxt
         uicls.Frame(parent=nxt, color=(1.0, 1.0, 1.0, 0.125))
         uicls.Container(name='push', align=uiconst.TORIGHT, width=2, parent=self)
-        fbtn = uicls.Icon(icon='ui_38_16_224', parent=nxt, size=16, left=0, top=0, align=uiconst.CENTER)
-        fbtn.OnClick = (self.Browse, 1)
-        fbtn.hint = 'next'
-        self.sr.next = nxt
+        uicls.Icon(icon='ui_38_16_224', parent=nxt, size=16, left=0, top=0, align=uiconst.CENTER, state=uiconst.UI_DISABLED)
         uicls.Fill(parent=nxt, color=(0.0, 0.0, 0.0, 0.25))
         self.sr.mainpar = uicls.Container(name='ImgSliderMainPar', parent=self, align=uiconst.TOALL, state=uiconst.UI_NORMAL)
         self.sr.main = uicls.Container(name='ImgSliderMain', parent=self.sr.mainpar, align=uiconst.TOALL, state=uiconst.UI_NORMAL, clipChildren=1)

@@ -13,6 +13,7 @@ class zactionCommonBase(service.Service):
 
     def __init__(self, treeManager):
         self.treeManager = treeManager
+        self.createDebugItems = False
         service.Service.__init__(self)
 
 

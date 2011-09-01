@@ -1977,26 +1977,24 @@ class CharacterCreationLayer(uicls.LayerCore):
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def ExitToStation(self, updateDoll = True):
-        blue.resMan.ClearAllCachedObjects()
+        dna = self.GetDNA()
+        self.OnCloseView()
         if session.worldspaceid is not None:
+            change = {'stationid': [None, session.stationid],
+             'worldspaceid': [None, session.worldspaceid]}
+            sm.GetService('gameui').OnSessionChanged(False, session, change)
+            sm.GetService('entityClient').ProcessSessionChange(False, session, change)
+            sm.GetService('navigation').OnSessionChanged(False, session, change)
+            sm.GetService('entitySpawnClient').OnSessionChanged(False, session, change)
+            sm.GetService('graphicClient').OnSessionChanged(False, session, change)
             if updateDoll is True and prefs.GetValue('loadstationenv', 1):
-                pdc = sm.GetService('entityClient').GetPlayerEntity().components['paperdoll'].doll
+                pdc = sm.GetService('entityClient').GetPlayerEntity(canBlock=True).components['paperdoll'].doll
                 pdc.doll.buildDataManager = paperDoll.BuildDataManager()
-                pdc.doll.LoadDNA(self.GetDNA(), pdc.factory)
+                pdc.doll.LoadDNA(dna, pdc.factory)
                 pdc.Update()
-            sm.GetService('gameui').OpenExclusive('charcontrol', 1)
-            uix.GetWorldspaceNav()
-            sm.GetService('station').LoadLobby()
-            sm.GetService('sceneManager').SetSceneType(SCENE_TYPE_INTERIOR)
-            sm.GetService('sceneManager').SetActiveScenes(None, sm.GetService('graphicClient').GetScene(session.worldspaceid))
-            uicore.layer.main.state = uiconst.UI_PICKCHILDREN
-            uicore.layer.neocom.state = uiconst.UI_PICKCHILDREN
-            uicore.layer.tabs.state = uiconst.UI_PICKCHILDREN
-            uicore.registry.SetFocus(uicore.GetLayer('charcontrol'))
         else:
             change = {'stationid': (None, session.stationid)}
             sm.GetService('gameui').OnSessionChanged(isRemote=False, session=session, change=change)
-        self.OnCloseView()
 
 
 

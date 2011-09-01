@@ -34,7 +34,8 @@ class AccelerationGate(effects.GenericEffect):
         gateBall = self.GetEffectShipBall()
         slimItem = sm.StartService('michelle').GetItem(gateID)
         if slimItem.dunMusicUrl is not None and targetID == eve.session.shipid:
-            sm.StartService('jukebox').PlayStinger(slimItem.dunMusicUrl.lower(), 'Dungeon Music')
+            dbgInfo = ('gateID:', gateID)
+            sm.StartService('jukebox').PlayStinger(slimItem.dunMusicUrl.lower(), dbgInfo)
         self.PlayNamedAnimations(gateBall.model, 'Activation')
 
 

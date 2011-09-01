@@ -500,6 +500,7 @@ class ObjectCall():
                     raise 
                 sys.exc_clear()
                 sm.GetService('objectCaching').LogInfo('Version matches for remote object ', persistantObjectID, '::', method, '(', args, ')')
+                sm.GetService('objectCaching').UpdateVersionCheckPeriod(cacheKey)
                 return cachedResultRecord['lret']
             if isinstance(retval, objectCaching.CachedMethodCallResult):
                 sm.GetService('objectCaching').CacheMethodCall(persistantObjectID, method, args, retval)
@@ -685,12 +686,7 @@ class MachoObjectCallWrapper():
                      self.method,
                      str(args),
                      str(kwargs))
-                    with macho.Throttle(key) as t:
-                        if not hasattr(t, 'result'):
-                            t.result = self.gpcs.ObjectCallWithoutTheStars({}, self.persistantObjectID, self.blocking, self.session, self.destination, self.objectID, self.method, args, kwargs)
-                        else:
-                            sm.GetService('machoNet').LogInfo('No need to cross the wire for', key, 'got', t.result)
-                        return t.result
+                    return macho.ThrottledCall(key, self.gpcs.ObjectCallWithoutTheStars, {}, self.persistantObjectID, self.blocking, self.session, self.destination, self.objectID, self.method, args, kwargs)
                 del kwargs['noCallThrottling']
             return self.gpcs.ObjectCallWithoutTheStars({}, self.persistantObjectID, self.blocking, self.session, self.destination, self.objectID, self.method, args, kwargs)
 

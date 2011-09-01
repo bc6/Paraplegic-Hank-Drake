@@ -659,6 +659,7 @@ typeAdvancedMassProduction = 24625
 typeAdvancedPlanetology = 2403
 typeAlliance = 16159
 typeAmarrFreighterWreck = 26483
+typeAmarrCaptainsQuarters = 32578
 typeAmarrEliteFreighterWreck = 29033
 typeApocalypse = 642
 typeArchaeology = 13278
@@ -677,6 +678,7 @@ typeBookmark = 51
 typeBrokerRelations = 3446
 typeBubbleProbeLauncher = 22782
 typeCaldariFreighterWreck = 25
+typeCaldariCaptainsQuarters = 32581
 typeCaldariEliteFreighterWreck = 29034
 typeCapitalShips = 20533
 typeCargoContainer = 23
@@ -737,6 +739,7 @@ typeFlashpoint = 3692
 typeFleetCommand = 24764
 typeForceField = 16103
 typeGallenteFreighterWreck = 26527
+typeGallenteCaptainsQuarters = 32579
 typeGallenteEliteFreighterWreck = 29035
 typeGeneralFreightContainer = 24445
 typeGistiiHijacker = 16877
@@ -768,6 +771,7 @@ typeMetallurgy = 3409
 typeMinmatarFreighterWreck = 26549
 typeMinmatarEliteFreighterWreck = 29036
 typeMiningConnections = 3893
+typeMinmatarCaptainsQuarters = 32580
 typeMissileLauncherOperation = 3319
 typeMoon = 14
 typeNaniteRepairPaste = 28668
@@ -1824,7 +1828,6 @@ raceCaldari = 1
 raceGallente = 8
 raceJove = 16
 raceMinmatar = 2
-cacheActBillTypes = 109999
 cacheEosNpcToNpcStandings = 109998
 cacheTutContextHelp = 209999
 cacheTutCategories = 200006
@@ -1837,11 +1840,14 @@ cacheDungeonEventMessageTypes = 300017
 cacheDungeonEventTypes = 300015
 cacheDungeonTriggerTypes = 300013
 cacheInvCategories = 600001
+cacheInvContrabandTypes = 600008
 cacheInvGroups = 600002
 cacheInvTypes = 600004
 cacheInvTypeMaterials = 600005
 cacheInvTypeReactions = 600010
 cacheInvWreckUsage = 600009
+cacheInvMetaGroups = 600006
+cacheInvMetaTypes = 600007
 cacheDogmaAttributes = 800004
 cacheDogmaEffects = 800005
 cacheDogmaExpressionCategories = 800001
@@ -1849,20 +1855,24 @@ cacheDogmaExpressions = 800003
 cacheDogmaOperands = 800002
 cacheDogmaTypeAttributes = 800006
 cacheDogmaTypeEffects = 800007
-cacheEvePrimeLocations = 1009999
-cacheEvePrimeOwners = 1009998
+cacheDogmaUnits = 800009
 cacheEveMessages = 1000001
 cacheInvBlueprintTypes = 1200001
 cacheMapRegions = 1409999
 cacheMapConstellations = 1409998
 cacheMapSolarSystems = 1409997
 cacheMapSolarSystemLoadRatios = 1409996
-cacheMapCelestialDescriptions = 1409995
 cacheLocationWormholeClasses = 1409994
 cacheMapPlanets = 1409993
 cacheMapSolarSystemJumpIDs = 1409992
 cacheMapSolarSystemPseudoSecurities = 1409991
 cacheMapTypeBalls = 1400001
+cacheMapCelestialDescriptions = 1400008
+cacheMapLocationScenes = 1400006
+cacheMapLocationWormholeClasses = 1400002
+cacheMapRegionsTable = 1400009
+cacheMapConstellationsTable = 1400010
+cacheMapSolarSystemsTable = 1400011
 cacheNpcCommandLocations = 1600009
 cacheNpcCommands = 1600005
 cacheNpcDirectorCommandParameters = 1600007
@@ -1878,11 +1888,13 @@ cacheRamActivities = 1800003
 cacheRamAssemblyLineTypes = 1800006
 cacheRamAssemblyLineTypesCategory = 1800004
 cacheRamAssemblyLineTypesGroup = 1800005
+cacheRamCompletedStatuses = 1800007
 cacheRamInstallationTypes = 1800002
 cacheRamTypeRequirements = 1800001
 cacheReverseEngineeringTableTypes = 1800009
 cacheReverseEngineeringTables = 1800008
 cacheShipInsurancePrices = 2000007
+cacheShipTypes = 2000001
 cacheStaOperations = 2209999
 cacheStaServices = 2209998
 cacheStaOperationServices = 2209997
@@ -1901,12 +1913,13 @@ cacheCrpRoles = 2809999
 cacheCrpActivities = 2809998
 cacheCrpNpcDivisions = 2809997
 cacheCrpCorporations = 2809996
-cacheCrpNpcCorporations = 2809995
 cacheCrpNpcMembers = 2809994
 cacheCrpPlayerCorporationIDs = 2809993
+cacheCrpTickerNamesStatic = 2809992
 cacheNpcSupplyDemand = 2800001
 cacheCrpRegistryGroups = 2800002
 cacheCrpRegistryTypes = 2800003
+cacheCrpNpcCorporations = 2800006
 cacheAgentAgents = 3009999
 cacheAgentCorporationActivities = 3009998
 cacheAgentCorporations = 3009997
@@ -1931,8 +1944,6 @@ cacheAgtContentMissionTutorials = 3000018
 cacheAgtContentMissionLocationFilters = 3000021
 cacheAgtOfferDetails = 3000004
 cacheAgtOfferTableContents = 3000010
-cacheChrFactions = 3209999
-cacheChrAttributes = 3209998
 cacheChrSchools = 3209997
 cacheChrRaces = 3200001
 cacheChrBloodlines = 3200002
@@ -1940,13 +1951,23 @@ cacheChrAncestries = 3200003
 cacheChrCareers = 3200004
 cacheChrSpecialities = 3200005
 cacheChrBloodlineNames = 3200010
+cacheChrAttributes = 3200014
+cacheChrFactions = 3200015
+cacheChrDefaultOverviews = 3200011
+cacheChrDefaultOverviewGroups = 3200012
+cacheChrNpcCharacters = 3200016
 cacheFacWarCombatZoneSystems = 4500006
 cacheFacWarCombatZones = 4500005
-cacheOwnerIcons = 7209999
+cacheActBillTypes = 6400004
 cachePetCategories = 8109999
 cachePetQueues = 8109998
 cachePetCategoriesVisible = 8109997
 cacheGMQueueOrder = 8109996
+cacheCertificates = 5100001
+cacheCertificateRelationships = 5100004
+cachePlanetSchematics = 7300004
+cachePlanetSchematicsTypeMap = 7300005
+cachePlanetSchematicsPinMap = 7300003
 cacheBattleStatuses = 100509999
 cacheBattleResults = 100509998
 cacheBattleServerStatuses = 100509997
@@ -2497,7 +2518,10 @@ refBountySurcharge = 101
 refContractReversal = 102
 refMinigameBuyIn = 104
 refStorePurchase = 106
+refStoreRefund = 107
 refPlexConversion = 108
+refAurumGiveAway = 109
+refMaxEve = 10000
 refCorporationTaxNpcBounties = 92
 refCorporationTaxAgentRewards = 93
 refCorporationTaxAgentBonusRewards = 94
@@ -3389,6 +3413,7 @@ infoEventPlanetAbandonPlanet = 20
 infoEventPlanetEstablishColony = 21
 infoEventEntityKillWithoutBounty = 22
 infoEventRecruitmentAdSearch = 23
+infoEventNexCloseNex = 24
 sovereigntyClaimStructuresGroups = (groupSovereigntyClaimMarkers, groupSovereigntyDisruptionStructures)
 sovereigntyStructuresGroups = (groupSovereigntyClaimMarkers,
  groupSovereigntyDisruptionStructures,
@@ -3682,4 +3707,25 @@ dgmOperators = {dgmAssPreAssignment: lambda ret, value: value,
  dgmAssModSub: lambda ret, value: ret - value,
  dgmAssPostPercent: lambda ret, value: ret * (100 + value) / 100}
 completionTypeRookieArcCompletion = 1
+ZACTION_DEFAULT_ACTION = 12
+dgmAttributesByIdx = {1: attributeIsOnline,
+ 2: attributeDamage,
+ 3: attributeCharge,
+ 4: attributeSkillPoints,
+ 5: attributeArmorDamage,
+ 6: attributeShieldCharge,
+ 7: attributeIsIncapacitated}
+dgmGroupableGroupIDs = set([groupEnergyWeapon,
+ groupProjectileWeapon,
+ groupHybridWeapon,
+ groupMissileLauncher,
+ groupMissileLauncherAssault,
+ groupMissileLauncherCitadel,
+ groupMissileLauncherCruise,
+ groupMissileLauncherDefender,
+ groupMissileLauncherHeavy,
+ groupMissileLauncherHeavyAssault,
+ groupMissileLauncherRocket,
+ groupMissileLauncherSiege,
+ groupMissileLauncherStandard])
 

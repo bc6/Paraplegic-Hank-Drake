@@ -549,7 +549,7 @@ class EvePhoto(svc.photo):
                 for (sprite, callback,) in orders:
                     if callback:
                         sm.ScatterEvent(callback, itemID)
-                    else:
+                    elif sprite is not None:
                         try:
                             sprite.LoadTexture(image)
                         except:
@@ -609,10 +609,9 @@ class EvePhoto(svc.photo):
 
 
 
-    def Get2DMap(self, ids, idLevel, drawLevel, size = 256):
+    def Do2DMap(self, sprite, ids, idLevel, drawLevel, size = 256):
         ssmap = xtriui.Map2D()
-        imagePath = ssmap.Draw(ids, idLevel, drawLevel, size)
-        return imagePath
+        ssmap.Draw(ids, idLevel, drawLevel, size, sprite)
 
 
 
@@ -1053,8 +1052,7 @@ class EvePhoto(svc.photo):
         if turretSet is not None and len(turretSet.turretSets):
             boundingSphere = turretSet.turretSets[0].boundingSphere
         else:
-            log.LogError('PhotoSvc::GetTurretPhoto - could not determine bounding sphere for turret with typeID %d' % typeID)
-            return 
+            raise RuntimeError('PhotoSvc::GetTurretPhoto - could not determine bounding sphere for turret with typeID %d' % typeID)
         turretSet.turretSets[0].FreezeHighDetailLOD()
         typeinfo = typeinfo or cfg.invtypes.Get(typeID, None)
         size = int(size)

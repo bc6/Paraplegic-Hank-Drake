@@ -568,7 +568,8 @@ class MarketBase(uicls.Container):
 
             powerLoad = 0
             cpuLoad = 0
-            if eve.session.shipid and powerIdx is not None:
+            shipID = util.GetActiveShip()
+            if shipID is not None and powerIdx is not None:
                 ship = sm.GetService('godma').GetItem(eve.session.shipid)
                 dgmAttr = sm.GetService('godma').GetType(invType.typeID)
                 haveSlot = not not getattr(ship, ['hiSlots', 'medSlots', 'lowSlots'][powerIdx], 0)
@@ -578,8 +579,9 @@ class MarketBase(uicls.Container):
                     elif attribute.attributeID in (const.attributePowerLoad, const.attributePower):
                         powerLoad += attribute.value
 
-                havePower = ship.powerOutput > powerLoad
-                haveCpu = ship.cpuOutput > cpuLoad
+                dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+                havePower = dogmaLocation.GetAttributeValue(shipID, const.attributePowerOutput) > powerLoad
+                haveCpu = dogmaLocation.GetAttributeValue(shipID, const.attributeCpuOutput) > cpuLoad
             if powerEffect:
                 cpuLoad = int(cpuLoad)
                 powerLoad = int(powerLoad)
@@ -1419,7 +1421,8 @@ class MarketBase(uicls.Container):
 
                 powerLoad = 0
                 cpuLoad = 0
-                if eve.session.shipid and powerIdx is not None:
+                shipID = util.GetActiveShip()
+                if shipID is not None and powerIdx is not None:
                     dgmAttr = sm.GetService('godma').GetType(typeID)
                     for attribute in dgmAttr.displayAttributes:
                         if attribute.attributeID in (const.attributeCpuLoad, const.attributeCpu):
@@ -1427,8 +1430,9 @@ class MarketBase(uicls.Container):
                         elif attribute.attributeID in (const.attributePowerLoad, const.attributePower):
                             powerLoad += attribute.value
 
-                    havePower = ship.powerOutput > powerLoad
-                    haveCpu = ship.cpuOutput > cpuLoad
+                    dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+                    havePower = dogmaLocation.GetAttributeValue(shipID, const.attributePowerOutput) > powerLoad
+                    haveCpu = dogmaLocation.GetAttributeValue(shipID, const.attributeCpuOutput) > cpuLoad
                 if powerEffect:
                     haveReqPower = havePower
                     haveReqCpu = haveCpu

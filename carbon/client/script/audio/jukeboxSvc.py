@@ -178,9 +178,12 @@ class JukeboxSvc(service.Service):
 
 
 
-    def PlayStinger(self, wiseMessage, trackName):
+    def PlayStinger(self, wiseMessage, debugInfo):
         if self.GetState() != 'play':
             self.LogInfo('Jukebox ignoring stinger track', wiseMessage, '- jukebox is not playing')
+            return 
+        if not wiseMessage:
+            self.LogWarn('Jukebox ignorning stinger track with invalid wiseMessage for', debugInfo)
             return 
         if wiseMessage.startswith('res:/'):
             self.LogError('Jukebox ignoring request to play old stinger:', wiseMessage)

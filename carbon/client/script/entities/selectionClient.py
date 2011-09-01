@@ -87,10 +87,10 @@ class SelectionClient(service.Service):
             return 
         methodToCall = self.modeToMethodDict[selectionComponent.modeEnum]
         selectionAccepted = methodToCall(selectionComponent, pickedEntity)
-        self.selectedEntityID = entityID if selectionAccepted else None
-        if not hasattr(self, 'neocom'):
-            self.neocom = sm.GetService('neocom')
-        self.neocom.UpdateLocationText()
+        entityID = entityID if selectionAccepted else None
+        if entityID != self.selectedEntityID:
+            self.selectedEntityID = entityID
+            sm.ScatterEvent('OnEntitySelectionChanged', self.selectedEntityID)
         return selectionAccepted
 
 

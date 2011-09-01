@@ -165,8 +165,6 @@ class EveCommandService(svc.cmd):
             cm.category = mls.UI_GENERIC_DRONES
             ret.append(cm)
 
-        isDungeonMaster = bool(session.role & service.ROLE_CONTENT)
-        isElevatedPlayer = bool(session.role & service.ROLEMASK_ELEVATEDPLAYER)
         m = [c(self.CmdPrevStackedWindow, (CTRL, SHIFT, uiconst.VK_PRIOR)),
          c(self.CmdNextStackedWindow, (CTRL, SHIFT, uiconst.VK_NEXT)),
          c(self.CmdPrevTab, (CTRL, uiconst.VK_PRIOR)),
@@ -174,7 +172,6 @@ class EveCommandService(svc.cmd):
          c(self.CmdExitStation, None),
          c(self.CmdHideUI, (CTRL, uiconst.VK_F9)),
          c(self.CmdHideCursor, (ALT, uiconst.VK_F9)),
-         c(self.OpenDungeonEditor, (CTRL, SHIFT, uiconst.VK_D), enabled=isDungeonMaster),
          c(self.CmdToggleEffects, (CTRL,
           ALT,
           SHIFT,
@@ -182,8 +179,7 @@ class EveCommandService(svc.cmd):
          c(self.CmdToggleEffectTurrets, (CTRL,
           ALT,
           SHIFT,
-          uiconst.VK_T), description=mls.UI_CMD_DISABLETURRETEFFECTS),
-         c(self.CmdToggleCombatView, (CTRL, ALT, uiconst.VK_T), description=mls.UI_CMD_DISABLECOMBATVIEW, enabled=isElevatedPlayer)]
+          uiconst.VK_T), description=mls.UI_CMD_DISABLETURRETEFFECTS)]
         ret.extend(m)
         if bool(session.role & service.ROLE_CONTENT):
             ret.append(c(self.OpenDungeonEditor, (CTRL, SHIFT, uiconst.VK_D)))
@@ -588,7 +584,8 @@ class EveCommandService(svc.cmd):
             bp = sm.GetService('michelle').GetBallpark()
             ownBall = bp.GetBall(eve.session.shipid)
             if rp is not None and ownBall is not None:
-                rp.SetSpeedFraction(min(1.0, ownBall.speedFraction - 0.1))
+                newSpeed = min(1.0, ownBall.speedFraction - 0.1)
+                rp.SetSpeedFraction(newSpeed)
 
 
 
@@ -598,7 +595,8 @@ class EveCommandService(svc.cmd):
             bp = sm.GetService('michelle').GetBallpark()
             ownBall = bp.GetBall(eve.session.shipid)
             if rp is not None and ownBall is not None:
-                rp.SetSpeedFraction(min(1.0, ownBall.speedFraction + 0.1))
+                newSpeed = min(1.0, ownBall.speedFraction + 0.1)
+                rp.SetSpeedFraction(newSpeed)
 
 
 
@@ -870,7 +868,7 @@ class EveCommandService(svc.cmd):
 
 
     def CmdExitStation(self, *args):
-        if eve.session.stationid and not uicore.registry.GetModalWindow():
+        if session.stationid2 and not uicore.registry.GetModalWindow():
             ccLayer = uicore.layer.Get('charactercreation')
             if ccLayer is not None and ccLayer.isopen:
                 return 
@@ -1094,32 +1092,35 @@ class EveCommandService(svc.cmd):
 
 
     def OpenDroneBayOfActiveShip(self, *args):
-        if eve.session.shipid and eve.session.stationid:
+        if session.stationid2 is not None and util.GetActiveShip() is not None:
             uthread.new(self._EveCommandService__OpenDroneBayOfActiveShip_thread).context = 'cmd.OpenDroneBayOfActiveShip'
 
 
 
     def __OpenDroneBayOfActiveShip_thread(self, *args):
-        if eve.session.shipid and eve.session.stationid:
-            name = cfg.evelocations.Get(eve.session.shipid).name
-            sm.GetService('window').OpenDrones(eve.session.shipid, name, "%s's drone bay" % name)
+        shipID = util.GetActiveShip()
+        if shipID is not None:
+            name = cfg.evelocations.Get(shipID).name
+            sm.GetService('window').OpenDrones(shipID, name, "%s's drone bay" % name)
 
 
 
     def OpenCargoHoldOfActiveShip(self, *args):
-        if eve.session.shipid:
+        if util.GetActiveShip() is not None:
             uthread.new(self._EveCommandService__OpenCargoHoldOfActiveShip_thread).context = 'cmd.OpenCargoHoldOfActiveShip'
 
 
 
     def __OpenCargoHoldOfActiveShip_thread(self, *args):
-        if eve.session.shipid:
-            wnd = sm.GetService('window').GetWindow('shipCargo_%s' % eve.session.shipid)
+        shipID = util.GetActiveShip()
+        shipItem = sm.GetService('clientDogmaIM').GetDogmaLocation().GetDogmaItem(shipID)
+        if shipID is not None:
+            wnd = sm.GetService('window').GetWindow('shipCargo_%s' % shipID)
             if wnd:
                 wnd.Maximize()
             else:
-                shipName = cfg.evelocations.Get(eve.session.shipid).name
-                sm.GetService('window').OpenCargo(eve.session.shipid, shipName, '%s%s %s' % (shipName, mls.AGT_AGENTMGR_FORMATMESSAGE_APPEND_APOSTROPHE_AND_S, mls.UI_GENERIC_CARGO))
+                shipName = cfg.evelocations.Get(shipID).name
+                sm.GetService('window').OpenCargo(shipItem, shipName, '%s%s %s' % (shipName, mls.AGT_AGENTMGR_FORMATMESSAGE_APPEND_APOSTROPHE_AND_S, mls.UI_GENERIC_CARGO))
 
 
 
@@ -1210,7 +1211,7 @@ class EveCommandService(svc.cmd):
 
 
     def OpenHangarFloor(self, *args):
-        if eve.session.stationid is None:
+        if session.stationid2 is None:
             return 
         if eve.rookieState is None and settings.user.windows.Get('dockshipsanditems', 0):
             lobby = sm.GetService('station').GetLobby()
@@ -1222,7 +1223,7 @@ class EveCommandService(svc.cmd):
 
 
     def OpenShipHangar(self, maximizeWindow = 1, *args):
-        if eve.session.stationid is None:
+        if session.stationid2 is None:
             return 
         if eve.rookieState is None and settings.user.windows.Get('dockshipsanditems', 0):
             lobby = sm.GetService('station').GetLobby()
@@ -1338,7 +1339,8 @@ class EveCommandService(svc.cmd):
 
 
     def OpenFitting(self, *args):
-        if getattr(eve.session, 'shipid', None) is None:
+        shipID = util.GetActiveShip()
+        if shipID is None:
             uicore.Message('CannotPerformActionWithoutShip')
         else:
             wnd = sm.GetService('window').GetWindow('fitting')
@@ -1348,7 +1350,7 @@ class EveCommandService(svc.cmd):
                 else:
                     wnd.SelfDestruct()
             else:
-                sm.GetService('window').GetWindow('fitting', decoClass=form.FittingWindow, create=1, maximize=1)
+                sm.GetService('window').GetWindow('fitting', decoClass=form.FittingWindow, create=1, maximize=1, shipID=shipID)
 
 
 
@@ -1389,9 +1391,7 @@ class EveCommandService(svc.cmd):
 
 
     def OpenReprocessingPlant(self, items = None, outputOwner = None, outputFlag = None):
-        if getattr(eve.session, 'shipid', None) is None:
-            uicore.Message('CannotPerformActionWithoutShip')
-        elif eve.session.stationid:
+        if session.stationid:
             if eve.stationItem.serviceMask & const.stationServiceReprocessingPlant == const.stationServiceReprocessingPlant:
                 sm.GetService('window').GetWindow('reprocessing', create=1, maximize=1, decoClass=form.ReprocessingDialog, items=items, outputOwner=outputOwner, outputFlag=outputFlag)
 

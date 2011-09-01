@@ -1404,7 +1404,7 @@ class HtmlWriter():
              'sel': ' selected="selected"' if page_size == p else ''})
 
         options.append('<option value="0"%(sel)s>All</option>' % ' selected' if page_size is 0 else '')
-        res.Write('\n\n        <div class="%(tableid)s">\n            <span class="csp-paging"><img src="/img/ds_first.png" alt="First"/></span>\n            <span class="csp-paging"><img src="/img/ds_previous.png" alt="Previous"/></span>\n            <span class="csp-paging">&nbsp<input id="%(tableid)s_row" type="text" value="%(current_page)i" style="width:15px;"/> <span title="Count: %(pages)i">of %(numofpages)i</span></span>\n            <span class="csp-paging"><img src="/img/ds_next.png" alt="Next"/></span>\n            <span class="csp-paging"><img src="/img/ds_last.png" alt="Last"/></span>\n            <span class="csp-paging">\n                &nbsp;<select id="%(tableid)s_numofpages">\n                    %(opt)s\n                </select>\n            </span>\n            <span class="csp-paging">&nbsp;<a class="csp-paging-submit button buttongray">Go</a></span>\n\n           <script type="text/javascript">\n                $(".csp-paging-submit").click(function(e) {\n                    p = parseInt($("#%(tableid)s_row").val());\n                    s = parseInt($("#%(tableid)s_numofpages").val());\n                    $.paginglocation(location.href, {"page": p, "pagesize": s});\n                });\n                $("#%(tableid)s").find("img").click(function(e) {\n                    var src = $(this).attr("src");\n                    p = parseInt($("#%(tableid)s_row").val());\n                    if (src.indexOf("ds_first") > 0 && p > 1) {\n                        $.paginglocation(location.href, {"page": 1, "pagesize": %(pagesize)i});\n                    }\n                    else if (src.indexOf("ds_previous") > 0 && p > 1) {\n                        $.paginglocation(location.href, {"page": p-1, "pagesize": %(pagesize)i});\n                    }\n                    else if (src.indexOf("ds_next") > 0 && p < %(numofpages)i) {\n                        $.paginglocation(location.href, {"page": p+1, "pagesize": %(pagesize)i});\n                    }\n                    else if (src.indexOf("ds_last") > 0) {\n                        $.paginglocation(location.href, {"page": %(numofpages)i, "pagesize": %(pagesize)i});\n                    }\n                });\n           </script>\n        </div>\n        ' % {'current_page': current_page,
+        res.Write('\n\n        <div class="%(tableid)s">\n            <span class="csp-paging"><img src="/img/ds_first.png" alt="First"/></span>\n            <span class="csp-paging"><img src="/img/ds_previous.png" alt="Previous"/></span>\n            <span class="csp-paging">&nbsp<input id="%(tableid)s_row" type="text" value="%(current_page)i" style="width:15px;"/> <span title="Count: %(pages)i">of %(numofpages)i</span></span>\n            <span class="csp-paging"><img src="/img/ds_next.png" alt="Next"/></span>\n            <span class="csp-paging"><img src="/img/ds_last.png" alt="Last"/></span>\n            <span class="csp-paging">\n                &nbsp;<select id="%(tableid)s_numofpages">\n                    %(opt)s\n                </select>\n            </span>\n            <span class="csp-paging">&nbsp;<a class="csp-paging-submit button buttongray">Go</a></span>\n\n           <script type="text/javascript">\n                $(".csp-paging-submit").click(function(e) {\n                    p = parseInt($("#%(tableid)s_row").val());\n                    s = parseInt($("#%(tableid)s_numofpages").val());\n                    $.paginglocation(location.href, {"page": p, "pagesize": s});\n                });\n                $(".%(tableid)s").find("img").click(function(e) {\n                    var src = $(this).attr("src");\n                    p = parseInt($("#%(tableid)s_row").val());\n                    if (src.indexOf("ds_first") > 0 && p > 1) {\n                        $.paginglocation(location.href, {"page": 1, "pagesize": %(pagesize)i});\n                    }\n                    else if (src.indexOf("ds_previous") > 0 && p > 1) {\n                        $.paginglocation(location.href, {"page": p-1, "pagesize": %(pagesize)i});\n                    }\n                    else if (src.indexOf("ds_next") > 0 && p < %(numofpages)i) {\n                        $.paginglocation(location.href, {"page": p+1, "pagesize": %(pagesize)i});\n                    }\n                    else if (src.indexOf("ds_last") > 0) {\n                        $.paginglocation(location.href, {"page": %(numofpages)i, "pagesize": %(pagesize)i});\n                    }\n                });\n           </script>\n        </div>\n        ' % {'current_page': current_page,
          'pages': num_of_records,
          'pagesize': page_size,
          'opt': '\n'.join(options),
@@ -1436,9 +1436,9 @@ class HtmlWriter():
 
 
 
-    def GetPropertyTable(self, header = [], lines = {}):
+    def GetPropertyTable(self, header = None, lines = None, style = 'width: 250px'):
         lines = [ ['<strong>%s</strong>' % x, y] for (x, y,) in lines.items() ]
-        return self.GetDiv([self.GetTable(header, lines)], style='width: 250px')
+        return self.GetDiv([self.GetTable(header, lines)], style=style)
 
 
 
@@ -1797,10 +1797,10 @@ class HtmlWriter():
     def GetDatePicker(self, ctrlID, ctrlCaption, ctrlFormat = 'yy-mm-dd', ctrlValue = None, ctrlTitle = None):
         now = datetime.now()
         res = []
-        res.append('<SCRIPT type=text/javascript>\n            $(function() {\n                $("#%(ctrlID)s").datepicker({\n                    dateFormat: \'%(ctrlFormat)s\',\n                    changeMonth: true,\n                    changeYear: true,\n                    showWeek: true,\n                    showOn: \'button\' //,yearRange: \'%(fromYear)i:%(toYear)s\'\n                    });\n            });\n            </SCRIPT>\n' % {'ctrlID': ctrlID,
+        res.append('<SCRIPT type=text/javascript>\n            $(function() {\n                $("#%(ctrlID)s").datepicker({\n                    dateFormat: \'%(ctrlFormat)s\',\n                    changeMonth: true,\n                    changeYear: true,\n                    showWeek: true,\n                    showOn: \'button\',\n                    yearRange: \'%(fromYear)i:%(toYear)s\'\n                    });\n            });\n            </SCRIPT>\n' % {'ctrlID': ctrlID,
          'ctrlFormat': ctrlFormat,
-         'fromYear': now.year - 50,
-         'toYear': now.year + 25})
+         'fromYear': now.year - 85,
+         'toYear': now.year + 35})
         ctrlValue = CheckValue('value', ctrlValue)
         ctrlTitle = CheckValue('title', ctrlTitle)
         if ctrlCaption:
@@ -1888,36 +1888,6 @@ class HtmlWriter():
          'expand': [ 'li_%s' % x for x in expand ],
          'caselines': '\n'.join(caseCon)}
         return ''.join([''.join(treeCon), js])
-
-
-
-    def GetPickerAgent(self, ctrlID, ctrlLabel = None, minLength = 4):
-        return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/agentds.py', minLength=minLength)
-
-
-
-    def GetPickerType(self, ctrlID, ctrlLabel = None, minLength = 4):
-        return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/typeds.py', minLength=minLength)
-
-
-
-    def GetPickerCharacter(self, ctrlID, ctrlLabel = None, minLength = 3):
-        return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/characterds.py', minLength=minLength)
-
-
-
-    def GetPickerUser(self, ctrlID, ctrlLabel = None, minLength = 3):
-        return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/userds.py', minLength=minLength)
-
-
-
-    def GetPickerAffiliate(self, ctrlID, ctrlLabel = None, minLength = 3):
-        return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/affiliateds.py', minLength=minLength)
-
-
-
-    def GetPickerStation(self, ctrlID, ctrlLabel = None, minLength = 3):
-        return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/stationds.py', minLength=minLength)
 
 
 

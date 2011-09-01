@@ -1403,7 +1403,7 @@ class SystemMenu(uicls.LayerCore):
         else:
             column = self.sr.audiopanels[0]
         uicls.Frame(parent=column, idx=0)
-        labelWidth = 120
+        labelWidth = 125
         audioSvc = sm.GetService('audio')
         enabled = audioSvc.IsActivated()
         turretSuppressed = audioSvc.GetTurretSuppression()
@@ -2320,11 +2320,12 @@ class SystemMenu(uicls.LayerCore):
                 self.ProcessDeviceSettings(whatChanged='advancedDevice')
             if config == 'voiceenabled':
                 if checkbox.checked:
-                    self.voiceFontBtn.Enable()
+                    if hasattr(self, 'voiceFontBtn'):
+                        self.voiceFontBtn.Enable()
                     sm.GetService('vivox').Login()
-                else:
+                elif hasattr(self, 'voiceFontBtn'):
                     self.voiceFontBtn.Disable()
-                    sm.GetService('vivox').LogOut()
+                sm.GetService('vivox').LogOut()
             if config == 'talkChannelPriority':
                 if not checkbox.checked:
                     sm.GetService('vivox').StopChannelPriority()

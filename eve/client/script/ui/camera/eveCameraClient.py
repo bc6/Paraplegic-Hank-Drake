@@ -214,6 +214,8 @@ class EveCameraClient(svc.cameraClient):
         self.ResetCameras()
         self.SetAudioListener(audio2.GetListener(0))
         defaultCamera = cameras.AvatarCamera()
+        if self.audioListener is not None:
+            defaultCamera.audio2Listener = self.audioListener
         self.cameraStack = [defaultCamera]
         self._CreateCameraRenderJob()
         defaultCamera.Update()

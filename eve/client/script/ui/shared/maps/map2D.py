@@ -46,7 +46,7 @@ class Map2D(uicls.Container):
         self.imhere = uicls.Container(name='imhere', parent=self.overlays, state=uiconst.UI_HIDDEN, align=uiconst.TOPLEFT, width=16, height=16)
         circle = uicls.Sprite(parent=self.imhere, idx=0, pos=(0, 0, 16, 16), color=(1.0, 0.0, 0.0, 1.0), name='imhere_sprite', texturePath='res:/UI/Texture/Shared/circleThin16.png', align=uiconst.RELATIVE)
         self.destination = uicls.Sprite(parent=self.overlays, pos=(0, 0, 16, 16), color=(1.0, 1.0, 0.0, 1.0), state=uiconst.UI_HIDDEN, name='destination', texturePath='res:/UI/Texture/Shared/circleThin16.png', align=uiconst.RELATIVE)
-        self.sprite = uicls.Icon(name='mapsprite', parent=self, align=uiconst.TOALL, state=uiconst.UI_DISABLED, color=(1.0, 1.0, 1.0, 0.0), glowFactor=1.0)
+        self.sprite = uicls.Icon(name='mapsprite', parent=self, align=uiconst.TOALL, state=uiconst.UI_DISABLED, color=(1.0, 1.0, 1.0, 0.0))
         self.bgSprite = None
         self.dragging = 0
         self.ditherIn = 1
@@ -170,7 +170,7 @@ class Map2D(uicls.Container):
 
 
 
-    def Draw(self, ids, idlevel, drawlevel, needsize):
+    def Draw(self, ids, idlevel, drawlevel, needsize, sprite = None):
         _settings = (ids,
          idlevel,
          drawlevel,
@@ -178,13 +178,14 @@ class Map2D(uicls.Container):
         if _settings == self.settings:
             return 
         self.settings = _settings
-        usecache = 1
         lg.Info('2Dmaps', 'Drawing map, ids/idlevel/drawlevel:', ids, idlevel, drawlevel)
         if drawlevel <= idlevel:
             return 
         if drawlevel == DRAWLVLSYS and len(ids) > 1:
             ids = ids[:1]
         SIZE = needsize
+        if sprite is None:
+            sprite = self.sprite
         _ids = {}
         for id in ids:
             _ids[id] = ''
@@ -220,11 +221,9 @@ class Map2D(uicls.Container):
         else:
             mapitems = self.mapitems = self.GetMapData(ids, idlevel, drawlevel)
         if drawlevel == 4:
-            imagePath = self.DrawSolarsystem(ids, imageid, mapitems, SIZE)
-            if self.destroyed:
-                return 
+            self.DrawSolarsystem(sprite, ids, imageid, mapitems, SIZE)
             self.CheckMyLocation()
-            return imagePath
+            return 
         (connections, outsideitems,) = self.GetConnectionData(ids, idlevel, drawlevel)
         self.outsideitems = outsideitems
         minx = 1e+100
@@ -278,15 +277,16 @@ class Map2D(uicls.Container):
 
         done = []
         i = 0
+        lineWidth = 2.0
         for jumptype in connections:
             for pair in jumptype:
                 (fr, to,) = pair
                 if (fr, to) in done:
                     continue
                 if fr in cords and to in cords:
-                    drawarea.line(cords[fr][0], cords[fr][1], cords[to][0], cords[to][1], [43520, 255, 16711680][i])
-                    drawarea.line(cords[fr][0] + 1, cords[fr][1], cords[to][0] + 1, cords[to][1], [43520, 255, 16711680][i])
-                    drawarea.line(cords[fr][0], cords[fr][1] + 1, cords[to][0], cords[to][1] + 1, [43520, 255, 16711680][i])
+                    drawarea.line(cords[fr][0], cords[fr][1], cords[to][0], cords[to][1], [43520, 255, 16711680][i], lineWidth)
+                    drawarea.line(cords[fr][0] + 1, cords[fr][1], cords[to][0] + 1, cords[to][1], [43520, 255, 16711680][i], lineWidth)
+                    drawarea.line(cords[fr][0], cords[fr][1] + 1, cords[to][0], cords[to][1] + 1, [43520, 255, 16711680][i], lineWidth)
 
             i += 1
 
@@ -306,12 +306,8 @@ class Map2D(uicls.Container):
         self.CheckMyLocation()
         self.CheckDestination()
         SIZE = SIZE / 2
-        self.Cache(drawarea, imageid, mapitems, outsideitems, SIZE)
-        path = 'cache:/Temp/Mapbrowser/%s%s.png' % (imageid, SIZE)
-        if self.destroyed:
-            return 
-        self.PlaceMap('cache:/Temp/Mapbrowser/%s%s.png' % (imageid, SIZE))
-        return path
+        self.Cache(imageid, mapitems, outsideitems)
+        self.PlaceMap(sprite, drawarea, SIZE)
 
 
 
@@ -460,41 +456,27 @@ class Map2D(uicls.Container):
 
 
 
-    def PlaceMap(self, imagepath):
+    def PlaceMap(self, sprite, drawArea, size):
         if self is None or self.destroyed:
             return 
-        self.sprite.SetTexturePath(imagepath)
-        self.sprite.color.a = 1.0
+        surface = trinity.device.CreateOffscreenPlainSurface(size, size, trinity.TRIFMT_A8R8G8B8, trinity.TRIPOOL_SYSTEMMEM)
+        surface.LoadSurfaceFromFileInMemory(drawArea.outPNG2())
+        sprite.texture.atlasTexture = uicore.uilib.CreateTexture(size, size)
+        sprite.texture.atlasTexture.CopyFromSurface(surface)
+        sprite.color.a = 1.0
 
 
 
-    def Cache(self, drawarea, imageid, mapitems, outsideitems, orgsize):
-        if not self.destroyed:
-            filename = '%sTemp/Mapbrowser/%s%s.png' % (blue.os.cachepath, imageid, orgsize)
-            tempFile = blue.os.CreateInstance('blue.ResFile')
-            tempFile.Create(filename)
-            tempFile.Write(drawarea.outPNG2())
-            tempFile.Close()
-            data = {'items': mapitems,
-             'outsideitems': outsideitems,
-             'areas': self.areas,
-             'orbs': self.orbs,
-             'sizefactor': self.sr.sizefactor,
-             'sizefactorsize': self.sr.sizefactorsize,
-             'cordsAsPortion': self.cordsAsPortion}
-            settings.user.ui.Set('map2d_%s' % imageid, data)
-            blue.pyos.synchro.Yield()
-
-
-
-    def CheckCacheAndImage(self, imageid, size):
-        image = 'cache:/Temp/Mapbrowser/%s%s.png' % (imageid, size)
-        ospath = unicode(blue.os.cachepath) + 'Temp/Mapbrowser/%s%s.png' % (imageid, size)
-        cachefile = self.CheckIfCached(imageid)
-        imagepath = None
-        if blue.ResFile().Open(image):
-            imagepath = image
-        return (cachefile, imagepath)
+    def Cache(self, imageid, mapitems, outsideitems):
+        data = {'items': mapitems,
+         'outsideitems': outsideitems,
+         'areas': self.areas,
+         'orbs': self.orbs,
+         'sizefactor': self.sr.sizefactor,
+         'sizefactorsize': self.sr.sizefactorsize,
+         'cordsAsPortion': self.cordsAsPortion}
+        settings.user.ui.Set('map2d_%s' % imageid, data)
+        blue.pyos.synchro.Yield()
 
 
 
@@ -866,7 +848,7 @@ class Map2D(uicls.Container):
 
 
 
-    def DrawSolarsystem(self, ids, imageid, mapitems, SIZE):
+    def DrawSolarsystem(self, sprite, ids, imageid, mapitems, SIZE):
         if not len(mapitems):
             return 
         planets = []
@@ -960,13 +942,11 @@ class Map2D(uicls.Container):
         for id in cords.iterkeys():
             self.cordsAsPortion[id] = (cords[id][0] / float(SIZE), cords[id][1] / float(SIZE))
 
-        self.Cache(drawarea, imageid, mapitems, [], SIZE)
-        path = 'cache:/Temp/Mapbrowser/%s%s.png' % (imageid, SIZE)
+        self.Cache(imageid, mapitems, [])
         if self.destroyed:
             return 
-        self.PlaceMap(path)
         self.PlaceBackground('res:/UI/Texture/map_ssunderlay.png')
-        return path
+        self.PlaceMap(sprite, drawarea, SIZE)
 
 
 

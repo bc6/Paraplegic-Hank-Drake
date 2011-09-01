@@ -110,6 +110,8 @@ class IncursionSvc(Service):
         for taleID in self.constellationForJoinedTaleID:
             self.StartTimeoutOfIncursionChat(taleID)
 
+        if 'solarsystemid2' in change and session.solarsystemid2 != self.currentSolarSystemID:
+            self.DisableHud(fadeEffect=True)
         if 'stationid' in change:
             self.stationAudioPlaying = False
             (oldStationID, newStationID,) = change['stationid']

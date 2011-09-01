@@ -32,14 +32,8 @@ class CorpAuditing(uicls.Container):
             icon = xtriui.BaseButton(parent=toppar, width=20, height=20, align=uiconst.BOTTOMRIGHT)
             icon.hint = mls.UI_GENERIC_REFRESH
             icon.Click = self.OnReturn
-            icon = uicls.Sprite(parent=toppar, width=20, height=20, align=uiconst.BOTTOMRIGHT, top=0, left=26, texturePath='res:/UI/Texture/classes/Browser/nextIdle.png')
-            icon.hint = mls.UI_GENERIC_FORWARD
-            icon.OnClick = (self.Browse, 1)
-            self.sr.fwdBtn = icon
-            icon = uicls.Sprite(parent=toppar, width=20, height=20, align=uiconst.BOTTOMRIGHT, top=0, left=46, texturePath='res:/UI/Texture/classes/Browser/backIdle.png')
-            icon.hint = mls.UI_GENERIC_BACK
-            icon.OnClick = (self.Browse, -1)
-            self.sr.backBtn = icon
+            self.sr.fwdBtn = uicls.Button(parent=toppar, icon='ui_77_32_41', iconSize=20, align=uiconst.BOTTOMRIGHT, left=6, func=self.Browse, args=1, hint=mls.UI_GENERIC_FORWARD)
+            self.sr.backBtn = uicls.Button(parent=toppar, icon='ui_77_32_42', iconSize=20, align=uiconst.BOTTOMRIGHT, left=32, func=self.Browse, args=-1, hint=mls.UI_GENERIC_BACK)
             nowSecs = blue.os.GetTime()
             (year, month, wd, day, hour, min, sec, ms,) = util.GetTimeParts(nowSecs + DAY)
             now = [year, month, day]

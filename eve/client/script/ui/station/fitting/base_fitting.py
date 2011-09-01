@@ -181,6 +181,7 @@ class FittingWindow(uicls.Window):
         self.SetWndIcon('ui_17_128_4', hidden=True)
         self.SetTopparentHeight(0)
         self.MakeUnResizeable()
+        self.shipID = attributes.shipID
         self.ConstructLayout()
 
 
@@ -191,7 +192,7 @@ class FittingWindow(uicls.Window):
             self.scope = 'station'
         else:
             self.scope = 'inflight'
-        self.sr.fitting = form.Fitting(top=-8, parent=self.sr.main)
+        self.sr.fitting = form.Fitting(top=-8, parent=self.sr.main, shipID=self.shipID)
         self.sr.fitting.sr.wnd = self
         self.sr.fitting.Startup()
         self.clipChildren = 0
@@ -374,9 +375,9 @@ class FittingInventory(uicls.Scroll):
             stateMgr = sm.StartService('godma').GetStateManager()
             item = itemlist[0].item
             if item.categoryID == const.categoryCharge:
-                return stateMgr.UnloadChargeToContainer(item.itemID, (toContainer,), self.flag)
+                return self.dogmaLocation.UnloadChargeToContainer(item.locationID, item.itemID, (toContainer,), self.flag)
             if item.categoryID == const.categoryModule:
-                return stateMgr.UnloadModuleToContainer(item.itemID, (toContainer,), self.flag)
+                return self.dogmaLocation.UnloadModuleToContainer(item.locationID, item.itemID, (toContainer,), self.flag)
             if toContainer == eve.session.shipid:
                 return eve.GetInventoryFromId(eve.session.shipid).Add(itemlist[0].itemID, fromLocation, qty=qty, flag=self.flag)
             return eve.GetInventory(toContainer).Add(itemlist[0].itemID, fromLocation, qty=qty)
@@ -388,14 +389,15 @@ class FittingInventory(uicls.Scroll):
 
 
 class Fitting(uicls.FittingLayout):
-    __notifyevents__ = ['ProcessSessionChange',
-     'ProcessShipEffect',
+    __notifyevents__ = ['ProcessActiveShipChanged',
      'OnAttributes',
-     'OnAttribute',
-     'OnGodmaItemChange',
+     'OnDogmaItemChange',
+     'OnDogmaAttributeChanged',
      'OnDropDataOnItemNameChange',
      'OnStartSlotLinkingMode',
-     'OnResetSlotLinkingMode']
+     'OnResetSlotLinkingMode',
+     'OnAttributes',
+     'OnAttribute']
     __guid__ = 'form.Fitting'
 
     def init(self):
@@ -406,11 +408,40 @@ class Fitting(uicls.FittingLayout):
 
 
 
+    def ApplyAttributes(self, attributes):
+        uicls.FittingLayout.ApplyAttributes(self, attributes)
+        shipID = attributes.shipID
+        if shipID is None:
+            self.shipID = session.shipid
+        else:
+            self.shipID = shipID
+        self.dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+        self.updateStatsThread = None
+        self.updateStatsArgs = (None, None)
+
+
+
+    def GetShipAttribute(self, attributeID):
+        if session.shipid == self.shipID:
+            ship = sm.GetService('godma').GetItem(self.shipID)
+            attributeName = self.dogmaLocation.dogmaStaticMgr.attributes[attributeID].attributeName
+            return getattr(ship, attributeName)
+        else:
+            return self.dogmaLocation.GetAttributeValue(self.shipID, attributeID)
+
+
+
+    def GetSensorStrengthAttribute(self):
+        if session.shipid == self.shipID:
+            return sm.GetService('godma').GetStateManager().GetSensorStrengthAttribute(self.shipID)
+        else:
+            return self.dogmaLocation.GetSensorStrengthAttribute(self.shipID)
+
+
+
     def Reset(self):
-        self.shipcontainer = self.GetShell(session.shipid)
         self.slots = {}
         self.isDelayedAnim = False
-        self.shipID = session.shipid
         self.menuSlots = {}
         self.statusCpuPowerCalibr = [None, None, None]
         self.initialized = False
@@ -425,17 +456,18 @@ class Fitting(uicls.FittingLayout):
 
 
 
-    def OnGodmaItemChange(self, item, change):
+    def OnDogmaItemChange(self, item, change):
         if self is None or self.destroyed or not hasattr(self, 'sr') or not self.initialized:
             return 
-        if const.ixFlag not in change and const.ixLocationID not in change or self.shipcontainer is None:
+        if const.ixStackSize not in change and const.ixFlag not in change and const.ixLocationID not in change:
             return 
         oldLocationID = change.get(const.ixLocationID, None)
-        if eve.session.shipid not in [oldLocationID, item.locationID]:
+        if self.shipID not in (oldLocationID, item.locationID):
             return 
         self.LoadCapacitorStats()
         if item.groupID in const.turretModuleGroups:
             self.UpdateHardpoints()
+        self.ReloadFitting(self.shipID)
 
 
 
@@ -551,7 +583,7 @@ class Fitting(uicls.FittingLayout):
                     angle += step * gapsize
                 powerType = [const.effectHiPower, const.effectMedPower, const.effectLoPower][gidx]
                 nSlot.gidx = gidx
-                nSlot.Startup(flag, powerType, self.shipcontainer, scaleFactor)
+                nSlot.Startup(flag, powerType, self.dogmaLocation, scaleFactor)
                 self.slots[flag] = nSlot
                 eve.Message('fittingSlot%s' % key[gidx])
                 blue.pyos.synchro.Sleep(5)
@@ -587,7 +619,7 @@ class Fitting(uicls.FittingLayout):
              cX,
              cY)
             nSlot.gidx = 3
-            nSlot.Startup(subsystemFlag, const.effectSubSystem, self.shipcontainer, scaleFactor)
+            nSlot.Startup(subsystemFlag, const.effectSubSystem, self.dogmaLocation, scaleFactor)
             angle += step
             self.slots[subsystemFlag] = nSlot
             blue.pyos.synchro.Sleep(5)
@@ -614,7 +646,7 @@ class Fitting(uicls.FittingLayout):
              cX,
              cY)
             nSlot.gidx = 4
-            nSlot.Startup(rigFlag, const.effectRigSlot, self.shipcontainer, scaleFactor)
+            nSlot.Startup(rigFlag, const.effectRigSlot, self.dogmaLocation, scaleFactor)
             angle += step
             self.slots[rigFlag] = nSlot
             blue.pyos.synchro.Sleep(5)
@@ -629,7 +661,8 @@ class Fitting(uicls.FittingLayout):
         self.sr.shipnametext = uicls.Label(text='', parent=self.sr.shipnamecont, letterspace=1, fontsize=12, width=200, state=uiconst.UI_DISABLED, uppercase=True)
         self.sr.dragIcon = xtriui.FittingDraggableText(name='theicon', idx=0, align=uiconst.TOPLEFT, parent=self.sr.shipnamecont, width=100, height=20)
         self.sr.dragIcon.state = uiconst.UI_NORMAL
-        self.sr.infolink = uicls.InfoIcon(itemID=eve.session.shipid, size=16, left=0, top=0, parent=self.sr.shipnamecont, idx=0)
+        shipTypeID = self.GetShipDogmaItem().typeID
+        self.sr.infolink = uicls.InfoIcon(typeID=shipTypeID, itemID=self.shipID, size=16, left=0, top=0, parent=self.sr.shipnamecont, idx=0)
         self.sr.fittingSvcCont = uicls.Container(name='fittingSvcCont', parent=self.sr.shipnamecont, align=uiconst.BOTTOMLEFT, height=22, width=200)
         loadFittingBtn = uicls.Button(parent=self.sr.fittingSvcCont, label=mls.UI_FITTING_BROWSE, func=self.LoadFittingSetup, pos=(-2, 6, 0, 0), alwaysLite=True)
         loadFittingBtn.hint = mls.UI_GENERIC_FITTING_BROWSETOOLTIP
@@ -734,17 +767,16 @@ class Fitting(uicls.FittingLayout):
         cargoDroneCont = uicls.Container(name='rightside', parent=newslotParent, align=uiconst.BOTTOMLEFT, width=110, height=64, left=const.defaultPadding)
         cargoDroneCont.top = (self.height - self.sr.wnd.height) / 2 + 6
         self.sr.cargoSlot = xtriui.CargoCargoSlots(name='cargoSlot', parent=cargoDroneCont, align=uiconst.TOTOP, height=32, idx=-1)
-        self.sr.cargoSlot.Startup(mls.UI_GENERIC_CARGOHOLD, 'ui_3_64_13', const.flagCargo)
+        self.sr.cargoSlot.Startup(mls.UI_GENERIC_CARGOHOLD, 'ui_3_64_13', const.flagCargo, self.dogmaLocation)
         self.sr.cargoSlot.OnClick = self.OpenCargoHoldOfActiveShip
         self.sr.cargoSlot.state = uiconst.UI_NORMAL
         self.sr.droneSlot = xtriui.CargoDroneSlots(name='cargoSlot', parent=cargoDroneCont, align=uiconst.TOALL, pos=(0, 0, 0, 0), idx=-1)
-        self.sr.droneSlot.Startup(mls.UI_GENERIC_DRONEBAY, 'ui_11_64_16', const.flagDroneBay)
+        self.sr.droneSlot.Startup(mls.UI_GENERIC_DRONEBAY, 'ui_11_64_16', const.flagDroneBay, self.dogmaLocation)
         self.sr.droneSlot.OnClick = self.OpenDroneBayOfActiveShip
         self.sr.droneSlot.state = uiconst.UI_NORMAL
         self.initialized = True
-        if eve.session.shipid:
-            uthread.new(self.ReloadFitting, eve.session.shipid)
-            uthread.new(self.ReloadShipModel)
+        uthread.new(self.ReloadFitting, eve.session.shipid)
+        uthread.new(self.ReloadShipModel)
 
 
 
@@ -769,7 +801,7 @@ class Fitting(uicls.FittingLayout):
         (fitting.shipTypeID, fitting.fitData,) = fittingSvc.GetFittingDictForActiveShip()
         fitting.fittingID = None
         fitting.description = ''
-        fitting.name = cfg.evelocations.Get(session.shipid).locationName
+        fitting.name = cfg.evelocations.Get(util.GetActiveShip()).locationName
         fitting.ownerID = 0
         wnd = sm.StartService('window').GetWindow('viewFitting' + fitting.name, create=1, decoClass=form.ViewFitting, fitting=fitting, truncated=None)
         if wnd is not None and not wnd.destroyed:
@@ -784,69 +816,6 @@ class Fitting(uicls.FittingLayout):
             wnd = sm.StartService('window').GetWindow('FittingMgmt', create=1, decoClass=form.FittingMgmt)
         if wnd is not None and not wnd.destroyed:
             wnd.Maximize()
-
-
-
-    def IsTech3Ship(self):
-        stateMgr = sm.StartService('godma').GetStateManager()
-        techLevel = stateMgr.GetAttribute(session.shipid, 'techLevel')
-        return int(techLevel) == 3
-
-
-
-    def _Anim_LeftPanel(self, leftside):
-        uix.Flush(leftside)
-        menus = []
-        if eve.session.stationid:
-            myModules = xtriui.FittingInventory(uicls.Container(parent=None, pos=(0, 0, 0, 0)))
-            myModules.Startup()
-            myModules.flag = const.flagHangar
-            myModules.GetAssets = self.GetModules
-            myCharges = xtriui.FittingInventory(uicls.Container(parent=None, pos=(0, 0, 0, 0)))
-            myCharges.Startup()
-            myCharges.flag = const.flagHangar
-            myCharges.GetAssets = self.GetCharges
-            menus += [(mls.UI_GENERIC_PERSONALSHIPMODULES,
-              myModules,
-              myModules.SetData,
-              myModules.OnDropData,
-              1024,
-              None,
-              1,
-              True), (mls.UI_GENERIC_PERSONALMODULECHARGES,
-              myCharges,
-              myCharges.SetData,
-              myCharges.OnDropData,
-              1024,
-              None,
-              1,
-              True)]
-        myDrones = xtriui.FittingInventory(uicls.Container(parent=None, pos=(0, 0, 0, 0)))
-        myDrones.Startup()
-        myDrones.flag = const.flagDroneBay
-        myDrones.GetAssets = self.GetDrones
-        myCargo = xtriui.FittingInventory(uicls.Container(parent=None, pos=(0, 0, 0, 0)))
-        myCargo.Startup()
-        myCargo.flag = const.flagCargo
-        myCargo.GetAssets = self.GetCargo
-        self.sr.cargoCapacity = uicls.Container(name='cargoCapacityParent', parent=None, align=uiconst.TOPRIGHT, state=uiconst.UI_PICKCHILDREN, width=200, height=20)
-        menus += [(mls.UI_GENERIC_DRONESINSHIP,
-          myDrones,
-          myDrones.SetData,
-          myDrones.OnDropData,
-          1024,
-          None,
-          1,
-          True), (mls.UI_GENERIC_CARGO,
-          myCargo,
-          myCargo.SetData,
-          myCargo.OnDropData,
-          1024,
-          self.sr.cargoCapacity,
-          1,
-          True)]
-        em = xtriui.ExpandableMenuContainer(parent=leftside, pos=(0, 0, 0, 0))
-        em.Load(menus, 'fittingLeftside')
 
 
 
@@ -895,7 +864,7 @@ class Fitting(uicls.FittingLayout):
         uix.Flush(tp)
         self.sr.targetingStatsParent.state = uiconst.UI_PICKCHILDREN
         lineColor = (1.0, 1.0, 1.0, 0.125)
-        (sensorStrengthAttributeID, val,) = sm.services['godma'].GetStateManager().GetSensorStrengthAttribute(session.shipid)
+        (sensorStrengthAttributeID, val,) = self.GetSensorStrengthAttribute()
         toShow = [('sensorStrength', const.attributeScanResolution, const.attributeMaxTargetRange), (const.attributeSignatureRadius, const.attributeMaxLockedTargets)]
         (l, t, w, h,) = tp.GetAbsolute()
         step = w / 3
@@ -1100,7 +1069,7 @@ class Fitting(uicls.FittingLayout):
 
 
     def GetDrones(self, parentContainer):
-        shipInv = eve.GetInventoryFromId(eve.session.shipid)
+        shipInv = self.GetShipInventory()
         drones = shipInv.ListDroneBay()
 
         def Filter(item):
@@ -1126,7 +1095,7 @@ class Fitting(uicls.FittingLayout):
 
 
     def GetCargo(self, parentContainer):
-        shipInv = eve.GetInventoryFromId(eve.session.shipid)
+        shipInv = self.GetShipInventory()
         drones = shipInv.ListCargo()
         assets = []
         for each in drones:
@@ -1141,26 +1110,34 @@ class Fitting(uicls.FittingLayout):
 
 
 
+    def GetShipInventory(self):
+        return sm.GetService('invCache').GetInventoryFromId(self.shipID, locationID=session.stationid2)
+
+
+
     def UpdateStats(self, typeID = None, item = None):
         if typeID:
             typeOb = cfg.invtypes.Get(typeID)
             if not cfg.IsFittableCategory(typeOb.categoryID):
                 return 
-        uthread.pool('Fitting::UpdateStats', self._UpdateStats, typeID, item)
+        self.updateStatsArgs = (typeID, item)
+        if self.updateStatsThread is not None:
+            return 
+        self.updateStatsThread = uthread.pool('Fitting::UpdateStats', self._UpdateStats)
 
 
 
-    def _UpdateStats(self, typeID, item = None):
+    def _UpdateStats(self):
+        try:
+            blue.pyos.synchro.Sleep(100)
+
+        finally:
+            self.updateStatsThread = None
+
+        (typeID, item,) = self.updateStatsArgs
         if self is None or self.destroyed or not hasattr(self, 'sr') or not self.initialized:
             return 
-        if not self.shipcontainer:
-            lg.Error('fitting', 'UpdateStats with no Shell?')
-            return 
-        if eve.session.shipid is None:
-            return 
-        if self.shipcontainer.itemID != eve.session.shipid:
-            self.OnActiveShipChange(eve.session.shipid)
-        if eve.session.stationid:
+        if session.stationid2:
             if util.GetAttrs(self, 'sr', 'stripBtn'):
                 self.sr.stripBtn.state = uiconst.UI_NORMAL
         else:
@@ -1207,9 +1184,9 @@ class Fitting(uicls.FittingLayout):
          const.attributeScanMagnetometricStrengthPercent,
          const.attributeScanGravimetricStrengthPercent,
          const.attributeScanLadarStrengthPercent]
-        ship = self.shipcontainer
+        ship = self.GetShipDogmaItem()
         modulesByGroupInShip = {}
-        for module in ship.modules:
+        for module in ship.GetFittedItems().itervalues():
             if module.groupID not in modulesByGroupInShip:
                 modulesByGroupInShip[module.groupID] = []
             modulesByGroupInShip[module.groupID].append(module)
@@ -1339,7 +1316,8 @@ class Fitting(uicls.FittingLayout):
           1,
           xtraShield,
           multiplyShieldCapacity)):
-            status = getattr(self.shipcontainer, attrname, None)
+            attrID = self.dogmaLocation.dogmaStaticMgr.attributesByName[attrname].attributeID
+            status = self.GetShipAttribute(attrID)
             if not status:
                 continue
             label = dsp.sr.Get('%sStatusText' % what, None)
@@ -1351,7 +1329,7 @@ class Fitting(uicls.FittingLayout):
                     status = (alt + status) * altm
                     label.text = '%s%i %s' % (self.GetColor(alt, altm), status, suffix)
                 if what == 'shield':
-                    label.text += '<br>%s%i %s' % (self.GetMultiplyColor(multiplyShieldRecharge), ship.shieldRechargeRate * multiplyShieldRecharge * 0.001, mls.UI_GENERIC_SECONDVERYSHORT.lower())
+                    label.text += '<br>%s%i %s' % (self.GetMultiplyColor(multiplyShieldRecharge), self.GetShipAttribute(const.attributeShieldRechargeRate) * multiplyShieldRecharge * 0.001, mls.UI_GENERIC_SECONDVERYSHORT.lower())
             minResistance = 0.0
             for (i, res,) in enumerate(['EmDamageResonance',
              'ExplosiveDamageResonance',
@@ -1363,7 +1341,8 @@ class Fitting(uicls.FittingLayout):
                 multiplierMod = multiplyResistance.get(modmod, 0.0)
                 attribute = '%s%s' % ([what, ''][(what == 'structure')], res)
                 attribute = attribute[0].lower() + attribute[1:]
-                value = getattr(ship, attribute, None)
+                attributeID = self.dogmaLocation.dogmaStaticMgr.attributesByName[attribute].attributeID
+                value = self.GetShipAttribute(attributeID)
                 if multiplierMod != 0.0:
                     effectiveHpColor = FONTCOLOR_HILITE
                 if value is not None:
@@ -1393,7 +1372,9 @@ class Fitting(uicls.FittingLayout):
         if activeRepairLabel:
             activeBestRepair = settings.user.ui.Get('activeBestRepair', PASSIVESHIELDRECHARGE)
             if activeBestRepair == PASSIVESHIELDRECHARGE:
-                activeRepairLabel.text = '%s%s %s' % (self.GetMultiplyColor(multiplyShieldRecharge), util.FmtAmt(ship.shieldCapacity * multiplyShieldCapacity / (ship.shieldRechargeRate * multiplyShieldRecharge / 1000.0) * 2.5), mls.UI_GENERIC_FITTING_HPPERSEC)
+                shieldCapacity = self.GetShipAttribute(const.attributeShieldCapacity)
+                shieldRR = self.GetShipAttribute(const.attributeShieldRechargeRate)
+                activeRepairLabel.text = '%s%s %s' % (self.GetMultiplyColor(multiplyShieldRecharge), util.FmtAmt(shieldCapacity * multiplyShieldCapacity / (shieldRR * multiplyShieldRecharge / 1000.0) * 2.5), mls.UI_GENERIC_FITTING_HPPERSEC)
                 activeBestRepairParent.hint = mls.UI_FITTING_PASSIVE_SHIELD_RECHARGE
                 activeBestRepairNumLabel.parent.state = uiconst.UI_HIDDEN
                 activeBestRepairIcon.LoadIcon(cfg.dgmattribs.Get(const.attributeShieldCapacity).iconID, ignoreSize=True)
@@ -1470,24 +1451,26 @@ class Fitting(uicls.FittingLayout):
             ship = godma.GetItem(self.shipID)
             subSystemSlot = typeAttributesByID.get(const.attributeSubSystemSlot, None)
             if subSystemSlot is not None:
-                slotOccupants = ship.GetSlotOccupants(int(subSystemSlot))
-                if slotOccupants:
-                    subSystem = stateMgr.GetItem(slotOccupants[0].itemID)
-                    turretAddition = -subSystem.turretHardPointModifier
-                    launcherAddition = -subSystem.launcherHardPointModifier
-                    hiSlotAddition = -subSystem.hiSlotModifier
-                    medSlotAddition = -subSystem.medSlotModifier
-                    lowSlotAddition = -subSystem.lowSlotModifier
+                slotOccupant = self.dogmaLocation.GetSubSystemInFlag(self.shipID, int(subSystemSlot))
+                if slotOccupant is not None:
+                    attributesByName = self.dogmaLocation.dogmaStaticMgr.attributesByName
+                    GTA = lambda attributeID: self.dogmaLocation.dogmaStaticMgr.GetTypeAttribute2(slotOccupant.typeID, attributeID)
+                    turretAddition = -GTA(attributesByName['turretHardPointModifier'].attributeID)
+                    launcherAddition = -GTA(attributesByName['launcherHardPointModifier'].attributeID)
+                    hiSlotAddition = -GTA(attributesByName['hiSlotModifier'].attributeID)
+                    medSlotAddition = -GTA(attributesByName['medSlotModifier'].attributeID)
+                    lowSlotAddition = -GTA(attributesByName['lowSlotModifier'].attributeID)
         turretAddition += typeAttributesByID.get(const.attributeTurretHardpointModifier, 0.0)
+        turretSlotsLeft = self.GetShipAttribute(const.attributeTurretSlotsLeft)
         for (i, slot,) in enumerate(self.sr.turretSlots):
-            if i < ship.turretSlotsLeft:
-                if i < ship.turretSlotsLeft + turretAddition:
+            if i < turretSlotsLeft:
+                if i < turretSlotsLeft + turretAddition:
                     slot.color.SetRGB(1.0, 1.0, 1.0)
                     slot.LoadIcon('ui_73_16_194')
                 else:
                     slot.color.SetRGB(1.0, 0.0, 0.0)
                     slot.LoadIcon('ui_73_16_194')
-            elif i < ship.turretSlotsLeft + turretAddition:
+            elif i < turretSlotsLeft + turretAddition:
                 slot.color.SetRGB(1.0, 1.0, 0.0)
                 slot.LoadIcon('ui_73_16_194')
             else:
@@ -1495,15 +1478,16 @@ class Fitting(uicls.FittingLayout):
                 slot.LoadIcon('ui_73_16_193')
 
         launcherAddition += typeAttributesByID.get(const.attributeLauncherHardPointModifier, 0.0)
+        launcherSlotsLeft = self.GetShipAttribute(const.attributeLauncherSlotsLeft)
         for (i, slot,) in enumerate(self.sr.launcherSlots):
-            if i < ship.launcherSlotsLeft:
-                if i < ship.launcherSlotsLeft + launcherAddition:
+            if i < launcherSlotsLeft:
+                if i < launcherSlotsLeft + launcherAddition:
                     slot.color.SetRGB(1.0, 1.0, 1.0)
                     slot.LoadIcon('ui_73_16_194')
                 else:
                     slot.color.SetRGB(1.0, 0.0, 0.0)
                     slot.LoadIcon('ui_73_16_194')
-            elif i < ship.launcherSlotsLeft + launcherAddition:
+            elif i < launcherSlotsLeft + launcherAddition:
                 slot.color.SetRGB(1.0, 1.0, 0.0)
                 slot.LoadIcon('ui_73_16_194')
             else:
@@ -1517,7 +1501,8 @@ class Fitting(uicls.FittingLayout):
         massLabel = self.sr.Get(('StatsLabel', const.attributeMass), None)
         if massLabel:
             massAddition = typeAttributesByID.get(const.attributeMassAddition, 0.0)
-            value = ship.mass + massAddition
+            mass = self.GetShipAttribute(const.attributeMass)
+            value = mass + massAddition
             suffix = 'kg'
             if value > 10000.0:
                 value = value / 1000.0
@@ -1531,28 +1516,35 @@ class Fitting(uicls.FittingLayout):
                 multiplyVelocity = 1 + multiplyVelocity / 100 * multiplySpeed
             else:
                 multiplyVelocity = 1.0 * multiplySpeed
-            maxVelocityLabel.text = '%s%d %s' % (self.GetColor(xtraSpeed, multiplyVelocity), (ship.maxVelocity + xtraSpeed) * multiplyVelocity, mls.UI_GENERIC_MPERS)
+            maxVelocity = self.GetShipAttribute(const.attributeMaxVelocity)
+            maxVelocityLabel.text = '%s%d %s' % (self.GetColor(xtraSpeed, multiplyVelocity), (maxVelocity + xtraSpeed) * multiplyVelocity, mls.UI_GENERIC_MPERS)
         agilityLabel = self.sr.Get(('StatsLabel', const.attributeAgility), None)
         if agilityLabel:
-            agilityLabel.text = '%.4fx' % ship.agility
+            agility = self.GetShipAttribute(const.attributeAgility)
+            agilityLabel.text = '%.4fx' % agility
         baseWarpSpeedLabel = self.sr.Get(('StatsLabel', const.attributeBaseWarpSpeed), None)
         if baseWarpSpeedLabel:
-            baseWarpSpeedLabel.text = '%s/%s' % (util.FmtDist(ship.baseWarpSpeed * ship.warpSpeedMultiplier * 3 * const.AU, 2), cfg.eveunits.Get(const.unitMilliseconds).displayName)
+            baseWarpSpeed = self.GetShipAttribute(const.attributeBaseWarpSpeed)
+            warpSpeedMultiplier = self.GetShipAttribute(const.attributeWarpSpeedMultiplier)
+            baseWarpSpeedLabel.text = '%s/%s' % (util.FmtDist(baseWarpSpeed * warpSpeedMultiplier * 3 * const.AU, 2), cfg.dgmunits.Get(const.unitMilliseconds).displayName)
         xtraLockedTargets = typeAttributesByID.get(const.attributeMaxLockedTargetsBonus, 0.0)
-        self.sr.targetingStatsParent.parent.parent.SetHeader(' %s(%ix)' % (self.GetXtraColor(xtraLockedTargets), ship.maxLockedTargets + xtraLockedTargets), addon=1, hint=mls.UI_FITTING_MAXLOCKEDTARGETS + ': %d' % (ship.maxLockedTargets + xtraLockedTargets))
+        maxLockedTargets = self.GetShipAttribute(const.attributeMaxLockedTargets)
+        self.sr.targetingStatsParent.parent.parent.SetHeader(' %s(%ix)' % (self.GetXtraColor(xtraLockedTargets), maxLockedTargets + xtraLockedTargets), addon=1, hint=mls.UI_FITTING_MAXLOCKEDTARGETS + ': %d' % (maxLockedTargets + xtraLockedTargets))
         multiplyScanResolution = typeAttributesByID.get(const.attributeScanResolutionMultiplier, 1.0)
         if const.attributeScanResolutionBonus in typeAttributesByID:
             multiplyScanResolution *= 1 + typeAttributesByID[const.attributeScanResolutionBonus] / 100
-        srt = '%s%i mm' % (self.GetMultiplyColor(multiplyScanResolution), ship.scanResolution * multiplyScanResolution)
+        scanResolution = self.GetShipAttribute(const.attributeScanResolution)
+        srt = '%s%i mm' % (self.GetMultiplyColor(multiplyScanResolution), scanResolution * multiplyScanResolution)
         statsLabel = self.sr.targetingStatsParent.sr.Get(('StatsLabel', const.attributeScanResolution), None)
         if statsLabel:
             statsLabel.text = srt
-        mtrt = '%s%i %s' % (self.GetMultiplyColor(multiplyMaxTargetRange), ship.maxTargetRange * multiplyMaxTargetRange, mls.UI_GENERIC_METERSSHORT)
+        maxTargetRange = self.GetShipAttribute(const.attributeMaxTargetRange)
+        mtrt = '%s%i %s' % (self.GetMultiplyColor(multiplyMaxTargetRange), maxTargetRange * multiplyMaxTargetRange, mls.UI_GENERIC_METERSSHORT)
         statsLabel = self.sr.targetingStatsParent.sr.Get(('StatsLabel', const.attributeMaxTargetRange), None)
         if statsLabel:
             statsLabel.text = mtrt
         self.sr.targetingHeaderStatsParent.sr.statusText.text = srt + ' |' + mtrt
-        (sensorStrengthAttributeID, maxSensorStrength,) = sm.services['godma'].GetStateManager().GetSensorStrengthAttribute(session.shipid)
+        (sensorStrengthAttributeID, maxSensorStrength,) = self.GetSensorStrengthAttribute()
         maxSensor = cfg.dgmattribs.Get(sensorStrengthAttributeID)
         attrIdx = sensorStrengthAttrs.index(maxSensor.attributeID)
         sensorBonusAttributeID = sensorStrengthBonusAttrs[attrIdx]
@@ -1575,23 +1567,25 @@ class Fitting(uicls.FittingLayout):
             statsIcon.LoadIcon(maxSensor.iconID, ignoreSize=True)
         signatureRadiusLabel = self.sr.targetingStatsParent.sr.Get(('StatsLabel', const.attributeSignatureRadius), None)
         if signatureRadiusLabel:
+            signatureRadius = self.GetShipAttribute(const.attributeSignatureRadius)
             signatureRadiusAdd = typeAttributesByID.get(const.attributeSignatureRadiusAdd, 0.0)
-            signatureRadiusLabel.text = '%s%i %s' % (self.GetXtraColor(signatureRadiusAdd), ship.signatureRadius + signatureRadiusAdd, mls.UI_GENERIC_METERSSHORT)
+            signatureRadiusLabel.text = '%s%i %s' % (self.GetXtraColor(signatureRadiusAdd), signatureRadius + signatureRadiusAdd, mls.UI_GENERIC_METERSSHORT)
         maxLockedTargetsLabel = self.sr.targetingStatsParent.sr.Get(('StatsLabel', const.attributeMaxLockedTargets), None)
         if maxLockedTargetsLabel:
+            maxLockedTargets = self.GetShipAttribute(const.attributeMaxLockedTargets)
             maxLockedTargetsAdd = xtraLockedTargets
-            maxLockedTargetsLabel.text = '%s%i' % (self.GetXtraColor(xtraLockedTargets), ship.maxLockedTargets + maxLockedTargetsAdd)
+            maxLockedTargetsLabel.text = '%s%i' % (self.GetXtraColor(xtraLockedTargets), maxLockedTargets + maxLockedTargetsAdd)
         self.UpdateCapacitor(xtraCapacitor, multiplyRecharge, multiplyCapacitor, reload=1)
         self.UpdateCPUandPowerload(multiplyCpu, xtraCpuLoad, xtraCpu, xtraPower, multiplyPower, xtraPowerload)
         self.UpdateCalibration(multiplyCalibration, xtraCalibrationLoad, xtraCalibrationOutput)
-        self.UpdateCargoDoneInfo(xtraCargoSpace, xtraDroneSpace)
+        self.UpdateCargoDroneInfo(xtraCargoSpace, xtraDroneSpace)
 
 
 
     def ShowAddition(self, h, m, l):
         key = ['Hi', 'Med', 'Lo']
-        for gidx in xrange(3):
-            totalslots = getattr(self.shipcontainer, ['hiSlots', 'medSlots', 'lowSlots'][gidx], 0)
+        for (gidx, attributeID,) in enumerate((const.attributeHiSlots, const.attributeMedSlots, const.attributeLowSlots)):
+            totalslots = self.GetShipAttribute(attributeID)
             add = [h, m, l][gidx]
             modslots = add + totalslots
             for sidx in xrange(8):
@@ -1791,11 +1785,11 @@ class Fitting(uicls.FittingLayout):
 
 
     def UpdateCalibration(self, caliMultiply = 1.0, caliXtraLoad = 0.0, caliXtraCapacity = 0.0):
-        if not self.shipcontainer:
-            lg.Error('fitting', 'UpdateCalibration with no Shell?')
+        if self.shipID is None:
+            lg.Error('fitting', 'UpdateCalibration with no ship')
             return 
-        calibrationLoad = self.shipcontainer.upgradeLoad + caliXtraLoad
-        calibrationOutput = (self.shipcontainer.upgradeCapacity + caliXtraCapacity) * caliMultiply
+        calibrationLoad = self.GetShipAttribute(const.attributeUpgradeLoad) + caliXtraLoad
+        calibrationOutput = (self.GetShipAttribute(const.attributeUpgradeCapacity) + caliXtraCapacity) * caliMultiply
         portion = 0.0
         if calibrationLoad and calibrationOutput > 0:
             portion = max(0, min(1, calibrationLoad / calibrationOutput))
@@ -1817,15 +1811,15 @@ class Fitting(uicls.FittingLayout):
 
 
     def UpdateCPUandPowerload(self, cpuMultiply = 1.0, xtraLoad = 0.0, xtraCpu = 0.0, xtraPower = 0.0, powerMultiply = 1.0, xtraPowerload = 0.0):
-        if not self.shipcontainer:
-            lg.Error('fitting', 'UpdateCPU with no Shell?')
+        if self.shipID is None:
+            lg.Error('fitting', 'UpdateCPUAndPowerload with no ship')
             return 
         if xtraCpu:
             skill = sm.GetService('skills').HasSkill(const.typeElectronics)
             if skill is not None:
                 xtraCpu *= 1.0 + 0.05 * skill.skillLevel
-        cpuLoad = self.shipcontainer.cpuLoad + xtraLoad
-        output = (self.shipcontainer.cpuOutput + xtraCpu) * cpuMultiply
+        cpuLoad = self.GetShipAttribute(const.attributeCpuLoad) + xtraLoad
+        output = (self.GetShipAttribute(const.attributeCpuOutput) + xtraCpu) * cpuMultiply
         cputext = '<right><b>%s</b><br> %s%.2f%s / %s%.2f' % (mls.UI_GENERIC_CPU,
          self.GetXtraColor(xtraLoad),
          cpuLoad,
@@ -1850,8 +1844,8 @@ class Fitting(uicls.FittingLayout):
             skill = sm.GetService('skills').HasSkill(const.typeEngineering)
             if skill is not None:
                 xtraPower *= 1.0 + 0.05 * skill.skillLevel
-        powerLoad = self.shipcontainer.powerLoad + xtraPowerload
-        output = (self.shipcontainer.powerOutput + xtraPower) * powerMultiply
+        powerLoad = self.GetShipAttribute(const.attributePowerLoad) + xtraPowerload
+        output = (self.GetShipAttribute(const.attributePowerOutput) + xtraPower) * powerMultiply
         powergridtext = '%s<b>%s</b><br>%s%.2f%s / %s%.2f' % (FONTCOLOR_DEFAULT,
          mls.UI_GENERIC_POWERGRID,
          self.GetXtraColor(xtraPowerload),
@@ -1861,10 +1855,10 @@ class Fitting(uicls.FittingLayout):
          output)
         portion = 0.0
         if powerLoad:
-            if self.shipcontainer.powerOutput == 0.0:
+            if output == 0.0:
                 portion = 1.0
             else:
-                portion = min(1.0, max(0.0, powerLoad / self.shipcontainer.powerOutput))
+                portion = min(1.0, max(0.0, powerLoad / output))
         self.updatePowergridStatusTimer = base.AutoTimer(10, self.UpdateStatusBar, 'powergrid', self.sr.powergridStatusPoly, radius=GAUGE_OUTERRAD - GAUGE_THICKNESS * self._scaleFactor, outerRadius=GAUGE_OUTERRAD, toDeg=POWERGRID_GAUGE_ZERO, fromDeg=POWERGRID_GAUGE_ZERO + POWERGRID_GAUGE_RANGE * portion, innerColor=POWERGRID_GAUGE_COLOR, outerColor=POWERGRID_GAUGE_COLOR)
         if output > 0:
             status = 100.0 * float(powerLoad) / float(output)
@@ -1900,7 +1894,7 @@ class Fitting(uicls.FittingLayout):
 
 
 
-    def UpdateCargoDoneInfo(self, xtraCargo, xtraDroneSpace):
+    def UpdateCargoDroneInfo(self, xtraCargo, xtraDroneSpace):
         if not self or self.dead:
             return 
         self.sr.cargoSlot.Update(xtraCargo)
@@ -1914,21 +1908,17 @@ class Fitting(uicls.FittingLayout):
 
 
     def OpenDroneBayOfActiveShip(self, *args):
-        ship = sm.GetService('godma').GetItem(eve.session.shipid)
-        sm.StartService('menu').OpenDroneBay([ship])
+        sm.GetService('window').OpenDrones(self.shipID, cfg.evelocations.Get(self.shipID).locationName)
 
 
 
     def UpdateCapacitor(self, xtraCapacitor = 0.0, rechargeMultiply = 1.0, multiplyCapacitor = 1.0, reload = 0):
-        if not self.shipcontainer:
-            lg.Error('fitting', 'UpdateCapacitor with no Shell?')
-            return 
-        maxcap = (xtraCapacitor + self.shipcontainer.capacitorCapacity) * multiplyCapacitor
+        maxcap = (xtraCapacitor + self.GetShipAttribute(const.attributeCapacitorCapacity)) * multiplyCapacitor
         ccAttribute = cfg.dgmattribs.Get(const.attributeCapacitorCapacity)
         rrAttribute = cfg.dgmattribs.Get(const.attributeRechargeRate)
         info = sm.GetService('info')
-        rechargeRate = self.shipcontainer.rechargeRate * rechargeMultiply
-        (peakRechargeRate, totalCapNeed, loadBalance, TTL,) = sm.GetService('godma').GetStateManager().CapacitorSimulator(maxcap, rechargeRate)
+        rechargeRate = self.GetShipAttribute(const.attributeRechargeRate) * rechargeMultiply
+        (peakRechargeRate, totalCapNeed, loadBalance, TTL,) = self.dogmaLocation.CapacitorSimulator(self.shipID)
         colorGreen = '<color=0xff00ff00>'
         colorRed = '<color=0xffff0000>'
         if loadBalance > 0:
@@ -1943,7 +1933,7 @@ class Fitting(uicls.FittingLayout):
             capText = '%s%s / %s%s' % (self.GetColor(xtraCapacitor, multiplyCapacitor),
              info.GetFormatAndValue(ccAttribute, int(maxcap)),
              self.GetMultiplyColor(rechargeMultiply),
-             info.GetFormatAndValue(rrAttribute, self.shipcontainer.rechargeRate * rechargeMultiply))
+             info.GetFormatAndValue(rrAttribute, rechargeRate))
             powerCore = self.sr.capacitorStatsParent.sr.powerCore
             powerCore.Flush()
             sustainabilityModified = False
@@ -1959,7 +1949,7 @@ class Fitting(uicls.FittingLayout):
             color = FONTCOLOR_DEFAULT
             if sustainabilityModified:
                 color = FONTCOLOR_HILITE
-            unit = cfg.eveunits.Get(ccAttribute.unitID).displayName + '/' + cfg.eveunits.Get(rrAttribute.unitID).displayName + ' '
+            unit = cfg.dgmunits.Get(ccAttribute.unitID).displayName + '/' + cfg.dgmunits.Get(rrAttribute.unitID).displayName + ' '
             delta += color + str(round((peakRechargeRate - totalCapNeed) * 1000, 2)) + ' ' + unit
             delta += '('
             delta += str(round((peakRechargeRate - totalCapNeed) / peakRechargeRate * 100, 1)) + '%'
@@ -2013,8 +2003,8 @@ class Fitting(uicls.FittingLayout):
 
     def StripFitting(self, *args):
         if eve.Message('AskStripShip', None, uiconst.YESNO, suppress=uiconst.ID_YES) == uiconst.ID_YES:
-            eve.GetInventoryFromId(session.shipid).StripFitting()
-            uthread.new(self.ReloadFitting, session.shipid)
+            eve.GetInventoryFromId(self.shipID).StripFitting()
+            uthread.new(self.ReloadFitting, self.shipID)
 
 
 
@@ -2076,19 +2066,24 @@ class Fitting(uicls.FittingLayout):
 
 
 
+    def GetShipDogmaItem(self):
+        return self.dogmaLocation.dogmaItems[self.shipID]
+
+
+
     def CreateActiveShipModel(self):
+        ship = self.GetShipDogmaItem()
         try:
-            techLevel = sm.GetService('godma').GetTypeAttribute(self.shipcontainer.typeID, const.attributeTechLevel)
+            techLevel = self.GetShipAttribute(const.attributeTechLevel)
             if techLevel == 3.0:
                 try:
-                    slimItem = sm.GetService('godma').GetItem(self.shipcontainer.itemID)
-                    newModel = sm.GetService('station').GetTech3ShipFromSlimItem(slimItem)
+                    newModel = sm.GetService('station').MakeModularShipFromShipItem(self.GetShipDogmaItem())
                 except:
                     log.LogException('failed bulding modular ship')
                     sys.exc_clear()
                     return 
             else:
-                modelPath = cfg.invtypes.Get(self.shipcontainer.typeID).GraphicFile()
+                modelPath = cfg.invtypes.Get(ship.typeID).GraphicFile()
                 newFilename = modelPath.lower().replace(':/model', ':/dx9/model')
                 newFilename = newFilename.replace('.blue', '.red')
                 newModel = trinity.Load(newFilename)
@@ -2098,7 +2093,7 @@ class Fitting(uicls.FittingLayout):
         if hasattr(newModel, 'ChainAnimationEx'):
             newModel.ChainAnimationEx('NormalLoop', 0, 0, 1.0)
         newModel.display = 1
-        newModel.name = str(self.shipcontainer.itemID)
+        newModel.name = str(ship.itemID)
         self.UpdateHardpoints(newModel)
         return newModel
 
@@ -2110,18 +2105,12 @@ class Fitting(uicls.FittingLayout):
         if newModel is None:
             log.LogError('UpdateHardpoints - No model!')
             return 
-        turret.TurretSet.FitTurrets(self.shipcontainer.itemID, newModel)
+        turret.TurretSet.FitTurrets(self.shipID, newModel)
 
 
 
     def ReloadFitting(self, shipID):
-        if shipID is None:
-            return 
-        if shipID != eve.session.shipid:
-            raise RuntimeError('WTF?', shipID)
-        self.shipID = shipID
-        ship = self.GetShell(shipID)
-        cfg.evelocations.Prime([shipID])
+        cfg.evelocations.Prime([self.shipID])
         try:
             self.GetFitting()
         except:
@@ -2134,25 +2123,16 @@ class Fitting(uicls.FittingLayout):
 
 
 
-    def GetShell(self, shipID):
-        ship = sm.GetService('godma').GetItem(shipID)
-        self.shipcontainer = ship
-        return ship
-
-
-
     def IsCharge(self, typeID):
         return cfg.invtypes.Get(typeID).Group().Category().id in (const.categoryCharge, const.groupFrequencyCrystal)
 
 
 
     def GetFitting(self):
-        if not self.shipcontainer:
-            lg.Error('fitting', 'GetFitting with no Shell?')
-            return 
         key = uix.FitKeys()
-        shipName = cfg.evelocations.Get(self.shipcontainer.itemID).name
-        typeName = self.shipcontainer.type.name
+        shipName = cfg.evelocations.Get(self.shipID).name
+        ship = self.dogmaLocation.dogmaItems[self.shipID]
+        typeName = cfg.invtypes.Get(ship.typeID).typeName
         label = shipName
         self.sr.shipnametext.text = label
         self.sr.dragIcon.width = self.sr.shipnametext.width
@@ -2161,40 +2141,37 @@ class Fitting(uicls.FittingLayout):
         if self.sr.infolink.left + 50 > self.sr.shipnamecont.width:
             self.sr.infolink.left = 0
             self.sr.infolink.SetAlign(uiconst.TOPRIGHT)
-        self.sr.infolink.OnClick = (uix.ShowInfo, self.shipcontainer.typeID, self.shipcontainer.itemID)
+        self.sr.infolink.UpdateInfoLink(ship.typeID, ship.itemID)
         modulesByFlag = {}
-        for module in self.shipcontainer.modules:
+        for module in ship.GetFittedItems().itervalues():
             modulesByFlag[(module.flagID, self.IsCharge(module.typeID))] = module
 
-        for gidx in xrange(3):
-            totalslots = getattr(self.shipcontainer, ['hiSlot', 'medSlot', 'lowSlot'][gidx] + 's', 0)
+        for (gidx, attributeID,) in enumerate((const.attributeHiSlots, const.attributeMedSlots, const.attributeLowSlots)):
+            totalslots = self.GetShipAttribute(attributeID)
             for sidx in xrange(8):
                 flag = getattr(const, 'flag%sSlot%s' % (key[gidx], sidx))
                 slot = self.slots[flag]
                 slot.state = uiconst.UI_NORMAL
                 if sidx >= totalslots:
-                    slot.SetFitting(None, self.shipcontainer)
+                    slot.SetFitting(None, self.dogmaLocation)
                     self.DisableSlot(slot)
                 else:
                     module = modulesByFlag.get((flag, 0), None)
                     if module:
-                        slot.SetFitting(module, self.shipcontainer)
+                        slot.SetFitting(module, self.dogmaLocation)
                     else:
-                        slot.SetFitting(None, self.shipcontainer)
+                        slot.SetFitting(None, self.dogmaLocation)
                     charge = modulesByFlag.get((flag, 1), None)
                     if charge:
-                        slot.SetFitting(charge, self.shipcontainer)
-                    for charge in self.shipcontainer.sublocations:
+                        slot.SetFitting(charge, self.dogmaLocation)
+                    for charge in self.dogmaLocation.GetSublocations(self.shipID):
                         if charge.flagID == flag:
-                            slot.SetFitting(charge, self.shipcontainer)
+                            slot.SetFitting(charge, self.dogmaLocation)
                             continue
 
 
 
-        totalRigSlots = 0
-        attr = cfg.dgmattribs.Get(const.attributeRigSlots)
-        if attr.attributeName in self.shipcontainer.attributes:
-            totalRigSlots = int(self.shipcontainer.attributes[attr.attributeName])
+        totalRigSlots = self.GetShipAttribute(const.attributeRigSlots)
         for i in xrange(3):
             rigFlag = getattr(const, 'flagRigSlot%s' % i, None)
             slot = self.GetSlot(rigFlag)
@@ -2204,26 +2181,18 @@ class Fitting(uicls.FittingLayout):
                 self.DisableSlot(slot)
             else:
                 module = modulesByFlag.get((rigFlag, 0), None)
-                slot.SetFitting(module, self.shipcontainer)
+                slot.SetFitting(module, self.dogmaLocation)
 
-        showSubsystems = bool(self.shipcontainer.techLevel > 2)
+        showSubsystems = bool(self.GetShipAttribute(const.attributeTechLevel) > 2)
         for i in xrange(5):
             subsystemFlag = getattr(const, 'flagSubSystemSlot%s' % i, None)
             slot = self.GetSlot(subsystemFlag)
             if not slot:
                 continue
             module = modulesByFlag.get((subsystemFlag, 0), None)
-            slot.SetFitting(module, self.shipcontainer)
+            slot.SetFitting(module)
             if not showSubsystems:
                 self.DisableSlot(slot)
-
-
-
-
-    def GetModuleInfo(self, moduleID):
-        for module in self.shipcontainer.modules:
-            if module.itemID == moduleID:
-                return module
 
 
 
@@ -2275,59 +2244,30 @@ class Fitting(uicls.FittingLayout):
 
 
 
-    def OnStuffDropOnMainArea(self, what):
-        if getattr(what, 'isShip', None):
-            pass
-        elif hasattr(what, 'location'):
-            self.FitAnySlot(what)
-
-
-
-    def FitAnySlot(self, what):
-        if self.shipcontainer:
-            self.shipcontainer.inventory.Add(what.itemID, what.locationID, qty=1, flag=const.flagAutoFit)
-
-
-
-    def GetSceneShip(self):
-        for model in self.sr.sceneContainer.scene.objects:
-            if getattr(model, 'name', None) == str(self.shipcontainer.itemID):
-                return model
-
-
-
-
-    def ProcessShipEffect(self, godmaStm, effectState):
-        uthread.new(self.ProcessShipEffect_thread, godmaStm, effectState).context = 'form.Fitting.ProcessShipEffect'
-
-
-
-    def ProcessShipEffect_thread(self, godmaStm, effectState):
-        if not self or self.destroyed:
+    def OnDogmaAttributeChanged(self, shipID, itemID, attributeID, value):
+        if shipID != self.shipID:
             return 
-        if self.shipcontainer:
-            module = self.GetModuleInfo(effectState.itemID)
-            if module and effectState.effectName == 'online':
-                if getattr(module, 'flagID', None):
-                    slot = self.GetSlot(module.flagID)
-                    if slot:
-                        slot.SetState(effectState.active)
-                shipItem = sm.GetService('godma').GetItem(session.shipid)
-                slot = None
-                for module in shipItem.modules:
-                    if module.itemID == effectState.itemID:
-                        slot = module.flagID - const.flagHiSlot0 + 1
+        self.UpdateStats()
+        if attributeID == const.attributeIsOnline:
+            uthread.pool('Fitting::OnDogmaAttributeChanged', self.ProcessOnlineStateChange, itemID, value)
 
-                if slot is not None:
-                    sceneShip = self.GetSceneShip()
-                    for turret in sceneShip.turretSets:
-                        if turret.locatorName.split('_')[-1] == str(slot):
-                            if effectState.active:
-                                turret.EnterStateIdle()
-                            else:
-                                turret.EnterStateDeactive()
 
-            self.UpdateStats()
+
+    def ProcessOnlineStateChange(self, itemID, value):
+        try:
+            dogmaItem = self.dogmaLocation.GetDogmaItem(itemID)
+        except KeyError:
+            return 
+        slot = dogmaItem.flagID - const.flagHiSlot0 + 1
+        if slot is not None:
+            sceneShip = self.GetSceneShip()
+            for turret in sceneShip.turretSets:
+                if turret.locatorName.split('_')[-1] == str(slot):
+                    if dogmaItem.IsOnline():
+                        turret.EnterStateIdle()
+                    else:
+                        turret.EnterStateDeactive()
+
 
 
 
@@ -2371,12 +2311,12 @@ class Fitting(uicls.FittingLayout):
 
 
 
-    def ProcessSessionChange(self, isRemote, session, change):
-        if session.shipid and 'shipid' in change:
-            self.OnActiveShipChange(session.shipid)
-            ship = sm.GetService('godma').GetItem(session.shipid)
-            self.shipcontainer = ship
-            self.ReloadShipModel()
+    def ProcessActiveShipChanged(self, shipID, oldShipID):
+        self.OnActiveShipChange(shipID)
+        self.shipID = shipID
+        self.ReloadShipModel()
+        self.UpdateStats()
+        self.LoadCapacitorStats()
 
 
 
@@ -2490,6 +2430,14 @@ class Fitting(uicls.FittingLayout):
 
 
 
+    def GetSceneShip(self):
+        for model in self.sr.sceneContainer.scene.objects:
+            if getattr(model, 'name', None) == str(self.shipID):
+                return model
+
+
+
+
 
 class FittingDraggableText(uicls.Container):
     __guid__ = 'xtriui.FittingDraggableText'
@@ -2500,7 +2448,7 @@ class FittingDraggableText(uicls.Container):
         (fitting.shipTypeID, fitting.fitData,) = fittingSvc.GetFittingDictForActiveShip()
         fitting.fittingID = None
         fitting.description = ''
-        fitting.name = cfg.evelocations.Get(session.shipid).locationName
+        fitting.name = cfg.evelocations.Get(util.GetActiveShip()).locationName
         fitting.ownerID = 0
         entry = util.KeyVal()
         entry.fitting = fitting

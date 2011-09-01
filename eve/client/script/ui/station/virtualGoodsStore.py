@@ -6,6 +6,7 @@ import trinity
 import form
 import util
 import uiutil
+import blue
 
 class VirtualGoodsStore(uicls.Window):
     __guid__ = 'form.VirtualGoodsStore'
@@ -15,6 +16,7 @@ class VirtualGoodsStore(uicls.Window):
     default_windowID = 'VirtualGoodsStore'
 
     def ApplyAttributes(self, attributes):
+        self.openTime = blue.os.GetTime()
         uicls.Window.ApplyAttributes(self, attributes)
         self.storeSvc = sm.GetService('store')
         self.scope = 'station'
@@ -140,6 +142,15 @@ class VirtualGoodsStore(uicls.Window):
                  'qty': offerKV.numberOffered}
             else:
                 itemName = invType.typeName
+            if invType.categoryID == const.categoryBlueprint:
+                itemName += '<br>'
+                opts = {'ME': offerKV.bpME,
+                 'PE': offerKV.bpPE,
+                 'runs': offerKV.bpRuns}
+                if offerKV.bpRuns > 0:
+                    itemName += mls.UI_CONTRACTS_ITEMDETAILS_BLUEPRINTCOPY % opts
+                else:
+                    itemName += mls.UI_CONTRACTS_ITEMDETAILS_BLUEPRINTORIGINAL % opts
             if offerKV.genderRestrictions == const.FEMALE:
                 genderText = mls.UI_GENERIC_FEMALE
             elif offerKV.genderRestrictions == const.MALE:
@@ -259,6 +270,13 @@ class VirtualGoodsStore(uicls.Window):
         for frame in self.frames:
             frame.SetRGB(*bgColor)
 
+
+
+
+    def OnClose_(self, *args):
+        closeTime = blue.os.GetTime()
+        openFor = int(round(float(closeTime - self.openTime) / SEC))
+        sm.GetService('infoGatheringSvc').LogInfoEvent(eventTypeID=const.infoEventNexCloseNex, itemID=session.charid, itemID2=session.stationid, int_1=openFor)
 
 
 

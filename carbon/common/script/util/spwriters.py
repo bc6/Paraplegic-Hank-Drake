@@ -106,7 +106,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             self.AddTopMenuSub('INFO', 'Python', '/info/python.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'Profiler', '/info/profiler.py', disabled=dPROG)
             if iocp.UsingIOCP():
-                self.AddTopMenuSub('INFO', 'IOCP', '/info/iocp.py', disabled=dPROG)
+                self.AddTopMenuSub('INFO', 'CarbonIO', '/info/carbonio.py', disabled=dPROG)
             else:
                 self.AddTopMenuSub('INFO', 'StacklessIO', '/info/stacklessio.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'LoadService', '/info/loadservice.py', disabled=dPROG)
@@ -137,7 +137,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             self.AddTopMenuSub('INFO', 'Python', '/info/python.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'Profiler', '/info/profiler.py', disabled=dPROG)
             if iocp.UsingIOCP():
-                self.AddTopMenuSub('INFO', 'IOCP', '/info/iocp.py', disabled=dPROG)
+                self.AddTopMenuSub('INFO', 'CarbonIO', '/info/carbonio.py', disabled=dPROG)
             else:
                 self.AddTopMenuSub('INFO', 'StacklessIO', '/info/stacklessio.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'MachoNet', '/info/machoNet.py', disabled=dPROG)
@@ -158,7 +158,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             self.AddTopMenuSub('INFO', 'Python', '/info/python.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'Profiler', '/info/profiler.py', disabled=dPROG)
             if iocp.UsingIOCP():
-                self.AddTopMenuSub('INFO', 'IOCP', '/info/iocp.py', disabled=dPROG)
+                self.AddTopMenuSub('INFO', 'CarbonIO', '/info/carbonio.py', disabled=dPROG)
             else:
                 self.AddTopMenuSub('INFO', 'StacklessIO', '/info/stacklessio.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'MachoNet', '/info/machoNet.py', disabled=dPROG)

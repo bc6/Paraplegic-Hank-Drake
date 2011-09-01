@@ -179,6 +179,26 @@ def MachoThrottle(callKey):
 
 
 
+def ThrottledCall(key, boundMethod, *args):
+    logger = sm.GetService('machoNet').LogNotice
+    with MachoThrottle(key) as t:
+        if hasattr(t, 'result'):
+            logger(key, 'found throttler result from', (blue.os.GetTime() - t.resultTime) / const.uSEC, " microseconds ago. It's got", len(t.owning), 'threads on it and', t.nWaiting, 'waiting for it')
+            ret = t.result
+            logger('No need to cross the wire for', key, ' Got', ret)
+            if t.nWaiting == 0:
+                logger('No more consumers, invalidating cached result', t.result)
+                del t.result
+        else:
+            ret = boundMethod(*args)
+            if getattr(t, 'nWaiting', 0) > 0:
+                t.result = ret
+                t.resultTime = blue.os.GetTime()
+                logger('Sharing result for call', key, 'at', t.resultTime, 'for', t.nWaiting, 'waiting threads:', t.result)
+    return ret
+
+
+
 class MachoNetService(service.Service):
     __guid__ = 'svc.machoNet'
     __displayname__ = 'MachoNet Service'
@@ -3082,7 +3102,7 @@ class MachoNetService(service.Service):
 
 
     def _GetInitVals(self):
-        return sm.GetService('config').GetInitValsClient()
+        return sm.GetService('config').GetInitVals()
 
 
 
@@ -4284,7 +4304,7 @@ exports = {'macho.Loads': MachoLoads,
  'macho.RegisterPortOffset': RegisterPortOffset,
  'macho.offsetMap': offsetMap,
  'macho.gpsMap': gpsMap,
- 'macho.Throttle': MachoThrottle,
+ 'macho.ThrottledCall': ThrottledCall,
  'macho.gpcsMap': gpcsMap,
  'macho.packetTypeChannelMap': packetTypeChannelMap}
 exports['macho.mode'] = boot.role

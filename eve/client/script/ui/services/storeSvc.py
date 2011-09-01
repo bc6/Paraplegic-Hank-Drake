@@ -94,6 +94,9 @@ class storeSvc(service.Service):
             offeredTypeID = None
             numberOffered = None
             genderForType = None
+            bpME = None
+            bpPE = None
+            bpRuns = None
             priceMPLEX = 0
             corruptOffer = False
             try:
@@ -110,6 +113,9 @@ class storeSvc(service.Service):
                         offeredTypeID = item.argumentValue
                         numberOffered = item.amount
                         genderForType = self.genderByTypeID.get(offeredTypeID, None)
+                        bpME = item.details1
+                        bpPE = item.details2
+                        bpRuns = item.details3
                         if offeredTypeID not in cfg.invtypes:
                             raise RuntimeError('Invalid offer because typeID not in invtypes', offeredTypeID, offerID)
                     else:
@@ -137,7 +143,7 @@ class storeSvc(service.Service):
                         self.offersByTypeIDs[offeredTypeID] = (offerID, priceMPLEX)
                 else:
                     self.offersByTypeIDs[offeredTypeID] = (offerID, priceMPLEX)
-                self.preparedOffers[offerID] = util.KeyVal(offerID=offerID, typeID=offeredTypeID, numberOffered=numberOffered, price=priceMPLEX, genderRestrictions=genderForType)
+                self.preparedOffers[offerID] = util.KeyVal(offerID=offerID, typeID=offeredTypeID, numberOffered=numberOffered, price=priceMPLEX, genderRestrictions=genderForType, bpME=bpME, bpPE=bpPE, bpRuns=bpRuns)
 
         return self.preparedOffers
 

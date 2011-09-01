@@ -14,7 +14,7 @@ class MainScreen(uicls.Container):
     default_name = 'MainScreen'
     default_state = uiconst.UI_NORMAL
     default_opacity = 1.0
-    default_align = uiconst.TOPLEFT
+    default_align = uiconst.CENTER
     default_width = 1280
     default_height = 720
 
@@ -132,8 +132,9 @@ class ScreenNewsTicker(uicls.Container):
         wedgeBracket = uicls.ScreenWedgeBracketBottom(parent=self, hasCorners=False, wedgePosRatio=0.85, wedgeWidth=30, wedgeTopStart=0)
         wedgeBracket.AnimAppear()
         self.leftCont = uicls.Container(name='leftCont', parent=self, align=uiconst.TOLEFT, width=200, padBottom=-20, padLeft=6)
-        uicls.Sprite(name='ICLogo', parent=self.leftCont, align=uiconst.CENTERLEFT, texturePath='res:/UI/Texture/classes/CQMainScreen/ICLogo.png', pos=(25, 2, 50, 50))
-        uicls.Label(name='breakingNewsLabel', parent=self.leftCont, text='A DIVISION\nOF ISD', fontsize=25, top=5, align=uiconst.CENTERLEFT, left=90, linespace=20)
+        uicls.Sprite(name='ICLogo', parent=self.leftCont, align=uiconst.CENTERLEFT, texturePath='res:/UI/Texture/classes/CQMainScreen/ICLogo.png', pos=(30, 4, 50, 50))
+        uicls.Label(name='breakingNewsLabel', parent=self.leftCont, text='A DIVISION', fontsize=25, top=5, align=uiconst.TOPLEFT, left=85, linespace=2)
+        uicls.Label(name='breakingNewsLabel', parent=self.leftCont, text='OF ISD', fontsize=25, top=28, align=uiconst.TOPLEFT, left=85, linespace=2)
         uicls.Sprite(bgParent=self.leftCont, texturePath='res:/UI/Texture/classes/CQMainScreen/breakingNewsGradient.png')
         self.autoText = uicls.AutoTextScroll(parent=self, align=uiconst.TOALL, scrollSpeed=40, padBottom=-20, padLeft=-15, fadeWidth=50)
 
@@ -159,8 +160,8 @@ class MainScreenTestWindow(uicls.Window):
         self.bottomCont = uicls.Container(parent=self.sr.main, align=uiconst.TOBOTTOM, height=25)
         self.mainScreen = MainScreen(parent=self.sr.main, default_align=uiconst.TOPLEFT)
         self.mainScreen.SetNewsTickerData(*sm.GetService('holoscreen').GetNewsTickerData())
-        templates = sm.GetService('holoscreen').templates
-        options = [ (cls.__guid__, (cls, dataFunc)) for (cls, dataFunc,) in templates ]
+        playlist = sm.GetService('holoscreen').playlist
+        options = [ (cls.__guid__, (cls, dataFunc)) for (cls, dataFunc,) in playlist ]
         self.combo = uicls.Combo(parent=self.bottomCont, options=options, pos=(10, 0, 150, 0), width=150, align=uiconst.TOPLEFT, callback=self.OnCombo)
         uicls.Button(parent=self.bottomCont, label='Reload', func=self.UpdateScreen, align=uiconst.TOPLEFT, pos=(165, 0, 100, 0))
         self.checkbox = uicls.Checkbox(parent=self.bottomCont, text='Render to screen', align=uiconst.TOPLEFT, pos=(230, 0, 250, 0), checked=False, callback=self.OnCheckboxChanged)
@@ -210,17 +211,15 @@ class MainScreenTestWindow(uicls.Window):
 
 class CorpFinderScreen(uicls.Container):
     __guid__ = 'cqscreen.CorpFinderScreen'
-    __notifyevents__ = ['OnCorporationChanged']
     default_name = 'CorpFinderScreen'
     default_state = uiconst.UI_NORMAL
     default_opacity = 1.0
-    default_align = uiconst.TOPLEFT
+    default_align = uiconst.CENTER
     default_width = 540
     default_height = 720
 
     def ApplyAttributes(self, attributes):
         uicls.Container.ApplyAttributes(self, attributes)
-        sm.RegisterNotify(self)
         corpID = attributes.corpID
         self.entityID = attributes.entityID
         self.cursor = uiconst.UICURSOR_SELECT
@@ -228,6 +227,8 @@ class CorpFinderScreen(uicls.Container):
         self.bgSprite = uicls.Sprite(bgParent=self, texturePath='res:/UI/Texture/Classes/CQSideScreens/corpRecruitmentScreenBG.png')
         self.frame = uicls.ScreenFrame5(parent=self, align=uiconst.TOALL, padding=10)
         self.ConstructCorpLogo(corpID)
+        self.hoverLabel = uicls.Label(name='hoverLabel', parent=self, text=mls.GENERIC_CORPORATIONLOWER, align=uiconst.CENTERBOTTOM, top=60, uppercase=True, fontsize=35, state=uiconst.UI_DISABLED, color=util.Color.WHITE)
+        self.hoverLabel.opacity = 0.0
         uthread.new(self.AnimBackground)
 
 
@@ -277,11 +278,13 @@ class CorpFinderScreen(uicls.Container):
 
     def OnMouseEnter(self, *args):
         uicore.animations.FadeIn(self.hoverFill, endVal=0.4, duration=0.3)
+        uicore.animations.BlinkIn(self.hoverLabel)
 
 
 
     def OnMouseExit(self, *args):
         uicore.animations.FadeOut(self.hoverFill)
+        uicore.animations.FadeOut(self.hoverLabel)
 
 
 
@@ -293,18 +296,13 @@ class CorpFinderScreen(uicls.Container):
 
 
 
-    def OnCorporationChanged(self, corpID, change):
-        self.ConstructCorpLogo(corpID)
-
-
-
 
 class PIScreen(uicls.Container):
     __guid__ = 'cqscreen.PIScreen'
     default_name = 'PIScreen'
     default_state = uiconst.UI_NORMAL
     default_opacity = 1.0
-    default_align = uiconst.TOPLEFT
+    default_align = uiconst.CENTER
     default_width = 540
     default_height = 720
 
@@ -321,6 +319,8 @@ class PIScreen(uicls.Container):
             circle = uicls.Sprite(parent=transform, texturePath='res:/UI/Texture/Classes/CQSideScreens/circle%s.png' % i, align=uiconst.TOALL)
             self.circles.append(transform)
 
+        self.hoverLabel = uicls.Label(name='hoverLabel', parent=self, text=mls.GENERIC_PLANETS, align=uiconst.CENTERBOTTOM, top=60, uppercase=True, fontsize=35, state=uiconst.UI_DISABLED, color=util.Color.WHITE)
+        self.hoverLabel.opacity = 0.0
         uthread.new(self.AnimCircles)
 
 
@@ -332,11 +332,13 @@ class PIScreen(uicls.Container):
 
     def OnMouseEnter(self, *args):
         uicore.animations.FadeIn(self.hoverFill, endVal=0.4, duration=0.3)
+        uicore.animations.BlinkIn(self.hoverLabel)
 
 
 
     def OnMouseExit(self, *args):
         uicore.animations.FadeOut(self.hoverFill)
+        uicore.animations.FadeOut(self.hoverLabel)
 
 
 
@@ -375,10 +377,9 @@ class PIScreen(uicls.Container):
          2,
          3,
          1]
-        speedConst = 0.4
+        speedConst = 0.3
         while not self.destroyed:
-            duration = random.randint(5, 10)
-            duration = 5
+            duration = random.randint(7, 15)
             for (i, circle,) in enumerate(self.circles):
                 angleBase = speedConst * random.random() * random.choice([1, -1])
                 uicore.animations.Tr2DRotateTo(circle, startAngle=circle.rotation, endAngle=circle.rotation + angleBase * speedFactor[i] * math.pi, duration=duration)

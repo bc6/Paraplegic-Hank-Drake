@@ -4,7 +4,6 @@ import sys
 import os
 import urllib
 import urlparse
-import random
 from hashlib import sha1
 import uiconst
 import util
@@ -628,9 +627,6 @@ class PatchService(service.Service):
         else:
             currentBuild = boot.build
         self.LogInfo('Currently running', currentBuild, 'with hash', localHash, 'but server is', upgradeInfo.build, 'with hash', upgradeInfo.hash)
-        if upgradeInfo.hash in settings.public.ui.Get('DeniedClientUpgrades', []) or upgradeInfo.hash == self.upgradeOffered:
-            self.LogInfo('Denied update', upgradeInfo.build)
-            return 
         PFHash = nasty.GetCompiledCodeHash(blue.rot.PathToFilename('script:/compiled.code'))
         if PFHash == upgradeInfo.hash:
             self.LogInfo('Installation directory file matches hash, reverting to that one')
@@ -643,7 +639,6 @@ class PatchService(service.Service):
             description = self.OptionalUpgradeGetDescription().strip()
             if not description:
                 return 
-            self.upgradeOffered = upgradeInfo.hash
             if description == 'ERROR':
                 self.LogError('There was an error getting the update description: ERROR')
                 uicore.Message('CompiledCodeUpgradeDescriptionError')
@@ -660,31 +655,19 @@ class PatchService(service.Service):
 
 
     def PromptForOptionalUpgrade(self, description, url):
-        (install, suppress,) = self.OptionalUpgradeMessage(description, url)
-        self.LogInfo('Client update - Prompt', install, suppress)
+        install = uicore.Message('ClientUpdateAvailable', {'description': description,
+         'url': url}) == uiconst.ID_OK
+        self.LogInfo('Client update - Prompt', install)
         if install:
             self.LogInfo('Downloading client update', self.upgradeInfo)
             self.DownloadOptionalUpgrade(self.upgradeInfo)
-        elif suppress:
-            self.LogInfo("Client update - Don't ask again", self.upgradeInfo.hash)
-            denied = settings.public.ui.Get('DeniedClientUpgrades', [])
-            denied.append(self.upgradeInfo.hash)
-            settings.public.ui.Set('DeniedClientUpgrades', denied)
-        if nasty.IsRunningWithOptionalUpgrade():
+        elif nasty.IsRunningWithOptionalUpgrade():
             if uicore.Message('CompiledCodeUpgradeAvailableOrRevert', {}, uiconst.YESNO) == uiconst.ID_YES:
                 self.LogInfo('Client update uninstall confirmed')
                 self.CleanupOptionalUpgrades()
             else:
                 self.LogInfo('Client update uninstall cancelled')
                 self.PromptForOptionalUpgrade(description, url)
-
-
-
-    def OptionalUpgradeMessage(self, description, url):
-        ret = uicore.Message('CompiledCodeUpgradeAvailable', {'description': description,
-         'url': url}, uiconst.YESNO) == uiconst.ID_YES
-        suppress = not ret
-        return (ret, suppress)
 
 
 

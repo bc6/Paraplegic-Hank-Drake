@@ -543,6 +543,7 @@ class Sprite(TexturedBase):
 class VideoSprite(Sprite):
     __guid__ = 'uicls.VideoSprite'
     __renderObject__ = trinity.Tr2Sprite2d
+    __notifyevents__ = ['OnAudioActivated']
     default_name = 'videosprite'
     default_videoPath = ''
     default_videoLoop = False
@@ -564,6 +565,7 @@ class VideoSprite(Sprite):
 
     def ApplyAttributes(self, attributes):
         uicls.Sprite.ApplyAttributes(self, attributes)
+        sm.RegisterNotify(self)
         self.spriteEffect = trinity.TR2_SFX_BINK
         self._updateStep = None
         RO = self.GetRenderObject()
@@ -587,6 +589,23 @@ class VideoSprite(Sprite):
             self.texture = tex
             if attributes.get('videoAutoPlay', self.default_videoAutoPlay):
                 self._updateStep = uicore.uilib.GetVideoJob().Update(RO.texturePrimary)
+
+
+
+    def OnAudioActivated(self):
+        if not self.texture:
+            return 
+        self.Pause()
+        if self._updateStep:
+            uicore.uilib.GetVideoJob().steps.fremove(self._updateStep)
+            self._updateStep = None
+        self.emitter = None
+        (self.emitter, self.texture.outputChannel,) = sm.GetService('audio').GetAudioBus(is3D=self.positionComponent is not None)
+        self.SetVideoPath(self.texture.resPath)
+        RO = self.GetRenderObject()
+        if RO:
+            self._updateStep = uicore.uilib.GetVideoJob().Update(RO.texturePrimary)
+        self.Play()
 
 
 
