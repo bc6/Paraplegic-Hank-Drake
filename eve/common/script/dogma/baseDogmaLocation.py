@@ -779,7 +779,7 @@ class BaseDogmaLocation():
                     self.broker.LogInfo('Low on power, already taking module offline so skipping', mc)
                 else:
                     self.broker.LogInfo('Low on power, taking module offline', mc)
-                    self.StopEffect(const.effectOnline, itemKey)
+                    self.OfflineModule(itemKey)
             else:
                 self.broker.LogError('The ship', shipID, "has something modifying it's powerLoad that isn't an online effect")
         elif cpuUsage > 1.0:

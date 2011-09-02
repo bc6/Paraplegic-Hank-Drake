@@ -35,6 +35,7 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
         self.LoadItem(session.charid)
         self.lastGroupAllRequest = None
         self.lastUngroupAllRequest = None
+        self.shipIDBeingDisembarked = None
         sm.RegisterNotify(self)
 
 
@@ -46,6 +47,7 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
 
     def _MakeShipActive(self, shipID):
         uthread.Lock(self, 'makeShipActive')
+        self.shipIDBeingDisembarked = self.shipID
         try:
             if self.shipID == shipID:
                 return 
@@ -98,6 +100,7 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
             self.ClearInstanceCache()
 
         finally:
+            self.shipIDBeingDisembarked = None
             uthread.UnLock(self, 'makeShipActive')
 
 
@@ -574,11 +577,12 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
     def OfflineModule(self, moduleID):
         dogmaItem = self.dogmaItems[moduleID]
         self.StopEffect(const.effectOnline, moduleID)
-        try:
-            self.remoteDogmaLM.TakeModuleOffline(dogmaItem.locationID, moduleID)
-        except Exception:
-            self.Activate(moduleID, const.effectOnline)
-            raise 
+        if dogmaItem.locationID != self.shipIDBeingDisembarked:
+            try:
+                self.remoteDogmaLM.TakeModuleOffline(dogmaItem.locationID, moduleID)
+            except Exception:
+                self.Activate(moduleID, const.effectOnline)
+                raise 
 
 
 
