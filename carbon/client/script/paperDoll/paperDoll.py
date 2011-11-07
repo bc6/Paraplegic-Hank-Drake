@@ -672,42 +672,67 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
 
 
     def GetMapCachePath(self):
-        cachePath = '{0}/{1}'.format(blue.os.ResolvePath(u'cache:'), 'Avatars/cachedMaps')
-        return cachePath
+        avatarCachePath = u''
+        try:
+            userCacheFolder = blue.os.ResolvePath(u'cache:')
+            avatarCachePath = u'{0}/{1}'.format(userCacheFolder, u'Avatars/cachedMaps')
+        except Exception:
+            avatarCachePath = u''
+            sys.exc_clear()
+        return avatarCachePath
 
 
 
     def GetCacheFilePath(self, cachePath, hashKey, textureWidth, mapType):
-        hashKey = str(hashKey).replace('-', '_')
-        cachedPath = '{0}/{1}/{2}{3}.dds'.format(cachePath, textureWidth, mapType, hashKey)
-        return cachedPath
+        cacheFilePath = u''
+        try:
+            hashKey = str(hashKey).replace('-', '_')
+            cacheFilePath = u'{0}/{1}/{2}{3}.dds'.format(cachePath, textureWidth, mapType, hashKey)
+        except Exception:
+            cacheFilePath = u''
+            sys.exc_clear()
+        return cacheFilePath
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def FindCachedTexture(self, hashKey, textureWidth, mapType):
         cachePath = self.GetMapCachePath()
-        filePath = self.GetCacheFilePath(cachePath, hashKey, textureWidth, mapType)
-        rf = blue.ResFile()
-        if rf.FileExists(filePath):
-            rotPath = blue.rot.FilenameToPath(filePath)
-            cachedTexture = blue.resMan.GetResourceW(rotPath)
-            return cachedTexture
+        try:
+            if cachePath:
+                filePath = self.GetCacheFilePath(cachePath, hashKey, textureWidth, mapType)
+                if filePath:
+                    rf = blue.ResFile()
+                    if rf.FileExists(filePath):
+                        rotPath = blue.rot.FilenameToPath(filePath)
+                        cachedTexture = blue.resMan.GetResourceW(rotPath)
+                        return cachedTexture
+        except Exception:
+            sys.exc_clear()
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def SaveMaps(self, hashKey, textureWidth, maps):
-        for (i, each,) in enumerate(maps):
-            if each is not None:
-                cachePath = self.GetMapCachePath()
-                filePath = self.GetCacheFilePath(cachePath, hashKey, textureWidth, i)
-                folder = os.path.split(filePath)[0]
-                if not os.path.exists(folder):
-                    os.makedirs(folder)
-                each.SaveToDDS(filePath)
-                each.WaitForSave()
+        cachePath = self.GetMapCachePath()
+        if not cachePath:
+            return 
+        try:
+            for (i, each,) in enumerate(maps):
+                if each is not None:
+                    filePath = self.GetCacheFilePath(cachePath, hashKey, textureWidth, i)
+                    if filePath:
+                        folder = os.path.split(filePath)[0]
+                        try:
+                            if not os.path.exists(folder):
+                                os.makedirs(folder)
+                            each.SaveToDDS(filePath)
+                            each.WaitForSave()
+                        except OSError:
+                            pass
 
+        except Exception:
+            sys.exc_clear()
 
 
 
@@ -2605,8 +2630,8 @@ class Doll(object):
         while any(map(lambda x: x.alive, self._UpdateTaskletChildren)):
             blue.synchro.Yield()
 
-        if factory.allowTextureCache and mapsTypesComposited and self.mapBundle.AllMapsGood():
-            mapsToSave = [ self.mapBundle[mapType] for mapType in mapsTypesComposited ]
+        if factory.allowTextureCache and mapsTypesComposited:
+            mapsToSave = [ self.mapBundle[mapType] for mapType in mapsTypesComposited if self.mapBundle[mapType].isGood ]
             uthread.new(factory.SaveMaps, hashKey, self.mapBundle.baseResolution[0], mapsToSave)
 
 

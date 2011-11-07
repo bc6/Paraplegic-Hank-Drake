@@ -1592,7 +1592,6 @@ class MachoNetService(service.Service):
                     raise 
                 (self.serviceInfo, initvals,) = self.RemoteServiceCall(session, self.myProxyNodeID, 'machoNet', 'GetInitVals')
                 totalIntvals = len(initvals) + 1
-                sm.ChainEvent('ProcessLoginProgress', 'loginprogress::gettingbulkdata', '', 3, totalIntvals)
                 i = 4
                 i = i + 1
                 self.getCachedObjectHelperException = None

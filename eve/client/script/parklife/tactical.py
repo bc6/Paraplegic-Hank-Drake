@@ -893,6 +893,23 @@ class TacticalSvc(service.Service):
 
 
 
+    def SetNPCGroups(self):
+        sendGroupIDs = []
+        userSettings = self.GetGroups()
+        for (cat, groupdict,) in util.GetNPCGroups().iteritems():
+            for (groupname, groupids,) in groupdict.iteritems():
+                for groupid in groupids:
+                    if groupid in userSettings:
+                        sendGroupIDs += groupids
+                        break
+
+
+
+        if sendGroupIDs:
+            self.ChangeSettings('groups', sendGroupIDs, 1)
+
+
+
     def GetBracketGroups(self):
         self.PrimePreset()
         return self.preset[3]['groups']

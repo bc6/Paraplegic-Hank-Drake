@@ -1896,7 +1896,6 @@ class Scanner(uicls.Window):
             resultBracket = xtriui.WarpableResultBracket()
         else:
             resultBracket = xtriui.BaseBracket()
-        groupType = cfg.invgroups.Get(result.groupID)
         resultBracket.width = resultBracket.height = 16
         resultBracket.name = '__pointResultBracket'
         resultBracket.trackTransform = pointLocator
@@ -1917,9 +1916,21 @@ class Scanner(uicls.Window):
         if 'scanresult' in maputils.GetHintsOnSolarsystemBrackets():
             resultBracket.ShowBubble(hint)
             resultBracket.showLabel = 0
-        typeID = result.Get('typeID', None)
-        (iconNo, color,) = self.GetIconBasedOnQuality(groupType.categoryID, result.groupID, typeID, result.certainty)
-        resultBracket.Startup(('result', result.id), groupType.groupID, groupType.categoryID, iconNo)
+        if result.certainty >= const.probeResultInformative:
+            typeID = result.Get('typeID', None)
+            t = cfg.invtypes.Get(typeID)
+            groupID = t.groupID
+            categoryID = t.categoryID
+        elif result.certainty >= const.probeResultGood:
+            typeID = None
+            groupID = result.Get('groupID', None)
+            categoryID = cfg.invgroups.Get(result.groupID).categoryID
+        else:
+            typeID = None
+            groupID = None
+            categoryID = result.Get('categoryID', None)
+        (iconNo, color,) = self.GetIconBasedOnQuality(categoryID, groupID, typeID, result.certainty)
+        resultBracket.Startup(('result', result.id), groupID, categoryID, iconNo)
         resultBracket.sr.icon.color.SetRGB(*color)
         uicore.layer.systemmap.children.insert(0, resultBracket)
         parent = self.GetSystemParent()
@@ -1931,6 +1942,8 @@ class Scanner(uicls.Window):
     def GetIconBasedOnQuality(self, categoryID, groupID, typeID, certainty):
         if groupID in (const.groupCosmicAnomaly, const.groupCosmicSignature):
             props = POINT_ICON_DUNGEON
+        elif categoryID == const.categoryShip and groupID is None:
+            props = sm.GetService('bracket').GetMappedBracketProps(const.categoryShip, const.groupFrigate, None, default=POINT_ICON_PROPS)
         else:
             props = sm.GetService('bracket').GetMappedBracketProps(categoryID, groupID, typeID, default=POINT_ICON_PROPS)
         iconNo = props[0]

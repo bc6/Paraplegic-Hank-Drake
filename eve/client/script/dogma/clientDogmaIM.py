@@ -28,7 +28,7 @@ class ClientDogmaInstanceManager(service.Service):
                 self.dogmaLocation.OnItemChange(item, change)
             elif change.get(const.ixLocationID, None) in (shipID, session.charid):
                 self.dogmaLocation.OnItemChange(item, change)
-            elif item.itemID == shipID:
+            elif item.itemID == shipID and session.stationid2 is not None:
                 if item.locationID != session.stationid or item.flagID != const.flagHangar:
                     if util.IsWorldSpace(item.locationID) or util.IsSolarSystem(item.locationID):
                         self.LogInfo('ActiveShip moved as we are undocking. Ignoring')

@@ -207,7 +207,7 @@ class FittingWindow(uicls.Window):
 
 
     def OnSetDevice(self):
-        if eve.session.shipid:
+        if self.shipID:
             uthread.new(self.ConstructLayout)
 
 
@@ -781,13 +781,13 @@ class Fitting(uicls.FittingLayout):
 
 
     def GetShipMenu(self, *args):
-        if not eve.session.shipid:
+        if self.shipID is None:
             return []
         if session.stationid:
             hangarInv = eve.GetInventory(const.containerHangar)
             hangarItems = hangarInv.List()
             for each in hangarItems:
-                if each.itemID == eve.session.shipid:
+                if each.itemID == self.shipID:
                     return sm.GetService('menu').InvItemMenu(each)
 
         elif session.solarsystemid:

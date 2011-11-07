@@ -301,7 +301,7 @@ class CargoCargoSlots(CargoSlots):
                 dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
                 shipID = util.GetActiveShip()
                 if cfg.IsFittableCategory(item.categoryID):
-                    dogmaLocation.UnloadModuleToContainer(shipID, item.itemID, (shipID,))
+                    dogmaLocation.UnloadModuleToContainer(shipID, item.itemID, (shipID,), flag=const.flagCargo)
                     return 
                 if item.categoryID == const.categoryCharge:
                     dogmaLocation.UnloadChargeToContainer(shipID, item.itemID, (shipID,), const.flagCargo)

@@ -2364,8 +2364,12 @@ class SystemMenu(uicls.LayerCore):
                 prefs.resourceCacheEnabled = bool(checkbox.checked)
                 self.ProcessGraphicsSettings()
             if config == 'loadstationenv':
+                view = util.GetCurrentView()
                 prefs.SetValue('loadstationenv', 1 if checkbox.checked else 0)
-                eve.Message('CustomInfo', {'info': mls.UI_SYSMENU_NEEDTOREENTERCQ})
+                if session.stationid and view == 'station':
+                    eve.Message('CustomInfo', {'info': mls.UI_SYSMENU_NEEDTOREENTERCQ})
+                elif sm.IsServiceRunning('neocom'):
+                    sm.GetService('neocom').ShowToggleHangarCQButton()
             if config == 'turretsEnabled':
                 if checkbox.checked:
                     sm.GetService('FxSequencer').EnableGuids(FxSequencer.fxTurretGuids)

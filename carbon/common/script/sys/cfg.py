@@ -348,7 +348,6 @@ class Config():
             sm.ChainEvent('ProcessLoginProgress', 'loginprogress::miscinitdata', 'messages', 2, self.totalLogonSteps)
         if boot.role == 'client':
             mls.LoadTranslations(session.languageID)
-        self.ReportLoginProgress('coreInitData1', self.totalLogonSteps - const.cfgLogonSteps)
         self.graphics = self.LoadBulk('graphics', const.cacheResGraphics, sys.Recordset(sys.Row, 'graphicID'))
         self.icons = self.LoadBulk('icons', const.cacheResIcons, sys.Recordset(sys.Row, 'iconID'))
         self.sounds = self.LoadBulk('sounds', const.cacheResSounds, sys.Recordset(sys.Row, 'soundID'))
@@ -363,7 +362,6 @@ class Config():
         self.worldspaceObjectsByWorldspaceID = self.LoadBulk('worldspaceObjectsByWorldspaceID', const.cacheWorldSpaceObjects, None, 'worldSpaceTypeID')
         self.worldspaceOccluders = self.LoadBulk('worldspaceOccluders', const.cacheWorldSpaceOccluders, None, 'worldSpaceTypeID')
         self.worldspaceLocators = self.LoadBulk('worldspaceLocators', const.cacheWorldSpaceLocators, None, 'worldSpaceTypeID')
-        self.ReportLoginProgress('coreInitData2', self.totalLogonSteps - const.cfgLogonSteps + 1)
         self.entityGeneratorsByWorldSpace = self.LoadBulk('entityGeneratorsByWorldSpace', const.cacheEntityGenerators, None, 'worldSpaceTypeID')
         self.entitySpawnByGenerator = self.LoadBulk('entitySpawnByGenerator', const.cacheEntitySpawns, None, 'generatorID')
         self.entitySpawnInitsBySpawn = self.LoadBulk('entitySpawnInitsBySpawn', const.cacheEntitySpawnOverrides, None, 'spawnID')
@@ -381,7 +379,6 @@ class Config():
         self.actionStationActions = self.LoadBulk('actionStationActions', const.cacheActionStationActions, None, 'actionStationTypeID')
         self.actionObjectStations = self.LoadBulk('actionObjectStations', const.cacheActionObjectStations, None, 'actionObjectID')
         self.actionObjectExits = self.LoadBulk('actionObjectExits', const.cacheActionObjectExits, None, ['actionObjectID', 'actionStationInstanceID', True])
-        self.ReportLoginProgress('coreInitData3', self.totalLogonSteps - const.cfgLogonSteps + 2)
         self.paperdollModifierLocations = self.LoadBulk('paperdollModifierLocations', const.cachePaperdollModifierLocations, sys.Recordset(sys.Row, 'modifierLocationID'))
         self.paperdollResources = self.LoadBulk('paperdollResources', const.cachePaperdollResources, sys.Recordset(sys.Row, 'paperdollResourceID'))
         self.paperdollSculptingLocations = self.LoadBulk('paperdollSculptingLocations', const.cachePaperdollSculptingLocations, sys.Recordset(sys.Row, 'sculptLocationID'))

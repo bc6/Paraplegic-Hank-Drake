@@ -731,7 +731,8 @@ class AssetRenderer(object):
                         if fromWebtools:
                             outputPath = '%s/EVE/capture/Screenshots/Renders/%s.png' % (blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL), typeID)
                         else:
-                            outputPath = 'C:/Temp/Thumbnails/%s_%s.png' % (typeID, itemType[0])
+                            assetResPath = path.replace('res:/Graphics/Character/Modular/', '').replace('/', '_').replace('.type', '')
+                            outputPath = 'C:/Temp/Thumbnails/%s.png' % assetResPath
                         self.SaveScreenShot(outputPath)
                         doll.RemoveResource(modifier.GetResPath(), self.factory)
                         if tryout:

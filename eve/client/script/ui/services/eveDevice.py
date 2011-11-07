@@ -306,6 +306,8 @@ class EveDeviceMgr(svc.device):
         if featureName == 'Interior.ParticlesEnabled':
             return interiorGraphicsQuality == 2
         else:
+            if featureName == 'Interior.LensflaresEnabled':
+                return interiorGraphicsQuality >= 1
             if featureName == 'Interior.lowSpecMaterialsEnabled':
                 return interiorGraphicsQuality == 0
             if featureName == 'Interior.ssaoEnbaled':

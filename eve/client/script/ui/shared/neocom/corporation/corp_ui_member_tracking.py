@@ -112,15 +112,19 @@ class CorpMemberTracking(uicls.Container):
                     label += '<t>%s' % base
                     label += '<t>%s' % util.FmtDate(member.startDateTime, 'ln')
                     if eve.session.corprole & const.corpRoleDirector > 0:
-                        label += '<t>%s' % cfg.invtypes.Get(member.shipTypeID).typeName
+                        if member.shipTypeID is not None:
+                            label += '<t>%s' % cfg.invtypes.Get(member.shipTypeID).typeName
+                        else:
+                            label += '<t>'
                         label += '<t>%s' % cfg.evelocations.Get(member.locationID).locationName
                         label += '<t>%s' % util.FmtDate(member.logonDateTime, 'ls')
                         label += '<t>%s' % util.FmtDate(member.logoffDateTime, 'ls')
                     data = util.KeyVal()
                     data.charID = member.characterID
                     data.corporationID = member.corporationID
-                    data.logonDateTime = member.logonDateTime
-                    data.logoffDateTime = member.logoffDateTime
+                    if eve.session.corprole & const.corpRoleDirector > 0:
+                        data.logonDateTime = member.logonDateTime
+                        data.logoffDateTime = member.logoffDateTime
                     data.label = label
                     data.showinfo = True
                     data.typeID = const.typeCharacterAmarr

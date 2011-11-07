@@ -877,6 +877,31 @@ class EveCommandService(svc.cmd):
 
 
 
+    def CmdEnterCQ(self, *args):
+        if util.GetCurrentView() == 'station' or prefs.GetValue('loadstationenv', 1) == 0:
+            return 
+        settings.user.ui.Set('defaultDockingView', 'station')
+        sm.GetService('loading').FadeToBlack()
+        change = {'worldspaceid': (session.worldspaceid, session.worldspaceid),
+         'stationid': (session.stationid2, session.stationid2)}
+        sm.GetService('gameui').OnSessionChanged(0, session, change)
+        sm.GetService('neocom').ShowToggleHangarCQButton()
+        sm.GetService('loading').FadeFromBlack()
+
+
+
+    def CmdEnterHangar(self, *args):
+        if util.GetCurrentView() == 'hangar' and prefs.GetValue('loadstationenv', 1) == 1:
+            return 
+        settings.user.ui.Set('defaultDockingView', 'hangar')
+        sm.GetService('loading').FadeToBlack()
+        change = {'stationid': (session.stationid2, session.stationid2)}
+        sm.GetService('gameui').OnSessionChanged(0, session, change)
+        sm.GetService('neocom').ShowToggleHangarCQButton()
+        sm.GetService('loading').FadeFromBlack()
+
+
+
     def CmdSetChatChannelFocus(self, *args):
         sm.GetService('focus').SetChannelFocus()
 
@@ -965,7 +990,7 @@ class EveCommandService(svc.cmd):
 
 
     def OpenCapitalNavigation(self, *args):
-        if eve.session.shipid:
+        if util.GetActiveShip():
             wnd = sm.GetService('window').GetWindow('capitalnav', decoClass=form.CapitalNav, create=1, maximize=1)
 
 

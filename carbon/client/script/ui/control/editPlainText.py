@@ -336,6 +336,10 @@ class EditPlainTextCore(uicls.Scroll):
             return fmttag
 
 
+        defaultColorValue = self.GetColorSyntax(self.defaultFontColor, html)
+        defaultFontSizeValue = FormatValue(self.defaultFontSize, html)
+        defaultHtmlFontTagCombined = '<font size=%s color=%s>' % (defaultFontSizeValue, defaultColorValue)
+        defaultAdded = False
         tagStacks = {}
         for (tag, defaultAttrName,) in VALUETAGS:
             if defaultAttrName:
@@ -343,7 +347,7 @@ class EditPlainTextCore(uicls.Scroll):
             else:
                 tagStacks[tag] = [None]
 
-        tagStacks['fontCombined'] = []
+        tagStacks['fontCombined'] = [defaultHtmlFontTagCombined]
         for (tag, paramName,) in BOOLTAGS:
             tagStacks[tag] = [False]
 
@@ -378,8 +382,11 @@ class EditPlainTextCore(uicls.Scroll):
                         if htmlFontTagCombined:
                             htmlFontTagCombined = '<font %s>' % htmlFontTagCombined
                             currentStack = tagStacks['fontCombined']
-                            if not currentStack or currentStack[-1] != htmlFontTagCombined:
-                                if len(currentStack):
+                            if currentStack[-1] != htmlFontTagCombined:
+                                if not defaultAdded:
+                                    retString = defaultHtmlFontTagCombined + retString + '</font>'
+                                    defaultAdded = True
+                                if len(currentStack) > 1:
                                     retString += '</font>'
                                     currentStack.pop()
                                 currentStack.append(htmlFontTagCombined)
@@ -430,7 +437,7 @@ class EditPlainTextCore(uicls.Scroll):
 
         if html:
             currentStack = tagStacks['fontCombined']
-            while currentStack:
+            while len(currentStack) > 1:
                 currentStack.pop()
                 retString += '</font>'
 

@@ -1370,7 +1370,7 @@ class WindowMgr(service.Service):
             return 
         itemID = item.itemID
         self.LogInfo('OpenCargo', itemID, name, displayname)
-        wnd = self.GetWindow('shipCargoe%s' % itemID, create=1, maximize=1, decoClass=decoClass, _id=itemID, displayName=name)
+        wnd = self.GetWindow('shipCargo_%s' % itemID, create=1, maximize=1, decoClass=decoClass, _id=itemID, displayName=name)
         if wnd and itemID == eve.session.shipid:
             wnd.scope = 'station_inflight'
 

@@ -86,6 +86,7 @@ class EntityProcSvc(service.Service):
             movementComponent = entity.GetComponent('movement')
             if movementComponent is not None:
                 movementComponent.allowMovement = allowedToMove
+        return True
 
 
 

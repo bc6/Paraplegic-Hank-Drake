@@ -164,7 +164,6 @@ userTypeETC = 21
 userTypeTrial = 23
 userTypeCDKey = 33
 userTypeMammon = 30
-cfgLogonSteps = 6
 BULKNODE_MOD = 32
 uSEC = 10L
 MSEC = 10000L

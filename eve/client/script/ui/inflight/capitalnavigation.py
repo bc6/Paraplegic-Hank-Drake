@@ -16,7 +16,6 @@ class CapitalNav(uicls.Window):
         uicls.Window.ApplyAttributes(self, attributes)
         self.scope = 'station_inflight'
         self.soldict = {}
-        self.myShip = None
         self.sr.main = uiutil.GetChild(self, 'main')
         self.SetWndIcon('ui_53_64_11', mainTop=-8)
         self.SetMinSize([350, 200])
@@ -39,22 +38,14 @@ class CapitalNav(uicls.Window):
           self,
           'inrange',
           self.sr.scroll]]
-        myShip = self.MyShip()
-        if myShip and myShip.groupID == const.groupTitan:
+        shipID = util.GetActiveShip()
+        if shipID and sm.GetService('clientDogmaIM').GetDogmaLocation().GetItem(shipID).groupID == const.groupTitan:
             maintabs.insert(1, [mls.UI_CMD_BRIDGETO,
              self.sr.scroll,
              self,
              'bridgeto',
              self.sr.scroll])
         self.sr.maintabs = uicls.TabGroup(name='tabparent', parent=self.sr.main, idx=0, tabs=maintabs, groupID='capitaljumprangepanel')
-
-
-
-    def MyShip(self):
-        if self.myShip is None or self.myShip and self.myShip.itemID != eve.session.shipid:
-            myShip = sm.services['godma'].GetItem(eve.session.shipid)
-            self.myShip = myShip
-        return self.myShip
 
 
 
@@ -84,14 +75,11 @@ class CapitalNav(uicls.Window):
 
 
     def GetSolarSystemsInRange_thread(self, current, data):
-        myShip = self.MyShip()
-        if myShip is None:
+        shipID = util.GetActiveShip()
+        if not shipID:
             return 
         self.sr.scroll.Load(contentList=[], noContentHint=mls.UI_RMR_FETCHINGDATA)
-        jumpDriveRange = 0
-        attrDict = [ displayAttribute for displayAttribute in myShip.displayAttributes if displayAttribute.attributeID == const.attributeJumpDriveRange ]
-        if attrDict:
-            jumpDriveRange = attrDict[0].value
+        (jumpDriveRange, consumptionType, consumptionAmount,) = self.GetJumpDriveInfo(shipID)
         inRange = {}
         soldict = self.soldict.get(session.solarsystemid2, None)
         if soldict is None:
@@ -106,17 +94,14 @@ class CapitalNav(uicls.Window):
             inRange = soldict
         scrolllist = []
         if inRange:
-            myShip = self.MyShip()
-            if myShip:
-                a = self.GetJumpDriveRangeAndAttrList(myShip)
-                for (solarSystemID, dist,) in inRange.iteritems():
-                    blue.pyos.BeNice()
-                    if not self or self.destroyed:
-                        return 
-                    (requiredQty, requiredType,) = sm.GetService('menu').GetFuelConsumptionForMyShip(session.solarsystemid2, solarSystemID, a.attrList)
-                    entry = self.GetSolarSystemBeaconEntry(solarSystemID, requiredQty, requiredType, a.jumpDriveRange)
-                    if entry:
-                        scrolllist.append(entry)
+            for (solarSystemID, dist,) in inRange.iteritems():
+                blue.pyos.BeNice()
+                if not self or self.destroyed:
+                    return 
+                (requiredQty, requiredType,) = self.GetFuelConsumptionForMyShip(session.solarsystemid2, solarSystemID, consumptionType, consumptionAmount)
+                entry = self.GetSolarSystemBeaconEntry(solarSystemID, requiredQty, requiredType, jumpDriveRange)
+                if entry:
+                    scrolllist.append(entry)
 
         if not len(scrolllist):
             self.sr.scroll.ShowHint(mls.UI_GENERIC_NOTHINGFOUND)
@@ -132,7 +117,7 @@ class CapitalNav(uicls.Window):
 
 
     def ShowInRangeTab(self):
-        if not eve.session.shipid:
+        if not util.GetActiveShip():
             return 
         if self.sr.Get('showing', '') != 'inrange':
             cache = sm.GetService('map').GetMapCache()
@@ -148,14 +133,14 @@ class CapitalNav(uicls.Window):
         showing = 'bridgeto' if isBridge else 'jumpto'
         if self.sr.Get('showing', '') != showing:
             scrolllist = []
-            myShip = self.MyShip()
-            if myShip:
-                a = self.GetJumpDriveRangeAndAttrList(myShip)
+            shipID = util.GetActiveShip()
+            if shipID:
+                (jumpDriveRange, consumptionType, consumptionAmount,) = self.GetJumpDriveInfo(shipID)
                 for allianceBeacon in allianceBeacons:
                     (solarSystemID, structureID, structureTypeID,) = allianceBeacon
                     if solarSystemID != session.solarsystemid:
-                        (requiredQty, requiredType,) = sm.GetService('menu').GetFuelConsumptionForMyShip(session.solarsystemid2, solarSystemID, a.attrList)
-                        entry = self.GetSolarSystemBeaconEntry(solarSystemID, requiredQty, requiredType, a.jumpDriveRange, structureID, isBridge)
+                        (requiredQty, requiredType,) = self.GetFuelConsumptionForMyShip(session.solarsystemid2, solarSystemID, consumptionType, consumptionAmount)
+                        entry = self.GetSolarSystemBeaconEntry(solarSystemID, requiredQty, requiredType, jumpDriveRange, structureID, isBridge)
                         scrolllist.append(entry)
 
             if not len(scrolllist):
@@ -235,28 +220,24 @@ class CapitalNav(uicls.Window):
 
 
 
-    def GetJumpDriveRangeAndAttrList(self, myShip):
-        jumpDriveRange = 0
-        attrList = []
-        if myShip:
-            jumpDriveAttr = None
-            attrList = []
-            dispAttrs = (const.attributeJumpDriveConsumptionType, const.attributeJumpDriveConsumptionAmount)
-            for displayAttribute in myShip.displayAttributes:
-                if displayAttribute.attributeID == const.attributeJumpDriveRange:
-                    jumpDriveAttr = displayAttribute
-                if displayAttribute.attributeID in dispAttrs:
-                    attrList.append(displayAttribute)
+    def GetJumpDriveInfo(self, shipID):
+        if shipID:
+            dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+            jumpDriveRange = dogmaLocation.GetAttributeValue(shipID, const.attributeJumpDriveRange)
+            consumptionType = dogmaLocation.GetAttributeValue(shipID, const.attributeJumpDriveConsumptionType)
+            consumptionAmount = dogmaLocation.GetAttributeValue(shipID, const.attributeJumpDriveConsumptionAmount)
+            return (jumpDriveRange, consumptionType, consumptionAmount)
 
-            jumpDriveRange = 0
-            if jumpDriveAttr:
-                jumpDriveRange = jumpDriveAttr.value
-            if len(attrList) != len(dispAttrs):
-                attrList = []
-        ret = util.KeyVal()
-        ret.jumpDriveRange = jumpDriveRange
-        ret.attrList = attrList
-        return ret
+
+
+    def GetFuelConsumptionForMyShip(self, fromSystem, toSystem, consumptionType, consumptionAmount):
+        if not util.GetActiveShip():
+            return 
+        myDist = uix.GetLightYearDistance(fromSystem, toSystem, False)
+        if myDist is None:
+            return 
+        consumptionAmount = myDist * consumptionAmount
+        return (int(consumptionAmount), consumptionType)
 
 
 

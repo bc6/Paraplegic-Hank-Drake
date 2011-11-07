@@ -145,6 +145,7 @@ class CallWrapper():
         self.__parent__ = parent
         self.__metadata__ = getattr(self.__callable__, '__exportedcalls__', {}).get(self.__method_without_Ex__, [])
         self.__thread__ = stackless.getcurrent()
+        self.requiredRole = ROLE_SERVICE
         callWrapperID += 1
         allCallWrappers[callWrapperID] = self
 
@@ -199,6 +200,13 @@ class CallWrapper():
                                     for i in range(len(preargs)):
                                         args2[i] = getattr(session, preargs[i])
 
+                            try:
+                                if boot.role == 'server' and self.requiredRole in (ROLE_ANY, ROLE_PLAYER) and getattr(session, 'clientID', None) is not None:
+                                    if prefs.GetValue('enableSecurityMonitor', 0):
+                                        sm.GetService('securityMonitor').LogCallFromClient(getattr(self.__callable__, '__guid__', 'guid not found'), self.__method_without_Ex__, args2, keywords)
+                            except Exception as e:
+                                log.LogException('Exception invoking the security monitor. Continuing processing the call')
+                                sys.exc_clear()
                             result = apply(getattr(self.__callable__, self.__method_without_Ex__), args2, keywords)
                     except UserError as result:
                         tb = sys.exc_info()[2]
@@ -286,6 +294,7 @@ class CallWrapper():
                 role = ROLE_ANY
             else:
                 role = ROLE_SERVICE
+            self.requiredRole = role
             if not role & session.role:
                 session.LogSessionError("Called %s::%s, which requires role 0x%x, which the user doesn't have. User has role 0x%x" % (self.__logname__,
                  method,

@@ -148,9 +148,12 @@ class MapSvc(service.Service):
                 self.minimizedWindows = []
             sm.GetService('sceneManager').SetRegisteredScenes('default')
             if eve.session.stationid2:
-                sm.GetService('gameui').OpenExclusive('charcontrol', 1)
-                uix.GetWorldspaceNav()
-                uicore.registry.SetFocus(uicore.GetLayer('charcontrol'))
+                if util.GetCurrentView() == 'station':
+                    sm.GetService('gameui').OpenExclusive('charcontrol', 1)
+                    uix.GetWorldspaceNav()
+                    uicore.registry.SetFocus(uicore.GetLayer('charcontrol'))
+                else:
+                    uix.GetStationNav()
             else:
                 uix.GetInflightNav()
             sm.GetService('bracket').Show()
@@ -230,8 +233,8 @@ class MapSvc(service.Service):
             uthread.Lock(self)
             try:
                 self.securityInfo = {}
-                for each in sm.RemoteSvc('map').GetSolarSystemPseudoSecurities():
-                    self.securityInfo[each.solarSystemID] = each.security
+                for each in cfg.solarsystems:
+                    self.securityInfo[each.solarSystemID] = each.pseudoSecurity
 
 
             finally:

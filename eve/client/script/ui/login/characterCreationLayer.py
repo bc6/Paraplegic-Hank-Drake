@@ -1985,7 +1985,6 @@ class CharacterCreationLayer(uicls.LayerCore):
             sm.GetService('gameui').OnSessionChanged(False, session, change)
             sm.GetService('entityClient').ProcessSessionChange(False, session, change)
             sm.GetService('navigation').OnSessionChanged(False, session, change)
-            sm.GetService('entitySpawnClient').OnSessionChanged(False, session, change)
             sm.GetService('graphicClient').OnSessionChanged(False, session, change)
             if updateDoll is True and prefs.GetValue('loadstationenv', 1):
                 pdc = sm.GetService('entityClient').GetPlayerEntity(canBlock=True).components['paperdoll'].doll

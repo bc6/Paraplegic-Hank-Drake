@@ -1909,6 +1909,7 @@ class WatchListEntry(listentry.BaseTacticalEntry):
         self.isSpeaking = False
         progress = uicls.AnimSprite(icons=[ 'ui_38_16_%s' % (210 + i) for i in xrange(8) ], align=uiconst.TOPLEFT, parent=self, pos=(2, 0, 16, 16))
         progress.state = uiconst.UI_HIDDEN
+        self.sr.progress = progress
 
 
 

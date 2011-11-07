@@ -261,7 +261,7 @@ class GameUI(service.Service):
 
 
     def ProcessSessionChange(self, isRemote, session, change, cheat = 0):
-        if 'shipid' in change and change['shipid'][0]:
+        if 'shipid' in change and change['shipid'][0] and not session.stationid2:
             sm.GetService('invCache').CloseContainer(change['shipid'][0])
         self.settings.SaveSettings()
         self.LogInfo('ProcessSessionChange: ', change, ', ', session)
@@ -338,7 +338,7 @@ class GameUI(service.Service):
         elif session.stationid is not None:
             if 'stationid' in change:
                 self.LogNotice('GameUI::OnSessionChanged, Heading for station', isRemote, session, change)
-                uthread.pool('GameUI :: GoWorldSpace', self.GoWorldSpace, change)
+                uthread.pool('GameUI::ActivateView::station', self.GoWorldSpace, change)
         elif session.worldspaceid is not None:
             if 'worldspaceid' in change:
                 self.LogWarn('GameUI::OnSessionChanged, Heading for worldspace', isRemote, session, change)
@@ -595,6 +595,13 @@ class GameUI(service.Service):
 
     def GoCharacterCreation(self, canReturnToCharsel = 1, charID = None, gender = None, bloodlineID = None, fromCharSel = 1, askUseLowShader = 1, dollState = None, *args):
         if charID is not None:
+            if session.worldspaceid == session.stationid2:
+                player = sm.GetService('entityClient').GetPlayerEntity()
+                if player is not None:
+                    pos = player.GetComponent('position')
+                    if pos is not None:
+                        self.cachedPlayerPos = pos.position
+                        self.cachedPlayerRot = pos.rotation
             change = {'worldspaceid': [session.worldspaceid, None]}
             sm.GetService('entityClient').ProcessSessionChange(False, session, change)
             self.OnSessionChanged(False, session, change)
@@ -632,29 +639,48 @@ class GameUI(service.Service):
 
 
     def GoWorldSpace(self, change):
-        factory = sm.GetService('paperDollClient').dollFactory
-        factory.compressTextures = True
-        factory.allowTextureCache = True
-        clothSimulation = sm.GetService('device').GetAppFeatureState('Interior.clothSimulation', False)
-        factory.clothSimulationActive = clothSimulation
-        if change['worldspaceid'][0] is None:
+        view = util.GetCurrentView()
+        self.LogInfo('Going to ', view)
+        if view == 'station':
+            factory = sm.GetService('paperDollClient').dollFactory
+            factory.compressTextures = True
+            factory.allowTextureCache = True
+            clothSimulation = sm.GetService('device').GetAppFeatureState('Interior.clothSimulation', False)
+            factory.clothSimulationActive = clothSimulation
             if not self.HasActiveOverlay():
                 self.OpenExclusive('charcontrol', 1)
-            eve.SynchronizeClock()
-            sm.GetService('wallet')
+            if change['worldspaceid'][0] is None:
+                eve.SynchronizeClock()
+                sm.GetService('wallet')
         if uicore.layer.shipui.isopen:
             uicore.layer.shipui.CloseView()
+        if view == 'hangar':
+            sm.GetService('entityClient').UnloadEntityScene(session.worldspaceid)
+            if not self.HasActiveOverlay():
+                self.OpenExclusive('station', 1)
+            if uicore.layer.shipui.isopen:
+                uicore.layer.shipui.CloseView()
         if util.IsStation(session.stationid):
             self._GoStation(change)
+        if hasattr(self, 'cachedPlayerPos') and session.worldspaceid == session.stationid2 and view == 'station':
+            pos = sm.GetService('entityClient').GetPlayerEntity(True).GetComponent('position')
+            pos.position = self.cachedPlayerPos or pos.position
+            pos.rotation = self.cachedPlayerRot or pos.rotation
+            self.cachedPlayerPos = None
+            self.cachedPlayerRot = None
+        sm.GetService('neocom').ShowToggleHangarCQButton()
         uthread.new(sm.GetService('loading').FadeFromBlack, 3000)
         sm.GetService('loading').ProgressWnd()
         self.DoWindowIdentification()
         sm.ScatterEvent('OnClientReady', 'worldspace')
         if not self.HasActiveOverlay():
-            if not uix.GetWorldspaceNav(create=0):
-                if '/thinclient' not in blue.pyos.GetArg():
-                    uix.GetWorldspaceNav()
-            uicore.registry.SetFocus(uicore.GetLayer('charcontrol'))
+            if view == 'station':
+                if not uix.GetWorldspaceNav(create=0):
+                    if '/thinclient' not in blue.pyos.GetArg():
+                        uix.GetWorldspaceNav()
+                uicore.registry.SetFocus(uicore.GetLayer('charcontrol'))
+            elif view == 'hangar':
+                uix.GetStationNav()
 
 
 
@@ -671,24 +697,31 @@ class GameUI(service.Service):
             sm.GetService('loading').ProgressWnd(mls.UI_STATION_ENTERINGSTATION, '', 1, 5)
             sm.GetService('michelle').RemoveBallpark()
             sm.GetService('loading').ProgressWnd(mls.UI_STATION_ENTERINGSTATION, mls.UI_STATION_CLEARINGCURRENTSTATE, 2, 5)
-            fromstation = change['stationid'][0]
             tostation = change['stationid'][1]
             sm.GetService('loading').ProgressWnd(mls.UI_STATION_ENTERINGSTATION, cfg.evelocations.Get(tostation).name, 3, 5)
-            if tostation is not None and fromstation != tostation:
+            if tostation is not None:
                 sm.GetService('loading').ProgressWnd(mls.UI_STATION_ENTERINGSTATION, mls.UI_STATION_SETUPSTATION + ': ' + cfg.evelocations.Get(tostation).name, 4, 5)
                 sm.GetService('station').CleanUp()
                 sm.GetService('station').StopAllStationServices()
                 sm.GetService('station').Setup()
+                view = util.GetCurrentView()
+                if view == 'hangar':
+                    self.LeaveWorldSpace(change)
+                    sm.GetService('station').SetupHangarScene()
+                else:
+                    sm.GetService('entitySpawnClient').SpawnClientSidePlayer(change)
+                    sm.GetService('station').SetupCaptainsQuartersScene()
+                    if settings.user.ui.Get('doIntroTutorial%s' % session.charid, 0):
+                        tutID = uix.tutorialTutorials
+                    else:
+                        tutID = uix.tutorialWorldspaceNavigation
+                    uthread.new(self.OpenStationTutorial_thread, tutID)
                 if 'shipid' in change and change['shipid'][1] is None:
                     uthread.new(sm.GetService('charactersheet').LoadGeneralInfo)
-                if settings.user.ui.Get('doIntroTutorial%s' % session.charid, 0):
-                    tutID = uix.tutorialTutorials
-                else:
-                    tutID = uix.tutorialWorldspaceNavigation
-                uthread.new(self.OpenStationTutorial_thread, tutID)
             elif tostation is None:
                 sm.GetService('station').CleanUp()
             sm.GetService('loading').ProgressWnd(mls.UI_STATION_ENTERINGSTATION, mls.UI_GENERIC_DONE, 5, 5)
+            sm.GetService('loading').FadeFromBlack()
         else:
             sm.GetService('station').CheckSession(change)
 
@@ -760,6 +793,8 @@ class GameUI(service.Service):
             else:
                 self.LogInfo('Postponing ego: ', bp.ego, '->', session.shipid)
             self.wannaBeEgo = session.shipid
+        self.cachedPlayerPos = None
+        self.cachedPlayerRot = None
         self.DoWindowIdentification()
         sm.ScatterEvent('OnClientReady', 'inflight')
         if not sm.GetService('map').IsOpen() and not sm.GetService('planetUI').IsOpen():
@@ -972,4 +1007,14 @@ class GameUI(service.Service):
 
 
 
+
+def GetCurrentView():
+    view = settings.user.ui.Get('defaultDockingView', 'station')
+    if view == 'station' and not prefs.GetValue('loadstationenv', 1):
+        view = 'hangar'
+    settings.user.ui.Set('defaultDockingView', view)
+    return view
+
+
+exports = util.AutoExports('util', {'GetCurrentView': GetCurrentView})
 

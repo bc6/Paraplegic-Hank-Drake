@@ -1,4 +1,5 @@
 import sys
+import audio2
 import service
 import uix
 import uiutil
@@ -12,6 +13,8 @@ import util
 import uicls
 import uiconst
 import geo2
+import types
+from sceneManager import SCENE_TYPE_INTERIOR, SCENE_TYPE_SPACE
 from util import ReadYamlFile
 from math import pi, pow
 
@@ -34,7 +37,7 @@ class StationSvc(service.Service):
      'CleanUp': [],
      'SelectShipDlg': [],
      'GetServiceState': []}
-    __dependencies__ = ['journal', 'insurance']
+    __dependencies__ = ['journal', 'insurance', 'sceneManager']
     __notifyevents__ = ['OnCharNowInStation',
      'OnCharNoLongerInStation',
      'OnStationOwnerChanged',
@@ -48,6 +51,8 @@ class StationSvc(service.Service):
     def Run(self, memStream = None):
         self.LogInfo('Starting Station Service')
         self.CleanUp()
+        self.hangarScene = None
+        self.showShipSemaphore = uthread.Semaphore()
 
 
 
@@ -130,14 +135,15 @@ class StationSvc(service.Service):
 
 
     def CheckSession(self, change):
-        if self.activeShip != eve.session.shipid:
-            if eve.session.shipid:
+        activeShip = util.GetActiveShip()
+        if self.activeShip != activeShip:
+            if activeShip:
                 hangarInv = eve.GetInventory(const.containerHangar)
                 hangarItems = hangarInv.List()
                 for each in hangarItems:
-                    if each.itemID == eve.session.shipid:
+                    if each.itemID == activeShip:
                         self.activeShipItem = each
-                        self.ShowActiveShip()
+                        uthread.new(self.ShowActiveShip)
                         break
 
 
@@ -329,57 +335,6 @@ class StationSvc(service.Service):
         self.loading = 1
         if not reloading:
             eve.Message('OnEnterStation')
-        stationTypeID = eve.stationItem.stationTypeID
-        stationType = cfg.invtypes.Get(stationTypeID)
-        stationRace = stationType['raceID']
-        if stationRace == const.raceAmarr:
-            scenePath = 'res:/dx9/scene/hangar/amarr.red'
-            shipPositionData = ReadYamlFile('res:/dx9/scene/hangar/shipPlacementAmarr.yaml')
-            positioning = ReadYamlFile('res:/dx9/scene/hangar/amarrbalconyplacement.yaml')
-            self.sceneTranslation = positioning['position']
-            self.sceneRotation = geo2.QuaternionRotationSetYawPitchRoll(positioning['orientation'], 0.0, 0.0)
-        elif stationRace == const.raceCaldari:
-            scenePath = 'res:/dx9/scene/hangar/caldari.red'
-            shipPositionData = ReadYamlFile('res:/dx9/scene/hangar/shipPlacementCaldari.yaml')
-            positioning = ReadYamlFile('res:/dx9/scene/hangar/caldaribalconyplacement.yaml')
-            self.sceneTranslation = positioning['position']
-            self.sceneRotation = geo2.QuaternionRotationSetYawPitchRoll(positioning['orientation'], 0.0, 0.0)
-        elif stationRace == const.raceGallente:
-            scenePath = 'res:/dx9/scene/hangar/gallente.red'
-            shipPositionData = ReadYamlFile('res:/dx9/scene/hangar/shipPlacementGallente.yaml')
-            positioning = ReadYamlFile('res:/dx9/scene/hangar/gallentebalconyplacement.yaml')
-            self.sceneTranslation = positioning['position']
-            self.sceneRotation = geo2.QuaternionRotationSetYawPitchRoll(positioning['orientation'], 0.0, 0.0)
-        elif stationRace == const.raceMinmatar:
-            scenePath = 'res:/dx9/scene/hangar/minmatar.red'
-            shipPositionData = ReadYamlFile('res:/dx9/scene/hangar/shipPlacementMinmatar.yaml')
-            positioning = ReadYamlFile('res:/dx9/scene/hangar/minmatarbalconyplacement.yaml')
-            self.sceneTranslation = positioning['position']
-            self.sceneRotation = geo2.QuaternionRotationSetYawPitchRoll(positioning['orientation'], 0.0, 0.0)
-        else:
-            scenePath = 'res:/dx9/scene/hangar/gallente.red'
-            shipPositionData = ReadYamlFile('res:/dx9/scene/hangar/shipPlacementGallente.yaml')
-            positioning = ReadYamlFile('res:/dx9/scene/hangar/gallentebalconyplacement.yaml')
-            self.sceneTranslation = positioning['position']
-            self.sceneRotation = geo2.QuaternionRotationSetYawPitchRoll(positioning['orientation'], 0.0, 0.0)
-        sm.GetService('sceneManager').UnregisterScene('default')
-        sm.GetService('sceneManager').UnregisterScene2('default')
-        sm.GetService('sceneManager').UnregisterCamera('default')
-        self.hangarScene = blue.os.LoadObject(scenePath)
-        sm.GetService('sceneManager').SetupIncarnaBackground(self.hangarScene, self.sceneTranslation, self.sceneRotation)
-        self.shipPositionMinDistance = shipPositionData['minDistance']
-        self.shipPositionMaxDistance = shipPositionData['maxDistance']
-        self.shipPositionMaxSize = shipPositionData['shipMaxSize']
-        self.shipPositionMinSize = shipPositionData['shipMinSize']
-        self.shipPositionTargetHeightMin = shipPositionData['shipTargetHeightMin']
-        self.shipPositionTargetHeightMax = shipPositionData['shipTargetHeightMax']
-        self.shipPositionCurveRoot = shipPositionData['curveRoot']
-        self.shipPositionRotation = shipPositionData['rotation']
-        if self.hangarScene is not None:
-            stationModel = self.hangarScene.objects[0]
-            stationModel.enableShadow = False
-        if util.GetActiveShip() is not None:
-            self.ShowShip(util.GetActiveShip())
         if not (eve.rookieState and eve.rookieState < 5):
             self.LoadLobby()
         if self.station is None and eve.session.stationid:
@@ -398,7 +353,154 @@ class StationSvc(service.Service):
                 sm.GetService('tutorial').OpenTutorialSequence_Check(uix.cloningWhenPoddedTutorial)
             if sm.GetService('skills').GetSkillPoints() >= 1500000:
                 sm.GetService('tutorial').OpenTutorialSequence_Check(uix.cloningTutorial)
-            sm.GetService('loading').FadeFromBlack()
+
+
+
+    def LoadSceneData(self):
+        stationTypeID = eve.stationItem.stationTypeID
+        stationType = cfg.invtypes.Get(stationTypeID)
+        stationRace = stationType['raceID']
+        if stationRace == const.raceAmarr:
+            scenePath = 'res:/dx9/scene/hangar/amarr.red'
+            shipPositionData = ReadYamlFile('res:/dx9/scene/hangar/shipPlacementAmarr.yaml')
+            positioning = ReadYamlFile('res:/dx9/scene/hangar/amarrbalconyplacement.yaml')
+            sceneTranslation = positioning['position']
+            sceneRotation = geo2.QuaternionRotationSetYawPitchRoll(positioning['orientation'], 0.0, 0.0)
+        elif stationRace == const.raceCaldari:
+            scenePath = 'res:/dx9/scene/hangar/caldari.red'
+            shipPositionData = ReadYamlFile('res:/dx9/scene/hangar/shipPlacementCaldari.yaml')
+            positioning = ReadYamlFile('res:/dx9/scene/hangar/caldaribalconyplacement.yaml')
+            sceneTranslation = positioning['position']
+            sceneRotation = geo2.QuaternionRotationSetYawPitchRoll(positioning['orientation'], 0.0, 0.0)
+        elif stationRace == const.raceGallente:
+            scenePath = 'res:/dx9/scene/hangar/gallente.red'
+            shipPositionData = ReadYamlFile('res:/dx9/scene/hangar/shipPlacementGallente.yaml')
+            positioning = ReadYamlFile('res:/dx9/scene/hangar/gallentebalconyplacement.yaml')
+            sceneTranslation = positioning['position']
+            sceneRotation = geo2.QuaternionRotationSetYawPitchRoll(positioning['orientation'], 0.0, 0.0)
+        elif stationRace == const.raceMinmatar:
+            scenePath = 'res:/dx9/scene/hangar/minmatar.red'
+            shipPositionData = ReadYamlFile('res:/dx9/scene/hangar/shipPlacementMinmatar.yaml')
+            positioning = ReadYamlFile('res:/dx9/scene/hangar/minmatarbalconyplacement.yaml')
+            sceneTranslation = positioning['position']
+            sceneRotation = geo2.QuaternionRotationSetYawPitchRoll(positioning['orientation'], 0.0, 0.0)
+        else:
+            scenePath = 'res:/dx9/scene/hangar/gallente.red'
+            shipPositionData = ReadYamlFile('res:/dx9/scene/hangar/shipPlacementGallente.yaml')
+            positioning = ReadYamlFile('res:/dx9/scene/hangar/gallentebalconyplacement.yaml')
+            sceneTranslation = positioning['position']
+            sceneRotation = geo2.QuaternionRotationSetYawPitchRoll(positioning['orientation'], 0.0, 0.0)
+        self.shipPositionMinDistance = shipPositionData['minDistance']
+        self.shipPositionMaxDistance = shipPositionData['maxDistance']
+        self.shipPositionMaxSize = shipPositionData['shipMaxSize']
+        self.shipPositionMinSize = shipPositionData['shipMinSize']
+        self.shipPositionTargetHeightMin = shipPositionData['shipTargetHeightMin']
+        self.shipPositionTargetHeightMax = shipPositionData['shipTargetHeightMax']
+        self.shipPositionCurveRoot = shipPositionData['curveRoot']
+        self.shipPositionRotation = shipPositionData['rotation']
+        self.sceneTranslation = sceneTranslation
+        return (scenePath, sceneTranslation, sceneRotation)
+
+
+
+    def SetupHangarScene(self):
+        sm.GetService('sceneManager').UnregisterScene('default')
+        sm.GetService('sceneManager').UnregisterScene2('default')
+        sm.GetService('sceneManager').UnregisterCamera('default')
+        (hangarScene, sceneTranslation, sceneRotation,) = self.LoadSceneData()
+        sm.GetService('sceneManager').SetSceneType(SCENE_TYPE_SPACE)
+        sm.GetService('sceneManager').LoadScene(hangarScene, registerKey='default')
+        self.hangarScene = sm.GetService('sceneManager').GetRegisteredScene2('default')
+        self.maxZoom = 750.0
+        self.minZoom = 150.0
+        self.lastShipzoomTo = 0.0
+        camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
+        for each in camera.zoomCurve.keys:
+            each.value = 1.0
+
+        camera.fieldOfView = 1.2
+        camera.frontClip = 10.0
+        camera.minPitch = -1.4
+        camera.maxPitch = 0.0
+        if util.GetActiveShip() is not None:
+            self.ShowShip(util.GetActiveShip())
+            camera.OrbitParent(8.0, 4.0)
+        stationModel = self.hangarScene.objects[0]
+        stationModel.enableShadow = False
+        addedSound = sm.GetService('incursion').GetSoundUrlByKey('hangar')
+        if addedSound is not None:
+            triObserver = trinity.TriObserverLocal()
+            generalAudioEntity = audio2.AudEmitter('Story_general')
+            triObserver.observer = generalAudioEntity
+            stationModel.observers.append(triObserver)
+            generalAudioEntity.SendEvent(unicode(addedSound[6:]))
+        sceneScaling = 2.0
+        model = self.activeshipmodel
+        if model is not None:
+            if model.boundingSphereRadius > 1500.0:
+                sceneScaling *= self.activeshipmodel.boundingSphereRadius / 1500.0
+            localBB = model.GetLocalBoundingBox()
+            boundingCenter = model.boundingSphereCenter[1]
+            radius = model.boundingSphereRadius - self.shipPositionMinSize
+            val = radius / (self.shipPositionMaxSize - self.shipPositionMinSize)
+            if val > 1.0:
+                val = 1.0
+            if val < 0:
+                val = 0
+            val = pow(val, 1.0 / self.shipPositionCurveRoot)
+            distancePosition = geo2.Lerp((self.shipPositionMinDistance, self.shipPositionTargetHeightMin), (self.shipPositionMaxDistance, self.shipPositionTargetHeightMax), val)
+            y = distancePosition[1] - boundingCenter
+            y = y + self.sceneTranslation[1]
+            if y < -localBB[0].y + 180:
+                y = -localBB[0].y + 180
+            boundingBoxZCenter = localBB[0].z + localBB[1].z
+            boundingBoxZCenter *= 0.5
+            model.rotationCurve = trinity.TriRotationCurve()
+            model.rotationCurve.value.YawPitchRoll(self.shipPositionRotation * pi / 180, 0, 0)
+            model.modelTranslationCurve = blue.os.LoadObject('res:/dx9/scene/hangar/ship_modelTranslationCurve.red')
+            model.modelTranslationCurve.ZCurve.offset -= boundingBoxZCenter
+            scaleMultiplier = 1
+            capitalShips = [const.groupDreadnought,
+             const.groupSupercarrier,
+             const.groupTitan,
+             const.groupFreighter,
+             const.groupJumpFreighter,
+             const.groupCarrier,
+             const.groupCapitalIndustrialShip,
+             const.groupIndustrialCommandShip]
+            dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+            if getattr(dogmaLocation.GetDogmaItem(self.GetActiveShip()), 'groupID', None) in capitalShips:
+                scaleMultiplier = 0.35 + 0.25 * (1 - val)
+                model.modelRotationCurve = blue.os.LoadObject('res:/dx9/scene/hangar/ship_modelRotationCurve.red')
+                model.modelRotationCurve.PitchCurve.speed *= scaleMultiplier
+                model.modelRotationCurve.RollCurve.speed *= scaleMultiplier
+                model.modelRotationCurve.YawCurve.speed *= scaleMultiplier
+            elif val > 0.6:
+                val = 0.6
+            scaleMultiplier = 0.35 + 0.65 * (1 - val / 0.6)
+            model.modelRotationCurve = blue.os.LoadObject('res:/dx9/scene/hangar/ship_modelRotationCurveSpinning.red')
+            model.modelRotationCurve.PitchCurve.speed *= scaleMultiplier
+            model.modelRotationCurve.RollCurve.speed *= scaleMultiplier
+            model.modelRotationCurve.YawCurve.start = blue.os.GetTime()
+            model.modelRotationCurve.YawCurve.ScaleTime(6 * val + 1)
+        stationModel.modelScale = sceneScaling
+        self.hangarScene.fogEnd *= sceneScaling
+        self.hangarScene.fogStart *= sceneScaling
+
+
+
+    def SetupCaptainsQuartersScene(self):
+        sm.GetService('sceneManager').UnregisterScene('default')
+        sm.GetService('sceneManager').UnregisterScene2('default')
+        sm.GetService('sceneManager').UnregisterCamera('default')
+        (hangarScene, sceneTranslation, sceneRotation,) = self.LoadSceneData()
+        self.hangarScene = blue.os.LoadObject(hangarScene)
+        sm.GetService('sceneManager').SetupIncarnaBackground(self.hangarScene, sceneTranslation, sceneRotation)
+        if self.hangarScene is not None:
+            stationModel = self.hangarScene.objects[0]
+            stationModel.enableShadow = False
+        if util.GetActiveShip() is not None:
+            self.ShowShip(util.GetActiveShip())
 
 
 
@@ -536,24 +638,23 @@ class StationSvc(service.Service):
 
 
     def ShowActiveShip(self):
-        if getattr(self, '__alreadyShowingActiveShip', False):
-            log.LogTraceback("We're already in the process of showing the active ship")
-            return 
-        self._StationSvc__alreadyShowingActiveShip = True
+        self.showShipSemaphore.acquire()
         try:
             invitem = self.activeShipItem
+            modelToRemove = None
             scene2 = getattr(self, 'hangarScene', None)
-            if scene2:
-                for each in scene2.objects:
-                    if getattr(each, 'name', None) == str(self.activeShip):
-                        scene2.objects.remove(each)
+            if scene2 is None:
+                return 
+            for each in scene2.objects:
+                if each == self.activeshipmodel:
+                    modelToRemove = each
 
+            dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+            dogmaItem = dogmaLocation.dogmaItems[self.activeShipItem.itemID]
             try:
                 techLevel = sm.GetService('godma').GetTypeAttribute(invitem.typeID, const.attributeTechLevel)
                 if techLevel == 3.0:
                     try:
-                        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
-                        dogmaItem = dogmaLocation.dogmaItems[self.activeShipItem.itemID]
                         newModel = self.MakeModularShipFromShipItem(dogmaItem)
                     except:
                         log.LogException('failed bulding modular ship')
@@ -564,25 +665,42 @@ class StationSvc(service.Service):
                     newFilename = modelPath.lower().replace(':/model', ':/dx9/model')
                     newFilename = newFilename.replace('.blue', '.red')
                     newModel = trinity.Load(newFilename)
+                self.generalAudioEntity = None
+                if newModel is not None and hasattr(newModel, 'observers'):
+                    triObserver = trinity.TriObserverLocal()
+                    self.generalAudioEntity = audio2.AudEmitter('spaceObject_' + str(invitem.itemID) + '_general')
+                    triObserver.observer = self.generalAudioEntity
+                    newModel.observers.append(triObserver)
             except Exception as e:
                 log.LogException(str(e))
                 sys.exc_clear()
                 return 
             newModel.FreezeHighDetailMesh()
-            self.PositionShipModel(newModel)
-            if hasattr(newModel, 'ChainAnimationEx'):
-                newModel.ChainAnimationEx('NormalLoop', 0, 0, 1.0)
+            if util.GetCurrentView() == 'station':
+                self.PositionShipModel(newModel)
+                if modelToRemove is not None:
+                    scene2.objects.remove(modelToRemove)
+                if getattr(dogmaItem, 'groupID', None) != const.groupCapsule:
+                    scene2.objects.append(newModel)
+            else:
+                zoomTo = self.GetZoomValues(newModel, 0)
+                if hasattr(newModel, 'ChainAnimationEx'):
+                    newModel.ChainAnimationEx('NormalLoop', 0, 0, 1.0)
+                newModel.name = str(invitem.itemID)
+                newModel.display = 1
+                if modelToRemove is not None:
+                    scene2.objects.remove(modelToRemove)
+                scene2.objects.append(newModel)
+                self.generalAudioEntity.SendEvent(unicode('hangar_spin_switch_ship_play'))
+                self.lastShipzoomTo = zoomTo
+                self.Zoom(zoomTo)
             self.activeShip = invitem.itemID
             self.activeshipmodel = newModel
-            self.FitHardpoints(0)
-            newModel.display = 1
-            newModel.name = str(invitem.itemID)
-            if sm.GetService('clientDogmaIM').GetDogmaLocation().dogmaItems[util.GetActiveShip()].groupID != const.groupCapsule:
-                scene2.objects.append(newModel)
+            self.FitHardpoints()
             sm.ScatterEvent('OnActiveShipModelChange', newModel)
 
         finally:
-            self._StationSvc__alreadyShowingActiveShip = False
+            self.showShipSemaphore.release()
 
 
 
@@ -650,6 +768,7 @@ class StationSvc(service.Service):
         model.modelRotationCurve.RollCurve.speed *= scaleMultiplier
         model.modelRotationCurve.YawCurve.start = blue.os.GetTime()
         model.modelRotationCurve.YawCurve.ScaleTime(6 * val + 1)
+        model.display = 1
 
 
 
@@ -709,7 +828,7 @@ class StationSvc(service.Service):
             return 
         activeShipID = util.GetActiveShip()
         if item.locationID == activeShipID and cfg.IsShipFittingFlag(item.flagID) and item.categoryID == const.categorySubSystem:
-            sm.GetService('station').ShowShip(activeShipID)
+            self.ShowShip(activeShipID)
 
 
 
@@ -842,8 +961,6 @@ class StationSvc(service.Service):
 
     def _LoadSvc(self, inout, service = None):
         self.loading = 1
-        print '_LoadSvc',
-        print service
         wnd = self.GetUnderlay()
         newsvc = None
         if inout == 1 and wnd is not None:
@@ -1044,7 +1161,15 @@ class StationSvc(service.Service):
             if observedSuppressed:
                 ignoreContraband = settings.user.suppress.Get('suppress.ShipContrabandWarningUndock', None) == uiconst.ID_OK
             onlineModules = sm.GetService('clientDogmaIM').GetDogmaLocation().GetOnlineModules(shipID)
-            sm.GetService('sessionMgr').PerformSessionChange('undock', shipsvc.Undock, shipID, ignoreContraband, onlineModules=onlineModules)
+            try:
+                sm.GetService('sessionMgr').PerformSessionChange('undock', shipsvc.Undock, shipID, ignoreContraband, onlineModules=onlineModules)
+            except UserError as e:
+                if e.msg == 'ShipNotInHangar':
+                    capsuleID = e.dict.get('capsuleID', None)
+                    dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+                    if capsuleID is not None:
+                        dogmaLocation.MakeShipActive(capsuleID)
+                raise 
             self.CloseFitting()
         except Exception as e:
             doRaise = True
@@ -1061,7 +1186,6 @@ class StationSvc(service.Service):
                 raise 
             sys.exc_clear()
         self.exitingstation = 0
-        self.hangarScene = None
         sm.GetService('worldSpaceClient').TearDownWorldSpaceRendering()
         sm.GetService('worldSpaceClient').UnloadWorldSpaceInstance(stationID)
 
@@ -1093,23 +1217,22 @@ class StationSvc(service.Service):
         hangarInv = eve.GetInventory(const.containerHangar)
         items = hangarInv.List()
         tmplst = []
+        activeShipID = util.GetActiveShip()
         for item in items:
             if item[const.ixCategoryID] == const.categoryShip and item[const.ixSingleton]:
-                tmplst.append((cfg.invtypes.Get(item[const.ixTypeID]).name, item[const.ixItemID], item[const.ixTypeID]))
+                tmplst.append((cfg.invtypes.Get(item[const.ixTypeID]).name, item, item[const.ixTypeID]))
 
         if not tmplst:
             self.exitingstation = 0
             eve.Message('NeedShipToUndock')
             return 
         ret = uix.ListWnd(tmplst, 'item', mls.UI_STATION_SELECTSHIP, None, 1)
-        if ret is None or ret[1] == session.shipid:
+        if ret is None or ret[1].itemID == activeShipID:
             self.exitingstation = 0
             return 
-        activeShip = ret[1]
-        shipsvc = sm.GetService('gameui').GetShipAccess()
+        newActiveShip = ret[1]
         try:
-            sm.GetService('sessionMgr').PerformSessionChange('board', shipsvc.Board, activeShip, session.shipid if session.shipid else session.stationid)
-            self.ShowShip(activeShip)
+            self.TryActivateShip(newActiveShip)
         except:
             self.exitingstation = 0
             raise 
@@ -1167,7 +1290,7 @@ class StationSvc(service.Service):
     def ProcessActiveShipChanged(self, shipID, oldShipID):
         if oldShipID:
             sm.GetService('gameui').KillCargoView(oldShipID, ['form.InflightCargoView'])
-        if session.stationid is not None and self.station is not None:
+        if session.stationid is not None:
             self.ShowShip(shipID)
 
 
@@ -1182,6 +1305,171 @@ class StationSvc(service.Service):
             sm.GetService('window').GetWindow('AssembleShip', create=1, decoClass=form.AssembleShip, ship=ship, groupIDs=subSystemIds.keys())
             return 
         return sm.GetService('t3ShipSvc').GetTech3ShipFromDict(ship.typeID, subSystemIds)
+
+
+
+    def CheckScene(self):
+        scene = sm.GetService('sceneManager').GetRegisteredScene2('default')
+        if not settings.user.ui.Get('loadstationenv', 1):
+            self.RenderStaticEnvironment()
+            scene.display = False
+        else:
+            scene.display = True
+            self.RemoveFullScreenSprite()
+
+
+
+    def RemoveFullScreenSprite(self):
+        for each in uicore.uilib.desktop.children:
+            if each.name == 'fullScreenSprite':
+                uicore.uilib.desktop.children.fremove(each)
+
+
+
+
+    def RenderStaticEnvironment(self):
+        if settings.user.ui.Get('loadstationenv', 1):
+            return 
+        trinity.WaitForResourceLoads()
+        dev = trinity.GetDevice()
+        camera = self.sceneManager.GetRegisteredCamera('default')
+        s1 = self.sceneManager.GetRegisteredScene('default')
+        s2 = self.sceneManager.GetRegisteredScene2('default')
+        s2.display = True
+        clientWidth = trinity.GetDevice().width
+        clientHeight = trinity.GetDevice().height
+        target = trinity.TriSurfaceManaged(dev.CreateRenderTarget, clientWidth, clientHeight, trinity.TRIFMT_X8R8G8B8, trinity.TRIMULTISAMPLE_NONE, 0, 1)
+        stencil = trinity.TriSurfaceManaged(dev.CreateDepthStencilSurface, clientWidth, clientHeight, trinity.TRIFMT_D24S8, trinity.TRIMULTISAMPLE_NONE, 0, 1)
+        rgbSource = trinity.TriSurfaceManaged(dev.CreateOffscreenPlainSurface, clientWidth, clientHeight, trinity.TRIFMT_X8R8G8B8, trinity.TRIPOOL_SYSTEMMEM)
+        updateJob = trinity.CreateRenderJob('UpdateScene')
+        updateJob.Update(s1)
+        updateJob.Update(s2)
+        updateJob.ScheduleOnce()
+        updateJob.WaitForFinish()
+        eye = camera.pos
+        at = camera.intr
+        view = trinity.TriView()
+        view.SetLookAtPosition((eye.x, eye.y, eye.z), (at.x, at.y, at.z), (0.0, 1.0, 0.0))
+        projection = trinity.TriProjection()
+        fov = camera.fieldOfView
+        aspectRatio = float(clientWidth) / clientHeight
+        projection.PerspectiveFov(fov, aspectRatio, 1.0, 350000.0)
+        renderJob = trinity.CreateRenderJob('StaticScene')
+        renderJob.SetRenderTarget(target)
+        renderJob.SetProjection(projection)
+        renderJob.SetView(view)
+        renderJob.SetDepthStencil(stencil)
+        renderJob.Clear((0.0, 0.0, 0.0, 0.0), 1.0)
+        renderJob.RenderScene(s2)
+        renderJob.ScheduleOnce()
+        renderJob.WaitForFinish()
+        dev.GetRenderTargetData(target, rgbSource)
+        self.RemoveFullScreenSprite()
+        self.sprite = uicls.Sprite(parent=uicore.uilib.desktop, width=trinity.GetDevice().width, height=trinity.GetDevice().height, left=0, top=0)
+        self.sprite.name = 'fullScreenSprite'
+        self.sprite.texture.AttachSurface(rgbSource)
+        self.sprite.Invalidate()
+
+
+
+    def GetZoomValues(self, model, thread):
+        rad = 300
+        camera = self.sceneManager.GetRegisteredCamera('default')
+        trinity.WaitForResourceLoads()
+        rad = model.GetBoundingSphereRadius()
+        center = model.boundingSphereCenter
+        localBB = model.GetLocalBoundingBox()
+        if localBB[0] is None or localBB[1] is None:
+            log.LogError("Failed to get bounding info for ship. Odds are the ship wasn't loaded properly.")
+            localBB = (trinity.TriVector(0, 0, 0), trinity.TriVector(0, 0, 0))
+        model.translationCurve = trinity.TriVectorCurve()
+        if type(center) == types.TupleType:
+            negativeCenter = (-center[0], -center[1], -center[2])
+            model.translationCurve.value = trinity.TriVector(*negativeCenter)
+        else:
+            negativeCenter = -center
+            model.translationCurve.value = negativeCenter
+        model.translationCurve.value.y = -localBB[0].y + 180.0
+        capitalShips = [const.groupDreadnought,
+         const.groupSupercarrier,
+         const.groupTitan,
+         const.groupFreighter,
+         const.groupJumpFreighter,
+         const.groupCarrier,
+         const.groupCapitalIndustrialShip,
+         const.groupIndustrialCommandShip]
+        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+        if getattr(dogmaLocation.GetDogmaItem(util.GetActiveShip()), 'groupID', None) not in capitalShips:
+            model.modelRotationCurve = blue.os.LoadObject('res:/dx9/scene/hangar/ship_modelRotationCurve.red')
+        cameraparent = self.GetCameraParent()
+        if cameraparent.translationCurve is not None:
+            currentY = cameraparent.translationCurve.value.y
+            cameraparent.translationCurve.keys[0].value.y = currentY
+            cameraparent.translationCurve.keys[1].value.y = -localBB[0].y + 180.0
+            cameraparent.translationCurve.start = blue.os.GetTime()
+        zoomMultiplier = 1.0
+        aspectRatio = trinity.GetAspectRatio()
+        if aspectRatio > 1.6:
+            zoomMultiplier = aspectRatio / 1.6
+        self.minZoom = (rad + camera.frontClip + 50) * zoomMultiplier
+        self.maxZoom = 2050.0
+        return (rad + camera.frontClip) * 2
+
+
+
+    def GetCameraParent(self):
+        scene = self.sceneManager.GetRegisteredScene('default')
+        for each in scene.models:
+            if each.name == 'cameraparent':
+                return each
+
+        cp = trinity.TriTransform()
+        cp.name = 'cameraparent'
+        c = trinity.TriVectorCurve()
+        c.extrapolation = trinity.TRIEXT_CONSTANT
+        for t in (0.0, 0.5):
+            k = trinity.TriVectorKey()
+            k.time = t
+            k.interpolation = trinity.TRIINT_HERMITE
+            c.keys.append(k)
+
+        c.Sort()
+        cp.translationCurve = c
+        cp.useCurves = 1
+        scene.models.append(cp)
+        return cp
+
+
+
+    def AnimateZoom(self, startVal, endVal, duration):
+        camera = self.sceneManager.GetRegisteredCamera('default')
+        startTime = blue.os.GetTime()
+        for t in range(101):
+            elapsed = blue.os.GetTime() - startTime
+            elapsedSec = elapsed / 10000000.0
+            perc = elapsedSec / duration
+            if perc > 1.0:
+                camera.translationFromParent.z = endVal
+                break
+            camera.translationFromParent.z = startVal * (1.0 - perc) + endVal * perc
+            blue.pyos.synchro.Sleep(2)
+
+        camera.translationFromParent.z = endVal
+
+
+
+    def Zoom(self, zoomto = None):
+        scene = self.sceneManager.GetRegisteredScene('default')
+        camera = self.sceneManager.GetRegisteredCamera('default')
+        camera.parent = self.GetCameraParent()
+        scene.update = 1
+        scene.display = 1
+        uthread.new(self.AnimateZoom, camera.translationFromParent.z, min(self.maxZoom, max(zoomto, self.minZoom)), 0.5)
+
+
+
+    def CheckCameraTranslation(self, trans):
+        return min(self.maxZoom, max(trans, self.minZoom))
 
 
 

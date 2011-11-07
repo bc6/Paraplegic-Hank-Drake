@@ -18,12 +18,12 @@ class EveEntityClient(svc.entityClient):
     def ProcessSessionChange(self, isRemote, session, change):
         if 'worldspaceid' in change:
             (leavingWorldSpaceID, enteringWorldSpaceID,) = change['worldspaceid']
-            if util.IsStation(enteringWorldSpaceID) and not prefs.GetValue('loadstationenv', 1):
-                return 
             if leavingWorldSpaceID != enteringWorldSpaceID and leavingWorldSpaceID in self.scenes:
                 self.UnloadEntityScene(leavingWorldSpaceID)
+            if util.IsStation(enteringWorldSpaceID):
+                return 
             if enteringWorldSpaceID:
-                scene = self.LoadEntitySceneAndBlock(enteringWorldSpaceID)
+                self.LoadEntitySceneAndBlock(enteringWorldSpaceID)
 
 
 

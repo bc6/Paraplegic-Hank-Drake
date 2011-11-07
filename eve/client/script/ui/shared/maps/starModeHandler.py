@@ -329,9 +329,14 @@ def ColorStarsByCargoIllegality(colorInfo, starColorMode):
     starmap = sm.GetService('starmap')
     CONFISCATED_COLOR = trinity.TriColor(0.8, 0.4, 0.0)
     ATTACKED_COLOR = trinity.TriColor(1.0, 0.0, 0.0)
-    inv = eve.GetInventoryFromId(eve.session.shipid)
+    invCache = sm.GetService('invCache')
+    activeShipID = util.GetActiveShip()
+    if activeShipID is None:
+        shipCargo = []
+    else:
+        inv = invCache.GetInventoryFromId(activeShipID, locationID=session.stationid2)
+        shipCargo = inv.List()
     factionIllegality = {}
-    shipCargo = inv.List()
     while len(shipCargo) > 0:
         item = shipCargo.pop(0)
         if item.groupID in [const.groupCargoContainer,

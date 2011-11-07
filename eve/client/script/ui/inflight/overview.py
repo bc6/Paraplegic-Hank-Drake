@@ -1161,7 +1161,7 @@ class OverviewSettings(uicls.Window):
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.currentKey = None
-        self.specialGroups = sm.GetService('state').GetNPCGroups()
+        self.specialGroups = util.GetNPCGroups()
         self.scope = 'inflight'
         self.SetCaption(mls.UI_INFLIGHT_OVERVIEWSETTINGS)
         self.minWidth = 300
@@ -1829,6 +1829,7 @@ class OverviewSettings(uicls.Window):
         if checkbox.data.has_key('config'):
             config = checkbox.data['config']
             if config == 'applyOnlyToShips':
+                sm.GetService('tactical').SetNPCGroups()
                 sm.GetService('state').InitFilter()
                 sm.GetService('state').NotifyOnStateSetupChance('filter')
             elif config == 'hideCorpTicker':

@@ -231,9 +231,12 @@ class PlanetUISvc(service.Service):
                 settings.char.ui.Set('planet_camera_zoom', 1.0)
             sm.GetService('sceneManager').SetRegisteredScenes('default')
             if eve.session.stationid2:
-                sm.GetService('gameui').OpenExclusive('charcontrol', 1)
-                uix.GetWorldspaceNav()
-                uicore.registry.SetFocus(uicore.GetLayer('charcontrol'))
+                if util.GetCurrentView() == 'station':
+                    sm.GetService('gameui').OpenExclusive('charcontrol', 1)
+                    uix.GetWorldspaceNav()
+                    uicore.registry.SetFocus(uicore.GetLayer('charcontrol'))
+                else:
+                    uix.GetStationNav()
             else:
                 uix.GetInflightNav()
             sm.GetService('bracket').Show()

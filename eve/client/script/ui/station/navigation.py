@@ -1,5 +1,4 @@
 import uix
-import blue
 import uthread
 import util
 import uicls
@@ -26,7 +25,7 @@ class StationNav(uicls.Container):
         if scene2:
             (projection, view, viewport,) = uix.GetFullscreenProjectionViewAndViewport()
             pick = scene2.PickObject(x, y, projection, view, viewport)
-            if pick and pick.name == str(eve.session.shipid):
+            if pick and pick.name == str(util.GetActiveShip()):
                 return self.GetShipMenu()
 
 
@@ -43,7 +42,7 @@ class StationNav(uicls.Container):
             node = nodes[0]
             if getattr(node, '__guid__', None) not in ('xtriui.InvItem', 'listentry.InvItem'):
                 return 
-            if eve.session.shipid == node.item.itemID:
+            if util.GetActiveShip() == node.item.itemID:
                 eve.Message('CantMoveActiveShip', {})
                 return 
             if node.item.categoryID == const.categoryShip and node.item.singleton:
@@ -59,11 +58,11 @@ class StationNav(uicls.Container):
 
 
     def GetShipMenu(self):
-        if eve.session.shipid:
+        if util.GetActiveShip():
             hangarInv = eve.GetInventory(const.containerHangar)
             hangarItems = hangarInv.List()
             for each in hangarItems:
-                if each.itemID == eve.session.shipid:
+                if each.itemID == util.GetActiveShip():
                     return sm.GetService('menu').InvItemMenu(each)
 
         return []
@@ -76,8 +75,7 @@ class StationNav(uicls.Container):
 
 
     def OnMouseDown(self, *args):
-        if settings.user.ui.Get('loadstationenv', 1):
-            self.looking = 1
+        self.looking = 1
         if not self.blockDisable and not uicore.cmd.IsUIHidden():
             uicore.layer.main.state = uiconst.UI_DISABLED
         self.cursor = uiconst.UICURSOR_DRAGGABLE
@@ -89,16 +87,15 @@ class StationNav(uicls.Container):
     def OnMouseUp(self, button, *args):
         if not self.blockDisable and not uicore.cmd.IsUIHidden():
             uicore.layer.main.state = uiconst.UI_PICKCHILDREN
-        if settings.user.ui.Get('loadstationenv', 1):
-            camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
-            if camera is None:
-                return 
-            camera.interest = None
-            camera.friction = 7.0
-            if not uicore.uilib.rightbtn:
-                camera.rotationOfInterest.SetIdentity()
-            if not uicore.uilib.leftbtn:
-                self.looking = 0
+        camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
+        if camera is None:
+            return 
+        camera.interest = None
+        camera.friction = 7.0
+        if not uicore.uilib.rightbtn:
+            camera.rotationOfInterest.SetIdentity()
+        if not uicore.uilib.leftbtn:
+            self.looking = 0
         self.cursor = None
         uicore.uilib.UnclipCursor()
         if uicore.uilib.GetCapture() == self:
@@ -107,18 +104,17 @@ class StationNav(uicls.Container):
 
 
     def OnMouseWheel(self, *args):
-        if settings.user.ui.Get('loadstationenv', 1):
-            camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
-            if camera is None:
-                return 
-            if camera.__typename__ == 'EveCamera':
-                camera.Dolly(uicore.uilib.dz * 0.001 * abs(camera.translationFromParent.z))
-                camera.translationFromParent.z = sm.GetService('station').CheckCameraTranslation(camera.translationFromParent.z)
+        camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
+        if camera is None:
+            return 
+        if camera.__typename__ == 'EveCamera':
+            camera.Dolly(uicore.uilib.dz * 0.001 * abs(camera.translationFromParent.z))
+            camera.translationFromParent.z = sm.GetService('station').CheckCameraTranslation(camera.translationFromParent.z)
 
 
 
     def OnMouseMove(self, *args):
-        if self.looking and settings.user.ui.Get('loadstationenv', 1):
+        if self.looking:
             lib = uicore.uilib
             dx = lib.dx
             dy = lib.dy

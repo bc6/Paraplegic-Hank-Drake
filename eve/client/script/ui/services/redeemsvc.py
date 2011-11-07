@@ -5,6 +5,7 @@ import listentry
 import util
 import uicls
 import uiconst
+import log
 
 class RedeemService(service.Service):
     __guid__ = 'svc.redeem'
@@ -121,6 +122,11 @@ class RedeemWindow(uicls.Window):
         scrolllist = []
         expireUsed = 0
         for token in self.tokens:
+            if token.typeID == 2833:
+                msg = u'\u041e \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e\u0441\u0442\u0438 \u043f\u0440\u0435\u0434\u043c\u0435\u0442\u0430 \u0431\u0443\u0434\u0435\u0442 \u043e\u0431\u044a\u044f\u0432\u043b\u0435\u043d\u043e \u043e\u0442\u0434\u0435\u043b\u044c\u043d\u043e<t>%s<t>\u0427\u0435\u043a \u043d\u0430 \u043f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u0435 1000 Aurum' % token.quantity
+                scrolllist.append(listentry.Get('Generic', {'label': msg}))
+                log.LogWarn("A Token was found that we don't know about", token.typeID, 'ignoring it for now! Coming Soon(tm)')
+                continue
             self.selectedTokens[(token.tokenID, token.massTokenID)] = None
             ty = cfg.invtypes.Get(token.typeID)
             qty = token.quantity
@@ -160,6 +166,8 @@ class RedeemWindow(uicls.Window):
     def RedeemSelected(self, *args):
         if self.stationID is None:
             raise UserError('RedeemOnlyInStation')
+        if not len(self.selectedTokens.keys()):
+            return 
         if eve.Message('RedeemConfirmClaim', {'char': cfg.eveowners.Get(self.charID).name,
          'station': cfg.evelocations.Get(self.stationID).name}, uiconst.YESNO, default=uiconst.ID_NO) != uiconst.ID_YES:
             return 

@@ -20,6 +20,10 @@ BACKGROUND_COLOR = (0,
  0,
  0,
  0.1)
+BTN_BACKGROUND_COLOR = (0,
+ 0,
+ 0,
+ 0.6)
 BUTTONHEIGHT = 30
 MO = [3.5455531962,
  3.36937132567,
@@ -168,7 +172,31 @@ class NeocomSvc(service.Service):
 
 
 
+    def ShowToggleHangarCQButton(self):
+        if not session.stationid or not prefs.GetValue('loadstationenv', 1):
+            if getattr(self, 'toggleHangarCQButton', None) is not None:
+                self.toggleHangarCQButton.Close()
+            self.toggleHangarCQButton = None
+            return 
+        if self.neocomLeftSide is None:
+            return 
+        view = util.GetCurrentView()
+        if getattr(self, 'toggleHangarCQButton', None) is None:
+            self.toggleHangarCQButton = uicls.Container(parent=self.neocomLeftSide, name='toggleHangarCQButton', state=uiconst.UI_NORMAL, align=uiconst.TOTOP, height=24, padding=16)
+            self.toggleHangarCQButtonLabel = uicls.Label(parent=self.toggleHangarCQButton, align=uiconst.CENTER)
+            self.toggleHangarCQButtonFill = uicls.Fill(parent=self.toggleHangarCQButton, color=BTN_BACKGROUND_COLOR)
+        if view == 'station':
+            self.toggleHangarCQButton.OnClick = sm.GetService('cmd').CmdEnterHangar
+            self.toggleHangarCQButtonLabel.SetText('Enter Ship Hangar')
+        else:
+            self.toggleHangarCQButton.OnClick = sm.GetService('cmd').CmdEnterCQ
+            self.toggleHangarCQButtonLabel.SetText("Enter Captain's Quarters")
+        self.toggleHangarCQButton.Show()
+
+
+
     def OnSessionChanged(self, isRemote, sess, change):
+        self.ShowToggleHangarCQButton()
         if session.charid is None:
             self.CloseNeocomLeftSide()
             if self.wnd is not None and not self.wnd.destroyed:
@@ -252,6 +280,7 @@ class NeocomSvc(service.Service):
         self.moving = False
         self.inited = 0
         self.criminalTimer = None
+        self.ShowToggleHangarCQButton()
 
 
 

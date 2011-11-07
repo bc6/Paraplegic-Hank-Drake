@@ -80,6 +80,9 @@ class BaseDogmaLocation():
             return itemKey
         if self.IsItemLoaded(itemKey):
             return itemKey
+        self.PreLoadItemActions(itemKey)
+        if itemKey in self.dogmaItems:
+            return itemKey
         self.EnterCriticalSection('LoadItem', itemKey)
         try:
             try:
@@ -98,13 +101,19 @@ class BaseDogmaLocation():
                     dogmaItem.PostLoadAction()
             except Exception as e:
                 log.LogException('Failed to load a dogma item %s' % str(itemKey))
-                self.failedLoadingItems[itemKey] = 'Exception: ' + strx(e)
+                if not len(e.args) or not e.args[0].startswith('GetItem: Item not here'):
+                    self.failedLoadingItems[itemKey] = 'Exception: ' + strx(e)
                 raise 
 
         finally:
             self.LeaveCriticalSection('LoadItem', itemKey)
 
         return itemKey
+
+
+
+    def PreLoadItemActions(self, itemKey):
+        pass
 
 
 
@@ -366,6 +375,11 @@ class BaseDogmaLocation():
     def StartEffect_PreChecks(self, effect, dogmaItem, environment, byUser):
         if byUser and effect.effectCategory in [const.dgmEffOnline, const.dgmEffOverload]:
             raise RuntimeError('TheseEffectsShouldNeverBeUserStarted', effect.effectID)
+        if effect.effectID == const.effectOnline:
+            moduleHp = self.GetAttributeValue(dogmaItem.itemID, const.attributeHp)
+            moduleDamage = self.GetAttributeValue(dogmaItem.itemID, const.attributeDamage)
+            if moduleHp <= moduleDamage:
+                raise UserError('ModuleTooDamagedToBeOnlined')
 
 
 
@@ -484,7 +498,12 @@ class BaseDogmaLocation():
                         env = dogmax.Environment(info.itemID, info.charID, info.shipID, None, info.otherID, effectID, weakref.proxy(self), None)
                     if sharedEnv is None and not pythonEffect:
                         sharedEnv = env
-                self.StartEffect(effectID, itemID, env)
+                try:
+                    self.StartEffect(effectID, itemID, env)
+                except UserError as e:
+                    if not e.msg.startswith('EffectAlreadyActive'):
+                        raise 
+                    sys.exc_clear()
                 effectsCompleted.add(effectID)
 
         except Exception:

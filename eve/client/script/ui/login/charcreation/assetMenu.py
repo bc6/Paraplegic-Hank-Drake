@@ -578,7 +578,9 @@ class CharCreationAssetPicker(uicls.Container):
                 for itemType in itemTypes:
                     if itemType[2] is not None:
                         numSpecialItems += 1
-                        path = 'res:/UI/Asset/mannequin/%s_%s_%s.png' % (modifier.split('/')[-1], itemType[2], itemType[0])
+                        assetResPath = cfg.paperdollResources.Get(itemType[0]).resPath
+                        assetResPath = assetResPath.replace('res:/Graphics/Character/Modular/', '').replace('/', '_').replace('.type', '')
+                        path = 'res:/UI/Asset/mannequin/%s.png' % assetResPath
                     else:
                         path = 'res:/UI/Asset/%s_g%s_b%s.png' % ('_'.join(list(itemType[1])).replace('/', '_'), info.genderID, info.bloodlineID)
                     assetData.append((path, itemType, ''))

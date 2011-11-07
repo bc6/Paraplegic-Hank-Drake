@@ -21,6 +21,7 @@ class Agents(service.Service):
      'YesNo': [ROLE_SERVICE],
      'MessageBox': [ROLE_SERVICE],
      'SingleChoiceBox': [ROLE_SERVICE],
+     'CheckCargoCapacity': [ROLE_SERVICE],
      'GetAgentByID': [],
      'GetAgentsByID': [],
      'GetAgentsByStationID': [],
@@ -155,6 +156,29 @@ class Agents(service.Service):
         self.reentrancyGuard2 = 0
         self.journalwindows = weakref.WeakValueDictionary()
         self.agentSolarSystems = {}
+
+
+
+    def CheckCargoCapacity(self, cargoUnits, mandatoryCargoUnits):
+        activeShipID = util.GetActiveShip()
+        if activeShipID is None:
+            (capacity, used,) = (0, 0)
+        else:
+            (capacity, used,) = sm.GetService('invCache').GetInventoryFromId(activeShipID).GetCapacity(const.flagCargo)
+        if session.stationid2 is None and capacity - (used + mandatoryCargoUnits) < 0:
+            rejectMessage = mls.AGT_STANDARDMISSION_ACCEPT_CARGOCAPWARNING_DIALOGUE % {'external.mandatorycargounits': '%-2.2f' % mandatoryCargoUnits}
+            self.MessageBox(mls.AGT_STANDARDMISSION_ACCEPT_FAILURE_TITLE, rejectMessage)
+            return ('mission.offeredinsufficientcargospace', rejectMessage)
+        if capacity - (used + cargoUnits) < 0:
+            if capacity - (used + cargoUnits) < 1:
+                c1 = '%-2.2f' % cargoUnits
+                c2 = '%-2.2f' % (capacity - used)
+            else:
+                c1 = cargoUnits
+                c2 = capacity - used
+            if not self.YesNo(mls.AGT_STANDARDMISSION_ACCEPT_CARGOCAPWARNING_TITLE, mls.AGT_STANDARDMISSION_ACCEPT_CARGOCAPWARNING_MESSAGE % {'external.required': c1,
+             'external.available': c2}, 'AgtMissionAcceptBigCargo'):
+                return 'mission.offered'
 
 
 
@@ -300,7 +324,7 @@ class Agents(service.Service):
     def __GetConversation(self, wnd, actionID):
         if wnd is None or wnd.destroyed or wnd.sr is None:
             return (None, None, None)
-        tmp = wnd.sr.agentMoniker.DoAction(actionID, util.GetActiveShip())
+        tmp = wnd.sr.agentMoniker.DoAction(actionID)
         if wnd is None or wnd.destroyed or wnd.sr is None:
             return (None, None, None)
         (ret, wnd.sr.oob,) = tmp

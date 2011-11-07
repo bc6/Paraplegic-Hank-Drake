@@ -52,7 +52,7 @@ class LensFlareClient(service.Service):
     def PrepareComponent(self, sceneID, entityID, component):
         if component.redFile == '':
             return 
-        if not sm.GetService('device').GetAppFeatureState('Interior.ParticlesEnabled', True):
+        if not sm.GetService('device').GetAppFeatureState('Interior.LensflaresEnabled', True):
             return 
         component.trinityObject = trinity.Load(component.redFile)
 
@@ -100,13 +100,13 @@ class LensFlareClient(service.Service):
 
 
     def OnGraphicSettingsChanged(self, changes):
-        particlesEnabled = sm.GetService('device').GetAppFeatureState('Interior.ParticlesEnabled', True)
+        flaresEnabled = sm.GetService('device').GetAppFeatureState('Interior.LensflaresEnabled', True)
         with uthread.BlockTrapSection():
             for entity in self.flareEntities:
                 flareComponent = entity.GetComponent('lensFlare')
-                if not particlesEnabled and flareComponent.trinityObject is not None:
+                if not flaresEnabled and flareComponent.trinityObject is not None:
                     self.RemoveFromScene(entity, flareComponent)
-                elif particlesEnabled and flareComponent.trinityObject is None:
+                elif flaresEnabled and flareComponent.trinityObject is None:
                     self.AddToScene(entity, flareComponent)
 
 

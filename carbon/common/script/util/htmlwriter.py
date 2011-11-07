@@ -356,6 +356,18 @@ def OutlineSegmentedTable(lname, ldict, hd, li, idstr, idx, num, displayNameIDX 
 
 
 
+def RemoveHtmlTag(tagName = 'font', stringWithTags = None):
+    tagCompiled = re.compile('(\\<%(tag)s[^\\>]+\\>)|(</%(tag)s>)' % {'tag': tagName})
+    while True:
+        match = tagCompiled.search(stringWithTags)
+        if match is None:
+            break
+        stringWithTags = stringWithTags.replace(match.group(), '')
+
+    return stringWithTags
+
+
+
 def GetA(innerText, href, ctrlID = None, className = None, style = None, onClick = None, title = None, rel = None, rev = None):
     ctrlID = CheckValue('id', ctrlID)
     className = CheckValue('class', className)
@@ -987,6 +999,7 @@ exports = {'htmlwriter.UnpackModalDialogueResult': UnpackModalDialogueResult,
  'htmlwriter.Image': Image,
  'htmlwriter.Table': Table,
  'htmlwriter.OutlineDictTable': OutlineDictTable,
+ 'htmlwriter.RemoveHtmlTag': RemoveHtmlTag,
  'htmlwriter.GetA': GetA,
  'htmlwriter.GetTable': GetTable,
  'htmlwriter.OutlineTable': OutlineTable,

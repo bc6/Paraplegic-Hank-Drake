@@ -346,7 +346,7 @@ class EveConfig(util.config):
         if totalSteps is not None:
             self.totalLogonSteps = totalSteps
         if macho.mode == 'client':
-            sm.ChainEvent('ProcessLoginProgress', 'loginprogress::miscinitdata', section, stepNum, self.totalLogonSteps)
+            sm.ChainEvent('ProcessLoginProgress', 'loginprogress::gettingbulkdata', section, stepNum, self.totalLogonSteps)
         else:
             cfg.LogInfo(section, stepNum)
 
@@ -356,7 +356,6 @@ class EveConfig(util.config):
         cfg.LogInfo('App GotInitData')
         util.config.GotInitData(self, initdata)
         self.dgmunits = self.LoadBulk('dgmunits', const.cacheDogmaUnits, Recordset(Row, 'unitID'))
-        self.ReportLoginProgress('coreInitData1', self.totalLogonSteps - const.cfgLogonSteps / 2)
         self.invbptypes = self.LoadBulk('invbptypes', const.cacheInvBlueprintTypes, Recordset(Row, 'blueprintTypeID'))
         self.invcategories = self.LoadBulk('invcategories', const.cacheInvCategories, Recordset(InvCategory, 'categoryID'))
         self.invmetagroups = self.LoadBulk('invmetagroups', const.cacheInvMetaGroups, Recordset(InvMetaGroup, 'metaGroupID'))
@@ -377,7 +376,6 @@ class EveConfig(util.config):
                 self.invcontrabandFactionsByType[each.typeID] = {}
             self.invcontrabandFactionsByType[each.typeID][each.factionID] = each
 
-        self.ReportLoginProgress('coreInitData2', self.totalLogonSteps - const.cfgLogonSteps / 2 + 1)
         self.dgmattribs = self.LoadBulk('dgmattribs', const.cacheDogmaAttributes, Recordset(DgmAttribute, 'attributeID'))
         self.dgmeffects = self.LoadBulk('dgmeffects', const.cacheDogmaEffects, Recordset(DgmEffect, 'effectID'))
         self.dgmtypeattribs = self.LoadBulk('dgmtypeattribs', const.cacheDogmaTypeAttributes, None, 'typeID')
@@ -405,7 +403,6 @@ class EveConfig(util.config):
         self.certificateRelationshipsByChildID = self.LoadBulk('certificateRelationshipsByChildID', const.cacheCertificateRelationships, Recordset(Row, 'relationshipID'))
         self.locationwormholeclasses = self.LoadBulk('locationwormholeclasses', const.cacheMapLocationWormholeClasses, Recordset(Row, 'locationID'))
         self.locationscenes = self.LoadBulk('locationscenes', const.cacheMapLocationScenes, Recordset(Row, 'locationID'))
-        self.ReportLoginProgress('coreInitData3', self.totalLogonSteps - const.cfgLogonSteps / 2 + 2)
         self.schematics = self.LoadBulk('schematics', const.cachePlanetSchematics, Recordset(Schematic, 'schematicID'))
         self.schematicstypemap = self.LoadBulk('schematicstypemap', const.cachePlanetSchematicsTypeMap, None, 'schematicID')
         self.schematicspinmap = self.LoadBulk('schematicspinmap', const.cachePlanetSchematicsPinMap, None, 'schematicID')
@@ -739,8 +736,8 @@ class EveConfig(util.config):
     def LoadEveLocations(self):
         regions = self.LoadBulk(None, const.cacheMapRegionsTable, Recordset(Row, 'regionID'))
         constellations = self.LoadBulk(None, const.cacheMapConstellationsTable, Recordset(Row, 'constellationID'))
-        solarsystems = self.LoadBulk(None, const.cacheMapSolarSystemsTable, Recordset(Row, 'solarSystemID'))
-        stations = self.LoadBulk(None, 2209987, Recordset(Row, 'stationID'))
+        self.solarsystems = self.LoadBulk(None, const.cacheMapSolarSystemsTable, Recordset(SolarSystem, 'solarSystemID'))
+        stations = self.LoadBulk(None, const.cacheStaStationsStatic, Recordset(Row, 'stationID'))
         rowDescriptor = blue.DBRowDescriptor((('locationID', const.DBTYPE_I4),
          ('locationName', const.DBTYPE_WSTR),
          ('x', const.DBTYPE_R5),
@@ -766,7 +763,7 @@ class EveConfig(util.config):
              row.y,
              -row.z])
 
-        for row in solarsystems:
+        for row in self.solarsystems:
             self.evelocations.data[row.solarSystemID] = blue.DBRow(rowDescriptor, [row.solarSystemID,
              row.solarSystemName,
              row.x,
@@ -963,6 +960,27 @@ class InvType(Row):
 
     def __str__(self):
         return 'InvType ID: %d, group: %d,  "%s"' % (self.typeID, self.groupID, self.typeName)
+
+
+
+
+class SolarSystem(Row):
+    __guid__ = 'sys.SolarSystem'
+
+    def __getattr__(self, name):
+        if name == 'pseudoSecurity':
+            value = Row.__getattr__(self, 'security')
+            if value > 0.0 and value < 0.05:
+                return 0.05
+            else:
+                return value
+        value = Row.__getattr__(self, name)
+        return value
+
+
+
+    def __str__(self):
+        return 'SolarSystem ID: %d, name: %d' % (self.solarSystemID, self.solarSystemName)
 
 
 

@@ -11,8 +11,7 @@ def CombatLog_CopyText(mail, *args):
     if boot.role == 'client':
         args['security'] = sm.GetService('map').GetSecurityStatus(mail.solarSystemID)
     else:
-        systemSecurities = sm.StartService('map').GetSolarSystemPseudoSecurities().Index('solarSystemID')
-        args['security'] = systemSecurities[mail.solarSystemID].security
+        args['security'] = cfg.solarsystems.Get(mail.solarSystemID).pseudoSecurity
     if mail.moonID is not None:
         args['moon'] = cfg.evelocations.Get(mail.moonID).name
     else:

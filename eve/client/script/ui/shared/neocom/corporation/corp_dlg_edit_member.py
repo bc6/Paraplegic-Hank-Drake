@@ -277,31 +277,12 @@ class EditMemberDialog(uicls.Window):
         scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_CORP_JOINED,
          'text': util.FmtDate(self.member.startDateTime, 'ls')}))
         scrolllist.append(listentry.Get('Divider'))
-        for (header, key,) in [[mls.UI_GENERIC_NAME, 'charName'],
-         [mls.UI_GENERIC_GENDER, 'gender'],
-         [mls.UI_GENERIC_RACE, 'raceName'],
-         [mls.UI_GENERIC_BLOODLINE, 'bloodlineName']]:
-            if key == 'gender':
-                txt = (mls.UI_GENERIC_FEMALE, mls.UI_GENERIC_MALE)[self.memberinfo.gender]
-            else:
-                txt = getattr(self.memberinfo, key, '')
-            if txt != '':
-                scrolllist.append(listentry.Get('LabelText', {'label': header,
-                 'text': txt}))
-
+        scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_GENERIC_GENDER,
+         'text': (mls.UI_GENERIC_FEMALE, mls.UI_GENERIC_MALE)[self.memberinfo.gender]}))
         scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_CORP_DATEOFBIRTH,
          'text': util.FmtDate(self.memberinfo.createDateTime, 'ls')}))
         scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_GENERIC_SECURITYSTATUS,
          'text': str(int(self.security * 1000) / 1000.0)}))
-        memberTracking = sm.GetService('corp').GetMemberTrackingInfo()
-        lastOnline = None
-        for memberTrack in memberTracking:
-            if memberTrack.characterID == self.charID:
-                lastOnline = memberTrack.lastOnline
-
-        if lastOnline:
-            scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_GENERIC_LASTONLINE,
-             'text': form.CorpMemberTracking().GetLastLoggedOnText(lastOnline)}))
         self.sr.scroll.Load(fixedEntryHeight=18, contentList=scrolllist)
         if canEditBase:
             self.ddxFunction = self.DDXTabGeneral

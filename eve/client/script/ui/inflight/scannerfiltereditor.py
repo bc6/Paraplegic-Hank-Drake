@@ -15,7 +15,7 @@ class ScannerFilterEditor(uicls.Window):
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
-        self.specialGroups = sm.GetService('state').GetNPCGroups()
+        self.specialGroups = util.GetNPCGroups()
         self.scope = 'inflight'
         self.SetCaption(mls.UI_GENERIC_SCANNER_FILTER_EDITOR)
         self.SetMinSize([300, 250])

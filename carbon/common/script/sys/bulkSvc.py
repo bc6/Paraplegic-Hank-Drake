@@ -48,7 +48,6 @@ class BulkSvc(service.Service):
             hashValue = self.GetHash()
         else:
             hashValue = None
-        self.UpdateLoginProgress('updatingBulk')
         updateData = self.bulkMgr.UpdateBulk(changeID, hashValue, self.branch)
         if updateData is None:
             self.LogInfo('Bulk data is up to date:', changeID)
@@ -78,12 +77,13 @@ class BulkSvc(service.Service):
             self.SetVersion(updateInfo)
             self.LogInfo('bulk updated done, we are now at', updateInfo)
             return 
+        self.UpdateLoginProgress('loginprogress::gettingbulkdata', updateInfo['chunkCount'])
         self.UpdateChangedRows(updateInfo['chunk'], updateInfo['changedTablesKeys'])
         self.UpdateDeletedRows(updateInfo['toBeDeleted'], updateInfo['changedTablesKeys'])
         for chunkNumber in xrange(1, updateInfo['chunkCount']):
             self.LogInfo('We have more chunks. Now fetching chunk', chunkNumber)
             toBeChanged = self.bulkMgr.GetChunk(changeID, chunkNumber)
-            self.UpdateLoginProgress('updatingBulk', updateInfo['chunkCount'] + const.cfgLogonSteps)
+            self.UpdateLoginProgress('loginprogress::gettingbulkdata', updateInfo['chunkCount'])
             self.UpdateChangedRows(toBeChanged, updateInfo['changedTablesKeys'])
 
         self.branch = updateInfo['branch']
@@ -158,13 +158,13 @@ class BulkSvc(service.Service):
             else:
                 self.LogInfo('Asked the server for', len(toGet), 'full bulk file(s) I will get them in', numberOfChunks, 'chunk(s) - Got one chunk (number 0) already')
             bulks = {}
-            self.UpdateLoginProgress('fullBulkFileUpdate', numberOfChunks + const.cfgLogonSteps)
+            self.UpdateLoginProgress('loginprogress::gettingbulkdata', numberOfChunks)
             for bulkID in chunk:
                 bulks[bulkID] = chunk[bulkID]
 
             for chunkNumber in xrange(1, numberOfChunks):
                 toBeChanged = self.bulkMgr.GetFullFilesChunk(chunkSetID, chunkNumber)
-                self.UpdateLoginProgress('fullBulkFileUpdate', numberOfChunks + const.cfgLogonSteps)
+                self.UpdateLoginProgress('loginprogress::gettingbulkdata', numberOfChunks)
                 self.LogInfo('Got chunk', chunkNumber, 'from chunkset', chunkSetID)
                 for bulkID in toBeChanged:
                     changes = toBeChanged[bulkID]
@@ -176,6 +176,7 @@ class BulkSvc(service.Service):
                         bulks[bulkID] = changes
 
 
+            self.lastLoginProgressID = 1
         else:
             self.LogInfo('Only removing bulk files so UpdateFullBulkFiles did not need to call the server.')
         if toDelete is None:

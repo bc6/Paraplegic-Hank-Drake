@@ -1,7 +1,4 @@
 import svc
-import entities
-import util
-import entityCommon
 import uthread
 CQ_NEWBIE_SPAWN = 'NewbieStart'
 CQ_DOOR_SPAWN = 'DoorStart'
@@ -11,7 +8,6 @@ CQ_BEDROOM_SPAWN = 'BedroomStart'
 class EveEntitySpawnService(svc.entitySpawnClient):
     __guid__ = 'svc.eveEntitySpawnClient'
     __replaceservice__ = 'entitySpawnClient'
-    __notifyevents__ = svc.entitySpawnClient.__notifyevents__ + ['OnSessionChanged']
 
     def Run(self, *etc):
         svc.entitySpawnClient.Run(self, etc)
@@ -65,15 +61,6 @@ class EveEntitySpawnService(svc.entitySpawnClient):
         spawnedEntity = self.entityService.CreateEntityFromRecipe(scene, recipe, session.charid)
         scene.CreateAndRegisterEntity(spawnedEntity)
         self.LogInfo('Client side player entity spawned for', session.charid)
-
-
-
-    def OnSessionChanged(self, isRemote, session, change):
-        (oldws, newws,) = change.get('worldspaceid', (None, None))
-        if newws and self.entityService.IsClientSideOnly(newws):
-            if util.IsStation(newws) and not prefs.GetValue('loadstationenv', 1):
-                return None
-            self.SpawnClientSidePlayer(change)
 
 
 

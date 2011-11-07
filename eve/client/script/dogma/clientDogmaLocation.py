@@ -149,12 +149,12 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
                         self.StopEffect(const.effectOnline, itemID)
                     else:
                         self.Activate(itemID, const.effectOnline)
-                elif attributeID == const.attributeSkillPoints:
+                elif attributeID in (const.attributeSkillPoints, const.attributeDamage):
                     if not self.IsItemLoaded(itemID):
                         continue
                     dogmaItem = self.dogmaItems[itemID]
-                    dogmaItem.attributes[const.attributeSkillPoints] = newValue
-                    self.SetAttributeValue(itemID, const.attributeSkillPoints, newValue)
+                    dogmaItem.attributes[attributeID] = newValue
+                    self.SetAttributeValue(itemID, attributeID, newValue)
             except Exception:
                 log.LogException('OnModuleAttributeChanges::Unexpected exception')
                 sys.exc_clear()
@@ -163,27 +163,31 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
 
 
     def LoadShipFromInventory(self, shipID, shipInv):
-        subSystems = {}
-        rigs = {}
-        modules = {}
-        drones = {}
+        subSystems = set()
+        rigs = set()
+        hiSlots = set()
+        medSlots = set()
+        lowSlots = set()
+        drones = set()
         for item in shipInv.List():
             if not (cfg.IsShipFittingFlag(item.flagID) or item.flagID == const.flagDroneBay):
                 continue
             self.items[item.itemID] = item
             if item.categoryID == const.categorySubSystem:
-                subSystems[item.itemID] = item
+                subSystems.add(item)
             elif const.flagRigSlot0 <= item.flagID <= const.flagRigSlot7:
-                rigs[item.itemID] = item
-            elif const.flagLoSlot0 <= item.flagID <= const.flagHiSlot7:
-                modules[item.itemID] = item
+                rigs.add(item)
+            elif const.flagHiSlot0 <= item.flagID <= const.flagHiSlot7:
+                hiSlots.add(item)
+            elif const.flagMedSlot0 <= item.flagID <= const.flagMedSlot7:
+                medSlots.add(item)
+            elif const.flagLoSlot0 <= item.flagID <= const.flagLoSlot7:
+                lowSlots.add(item)
             elif item.flagID == const.flagDroneBay:
-                drones[item.itemID] = item
+                drones.add(item.itemID)
 
-        for items in (subSystems, rigs, modules):
-            for (itemID, item,) in items.iteritems():
-                self.FitItemToLocation(shipID, itemID, item.flagID)
-
+        for item in itertools.chain(subSystems, rigs, lowSlots, medSlots, hiSlots):
+            self.FitItemToLocation(shipID, item.itemID, item.flagID)
 
         for (flagID, dbrow,) in self.instanceFlagQuantityCache.get(shipID, {}).iteritems():
             subLocation = (dbrow[0], dbrow[1], dbrow[2])

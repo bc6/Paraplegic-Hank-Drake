@@ -2995,25 +2995,6 @@ class MenuSvc(service.Service):
 
 
 
-    def GetFuelConsumptionForMyShip(self, fromSystem, toSystem, attrDict):
-        if not session.shipid:
-            return 
-        else:
-            myDist = uix.GetLightYearDistance(fromSystem, toSystem, False)
-            if myDist is None:
-                return 
-            if len(attrDict) > 0:
-                for displayAttribute in attrDict:
-                    if displayAttribute.attributeID == const.attributeJumpDriveConsumptionAmount:
-                        consumptionAmount = myDist * displayAttribute.value
-                    else:
-                        comsumptionType = displayAttribute.value
-
-                return (int(consumptionAmount), comsumptionType)
-            return (None, None)
-
-
-
     def GetHybridBeaconJumpMenu(self):
         fleetMenu = []
         allianceMenu = []
@@ -3060,7 +3041,7 @@ class MenuSvc(service.Service):
 
 
     def OpenCapitalNavigation(self, *args):
-        if session.shipid:
+        if util.GetActiveShip():
             wnd = sm.GetService('window').GetWindow('capitalnav', decoClass=form.CapitalNav, create=1, maximize=1)
 
 

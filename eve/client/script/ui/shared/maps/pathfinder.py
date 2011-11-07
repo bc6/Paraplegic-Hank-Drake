@@ -90,9 +90,9 @@ class PathfinderSvc(service.Service):
         for entry in self.cache[self.routeType].itervalues():
             entry[4] = [ self.cache[self.routeType][solarSystemID] for solarSystemID in entry[4] ]
 
-        for each in sm.RemoteSvc('map').GetSolarSystemPseudoSecurities():
+        for each in cfg.solarsystems:
             if each.solarSystemID in self.cache[self.routeType]:
-                self.cache[self.routeType][each.solarSystemID][5] = round(max(each.security, 0.0), 1)
+                self.cache[self.routeType][each.solarSystemID][5] = round(max(each.pseudoSecurity, 0.0), 1)
 
         self.LogInfo("PrepareCache has now prepared routeType '", self.routeType, "' with", len(self.cache[self.routeType]), 'entries')
 
