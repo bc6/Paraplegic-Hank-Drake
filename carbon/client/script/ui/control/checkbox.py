@@ -19,6 +19,10 @@ class CheckboxCore(uicls.Container):
     default_clipChildren = 1
     default_state = uiconst.UI_NORMAL
     default_wrapLabel = True
+    default_fontsize = 10
+    default_fontStyle = None
+    default_fontFamily = None
+    default_fontPath = None
 
     def ApplyAttributes(self, attributes):
         uicls.Container.ApplyAttributes(self, attributes)
@@ -31,6 +35,10 @@ class CheckboxCore(uicls.Container):
         self.cursor = 1
         self.name = ''
         self.wrapLabel = attributes.get('wrapLabel', self.default_wrapLabel)
+        self.fontStyle = attributes.get('fontStyle', self.default_fontStyle)
+        self.fontFamily = attributes.get('fontFamily', self.default_fontFamily)
+        self.fontPath = attributes.get('fontPath', self.default_fontPath)
+        self.fontsize = attributes.get('fontsize', self.default_fontsize)
         self.Prepare_()
         self.data = {'config': attributes.get('configName', self.default_configName),
          'value': attributes.get('retval', self.default_retval),
@@ -59,7 +67,7 @@ class CheckboxCore(uicls.Container):
             align = uiconst.TOTOP
             padding = (18, 2, 0, 0)
             pos = (0, 0, 0, 0)
-        self.sr.label = uicls.Label(text='', parent=self, name='text', align=align, fontsize=10, letterspace=1, state=uiconst.UI_DISABLED, padding=padding, pos=pos, uppercase=1, singleline=not self.wrapLabel)
+        self.sr.label = uicls.Label(text='', parent=self, name='text', align=align, fontStyle=self.fontStyle, fontFamily=self.fontFamily, fontPath=self.fontPath, fontsize=self.fontsize, letterspace=1, state=uiconst.UI_DISABLED, padding=padding, pos=pos, uppercase=1, singleline=not self.wrapLabel)
         self.sr.label.OnSizeChanged = self.OnSizeChanged
 
 
@@ -216,7 +224,7 @@ class CheckboxCore(uicls.Container):
         try:
             s.Set(config, value)
         except:
-            log.LogError('Failed to assing setting to: %s, %s' % (prefstype, config))
+            log.LogError('Failed to assign setting to: %s, %s' % (prefstype, config))
 
 
 

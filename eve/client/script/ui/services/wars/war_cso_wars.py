@@ -20,10 +20,10 @@ class WarsO(warObject.base):
 
     def GetWars(self, ownerID, forceRefresh = 0):
         if self.warsByOwnerID.has_key(ownerID):
-            if forceRefresh or blue.os.TimeDiffInMs(self.warsByOwnerID[ownerID][0]) > 43200000:
+            if forceRefresh or blue.os.TimeDiffInMs(self.warsByOwnerID[ownerID][0], blue.os.GetWallclockTime()) > 43200000:
                 del self.warsByOwnerID[ownerID]
         if not self.warsByOwnerID.has_key(ownerID):
-            self.warsByOwnerID[ownerID] = [blue.os.GetTime(), self.GetMoniker().GetWars(ownerID)]
+            self.warsByOwnerID[ownerID] = [blue.os.GetWallclockTime(), self.GetMoniker().GetWars(ownerID)]
         return self.warsByOwnerID[ownerID][1]
 
 
@@ -80,7 +80,7 @@ class WarsO(warObject.base):
             return const.warRelationshipYourAlliance
         wars = self.GetWars(eve.session.allianceid or eve.session.corpid)
         for war in wars.itervalues():
-            if war.timeFinished is not None and war.timeFinished < blue.os.GetTime() - DAY:
+            if war.timeFinished is not None and war.timeFinished < blue.os.GetWallclockTime() - DAY:
                 continue
             if ownerIDaskingAbout in [war.declaredByID, war.againstID]:
                 if util.IsWarInHostileState(war):
@@ -96,7 +96,7 @@ class WarsO(warObject.base):
         lock = self.boundObject.LockService(lk)
         try:
             if self.warsByOwnerID.has_key(ownerID):
-                if blue.os.TimeDiffInMs(self.warsByOwnerID[ownerID][0]) > 43200000:
+                if blue.os.TimeDiffInMs(self.warsByOwnerID[ownerID][0], blue.os.GetWallclockTime()) > 43200000:
                     del self.warsByOwnerID[ownerID]
             self.GetWars(ownerID)
 
@@ -120,8 +120,8 @@ class WarsO(warObject.base):
 
     def CheckForStartOrEndOfWar(self):
         wars = self.GetWars(eve.session.allianceid or eve.session.corpid)
-        yesterday = blue.os.GetTime() - (DAY + HOUR)
-        lastday = blue.os.GetTime() - DAY
+        yesterday = blue.os.GetWallclockTime() - (DAY + HOUR)
+        lastday = blue.os.GetWallclockTime() - DAY
         for war in wars.itervalues():
             if war.timeFinished is not None and war.timeFinished >= yesterday and war.timeFinished < lastday:
                 if war.warID not in self.warsEnded:

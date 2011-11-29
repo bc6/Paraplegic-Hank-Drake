@@ -10,6 +10,8 @@ import sys
 import uiconst
 import log
 import uicls
+import localization
+import localizationUtil
 SKILLQUEUETIME = const.skillQueueTime
 FILTER_ALL = 0
 FILTER_PARTIAL = 1
@@ -25,18 +27,12 @@ class SkillQueue(uicls.Window):
      'OnGodmaSkillInjected',
      'OnSkillQueueRefreshed',
      'OnGodmaSkillTrained']
-    default_top = 110
-
-    def default_left(self):
-        (leftpush, rightpush,) = sm.GetService('neocom').GetSideOffset()
-        return leftpush
-
-
+    default_windowID = 'trainingqueue'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         sm.RegisterNotify(self)
-        self.SetCaption(mls.UI_SHARED_SQ_TRAININGQUEUE)
+        self.SetCaption(localization.GetByLabel('UI/SkillQueue/TrainingQueue'))
         self.SetWndIcon('50_13')
         self.godma = sm.GetService('godma')
         self.skillHandler = self.godma.GetSkillHandler()
@@ -116,32 +112,32 @@ class SkillQueue(uicls.Window):
         self.sr.rightScroll = uicls.Scroll(parent=self.sr.rightOuterPar, padTop=const.defaultPadding, padBottom=const.defaultPadding)
         self.sr.rightScroll.sr.content.OnDropData = self.DoDropData
         self.sr.rightScroll.sr.content.RemoveSkillFromQueue = self.RemoveSkillFromQueue
-        self.sr.sqFinishesText = uicls.Label(text='', parent=self.sr.rightHeader, left=4, top=10, letterspace=1, fontsize=9, linespace=10, state=uiconst.UI_DISABLED, uppercase=1, idx=0)
-        self.sr.sqTimeText = uicls.Label(text='', parent=self.sr.rightHeader, left=4, top=10, letterspace=1, fontsize=9, linespace=10, state=uiconst.UI_DISABLED, uppercase=1, idx=0, align=uiconst.TOPRIGHT)
-        comboOptions = [(mls.UI_SHARED_SQ_MYSKILLS, FILTER_ALL), (mls.UI_SHARED_SQ_MYPARTIALLYTRAINED, FILTER_PARTIAL), (mls.UI_SHARED_SQ_EXCLUDELVL5, FILTER_EXCLUDELVL5)]
+        self.sr.sqFinishesText = uicls.EveLabelSmall(text='', parent=self.sr.rightHeader, left=4, top=8, state=uiconst.UI_DISABLED, idx=0)
+        self.sr.sqTimeText = uicls.EveLabelSmall(text='', parent=self.sr.rightHeader, left=4, top=8, state=uiconst.UI_DISABLED, idx=0, align=uiconst.TOPRIGHT)
+        comboOptions = [(localization.GetByLabel('UI/SkillQueue/MySkills'), FILTER_ALL), (localization.GetByLabel('UI/SkillQueue/MyPartiallyTrainedSkills'), FILTER_PARTIAL), (localization.GetByLabel('UI/SkillQueue/ExcludeFullyTrainedSkills'), FILTER_EXCLUDELVL5)]
         self.sr.skillCombo = uicls.Combo(label='', parent=self.sr.leftHeader, options=comboOptions, name='', align=uiconst.TOPLEFT, pos=(const.defaultPadding,
          22,
          0,
          0), callback=self.OnComboChange, width=200)
         fitsChecked = settings.user.ui.Get('skillqueue_fitsinqueue', FITSINQUEUE_DEFAULT)
-        cb = uicls.Checkbox(text=mls.UI_SHARED_SQ_FITINTIMEFRAME, parent=self.sr.leftHeader, configName='skillqueue_fitsinqueue', retval=None, checked=fitsChecked, callback=self.OnCheckboxChange, align=uiconst.TOPLEFT, pos=(0,
+        cb = uicls.Checkbox(text=localization.GetByLabel('UI/SkillQueue/FitInQueueTimeframe'), parent=self.sr.leftHeader, configName='skillqueue_fitsinqueue', retval=None, checked=fitsChecked, callback=self.OnCheckboxChange, align=uiconst.TOPLEFT, pos=(0,
          self.sr.skillCombo.top + self.sr.skillCombo.height + const.defaultPadding,
          400,
          0))
         self.sr.fitsCheckbox = cb
-        applyBtn = uicls.Button(parent=self.sr.rightFooterPar, label=mls.UI_CMD_APPLY, pos=(const.defaultPadding,
+        applyBtn = uicls.Button(parent=self.sr.rightFooterPar, label=localization.GetByLabel('UI/Commands/Apply'), pos=(const.defaultPadding,
          3,
          0,
          0), func=self.SaveChanges)
-        self.sr.pauseBtn = uicls.Button(parent=self.sr.rightFooterPar, label=mls.UI_CMD_PAUSE, pos=(applyBtn.left + applyBtn.width + 2,
+        self.sr.pauseBtn = uicls.Button(parent=self.sr.rightFooterPar, label=localization.GetByLabel('UI/Commands/Pause'), pos=(applyBtn.left + applyBtn.width + 2,
          3,
          0,
          0), func=self.PauseTraining)
-        removeBtn = uicls.Button(parent=self.sr.rightFooterPar, label=mls.UI_CMD_REMOVE, pos=(const.defaultPadding,
+        removeBtn = uicls.Button(parent=self.sr.rightFooterPar, label=localization.GetByLabel('UI/Commands/Remove'), pos=(const.defaultPadding,
          3,
          0,
          0), align=uiconst.TOPRIGHT, func=self.RemoveSkillFromQueue)
-        addBtn = uicls.Button(parent=self.sr.leftFooterPar, label=mls.UI_CMD_ADD, top=3, align=uiconst.CENTERTOP, func=self.AddSkillToQueue)
+        addBtn = uicls.Button(parent=self.sr.leftFooterPar, label=localization.GetByLabel('UI/Commands/AddItem'), top=3, align=uiconst.CENTERTOP, func=self.AddSkillToQueue)
         uicls.Line(parent=self.sr.rightFooterPar, align=uiconst.TOTOP)
         uicls.Line(parent=self.sr.leftFooterPar, align=uiconst.TOTOP)
         self.sr.leftExpander = uicls.Icon(parent=self.sr.leftOuterPar, idx=0, size=16, state=uiconst.UI_NORMAL, icon='ui_1_16_99', top=2)
@@ -196,10 +192,10 @@ class SkillQueue(uicls.Window):
     def GrayButton(self, btn, gray = 1):
         inTraining = sm.StartService('skills').SkillInTraining()
         if gray and not inTraining:
-            btn.SetLabel('<color=gray>%s</color>' % mls.UI_CMD_PAUSE)
+            btn.SetLabel(['<color=gray>', localization.GetByLabel('UI/Commands/Pause')])
             btn.state = uiconst.UI_DISABLED
         else:
-            btn.SetLabel(mls.UI_CMD_PAUSE)
+            btn.SetLabel(localization.GetByLabel('UI/Commands/Pause'))
             btn.state = uiconst.UI_NORMAL
 
 
@@ -261,7 +257,7 @@ class SkillQueue(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         if self.isSaving:
             return 
         queue = sm.StartService('skillqueue').GetQueue()
@@ -330,10 +326,9 @@ class SkillQueue(uicls.Window):
                 skills = filteredSkills
             if len(skills) < 1:
                 continue
-            label = '%s, %s' % (mls.UI_SHARED_GROUPLABELSKILLS % {'groupName': group.groupName,
-              'numSkills': len(skills)}, mls.UI_SHARED_NUMPOINTS % {'points': util.FmtAmt(points)})
+            label = localization.GetByLabel('UI/SkillQueue/SkillGroupHeader', groupName=group.groupName, points=int(points), skillCount=len(skills))
             data = {'GetSubContent': self.GetSubContent,
-             'label': '%s [%s]' % (label, len(skills)),
+             'label': label,
              'groupItems': skills,
              'inqueue': inqueue,
              'id': ('skillqueue', group.groupID),
@@ -348,7 +343,7 @@ class SkillQueue(uicls.Window):
 
         pos = self.sr.leftScroll.GetScrollProportion()
         self.sr.leftScroll.sr.id = 'skillqueue_leftview'
-        self.sr.leftScroll.Load(contentList=scrolllist, headers=[], scrollTo=pos, noContentHint=mls.UI_RMR_TEXT10)
+        self.sr.leftScroll.Load(contentList=scrolllist, headers=[], scrollTo=pos, noContentHint=localization.GetByLabel('UI/SkillQueue/NoResultsForFilters'))
 
 
 
@@ -445,24 +440,25 @@ class SkillQueue(uicls.Window):
             ETA = inTraining.skillTrainingEnd
             if ETA is not None:
                 timeEnd -= fullTrainingTime[1]
-                leftTime = ETA - blue.os.GetTime()
+                leftTime = ETA - blue.os.GetWallclockTime()
                 timeEnd += leftTime
         timeEnd = long(timeEnd)
-        if timeEnd > blue.os.GetTime():
-            self.sr.sqFinishesText.text = mls.UI_SHARED_SQ_FINISHES % {'date': util.FmtDate(timeEnd, 'll')}
-        timeLeft = timeEnd - blue.os.GetTime()
-        self.sr.sqTimeText.text = '%s' % util.FmtDate(long(timeLeft), 'ss')
+        if timeEnd > blue.os.GetWallclockTime():
+            self.sr.sqFinishesText.text = localization.GetByLabel('UI/SkillQueue/QueueFinishesOn', endTime=timeEnd)
+        timeLeft = timeEnd - blue.os.GetWallclockTime()
+        timeLeftText = localizationUtil.FormatTimeIntervalShortWritten(long(timeLeft), showFrom='year', showTo='second')
+        self.sr.sqTimeText.text = timeLeftText
         self.allTrainingLengths = sm.StartService('skillqueue').GetAllTrainingLengths()
         self.queueEnds = timeEnd
         self.queueTimeLeft = timeLeft
-        self.lasttime = blue.os.GetTime()
+        self.lasttime = blue.os.GetWallclockTime()
 
 
 
     def LoopTimers(self, *args):
         while self and not self.destroyed:
             inTraining = sm.StartService('skills').SkillInTraining()
-            now = blue.os.GetTime()
+            now = blue.os.GetWallclockTime()
             lasttime = getattr(self, 'lasttime', now)
             diff = now - lasttime
             queueEnds = getattr(self, 'queueEnds', None)
@@ -475,15 +471,16 @@ class SkillQueue(uicls.Window):
                     queueEnds = self.queueEnds + diff
                     self.queueEnds = queueEnds
                 self.lasttime = now
-                if queueEnds > blue.os.GetTime():
-                    self.sr.sqFinishesText.text = mls.UI_SHARED_SQ_FINISHES % {'date': util.FmtDate(queueEnds, 'll')}
+                if queueEnds > blue.os.GetWallclockTime():
+                    self.sr.sqFinishesText.text = localization.GetByLabel('UI/SkillQueue/QueueFinishesOn', endTime=queueEnds)
                 timeLeft = max(0, timeLeft)
-                self.sr.sqTimeText.text = '%s' % util.FmtDate(long(timeLeft), 'ss')
+                timeLeftText = localizationUtil.FormatTimeIntervalShortWritten(long(timeLeft), showFrom='year', showTo='second')
+                self.sr.sqTimeText.text = timeLeftText
                 self.UpdatingBars()
             else:
                 self.sr.sqFinishesText.text = ''
                 self.sr.sqTimeText.text = ''
-            blue.pyos.synchro.Sleep(1000)
+            blue.pyos.synchro.SleepWallclock(1000)
 
 
 
@@ -492,7 +489,7 @@ class SkillQueue(uicls.Window):
         while self and not self.destroyed:
             if util.GetAttrs(self, 'sr', 'mainBar') and self.sr.mainBar.absoluteRight - self.sr.mainBar.absoluteLeft > 0:
                 break
-            blue.pyos.synchro.Sleep(500)
+            blue.pyos.synchro.SleepWallclock(500)
 
         if not self or self.destroyed:
             return 
@@ -533,7 +530,7 @@ class SkillQueue(uicls.Window):
             if inTraining and key[0] == inTraining.typeID and key[1] == inTraining.skillLevel + 1:
                 ETA = inTraining.skillTrainingEnd
                 if ETA is not None:
-                    time = float(ETA - blue.os.GetTime())
+                    time = float(ETA - blue.os.GetWallclockTime())
             per = time / totalTime
             percentages[key] = per
 
@@ -544,9 +541,9 @@ class SkillQueue(uicls.Window):
             left = min(barWidth - 1, int(i * interval))
             uicls.Line(parent=self.sr.timeLine, align=uiconst.RELATIVE, weight=1, left=left, width=1, height=5)
 
-        txt0 = uicls.Label(text='0', parent=self.sr.timeLine, fontsize=9, letterspace=2, uppercase=1, top=5, left=0, state=uiconst.UI_NORMAL)
-        txt12 = uicls.Label(text='12', parent=self.sr.timeLine, fontsize=9, letterspace=2, uppercase=1, top=5, left=int(interval * 12) - 5, state=uiconst.UI_NORMAL)
-        txt24 = uicls.Label(text='24', parent=self.sr.timeLine, fontsize=9, letterspace=2, uppercase=1, top=5, state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
+        txt0 = uicls.EveHeaderSmall(text='0', parent=self.sr.timeLine, top=5, left=0, state=uiconst.UI_NORMAL)
+        txt12 = uicls.EveHeaderSmall(text='12', parent=self.sr.timeLine, top=5, left=int(interval * 12) - 5, state=uiconst.UI_NORMAL)
+        txt24 = uicls.EveHeaderSmall(text='24', parent=self.sr.timeLine, top=5, state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
         colors = [self.lightBlueColor, self.darkerBlueColor]
         queue = sm.StartService('skillqueue').GetQueue()
         left = 0
@@ -622,7 +619,7 @@ class SkillQueue(uicls.Window):
             return False
         nextLevel = sm.StartService('skillqueue').FindNextLevel(data.skillID, data.skill.skillLevel, queue)
         if nextLevel is None or nextLevel > 5:
-            eve.Message('CustomNotify', {'notify': mls.UI_SHARED_SQ_LEVEL5PLANNED})
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/SkillQueue/SkillFullyPlanned')})
             return False
         self.DoAddSkill(data.invtype, data.skill, nextLevel, idx)
         if settings.user.ui.Get('skillqueue_fitsinqueue', FITSINQUEUE_DEFAULT):
@@ -638,7 +635,7 @@ class SkillQueue(uicls.Window):
         mySkills = sm.StartService('skills').GetMyGodmaItem().skills
         skill = mySkills.get(skillID, None)
         if skill is None:
-            raise UserError('CustomNotify', {'notify': mls.UI_SHARED_SQ_DONTHAVESKILL})
+            raise UserError('CustomNotify', {'notify': localization.GetByLabel('UI/SkillQueue/DoNotHaveSkill')})
         if nextLevel is None:
             nextLevel = sm.StartService('skillqueue').FindNextLevel(skillID, skill.skillLevel, queue)
         if nextLevel > 5:
@@ -677,7 +674,7 @@ class SkillQueue(uicls.Window):
         queueLength = sm.StartService('skillqueue').GetNumberOfSkillsInQueue()
         selected = self.sr.rightScroll.GetSelected()
         if len(selected) > 1:
-            eve.Message('CustomNotify', {'notify': mls.UI_SHARED_SQ_CANONLYMOVEONE})
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/SkillQueue/CanMoveOnlyOneSkill')})
             return 
         for data in selected:
             newIdx = max(-1, data.idx + direction)
@@ -755,7 +752,7 @@ class SkillQueue(uicls.Window):
             idx = len(queue)
         data = entries[0]
         if data.__guid__ == 'listentry.SkillQueueSkillEntry':
-            if data.Get('inQueue', None):
+            if data.Get('inQueue', None) and not uicore.uilib.Key(uiconst.VK_SHIFT):
                 movingBelow = 0
                 if idx > data.idx:
                     movingBelow = 1
@@ -770,7 +767,7 @@ class SkillQueue(uicls.Window):
             category = util.GetAttrs(data, 'rec', 'categoryID')
             if category == const.categorySkill:
                 sm.StartService('skills').InjectSkillIntoBrain([data.item])
-                blue.pyos.synchro.Sleep(500)
+                blue.pyos.synchro.SleepWallclock(500)
                 self.AddSkillsThroughOtherEntry(data.item.typeID, idx, queue, nextLevel=1)
         elif data.__guid__ in ('xtriui.CertSlot',):
             if data.rec.certID is None:
@@ -793,7 +790,8 @@ class SkillQueue(uicls.Window):
         entry.trainToLevel = nextLevel - 1
         entry.timeLeft = timeLeft
         if entry.panel:
-            entry.panel.sr.timeLeftText.text = util.FmtDate(long(timeLeft), 'ss')
+            timeLeftText = localizationUtil.FormatTimeIntervalShortWritten(long(timeLeft), showFrom='year', showTo='second')
+            entry.panel.sr.timeLeftText.text = timeLeftText
             entry.panel.FillBoxes(skill.skillLevel, nextLevel - 1)
 
 
@@ -892,13 +890,13 @@ class SkillQueueSkillEntry(listentry.BaseSkillEntry):
                 fill.state = uiconst.UI_HIDDEN
             sm.StartService('ui').StopBlink(fill)
 
-        self.sr.nameLevelLabel.text = '%s (%sx)' % (data.invtype.name, self.rank)
+        self.sr.nameLevelLabel.text = localization.GetByLabel('UI/SkillQueue/Skills/SkillNameAndRankValue', skill=data.invtype.typeID, rank=self.rank)
         self.inQueue = data.Get('inQueue', 0)
         if self.inQueue == 1:
-            self.sr.levelHeader1.text = '%s %s' % (mls.UI_GENERIC_LEVEL, data.trainToLevel)
+            self.sr.levelHeader1.text = localization.GetByLabel('UI/SkillQueue/Skills/SkillLevelWordAndValue', skillLevel=data.trainToLevel)
             self.sr.pointsLabel.text = ''
         else:
-            self.sr.levelHeader1.text = '%s %s' % (mls.UI_GENERIC_LEVEL, data.skill.skillLevel)
+            self.sr.levelHeader1.text = localization.GetByLabel('UI/SkillQueue/Skills/SkillLevelWordAndValue', skillLevel=data.skill.skillLevel)
             self.sr.pointsLabel.text = self.skillPointsText
         if data.trained:
             shouldNotUpdate = self.inQueue == 1 and data.skill.skillLevel + 1 != self.sr.node.trainToLevel
@@ -908,7 +906,8 @@ class SkillQueueSkillEntry(listentry.BaseSkillEntry):
                 skill = data.skill
                 if skill.spHi is not None:
                     timeLeft = data.timeLeft
-                    self.sr.timeLeftText.text = '%s' % util.FmtDate(long(timeLeft), 'ss')
+                    timeLeftText = localizationUtil.FormatTimeIntervalShortWritten(long(timeLeft), showFrom='year', showTo='second')
+                    self.sr.timeLeftText.text = timeLeftText
                 if shouldNotUpdate:
                     self.GetIcon('chapter')
                 else:
@@ -952,14 +951,14 @@ class SkillQueueSkillEntry(listentry.BaseSkillEntry):
         if self.inQueue == 1:
             if util.GetAttrs(self, 'parent', 'RemoveSkillFromQueue'):
                 m.append(None)
-                m.append((mls.UI_CMD_REMOVE, self.parent.RemoveSkillFromQueue, ()))
+                m.append((localization.GetByLabel('UI/Commands/Remove'), self.parent.RemoveSkillFromQueue, ()))
         elif util.GetAttrs(self, 'parent', 'AddSkillToQueue'):
             if util.GetAttrs(self, 'sr', 'node', 'currentLevel') < 5:
                 queue = sm.StartService('skillqueue').GetQueue()
                 nextLevel = sm.StartService('skillqueue').FindNextLevel(self.sr.node.skillID, self.sr.node.skill.skillLevel, queue)
                 if nextLevel < 6:
                     m.append(None)
-                    m.append((mls.UI_CMD_ADD, self.parent.AddSkillToQueue, ()))
+                    m.append((localization.GetByLabel('UI/Commands/AddItem'), self.parent.AddSkillToQueue, ()))
         return m
 
 
@@ -982,6 +981,7 @@ class SkillQueueSkillEntry(listentry.BaseSkillEntry):
         fill = self.sr.Get('box_%s' % int(level))
         fill.state = uiconst.UI_DISABLED
         if self.blinking == 1:
+            fill.SetRGB(*self.lightBlueColor)
             sm.StartService('ui').BlinkSpriteA(fill, 1.0, time=1000.0, maxCount=0, passColor=0, minA=0.5)
         if self.inQueue == 0:
             self.OnSkillpointChange(currentPoints)
@@ -995,7 +995,7 @@ class SkillQueueSkillEntry(listentry.BaseSkillEntry):
                 self.timer = None
                 return 
             skill = self.rec
-            timeLeft = self.endOfTraining - blue.os.GetTime()
+            timeLeft = self.endOfTraining - blue.os.GetWallclockTime()
             if self.inQueue == 0:
                 secs = timeLeft / 10000000L
                 currentPoints = min(skill.spHi - secs / 60.0 * skill.spm, skill.spHi)

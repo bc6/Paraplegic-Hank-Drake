@@ -1,3 +1,4 @@
+import localization
 import uix
 import uiutil
 import util
@@ -29,12 +30,13 @@ class InfrastructureHubWnd(uicls.Window):
     __notifyevents__ = ['OnItemChange', 'OnEntrySelected', 'OnBallparkCall']
     default_width = 320
     default_height = 70
+    default_windowID = 'infrastructhubman'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         hubID = attributes.hubID
         self.devIndices = sm.RemoteSvc('devIndexManager').GetDevelopmentIndicesForSystem(session.solarsystemid2)
-        self.SetCaption(mls.SOVEREIGNTY_INFRASTRUCTUREHUBMANAGEMENT)
+        self.SetCaption(localization.GetByLabel('UI/InfrastructureHub/InfrastructureHubManagement'))
         self.SetMinSize([440, 320])
         self.SetWndIcon()
         self.SetTopparentHeight(0)
@@ -51,7 +53,7 @@ class InfrastructureHubWnd(uicls.Window):
             hicon = self.sr.headerIcon
             hicon.GetMenu = self.OpenMenu
             hicon.expandOnLeft = 1
-            hicon.hint = mls.SOVEREIGNTY_IHSETTINGS
+            hicon.hint = localization.GetByLabel('UI/InfrastructureHub/HubSettings')
             hicon.name = 'ihHeaderIcon'
             self.sr.presetMenu = hicon
         self.sr.upgradesTab = uicls.Container(name='upgradesTab', parent=self.sr.main, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(0, 0, 0, 0))
@@ -65,9 +67,9 @@ class InfrastructureHubWnd(uicls.Window):
         self.sr.upgradesContainer = uicls.Container(name='upgradesContainer', parent=self.sr.upgrades, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(0, 0, 0, 0))
         self.sr.hubs = uicls.Container(name='hubs', parent=self.sr.index, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(0, 0, 0, 0))
         self.DrawUpgrades()
-        self.DrawIndex(mls.SOVEREIGNTY_STRATEGIC, const.attributeDevIndexSovereignty)
-        self.DrawIndex(mls.UI_TUTORIAL_MILITARY, const.attributeDevIndexMilitary)
-        self.DrawIndex(mls.UI_TUTORIAL_INDUSTRY, const.attributeDevIndexIndustrial)
+        self.DrawIndex(localization.GetByLabel('UI/Sovereignty/Strategic'), const.attributeDevIndexSovereignty)
+        self.DrawIndex(localization.GetByLabel('UI/Sovereignty/Military'), const.attributeDevIndexMilitary)
+        self.DrawIndex(localization.GetByLabel('UI/Sovereignty/Industry'), const.attributeDevIndexIndustrial)
         self.DrawInfo()
 
 
@@ -75,13 +77,13 @@ class InfrastructureHubWnd(uicls.Window):
     def DrawUpgrades(self):
         comboBoxContainer = uicls.Container(name='comboBoxContainer', parent=self.sr.upgradesContainer, align=uiconst.TOTOP, pos=(0, 0, 0, 20), padding=(10, 10, 10, 0))
         text = uicls.Container(name='text', parent=self.sr.upgradesContainer, align=uiconst.TOTOP, pos=(0, 0, 0, 20), padding=(10, 4, 10, 0))
-        t = uicls.Label(text=mls.SOVEREIGNTY_DROPUGRADES, parent=text, align=uiconst.CENTERTOP, state=uiconst.UI_DISABLED)
+        t = uicls.EveLabelMedium(text=localization.GetByLabel('UI/InfrastructureHub/DropUpgrades'), parent=text, align=uiconst.CENTERTOP, state=uiconst.UI_DISABLED)
         updatesScrollContainer = uicls.Container(name='updatesScrollContainer', parent=self.sr.upgradesContainer, align=uiconst.TOALL, padding=(10, 0, 10, 0))
         self.sr.scroll = uicls.Scroll(name='scroll', parent=updatesScrollContainer)
-        comboValues = ((mls.SOVEREIGNTY_ALLUPGRADES, UPGRADE_ALL),
-         (mls.SOVEREIGNTY_INSTALLEDUPGRADES, UPGRADE_INSTALLED),
-         (mls.SOVEREIGNTY_UNLOCKEDUPGRADES, UPGRADE_UNLOCKED),
-         (mls.SOVEREIGNTY_LOCKEDUPGRADES, UPGRADE_LOCKED))
+        comboValues = ((localization.GetByLabel('UI/InfrastructureHub/AllUpgrades'), UPGRADE_ALL),
+         (localization.GetByLabel('UI/InfrastructureHub/InstalledUpgrades'), UPGRADE_INSTALLED),
+         (localization.GetByLabel('UI/InfrastructureHub/UnlockedUpgrades'), UPGRADE_UNLOCKED),
+         (localization.GetByLabel('UI/InfrastructureHub/LockedUpgrades'), UPGRADE_LOCKED))
         self.upgradeListMode = settings.user.ui.Get('InfrastructureHubUpgradeCombo', UPGRADE_ALL)
         combo = uicls.Combo(parent=comboBoxContainer, name='combo', select=self.upgradeListMode, align=uiconst.TOALL, callback=self.OnComboChange, options=comboValues, idx=0)
         self.UpdateUpgrades()
@@ -192,14 +194,12 @@ class InfrastructureHubWnd(uicls.Window):
         topRightContainer = uicls.Container(name='topRightContainer', parent=topContainer, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(0, 0, 2, 0))
         devIndex = self.devIndices.get(indexID, None)
         indexInfo = sm.GetService('sov').GetLevelForIndex(indexID, devIndex=devIndex)
-        t = uicls.Label(text=indexName, parent=topLeftContainer, state=uiconst.UI_DISABLED)
-        t2 = uicls.Label(text='%s %d' % (mls.UI_GENERIC_LEVEL, indexInfo.level), parent=topRightContainer, state=uiconst.UI_DISABLED, align=uiconst.TOPRIGHT)
+        t = uicls.EveLabelMedium(text=indexName, parent=topLeftContainer, state=uiconst.UI_DISABLED)
+        t2 = uicls.EveLabelMedium(text=localization.GetByLabel('UI/InfrastructureHub/LevelX', level=indexInfo.level), parent=topRightContainer, state=uiconst.UI_DISABLED, align=uiconst.TOPRIGHT)
         if indexID == const.attributeDevIndexSovereignty:
             indexList = [ str(v) for v in sm.GetService('sov').GetTimeIndexValuesInDays() ]
-            unit = mls.UI_GENERIC_DAYS
-            partial = mls.SOVEREIGNTY_OFDAYS
         iconPath = 'ui_73_16_211'
-        hintTextChangeIcon = mls.SOVEREIGNTY_VALUECHANGEUP
+        hintTextChangeIcon = localization.GetByLabel('UI/InfrastructureHub/ValueChangeUp')
         for i in range(1, 6):
             if i == 1:
                 leftPadding = 2
@@ -218,10 +218,9 @@ class InfrastructureHubWnd(uicls.Window):
              2))
             level.state = uiconst.UI_NORMAL
             if indexID == const.attributeDevIndexSovereignty:
-                hintText = mls.SOVEREIGNTY_LEVELSOVEREIGNTY % {'days': indexList[(i - 1)],
-                 'level': i}
+                hintText = localization.GetByLabel('UI/InfrastructureHub/LevelNeedsSovForDays', level=i, days=int(indexList[(i - 1)]))
             else:
-                hintText = '%s %d' % (mls.UI_GENERIC_LEVEL, i)
+                hintText = localization.GetByLabel('UI/InfrastructureHub/LevelX', level=i)
             level.hint = hintText
             if i <= indexInfo.level:
                 uicls.Fill(parent=level, color=FILLED_COLOR)
@@ -232,11 +231,11 @@ class InfrastructureHubWnd(uicls.Window):
                  int(indexInfo.remainder * LEVEL_SIZE),
                  0), idx=0)
                 levelPart.state = uiconst.UI_NORMAL
-                partial = mls.SOVEREIGNTY_OFLEVEL % {'level': i}
-                levelPart.hint = '%d%s %s' % (indexInfo.remainder * 100, '%', partial)
+                perc = indexInfo.remainder * 100
+                levelPart.hint = localization.GetByLabel('UI/InfrastructureHub/PercentageOfLevel', perc=perc, level=i)
                 if not indexInfo.increasing:
                     iconPath = 'ui_73_16_212'
-                    hintTextChangeIcon = mls.SOVEREIGNTY_VALUECHANGEDOWN
+                    hintTextChangeIcon = localization.GetByLabel('UI/InfrastructureHub/ValueChangeDown')
                 uicls.Fill(parent=levelPart, color=PARTIAL_COLOR)
             else:
                 uicls.Fill(parent=level, color=EMPTY_COLOR)
@@ -250,7 +249,9 @@ class InfrastructureHubWnd(uicls.Window):
     def DrawInfo(self):
         self.sr.info = uicls.Container(name='info', parent=self.sr.infoContainer, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(10, 2, 10, 10))
         self.sr.icon = uicls.Container(name='icon', parent=self.sr.info, align=uiconst.TOLEFT, pos=(0, 0, 64, 0), padding=(0, 0, 0, 0))
-        self.sr.desc = uicls.Edit(parent=self.sr.info, readonly=1, hideBackground=1)
+        self.sr.desc = uicls.EditPlainText(parent=self.sr.info, readonly=1)
+        self.sr.desc.HideBackground()
+        self.sr.desc.RemoveActiveFrame()
 
 
 
@@ -272,42 +273,43 @@ class InfrastructureHubWnd(uicls.Window):
     def OnEntrySelected(self, typeID):
         uix.Flush(self.sr.icon)
         typeIcon = uicls.Icon(parent=self.sr.icon, align=uiconst.TOPLEFT, pos=(0, 10, 64, 64), ignoreSize=True, typeID=typeID, size=64)
-        name = cfg.invtypes.Get(typeID).typeName
         text = cfg.invtypes.Get(typeID).description
-        info = '<body><b>%s</b><br><br>%s</body>' % (name, text)
+        info = localization.GetByLabel('UI/InfrastructureHub/EntryDescription', item=typeID, description=text)
         self.sr.desc.SetValue(info)
 
 
 
     def OpenSettings(self, *args):
-        wnd = sm.GetService('window').GetWindow('infrastructhubsettings', decoClass=form.InfrastructureHubManagementWnd, create=1, hubID=self.hubID)
-        if wnd is not None and not wnd.destroyed:
-            wnd.Maximize()
+        form.InfrastructureHubManagementWnd.CloseIfOpen()
+        wnd = form.InfrastructureHubManagementWnd.Open(hubID=self.hubID)
         return wnd
 
 
 
     def OpenMenu(self, *args):
         m = []
-        m.append((mls.SOVEREIGNTY_IHSETTINGS, self.OpenSettings))
+        m.append((localization.GetByLabel('UI/InfrastructureHub/HubSettings'), self.OpenSettings))
         return m
 
 
 
     def OnBallparkCall(self, functionName, args):
         if functionName == 'WarpTo':
-            self.SelfDestruct()
+            self.Close()
 
 
 
 
 class InfrastructureHubManagementWnd(uicls.Window):
     __guid__ = 'form.InfrastructureHubManagementWnd'
+    default_windowID = 'infrastructhubsettings'
+    default_width = 230
+    default_height = 70
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         hubID = attributes.hubID
-        self.SetCaption(mls.SOVEREIGNTY_IHSETTINGS)
+        self.SetCaption(localization.GetByLabel('UI/InfrastructureHub/HubSettings'))
         self.SetMinSize([230, 70])
         self.SetWndIcon()
         self.SetTopparentHeight(0)
@@ -323,9 +325,9 @@ class InfrastructureHubManagementWnd(uicls.Window):
         self.sr.buttonCont = uicls.Container(name='buttonCont', parent=self.sr.main, align=uiconst.TOBOTTOM, pos=(0, 0, 0, 25), padding=(0, 0, 0, 0))
         self.sr.bottomRight = uicls.Container(name='bottomRight', parent=self.sr.timeCont, align=uiconst.TORIGHT, pos=(0, 0, 60, 0), padding=(0, 0, 0, 0))
         self.sr.bottomLeft = uicls.Container(name='bottomLeft', parent=self.sr.timeCont, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(0, 0, 0, 0))
-        btn = uicls.Button(parent=self.sr.buttonCont, label=mls.UI_CMD_SET, className='Button', align=uiconst.CENTER)
+        btn = uicls.Button(parent=self.sr.buttonCont, label=localization.GetByLabel('UI/Common/CommandSet'), className='Button', align=uiconst.CENTER)
         btn.OnClick = self.Update
-        uicls.Label(text='%s @' % mls.SOVEREIGNTY_REINFORCEDTIME, parent=self.sr.bottomLeft, left=0, top=2, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, idx=0, singleline=1)
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/InfrastructureHub/ReinforcedModeExitTime'), parent=self.sr.bottomLeft, left=0, top=2, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, idx=0, singleline=1)
         self.sr.comboTime = uicls.Combo(parent=self.sr.bottomRight, name='comboTime', select=self.GetTime(), width=50, align=uiconst.TOPRIGHT, options=self.GetHours(), idx=0)
 
 
@@ -364,7 +366,7 @@ class InfrastructureHubManagementWnd(uicls.Window):
         if timeValue != oldTimeValue:
             if eve.Message('ChangingTimeForIH', {}, uiconst.YESNO, suppress=uiconst.ID_YES) == uiconst.ID_YES:
                 self.UpdateTime(oldTimeValue, timeValue)
-                self.CloseX()
+                self.CloseByUser()
 
 
 

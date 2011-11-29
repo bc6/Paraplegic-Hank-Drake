@@ -6,10 +6,12 @@ import util
 import trinity
 import appUtils
 import base
+import localization
 import uiutil
 import uiconst
 import uicls
 import form
+import bluepy
 NUMPAD_KEYS = []
 for num in range(0, 10):
     NUMPAD_KEYS.append(getattr(uiconst, 'VK_NUMPAD%s' % num, num + 96))
@@ -22,16 +24,36 @@ RENAMEMAP = {'CONTROL': 'CTRL',
  'SNAPSHOT': 'PRINTSCREEN',
  'NEXT': 'PAGEDOWN',
  'PRIOR': 'PAGEUP'}
+labelsByFuncName = {'CmdCloseActiveWindow': '/Carbon/UI/Commands/CmdCloseActiveWindow',
+ 'CmdCloseAllWindows': '/Carbon/UI/Commands/CmdCloseAllWindows',
+ 'CmdLogOff': '/Carbon/UI/Commands/CmdLogOff',
+ 'CmdMinimizeActiveWindow': '/Carbon/UI/Commands/CmdMinimizeActiveWindow',
+ 'CmdMinimizeAllWindows': '/Carbon/UI/Commands/CmdMinimizeAllWindows',
+ 'CmdQuitGame': '/Carbon/UI/Commands/CmdQuitGame',
+ 'CmdResetMonitor': '/Carbon/UI/Commands/CmdResetMonitor',
+ 'CmdToggleAudio': '/Carbon/UI/Commands/CmdToggleAudio',
+ 'OnCtrlA': '/Carbon/UI/Commands/OnCtrlA',
+ 'OnCtrlC': '/Carbon/UI/Commands/OnCtrlC',
+ 'OnCtrlShiftTab': '/Carbon/UI/Commands/OnCtrlShiftTab',
+ 'OnCtrlTab': '/Carbon/UI/Commands/OnCtrlTab',
+ 'OnCtrlV': '/Carbon/UI/Commands/OnCtrlV',
+ 'OnCtrlX': '/Carbon/UI/Commands/OnCtrlX',
+ 'OnEsc': '/Carbon/UI/Commands/OnEsc',
+ 'OnReturn': '/Carbon/UI/Commands/OnReturn',
+ 'OnShiftTab': '/Carbon/UI/Commands/OnShiftTab',
+ 'OnTab': '/Carbon/UI/Commands/OnTab',
+ 'OpenMonitor': '/Carbon/UI/Commands/OpenMonitor',
+ 'PrintScreen': '/Carbon/UI/Commands/PrintScreen',
+ 'WinCmdToggleWindowed': '/Carbon/UI/Commands/WinCmdToggleWindowed'}
 
 class CommandMapping:
     __guid__ = 'util.CommandMapping'
 
-    def __init__(self, callback, shortcut, category = None, isLocked = False, description = None, enabled = True, ignoreModifierKey = False, repeatable = False):
+    def __init__(self, callback, shortcut, category = None, isLocked = False, enabled = True, ignoreModifierKey = False, repeatable = False):
         self.callback = callback
         self.name = self.callback.func_name
         self.SetShortcut(shortcut)
-        self.category = category or mls.UI_GENERIC_GENERAL
-        self.description = description
+        self.category = category or 'general'
         self.isLocked = isLocked
         self.ignoreModifierKey = ignoreModifierKey
         self.repeatable = repeatable
@@ -48,25 +70,22 @@ class CommandMapping:
             return ''
         retString = ''
         for key in self.shortcut:
-            newKey = ', '.join([ each[3:] for each in dir(uiconst) if each.startswith('VK_') if getattr(uiconst, each) == key ])
-            newKey = RENAMEMAP.get(newKey, newKey)
+            import trinity
+            newKey = trinity.app.GetKeyNameText(key)
+            if not newKey:
+                newKey = ', '.join([ each[3:] for each in dir(uiconst) if each.startswith('VK_') if getattr(uiconst, each) == key ])
+                newKey = RENAMEMAP.get(newKey, newKey)
             retString += '%s-' % newKey
 
         retString = retString[:-1]
+        import localizationInternalUtil
+        retString = localizationInternalUtil.PrepareLocalizationSafeString(retString, messageID='commandShortcut')
         return retString
 
 
 
     def GetDescription(self):
-        name = self.callback.func_name
-        if self.description:
-            return self.description
-        else:
-            if name.startswith('Cmd'):
-                return getattr(mls, 'UI_CMD_' + name[3:].upper(), None)
-            if name.startswith('WinCmd'):
-                return getattr(mls, 'UI_CMD_' + name[6:].upper(), None)
-            return getattr(mls, 'UI_CMD_' + name.upper(), None)
+        return uicore.cmd.FuncToDesc(self.name)
 
 
 
@@ -269,6 +288,7 @@ class CommandService(service.Service):
 
     def Run(self, memStream = None):
         service.Service.Run(self, memStream)
+        self.labelsByFuncName = labelsByFuncName
         self.Reload()
 
 
@@ -285,7 +305,7 @@ class CommandService(service.Service):
         if session.charid is not None and forceGenericOnly is False:
             self.commandMap.LoadAllAccelerators()
         else:
-            self.commandMap.LoadAcceleratorsByCategory(mls.UI_GENERIC_GENERAL)
+            self.commandMap.LoadAcceleratorsByCategory('general')
 
 
 
@@ -321,19 +341,19 @@ class CommandService(service.Service):
         CTRL = uiconst.VK_CONTROL
         ALT = uiconst.VK_MENU
         SHIFT = uiconst.VK_SHIFT
-        m = [c(self.OnReturn, uiconst.VK_RETURN, description=mls.UI_GENERIC_CONFIRM),
-         c(self.OnCtrlA, (CTRL, uiconst.VK_A), description=mls.UI_CMD_SELECTALL),
-         c(self.OnCtrlC, (CTRL, uiconst.VK_C), description=mls.UI_CMD_COPY),
-         c(self.OnCtrlX, (CTRL, uiconst.VK_X), description=mls.UI_CMD_CUT),
-         c(self.OnCtrlV, (CTRL, uiconst.VK_V), description=mls.UI_CMD_PASTE),
-         c(self.OnEsc, uiconst.VK_ESCAPE, description=mls.UI_CMD_CLOSEMODALWINDOWSANDOPENCONFIGMENU),
-         c(self.PrintScreen, uiconst.VK_SNAPSHOT, description=mls.UI_CMD_PRINTSCREEN),
-         c(self.OnCtrlShiftTab, (CTRL, SHIFT, uiconst.VK_TAB), description=mls.UI_CMD_BROWSEWINDOWMENUUPWARDS),
-         c(self.OnCtrlTab, (CTRL, uiconst.VK_TAB), description=mls.UI_CMD_BROWSEWINDOWMENU),
-         c(self.OnTab, uiconst.VK_TAB, description=mls.UI_CMD_TABBETWEENEDITFIELDS),
-         c(self.OnShiftTab, (SHIFT, uiconst.VK_TAB), description=mls.UI_CMD_TABBETWEENEDITFIELDS)]
+        m = [c(self.OnReturn, uiconst.VK_RETURN),
+         c(self.OnCtrlA, (CTRL, uiconst.VK_A)),
+         c(self.OnCtrlC, (CTRL, uiconst.VK_C)),
+         c(self.OnCtrlX, (CTRL, uiconst.VK_X)),
+         c(self.OnCtrlV, (CTRL, uiconst.VK_V)),
+         c(self.OnEsc, uiconst.VK_ESCAPE),
+         c(self.PrintScreen, uiconst.VK_SNAPSHOT),
+         c(self.OnCtrlShiftTab, (CTRL, SHIFT, uiconst.VK_TAB)),
+         c(self.OnCtrlTab, (CTRL, uiconst.VK_TAB)),
+         c(self.OnTab, uiconst.VK_TAB),
+         c(self.OnShiftTab, (SHIFT, uiconst.VK_TAB))]
         for cm in m:
-            cm.category = mls.UI_GENERIC_GENERAL
+            cm.category = 'general'
             cm.isLocked = True
             ret.append(cm)
 
@@ -354,7 +374,7 @@ class CommandService(service.Service):
           SHIFT,
           uiconst.VK_M))]
         for cm in m:
-            cm.category = mls.UI_GENERIC_GENERAL
+            cm.category = 'general'
             ret.append(cm)
 
         return ret
@@ -523,11 +543,9 @@ class CommandService(service.Service):
 
 
     def FuncToDesc(self, funcname):
-        command = self.commandMap.GetCommandByName(funcname)
-        if command:
-            return command.GetDescription()
-        else:
-            return ''
+        if funcname in self.labelsByFuncName:
+            return localization.GetByLabel(self.labelsByFuncName[funcname])
+        return funcname
 
 
 
@@ -615,7 +633,7 @@ class CommandService(service.Service):
 
 
     def _AppQuitGame(self):
-        blue.pyos.Quit('User requesting close')
+        bluepy.Terminate('User requesting close')
 
 
 
@@ -653,10 +671,8 @@ class CommandService(service.Service):
             if not uicore.registry.IsWindow(wnd):
                 continue
             if getattr(wnd, '_killable', False) == True:
-                if hasattr(wnd, '_CloseClick'):
-                    wnd._CloseClick()
-                elif hasattr(wnd, 'CloseX'):
-                    wnd.CloseX()
+                if hasattr(wnd, 'CloseByUser'):
+                    wnd.CloseByUser()
                 else:
                     try:
                         wnd.Close()
@@ -694,12 +710,14 @@ class CommandService(service.Service):
 
     def CmdCloseActiveWindow(self):
         activeWnd = uicore.registry.GetActive()
+        if not isinstance(activeWnd, uicls.Window):
+            return 
         if activeWnd and getattr(activeWnd, 'canCloseActiveWnd', 1):
-            if hasattr(activeWnd, 'CloseX'):
-                activeWnd.CloseX()
+            if hasattr(activeWnd, 'CloseByUser'):
+                activeWnd.CloseByUser()
                 return True
-            if hasattr(activeWnd, 'SelfDestruct'):
-                activeWnd.SelfDestruct()
+            if hasattr(activeWnd, 'Close'):
+                activeWnd.Close()
                 return True
 
 
@@ -760,34 +778,9 @@ class CommandService(service.Service):
     def OnTab(self):
         oldfoc = uicore.registry.GetFocus()
         if oldfoc is None or oldfoc == uicore.desktop:
-            prestate = getattr(uicore, 'toggleState', None)
-            if prestate:
-                for windowID in prestate:
-                    wnd = uicore.registry.GetWindow(windowID)
-                    if wnd and (getattr(wnd, '_collapsed', 0) or getattr(wnd, 'collapsed', 0)):
-                        wnd.Expand()
-
-                uicore.toggleState = None
-                return 
-            state = []
-            wnds = uicore.registry.GetValidWindows(floatingOnly=True)
-            for wnd in wnds:
-                if not getattr(wnd, 'windowID', None):
-                    continue
-                if not (getattr(wnd, '_collapsed', 0) or getattr(wnd, 'collapsed', 0)):
-                    windowID = wnd.windowID
-                    wnd.Collapse()
-                    state.append(windowID)
-
-            if not state:
-                for wnd in wnds:
-                    if getattr(wnd, '_collapsed', 0) or getattr(wnd, 'collapsed', 0):
-                        wnd.Expand()
-
-            uicore.toggleState = state
-            if state:
-                return 
-        uicore.registry.FindFocus([1, -1][uicore.uilib.Key(uiconst.VK_SHIFT)])
+            uicore.registry.ToggleCollapseAllWindows()
+        else:
+            uicore.registry.FindFocus([1, -1][uicore.uilib.Key(uiconst.VK_SHIFT)])
 
 
 
@@ -913,9 +906,13 @@ class CommandService(service.Service):
     OnEsc_Core = OnEsc
 
     def PrintScreen(self, *args):
-        date = util.FmtDate(blue.os.GetTime(), 'sl')
-        date = date.replace(':', '.')
-        date = date.replace(' ', '.')
+        (year, month, weekday, day, hour, minute, second, msec,) = blue.os.GetTimeParts(blue.os.GetWallclockTime())
+        date = '%d.%.2d.%.2d.%.2d.%.2d.%.2d' % (year,
+         month,
+         day,
+         hour,
+         minute,
+         second)
         sur = trinity.device.GetBackBuffer()
         hd = settings.user.ui.hdScreenshots
         (ext, trirender,) = ('jpg', trinity.TRIIFF_JPG)
@@ -930,9 +927,8 @@ class CommandService(service.Service):
 
 
 
-    def OpenMonitor(self):
-        uicore.registry.GetOrCreateWindow(decoClass=form.UIDebugger, parent=uicore.layer.main)
-        return True
+    def OpenMonitor(self, *args):
+        sm.GetService('monitor').Show()
 
 
 

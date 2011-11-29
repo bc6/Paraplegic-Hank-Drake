@@ -275,7 +275,8 @@ class EveIcon(uicls.Sprite):
      const.categoryDeployable,
      const.categoryStructure,
      const.categorySovereigntyStructure,
-     const.categoryPlanetaryInteraction)
+     const.categoryPlanetaryInteraction,
+     const.categoryOrbital)
 
     def ApplyAttributes(self, attributes):
         if attributes.__gotShape__ and len(attributes.keys()) == 1:
@@ -367,15 +368,6 @@ class EveIcon(uicls.Sprite):
                     icon = STRAGEGIC_CRUISER_BLUEPRINT_ICON_MAP[typeID]
                 elif not icon:
                     icon = 'ui_7_64_15'
-            elif group.categoryID == const.categoryModule and group.id in const.turretModuleGroups:
-                sm.GetService('photo').OrderByTypeID([[typeID,
-                  self,
-                  actSize,
-                  itemID,
-                  isBlueprint,
-                  isCopy]])
-                isBlueprint = None
-                icon = None
             elif (typeID == const.typePlanetaryLaunchContainer or group.id not in self.TYPE_DISALLOWED_GROUPS) and (group.id in self.TYPE_ALLOWED_GROUPS or group.categoryID in self.TYPE_ALLOWED_CATEGORIES):
                 if group.id == const.groupCharacter:
                     sm.GetService('photo').GetPortrait(itemID, actSize, self)

@@ -1,11 +1,10 @@
 import uiconst
 import uicls
-import copy
 import random
 import uthread
 import uiutil
 import log
-import uix
+import localization
 import util
 import ccConst
 import blue
@@ -109,7 +108,7 @@ class BaseCharacterCreationStep(uicls.Container):
          ccConst.BLOODLINESTEP):
             return 
         self.storedMousePos = None
-        pos = (uicore.uilib.x, uicore.uilib.y)
+        pos = (int(uicore.uilib.x * uicore.desktop.dpiScaling), int(uicore.uilib.y * uicore.desktop.dpiScaling))
         layer = uicore.layer.charactercreation
         if btn == uiconst.MOUSELEFT and self.stepID == ccConst.BLOODLINESTEP:
             layer = uicore.layer.charactercreation
@@ -125,12 +124,12 @@ class BaseCharacterCreationStep(uicls.Container):
             self._activeSculptZone = None
         elif btn == uiconst.MOUSELEFT and not self._cameraActive and self.charSvc.IsSculptingReady():
             self._didSculptMotion = False
-            self._latestPickTime = blue.os.GetTime()
+            self._latestPickTime = blue.os.GetWallclockTime()
             if self.CanSculpt():
                 layer.StartEditMode(callback=self.ChangeSculptingCursor)
                 pickedSculpt = layer.PassMouseEventToSculpt('LeftDown', *pos)
                 if pickedSculpt >= 0:
-                    self.storedMousePos = pos
+                    self.storedMousePos = (uicore.uilib.x, uicore.uilib.y)
                     self.cursor = uiconst.UICURSOR_NONE
                     self._cameraActive = False
                     self._activeSculptZone = pickedSculpt
@@ -173,7 +172,7 @@ class BaseCharacterCreationStep(uicls.Container):
                     sm.ScatterEvent('OnDollUpdated', charID, False, 'sculpting')
                     self.charSvc.UpdateTattoos(charID)
                 elif self._latestPickTime:
-                    if blue.os.TimeDiffInMs(self._latestPickTime) < 250.0:
+                    if blue.os.TimeDiffInMs(self._latestPickTime, blue.os.GetWallclockTime()) < 250.0:
                         (pickedMakeup, pickedHair, pickedBody, pickedSculpt,) = self.GetPickInfo((uicore.uilib.x, uicore.uilib.y))
                         log.LogInfo('Pickinfo: makeup, hair, bodyselect, sculpt = ', pickedMakeup, pickedHair, pickedBody, pickedSculpt)
                         for each in (('hair', pickedHair),
@@ -200,7 +199,7 @@ class BaseCharacterCreationStep(uicls.Container):
     def OnMouseMove(self, *args):
         if self.stepID not in (ccConst.CUSTOMIZATIONSTEP, ccConst.PORTRAITSTEP):
             return 
-        pos = (uicore.uilib.x, uicore.uilib.y)
+        pos = (int(uicore.uilib.x * uicore.desktop.dpiScaling), int(uicore.uilib.y * uicore.desktop.dpiScaling))
         if self._cameraActive:
             if uicore.uilib.leftbtn and uicore.uilib.rightbtn:
                 uicore.layer.charactercreation.camera.Dolly(uicore.uilib.dy)
@@ -218,8 +217,9 @@ class BaseCharacterCreationStep(uicls.Container):
 
 
     def OnMouseWheel(self, *args):
-        if uicore.layer.charactercreation.camera:
-            uicore.layer.charactercreation.camera.Dolly(-uicore.uilib.dz)
+        if not uicore.layer.charactercreation.camera:
+            return 
+        uicore.layer.charactercreation.camera.Dolly(-uicore.uilib.dz)
 
 
 
@@ -278,14 +278,21 @@ class BaseCharacterCreationStep(uicls.Container):
 
 
 
+    def IsDollReady(self, *args):
+        if uicore.layer.charactercreation.doll is None:
+            return False
+        return not uicore.layer.charactercreation.doll.busyUpdating
+
+
+
 
 class RaceStep(BaseCharacterCreationStep):
     __guid__ = 'uicls.RaceStep'
     stepID = ccConst.RACESTEP
-    racialMovies = {const.raceCaldari: 'res/video/charactercreation/caldari.bik',
-     const.raceMinmatar: 'res/video/charactercreation/minmatar.bik',
-     const.raceAmarr: 'res/video/charactercreation/amarr.bik',
-     const.raceGallente: 'res/video/charactercreation/gallente.bik'}
+    racialMovies = {const.raceCaldari: 'res:/video/charactercreation/caldari.bik',
+     const.raceMinmatar: 'res:/video/charactercreation/minmatar.bik',
+     const.raceAmarr: 'res:/video/charactercreation/amarr.bik',
+     const.raceGallente: 'res:/video/charactercreation/gallente.bik'}
     racialMusic = {const.raceCaldari: 'wise:/music_switch_race_caldari',
      const.raceMinmatar: 'wise:/music_switch_race_minmatar',
      const.raceAmarr: 'wise:/music_switch_race_amarr',
@@ -306,7 +313,7 @@ class RaceStep(BaseCharacterCreationStep):
             fontsize = 14
         self.sr.raceInfoCont = uicls.Container(name='raceInfoCont', parent=self.sr.uiContainer, align=uiconst.CENTERTOP, width=600, height=uicore.desktop.height, state=uiconst.UI_PICKCHILDREN)
         self.sr.textCont = uicls.Container(name='raceCont', parent=self.sr.raceInfoCont, align=uiconst.TOTOP, pos=(0, 38, 0, 20), state=uiconst.UI_NORMAL)
-        header = uicls.CCLabel(text=mls.UI_CHARCREA_RACESELECTION, name='header', parent=self.sr.textCont, align=uiconst.CENTERTOP, uppercase=1, letterspace=2, color=(0.9, 0.9, 0.9, 0.8), fontsize=22, bold=False)
+        header = uicls.CCLabel(text=localization.GetByLabel('UI/CharacterCreation/RaceSelection'), name='header', parent=self.sr.textCont, align=uiconst.CENTERTOP, uppercase=1, letterspace=2, color=(0.9, 0.9, 0.9, 0.8), fontsize=22, bold=False)
         self.sr.raceCont = uicls.Container(name='raceCont', parent=self.sr.raceInfoCont, align=uiconst.TOTOP, pos=(0, 40, 0, 80), state=uiconst.UI_NORMAL)
         self.raceSprite = uicls.Sprite(name='raceSprite', parent=self.sr.raceCont, align=uiconst.CENTER, state=uiconst.UI_HIDDEN, texturePath=self.raceHeaderPath, pos=(0, 0, 512, 128))
         uicls.Container(name='push', parent=self.sr.raceInfoCont, align=uiconst.TOTOP, pos=(0, 0, 0, 15), state=uiconst.UI_DISABLED)
@@ -315,7 +322,7 @@ class RaceStep(BaseCharacterCreationStep):
          15,
          0,
          self.padding), state=uiconst.UI_HIDDEN)
-        self.sr.raceText = uicls.CCLabel(parent=self.sr.raceTextCont, fontsize=fontsize, align=uiconst.TOPLEFT, text='', letterspace=0, top=0, pos=(0, 0, 600, 0), autoheight=1, autowidth=0, bold=0, color=ccConst.COLOR75)
+        self.sr.raceText = uicls.CCLabel(parent=self.sr.raceTextCont, fontsize=fontsize, align=uiconst.TOPLEFT, text='', letterspace=0, top=0, pos=(0, 0, 600, 0), bold=0, color=ccConst.COLOR75)
         self.sr.buttonCont = uicls.Container(parent=self.sr.uiContainer, align=uiconst.CENTERBOTTOM, pos=(0, 60, 512, 128))
         for race in sm.GetService('cc').GetRaceData():
             raceBtn = uicls.RaceButton(name='raceBtn', parent=self.sr.buttonCont, align=uiconst.TOLEFT, pos=(0, 0, 128, 128), raceID=race.raceID)
@@ -441,9 +448,8 @@ class RaceStep(BaseCharacterCreationStep):
         if not len(self.raceInfo):
             self.raceInfo = sm.GetService('cc').GetRaceDataByID()
         self.sr.raceTextCont.state = uiconst.UI_NORMAL
-        raceText = self.raceInfo[info.raceID].description
         raceInfo = self.raceInfo[info.raceID]
-        raceText = Tr(raceInfo.description, 'character.races.description', raceInfo.dataID)
+        raceText = localization.GetByMessageID(raceInfo.descriptionID)
         color = self.raceFontColor.get(info.raceID, (1.0, 1.0, 1.0, 0.75))
         self.sr.raceText.text = raceText
         self.sr.raceText.color.SetRGB(*color)
@@ -545,7 +551,7 @@ class RaceStep(BaseCharacterCreationStep):
                     self.sr.playpPauseBtn.LoadIcon('ui_73_16_226')
                 if self.movie.isFinished:
                     self.ShowMovieRacialImage()
-            blue.pyos.synchro.Sleep(1000)
+            blue.pyos.synchro.SleepWallclock(1000)
 
         if self and not self.dead:
             self.movieStateCheckRunning = 0
@@ -588,7 +594,7 @@ class CharacterBloodlineSelection(BaseCharacterCreationStep):
 
         self.sr.raceInfoCont = uicls.Container(name='raceInfoCont', parent=self.sr.uiContainer, align=uiconst.CENTERTOP, width=600, height=uicore.desktop.height, state=uiconst.UI_PICKCHILDREN)
         self.sr.textCont = uicls.Container(name='raceCont', parent=self.sr.raceInfoCont, align=uiconst.TOTOP, pos=(0, 38, 0, 20), state=uiconst.UI_DISABLED)
-        self.sr.header = uicls.CCLabel(text=mls.UI_CHARCREA_BLOODLINESELECTION, name='header', parent=self.sr.textCont, align=uiconst.CENTERTOP, uppercase=1, letterspace=2, color=(0.9, 0.9, 0.9, 0.8), fontsize=22, bold=False)
+        self.sr.header = uicls.CCLabel(text=localization.GetByLabel('UI/CharacterCreation/BloodlineSelection'), name='header', parent=self.sr.textCont, align=uiconst.CENTERTOP, uppercase=1, letterspace=2, color=(0.9, 0.9, 0.9, 0.8), fontsize=22, bold=False)
         if uicore.desktop.height <= 900:
             top = 20
         else:
@@ -634,7 +640,7 @@ class CharacterBloodlineSelection(BaseCharacterCreationStep):
                             genderBtnFemale.state = uiconst.UI_HIDDEN
 
         self.sr.bloodlineTextCont = uicls.Container(name='bloodlineTextCont', parent=self.sr.uiContainer, align=uiconst.TOBOTTOM, height=80, top=64, state=uiconst.UI_NORMAL)
-        self.sr.bloodlineText = uicls.CCLabel(parent=self.sr.bloodlineTextCont, fontsize=12, align=uiconst.BOTTOMLEFT, autowidth=False, width=600, text='', letterspace=0, top=0, bold=0)
+        self.sr.bloodlineText = uicls.CCLabel(parent=self.sr.bloodlineTextCont, fontsize=12, align=uiconst.BOTTOMLEFT, width=600, text='', letterspace=0, top=0, bold=0)
         if info.bloodlineID:
             self.GetBloodlineText()
 
@@ -661,7 +667,7 @@ class CharacterBloodlineSelection(BaseCharacterCreationStep):
         info = uicore.layer.charactercreation.GetInfo()
         if uicore.layer.charactercreation.CanChangeGender():
             uicore.layer.charactercreation.genderID = None
-        self.sr.header.text = mls.UI_CHARCREA_GENDERSELECTION
+        self.sr.header.text = localization.GetByLabel('UI/CharacterCreation/GenderSelection')
         self.bloodlineID = bloodlineID
         for i in self.bloodlineIDs:
             bloodlineBtn = self.sr.Get('bloodlineBtn_%d' % i)
@@ -712,7 +718,7 @@ class CharacterBloodlineSelection(BaseCharacterCreationStep):
             self.bloodlineInfo = sm.GetService('cc').GetBloodlineDataByID()
         color = self.raceFontColor.get(info.raceID, (1.0, 1.0, 1.0, 0.75))
         blinfo = self.bloodlineInfo[info.bloodlineID]
-        bloodlineText = Tr(blinfo.description, 'character.bloodlines.description', blinfo.dataID)
+        bloodlineText = localization.GetByMessageID(blinfo.descriptionID)
         self.sr.bloodlineText.color.SetRGB(*color)
         self.sr.bloodlineText.text = bloodlineText
         uthread.new(self.GetTextWidth)
@@ -737,8 +743,8 @@ class CharacterBloodlineSelection(BaseCharacterCreationStep):
             log.LogError('Trying to place bloodline UI, but bloodlineSelector is None!')
             pos = (0.0, 0.0)
         if pos:
-            left = int(pos[0])
-            top = int(pos[1])
+            left = int(pos[0] / uicore.desktop.dpiScaling)
+            top = int(pos[1] / uicore.desktop.dpiScaling)
         cont = self.sr.Get('cont_%d' % bloodlineID)
         cont.left = left - cont.width / 2
         cont.top = top - cont.height / 2 - 20
@@ -782,14 +788,14 @@ class CharacterCustomization(BaseCharacterCreationStep):
          MAXMENUSIZE,
          uicore.desktop.height), state=uiconst.UI_PICKCHILDREN, align=uiconst.CENTERTOP)
         self.sr.hintBox = uicls.Container(parent=self.sr.assetMenuPar, pos=(0, 20, 200, 150), align=uiconst.TOPRIGHT, state=uiconst.UI_DISABLED)
-        self.sr.hintText = uicls.Label(text='', parent=self.sr.hintBox, align=uiconst.TOALL)
-        self.sr.randomButton = uicls.Transform(parent=self.sr.headBodyPicker, pos=(-52, 34, 22, 22), state=uiconst.UI_NORMAL, align=uiconst.CENTERTOP, hint=mls.UI_CHARCREA_RANDOMIZEALL, idx=0)
+        self.sr.hintText = uicls.EveLabelMedium(text='', parent=self.sr.hintBox, align=uiconst.TOTOP)
+        self.sr.randomButton = uicls.Transform(parent=self.sr.headBodyPicker, pos=(-52, 34, 22, 22), state=uiconst.UI_NORMAL, align=uiconst.CENTERTOP, hint=localization.GetByLabel('UI/CharacterCreation/RandomizeAll'), idx=0)
         self.sr.randomButton.OnClick = self.RandomizeCharacter
         self.sr.randomButton.OnMouseEnter = (self.OnGenericMouseEnter, self.sr.randomButton)
         self.sr.randomButton.OnMouseExit = (self.OnGenericMouseExit, self.sr.randomButton)
         randIcon = uicls.Icon(parent=self.sr.randomButton, icon=ccConst.ICON_RANDOM, state=uiconst.UI_DISABLED, align=uiconst.CENTER, color=ccConst.COLOR50)
         self.sr.randomButton.sr.icon = randIcon
-        self.sr.toggleClothesButton = uicls.Container(parent=self.sr.headBodyPicker, pos=(52, 32, 26, 26), state=uiconst.UI_NORMAL, align=uiconst.CENTERTOP, hint=mls.UI_CHARCREA_TOGGLECLOTHES, idx=0)
+        self.sr.toggleClothesButton = uicls.Container(parent=self.sr.headBodyPicker, pos=(52, 32, 26, 26), state=uiconst.UI_NORMAL, align=uiconst.CENTERTOP, hint=localization.GetByLabel('UI/CharacterCreation/ToggleClothes'), idx=0)
         toggleIcon = uicls.Icon(parent=self.sr.toggleClothesButton, icon=ccConst.ICON_TOGGLECLOTHES, state=uiconst.UI_DISABLED, align=uiconst.CENTER, color=ccConst.COLOR50)
         self.sr.toggleClothesButton.OnClick = self.ToggleClothes
         self.sr.toggleClothesButton.OnMouseEnter = (self.OnGenericMouseEnter, self.sr.toggleClothesButton)
@@ -811,9 +817,11 @@ class CharacterCustomization(BaseCharacterCreationStep):
     def SetHintText(self, modifier, hintText = ''):
         text = hintText
         if modifier in ccConst.HELPTEXTS:
-            text = ccConst.HELPTEXTS[modifier]
+            labelPath = ccConst.HELPTEXTS[modifier]
+            text = localization.GetByLabel(labelPath)
         elif modifier == ccConst.eyes:
-            text = ccConst.HELPTEXTS[ccConst.EYESGROUP]
+            labelPath = ccConst.HELPTEXTS[ccConst.EYESGROUP]
+            text = localization.GetByLabel(labelPath)
         if text != self.sr.hintText.text:
             self.sr.hintText.text = text
 
@@ -1034,7 +1042,7 @@ class CharacterCustomization(BaseCharacterCreationStep):
 
     def GoToTattooMode(self, animate = 1, forcedMode = 0, *args):
         if not sm.StartService('device').SupportsSM3():
-            eve.Message('CustomInfo', {'info': mls.UI_CHARCREA_BODYMOD_NEEDSM3})
+            eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/CharacterCreation/BodyModificationsNeedSM3')})
             return 
         self.menuMode = self.TATTOOMENU
         self.tattooChangeMade = 0
@@ -1114,17 +1122,11 @@ class CharacterCustomization(BaseCharacterCreationStep):
             if layer.sr.step and getattr(layer.sr.step, '_activeSculptZone', None) is not None:
                 layer.HideLoading()
             elif doll.busyUpdating:
-                layer.ShowLoading(why=mls.UI_CHARCREA_UPDATINGCHARACTER)
+                layer.ShowLoading(why=localization.GetByLabel('UI/CharacterCreation/UpdatingCharacter'))
             else:
                 layer.HideLoading()
-            blue.pyos.synchro.Sleep(100)
+            blue.pyos.synchro.SleepWallclock(100)
 
-
-
-
-    def IsDollReady(self, *args):
-        ready = not uicore.layer.charactercreation.doll.busyUpdating
-        return ready
 
 
 
@@ -1165,7 +1167,7 @@ class CharacterPortrait(BaseCharacterCreationStep):
          20,
          200,
          150), align=uiconst.TOPRIGHT, state=uiconst.UI_DISABLED)
-        self.sr.hintText = uicls.Label(text='', parent=self.sr.hintBox, align=uiconst.TOALL)
+        self.sr.hintText = uicls.EveLabelMedium(text='', parent=self.sr.hintBox, align=uiconst.TOTOP)
         self.UpdateLayout()
 
 
@@ -1194,7 +1196,8 @@ class CharacterPortrait(BaseCharacterCreationStep):
     def SetHintText(self, modifier, hintText = ''):
         text = hintText
         if modifier in ccConst.HELPTEXTS:
-            text = ccConst.HELPTEXTS[modifier]
+            labelPath = ccConst.HELPTEXTS[modifier]
+            text = localization.GetByLabel(labelPath)
         if text != self.sr.hintText.text:
             self.sr.hintText.text = text
 
@@ -1249,7 +1252,7 @@ class CharacterPortrait(BaseCharacterCreationStep):
                 if photo == uicore.layer.charactercreation.activePortrait:
                     self.SetPortraitFocus(i)
 
-        btn = uicls.CharCreationButton(parent=self.sr.portraitCont, label=mls.UI_CHARCREA_RESETEXPRESSION, pos=(0, 0, 0, 0), fixedwidth=128, align=uiconst.CENTERBOTTOM, func=self.ResetFacePose)
+        btn = uicls.CharCreationButton(parent=self.sr.portraitCont, label=localization.GetByLabel('UI/CharacterCreation/ResetExpression'), pos=(0, 0, 0, 0), fixedwidth=128, align=uiconst.CENTERBOTTOM, func=self.ResetFacePose)
 
 
 
@@ -1284,6 +1287,8 @@ class CharacterPortrait(BaseCharacterCreationStep):
 
 
     def ValidateStepComplete(self):
+        if not self.IsDollReady:
+            return False
         if uicore.layer.charactercreation.GetPortraitInfo(self.selectedPortrait) is None:
             self.CapturePortrait(self.selectedPortrait)
         return True
@@ -1352,7 +1357,7 @@ class CharacterPortrait(BaseCharacterCreationStep):
 
 class CharacterNaming(BaseCharacterCreationStep):
     __guid__ = 'uicls.CharacterNaming'
-    __notifyevents__ = ['OnHideUI', 'OnShowUI', 'OnFontChanged']
+    __notifyevents__ = ['OnHideUI', 'OnShowUI']
     stepID = ccConst.NAMINGSTEP
 
     def ApplyAttributes(self, attributes):
@@ -1410,10 +1415,10 @@ class CharacterNaming(BaseCharacterCreationStep):
          padding,
          padding))
         topCont = uicls.Container(name='topCont', parent=sub, align=uiconst.TOTOP, state=uiconst.UI_PICKCHILDREN, pos=(0, 30, 0, 78))
-        text = uicls.CCLabel(parent=sub, text=mls.UI_CHARCREA_ANCESTRYSELECTION, fontsize=20, align=uiconst.TOPLEFT, letterspace=1, autoheight=1, autowidth=1, idx=1, pos=(0, -6, 0, 0), uppercase=1, color=ccConst.COLOR50)
+        text = uicls.CCLabel(parent=sub, text=localization.GetByLabel('UI/CharacterCreation/AncestrySelection'), fontsize=20, align=uiconst.TOPLEFT, letterspace=1, idx=1, pos=(0, -6, 0, 0), uppercase=1, color=ccConst.COLOR50)
         self.ancestryTextCont = textCont = uicls.Container(name='textCont', parent=sub, align=uiconst.TOALL, state=uiconst.UI_PICKCHILDREN)
-        self.sr.ancestryNameText = uicls.CCLabel(parent=textCont, text='', fontsize=14, align=uiconst.TOPLEFT, letterspace=1, autoheight=1, autowidth=1, idx=1, pos=(0, 0, 0, 0), color=ccConst.COLOR50)
-        self.sr.ancestryDescrText = uicls.CCLabel(parent=textCont, text='', fontsize=12, align=uiconst.TOTOP, letterspace=0, autoheight=1, autowidth=0, idx=1, padTop=20, shadow=None, bold=0, color=ccConst.COLOR50)
+        self.sr.ancestryNameText = uicls.CCLabel(parent=textCont, text='', fontsize=14, align=uiconst.TOPLEFT, letterspace=1, idx=1, pos=(0, 0, 0, 0), color=ccConst.COLOR50)
+        self.sr.ancestryDescrText = uicls.CCLabel(parent=textCont, text='', fontsize=10, align=uiconst.TOTOP, letterspace=0, idx=1, padTop=20, shadowOffset=(0, 0), bold=0, color=ccConst.COLOR50)
         hiliteFrame = uicls.Frame(name='hiliteFrame', parent=self.sr.ancestyCont, frameConst=ccConst.MAINFRAME_INV)
         uicls.Fill(name='fill', parent=self.sr.ancestyCont, color=(0.0, 0.0, 0.0, 0.5))
         if not self.ancestryInfo:
@@ -1428,11 +1433,11 @@ class CharacterNaming(BaseCharacterCreationStep):
              0,
              100,
              80))
-            hexName = (Tr(info.ancestryName, 'character.ancestries.ancestryName', info.dataID),)
-            label = uicls.CCLabel(parent=c, text='<center>%s' % hexName, fontsize=12, align=uiconst.CENTERTOP, letterspace=0, autoheight=1, autowidth=0, idx=1, pos=(0,
+            hexName = localization.GetByMessageID(info.ancestryNameID)
+            label = uicls.CCLabel(parent=c, text='<center>%s' % hexName, fontsize=12, align=uiconst.CENTERTOP, letterspace=0, idx=1, pos=(0,
              46,
              c.width,
-             0), shadow=None, bold=0, color=ccConst.COLOR50)
+             0), shadowOffset=(0, 0), bold=0, color=ccConst.COLOR50)
             hex = uicls.CCHexButtonAncestry(name='ancestryHex', parent=c, align=uiconst.CENTERTOP, state=uiconst.UI_NORMAL, pos=(0, -10, 64, 64), pickRadius=32, info=info, id=ancestryID, hexName=hexName, func=self.SetAncestry, iconNum=ancestryID - 1)
             left += 110
             self.ancestryConts[ancestryID] = hex
@@ -1453,8 +1458,8 @@ class CharacterNaming(BaseCharacterCreationStep):
         uicore.layer.charactercreation.SelectAncestry(selected.id)
         selected.SelectHex(self.ancestryConts.values())
         ancestryInfo = self.ancestryInfo.get(selected.id)
-        self.sr.ancestryNameText.text = Tr(ancestryInfo.ancestryName, 'character.ancestries.ancestryName', ancestryInfo.dataID)
-        self.sr.ancestryDescrText.text = Tr(ancestryInfo.description, 'character.ancestries.description', ancestryInfo.dataID)
+        self.sr.ancestryNameText.text = localization.GetByMessageID(ancestryInfo.ancestryNameID)
+        self.sr.ancestryDescrText.text = localization.GetByMessageID(ancestryInfo.descriptionID)
         selected.frame.state = uiconst.UI_DISABLED
         self.AdjustHeightAndWidth(doMorph=doMorph)
 
@@ -1474,10 +1479,10 @@ class CharacterNaming(BaseCharacterCreationStep):
          padding,
          padding))
         topCont = uicls.Container(name='topCont', parent=sub, align=uiconst.TOTOP, state=uiconst.UI_PICKCHILDREN, pos=(0, 30, 0, 78))
-        text = uicls.CCLabel(parent=sub, text=mls.UI_CHARCREA_EDUCATIONSELECTION, fontsize=20, align=uiconst.TOPLEFT, letterspace=1, autoheight=1, autowidth=1, idx=1, pos=(0, -6, 0, 0), uppercase=1, color=ccConst.COLOR50)
+        text = uicls.CCLabel(parent=sub, text=localization.GetByLabel('UI/CharacterCreation/EducationSelection'), fontsize=20, align=uiconst.TOPLEFT, letterspace=1, idx=1, pos=(0, -6, 0, 0), uppercase=1, color=ccConst.COLOR50)
         self.schoolTextCont = textCont = uicls.Container(name='textCont', parent=sub, align=uiconst.TOALL, state=uiconst.UI_PICKCHILDREN)
-        self.sr.schoolNameText = uicls.CCLabel(parent=textCont, text='', fontsize=14, align=uiconst.TOPLEFT, letterspace=1, autoheight=1, autowidth=1, idx=1, pos=(0, 0, 0, 0), color=ccConst.COLOR50)
-        self.sr.schoolDescrText = uicls.CCLabel(parent=textCont, text='', fontsize=12, align=uiconst.TOTOP, letterspace=0, autoheight=1, autowidth=0, idx=1, padTop=20, shadow=None, bold=0, color=ccConst.COLOR50)
+        self.sr.schoolNameText = uicls.CCLabel(parent=textCont, text='', fontsize=14, align=uiconst.TOPLEFT, letterspace=1, idx=1, pos=(0, 0, 0, 0), color=ccConst.COLOR50)
+        self.sr.schoolDescrText = uicls.CCLabel(parent=textCont, text='', fontsize=10, align=uiconst.TOTOP, letterspace=0, idx=1, padTop=20, shadowOffset=(0, 0), bold=0, color=ccConst.COLOR50)
         hiliteFrame = uicls.Frame(name='hiliteFrame', parent=self.sr.educationCont, frameConst=ccConst.MAINFRAME_INV)
         uicls.Fill(name='fill', parent=self.sr.educationCont, color=(0.0, 0.0, 0.0, 0.5))
         if not self.schoolInfo:
@@ -1497,11 +1502,11 @@ class CharacterNaming(BaseCharacterCreationStep):
              0,
              100,
              80))
-            hexName = Tr(info.schoolName, 'dbo.chrSchools.schoolName', info.schoolID)
-            label = uicls.CCLabel(parent=c, text='<center>%s' % hexName, fontsize=12, align=uiconst.CENTERTOP, letterspace=0, autoheight=1, autowidth=0, idx=1, pos=(0,
+            hexName = localization.GetByMessageID(info.schoolNameID)
+            label = uicls.CCLabel(parent=c, text='<center>%s' % hexName, fontsize=12, align=uiconst.CENTERTOP, letterspace=0, idx=1, pos=(0,
              46,
              c.width,
-             0), shadow=None, bold=0, color=ccConst.COLOR50)
+             0), shadowOffset=(0, 0), bold=0, color=ccConst.COLOR50)
             hex = uicls.CCHexButtonSchool(name='schoolHex', parent=c, align=uiconst.CENTERTOP, state=uiconst.UI_NORMAL, pos=(0, -10, 64, 64), pickRadius=32, info=info, id=schoolID, hexName=hexName, func=self.SetSchool, iconNum=schoolID - iconNumOffset)
             left += 110
             self.schoolConts[schoolID] = hex
@@ -1523,7 +1528,7 @@ class CharacterNaming(BaseCharacterCreationStep):
         selected.SelectHex(self.schoolConts.values())
         schoolInfo = self.schoolInfo.get(selected.id)
         self.sr.schoolNameText.text = selected.hexName
-        self.sr.schoolDescrText.text = Tr(schoolInfo.description, 'dbo.chrSchools.description', schoolInfo.schoolID)
+        self.sr.schoolDescrText.text = localization.GetByMessageID(schoolInfo.descriptionID)
         selected.frame.state = uiconst.UI_DISABLED
         self.AdjustHeightAndWidth(doMorph=doMorph)
 
@@ -1556,7 +1561,7 @@ class CharacterNaming(BaseCharacterCreationStep):
          padding))
         hiliteFrame = uicls.Frame(name='hiliteFrame', parent=self.sr.nameCont, frameConst=ccConst.MAINFRAME_INV)
         uicls.Fill(name='fill', parent=self.sr.nameCont, color=(0.0, 0.0, 0.0, 0.5))
-        text = uicls.CCLabel(parent=sub, text=mls.UI_CHARCREA_NAMESELECTION, fontsize=20, align=uiconst.TOPLEFT, letterspace=1, autoheight=1, autowidth=1, idx=1, pos=(0, -6, 0, 0), uppercase=1, color=ccConst.COLOR50)
+        text = uicls.CCLabel(parent=sub, text=localization.GetByLabel('UI/CharacterCreation/NameSelection'), fontsize=20, align=uiconst.TOPLEFT, letterspace=1, idx=1, pos=(0, -6, 0, 0), uppercase=1, color=ccConst.COLOR50)
         text.SetRGB(1.0, 1.0, 1.0)
         text.SetAlpha(1.0)
         top = 30
@@ -1564,13 +1569,13 @@ class CharacterNaming(BaseCharacterCreationStep):
         self.sr.firstNameEdit = edit = uicls.SinglelineEdit(name='firstNameEdit', setvalue=firstName, parent=sub, pos=(4,
          top,
          150,
-         0), maxLength=maxFirstNameChars, align=uiconst.TOTOP, OnChange=self.EnteringName, color=(1.0, 1.0, 1.0, 1.0), hinttext=mls.UI_CHARCREA_FIRSTNAME)
+         0), maxLength=maxFirstNameChars, align=uiconst.TOTOP, OnChange=self.EnteringName, color=(1.0, 1.0, 1.0, 1.0), hinttext=localization.GetByLabel('UI/CharacterCreation/FirstName'))
         edit.OnReturn = self.CheckAvailability
         edit.OnAnyChar = self.OnCharInFirstName
         offset = 20
         if not self.isSerenity:
             btnTop = edit.top + edit.height + offset - 2
-            btn = uicls.CharCreationButton(parent=sub, label=mls.UI_CHARCREA_RANDOMIZE, pos=(0,
+            btn = uicls.CharCreationButton(parent=sub, label=localization.GetByLabel('UI/CharacterCreation/Randomize'), pos=(0,
              btnTop,
              0,
              0), align=uiconst.TOPRIGHT, func=self.RandomizeLastName)
@@ -1584,7 +1589,7 @@ class CharacterNaming(BaseCharacterCreationStep):
              0))
             lastNameEditCont.isTabOrderGroup = 1
             lastName = info.charLastName or ''
-            self.sr.lastNameEdit = edit = uicls.SinglelineEdit(name='lastNameEdit', parent=lastNameEditCont, setvalue=lastName, pos=(0, 10, 0, 0), maxLength=12, align=uiconst.TOTOP, OnChange=self.EnteringName, color=(1.0, 1.0, 1.0, 1.0), hinttext=mls.UI_CHARCREA_LASTNAME)
+            self.sr.lastNameEdit = edit = uicls.SinglelineEdit(name='lastNameEdit', parent=lastNameEditCont, setvalue=lastName, pos=(0, 10, 0, 0), maxLength=12, align=uiconst.TOTOP, OnChange=self.EnteringName, color=(1.0, 1.0, 1.0, 1.0), hinttext=localization.GetByLabel('UI/CharacterCreation/LastName'))
             edit.OnReturn = self.CheckAvailability
             edit.OnAnyChar = self.OnCharInLastName
             self.sr.firstNameEdit.padRight = rightPadding
@@ -1592,10 +1597,10 @@ class CharacterNaming(BaseCharacterCreationStep):
          offset,
          0,
          0))
-        availBtn = uicls.CharCreationButton(parent=availCont, label=mls.UI_CHARCREA_CHECKAVAILABILITY, pos=(0, 0, 0, 0), align=uiconst.TOPLEFT, func=self.CheckAvailability)
+        availBtn = uicls.CharCreationButton(parent=availCont, label=localization.GetByLabel('UI/CharacterCreation/CheckNameAvailability'), pos=(0, 0, 0, 0), align=uiconst.TOPLEFT, func=self.CheckAvailability)
         availCont.height = availBtn.height
         left = availBtn.width + 4
-        self.sr.availabilityLabel = uicls.Label(parent=availCont, align=uiconst.CENTERLEFT, autowidth=1, autoheight=1, left=left + 16, state=uiconst.UI_DISABLED, top=0)
+        self.sr.availabilityLabel = uicls.EveLabelMedium(parent=availCont, align=uiconst.CENTERLEFT, left=left + 16, state=uiconst.UI_DISABLED)
         self.sr.availableIcon = uicls.Icon(parent=availCont, align=uiconst.CENTERLEFT, pos=(left,
          0,
          16,
@@ -1670,14 +1675,14 @@ class CharacterNaming(BaseCharacterCreationStep):
                 uicore.layer.charactercreation.charFirstName = charFirstName
                 uicore.layer.charactercreation.charLastName = charLastName
                 return isAvailable
-            validStates = {-1: mls.UI_CHARCREA_ERROR_TOOSHORT,
-             -2: mls.UI_CHARCREA_ERROR_TOOLONG,
-             -5: mls.UI_CHARCREA_ERROR_ILLEGALCHARACTERS,
-             -6: mls.UI_CHARCREA_ERROR_TOOMANYSPACES,
-             -7: mls.UI_CHARCREA_ERROR_CONSECUTIVESPACES,
-             -101: mls.UI_CHARCREA_ERROR_UNAVAILABLE,
-             -102: mls.UI_CHARCREA_ERROR_UNAVAILABLE}
-            reason = validStates.get(valid, mls.UI_CHARCREA_ERROR_ILLEGALCHARACTERS)
+            validStates = {-1: localization.GetByLabel('UI/CharacterCreation/InvalidName/TooShort'),
+             -2: localization.GetByLabel('UI/CharacterCreation/InvalidName/TooLong'),
+             -5: localization.GetByLabel('UI/CharacterCreation/InvalidName/IllegalCharacter'),
+             -6: localization.GetByLabel('UI/CharacterCreation/InvalidName/TooManySpaces'),
+             -7: localization.GetByLabel('UI/CharacterCreation/InvalidName/ConsecutiveSpaces'),
+             -101: localization.GetByLabel('UI/CharacterCreation/InvalidName/Unavailable'),
+             -102: localization.GetByLabel('UI/CharacterCreation/InvalidName/Unavailable')}
+            reason = validStates.get(valid, localization.GetByLabel('UI/CharacterCreation/InvalidName/IllegalCharacter'))
             self.sr.availableIcon.LoadIcon('ui_38_16_194')
             self.sr.availabilityLabel.text = reason
             if not self.isSerenity:
@@ -1722,18 +1727,13 @@ class CharacterNaming(BaseCharacterCreationStep):
 
 
 
-    def OnFontChanged(self, *args):
-        self.UpdateLayout()
-
-
-
 
 class CharCreationButton(uicls.ButtonCore):
     __guid__ = 'uicls.CharCreationButton'
     default_align = uiconst.TOPLEFT
 
     def Prepare_(self):
-        self.sr.label = uicls.Label(parent=self, state=uiconst.UI_DISABLED, align=uiconst.CENTER, bold=1, uppercase=0, idx=0, font=self.default_font, fontsize=self.default_fontsize, autowidth=1, autoheight=1, color=ccConst.COLOR + (TEXT_NORMAL,), letterspace=1)
+        self.sr.label = uicls.Label(parent=self, state=uiconst.UI_DISABLED, align=uiconst.CENTER, bold=1, uppercase=0, idx=0, fontsize=self.default_fontsize, color=ccConst.COLOR + (TEXT_NORMAL,), letterspace=1)
         self.sr.hilite = uicls.Frame(parent=self, name='hilite', state=uiconst.UI_HIDDEN, color=ccConst.COLOR + (0.2,), frameConst=ccConst.FILL_BEVEL)
         self.sr.hilite.padLeft = self.sr.hilite.padTop = self.sr.hilite.padRight = self.sr.hilite.padBottom = 3
         fill = uicls.Fill(parent=self, name='fill', state=uiconst.UI_DISABLED, color=(0.35, 0.35, 0.35, 0.3), padding=(2, 2, 2, 2))
@@ -1807,12 +1807,12 @@ class CCHeadBodyPicker(uicls.Container):
         self.width = 130
         self.height = 130
         self.SetOpacity(0.0)
-        hex = uicls.CCHexButtonHead(name='headHex', parent=self, align=uiconst.CENTERTOP, state=uiconst.UI_NORMAL, pos=(0, 0, 64, 64), pickRadius=21, info=None, id=0, hexName=mls.UI_CHARCREA_ZOOMIN, func=self.HeadClicked, iconNum=0, showIcon=False)
+        hex = uicls.CCHexButtonHead(name='headHex', parent=self, align=uiconst.CENTERTOP, state=uiconst.UI_NORMAL, pos=(0, 0, 64, 64), pickRadius=21, info=None, id=0, hexName=localization.GetByLabel('UI/CharacterCreation/ZoomIn'), func=self.HeadClicked, iconNum=0, showIcon=False)
         self.sr.headSolid = hex.selection
         hex.selection.state = uiconst.UI_DISABLED
         self.sr.headFrame = hex.frame
         self.sr.headHex = hex
-        hex = uicls.CCHexButtonBody(name='bodyHex', parent=self, align=uiconst.CENTERTOP, state=uiconst.UI_NORMAL, pos=(0, 16, 128, 128), pickRadius=42, info=None, id=0, hexName=mls.UI_CHARCREA_ZOOMOUT, func=self.BodyClicked, iconNum=0, showIcon=False)
+        hex = uicls.CCHexButtonBody(name='bodyHex', parent=self, align=uiconst.CENTERTOP, state=uiconst.UI_NORMAL, pos=(0, 16, 128, 128), pickRadius=42, info=None, id=0, hexName=localization.GetByLabel('UI/CharacterCreation/ZoomOut'), func=self.BodyClicked, iconNum=0, showIcon=False)
         self.sr.bodySolid = hex.selection
         hex.selection.state = uiconst.UI_DISABLED
         self.sr.bodyFrame = hex.frame

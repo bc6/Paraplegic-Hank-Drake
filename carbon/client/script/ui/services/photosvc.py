@@ -196,7 +196,7 @@ class CorePhoto(service.Service):
 
 
     def _SaveSurfaceToFile(self, surface, outputPath, format = trinity.TRIIFF_DDS):
-        filename = blue.os.cachepath + outputPath
+        filename = blue.os.ResolvePath(u'cache:/') + outputPath
         cachename = 'cache:/' + outputPath
         self.LogInfo('Saving surface ', cachename, ' to file ', filename)
         surface.SaveSurfaceToFile(filename, format)

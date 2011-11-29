@@ -7,9 +7,9 @@ import form
 import log
 import util
 import listentry
+import localization
 import service
 import os
-import draw
 import base
 import sys
 import uicls
@@ -25,7 +25,6 @@ class Logger(service.Service):
     __exportedcalls__ = {'AddMessage': [],
      'AddCombatMessage': [],
      'AddText': [],
-     'Show': [],
      'GetLog': [ROLE_SERVICE]}
     __guid__ = 'svc.logger'
     __notifyevents__ = ['ProcessSessionChange']
@@ -38,7 +37,6 @@ class Logger(service.Service):
         self.LogInfo('Starting Logger')
         self.broken = 0
         self.Reset()
-        self.timer = None
         self.newfileAttempts = 0
         self.addmsg = []
         self.combatMessagePeriod = 10000L * prefs.GetValue('combatMessagePeriod', 200)
@@ -50,7 +48,6 @@ class Logger(service.Service):
         self.DumpToLog()
         self.messages = []
         self.msglog = []
-        self.timer = None
         self.addmsg = []
 
 
@@ -69,8 +66,10 @@ class Logger(service.Service):
     def GetLog(self, maxsize = const.petitionMaxCombatLogSize, *args):
         log.LogInfo('Getting logfiles')
         self.DumpToLog()
-        now = util.FmtDate(blue.os.GetTime()).replace('.', '')[:8]
-        yesterday = util.FmtDate(blue.os.GetTime() - DAY).replace('.', '')[:8]
+        (year, month, weekday, day, hour, minute, second, msec,) = blue.os.GetTimeParts(blue.os.GetWallclockTime())
+        now = '%d%.2d%.0d' % (year, month, day)
+        (year, month, weekday, day, hour, minute, second, msec,) = blue.os.GetTimeParts(blue.os.GetWallclockTime() - DAY)
+        yesterday = '%d%.2d%.0d' % (year, month, day)
         root = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '/EVE/logs/Gamelogs'
         logs = []
         for each in os.listdir(root):
@@ -106,13 +105,13 @@ class Logger(service.Service):
 
 
     def Reset(self, newFileOnly = 0):
-        self.resettime = blue.os.GetTime()
+        self.resettime = blue.os.GetWallclockTime()
         if not newFileOnly:
             self.messages = []
-            self.msglog = ['-' * 60 + '\n', '  %s\n' % mls.UI_SHARED_LOGGAMELOG.encode('utf8', 'replace')]
+            self.msglog = ['-' * 60 + '\n', '  %s\n' % localization.GetByLabel('UI/Accessories/Log/GameLog').encode('utf8', 'replace')]
             if eve.session.charid:
-                self.msglog.append(('  %s: %s\n' % (mls.UI_SHARED_LOGLISTENER, cfg.eveowners.Get(eve.session.charid).name)).encode('utf8', 'replace'))
-            self.msglog += [('  %s: %s\n' % (mls.UI_SHARED_LOGSESSIONSTARTED, util.FmtDate(self.resettime))).encode('utf8', 'replace'),
+                self.msglog.append(('  %s: %s\n' % (localization.GetByLabel('UI/Accessories/Log/Listener'), cfg.eveowners.Get(eve.session.charid).name)).encode('utf8', 'replace'))
+            self.msglog += [('  %s: %s\n' % (localization.GetByLabel('UI/Accessories/Log/SessionStarted'), util.FmtDate(self.resettime))).encode('utf8', 'replace'),
              '',
              '-' * 60 + '\n',
              '']
@@ -120,113 +119,21 @@ class Logger(service.Service):
 
 
 
-    def Show(self, *args):
-        if eve.session.charid:
-            wnd = self.GetWnd(1)
-            wnd.Maximize()
+    def GetWnd(self):
+        return form.Logger.GetIfOpen()
 
 
 
-    def GetWnd(self, new = 0):
-        wnd = sm.GetService('window').GetWindow('logger')
-        if not wnd and new:
-            wnd = sm.GetService('window').GetWindow('logger', decoClass=form.Logger, create=1)
-            wnd.SetCaption(mls.UI_SHARED_LOG)
-            wnd.SetMinSize([256, 195])
-            wnd.SetWndIcon('ui_34_64_4', hidden=True)
-            wnd.SetTopparentHeight(0)
-            wnd.SetScope('all')
-            wnd.OnClose_ = self.CloseWnd
-            wnd.OnEndMaximize = self.OnEndMaximize
-            wnd.GetMenu = self.GetWndMenu
-            wnd.OnTabSelect = self.OnTabSelect
-            margin = const.defaultPadding
-            scroll = uicls.Scroll(parent=uiutil.GetChild(wnd, 'main'), id='loggerScroll', padding=(margin,
-             margin,
-             margin,
-             margin))
-            wnd.sr.scroll = scroll
-            settings = uicls.Container(name='settings', parent=scroll.parent, pos=(const.defaultPadding * 2,
-             const.defaultPadding * 2,
-             const.defaultPadding * 2,
-             const.defaultPadding * 2))
-            wnd.sr.settings = settings
-            maintabs = uicls.TabGroup(name='tabparent', parent=scroll.parent, idx=0)
-            maintabs.Startup([[mls.UI_SHARED_LOG,
-              scroll,
-              self,
-              'log'], [mls.UI_GENERIC_SETTINGS,
-              settings,
-              self,
-              'settings']], 'loggertabs')
-        return wnd
-
-
-
-    def Load(self, key):
-        if key == 'log':
-            self.LoadAllMessages()
-        elif key == 'settings':
-            if not getattr(self, 'settingsinited', 0):
-                self.LoadSettings()
-                self.settingsinited = 1
-
-
-
-    def OnTabSelect(self):
-        self.LoadAllMessages()
-
-
-
-    def LoadSettings(self):
-        wnd = self.GetWnd()
-        if wnd and not wnd.destroyed:
-            for (hint, config,) in ((mls.UI_SHARED_LOGSHOWINFO, 'showinfologmessages'),
-             (mls.UI_SHARED_LOGSHOWWARN, 'showwarninglogmessages'),
-             (mls.UI_SHARED_LOGSHOWERROR, 'showerrorlogmessages'),
-             (mls.UI_SHARED_LOGSHOWCOMBAT, 'showcombatlogmessages'),
-             (mls.UI_SHARED_LOGSHOWNOTIFY, 'shownotifylogmessages'),
-             (mls.UI_SHARED_LOGSHOWQUESTION, 'showquestionlogmessages')):
-                uicls.Checkbox(text=hint, parent=wnd.sr.settings, configName=config, retval=None, checked=settings.user.ui.Get(config, 1), groupname=None, prefstype=('user', 'ui'))
-
-            uicls.Container(name='push', align=uiconst.TOTOP, height=4, parent=wnd.sr.settings)
-            for amt in (100, 1000):
-                uicls.Checkbox(text=mls.UI_SHARED_LOGSHOWNUMMESSAGES % {'num': amt}, parent=wnd.sr.settings, configName='logmessageamount', retval=amt, checked=amt == settings.user.ui.Get('logmessageamount', 100), groupname='logamount', prefstype=('user', 'ui'))
-
-
-
-
-    def OnEndMaximize(self, *args):
-        self.LoadAllMessages()
-
-
-
-    def LoadAllMessages(self):
-        wnd = self.GetWnd()
-        if wnd and not wnd.destroyed and wnd.state in (uiconst.UI_NORMAL, uiconst.UI_PICKCHILDREN) and self.messages:
-            showmsgs = []
-            maxlog = settings.user.ui.Get('logmessageamount', 100)
-            t = len(self.messages)
-            r = min(maxlog, t)
-            for _i in xrange(r):
-                i = t - 1 - _i
-                (text, msgtext, msgtype,) = self.messages[i]
-                if not self.ShowMessage(msgtype):
-                    continue
-                entry = listentry.Get('Text', {'text': text,
-                 'canOpen': mls.UI_GENERIC_LOGMESSAGE,
-                 'line': 1})
-                showmsgs.append(entry)
-
-            wnd.sr.scroll.Load(contentList=showmsgs, reversesort=True, headers=[mls.UI_GENERIC_TIME, mls.UI_GENERIC_TYPE, mls.UI_GENERIC_MESSAGE])
-
-
-
-    def CloseWnd(self, *args):
-        self.inited = 0
-        self.settingsinited = 0
-        self.timer = None
+    def GetMessages(self):
         self.addmsg = []
+        return self.messages
+
+
+
+    def GetPendingMessages(self):
+        retval = self.addmsg
+        self.addmsg = []
+        return retval
 
 
 
@@ -241,7 +148,7 @@ class Logger(service.Service):
         msg = cfg.GetMessage(msgKey, msgTextArgs)
         if msg.type == 'error' and not settings.user.ui.Get('logerrors', 0):
             return 
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         if now - self.lastCombatMessage < self.combatMessagePeriod:
             display = 0
         else:
@@ -261,55 +168,36 @@ class Logger(service.Service):
          'warning': '<color=0xffffd800>',
          'slash': '<color=0xffff5500>',
          'combat': '<color=0xffff0000>'}.get(msgtype, '<color=0xffffffff>')
-        time = blue.os.GetTime()
+        messages = {'error': localization.GetByLabel('UI/Accessories/Log/LogError'),
+         'warning': localization.GetByLabel('UI/Accessories/Log/LogWarn'),
+         'slash': localization.GetByLabel('UI/Accessories/Log/LogSlash'),
+         'combat': localization.GetByLabel('UI/Accessories/Log/LogCombat'),
+         'notify': localization.GetByLabel('UI/Accessories/Log/LogNotify'),
+         'question': localization.GetByLabel('UI/Accessories/Log/LogQuestion'),
+         'info': localization.GetByLabel('UI/Accessories/Log/LogInfo'),
+         'hint': localization.GetByLabel('UI/Accessories/Log/LogHint')}
+        time = blue.os.GetWallclockTime()
         if msgtype:
-            label = getattr(mls, 'UI_SHARED_LOG' + msgtype.upper())
+            if msgtype in messages:
+                label = messages[msgtype]
+            else:
+                label = msgtype
         else:
-            label = mls.UI_SYSMENU_GENERIC
+            label = localization.GetByLabel('UI/Accessories/Log/Generic')
         if not self.broken:
             self.msglog.append(('[%20s ] (%s) %s\n' % (util.FmtDate(time), msgtype, msgtext)).encode('utf8', 'replace'))
             if len(self.msglog) == 20:
                 self.DumpToLog()
         if not self.ShowMessage(msgtype):
             return 
-        text = '%s<t>%s%s</color><t>%s' % (util.FmtDate(blue.os.GetTime(), 'nl'),
-         color,
-         label,
-         msgtext)
+        text = localization.GetByLabel('UI/Accessories/Log/MessageOutput', logtime=blue.os.GetWallclockTime(), color=color, label=label, message=msgtext)
         self.messages.append((text, msgtext, msgtype))
         maxlog = settings.user.ui.Get('logmessageamount', 100)
         if len(self.messages) > maxlog * 2:
             self.messages = self.messages[(-maxlog):]
         wnd = self.GetWnd()
-        if wnd and not wnd.destroyed and wnd.state in (uiconst.UI_NORMAL, uiconst.UI_PICKCHILDREN):
-            if wnd.sr.scroll.state != uiconst.UI_HIDDEN:
-                self.addmsg.append(listentry.Get('Text', {'text': text,
-                 'canOpen': 'Log message',
-                 'line': 1}))
-                if not self.timer:
-                    self._AddText()
-
-
-
-    def _AddText(self):
-        if not self.addmsg:
-            self.timer = None
-            return 
-        wnd = self.GetWnd()
-        if wnd and not wnd.destroyed and wnd.state in (uiconst.UI_NORMAL, uiconst.UI_PICKCHILDREN):
-            if wnd.sr.scroll.state != uiconst.UI_HIDDEN:
-                maxlog = settings.user.ui.Get('logmessageamount', 100)
-                if not self.timer:
-                    self.timer = base.AutoTimer(1000, self._AddText)
-                if len(wnd.sr.scroll.sr.nodes) == 0:
-                    wnd.sr.scroll.LoadHeaders([mls.UI_GENERIC_TIME, mls.UI_GENERIC_TYPE, mls.UI_GENERIC_MESSAGE])
-                wnd.sr.scroll.AddEntries(0, self.addmsg)
-                self.addmsg = []
-                revSorting = wnd.sr.scroll.GetSortDirection() or wnd.sr.scroll.GetSortBy() is None
-                if revSorting:
-                    wnd.sr.scroll.RemoveEntries(wnd.sr.scroll.GetNodes()[maxlog:])
-                else:
-                    wnd.sr.scroll.RemoveEntries(wnd.sr.scroll.GetNodes()[:(-maxlog)])
+        if wnd and not wnd.destroyed:
+            self.addmsg.append((text, msgtext, msgtype))
 
 
 
@@ -373,24 +261,145 @@ class Logger(service.Service):
     def GetLogfileName(self, reset = 0):
         if reset:
             self.Reset(reset)
-        filename = '%s' % util.FmtDate(self.resettime)
-        filename = filename.replace('\\', '_').replace('?', '_').replace('*', '_').replace(':', '').replace('.', '').replace(' ', '_').replace('/', '_')
+        (year, month, weekday, day, hour, minute, second, msec,) = blue.os.GetTimeParts(self.resettime)
+        filename = '%d%.2d%.2d_%.2d%.2d%.2d' % (year,
+         month,
+         day,
+         hour,
+         minute,
+         second)
         filename = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '/EVE/logs/Gamelogs/%s.txt' % filename
         return filename
-
-
-
-    def GetWndMenu(self, *args):
-        wnd = self.GetWnd()
-        if wnd:
-            m = uicls.Window.GetMenu(wnd)
-            m += [None, (mls.UI_CMD_CAPTURELOG, self.DumpToLog), (mls.UI_CMD_COPYLOG, self.CopyLog)]
-            return m
 
 
 
 
 class LoggerWindow(uicls.Window):
     __guid__ = 'form.Logger'
+    default_windowID = 'logger'
+
+    def ApplyAttributes(self, attributes):
+        uicls.Window.ApplyAttributes(self, attributes)
+        self.SetCaption(localization.GetByLabel('UI/Accessories/Log/Log'))
+        self.SetMinSize([256, 195])
+        self.SetWndIcon('ui_34_64_4', hidden=True)
+        self.SetTopparentHeight(0)
+        self.SetScope('all')
+        margin = const.defaultPadding
+        scroll = uicls.Scroll(parent=uiutil.GetChild(self, 'main'), padding=margin)
+        scroll.Load(contentList=[], fixedEntryHeight=18, headers=[localization.GetByLabel('UI/Common/DateWords/Time'), localization.GetByLabel('UI/Accessories/Log/Type'), localization.GetByLabel('UI/Accessories/Log/Message')])
+        self.sr.scroll = scroll
+        settings = uicls.Container(name='settings', parent=scroll.parent, pos=(const.defaultPadding * 2,
+         const.defaultPadding * 2,
+         const.defaultPadding * 2,
+         const.defaultPadding * 2))
+        self.sr.settings = settings
+        maintabs = uicls.TabGroup(name='tabparent', parent=scroll.parent, idx=0)
+        maintabs.Startup([[localization.GetByLabel('UI/Accessories/Log/Log'),
+          scroll,
+          self,
+          'log'], [localization.GetByLabel('UI/Accessories/Log/Settings'),
+          settings,
+          self,
+          'settings']], 'loggertabs')
+        self.timer = base.AutoTimer(1000, self.CheckMessages)
+
+
+
+    def CheckMessages(self):
+        if uiutil.IsVisible(self.sr.scroll):
+            messages = sm.GetService('logger').GetPendingMessages()
+            if messages:
+                entryList = []
+                maxlog = settings.user.ui.Get('logmessageamount', 100)
+                for msg in messages:
+                    (text, msgtext, msgtype,) = msg
+                    if not self.ShowMessage(msgtype):
+                        continue
+                    entryList.append(listentry.Get('Text', {'text': text,
+                     'canOpen': localization.GetByLabel('UI/Accessories/Log/LogMessage'),
+                     'line': 1}))
+
+                self.sr.scroll.AddEntries(0, entryList)
+                revSorting = self.sr.scroll.GetSortDirection() or self.sr.scroll.GetSortBy() is None
+                if revSorting:
+                    self.sr.scroll.RemoveEntries(self.sr.scroll.GetNodes()[maxlog:])
+                else:
+                    self.sr.scroll.RemoveEntries(self.sr.scroll.GetNodes()[:(-maxlog)])
+
+
+
+    def GetMenu(self, *args):
+        m = uicls.Window.GetMenu(self)
+        m += [None, (localization.GetByLabel('UI/Accessories/Log/CaptureLog'), sm.GetService('logger').DumpToLog), (localization.GetByLabel('UI/Accessories/Log/CopyLog'), sm.GetService('logger').CopyLog)]
+        return m
+
+
+
+    def OnTabSelect(self):
+        self.LoadAllMessages()
+
+
+
+    def Load(self, key):
+        if key == 'log':
+            self.LoadAllMessages()
+        elif key == 'settings':
+            if not getattr(self, 'settingsinited', 0):
+                self.LoadSettings()
+                self.settingsinited = 1
+
+
+
+    def LoadSettings(self):
+        for (hint, config,) in ((localization.GetByLabel('UI/Accessories/Log/ShowInfo'), 'showinfologmessages'),
+         (localization.GetByLabel('UI/Accessories/Log/ShowWarn'), 'showwarninglogmessages'),
+         (localization.GetByLabel('UI/Accessories/Log/ShowError'), 'showerrorlogmessages'),
+         (localization.GetByLabel('UI/Accessories/Log/ShowCombat'), 'showcombatlogmessages'),
+         (localization.GetByLabel('UI/Accessories/Log/ShowNotify'), 'shownotifylogmessages'),
+         (localization.GetByLabel('UI/Accessories/Log/ShowQuestion'), 'showquestionlogmessages')):
+            uicls.Checkbox(text=hint, parent=self.sr.settings, configName=config, retval=None, checked=settings.user.ui.Get(config, 1), groupname=None, prefstype=('user', 'ui'))
+
+        uicls.Container(name='push', align=uiconst.TOTOP, height=4, parent=self.sr.settings)
+        for amt in (100, 1000):
+            uicls.Checkbox(text=localization.GetByLabel('UI/Accessories/Log/ShowNumMessages', num=amt), parent=self.sr.settings, configName='logmessageamount', retval=amt, checked=amt == settings.user.ui.Get('logmessageamount', 100), groupname='logamount', prefstype=('user', 'ui'))
+
+
+
+
+    def OnEndMaximize(self, *args):
+        self.LoadAllMessages()
+
+
+
+    def _OnClose(self, *args):
+        self.timer = None
+
+
+
+    def LoadAllMessages(self):
+        showmsgs = []
+        maxlog = settings.user.ui.Get('logmessageamount', 100)
+        messages = sm.GetService('logger').GetMessages()
+        t = len(messages)
+        r = min(maxlog, t)
+        for _i in xrange(r):
+            i = t - 1 - _i
+            (text, msgtext, msgtype,) = messages[i]
+            if not self.ShowMessage(msgtype):
+                continue
+            entry = listentry.Get('Text', {'text': text,
+             'canOpen': localization.GetByLabel('UI/Accessories/Log/LogMessage'),
+             'line': 1})
+            showmsgs.append(entry)
+
+        self.sr.scroll.Load(contentList=showmsgs, headers=[localization.GetByLabel('UI/Common/DateWords/Time'), localization.GetByLabel('UI/Accessories/Log/Type'), localization.GetByLabel('UI/Accessories/Log/Message')])
+
+
+
+    def ShowMessage(self, msgtype):
+        return settings.user.ui.Get('show%slogmessages' % msgtype, 1)
+
+
 
 

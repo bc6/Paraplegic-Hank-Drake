@@ -7,20 +7,20 @@ import form
 import string
 import listentry
 import time
-import draw
 import uiconst
 import uicls
+import localization
 
 class CorpMemberTracking(uicls.Container):
     __guid__ = 'form.CorpMemberTracking'
     __nonpersistvars__ = []
 
     def Load(self, args):
-        toparea = sm.GetService('corpui').LoadTop('ui_7_64_11', mls.UI_CORP_MEMBERLIST, mls.UI_CORP_DELAYED5MINUTES)
+        toparea = sm.GetService('corpui').LoadTop('ui_7_64_11', localization.GetByLabel('UI/Corporations/BaseCorporationUI/MemberList'), localization.GetByLabel('UI/Corporations/Common/UpdateDelay'))
         if not self.sr.Get('inited', 0):
             self.sr.inited = 1
             toppar = uicls.Container(name='options', parent=self, align=uiconst.TOTOP, height=18, top=10)
-            viewOptionsList2 = [(mls.UI_CONTRACTS_ALL, None)]
+            viewOptionsList2 = [(localization.GetByLabel('UI/Common/All'), None)]
             self.sr.roleGroupings = sm.GetService('corp').GetRoleGroupings()
             for grp in self.sr.roleGroupings.itervalues():
                 if grp.roleGroupID in (1, 2):
@@ -30,9 +30,9 @@ class CorpMemberTracking(uicls.Container):
 
 
             i = 0
-            self.sr.fltRole = uicls.Combo(label=mls.UI_GENERIC_ROLE, parent=toppar, options=viewOptionsList2, name='rolegroup', callback=self.OnFilterChange, width=146, pos=(5, 0, 0, 0))
+            self.sr.fltRole = uicls.Combo(label=localization.GetByLabel('UI/Corporations/Common/Role'), parent=toppar, options=viewOptionsList2, name='rolegroup', callback=self.OnFilterChange, width=146, pos=(5, 0, 0, 0))
             i += 1
-            self.sr.fltOnline = c = uicls.Checkbox(text=mls.UI_GENERIC_ONLINEONLY, parent=toppar, configName='online', retval=1, checked=0, align=uiconst.TOPLEFT, callback=self.OnFilterChange, pos=(self.sr.fltRole.width + 16,
+            self.sr.fltOnline = c = uicls.Checkbox(text=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Tracking/OnlineOnly'), parent=toppar, configName='online', retval=1, checked=0, align=uiconst.TOPLEFT, callback=self.OnFilterChange, pos=(self.sr.fltRole.width + 16,
              0,
              250,
              0))
@@ -58,19 +58,19 @@ class CorpMemberTracking(uicls.Container):
 
     def GetLastLoggedOnText(self, numHours):
         if numHours == None:
-            return mls.UI_CORP_MORETHANAMONTH
+            return localization.GetByLabel('UI/Corporations/CorpMemberTracking/MoreThanAMonth')
         else:
             if numHours < 0:
-                return mls.UI_GENERIC_ONLINE
+                return localization.GetByLabel('UI/Corporations/CorpMemberTracking/Online')
             if numHours < 1:
-                return mls.UI_CONTRACTS_LESSTHANANHOUR
+                return localization.GetByLabel('UI/Corporations/CorpMemberTracking/LessThanAnHour')
             if numHours < 24:
-                return '%s %s' % (numHours, mls.UI_GENERIC_HOUR if numHours == 1 else mls.UI_GENERIC_HOURS)
+                return localization.GetByLabel('UI/Corporations/CorpMemberTracking/Hours', hourCount=int(numHours), hours=numHours)
             if numHours < 168:
-                return mls.UI_CORP_LASTWEEK
+                return localization.GetByLabel('UI/Corporations/CorpMemberTracking/LastWeek')
             if numHours < 720:
-                return mls.UI_CORP_LASTMONTH
-            return mls.UI_CORP_MORETHANAMONTH
+                return localization.GetByLabel('UI/Corporations/CorpMemberTracking/LastMonth')
+            return localization.GetByLabel('UI/Corporations/CorpMemberTracking/MoreThanAMonth')
 
 
 
@@ -78,21 +78,21 @@ class CorpMemberTracking(uicls.Container):
         fltRole = self.sr.fltRole.GetValue()
         fltOnline = self.sr.fltOnline.GetValue()
         scrolllist = []
-        header = [mls.NAME,
-         mls.UI_GENERIC_LASTONLINE,
-         mls.UI_CORP_TITLE,
-         mls.UI_GENERIC_BASE,
-         mls.UI_CORP_JOINED]
+        header = [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/CorpMemberName'),
+         localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Tracking/LastOnlineColumnHeader'),
+         localization.GetByLabel('UI/Corporations/Common/Title'),
+         localization.GetByLabel('UI/Corporations/CorporationWindow/Members/CorpMemberBase'),
+         localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Tracking/JoinedColumnHeader')]
         if eve.session.corprole & const.corpRoleDirector > 0:
-            header.extend([mls.UI_GENERIC_SHIP,
-             mls.LOCATION,
-             mls.UI_GENERIC_ONLINE,
-             mls.UI_GENERIC_OFFLINE])
+            header.extend([localization.GetByLabel('UI/Common/Ship'),
+             localization.GetByLabel('UI/Common/Location'),
+             localization.GetByLabel('UI/Common/Online'),
+             localization.GetByLabel('UI/Common/Offline')])
         sm.GetService('loading').Cycle('Loading')
         try:
             if eve.session.corprole & const.corpRoleDirector != const.corpRoleDirector and 0:
                 header = []
-                scrolllist.append(listentry.Get('Text', {'text': mls.UI_CORP_ACCESSDENIED8,
+                scrolllist.append(listentry.Get('Text', {'text': localization.GetByLabel('UI/Corporations/CorporationWindow/Members/AccessDeniedDirectorRoleRequired'),
                  'line': 1}))
             else:
                 memberTracking = sm.GetService('corp').GetMemberTrackingInfo()
@@ -106,19 +106,22 @@ class CorpMemberTracking(uicls.Container):
                     if member.baseID:
                         base = cfg.evelocations.Get(member.baseID).locationName
                     name = cfg.eveowners.Get(member.characterID).ownerName
-                    label = name
-                    label += '<t>%s' % self.GetLastLoggedOnText(member.lastOnline)
-                    label += '<t>%s' % member.title
-                    label += '<t>%s' % base
-                    label += '<t>%s' % util.FmtDate(member.startDateTime, 'ln')
+                    label = '%s<t>%s<t>%s<t>%s<t>%s' % (name,
+                     self.GetLastLoggedOnText(member.lastOnline),
+                     member.title,
+                     base,
+                     util.FmtDate(member.startDateTime, 'ln'))
                     if eve.session.corprole & const.corpRoleDirector > 0:
+                        shipTypeName = localization.GetByLabel('UI/Generic/None')
                         if member.shipTypeID is not None:
-                            label += '<t>%s' % cfg.invtypes.Get(member.shipTypeID).typeName
-                        else:
-                            label += '<t>'
-                        label += '<t>%s' % cfg.evelocations.Get(member.locationID).locationName
-                        label += '<t>%s' % util.FmtDate(member.logonDateTime, 'ls')
-                        label += '<t>%s' % util.FmtDate(member.logoffDateTime, 'ls')
+                            shipTypeName = cfg.invtypes.Get(member.shipTypeID).typeName
+                        locationName = localization.GetByLabel('UI/Generic/Unknown')
+                        if member.locationID is not None:
+                            locationName = cfg.evelocations.Get(member.locationID).locationName
+                        label += '<t>%s<t>%s<t>%s<t>%s' % (shipTypeName,
+                         locationName,
+                         util.FmtDate(member.logonDateTime, 'ls') if member.logonDateTime is not None else localization.GetByLabel('UI/Generic/Unknown'),
+                         util.FmtDate(member.logoffDateTime, 'ls') if member.logoffDateTime is not None else localization.GetByLabel('UI/Generic/Unknown'))
                     data = util.KeyVal()
                     data.charID = member.characterID
                     data.corporationID = member.corporationID
@@ -130,12 +133,12 @@ class CorpMemberTracking(uicls.Container):
                     data.typeID = const.typeCharacterAmarr
                     data.itemID = member.characterID
                     data.slimuser = True
-                    data.Set('sort_%s' % mls.UI_GENERIC_LASTONLINE, member.lastOnline)
+                    data.Set('sort_%s' % localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Tracking/LastOnlineColumnHeader'), member.lastOnline)
                     scrolllist.append(listentry.Get('MemberTracking', data=data))
 
             if 0 == len(scrolllist):
                 header = []
-                scrolllist.append(listentry.Get('Text', {'text': mls.UI_GENERIC_NODATAAVAIL,
+                scrolllist.append(listentry.Get('Text', {'text': localization.GetByLabel('UI/Common/NoDataAvailable'),
                  'line': 1}))
 
         finally:
@@ -166,6 +169,8 @@ class MemberTracking(listentry.User):
         self.sr.label.singleline = 1
         self.sr.namelabel.left = const.defaultPadding
         self.sr.picture.state = uiconst.UI_HIDDEN
+        self.sr.blockedicon.SetAlign(uiconst.CENTERRIGHT)
+        self.sr.blockedicon.top = 0
 
 
 
@@ -177,7 +182,7 @@ class MemberTracking(listentry.User):
 
     def GetHeight(self, *args):
         (node, width,) = args
-        node.height = uix.GetTextHeight(node.label, autoWidth=1, singleLine=1) + 6
+        node.height = uix.GetTextHeight(node.label, singleLine=1) + 6
         return node.height
 
 

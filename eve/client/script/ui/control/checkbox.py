@@ -5,6 +5,7 @@ import uthread
 import uiconst
 import uicls
 import trinity
+TOPMARGIN = 3
 
 class Checkbox(uicls.CheckboxCore):
     __guid__ = 'uicls.Checkbox'
@@ -48,12 +49,12 @@ class Checkbox(uicls.CheckboxCore):
         else:
             align = uiconst.TOTOP
             padding = (leftPad,
-             2,
+             TOPMARGIN,
              rightPad,
              0)
             pos = (0, 0, 0, 0)
             singleline = False
-        self.sr.label = uicls.Label(text='', parent=self, name='text', align=align, fontsize=10, letterspace=1, state=uiconst.UI_DISABLED, padding=padding, pos=pos, uppercase=1, singleline=singleline)
+        self.sr.label = uicls.EveLabelSmall(text='', parent=self, name='text', align=align, state=uiconst.UI_DISABLED, padding=padding, pos=pos, singleline=singleline)
 
 
 
@@ -106,7 +107,7 @@ class Checkbox(uicls.CheckboxCore):
         minHeight = 12
         if self.sr.diode:
             minHeight = 18
-        self.height = max(minHeight, label.textheight + label.top + 1)
+        self.height = max(minHeight, label.textheight + TOPMARGIN * 2)
 
 
 

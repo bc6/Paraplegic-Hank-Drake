@@ -14,14 +14,9 @@ class Hint(uicls.HintCore):
     __guid__ = 'uicls.Hint'
 
     def Prepare_(self):
-        self.sr.textobj = uicls.Label(text='', parent=self, left=8, top=3, width=200, align=uiconst.TOPLEFT, letterspace=1, fontsize=10, state=uiconst.UI_DISABLED)
-        border = uicls.Frame(parent=self, frameConst=uiconst.FRAME_BORDER1_CORNER5, state=uiconst.UI_DISABLED, color=(1.0, 1.0, 1.0, 0.25))
-        frame = uicls.Frame(parent=self, color=(0.0, 0.0, 0.0, 0.75), frameConst=uiconst.FRAME_FILLED_CORNER4, state=uiconst.UI_DISABLED)
-
-
-
-    def Prepare_HintStr_(self, hint):
-        return uiutil.UpperCase(hint)
+        self.sr.textobj = uicls.EveLabelSmall(text='', parent=self, left=8, top=3, width=200, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, color=(1, 1, 1, 1))
+        self.border = uicls.Frame(parent=self, frameConst=uiconst.FRAME_BORDER1_CORNER5, state=uiconst.UI_DISABLED, color=(1.0, 1.0, 1.0, 0.25))
+        self.frame = uicls.Frame(parent=self, color=(0.0, 0.0, 0.0, 0.75), frameConst=uiconst.FRAME_FILLED_CORNER4, state=uiconst.UI_DISABLED)
 
 
 
@@ -263,11 +258,10 @@ class HintEntry(uicls.Container):
         if data.menuGetter:
             self.state = uiconst.UI_NORMAL
             self.GetMenu = data.menuGetter
-        label = uicls.Label(text=data.text, parent=self, left=5, top=1, letterspace=1, fontsize=8, linespace=8, state=uiconst.UI_DISABLED, uppercase=1, idx=0)
+        label = uicls.EveLabelSmall(text=data.text, parent=self, left=5, top=1, state=uiconst.UI_DISABLED, idx=0)
         self.sr.label = label
         if label.textwidth > textMaxWidth:
             label.busy = 1
-            label.autowidth = 0
             label.width = textMaxWidth
             label.busy = 0
             label.text = data.text
@@ -303,15 +297,13 @@ class HintEntry(uicls.Container):
 
 
     def OnMouseEnter(self, *etc):
-        self.sr.label.oldText = self.sr.label.text
-        self.sr.label.text = '<b>%s</b>' % self.sr.label.text
+        self.sr.label.bold = True
 
 
     OnMouseEnter = uiutil.ParanoidDecoMethod(OnMouseEnter, ('sr', 'label'))
 
     def OnMouseExit(self, *etc):
-        if util.GetAttrs(self, 'sr', 'label', 'oldText'):
-            self.sr.label.text = self.sr.label.oldText
+        self.sr.label.bold = False
 
 
     OnMouseExit = uiutil.ParanoidDecoMethod(OnMouseExit, ('sr',))

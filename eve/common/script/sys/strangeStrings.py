@@ -15,7 +15,10 @@ class A:
         elif type(s) is str:
             r = AgentString(s)
         else:
-            raise TypeError, "Can't unpickle strange string of type %s" % type(s)
+            try:
+                r = AgentUnicode(unicode(s))
+            except:
+                raise TypeError, "Can't unpickle strange string of type %s" % type(s)
         r.messageID = messageID
         if formatDict:
             r.formatDict = formatDict

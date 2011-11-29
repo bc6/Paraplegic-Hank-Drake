@@ -1,5 +1,6 @@
 import trinity
 import math
+import localization
 from mapcommon import *
 Y_SCALE = 0.8660254037844386
 MAP_HEIGHT = -100.0
@@ -194,10 +195,10 @@ class HexMapController(object):
         self.currentLayout = layout
         self.currentSize = size
         if colorByStandings:
-            self.legend = [LegendItem(0, mls.UI_FLEET_GOODSTANDING, trinity.TriColor(*COLOR_STANDINGS_GOOD), data=None), LegendItem(1, mls.UI_GENERIC_STANDINGNEUTRAL, trinity.TriColor(*COLOR_STANDINGS_NEUTRAL), data=None), LegendItem(2, mls.UI_SHARED_MAP_BADSTANDINGS, trinity.TriColor(*COLOR_STANDINGS_BAD), data=None)]
+            self.legend = [LegendItem(0, localization.GetByLabel('UI/PeopleAndPlaces/GoodStanding'), trinity.TriColor(*COLOR_STANDINGS_GOOD), data=None), LegendItem(1, localization.GetByLabel('UI/PeopleAndPlaces/StandingNeutral'), trinity.TriColor(*COLOR_STANDINGS_NEUTRAL), data=None), LegendItem(2, localization.GetByLabel('UI/PeopleAndPlaces/BadStanding'), trinity.TriColor(*COLOR_STANDINGS_BAD), data=None)]
         else:
             legend = [ (tile.sovID, tile.color) for tile in self.currentLayout if tile.sovID is not None ]
-            self.legend = [LegendItem(0, mls.GENERIC_UNCLAIMED, trinity.TriColor(*UNCLAIMED_TILE_COLOR), data=None), LegendItem(1, mls.UI_INFLIGHT_CONTESTED, trinity.TriColor(*TIED_TILE_COLOR), data=None)]
+            self.legend = [LegendItem(0, localization.GetByLabel('UI/Inflight/Brackets/SystemUnclaimed'), trinity.TriColor(*UNCLAIMED_TILE_COLOR), data=None), LegendItem(1, localization.GetByLabel('UI/Inflight/Brackets/SystemContested'), trinity.TriColor(*TIED_TILE_COLOR), data=None)]
             factions = []
             for (sovID, color,) in set(legend):
                 name = cfg.eveowners.Get(sovID).name

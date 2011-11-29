@@ -1,6 +1,5 @@
 import base
 import blue
-import draw
 import form
 import listentry
 import log
@@ -13,6 +12,7 @@ import util
 import xtriui
 import uicls
 import uiconst
+import localization
 
 class InsuranceSvc(service.Service):
     __exportedcalls__ = {'CleanUp': [],
@@ -22,7 +22,7 @@ class InsuranceSvc(service.Service):
     __notifyevents__ = []
     __servicename__ = 'insurance'
     __displayname__ = 'Insurance Service'
-    __dependencies__ = []
+    __dependencies__ = ['corp', 'station']
 
     def __init__(self):
         service.Service.__init__(self)
@@ -63,15 +63,15 @@ class InsuranceSvc(service.Service):
     def GetInsuranceMgr(self):
         if self.insurance is not None:
             return self.insurance
-        self.insurance = util.Moniker('insuranceSvc', session.stationid)
-        self.insurance.SetSessionCheck({'stationid': session.stationid})
+        self.insurance = util.Moniker('insuranceSvc', session.stationid2)
+        self.insurance.SetSessionCheck({'stationid2': session.stationid2})
         return self.insurance
 
 
 
     def GetContracts(self):
         self.contracts = {}
-        if eve.session.stationid:
+        if session.stationid2:
             contracts = self.GetInsuranceMgr().GetContracts()
         else:
             contracts = sm.RemoteSvc('insuranceSvc').GetContracts()
@@ -90,15 +90,19 @@ class InsuranceSvc(service.Service):
     def GetInsurancePrice(self, typeID):
         if typeID in self.insurancePrice:
             return self.insurancePrice[typeID]
-        self.insurancePrice[typeID] = self.GetInsuranceMgr().GetInsurancePrice(typeID)
+        if session.stationid2:
+            self.insurancePrice[typeID] = self.GetInsuranceMgr().GetInsurancePrice(typeID)
+        else:
+            self.insurancePrice[typeID] = sm.RemoteSvc('insuranceSvc').GetInsurancePrice(typeID)
         return self.insurancePrice[typeID]
 
 
 
     def GetItems(self):
         self.stuff = {}
-        hangar = eve.GetInventory(const.containerHangar)
-        for item in hangar.List():
+        items = sm.GetService('invCache').GetInventory(const.containerHangar)
+        items = items.List()
+        for item in items:
             if item.categoryID != const.categoryShip:
                 continue
             if not item.singleton:
@@ -108,10 +112,11 @@ class InsuranceSvc(service.Service):
             self.stuff[item.itemID] = item
 
         if eve.session.corprole & (const.corpRoleAccountant | const.corpRoleJuniorAccountant) != 0:
-            office = sm.GetService('corp').GetOffice()
+            office = self.corp.GetOffice()
             if office is not None:
-                hangar = eve.GetInventoryFromId(office.itemID)
-                for item in hangar.List():
+                items = sm.GetService('invCache').GetInventoryFromId(office.itemID, locationID=session.stationid2)
+                items = items.List()
+                for item in items:
                     if item.categoryID != const.categoryShip:
                         continue
                     if not item.singleton:
@@ -129,6 +134,7 @@ class InsuranceWindow(uicls.Window):
     __guid__ = 'form.InsuranceWindow'
     default_width = 400
     default_height = 300
+    default_windowID = 'insurance'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -136,10 +142,10 @@ class InsuranceWindow(uicls.Window):
         self.stuff = {}
         self.SetWndIcon('33_4', mainTop=-8)
         self.SetMinSize([350, 270])
-        self.SetCaption(mls.UI_STATION_INSURANCE)
-        uicls.WndCaptionLabel(text=mls.UI_STATION_INSURANCE, parent=self.sr.topParent, align=uiconst.RELATIVE)
+        self.SetCaption(localization.GetByLabel('UI/Insurance/InsuranceWindow/Title'))
+        uicls.WndCaptionLabel(text=localization.GetByLabel('UI/Insurance/InsuranceWindow/Title'), parent=self.sr.topParent, align=uiconst.RELATIVE)
         self.scope = 'station'
-        btns = uicls.ButtonGroup(btns=[(mls.UI_CMD_INSURE,
+        btns = uicls.ButtonGroup(btns=[(localization.GetByLabel('UI/Insurance/InsuranceWindow/Commands/Insure'),
           self.InsureFromBtn,
           None,
           81)], line=1)
@@ -151,7 +157,7 @@ class InsuranceWindow(uicls.Window):
          const.defaultPadding))
         self.sr.scroll.sr.id = 'insurance'
         self.sr.scroll.multiSelect = 0
-        self.sr.scroll.sr.minColumnWidth = {mls.UI_GENERIC_TYPE: 30}
+        self.sr.scroll.sr.minColumnWidth = {localization.GetByLabel('UI/Common/Type'): 30}
         self.ShowInsuranceInfo()
 
 
@@ -169,12 +175,12 @@ class InsuranceWindow(uicls.Window):
 
     def GetInsuranceName(self, fraction):
         fraction = '%.1f' % fraction
-        return {'0.5': mls.UI_GENERIC_BASIC,
-         '0.6': mls.UI_GENERIC_STANDARD,
-         '0.7': mls.UI_GENERIC_BRONZE,
-         '0.8': mls.UI_GENERIC_COLORSILVER,
-         '0.9': mls.UI_GENERIC_GOLD,
-         '1.0': mls.UI_GENERIC_PLATINUM}.get(fraction, fraction)
+        return {'0.5': localization.GetByLabel('UI/Insurance/QuoteWindow/Basic'),
+         '0.6': localization.GetByLabel('UI/Insurance/QuoteWindow/Standard'),
+         '0.7': localization.GetByLabel('UI/Insurance/QuoteWindow/Bronze'),
+         '0.8': localization.GetByLabel('UI/Insurance/QuoteWindow/Silver'),
+         '0.9': localization.GetByLabel('UI/Insurance/QuoteWindow/Gold'),
+         '1.0': localization.GetByLabel('UI/Insurance/QuoteWindow/Platinum')}.get(fraction, fraction)
 
 
 
@@ -184,9 +190,9 @@ class InsuranceWindow(uicls.Window):
         m = []
         if contract is None:
             if item.ownerID == eve.session.charid or item.ownerID == eve.session.corpid and eve.session.corprole & const.corpRoleAccountant == const.corpRoleAccountant:
-                m = [(mls.UI_CMD_INSURE, self.Insure, (item,))]
+                m = [(localization.GetByLabel('UI/Insurance/InsuranceWindow/Commands/Insure'), self.Insure, (item,))]
         elif contract.ownerID == eve.session.charid:
-            m = [(mls.UI_CMD_CANCELINSURANCE, self.UnInsure, (item,))]
+            m = [(localization.GetByLabel('UI/Insurance/InsuranceWindow/Commands/CancelInsurance'), self.UnInsure, (item,))]
         if m != []:
             m.append(None)
         m += sm.GetService('menu').InvItemMenu(item, 1)
@@ -200,8 +206,9 @@ class InsuranceWindow(uicls.Window):
 
 
     def _ShowInsuranceInfo(self):
-        self.contracts = sm.GetService('insurance').GetContracts()
-        self.stuff = sm.GetService('insurance').GetItems()
+        insurance = sm.GetService('insurance')
+        self.contracts = insurance.GetContracts()
+        self.stuff = insurance.GetItems()
         self.SetHint()
         owners = [eve.session.charid]
         if eve.session.corprole & (const.corpRoleJuniorAccountant | const.corpRoleAccountant) != 0:
@@ -231,9 +238,10 @@ class InsuranceWindow(uicls.Window):
                 contract = None
                 if self.contracts.has_key(item.itemID):
                     contract = self.contracts[item.itemID]
-                name = cfg.invtypes.Get(item.typeID).name
                 if item.ownerID == eve.session.corpid:
-                    name += ' (' + mls.UI_GENERIC_CORP + ')'
+                    name = localization.GetByLabel('UI/Insurance/InsuranceWindow/OwnedByCorporation', typeID=item.typeID)
+                else:
+                    name = cfg.invtypes.Get(item.typeID).name
                 if contract is None:
                     label = '%s<t>%s<t>%s<t>%s<t>%s' % (name,
                      '-',
@@ -254,13 +262,13 @@ class InsuranceWindow(uicls.Window):
                  'GetMenu': self.GetItemMenu}))
 
 
-        self.sr.scroll.Load(contentList=scrolllist, headers=[mls.UI_GENERIC_TYPE,
-         mls.UI_GENERIC_FROMDATE,
-         mls.UI_GENERIC_TODATE,
-         mls.UI_GENERIC_LEVEL,
-         mls.UI_GENERIC_NAME])
+        self.sr.scroll.Load(contentList=scrolllist, headers=[localization.GetByLabel('UI/Common/Type'),
+         localization.GetByLabel('UI/Common/DateWords/FromDate'),
+         localization.GetByLabel('UI/Common/DateWords/ToDate'),
+         localization.GetByLabel('UI/Insurance/InsuranceWindow/Level'),
+         localization.GetByLabel('UI/Insurance/InsuranceWindow/Name')])
         if not len(scrolllist):
-            self.SetHint(mls.UI_STATION_TEXT1)
+            self.SetHint(localization.GetByLabel('UI/Insurance/InsuranceWindow/NothingToInsure'))
 
 
 
@@ -321,15 +329,11 @@ class InsuranceWindow(uicls.Window):
         format = []
         stati = {}
         format.append({'type': 'header',
-         'text': mls.UI_STATION_TEXT2})
+         'text': localization.GetByLabel('UI/Insurance/QuoteWindow/SelectInsuranceLevel')})
         format.append({'type': 'push'})
         insurancePrice = sm.GetService('insurance').GetInsurancePrice(item.typeID)
         for quote in quotes:
-            text = '<b>%s</b><br>%s <b>%s</b> - %s <b>%s</b>' % (self.GetInsuranceName(quote.fraction),
-             mls.UI_GENERIC_COST,
-             util.FmtISK(quote.amount),
-             mls.UI_GENERIC_PAYOUTVALUE,
-             util.FmtISK(quote.fraction * insurancePrice))
+            text = localization.GetByLabel('UI/Insurance/QuoteWindow/Line', name=self.GetInsuranceName(quote.fraction), cost=localization.GetByLabel('UI/Common/Cost'), amount=util.FmtISK(quote.amount), payout=localization.GetByLabel('UI/Insurance/QuoteWindow/EstimatedPayout'), price=util.FmtISK(quote.fraction * insurancePrice))
             format.append({'type': 'checkbox',
              'setvalue': quote.fraction == 0.5,
              'key': str(quote.fraction),
@@ -340,10 +344,10 @@ class InsuranceWindow(uicls.Window):
 
         left = uicore.desktop.width / 2 - 500 / 2
         top = uicore.desktop.height / 2 - 400 / 2
-        retval = uix.HybridWnd(format, mls.UI_STATION_INSURANCEQUOTES, 1, None, uiconst.OKCANCEL, [left, top], 500)
+        retval = uix.HybridWnd(format, localization.GetByLabel('UI/Insurance/QuoteWindow/Title'), 1, None, uiconst.OKCANCEL, [left, top], 500)
         if retval is not None:
             try:
-                sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_INSURING, '', 0, 2)
+                sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Insurance/ProgressWindow/Insuring'), '', 0, 2)
                 blue.pyos.synchro.Yield()
                 fraction = float(retval['quotes'])
                 for quote in quotes:
@@ -369,9 +373,9 @@ class InsuranceWindow(uicls.Window):
 
 
             finally:
-                sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_INSURING, '', 1, 2)
-                blue.pyos.synchro.Sleep(500)
-                sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_INSURING, '', 2, 2)
+                sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Insurance/ProgressWindow/Insuring'), '', 1, 2)
+                blue.pyos.synchro.SleepWallclock(500)
+                sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Insurance/ProgressWindow/Insuring'), '', 2, 2)
                 blue.pyos.synchro.Yield()
 
 

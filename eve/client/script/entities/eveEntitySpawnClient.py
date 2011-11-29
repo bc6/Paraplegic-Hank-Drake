@@ -1,66 +1,50 @@
 import svc
-import uthread
-CQ_NEWBIE_SPAWN = 'NewbieStart'
-CQ_DOOR_SPAWN = 'DoorStart'
-CQ_BALCONY_SPAWN = 'BalconyStart'
-CQ_BEDROOM_SPAWN = 'BedroomStart'
+import geo2
 
-class EveEntitySpawnService(svc.entitySpawnClient):
+class EveEntitySpawnClient(svc.entitySpawnClient):
     __guid__ = 'svc.eveEntitySpawnClient'
     __replaceservice__ = 'entitySpawnClient'
+    __dependencies__ = svc.entitySpawnClient.__dependencies__[:]
+    __dependencies__ += ['clientOnlyPlayerSpawnClient', 'cameraClient']
 
     def Run(self, *etc):
         svc.entitySpawnClient.Run(self, etc)
         self.charMgr = sm.RemoteSvc('charMgr')
-        self.paperDollServer = sm.RemoteSvc('paperDollServer')
 
 
 
-    def _ChooseSpawnLocation(self, worldspaceID, sessionChanges):
+    def _ChooseSpawnLocation(self, worldspaceID, sessionChanges = {}):
         searchTerm = None
         if 'charid' in sessionChanges and sessionChanges['charid'][0] == None:
-            if sm.RemoteSvc('charMgr').GetPrivateInfo(session.charid).logonCount == 0:
-                searchTerm = CQ_NEWBIE_SPAWN
-            else:
-                searchTerm = CQ_BEDROOM_SPAWN
+            searchTerm = const.cef.CQ_NEWBIE_SPAWN
         elif 'stationid' in sessionChanges and sessionChanges['stationid'][0] == None:
-            searchTerm = CQ_BALCONY_SPAWN
-        if searchTerm:
-            worldSpaceTypeID = sm.GetService('worldSpaceClient').GetWorldSpaceTypeIDFromWorldSpaceID(worldspaceID)
-            worldSpaceLocatorRowSet = cfg.worldspaceLocators.get(worldSpaceTypeID, [])
-            for locatorRow in worldSpaceLocatorRowSet:
-                if locatorRow.locatorName == searchTerm:
-                    spawnPoint = (locatorRow.posX, locatorRow.posY, locatorRow.posZ)
-                    spawnRot = (locatorRow.yaw, locatorRow.pitch, locatorRow.roll)
+            searchTerm = const.cef.CQ_BALCONY_SPAWN
+        else:
+            searchTerm = const.cef.CQ_BEDROOM_SPAWN
+        if searchTerm is not None:
+            spawnLocators = sm.GetService('spawnLocationClient').GetSpawnLocationsBySceneID(worldspaceID)
+            for locator in spawnLocators:
+                spawnLocationComponent = locator.GetComponent('spawnLocation')
+                locationType = spawnLocationComponent.spawnLocationType
+                if locationType == searchTerm:
+                    self.cameraClient.RegisterCameraStartupInfo(spawnLocationComponent.cameraYaw, spawnLocationComponent.cameraPitch, spawnLocationComponent.cameraZoom)
+                    spawnPoint = locator.GetComponent('position').position
+                    xyzRot = locator.GetComponent('position').rotation
+                    spawnRot = geo2.QuaternionRotationGetYawPitchRoll(xyzRot)
                     return (spawnPoint, spawnRot)
 
             self.LogWarn('Failed to find the locator:', searchTerm)
         (spawnPoint, spawnRot,) = sm.GetService('worldSpaceClient').GetWorldSpaceSafeSpot(session.worldspaceid)
+        self.LogWarn("Spawn point search term was None which means we don't have a defined spawn", 'location and will revert to the default safe spot')
         return (spawnPoint, spawnRot)
 
 
 
-    def SpawnClientSidePlayer(self, sessionChanges = {}):
-        self.LogInfo('Spawning client side player entity for', session.charid)
-        scene = self.entityService.LoadEntitySceneAndBlock(session.stationid)
-        scene.WaitOnStartupEntities()
-        playerTypeID = cfg.eveowners.Get(session.charid).Type().id
-        serverInfoCalls = []
-        serverInfoCalls.append((self.paperDollServer.GetPaperDollData, (session.charid,)))
-        serverInfoCalls.append((self.charMgr.GetPublicInfo, (session.charid,)))
-        (paperdolldna, pubInfo,) = uthread.parallel(serverInfoCalls)
-        recipeSvc = sm.GetService('entityRecipeSvc')
-        overrides = {}
-        (spawnPoint, spawnRot,) = self._ChooseSpawnLocation(session.worldspaceid, sessionChanges)
-        self.OverridePosition(overrides, spawnPoint, spawnRot)
-        paperDollComponentID = const.cef.PAPER_DOLL_COMPONENT_ID
-        overrides[paperDollComponentID] = {'gender': pubInfo.gender,
-         'dna': paperdolldna,
-         'typeID': playerTypeID}
-        recipe = recipeSvc.GetTypeRecipe(playerTypeID, overrides)
-        spawnedEntity = self.entityService.CreateEntityFromRecipe(scene, recipe, session.charid)
-        scene.CreateAndRegisterEntity(spawnedEntity)
-        self.LogInfo('Client side player entity spawned for', session.charid)
+    def SpawnClientOnlyPlayer(self, scene, change):
+        if not self.entityService.IsClientSideOnly(scene.sceneID):
+            raise RuntimeError('You cannot spawn a client-side only player into a server-side created worldspace.')
+        (spawnPoint, spawnRot,) = self._ChooseSpawnLocation(scene.sceneID, change)
+        self.clientOnlyPlayerSpawnClient.SpawnClientSidePlayer(scene, spawnPoint, spawnRot)
 
 
 

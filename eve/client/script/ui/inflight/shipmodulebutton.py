@@ -13,6 +13,8 @@ import uicls
 import menu
 import uiconst
 import log
+import localization
+import localizationUtil
 cgre = re.compile('chargeGroup\\d{1,2}')
 
 class ModuleButton(uicls.Container):
@@ -103,10 +105,10 @@ class ModuleButton(uicls.Container):
 
         self.sr.leftShadowRamp.state = self.sr.rightShadowRamp.state = uiconst.UI_HIDDEN
         self.sr.ramps.opacity = 0.85
-        self.sr.qtylabel = uicls.Label(text='', parent=self.sr.quantityParent, left=3, top=0, autowidth=False, width=30, letterspace=1, fontsize=9, state=uiconst.UI_DISABLED, uppercase=1, idx=0)
-        self.sr.stacklabel = uicls.Label(text='', parent=self.sr.stackParent, left=5, top=0, autowidth=False, width=30, letterspace=1, fontsize=9, state=uiconst.UI_DISABLED, uppercase=1, idx=0, shadow=[], color=(1.0, 1.0, 1.0, 1))
+        self.sr.qtylabel = uicls.Label(text='', parent=self.sr.quantityParent, fontsize=9, letterspace=1, left=3, top=0, width=30, state=uiconst.UI_DISABLED, idx=0)
+        self.sr.stacklabel = uicls.Label(text='', parent=self.sr.stackParent, fontsize=9, letterspace=1, left=5, top=0, width=30, state=uiconst.UI_DISABLED, idx=0, shadowOffset=(0, 0), color=(1.0, 1.0, 1.0, 1))
         icon = self.sr.overloadBtn
-        icon.sr.hint = mls.UI_CMD_TOGGLEOVERLOAD
+        icon.sr.hint = localization.GetByLabel('UI/Inflight/Overload/hintToggleOverload')
         icon.OnClick = self.ToggleOverload
         icon.OnMouseDown = (self.OLButtonDown, icon)
         icon.OnMouseUp = (self.OLButtonUp, icon)
@@ -253,13 +255,13 @@ class ModuleButton(uicls.Container):
     def PulseGroupHighlight(self):
         pulseSize = 0.4
         opacity = 1.0
-        startTime = blue.os.GetTime()
+        startTime = blue.os.GetSimTime()
         while self.dragging:
             self.sr.groupHighlight.opacity = opacity
-            blue.pyos.synchro.Sleep(200)
+            blue.pyos.synchro.SleepWallclock(200)
             if not self or self.destroyed:
                 break
-            sinWave = math.cos(float(blue.os.GetTime() - startTime) / (0.5 * const.SEC))
+            sinWave = math.cos(float(blue.os.GetSimTime() - startTime) / (0.5 * const.SEC))
             opacity = min(sinWave * pulseSize + (1 - pulseSize / 2), 1)
 
 
@@ -272,7 +274,8 @@ class ModuleButton(uicls.Container):
         imageIndex = max(1, int(damage * 8))
         self.sr.damageState.LoadTexture('res:/UI/Texture/classes/ShipUI/slotDamage_%s.png' % imageIndex)
         self.sr.damageState.state = uiconst.UI_NORMAL
-        self.sr.damageState.hint = '%s: %d%%' % (mls.UI_GENERIC_DAMAGE, self.sr.moduleInfo.damage / self.sr.moduleInfo.hp * 100)
+        amount = self.sr.moduleInfo.damage / self.sr.moduleInfo.hp * 100
+        self.sr.damageState.hint = localization.GetByLabel('UI/Inflight/Overload/hintDamagedModule', preText='', amount=amount)
         sm.GetService('ui').BlinkSpriteA(self.sr.damageState, 1.0, 2000 - 1000 * damage, 2, passColor=0)
 
 
@@ -309,7 +312,7 @@ class ModuleButton(uicls.Container):
 
 
     def GetShell(self):
-        return eve.GetInventoryFromId(eve.session.shipid)
+        return sm.GetService('invCache').GetInventoryFromId(eve.session.shipid)
 
 
 
@@ -393,18 +396,18 @@ class ModuleButton(uicls.Container):
     def BlinkIcon(self, time = None):
         if self.destroyed or self.blinking:
             return 
-        startTime = blue.os.GetTime()
+        startTime = blue.os.GetSimTime()
         if time is not None:
             timeToBlink = time * 10000
         while self.changingAmmo or self.reloadingAmmo or self.waitingForActiveTarget or self.goingOnline or time:
             if time is not None:
-                if blue.os.GetTime() - startTime > timeToBlink:
+                if blue.os.GetSimTime() - startTime > timeToBlink:
                     break
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
             if self.destroyed:
                 return 
             self.icon.SetAlpha(0.25)
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
             if self.destroyed:
                 return 
             self.icon.SetAlpha(1.0)
@@ -477,26 +480,26 @@ class ModuleButton(uicls.Container):
             noOfModules = 1 if self.slaves is None else len(self.slaves) + 1
             noOfCharges = sum([ cand[1] for cand in reloadSingletonCandidates ])
             if noOfCharges >= noOfModules:
-                text = ('%s (%s)' % (mls.UI_CMD_RELOAD_USED, cfg.invtypes.Get(chargeTypeID).typeName), menu.ACTIONSGROUP)
+                text = (localization.GetByLabel('UI/Inflight/ModuleRacks/ReloadUsed', typeId=chargeTypeID), menu.ACTIONSGROUP)
                 m.append((text, self.ReloadAmmo, (reloadSingletonCandidates[-1][0], reloadSingletonCandidates[-1][1], True)))
             noOfCharges = sum([ cand[0] for cand in reloadCandidates ])
             if noOfCharges >= noOfModules:
                 reloadCandidates.sort()
-                text = ('%s (%s)' % (mls.UI_CMD_RELOAD, cfg.invtypes.Get(chargeTypeID).typeName), menu.ACTIONSGROUP)
+                text = (localization.GetByLabel('UI/Inflight/ModuleRacks/Reload', typeID=chargeTypeID), menu.ACTIONSGROUP)
                 m.append((text, self.ReloadAmmo, (reloadCandidates[-1][1], reloadCandidates[-1][2])))
-                m.append((mls.UI_CMD_RELOADALL, self.ReloadAllAmmo))
+                m.append((localization.GetByLabel('UI/Inflight/ModuleRacks/ReloadAll'), self.ReloadAllAmmo))
             m.append(None)
             if self.charge is not None:
-                m.append((mls.UI_CMD_UNLOADTOCARGO, self.UnloadToCargo, (self.charge.itemID,)))
+                m.append((localization.GetByLabel('UI/Inflight/ModuleRacks/UnloadToCargo'), self.UnloadToCargo, (self.charge.itemID,)))
                 m.append(None)
             temp = []
             if len(ammoSingletonList):
                 for l in ammoSingletonList.itervalues():
                     item = l[0]
-                    text = ('%s (%s)' % (cfg.invtypes.Get(item.typeID).name, mls.UI_GENERIC_USED), menu.ACTIONSGROUP)
-                    temp.append((text, (text, self.ChangeAmmoType, (item.typeID, item.stacksize))))
+                    text = (localization.GetByLabel('UI/Inflight/ModuleRacks/AmmoTypeAndStatus', typeID=item.typeID), menu.ACTIONSGROUP)
+                    temp.append((text, self.ChangeAmmoType, (item.typeID, item.stacksize)))
 
-            m.extend(uiutil.SortListOfTuples(temp))
+            m.extend(localizationUtil.Sort(temp, key=lambda x: x[0][0]))
             temp = []
             if len(ammoList):
                 for l in ammoList.itervalues():
@@ -504,15 +507,16 @@ class ModuleButton(uicls.Container):
                     item = l[0]
                     qty = int(moduleType.capacity / cfg.GetItemVolume(item, 1) + 1e-07)
                     if qty:
-                        text = ('%s [%s]' % (cfg.invtypes.Get(item.typeID).name, util.FmtAmt(sumqty)), menu.ACTIONSGROUP)
-                        temp.append((text, (text, self.ChangeAmmoType, (item.typeID, item.stacksize))))
+                        text = localization.GetByLabel('UI/Inflight/ModuleRacks/AmmoTypeAndQuantity', typeID=item.typeID, sumqty=sumqty)
+                        text = (text, menu.ACTIONSGROUP)
+                        temp.append((text, self.ChangeAmmoType, (item.typeID, item.stacksize)))
 
-            m.extend(uiutil.SortListOfTuples(temp))
+            m.extend(localizationUtil.Sort(temp, key=lambda x: x[0][0]))
             m.append(None)
             if self.autoreload == 0:
-                m.append((mls.UI_CMD_AUTORELOADON, self.SetAutoReload, (1,)))
+                m.append((localization.GetByLabel('UI/Inflight/ModuleRacks/AutoReloadOn'), self.SetAutoReload, (1,)))
             else:
-                m.append((mls.UI_CMD_AUTORELOADOFF, self.SetAutoReload, (0,)))
+                m.append((localization.GetByLabel('UI/Inflight/ModuleRacks/AutoReloadOff'), self.SetAutoReload, (0,)))
         overloadLock = settings.user.ui.Get('lockOverload', 0)
         itemID = self.sr.moduleInfo.itemID
         slaves = self.dogmaLocation.GetSlaveModules(itemID, session.shipid)
@@ -520,34 +524,34 @@ class ModuleButton(uicls.Container):
             effect = self.sr.moduleInfo.effects[key]
             if self.IsEffectRepeatable(effect) and groupID not in (const.groupMiningLaser, const.groupStripMiner):
                 if self.autorepeat == 0:
-                    m.append((mls.UI_CMD_AUTOREPEATON, self.SetRepeat, (1000,)))
+                    m.append((localization.GetByLabel('UI/Inflight/ModuleRacks/AutoRepeatOn'), self.SetRepeat, (1000,)))
                 else:
-                    m.append((mls.UI_CMD_AUTOREPEATOFF, self.SetRepeat, (0,)))
+                    m.append((localization.GetByLabel('UI/Inflight/ModuleRacks/AutoRepeatOff'), self.SetRepeat, (0,)))
             if effect.effectName == 'online':
                 m.append(None)
                 if not slaves:
                     if effect.isActive:
-                        m.append((mls.UI_CMD_PUTOFFLINE, self.ChangeOnline, (0,)))
+                        m.append((localization.GetByLabel('UI/Inflight/ModuleRacks/PutModuleOffline'), self.ChangeOnline, (0,)))
                     else:
-                        m.append((mls.UI_CMD_PUTONLINE, self.ChangeOnline, (1,)))
+                        m.append((localization.GetByLabel('UI/Inflight/ModuleRacks/PutModuleOnline'), self.ChangeOnline, (1,)))
             if not overloadLock and effect.effectCategory == const.dgmEffOverload:
                 active = effect.isActive
                 if active:
-                    m.append((mls.UI_CMD_TOGGLEOVERLOAD + ' (%s)' % mls.UI_GENERIC_ACTIVE, self.Overload, (0, effect)))
+                    m.append((localization.GetByLabel('UI/Inflight/Overload/menuToggleOverloadActive'), self.Overload, (0, effect)))
                 else:
-                    m.append((mls.UI_CMD_TOGGLEOVERLOAD + ' (%s)' % mls.UI_GENERIC_INACTIVE, self.Overload, (1, effect)))
-                m.append((mls.UI_CMD_OVERLOADRACK, self.OverloadRack, ()))
-                m.append((mls.UI_CMD_STOPOVERLOADRACK, self.StopOverloadRack, ()))
+                    m.append((localization.GetByLabel('UI/Inflight/Overload/menuToggleOverloadInactive'), self.Overload, (1, effect)))
+                m.append((localization.GetByLabel('UI/Inflight/OverloadRack'), self.OverloadRack, ()))
+                m.append((localization.GetByLabel('UI/Inflight/StopOverloadingRack'), self.StopOverloadRack, ()))
 
         moduleDamage = self.GetModuleDamage()
         if moduleDamage:
             if self.isBeingRepaired:
-                m.append((mls.UI_CMD_CANCELREPAIR, self.CancelRepair, ()))
+                m.append((localization.GetByLabel('UI/Inflight/menuCancelRepair'), self.CancelRepair, ()))
             else:
-                m.append((mls.UI_CMD_REPAIR, self.RepairModule, ()))
+                m.append((localization.GetByLabel('UI/Commands/Repair'), self.RepairModule, ()))
         if slaves:
-            m.append((mls.UI_CMD_UNLINK, self.UnlinkModule, ()))
-        m += [(mls.UI_CMD_SHOWINFO, sm.GetService('info').ShowInfo, (self.sr.moduleInfo.typeID,
+            m.append((localization.GetByLabel('UI/Fitting/ClearGroup'), self.UnlinkModule, ()))
+        m += [(localization.GetByLabel('UI/Commands/ShowInfo'), sm.GetService('info').ShowInfo, (self.sr.moduleInfo.typeID,
            self.sr.moduleInfo.itemID,
            0,
            self.sr.moduleInfo))]
@@ -595,8 +599,8 @@ class ModuleButton(uicls.Container):
         if self.sr.moduleInfo.itemID not in itemIDs:
             return 
         chargeGroupID = self.stateManager.GetType(chargeTypeID).groupID
-        eve.Message('LauncherLoadDelay', {'ammo': (GROUPID, chargeGroupID),
-         'launcher': (GROUPID, self.sr.moduleInfo.groupID),
+        eve.Message('LauncherLoadDelay', {'ammoGroupName': (GROUPID, chargeGroupID),
+         'launcherGroupName': (GROUPID, self.sr.moduleInfo.groupID),
          'time': time / 1000})
         self.BlinkIcon(time)
 
@@ -688,7 +692,7 @@ class ModuleButton(uicls.Container):
         shiplayer = uicore.layer.shipui
         if not shiplayer:
             return 
-        blue.pyos.synchro.Sleep(1000)
+        blue.pyos.synchro.SleepSim(1000)
         if shiplayer and shiplayer:
             shiplayer.CheckPendingReloads()
 
@@ -778,7 +782,7 @@ class ModuleButton(uicls.Container):
                     effect.Activate()
                     self.goingOnline = 1
                     uthread.new(self.BlinkIcon)
-                    blue.pyos.synchro.Sleep(5000)
+                    blue.pyos.synchro.SleepSim(5000)
                     if not self or self.destroyed:
                         return 
                     self.goingOnline = 0
@@ -999,7 +1003,7 @@ class ModuleButton(uicls.Container):
         eve.Message('NeocomButtonEnter')
         self.ShowAccuracy()
         self.sr.accuracyTimer = base.AutoTimer(1000, self.ShowAccuracy)
-        uthread.pool('ShipMobuleButton::OnMouseEnter-->UpdateTargetingRanges', sm.GetService('tactical').UpdateTargetingRanges, self.sr.moduleInfo)
+        uthread.pool('ShipMobuleButton::OnMouseEnter-->UpdateTargetingRanges', sm.GetService('tactical').UpdateTargetingRanges, self.sr.moduleInfo, self.charge)
 
 
 
@@ -1033,64 +1037,75 @@ class ModuleButton(uicls.Container):
         if uicore.uilib.mouseOver != self:
             self.sr.accuracyTimer = None
             return 
+        params = {'WeaponGroupText': '',
+         'TypeText': '',
+         'StatusText': '',
+         'GoingOnlineText': '',
+         'WaitingForTargetText': '',
+         'ChangingAmmoText': '',
+         'ReloadingText': '',
+         'ChargesText': '',
+         'OverloadText': '',
+         'ModuleDamageText': '',
+         'AccuracyText': '',
+         'CrystalDamageText': '',
+         'ShortCutText': ''}
         info = ''
         slaves = self.dogmaLocation.GetSlaveModules(self.sr.moduleInfo.itemID, session.shipid)
         if slaves:
-            numModules = len(slaves) + 1
-            info += '<b>%s</b><br>' % (mls.UI_SHARED_WEAPONLINK_WEAPONGROUP % {'numModules': numModules})
-        info += '%s: %s' % (mls.UI_GENERIC_TYPE, self.typeName)
+            params['WeaponGroupText'] = localization.GetByLabel('UI/Inflight/ModuleRacks/WeaponLinking', numModules=len(slaves) + 1)
+        params['TypeText'] = localization.GetByLabel('UI/Inflight/ModuleRacks/WeaponType', typeName=self.typeName)
         defEff = self.GetDefaultEffect()
         if defEff:
-            status = mls.UI_GENERIC_INACTIVE
+            params['StatusText'] = localization.GetByLabel('UI/Inflight/ModuleRacks/ModuleInactive')
             if defEff.isActive:
-                status = mls.UI_GENERIC_ACTIVE
-        else:
-            status = ''
-        info += '<br>%s: %s' % (mls.UI_GENERIC_STATUS, status)
+                params['StatusText'] = localization.GetByLabel('UI/Inflight/ModuleRacks/ModuleActive')
         if self.goingOnline:
-            info += ', %s' % mls.UI_INFLIGHT_GOINGONLINE.lower()
+            params['GoingOnlineText'] = localization.GetByLabel('UI/Inflight/ModuleRacks/ModuleGoingOnline')
         if self.waitingForActiveTarget:
-            info += ', %s' % mls.UI_INFLIGHT_WAITINGFORACTIVETARGET.lower()
+            params['WaitingForTargetText'] = localization.GetByLabel('UI/Inflight/ModuleRacks/ModuleWaitingForTarget')
         if self.changingAmmo:
-            info += ', %s' % mls.UI_INFLIGHT_CHANGINGAMMO.lower()
+            params['ChangingAmmoText'] = localization.GetByLabel('UI/Inflight/ModuleRacks/ModuleChangingAmmo')
         if self.reloadingAmmo:
-            info += ', %s' % mls.UI_INFLIGHT_RELOADINGAMMO.lower()
+            params['ReloadingText'] = localization.GetByLabel('UI/Inflight/ModuleRacks/ModuleReloading')
         if cfg.IsChargeCompatible(self.sr.moduleInfo):
             if self.charge and self.charge.typeID:
-                chargetype = cfg.invtypes.Get(self.charge.typeID)
-                info += '<br>' + mls.UI_INFLIGHT_CHARGEPCS % {'qty': util.FmtAmt(self.charge.stacksize),
-                 'type': chargetype.name}
+                p = {'qty': self.charge.stacksize,
+                 'typeID': self.charge.typeID}
+                params['ChargesText'] = localization.GetByLabel('UI/Inflight/ModuleRacks/ModuleChargesPieces', **p)
             else:
-                info += '<br>%s' % mls.UI_INFLIGHT_CHARGENOCHARGE
+                params['ChargesText'] = localization.GetByLabel('UI/Inflight/ModuleRacks/ModuleNoCharges')
         for key in self.sr.moduleInfo.effects.iterkeys():
             effect = self.sr.moduleInfo.effects[key]
             if effect.effectCategory == const.dgmEffOverload:
                 if effect.isActive:
-                    info += '<br>%s: %s' % (mls.UI_GENERIC_OVERLOADSTATUS, mls.UI_GENERIC_ACTIVE)
+                    params['OverloadText'] = localization.GetByLabel('UI/Inflight/ModuleRacks/ModuleOverloadActive')
                 else:
-                    info += '<br>%s: %s' % (mls.UI_GENERIC_OVERLOADSTATUS, mls.UI_GENERIC_INACTIVE)
+                    params['OverloadText'] = localization.GetByLabel('UI/Inflight/ModuleRacks/ModuleOverloadInactive')
 
         moduleDamage = self.GetModuleDamage()
         if moduleDamage:
-            info += '<br>%s: %d%%' % (mls.UI_GENERIC_DAMAGE, moduleDamage / self.sr.moduleInfo.hp * 100)
+            amount = moduleDamage / self.sr.moduleInfo.hp * 100
+            params['ModuleDamageText'] = localization.GetByLabel('UI/Inflight/Overload/hintDamagedModule', preText='<br>', amount=amount)
         accuracy = self.GetAccuracy()
         acc = ''
         if accuracy is not None:
-            info += '<br>%s: %.2f' % (mls.UI_GENERIC_ACCURACY, accuracy[0])
+            params['AccuracyText'] = localization.GetByLabel('UI/Inflight/ModuleRacks/ModuleAccuracy', accuracy=accuracy[0])
         if self.charge:
             godmaInfo = sm.GetService('godma').GetItem(self.charge.itemID)
             if godmaInfo and godmaInfo.crystalsGetDamaged:
-                info += '<br>%s: %.2f' % (mls.UI_GENERIC_DAMAGE, godmaInfo.damage)
+                damage = godmaInfo.damage
+                params['CrystalDamageText'] = localization.GetByLabel('UI/Inflight/ModuleRacks/ModuleCrystalDamage', damage=damage)
         pos = uicore.layer.shipui.GetPosFromFlag(self.sr.moduleInfo.flagID)
         if pos:
             hiMedLo = ('High', 'Medium', 'Low')[pos[0]]
             slotno = pos[1] + 1
             shortcut = uicore.cmd.GetShortcutStringByFuncName('CmdActivate%sPowerSlot%i' % (hiMedLo, slotno))
             if not shortcut:
-                shortcut = mls.UI_GENERIC_NONE
-            info += '<br>%s: %s' % (mls.UI_GENERIC_SHORTCUT, shortcut)
+                shortcut = localization.GetByLabel('UI/Inflight/ModuleRacks/ModuleShortcutNone')
+            params['ShortCutText'] = localization.GetByLabel('UI/Inflight/ModuleRacks/ModuleShortcut', shortcut=shortcut)
         if self and getattr(self, 'sr', None):
-            self.sr.hint = info
+            self.sr.hint = localization.GetByLabel('UI/Inflight/ModuleRacks/hintModuleInfo', **params)
 
 
 
@@ -1299,7 +1314,7 @@ class ModuleButton(uicls.Container):
 
 
     def DelayButtonUnlockForDeactivate(self, sleepTimeSec):
-        blue.pyos.synchro.Sleep(sleepTimeSec * 1000)
+        blue.pyos.synchro.SleepSim(sleepTimeSec * 1000)
         if self.state == uiconst.UI_DISABLED:
             self.state = uiconst.UI_NORMAL
         self.isPendingUnlockForDeactivate = False
@@ -1367,7 +1382,7 @@ class ModuleButton(uicls.Container):
             return 
         self.ramp_active = True
         self.sr.ramps.state = uiconst.UI_DISABLED
-        portionDone = blue.os.TimeDiffInMs(startTime) % durationInMilliseconds / durationInMilliseconds
+        portionDone = blue.os.TimeDiffInMs(startTime, blue.os.GetSimTime()) % durationInMilliseconds / durationInMilliseconds
         rampUpInit = min(1.0, max(0.0, portionDone * 2))
         rampDownInit = min(1.0, max(0.0, portionDone * 2 - 1.0))
         while self and not self.destroyed and self.ramp_active:
@@ -1392,7 +1407,7 @@ class ModuleButton(uicls.Container):
                 while not self.destroyed:
                     prePercent = percent
                     try:
-                        percent = min(blue.os.TimeDiffInMs(startTime) % halfTheTime / halfTheTime, 1.0)
+                        percent = min(blue.os.TimeDiffInMs(startTime, blue.os.GetSimTime()) % halfTheTime / halfTheTime, 1.0)
                     except:
                         percent = 1.0
                     if prePercent > percent:
@@ -1432,9 +1447,9 @@ class ModuleButton(uicls.Container):
         moduleID = self.sr.moduleInfo.itemID
         rampTimers = shiplayer.sr.rampTimers
         if not rampTimers.has_key(moduleID):
-            now = blue.os.GetTime()
+            now = blue.os.GetSimTime()
             default = getattr(self.def_effect, 'startTime', now)
-            if blue.os.TimeDiffInMs(default) > 1000.0:
+            if blue.os.TimeDiffInMs(default, now) > 1000.0:
                 rampTimers[moduleID] = default
             else:
                 rampTimers[moduleID] = now

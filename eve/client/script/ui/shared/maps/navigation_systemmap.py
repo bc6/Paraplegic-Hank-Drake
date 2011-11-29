@@ -7,6 +7,7 @@ import blue
 import geo2
 import maputils
 import uicls
+import form
 from collections import namedtuple
 import uiconst
 import log
@@ -73,8 +74,8 @@ def RayToPlaneIntersection(P, d, Q, n):
 
 
 
-class SystemmapNav(uicls.Container):
-    __guid__ = 'form.SystemmapNav'
+class SystemMapLayer(uicls.LayerCore):
+    __guid__ = 'uicls.SystemMapLayer'
     __update_on_reload__ = 0
     __notifyevents__ = ['OnStateChange']
 
@@ -136,7 +137,7 @@ class SystemmapNav(uicls.Container):
             endPos = maputils.GetMyPos()
             endPos.Scale(SYSTEMMAP_SCALE)
         if endPos:
-            now = blue.os.GetTime()
+            now = blue.os.GetSimTime()
             cameraParent = sm.GetService('camera').GetCameraParent('systemmap')
             if cameraParent.translationCurve:
                 startPos = cameraParent.translationCurve.GetVectorAt(now)
@@ -171,7 +172,8 @@ class SystemmapNav(uicls.Container):
                 if alt:
                     self.ScaleProbesAroundCenter()
                 else:
-                    self.MoveActiveProbe(lib.x, lib.y)
+                    (x, y,) = (uicore.ScaleDpi(uicore.uilib.x), uicore.ScaleDpi(uicore.uilib.y))
+                    self.MoveActiveProbe(x, y)
                     self.ShowGrid()
                 return 
             if self.sr.rangeProbe:
@@ -180,12 +182,12 @@ class SystemmapNav(uicls.Container):
                 return 
         if lib.leftbtn and not lib.rightbtn:
             fov = camera.fieldOfView
-            camera.OrbitParent(-dx * fov * 0.4, dy * fov * 0.4)
+            camera.OrbitParent(-dx * fov * 0.1, dy * fov * 0.1)
             sm.GetService('systemmap').SortBubbles()
         elif lib.rightbtn and not lib.leftbtn:
             cameraParent = sm.GetService('camera').GetCameraParent('systemmap')
             if cameraParent.translationCurve:
-                pos = cameraParent.translationCurve.GetVectorAt(blue.os.GetTime())
+                pos = cameraParent.translationCurve.GetVectorAt(blue.os.GetSimTime())
                 cameraParent.translationCurve = None
                 cameraParent.useCurves = 0
                 cameraParent.translation = pos
@@ -213,7 +215,7 @@ class SystemmapNav(uicls.Container):
         systemmap.CollapseBubbles()
         systemmap.SortBubbles()
         sm.GetService('bracket').ResetOverlaps()
-        scannerWnd = sm.GetService('window').GetWindow('scanner')
+        scannerWnd = form.Scanner.GetIfOpen()
         (picktype, pickobject,) = self.GetPick()
         if uicore.uilib.leftbtn and pickobject:
             if pickobject.name[:6] == 'cursor':
@@ -223,7 +225,9 @@ class SystemmapNav(uicls.Container):
                     probe = scannerWnd.GetProbeSphere(probeID)
                     if probe:
                         cursorAxis = cursorName[6:]
-                        self.PickAxis(uicore.uilib.x, uicore.uilib.y, probe, cursorAxis.lower())
+                        x = uicore.ScaleDpi(uicore.uilib.x)
+                        y = uicore.ScaleDpi(uicore.uilib.y)
+                        self.PickAxis(x, y, probe, cursorAxis.lower())
                         if scannerWnd:
                             scannerWnd.HighlightProbeIntersections()
                         return 
@@ -245,7 +249,7 @@ class SystemmapNav(uicls.Container):
             self._isPicked = False
         if button == 1:
             if uicore.uilib.leftbtn and (self.sr.movingProbe or self.sr.rangeProbe):
-                scannerWnd = sm.GetService('window').GetWindow('scanner')
+                scannerWnd = form.Scanner.GetIfOpen()
                 if scannerWnd:
                     scannerWnd.CancelProbeMoveOrScaling()
                     if self.sr.movingProbe:
@@ -258,8 +262,7 @@ class SystemmapNav(uicls.Container):
             uiutil.SetOrder(self, -1)
             return 
         uiutil.SetOrder(self, -1)
-        uicore.layer.systemmap.state = uiconst.UI_PICKCHILDREN
-        scannerWnd = sm.GetService('window').GetWindow('scanner')
+        scannerWnd = form.Scanner.GetIfOpen()
         if scannerWnd and self.sr.rangeProbe:
             uthread.new(scannerWnd.RegisterProbeRange, self.sr.rangeProbe)
         if scannerWnd and self.sr.movingProbe:
@@ -286,9 +289,10 @@ class SystemmapNav(uicls.Container):
 
 
     def ScaleProbesAroundCenter(self):
-        mousePos = geo2.Vector(uicore.uilib.x, uicore.uilib.y, 0)
+        (x, y,) = (uicore.ScaleDpi(uicore.uilib.x), uicore.ScaleDpi(uicore.uilib.y))
+        mousePos = geo2.Vector(x, y, 0)
         probeData = sm.GetService('scanSvc').GetProbeData()
-        scannerWnd = sm.GetService('window').GetWindow('scanner')
+        scannerWnd = form.Scanner.GetIfOpen()
         if scannerWnd is None:
             return 
         probes = scannerWnd.GetProbeSpheres()
@@ -366,7 +370,8 @@ class SystemmapNav(uicls.Container):
 
 
     def GetDotInCameraAlignedPlaneFromProbe(self, probeControl):
-        (ray, start,) = GetRayAndPointFromScreen(uicore.uilib.x, uicore.uilib.y)
+        (x, y,) = (uicore.ScaleDpi(uicore.uilib.x), uicore.ScaleDpi(uicore.uilib.y))
+        (ray, start,) = GetRayAndPointFromScreen(x, y)
         camera = sm.GetService('sceneManager').GetRegisteredCamera('systemmap')
         viewDir = trinity.TriVector(0.0, 0.0, 1.0)
         viewDir.TransformQuaternion(camera.rotationAroundParent)
@@ -387,18 +392,18 @@ class SystemmapNav(uicls.Container):
         self._tryToHilight_Busy = True
         (picktype, pickobject,) = self.GetPick()
         if pickobject and hasattr(pickobject, 'name') and pickobject.name[:6] == 'cursor':
-            scannerWnd = sm.GetService('window').GetWindow('scanner')
+            scannerWnd = form.Scanner.GetIfOpen()
             if scannerWnd:
                 scannerWnd.HiliteCursor(pickobject)
             self.HighlightBorderOfProbe()
             if uicore.uilib.mouseOver == self:
                 uicore.uilib.SetCursor(uiconst.UICURSOR_SELECTDOWN)
         else:
-            scannerWnd = sm.GetService('window').GetWindow('scanner')
+            scannerWnd = form.Scanner.GetIfOpen()
             if scannerWnd:
                 scannerWnd.HiliteCursor()
             pickedProbeControl = self.TryPickSphereBorder()
-            blue.pyos.synchro.Sleep(100)
+            blue.pyos.synchro.SleepWallclock(100)
             if self.destroyed:
                 return 
             _pickedProbeControl = self.TryPickSphereBorder()
@@ -420,10 +425,11 @@ class SystemmapNav(uicls.Container):
 
     def TryPickSphereBorder(self):
         matches = []
-        scannerWnd = sm.GetService('window').GetWindow('scanner')
+        scannerWnd = form.Scanner.GetIfOpen()
         if scannerWnd:
-            (ray, start,) = GetRayAndPointFromScreen(uicore.uilib.x, uicore.uilib.y)
-            (pickRadiusRay, pickRadiusStart,) = GetRayAndPointFromScreen(uicore.uilib.x - 10, uicore.uilib.y)
+            (x, y,) = (uicore.ScaleDpi(uicore.uilib.x), uicore.ScaleDpi(uicore.uilib.y))
+            (ray, start,) = GetRayAndPointFromScreen(x, y)
+            (pickRadiusRay, pickRadiusStart,) = GetRayAndPointFromScreen(x - 30, y)
             camera = sm.GetService('sceneManager').GetRegisteredCamera('systemmap')
             viewDir = trinity.TriVector(0.0, 0.0, 1.0)
             viewDir.TransformQuaternion(camera.rotationAroundParent)
@@ -451,7 +457,7 @@ class SystemmapNav(uicls.Container):
 
 
     def HighlightBorderOfProbe(self, probeControl = None):
-        scannerWnd = sm.GetService('window').GetWindow('scanner')
+        scannerWnd = form.Scanner.GetIfOpen()
         if scannerWnd:
             probes = scannerWnd.GetProbeSpheres()
             for (_probeID, _probeControl,) in probes.iteritems():
@@ -501,7 +507,7 @@ class SystemmapNav(uicls.Container):
 
     def ScaleActiveProbe(self, *args):
         if self.sr.rangeProbe:
-            scannerWnd = sm.GetService('window').GetWindow('scanner')
+            scannerWnd = form.Scanner.GetIfOpen()
             if scannerWnd:
                 scannerWnd.ScaleProbe(self.sr.rangeProbe, self.GetDotInCameraAlignedPlaneFromProbe(self.sr.rangeProbe))
 
@@ -511,7 +517,7 @@ class SystemmapNav(uicls.Container):
         if self.activeManipAxis and self.targetPlaneNormal and self.sr.movingProbe:
             (ray, start,) = GetRayAndPointFromScreen(x, y)
             diff = self._DiffProjectedPoint(ray, start)
-            scannerWnd = sm.GetService('window').GetWindow('scanner')
+            scannerWnd = form.Scanner.GetIfOpen()
             if scannerWnd:
                 diff = geo2.Vector(*diff)
                 diff *= 1.0 / SYSTEMMAP_SCALE
@@ -549,7 +555,7 @@ class SystemmapNav(uicls.Container):
         YZ = bool(self.activeManipAxis == 'yz')
         XY = bool(self.activeManipAxis == 'xy')
         if self.sr.movingProbe and (XZ or YZ or XY):
-            scannerWnd = sm.GetService('window').GetWindow('scanner')
+            scannerWnd = form.Scanner.GetIfOpen()
             if scannerWnd:
                 scannerWnd.ShowDistanceRings(self.sr.movingProbe, self.activeManipAxis)
 
@@ -557,7 +563,7 @@ class SystemmapNav(uicls.Container):
 
     def GetPick(self):
         scene2 = sm.GetService('sceneManager').GetRegisteredScene2('systemmap')
-        (x, y,) = (uicore.uilib.x, uicore.uilib.y)
+        (x, y,) = (uicore.ScaleDpi(uicore.uilib.x), uicore.ScaleDpi(uicore.uilib.y))
         if scene2:
             (projection, view, viewport,) = uix.GetFullscreenProjectionViewAndViewport()
             pick = scene2.PickObject(x, y, projection, view, viewport)

@@ -9,9 +9,17 @@ import uthread
 
 class HintCore(uicls.Container):
     __guid__ = 'uicls.HintCore'
+    default_fontsize = 10
+    default_fontStyle = None
+    default_fontFamily = None
+    default_fontPath = None
 
     def ApplyAttributes(self, attributes):
         uicls.Container.ApplyAttributes(self, attributes)
+        self.fontStyle = attributes.get('fontStyle', self.default_fontStyle)
+        self.fontFamily = attributes.get('fontFamily', self.default_fontFamily)
+        self.fontPath = attributes.get('fontPath', self.default_fontPath)
+        self.fontsize = attributes.get('fontsize', self.default_fontsize)
         self.opacity = 0.0
         self.SetSize(128, 16)
         self.Prepare_()
@@ -19,7 +27,7 @@ class HintCore(uicls.Container):
 
 
     def Prepare_(self):
-        self.sr.textobj = uicls.Label(parent=self, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, pos=(8, 3, 200, 0), autowidth=1, autoheight=1, letterspace=1, fontsize=10)
+        self.sr.textobj = uicls.Label(parent=self, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, pos=(8, 3, 200, 0), letterspace=1, fontStyle=self.fontStyle, fontFamily=self.fontFamily, fontPath=self.fontPath, fontsize=self.fontsize)
         self.sr.underlay = uicls.Frame(parent=self, name='__underlay', frameConst=uiconst.FRAME_FILLED_CORNER0, color=(0.0, 0.0, 0.0, 1.0))
 
 
@@ -53,7 +61,7 @@ class HintCore(uicls.Container):
 
     def _LoadHintFromItemThread(self, item, hint):
         if self.opacity == 0.0:
-            blue.pyos.synchro.Sleep(100.0)
+            blue.pyos.synchro.SleepWallclock(100.0)
         else:
             blue.pyos.synchro.Yield()
         if self.destroyed:
@@ -75,6 +83,8 @@ class HintCore(uicls.Container):
 
 
     def LoadHint(self, hint = None, abLeft = None, abRight = None, abTop = None, abBottom = None):
+        if self.destroyed:
+            return 
         if hint and not isinstance(hint, (str, unicode)):
             log.LogWarn('ShowHint only supports strings as hint', hint)
             return 
@@ -84,9 +94,7 @@ class HintCore(uicls.Container):
             return 
         to = self.sr.textobj
         to.busy = 1
-        hint = '<color=0xffffffff>' + hint.replace('\t', '   ').replace('<t>', '   ').strip() + '</color>'
-        hint = self.Prepare_HintStr_(hint)
-        hint = hint.replace('&LT;', '&lt;').replace('&GT;', '&gt;').replace('&AMP;', '&amp;')
+        hint = hint.replace('\t', '    ').replace('<t>', '    ')
         if bool(hint != to.text):
             to.width = 200
             to.height = 0
@@ -122,10 +130,10 @@ class HintCore(uicls.Container):
     def FadeOpacityThread(self, toOpacity):
         self._newOpacity = None
         ndt = 0.0
-        start = blue.os.GetTime()
+        start = blue.os.GetWallclockTime()
         startOpacity = self.opacity
         while ndt != 1.0:
-            ndt = min(float(blue.os.TimeDiffInMs(start)) / float(250.0), 1.0)
+            ndt = min(float(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime())) / float(250.0), 1.0)
             self.opacity = min(1.0, max(0.0, mathUtil.Lerp(startOpacity, toOpacity, ndt)))
             if toOpacity == 1.0:
                 self.Show()

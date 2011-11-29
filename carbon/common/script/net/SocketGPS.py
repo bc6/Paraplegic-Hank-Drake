@@ -12,6 +12,7 @@ import bluepy
 import locks
 import macho
 import iocp
+import localization
 mylog = log.Channel('GPS', 'socket')
 gai = socket.getaddrinfo
 
@@ -30,6 +31,8 @@ if not usingIOCP:
     stacklessio.ApplySettings({'useSmartWakeup': usesmartwakeup,
      'usePendingCalls': usependingcalls,
      'useThreadDispatch': usethreaddispatch})
+blue.os.UseNewSleepMode(prefs.GetValue('useNewSleepMode', 0))
+blue.os.CarbonIoFastWakeup(prefs.GetValue('carbonIoFastWakeup', 0))
 stacklessioVersion = prefs.GetValue('stacklessioVersion', 0)
 stacklessioNobufProb = prefs.GetValue('stacklessioNobufProb', 0.0)
 stacklessioUseNoblock = prefs.GetValue('stacklessioUseNoblock', 1)
@@ -38,6 +41,20 @@ socket.apply_settings({'version': stacklessioVersion,
  'nobufProb': stacklessioNobufProb,
  'useNoblock': stacklessioUseNoblock,
  'allocChunkSize': stacklessioAllocChunkSize})
+GPSSTATS_TIME_SAMPLING_PERIODS = [1,
+ 5,
+ 60,
+ 600]
+GPSSTATS_PACKETSREAD_PERIODS = GPSSTATS_TIME_SAMPLING_PERIODS
+GPSSTATS_BYTESREAD_PERIODS = GPSSTATS_TIME_SAMPLING_PERIODS
+GPSSTATS_PACKETSWRITTEN_PERIODS = GPSSTATS_TIME_SAMPLING_PERIODS
+GPSSTATS_BYTESWRITTEN_PERIODS = GPSSTATS_TIME_SAMPLING_PERIODS
+GPSSTATS_COUNT_SAMPLING_PERIODS = [1,
+ 5,
+ 50,
+ 500]
+GPSSTATS_BYTESREADPERPACKET_PERIODS = GPSSTATS_COUNT_SAMPLING_PERIODS
+GPSSTATS_BYTESWRITTENPERPACKET_PERIODS = GPSSTATS_COUNT_SAMPLING_PERIODS
 
 class SocketTransportFactory(gps.GPSTransportFactory):
     __guid__ = 'gps.SocketTransportFactory'
@@ -75,9 +92,9 @@ class SocketTransportFactory(gps.GPSTransportFactory):
         try:
             port = int(port)
         except Exception as e:
-            raise GPSBadAddress(mls.UI_GENERIC_NETCLIENTGPS_GPSBADADDRESS_MSG3, e)
+            raise GPSBadAddress(localization.GetByLabel('/Carbon/MachoNet/SpecifiedAddressBogus'), e)
         if port < 1 or port > 65535:
-            raise GPSBadAddress(mls.UI_GENERIC_NETCLIENTGPS_GPSBADADDRESS_MSG1)
+            raise GPSBadAddress(localization.GetByLabel('/Carbon/MachoNet/SpecifiedPortNotvalid'))
         try:
             s.bind((address, port))
             s.listen(socket.SOMAXCONN)
@@ -101,17 +118,17 @@ class SocketTransportFactory(gps.GPSTransportFactory):
             (host, port,) = address.split(':')
             port = int(port)
             if port < 1 or port > 65535:
-                raise GPSBadAddress(mls.UI_GENERIC_NETCLIENTGPS_GPSBADADDRESS_MSG1)
+                raise GPSBadAddress(localization.GetByLabel('/Carbon/MachoNet/SpecifiedPortNotvalid'))
         except ValueError as e:
-            raise GPSBadAddress(mls.UI_GENERIC_NETCLIENTGPS_GPSBADADDRESS_MSG2, e)
+            raise GPSBadAddress(localization.GetByLabel('/Carbon/MachoNet/SpecifiedPortNotValidNotInt'), e)
         except Exception as e:
-            raise GPSBadAddress(mls.UI_GENERIC_NETCLIENTGPS_GPSBADADDRESS_MSG3, e)
+            raise GPSBadAddress(localization.GetByLabel('/Carbon/MachoNet/SpecifiedAddressBogus'), e)
         try:
             s.connect((host, port))
         except socket.gaierror as e:
-            raise GPSBadAddress(mls.UI_GENERIC_NETCLIENTGPS_GPSTRANSPORTCLOSED_MSG1, e)
+            raise GPSBadAddress(localization.GetByLabel('/Carbon/MachoNet/CouldNotConnectToAddress'), e)
         except socket.error as e:
-            raise GPSTransportClosed(mls.UI_GENERIC_NETCLIENTGPS_GPSTRANSPORTCLOSED_MSG1, exception=e)
+            raise GPSTransportClosed(localization.GetByLabel('/Carbon/MachoNet/CouldNotConnectToAddress'), exception=e)
         if self.MaxPacketSize:
             s.setmaxpacketsize(self.MaxPacketSize)
         return self.Transport()(s)
@@ -199,12 +216,28 @@ class SocketTransport(gps.GPSTransport):
         self.localaddress = '%s:%s' % socket.getsockname()
         self.socket = socket
         self.closeReason = None
+        self.statsBytesReadPerPacket = macho.EWMA.FromSampleCounts(GPSSTATS_BYTESREADPERPACKET_PERIODS)
+        self.statsBytesWrittenPerPacket = macho.EWMA.FromSampleCounts(GPSSTATS_BYTESWRITTENPERPACKET_PERIODS)
+        self.statsBytesRead = macho.EWMA.FromSampleCounts(GPSSTATS_BYTESREAD_PERIODS)
+        self.statsBytesWritten = macho.EWMA.FromSampleCounts(GPSSTATS_BYTESWRITTEN_PERIODS)
+        self.statsPacketsRead = macho.EWMA.FromSampleCounts(GPSSTATS_PACKETSREAD_PERIODS)
+        self.statsPacketsWritten = macho.EWMA.FromSampleCounts(GPSSTATS_PACKETSWRITTEN_PERIODS)
+
+
+
+    def StatsRepr(self):
+        return '([bs][pkts][bpp] RD [%s][%s][%s] WR [%s][%s][%s])' % (self.statsBytesRead,
+         self.statsPacketsRead,
+         self.statsBytesReadPerPacket,
+         self.statsBytesWritten,
+         self.statsPacketsWritten,
+         self.statsBytesWrittenPerPacket)
 
 
 
     def __repr__(self):
         if self.socket:
-            return '<%s at addr %s:%s %s:%s>' % ((self.__guid__,) + self.socket.getsockname() + self.socket.getpeername())
+            return '<%s at addr %s:%s %s:%s, %s>' % ((self.__guid__,) + self.socket.getsockname() + self.socket.getpeername() + (self.StatsRepr(),))
         else:
             return '<%s (closed)>' % self.__guid__
 
@@ -221,12 +254,15 @@ class SocketTransport(gps.GPSTransport):
         try:
             self.socket.send(packet)
         except socket.error as e:
-            self.Close(mls.UI_GENERIC_NETCLIENTGPS_NETCLIENTTRANSPORTCLOSE_MSG1, exception=e)
+            self.Close(localization.GetByLabel('/Carbon/MachoNet/ConnectionWasClosed'), exception=e)
             raise GPSTransportClosed(**self.closeReason)
         except Exception as e:
-            self.Close(mls.UI_GENERIC_NETCLIENTGPS_NETCLIENTTRANSPORTCLOSE_MSG2, exception=e)
+            self.Close(localization.GetByLabel('/Carbon/MachoNet/SocketWasClosed'), exception=e)
             log.LogTraceback()
             raise GPSTransportClosed(**self.closeReason)
+        self.statsBytesWrittenPerPacket.AddSample(len(packet))
+        self.statsBytesWritten.Add(len(packet))
+        self.statsPacketsWritten.Add()
 
 
 
@@ -237,17 +273,20 @@ class SocketTransport(gps.GPSTransport):
             r = self.socket.recv(bufsize, flags)
         except socket.error as e:
             if e[0] in (10053, 10054, 995):
-                self.Close(mls.UI_GENERIC_NETCLIENTGPS_NETCLIENTTRANSPORTCLOSE_MSG2, exception=e)
+                self.Close(localization.GetByLabel('/Carbon/MachoNet/SocketWasClosed'), exception=e)
             else:
                 log.LogException()
-                self.Close(mls.UI_GENERIC_NETCLIENTGPS_NETCLIENTTRANSPORTCLOSE_MSG3, exception=e)
+                self.Close(localization.GetByLabel('/Carbon/MachoNet/SomethingHappenedSocketWasClosed'), exception=e)
             raise GPSTransportClosed(**self.closeReason)
         except Exception as e:
-            self.Close(mls.UI_GENERIC_NETCLIENTGPS_NETCLIENTTRANSPORTCLOSE_MSG4, exception=e)
+            self.Close(localization.GetByLabel('/Carbon/MachoNet/SomethingHappenedSocketWasClosed'), exception=e)
             raise 
         if not r:
-            self.Close(mls.UI_GENERIC_NETCLIENTGPS_NETCLIENTTRANSPORTCLOSE_MSG1)
+            self.Close(localization.GetByLabel('/Carbon/MachoNet/ConnectionWasClosed'))
             raise GPSTransportClosed(**self.closeReason)
+        self.statsBytesReadPerPacket.AddSample(len(r))
+        self.statsBytesRead.Add(len(r))
+        self.statsPacketsRead.Add()
         return r
 
 
@@ -355,11 +394,14 @@ class SocketPacketTransport(SocketTransport):
         except socket.error as e:
             if e[0] == errno.WSAENOBUFS:
                 log.LogException()
-            self.Close(mls.UI_GENERIC_NETCLIENTGPS_NETCLIENTTRANSPORTCLOSE_MSG1, exception=e)
+            self.Close(localization.GetByLabel('/Carbon/MachoNet/ConnectionWasClosed'), exception=e)
             raise GPSTransportClosed(**self.closeReason)
         except Exception as e:
-            self.Close(mls.UI_GENERIC_NETCLIENTGPS_NETCLIENTTRANSPORTCLOSE_MSG2, exception=e)
+            self.Close(localization.GetByLabel('/Carbon/MachoNet/SocketWasClosed'), exception=e)
             raise 
+        self.statsBytesWrittenPerPacket.AddSample(len(packet))
+        self.statsBytesWritten.Add(len(packet))
+        self.statsPacketsWritten.Add()
 
 
 
@@ -372,18 +414,21 @@ class SocketPacketTransport(SocketTransport):
             except socket.error as e:
                 if e[0] == errno.WSAENOBUFS:
                     log.LogException()
-                self.Close(mls.UI_GENERIC_NETCLIENTGPS_NETCLIENTTRANSPORTCLOSE_MSG2, exception=e)
+                self.Close(localization.GetByLabel('/Carbon/MachoNet/SocketWasClosed'), exception=e)
                 raise GPSTransportClosed(**self.closeReason)
             except Exception as e:
                 if isinstance(e, RuntimeError) and e.args and 'too large a packet' in e.args[0]:
-                    self.Close(mls.UI_GENERIC_NETCLIENTGPS_NETCLIENTTRANSPORTCLOSE_MSG1, exception=e)
+                    self.Close(localization.GetByLabel('/Carbon/MachoNet/ConnectionWasClosed'), exception=e)
                     raise GPSTransportClosed(**self.closeReason)
-                self.Close(mls.UI_GENERIC_NETCLIENTGPS_NETCLIENTTRANSPORTCLOSE_MSG3, exception=e)
+                self.Close(localization.GetByLabel('/Carbon/MachoNet/SomethingHappenedSocketWasClosed'), exception=e)
                 log.LogTraceback()
                 raise 
             if r is None:
-                self.Close(mls.UI_GENERIC_NETCLIENTGPS_NETCLIENTTRANSPORTCLOSE_MSG1)
+                self.Close(localization.GetByLabel('/Carbon/MachoNet/ConnectionWasClosed'))
                 raise GPSTransportClosed(**self.closeReason)
+            self.statsBytesReadPerPacket.AddSample(len(r))
+            self.statsBytesRead.Add(len(r))
+            self.statsPacketsRead.Add()
             return r
 
 
@@ -527,4 +572,6 @@ class SSLSocketPacketTransport(SocketPacketTransport):
 
 
 
+exports = {'gps.GPSSTATS_TIME_SAMPLING_PERIODS': GPSSTATS_TIME_SAMPLING_PERIODS,
+ 'gps.GPSSTATS_COUNT_SAMPLING_PERIODS': GPSSTATS_COUNT_SAMPLING_PERIODS}
 

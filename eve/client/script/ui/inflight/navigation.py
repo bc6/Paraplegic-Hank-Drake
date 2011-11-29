@@ -5,31 +5,27 @@ import uix
 import uiutil
 import mathUtil
 import blue
-import form
-import util
-import base
 import service
 import state
 import uicls
 import uiconst
+import localization
 
-class InflightNav(uicls.Container):
-    __guid__ = 'form.InflightNav'
+class InflightLayer(uicls.LayerCore):
+    __guid__ = 'uicls.InflightLayer'
 
     def ApplyAttributes(self, attributes):
-        uicls.Container.ApplyAttributes(self, attributes)
+        uicls.LayerCore.ApplyAttributes(self, attributes)
         self.looking = 1
         self.locked = 0
         self.zoomlooking = 0
         self.fovready = 0
         self.resetfov = 0
         self.prefov = None
-        self.scope = 'inflight'
         self.align = uiconst.TOALL
         self.notdbl = 0
         self.sr.tcursor = None
         self.sr.clicktime = None
-        self.zoomcursor = None
         self.hoverbracket = None
         self.blockDisable = 0
         self.movingCursor = None
@@ -41,17 +37,11 @@ class InflightNav(uicls.Container):
         sceneManager = sm.GetService('sceneManager')
         self.maxFov = sceneManager.maxFov
         self.minFov = sceneManager.minFov
-
-
-
-    def Startup(self):
         self.sr.tcursor = uicls.Container(name='targetingcursor', parent=self, align=uiconst.ABSOLUTE, width=1, height=1, state=uiconst.UI_HIDDEN)
         uicls.Line(parent=self.sr.tcursor, align=uiconst.RELATIVE, left=10, width=3000, height=1)
         uicls.Line(parent=self.sr.tcursor, align=uiconst.TOPRIGHT, left=10, width=3000, height=1)
         uicls.Line(parent=self.sr.tcursor, align=uiconst.RELATIVE, top=10, width=1, height=3000)
         uicls.Line(parent=self.sr.tcursor, align=uiconst.BOTTOMLEFT, top=10, width=1, height=3000)
-        sm.StartService('posAnchor')
-        sm.StartService('systemmap')
 
 
 
@@ -75,7 +65,7 @@ class InflightNav(uicls.Container):
 
     def GetSelfMenu(self):
         cam = sm.GetService('sceneManager').GetRegisteredCamera('default')
-        if eve.session.shipid and cam.parent and getattr(cam.parent, 'translationCurve', None) is not None and cam.parent.translationCurve.id == eve.session.shipid:
+        if cam is not None and eve.session.shipid and cam.parent and getattr(cam.parent, 'translationCurve', None) is not None and cam.parent.translationCurve.id == eve.session.shipid:
             return sm.GetService('menu').CelestialMenu(eve.session.shipid)
         return self.GetMenu()
 
@@ -92,7 +82,6 @@ class InflightNav(uicls.Container):
 
     def _OnClose(self):
         uicls.Container._OnClose(self)
-        self.CloseZoomCursor()
         if not uicore.cmd.IsUIHidden():
             uicore.layer.main.state = uiconst.UI_PICKCHILDREN
 
@@ -103,11 +92,11 @@ class InflightNav(uicls.Container):
         self.downpos = (uicore.uilib.x, uicore.uilib.y)
         if not self.blockDisable and not uicore.cmd.IsUIHidden():
             uicore.layer.main.state = uiconst.UI_DISABLED
-        sm.GetService('systemmap').CollapseBubbles()
-        sm.GetService('systemmap').SortBubbles()
         sm.GetService('bracket').ResetOverlaps()
         self.notdbl = 0
         camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
+        if camera is None:
+            return 
         if uicore.uilib.rightbtn:
             sm.GetService('target').CancelTargetOrder()
             if getattr(self, 'prefov', None) is None:
@@ -117,8 +106,8 @@ class InflightNav(uicls.Container):
         if pickobject and hasattr(pickobject, 'translationCurve') and hasattr(pickobject.translationCurve, 'id'):
             uthread.pool('navigation::OnMouseDown', sm.GetService('menu').TryExpandActionMenu, pickobject.translationCurve.id, uicore.uilib.x, uicore.uilib.y, self)
         if uicore.uilib.leftbtn:
-            if sm.IsServiceRunning('scenario') and sm.StartService('scenario').IsActive():
-                self.movingCursor = sm.StartService('scenario').GetPickAxis()
+            if sm.IsServiceRunning('scenario') and sm.GetService('scenario').IsActive():
+                self.movingCursor = sm.GetService('scenario').GetPickAxis()
             if pickobject:
                 if sm.GetService('posAnchor').IsActive():
                     if pickobject.name[:6] == 'cursor':
@@ -160,7 +149,7 @@ class InflightNav(uicls.Container):
             (x, y,) = (uicore.uilib.x, uicore.uilib.y)
             if uicore.uilib.rightbtn or uicore.uilib.mouseTravel > 6:
                 return 
-            cameraSvc = sm.StartService('camera')
+            cameraSvc = sm.GetService('camera')
             if cameraSvc.IsFreeLook():
                 (picktype, pickobject,) = self.GetPick()
                 if pickobject:
@@ -168,22 +157,21 @@ class InflightNav(uicls.Container):
                 return 
             scene = sm.GetService('sceneManager').GetRegisteredScene('default')
             camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
-            proj = camera.projection
-            view = camera.view
-            pickDir = scene.PickInfinity(x, y, proj, view)
-            if pickDir:
-                bp = sm.GetService('michelle').GetRemotePark()
-                if bp is not None:
-                    if solarsystemID != eve.session.solarsystemid:
-                        return 
-                    try:
-                        bp.GotoDirection(pickDir.x, pickDir.y, pickDir.z)
-                    except RuntimeError as what:
-                        if what.args[0] != 'MonikerSessionCheckFailure':
-                            raise what
-            shipui = uicore.layer.shipui
-            if shipui.isopen:
-                shipui.UpdateSpeed()
+            if camera is not None:
+                proj = camera.projection
+                view = camera.view
+                pickDir = scene.PickInfinity(x, y, proj, view)
+                if pickDir:
+                    bp = sm.GetService('michelle').GetRemotePark()
+                    if bp is not None:
+                        if solarsystemID != eve.session.solarsystemid:
+                            return 
+                        try:
+                            bp.GotoDirection(pickDir.x, pickDir.y, pickDir.z)
+                        except RuntimeError as what:
+                            if what.args[0] != 'MonikerSessionCheckFailure':
+                                raise what
+            uicore.layer.shipui.UpdateSpeed()
 
         finally:
             uthread.UnLock(self)
@@ -196,8 +184,9 @@ class InflightNav(uicls.Container):
             self._isPicked = False
         if not self.blockDisable and not uicore.cmd.IsUIHidden():
             uicore.layer.main.state = uiconst.UI_PICKCHILDREN
-        sm.GetService('systemmap').SortBubbles()
         camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
+        if camera is None:
+            return 
         if not uicore.uilib.rightbtn:
             if self.zoomlooking and self.resetfov and camera.fieldOfView != self.prefov:
                 uthread.new(self.ResetFov)
@@ -209,7 +198,7 @@ class InflightNav(uicls.Container):
             self.fovready = 0
         if button == 0 and not uicore.uilib.rightbtn:
             mt = self.GetMouseTravel()
-            cameraSvc = sm.StartService('camera')
+            cameraSvc = sm.GetService('camera')
             freeLookMove = cameraSvc.IsFreeLook() and uicore.uilib.Key(uiconst.VK_MENU)
             if not (mt and mt > 5 or freeLookMove):
                 (picktype, pickobject,) = self.GetPick()
@@ -251,7 +240,7 @@ class InflightNav(uicls.Container):
 
     def OnMouseWheel(self, *args):
         camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
-        if camera.__typename__ == 'EveCamera':
+        if camera is not None and camera.__typename__ == 'EveCamera':
             camera.Dolly(uicore.uilib.dz * 0.001 * abs(camera.translationFromParent.z))
             camera.translationFromParent.z = sm.GetService('camera').CheckTranslationFromParent(camera.translationFromParent.z)
         return 1
@@ -288,22 +277,19 @@ class InflightNav(uicls.Container):
             if eve.session.role & service.ROLE_CONTENT:
                 sm.GetService('scenario').MoveCursor(self.movingCursor, lib.dx, lib.dy, camera)
                 return 
-        if not alt or not ctrl:
-            self.CloseZoomCursor()
         if (self.looking or self.zoomlooking) and camera.__typename__ == 'EveCamera':
             dx = lib.dx
             dy = lib.dy
             fov = camera.fieldOfView
-            cameraSvc = sm.StartService('camera')
+            cameraSvc = sm.GetService('camera')
             if alt and cameraSvc.IsFreeLook():
                 leftBtn = lib.leftbtn and not lib.rightbtn and not lib.midbtn
                 rightBtn = lib.rightbtn and not lib.leftbtn and not lib.midbtn
                 midBtn = lib.rightbtn and lib.leftbtn or lib.midbtn
                 if leftBtn:
                     camera.OrbitParent(-dx * fov * 0.2, -dy * fov * 0.2)
-                    sm.GetService('systemmap').SortBubbles()
                 if rightBtn:
-                    cameraSvc = sm.StartService('camera')
+                    cameraSvc = sm.GetService('camera')
                     camera.Dolly(-0.01 * dy * abs(camera.translationFromParent.z))
                     camera.translationFromParent.z = cameraSvc.CheckTranslationFromParent(camera.translationFromParent.z)
                 if midBtn:
@@ -316,7 +302,6 @@ class InflightNav(uicls.Container):
                 self.fovready = self.zoomlooking = 1
             if lib.leftbtn and not lib.rightbtn:
                 camera.OrbitParent(-dx * fov * 0.2, dy * fov * 0.2)
-                sm.GetService('systemmap').SortBubbles()
             if lib.leftbtn and lib.rightbtn:
                 if self.fovready and self.zoomlooking:
                     camera.fieldOfView = dy * 0.01 + fov
@@ -336,19 +321,19 @@ class InflightNav(uicls.Container):
                             camera.fieldOfView = self.minFov
                     else:
                         camera.OrbitParent(-dx * fov * 0.2, 0.0)
-                        if uicore.uilib.leftbtn:
-                            sm.GetService('systemmap').SortBubbles()
 
 
 
     def ResetFov(self):
         if self.prefov is not None:
             camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
+            if camera is None:
+                return 
             to = self.prefov
             fr = camera.fieldOfView
-            (start, ndt,) = (blue.os.GetTime(), 0.0)
+            (start, ndt,) = (blue.os.GetSimTime(), 0.0)
             while ndt != 1.0:
-                ndt = min(blue.os.TimeDiffInMs(start) / 1000.0, 1.0)
+                ndt = min(blue.os.TimeDiffInMs(start, blue.os.GetSimTime()) / 1000.0, 1.0)
                 camera.fieldOfView = mathUtil.Lerp(fr, to, ndt)
                 blue.pyos.synchro.Yield()
 
@@ -369,34 +354,11 @@ class InflightNav(uicls.Container):
 
 
 
-    def ShowZoomCursor(self):
-        if uicore.registry.GetFocus() == self:
-            uthread.new(self._ShowZoomCursor)
-
-
-
-    def _ShowZoomCursor(self):
-        blue.pyos.synchro.Sleep(750)
-        if not uicore.uilib.Key(uiconst.VK_CONTROL):
-            return 
-        if self.zoomcursor is None or self.zoomcursor.destroyed:
-            self.zoomcursor = xtriui.CursorZoom(state=uiconst.UI_NORMAL)
-            self.zoomcursor.Startup()
-
-
-
-    def CloseZoomCursor(self):
-        if self.zoomcursor is not None and not self.zoomcursor.destroyed:
-            self.zoomcursor.Close()
-            self.zoomcursor = None
-
-
-
     def GetPick(self):
         if not trinity.app.IsActive():
             return (None, None)
         scene2 = sm.GetService('sceneManager').GetRegisteredScene2('default')
-        (x, y,) = (uicore.uilib.x, uicore.uilib.y)
+        (x, y,) = (uicore.ScaleDpi(uicore.uilib.x), uicore.ScaleDpi(uicore.uilib.y))
         if scene2:
             (projection, view, viewport,) = uix.GetFullscreenProjectionViewAndViewport()
             pick = scene2.PickObject(x, y, projection, view, viewport)
@@ -407,6 +369,7 @@ class InflightNav(uicls.Container):
 
 
     def OnMouseHover(self, *args):
+        return 
         (picktype, pickobject,) = self.GetPick()
         if pickobject and hasattr(pickobject, 'translationCurve') and hasattr(pickobject.translationCurve, 'id'):
             itemID = pickobject.translationCurve.id
@@ -424,6 +387,8 @@ class InflightNav(uicls.Container):
             return []
         m = []
         cam = sm.GetService('sceneManager').GetRegisteredCamera('default')
+        if cam is None:
+            return 
         if not itemID:
             (picktype, pickobject,) = self.GetPick()
             if pickobject and hasattr(pickobject, 'translationCurve') and hasattr(pickobject.translationCurve, 'id'):
@@ -431,16 +396,16 @@ class InflightNav(uicls.Container):
             if pickobject:
                 if sm.GetService('posAnchor').IsActive():
                     if pickobject.name[:6].lower() == 'cursor':
-                        m.append((mls.UI_CMD_ANCHORHERE, sm.GetService('posAnchor').SubmitAnchorPosSelect, ()))
+                        m.append((localization.GetByLabel('UI/Inflight/POS/AnchorHere'), sm.GetService('posAnchor').SubmitAnchorPosSelect, ()))
                         m.append(None)
-                        m.append((mls.UI_CMD_CANCELANCHORING, sm.GetService('posAnchor').CancelAchorPosSelect, ()))
+                        m.append((localization.GetByLabel('UI/Inflight/POS/CancelAnchoring'), sm.GetService('posAnchor').CancelAchorPosSelect, ()))
                         return m
         if not itemID:
             mm = []
             if not (eve.rookieState and eve.rookieState < 32):
                 mm = self.GetSpaceMenu().GetMenu()
-            m += [(mls.UI_CMD_RESETCAMERA, sm.GetService('camera').ResetCamera, ())]
-            m += [None, [mls.UI_CMD_SHOWSSINMAPBR, sm.GetService('menu').ShowInMapBrowser, (eve.session.solarsystemid2,)], None]
+            m += [(localization.GetByLabel('UI/Inflight/ResetCamera'), sm.GetService('camera').ResetCamera, ())]
+            m += [None, [localization.GetByLabel('UI/Inflight/ShowSystemInMapBrowser'), sm.GetService('menu').ShowInMapBrowser, (eve.session.solarsystemid2,)], None]
             return m + mm
         bp = sm.GetService('michelle').GetBallpark()
         if not bp:

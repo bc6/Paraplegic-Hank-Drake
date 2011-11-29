@@ -63,6 +63,7 @@ class AudioService(service.Service):
 
         self.audioEmitterComponentsByScene = collections.defaultdict(dict)
         self.audioEmitterPositionsByComponent = {}
+        self.audioEmitterComponentGroupsByScene = collections.defaultdict(lambda : collections.defaultdict(list))
         trinity.SetDirectSoundPtr(audio2.GetDirectSoundPtr())
         self.AppRun()
         if enabled:
@@ -101,7 +102,8 @@ class AudioService(service.Service):
                 gameWorld = gameWorldClient.GetGameWorld(session.worldspaceid)
                 sceneID = player.scene.sceneID
             if playerPos and gameWorld and sceneID:
-                for (entityID, audioEntity,) in self.audioEmitterComponentsByScene[sceneID].iteritems():
+                audioEntities = set(self.audioEmitterPositionsByComponent.values()).intersection(self.audioEmitterComponentsByScene[sceneID].values())
+                for audioEntity in audioEntities:
                     src = self.audioEmitterPositionsByComponent[audioEntity].position
                     p = None
                     if gps.GetEntityDistanceSquaredFromPoint(player, src) > 1e-05:
@@ -114,7 +116,7 @@ class AudioService(service.Service):
                     else:
                         audioEntity.emitter.SetObstructionAndOcclusion(0, 0.0, 0.0)
 
-            blue.pyos.synchro.Sleep(pollInterval)
+            blue.pyos.synchro.SleepWallclock(pollInterval)
 
 
 
@@ -187,7 +189,7 @@ class AudioService(service.Service):
 
     @funcDeco.CallInNewThread(context='^AudioService::AudioBusDeathCallback')
     def AudioBusDeathCallback(self, audioEmitter):
-        blue.synchro.Sleep(2000)
+        blue.synchro.SleepWallclock(2000)
         for (outputChannel, emitterWeakRef,) in self.busChannels.iteritems():
             if emitterWeakRef == audioEmitter:
                 self.busChannels[outputChannel] = None
@@ -250,13 +252,40 @@ class AudioService(service.Service):
 
 
 
-    def SendEntityEventBySoundID(self, entity, event):
+    def SendEntityEventBySoundID(self, entity, soundID):
         if not entity:
+            log.LogError('Trying to play an audio on an entity but got None sent in instead of entity instance')
+            return 
+        if not self.IsActivated():
+            self.LogInfo('Audio inactive - skipping sound id', soundID)
             return 
         audioEmitterComponent = entity.GetComponent('audioEmitter')
-        sound = cfg.sounds.GetIfExists(event)
-        if audioEmitterComponent and sound:
-            audioEmitterComponent.emitter.SendEvent(unicode(sound))
+        soundEventName = cfg.sounds.GetIfExists(soundID)
+        if audioEmitterComponent and soundEventName:
+            if soundEventName.startswith('wise:/'):
+                soundEventName = soundEventName[6:]
+            audioEmitterComponent.emitter.SendEvent(unicode(soundEventName))
+        elif not audioEmitterComponent:
+            log.LogError('Trying to play audio', soundID, 'on entity', entity.entityID, 'that does not have an audioEmitter component')
+        else:
+            log.LogError('Could not find audio resource with ID', soundID)
+
+
+
+    def SendEntityEvent(self, entity, event):
+        if not entity:
+            log.LogError('Trying to play an audio on an entity but got None sent in instead of entity instance')
+            return 
+        if not self.IsActivated():
+            self.LogInfo('Audio inactive - skipping sound event', event)
+            return 
+        if event.startswith('wise:/'):
+            event = event[6:]
+        audioEmitterComponent = entity.GetComponent('audioEmitter')
+        if audioEmitterComponent:
+            audioEmitterComponent.emitter.SendEvent(unicode(event))
+        else:
+            log.LogError('Trying to play audio on entity', entity.entityID, 'that does not have an audioEmitter component')
 
 
 
@@ -351,6 +380,9 @@ class AudioService(service.Service):
         component = audio.AudioEmitterComponent()
         component.initialEventName = state.get(audio.INITIAL_EVENT_NAME, None)
         component.initialSoundID = state.get(audio.INITIAL_SOUND_ID, None)
+        component.groupName = state.get(audio.EMITTER_GROUP_NAME, None)
+        if component.groupName == '':
+            component.groupName = None
         component.emitter = None
         return component
 
@@ -358,10 +390,12 @@ class AudioService(service.Service):
 
     def PackUpForSceneTransfer(self, component, destinationSceneID):
         state = {}
-        if self.initialEventName:
-            state[audio.INITIAL_EVENT_NAME] = self.initialEventName
-        if self.initialSoundID:
-            state[audio.INITIAL_SOUND_ID] = self.initialSoundID
+        if component.initialEventName:
+            state[audio.INITIAL_EVENT_NAME] = component.initialEventName
+        if component.initialSoundID:
+            state[audio.INITIAL_SOUND_ID] = component.initialSoundID
+        if component.groupName:
+            state[audio.EMITTER_GROUP_NAME] = component.groupName
         return True
 
 
@@ -369,19 +403,35 @@ class AudioService(service.Service):
     def UnPackFromSceneTransfer(self, component, entity, state):
         component.initialEventName = state.get(audio.INITIAL_EVENT_NAME, None)
         component.initialSoundID = state.get(audio.INITIAL_SOUND_ID, None)
+        component.groupName = state.get(audio.EMITTER_GROUP_NAME, None)
+        if component.groupName == '':
+            component.groupName = None
         return component
 
 
 
     def SetupComponent(self, entity, component):
-        component.emitter = audio2.AudEmitter('AudEmitter_' + str(entity.entityID))
         self.audioEmitterComponentsByScene[entity.scene.sceneID][entity.entityID] = component
-        positionComponent = entity.GetComponent('position')
         component.positionObserver = None
-        if positionComponent:
-            self.audioEmitterPositionsByComponent[component] = positionComponent
-            component.positionObserver = GameWorld.PlacementObserverWrapper(component.emitter)
-            positionComponent.RegisterPlacementObserverWrapper(component.positionObserver)
+        if component.groupName is None:
+            component.emitter = audio2.AudEmitter('AudEmitter_' + str(entity.entityID))
+            positionComponent = entity.GetComponent('position')
+            if positionComponent:
+                self.audioEmitterPositionsByComponent[component] = positionComponent
+                component.positionObserver = GameWorld.PlacementObserverWrapper(component.emitter)
+                positionComponent.RegisterPlacementObserverWrapper(component.positionObserver)
+        else:
+            groupedEntities = self.audioEmitterComponentGroupsByScene[entity.scene.sceneID][component.groupName]
+            if len(groupedEntities) == 0:
+                component.emitter = audio2.AudEmitterMulti('Multi_' + str(component.groupName))
+                component.positionObserver = GameWorld.MultiPlacementObserverWrapper(component.emitter)
+            else:
+                component.emitter = groupedEntities[0].emitter
+                component.positionObserver = groupedEntities[0].positionObserver
+            groupedEntities.append(component)
+            positionComponent = entity.GetComponent('position')
+            if positionComponent:
+                component.positionObserver.AddPositionComponent(positionComponent)
         if component.initialEventName:
             component.emitter.SendEvent(unicode(component.initialEventName))
         if component.initialSoundID:
@@ -396,7 +446,8 @@ class AudioService(service.Service):
         if paperdollComponent and paperdollComponent.doll and paperdollComponent.doll.GetDoll():
 
             def OnPaperdollUpdateDoneClosure():
-                self.UpdateComponentSwitchesWithDoll(component, paperdollComponent.doll)
+                if component and paperdollComponent and paperdollComponent.doll:
+                    self.UpdateComponentSwitchesWithDoll(component, paperdollComponent.doll)
 
 
             paperdollComponent.doll.GetDoll().AddUpdateDoneListener(OnPaperdollUpdateDoneClosure)
@@ -426,11 +477,23 @@ class AudioService(service.Service):
         del self.audioEmitterComponentsByScene[entity.scene.sceneID][entity.entityID]
         if component in self.audioEmitterPositionsByComponent:
             del self.audioEmitterPositionsByComponent[component]
-        positionComponent = entity.GetComponent('position')
-        if positionComponent and component.positionObserver:
-            positionComponent.UnRegisterPlacementObserverWrapper(component.positionObserver)
-        component.emitter.SendEvent(u'fade_out')
-        component.emitter = None
+        if component.groupName is None:
+            positionComponent = entity.GetComponent('position')
+            if positionComponent and component.positionObserver:
+                positionComponent.UnRegisterPlacementObserverWrapper(component.positionObserver)
+            component.emitter.SendEvent(u'fade_out')
+            component.emitter = None
+        else:
+            groupedEntities = self.audioEmitterComponentGroupsByScene[entity.scene.sceneID][component.groupName]
+            if component in groupedEntities:
+                groupedEntities.remove(component)
+            if len(groupedEntities) == 0:
+                positionComponent = entity.GetComponent('position')
+                if positionComponent and component.positionObserver:
+                    component.positionObserver.RemovePositionComponent(positionComponent)
+                component.emitter.SendEvent(u'fade_out')
+                component.emitter = None
+                del self.audioEmitterComponentGroupsByScene[entity.scene.sceneID][component.groupName]
 
 
 
@@ -452,6 +515,8 @@ class AudioService(service.Service):
             component.emitter.SendEvent(u'fade_out')
             component.emitter = None
 
+        if sceneID in self.audioEmitterComponentGroupsByScene:
+            del self.audioEmitterComponentGroupsByScene[sceneID]
         if sceneID in self.audioEmitterComponentsByScene:
             del self.audioEmitterComponentsByScene[sceneID]
         self.StopPolling()
@@ -462,6 +527,7 @@ class AudioService(service.Service):
         state = collections.OrderedDict()
         state['Initial Sound ID'] = component.initialSoundID
         state['Initial Event Name'] = component.initialEventName
+        state['Group Name'] = component.groupName
         return state
 
 

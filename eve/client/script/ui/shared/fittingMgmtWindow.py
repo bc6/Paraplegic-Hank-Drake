@@ -6,15 +6,17 @@ import xtriui
 import uicls
 import uiconst
 import uiutil
+import localization
 
 class FittingMgmt(uicls.Window):
     __guid__ = 'form.FittingMgmt'
     __nonpersistvars__ = []
+    default_windowID = 'FittingMgmt'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.SetTopparentHeight(0)
-        self.SetCaption(mls.UI_GENERIC_FITTINGMANAGEMENT)
+        self.SetCaption(localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/WindowCaption'))
         self.SetWndIcon('ui_17_128_4')
         self.SetMinSize([525, 400])
         self.ownerID = session.charid
@@ -43,19 +45,19 @@ class FittingMgmt(uicls.Window):
         dummyParent = uicls.Container(name='dummy', parent=self.sr.leftMainPanel, align=uiconst.TOALL, pos=(0, 0, 0, 0))
         ownerParent = uicls.Container(name='ownerParent', parent=dummyParent, align=uiconst.TOTOP, height=20)
         uicls.Container(name='push', parent=ownerParent, align=uiconst.TORIGHT, width=1)
-        options = [(mls.UI_GENERIC_PERSONALFITTINGS, session.charid), (mls.UI_GENERIC_CORPORATIONFITTINGS, session.corpid)]
+        options = [(localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/PersonalFittings'), session.charid), (localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/CorporationFittings'), session.corpid)]
         self.sr.ownerCombo = uicls.Combo(label=None, parent=ownerParent, options=options, name='savedFittingsCombo', select=None, callback=self.ChangeOwnerFilter, pos=(1, 1, 0, 0), align=uiconst.TOALL)
         searchContainer = uicls.Container(name='searchContainer', parent=dummyParent, align=uiconst.TOTOP, top=const.defaultPadding, height=20)
         self.sr.searchTextField = uicls.SinglelineEdit(name='searchTextField', parent=searchContainer, align=uiconst.TOLEFT, width=160, maxLength=40, left=1)
-        self.sr.searchButton = uicls.Button(parent=searchContainer, label=mls.UI_CMD_SEARCH, align=uiconst.CENTERRIGHT, func=self.Search)
+        self.sr.searchButton = uicls.Button(parent=searchContainer, label=localization.GetByLabel('UI/Common/Buttons/Search'), align=uiconst.CENTERRIGHT, func=self.Search)
         self.sr.scroll = uicls.Scroll(parent=dummyParent, align=uiconst.TOALL, padding=(0,
          const.defaultPadding,
          0,
          const.defaultPadding))
         self.sr.scroll.multiSelect = 0
         buttonContainer = uicls.Container(name='', parent=self.sr.leftBottomPanel, pos=(0, 0, 0, 0))
-        parent = self.sr.fitButtons = uicls.ButtonGroup(btns=[[mls.UI_CMD_EXPORT, self.ExportFittings, ()], [mls.UI_CMD_IMPORT, self.ImportFittings, ()]], parent=buttonContainer, idx=0)
-        self.exportButton = parent.GetBtnByLabel(mls.UI_CMD_EXPORT)
+        parent = self.sr.fitButtons = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Commands/Export'), self.ExportFittings, ()], [localization.GetByLabel('UI/Commands/Import'), self.ImportFittings, ()]], parent=buttonContainer, idx=0)
+        self.exportButton = parent.GetBtnByLabel(localization.GetByLabel('UI/Commands/Export'))
         self.DrawFittings()
 
 
@@ -77,7 +79,7 @@ class FittingMgmt(uicls.Window):
         self.sr.shipIcon = uicls.Icon(parent=topParent, state=uiconst.UI_HIDDEN, size=64, left=const.defaultPadding, ignoreSize=True)
         self.sr.dragIcon = dragIcon = xtriui.FittingDraggableIcon(name='theicon', align=uiconst.TOPLEFT, parent=topParent, height=64, width=64, top=const.defaultPadding, left=const.defaultPadding)
         dragIcon.Startup(self.fitting)
-        dragIcon.hint = mls.UI_GENERIC_FITTINGICONHINT
+        dragIcon.hint = localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/FittingIconHint')
         dragIcon.OnClick = self.ClickDragIcon
         dragIcon.state = uiconst.UI_NORMAL
         fittingNameContainer = uicls.Container(parent=topRightParent, align=uiconst.TOTOP, height=20)
@@ -86,18 +88,18 @@ class FittingMgmt(uicls.Window):
          120,
          0), maxLength=40)
         shipInfoContainer = uicls.Container(parent=topRightParent, align=uiconst.TOTOP, height=20)
-        self.sr.shipTypeName = uicls.CaptionLabel(text='', parent=shipInfoContainer, align=uiconst.RELATIVE, fontsize=12, state=uiconst.UI_NORMAL, left=const.defaultPadding)
+        self.sr.shipTypeName = uicls.EveHeaderMedium(text='', parent=shipInfoContainer, align=uiconst.RELATIVE, state=uiconst.UI_NORMAL, left=const.defaultPadding)
         self.sr.infoicon = uicls.InfoIcon(parent=shipInfoContainer, size=16, left=1, top=0, idx=0, state=uiconst.UI_HIDDEN)
         self.sr.infoicon.OnClick = self.ShowInfo
         self.sr.radioButton = uicls.Container(name='', parent=topRightParent, align=uiconst.TOPLEFT, height=50, width=100, top=fittingNameContainer.height + shipInfoContainer.height)
         radioBtns = []
         for (cfgname, value, label, checked, group,) in [['fittingNone',
           session.charid,
-          mls.UI_GENERIC_PERSONAL,
+          localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/Personal'),
           self.ownerID == None,
           'ownership'], ['fittingOwnerCorporation',
           session.corpid,
-          mls.UI_GENERIC_CORPORATION,
+          localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/Corporation'),
           self.ownerID == session.corpid,
           'ownership']]:
             radioBtns.append(uicls.Checkbox(text=label, parent=self.sr.radioButton, configName=cfgname, retval=value, checked=checked, groupname=group, callback=None))
@@ -105,11 +107,11 @@ class FittingMgmt(uicls.Window):
         self.sr.radioButtons = radioBtns
         self.sr.fittingDescription = uicls.EditPlainText(setvalue=None, parent=bottomParent, align=uiconst.TOALL, maxLength=400)
         self.sr.fittingInfo = uicls.Scroll(name='fittingInfoScroll', parent=bottomParent)
-        tabs = [[mls.UI_GENERIC_FITTINGS,
+        tabs = [[localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/Fittings'),
           self.sr.fittingInfo,
           self,
           None,
-          self.sr.fittingInfo], [mls.UI_GENERIC_DESCRIPTION,
+          self.sr.fittingInfo], [localization.GetByLabel('UI/Common/Description'),
           self.sr.fittingDescription,
           self,
           None,
@@ -117,16 +119,16 @@ class FittingMgmt(uicls.Window):
         self.fittingInfoTab = uicls.TabGroup(name='tabparent', parent=bottomParent, idx=0)
         self.fittingInfoTab.Startup(tabs, 'fittingInfoTab')
         self.sr.fittingInfo.Startup()
-        self.sr.saveDeleteButtons = uicls.ButtonGroup(btns=[[mls.UI_CMD_FIT, self.Fit, ()], [mls.UI_CMD_SAVE, self.Save, ()], [mls.UI_CMD_DELETE, self.Delete, ()]], parent=self.sr.rightBottomPanel, idx=0)
+        self.sr.saveDeleteButtons = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/Fit'), self.Fit, ()], [localization.GetByLabel('UI/Common/Buttons/Save'), self.Save, ()], [localization.GetByLabel('UI/Common/Buttons/Delete'), self.Delete, ()]], parent=self.sr.rightBottomPanel, idx=0)
 
 
 
     def EnableExportButton(self, enable):
         if enable:
-            self.exportButton.SetLabel('%s' % mls.UI_CMD_EXPORT)
+            self.exportButton.SetLabel(localization.GetByLabel('UI/Commands/Export'))
             self.exportButton.state = uiconst.UI_NORMAL
         else:
-            self.exportButton.SetLabel('<color=gray>%s</color>' % mls.UI_CMD_EXPORT)
+            self.exportButton.SetLabel(localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/ExportDisabled'))
             self.exportButton.state = uiconst.UI_DISABLED
 
 
@@ -161,7 +163,7 @@ class FittingMgmt(uicls.Window):
 
 
     def AddFitting(self, *args):
-        sm.GetService('window').GetWindow('SaveFittingSettings', create=1).ShowModal()
+        form.SaveFittingSettings.Open().ShowModal()
 
 
 
@@ -202,13 +204,13 @@ class FittingMgmt(uicls.Window):
                 shipGroups.append((group.name, group.groupID))
 
         if len(fittings) == 0 and self.wordFilter is not None:
-            data = {'label': mls.UI_GENERIC_NOTHINGFOUND}
+            data = {'label': localization.GetByLabel('UI/Common/NothingFound')}
             scrolllist.append(listentry.Get('Generic', data))
         if hideRight is None:
             self.HideRightPanel()
         shipGroups.sort()
         if maxFittings is not None:
-            label = mls.UI_GENERIC_FITTINGS + '    (' + str(len(fittings)) + '/' + str(maxFittings) + ')'
+            label = localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/FittingsListHeader', numFittings=len(fittings), maxFittings=maxFittings)
             scrolllist.append(listentry.Get('Header', {'label': label}))
         for (groupName, groupID,) in shipGroups:
             data = {'GetSubContent': self.GetShipGroupSubContent,
@@ -285,7 +287,7 @@ class FittingMgmt(uicls.Window):
             return m
         fittingID = entry.sr.node.fittingID
         ownerID = entry.sr.node.ownerID
-        m = [(mls.UI_CMD_DELETEFITTING, self.DeleteFitting, [entry]), (mls.UI_CMD_LOADFITTING, self.fittingSvc.LoadFitting, [ownerID, fittingID])]
+        m = [(localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/DeleteFitting'), self.DeleteFitting, [entry]), (localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/LoadFitting'), self.fittingSvc.LoadFitting, [ownerID, fittingID])]
         return m
 
 
@@ -391,16 +393,12 @@ class FittingMgmt(uicls.Window):
         isCorp = False
         if self.ownerID == session.corpid:
             isCorp = True
-        wnd = sm.StartService('window').GetWindow('ExportFittingsWindow', create=1, isCorp=isCorp)
-        if wnd is not None and not wnd.destroyed:
-            wnd.Maximize()
+        form.ExportFittingsWindow.Open(isCorp=isCorp)
 
 
 
     def ImportFittings(self, *args):
-        wnd = sm.StartService('window').GetWindow('ImportFittingsWindow', create=1)
-        if wnd is not None and not wnd.destroyed:
-            wnd.Maximize()
+        form.ImportFittingsWindow.Open()
 
 
 
@@ -416,7 +414,7 @@ class ViewFitting(uicls.Window):
         self.fitting = attributes.fitting
         self.truncated = attributes.truncated
         self.SetTopparentHeight(0)
-        self.SetCaption(mls.UI_GENERIC_FITTINGMANAGEMENT)
+        self.SetCaption(localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/WindowCaption'))
         self.SetWndIcon(None)
         self.SetMinSize([250, 300])
         self.fittingSvc = sm.GetService('fittingSvc')
@@ -451,21 +449,21 @@ class ViewFitting(uicls.Window):
         self.sr.shipIcon = uicls.Icon(parent=topParent, state=uiconst.UI_HIDDEN, size=64, left=const.defaultPadding, typeID=self.fitting.shipTypeID, ignoreSize=True)
         dragIcon = xtriui.FittingDraggableIcon(name='theicon', align=uiconst.TOPLEFT, parent=topParent, height=64, width=64, top=const.defaultPadding, left=const.defaultPadding)
         dragIcon.Startup(self.fitting)
-        dragIcon.hint = mls.UI_GENERIC_FITTINGICONHINT
+        dragIcon.hint = localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/FittingIconHint')
         dragIcon.OnClick = self.ClickDragIcon
         dragIcon.state = uiconst.UI_NORMAL
         self.sr.shipIcon.state = uiconst.UI_DISABLED
         fittingNameContainer = uicls.Container(parent=topRightParent, align=uiconst.TOTOP, height=20)
         self.sr.fittingName = uicls.SinglelineEdit(name='fittingName', parent=fittingNameContainer, align=uiconst.TOPLEFT, pos=(const.defaultPadding,
          1,
-         80,
+         160,
          0), maxLength=40)
         self.sr.fittingName.SetText(self.fitting.name)
         if self.truncated:
-            uicls.Label(text='<color=red>' + mls.UI_GENERIC_TRUNCATED + '</color>', parent=fittingNameContainer, left=self.sr.fittingName.width + 10, top=3, width=60, height=20, autowidth=False, autoheight=False, state=uiconst.UI_NORMAL)
+            uicls.EveLabelMedium(text=localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/Truncated'), parent=fittingNameContainer, left=self.sr.fittingName.width + 10, top=3, width=60, height=20, state=uiconst.UI_NORMAL)
         shipInfoContainer = uicls.Container(parent=topRightParent, align=uiconst.TOTOP, height=20)
         shipName = cfg.invtypes.Get(self.fitting.shipTypeID).typeName
-        self.sr.shipName = uicls.CaptionLabel(text=shipName, parent=shipInfoContainer, align=uiconst.RELATIVE, fontsize=12, state=uiconst.UI_NORMAL, left=const.defaultPadding)
+        self.sr.shipName = uicls.EveHeaderMedium(text=shipName, parent=shipInfoContainer, align=uiconst.RELATIVE, state=uiconst.UI_NORMAL, left=const.defaultPadding)
         self.sr.infoicon = uicls.InfoIcon(parent=shipInfoContainer, size=16, left=1, top=0, idx=0)
         self.sr.infoicon.OnClick = self.ShowInfo
         self.sr.infoicon.left = self.sr.shipName.textwidth + 6
@@ -473,11 +471,11 @@ class ViewFitting(uicls.Window):
         radioBtns = []
         for (cfgname, value, label, checked, group,) in [['fittingNone',
           session.charid,
-          mls.UI_GENERIC_PERSONAL,
+          localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/Personal'),
           True,
           'ownership'], ['fittingOwnerCorporation',
           session.corpid,
-          mls.UI_GENERIC_CORPORATION,
+          localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/Corporation'),
           False,
           'ownership']]:
             radioBtns.append(uicls.Checkbox(text=label, parent=self.sr.radioButton, configName=cfgname, retval=value, checked=checked, groupname=group, callback=None))
@@ -488,18 +486,18 @@ class ViewFitting(uicls.Window):
         self.sr.fittingInfo = uicls.Scroll(name='fittingInfoScroll', parent=bottomParent)
         scrolllist = self.fittingSvc.GetFittingInfoScrollList(self.fitting)
         self.sr.fittingInfo.Load(contentList=scrolllist)
-        tabs = [[mls.UI_GENERIC_FITTINGS,
+        tabs = [[localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/Fittings'),
           self.sr.fittingInfo,
           self,
           None,
-          self.sr.fittingInfo], [mls.UI_GENERIC_DESCRIPTION,
+          self.sr.fittingInfo], [localization.GetByLabel('UI/Common/Description'),
           self.sr.fittingDescription,
           self,
           None,
           self.sr.fittingDescription]]
         self.fittingInfoTab = uicls.TabGroup(name='tabparent', parent=bottomParent, idx=0)
         self.fittingInfoTab.Startup(tabs, 'fittingInfoTab')
-        self.sr.saveDeleteButtons = uicls.ButtonGroup(btns=[[mls.UI_CMD_SAVE, self.Save, ()], [mls.UI_CMD_CANCEL, self.CloseX, ()]], parent=self.sr.main, idx=0)
+        self.sr.saveDeleteButtons = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Common/Buttons/Save'), self.Save, ()], [localization.GetByLabel('UI/Common/Buttons/Cancel'), self.CloseByUser, ()]], parent=self.sr.main, idx=0)
 
 
 
@@ -519,7 +517,7 @@ class ViewFitting(uicls.Window):
         name = self.sr.fittingName.GetValue()
         description = self.sr.fittingDescription.GetValue()
         self.fittingSvc.PersistFitting(ownerID, name, description, fit=(self.fitting.shipTypeID, self.fitting.fitData))
-        self.CloseX()
+        self.CloseByUser()
 
 
 

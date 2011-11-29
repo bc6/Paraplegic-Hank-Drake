@@ -4,17 +4,21 @@ import uiutil
 import xtriui
 import uicls
 import uiconst
+import localization
+import localizationUtil
 
 class Calculator(uicls.Window):
     __guid__ = 'form.Calculator'
+    default_windowID = 'calculator'
     default_width = 167
     default_height = 160
+    default_left = 0
+    default_top = 0
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
-        self.name = 'calculator'
         self.scope = 'all'
-        self.SetCaption(mls.UI_GENERIC_CALCULATOR)
+        self.SetCaption(localization.GetByLabel('UI/Accessories/Calculator/Calculator'))
         self.MakeUnResizeable()
         self.SetWndIcon('ui_49_64_1')
         self.HideMainIcon()
@@ -42,6 +46,99 @@ class Calculator(uicls.Window):
          const.defaultPadding,
          0))
         size = 24
+        self.buttons = [(0,
+          0,
+          '7',
+          localizationUtil.FormatNumeric(7)),
+         (1,
+          0,
+          '8',
+          localizationUtil.FormatNumeric(8)),
+         (2,
+          0,
+          '9',
+          localizationUtil.FormatNumeric(9)),
+         (3,
+          0,
+          'divide',
+          localization.GetByLabel('UI/Accessories/Calculator/DivideSymbol')),
+         (0,
+          1,
+          '4',
+          localizationUtil.FormatNumeric(4)),
+         (1,
+          1,
+          '5',
+          localizationUtil.FormatNumeric(5)),
+         (2,
+          1,
+          '6',
+          localizationUtil.FormatNumeric(6)),
+         (3,
+          1,
+          'times',
+          localization.GetByLabel('UI/Accessories/Calculator/MultiplySymbol')),
+         (0,
+          2,
+          '1',
+          localizationUtil.FormatNumeric(1)),
+         (1,
+          2,
+          '2',
+          localizationUtil.FormatNumeric(2)),
+         (2,
+          2,
+          '3',
+          localizationUtil.FormatNumeric(3)),
+         (3,
+          2,
+          'minus',
+          localization.GetByLabel('UI/Accessories/Calculator/SubtractSymbol')),
+         (0,
+          3,
+          '0',
+          localizationUtil.FormatNumeric(0)),
+         (1,
+          3,
+          'dot',
+          localization.GetByLabel('UI/Accessories/Calculator/DotSymbol')),
+         (2,
+          3,
+          'equal',
+          localization.GetByLabel('UI/Accessories/Calculator/EqualsSymbol')),
+         (3,
+          3,
+          'plus',
+          localization.GetByLabel('UI/Accessories/Calculator/AddSymbol')),
+         (4.5,
+          0,
+          'clear',
+          localization.GetByLabel('UI/Accessories/Calculator/ClearSymbol')),
+         (5.5,
+          0,
+          'clearall',
+          localization.GetByLabel('UI/Accessories/Calculator/ClearAllSymbol')),
+         (4.5,
+          1,
+          'bo',
+          localization.GetByLabel('UI/Accessories/Calculator/BracketOpenSymbol')),
+         (5.5,
+          1,
+          'bc',
+          localization.GetByLabel('UI/Accessories/Calculator/BracketCloseSymbol')),
+         (4.5,
+          2,
+          'percent',
+          localization.GetByLabel('UI/Accessories/Calculator/PercentSymbol')),
+         (5.5,
+          2,
+          'square',
+          localization.GetByLabel('UI/Accessories/Calculator/SquareSymbol')),
+         (4.5,
+          3,
+          'plusminus',
+          localization.GetByLabel('UI/Accessories/Calculator/PlusMinusSymbol')),
+         (5.5, 3, 'root', u'\u221a&macr;')]
         for (x, y, label, cap,) in self.buttons:
             btn = uix.GetBigButton(size=size, where=self.sr.work, left=int(x * size), top=int(y * size), iconMargin=10, align=uiconst.RELATIVE)
             btn.SetInCaption(cap)
@@ -53,12 +150,12 @@ class Calculator(uicls.Window):
         uicls.Line(parent=self.sr.mem, align=uiconst.TOTOP)
         uicls.Line(parent=self.sr.mem, align=uiconst.TOBOTTOM)
         for i in xrange(1, 7):
-            opt = xtriui.StandardMenu(name='memoption', parent=self.sr.mem, align=uiconst.TOLEFT, state=uiconst.UI_NORMAL)
-            opt.Setup('<b>M%s</b>' % i, getattr(self, 'GetMem%sMenu' % i, None))
+            opt = uicls.WindowDropDownMenu(name='memoption', parent=self.sr.mem, align=uiconst.TOLEFT, state=uiconst.UI_NORMAL)
+            opt.Setup(localization.GetByLabel('UI/Accessories/Calculator/AbbreviatedMemory', index=i), getattr(self, 'GetMem%sMenu' % i, None))
             opt.OnClick = (self.OnClickMemory, opt)
             opt.sr.memHilite = uicls.Fill(parent=opt, color=(0.0, 0.0, 1.0, 0.2), state=uiconst.UI_HIDDEN)
             opt.name = 'mem%s' % i
-            opt.label = settings.public.ui.Get('CalculatorMem%sName' % i, 'Memory %d' % i)
+            opt.label = settings.public.ui.Get('CalculatorMem%sName' % i, localization.GetByLabel('UI/Accessories/Calculator/Memory', index=i))
             if i == 1:
                 opt.left = const.defaultPadding
             setattr(self.sr, 'memBtn%s' % i, opt)
@@ -68,7 +165,7 @@ class Calculator(uicls.Window):
                 opt.hint = '%s:<br>%s' % (opt.label, opt.mem)
                 opt.sr.memHilite.state = uiconst.UI_DISABLED
             else:
-                opt.hint = '%s:<br>%s' % (opt.label, mls.UI_GENERIC_EMPTY)
+                opt.hint = localization.GetByLabel('UI/Accessories/Calculator/EmptyBank', label=opt.label, empty=localization.GetByLabel('UI/Accessories/Calculator/Empty'))
                 opt.sr.memHilite.state = uiconst.UI_HIDDEN
 
         self.SetLayout()
@@ -87,11 +184,11 @@ class Calculator(uicls.Window):
         if expanded:
             self.SetMinSize([167, 160], 1)
             h = uiconst.UI_NORMAL
-            self.sr.viewModeBtn.hint = mls.UI_INFLIGHT_HIDEBUTTONS
+            self.sr.viewModeBtn.hint = localization.GetByLabel('UI/Accessories/Calculator/HideButtons')
         else:
             self.SetMinSize([167, 60], 1)
             h = uiconst.UI_HIDDEN
-            self.sr.viewModeBtn.hint = mls.UI_INFLIGHT_SHOWBUTTONS
+            self.sr.viewModeBtn.hint = localization.GetByLabel('UI/Accessories/Calculator/ShowButtons')
         for (x, y, label, cap,) in self.buttons:
             btn = self.sr.Get('btn%s' % label, None)
             btn.state = h
@@ -242,12 +339,12 @@ class Calculator(uicls.Window):
 
     def GetMemMenu(self, btn):
         m = []
-        m.append((mls.UI_CMD_SET, self.MemDo, (btn, 'Set')))
+        m.append((localization.GetByLabel('UI/Accessories/Calculator/Set'), self.MemDo, (btn, 'Set')))
         if getattr(btn, 'mem', None) is not None:
-            m.append((mls.UI_CMD_ADD, self.MemDo, (btn, 'Add')))
-            m.append((mls.UI_CMD_SUB, self.MemDo, (btn, 'Sub')))
-            m.append((mls.UI_CMD_CLEAR, self.MemDo, (btn, 'Clear')))
-        m.append((mls.UI_CMD_ANNOTATE, self.MemDo, (btn, 'Name')))
+            m.append((localization.GetByLabel('UI/Accessories/Calculator/Add'), self.MemDo, (btn, 'Add')))
+            m.append((localization.GetByLabel('UI/Accessories/Calculator/Subtract'), self.MemDo, (btn, 'Sub')))
+            m.append((localization.GetByLabel('UI/Accessories/Calculator/Clear'), self.MemDo, (btn, 'Clear')))
+        m.append((localization.GetByLabel('UI/Accessories/Calculator/Annotate'), self.MemDo, (btn, 'Name')))
         return m
 
 
@@ -269,18 +366,18 @@ class Calculator(uicls.Window):
             format = [{'type': 'edit',
               'setvalue': getattr(mem, 'label', '') or '',
               'labelwidth': 48,
-              'label': mls.UI_GENERIC_NAME,
+              'label': localization.GetByLabel('UI/Accessories/Calculator/Name'),
               'key': 'name',
               'maxlength': 16,
               'setfocus': 1}]
-            retval = uix.HybridWnd(format, mls.UI_CMD_ANNOTATE, icon=uiconst.QUESTION, minW=300, minH=100)
+            retval = uix.HybridWnd(format, localization.GetByLabel('UI/Accessories/Calculator/Annotate'), icon=uiconst.QUESTION, minW=300, minH=100)
             if retval:
                 mem.label = retval['name']
                 settings.public.ui.Set('CalculatorMem%sName' % mem.nr, mem.label)
         if getattr(mem, 'mem', None) is not None:
             mem.hint = '%s<br>%.14G' % (mem.label, getattr(mem, 'mem', 0.0))
         else:
-            mem.hint = '%s<br>%s' % (mem.label, mls.UI_GENERIC_EMPTY)
+            mem.hint = localization.GetByLabel('UI/Accessories/Calculator/EmptyBank', label=mem.label, empty=localization.GetByLabel('UI/Accessories/Calculator/Empty'))
         settings.public.ui.Set('CalculatorMem%s' % mem.nr, getattr(mem, 'mem', None))
 
 
@@ -382,30 +479,6 @@ class Calculator(uicls.Window):
         self.lastOp = op
 
 
-    buttons = [(0, 0, '7', '7'),
-     (1, 0, '8', '8'),
-     (2, 0, '9', '9'),
-     (3, 0, 'divide', '&divide;'),
-     (0, 1, '4', '4'),
-     (1, 1, '5', '5'),
-     (2, 1, '6', '6'),
-     (3, 1, 'times', '&times;'),
-     (0, 2, '1', '1'),
-     (1, 2, '2', '2'),
-     (2, 2, '3', '3'),
-     (3, 2, 'minus', '-'),
-     (0, 3, '0', '0'),
-     (1, 3, 'dot', '.'),
-     (2, 3, 'equal', '='),
-     (3, 3, 'plus', '+'),
-     (4.5, 0, 'clear', 'C'),
-     (5.5, 0, 'clearall', 'AC'),
-     (4.5, 1, 'bo', '('),
-     (5.5, 1, 'bc', ')'),
-     (4.5, 2, 'percent', '%'),
-     (5.5, 2, 'square', 'x&sup2;'),
-     (4.5, 3, 'plusminus', '&plusmn;'),
-     (5.5, 3, 'root', u'\u221a&macr;')]
     knownkeys = {'+': 'plus',
      '-': 'minus',
      '*': 'times',

@@ -5,7 +5,6 @@ import bluepy
 import form
 import string
 import trinity
-import uix
 import uthread
 import util
 import sys
@@ -15,7 +14,7 @@ import geo2
 import cPickle
 import log
 import uiconst
-import uiutil
+import uicls
 TRANSLATETBL = '                               ! #$%&\\  ()*+,-./0123456789:;<=>?@abcdefghijklmnopqrstuvwxyz[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~                  \x91\x92             \xa0\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xab\xac\xad\xae\xaf\xb0\xb1\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc\xbd\xbe\xbfaaaaaa\xc6ceeeeiiii\xd0nooooo\xd7\xd8\xd9\xda\xdb\xdc\xdd\xde\xdfaaaaaa\xe6ceeeeiiii\xf0nooooo\xf7ouuuuy\xfey'
 SEC = 10000000L
 MIN = SEC * 60L
@@ -37,7 +36,7 @@ class MapSvc(service.Service):
         self.state = SERVICE_START_PENDING
         self.LogInfo('Starting Map Client Svc')
         self.GetMapCache()
-        uix.Flush(uicore.layer.map)
+        uicore.layer.starmap.Flush()
         self.Reset()
         self.state = SERVICE_RUNNING
 
@@ -62,146 +61,49 @@ class MapSvc(service.Service):
 
 
     def Open(self):
-        if getattr(self, 'busy', 0):
-            return 
-        self.busy = 1
-        if not self.IsOpen():
-            self._OpenMap(settings.user.ui.Get('activeMap', 'starmap'))
-        self.busy = 0
-        if session.stationid2:
-            uicore.layer.charcontrol.CloseView()
+        viewSvc = sm.GetService('viewState')
+        if not viewSvc.IsViewActive('starmap', 'systemmap'):
+            activeMap = settings.user.ui.Get('activeMap', 'starmap')
+            viewSvc.ActivateView(activeMap)
 
 
 
-    def OpenStarMap(self, *args):
-        if not self.ViewingStarMap():
-            self._OpenMap('starmap')
-
-
-
-    def OpenSystemMap(self, *args):
-        if not self.ViewingSystemMap():
-            self._OpenMap('systemmap')
+    def GetActiveMapName(self):
+        return settings.user.ui.Get('activeMap', 'starmap')
 
 
 
     def MinimizeWindows(self):
-        windowSvc = sm.GetService('window')
-        lobby = windowSvc.GetWindow('lobby')
+        lobby = form.Lobby.GetIfOpen()
         if lobby and not lobby.destroyed and lobby.state != uiconst.UI_HIDDEN and not lobby.IsMinimized() and not lobby.IsCollapsed():
-            windowSvc.MinimizeWindow(lobby, animate=False)
-            self.minimizedWindows.append('lobby')
+            lobby.Minimize()
+            self.minimizedWindows.append(form.Lobby.default_windowID)
 
 
 
-    def _OpenMap(self, mapMode):
-        while sm.GetService('planetUI').IsOpen() or getattr(sm.GetService('planetUI'), 'busy', False):
-            tryAgain = sm.GetService('planetUI').Close()
-            if not tryAgain:
-                return 
-            blue.synchro.Yield()
+    def ResetMinimizedWindows(self):
+        if len(self.minimizedWindows) > 0:
+            windowSvc = sm.GetService('window')
+            for windowID in self.minimizedWindows:
+                wnd = uicls.Window.GetIfOpen(windowID=windowID)
+                if wnd and wnd.IsMinimized():
+                    wnd.Maximize()
 
-        mapbrowser = False
-        if not self.IsOpen():
-            mb = sm.GetService('window').GetWindow('mapbrowser', create=0)
-            if mb and uiutil.IsVisible(mb):
-                mb.Hide(time=0.0)
-                mapbrowser = True
-            self.MinimizeWindows()
-            sm.GetService('bracket').Hide()
-            self.OpenMapsPalette()
-        if mapMode in ('starmap', 'systemmap'):
-            self.activeMap = mapMode
-            settings.user.ui.Set('activeMap', mapMode)
-            sm.GetService(mapMode).InitMap()
-            sm.ScatterEvent('OnMapModeChangeDone', mapMode)
-        if mapbrowser:
-            mb.Show(time=0.0)
-        if uicore.layer.charcontrol.isopen:
-            uicore.layer.charcontrol.CloseView()
-        sm.GetService('starmap').DecorateNeocom()
-
-
-
-    def Close(self):
-        if getattr(self, 'busy', 0):
-            return 
-        self.busy = 1
-        mapbrowser = False
-        if self.IsOpen():
-            if 'starmap' in sm.GetActiveServices():
-                sm.GetService('starmap').CleanUp()
-            if 'systemmap' in sm.GetActiveServices():
-                sm.GetService('systemmap').CleanUp()
-            self.activeMap = ''
-            mb = sm.GetService('window').GetWindow('mapbrowser', create=0)
-            if mb and uiutil.IsVisible(mb):
-                mb.Hide(time=0.0)
-                mapbrowser = True
-            if len(self.minimizedWindows) > 0:
-                windowSvc = sm.GetService('window')
-                for wndName in self.minimizedWindows:
-                    wnd = windowSvc.GetWindow(wndName)
-                    if wnd and wnd.IsMinimized():
-                        wnd.Maximize()
-
-                self.minimizedWindows = []
-            sm.GetService('sceneManager').SetRegisteredScenes('default')
-            if eve.session.stationid2:
-                if util.GetCurrentView() == 'station':
-                    sm.GetService('gameui').OpenExclusive('charcontrol', 1)
-                    uix.GetWorldspaceNav()
-                    uicore.registry.SetFocus(uicore.GetLayer('charcontrol'))
-                else:
-                    uix.GetStationNav()
-            else:
-                uix.GetInflightNav()
-            sm.GetService('bracket').Show()
-            uicore.layer.map.state = uiconst.UI_HIDDEN
-            uicore.layer.systemmap.state = uiconst.UI_HIDDEN
-            self.CloseMapsPalette()
-        sm.GetService('starmap').DecorateNeocom()
-        self.busy = 0
-        activeScene = sm.GetService('sceneManager').GetActiveScene2()
-        if activeScene:
-            activeScene.display = 1
-        if mapbrowser:
-            mb.Show(time=0.0)
+            self.minimizedWindows = []
 
 
 
     def Toggle(self, *args):
-        if self.IsOpen():
-            self.Close()
-        else:
-            self.Open()
+        viewSvc = sm.GetService('viewState').ToggleSecondaryView(self.GetActiveMapName())
 
 
 
     def ToggleMode(self, *args):
-        if self.ViewingStarMap():
-            self._OpenMap('systemmap')
-        elif self.ViewingSystemMap():
-            self._OpenMap('starmap')
-
-
-
-    def ViewingStarMap(self):
-        if self.activeMap == 'starmap':
-            return True
-        return False
-
-
-
-    def ViewingSystemMap(self):
-        if self.activeMap == 'systemmap':
-            return True
-        return False
-
-
-
-    def IsOpen(self):
-        return bool(self.ViewingStarMap() or self.ViewingSystemMap())
+        viewSvc = sm.GetService('viewState')
+        if viewSvc.IsViewActive('starmap'):
+            viewSvc.ActivateView('systemmap')
+        elif viewSvc.IsViewActive('systemmap'):
+            viewSvc.ActivateView('starmap')
 
 
 
@@ -212,14 +114,13 @@ class MapSvc(service.Service):
 
 
     def OpenMapsPalette(self):
-        sm.GetService('window').GetWindow('mapspalette', create=1, decoClass=form.MapsPalette)
+        openMinimized = settings.user.ui.Get('MapWindowMinimized', False)
+        form.MapsPalette.Open(openMinimized=openMinimized)
 
 
 
     def CloseMapsPalette(self):
-        wnd = sm.GetService('window').GetWindow('mapspalette', create=0)
-        if wnd:
-            wnd.SelfDestruct()
+        form.MapsPalette.CloseIfOpen()
 
 
 
@@ -253,13 +154,14 @@ class MapSvc(service.Service):
 
 
     def CreateCacheFile(self):
-        for languageID in ['EN', 'ZH']:
-            self._CreateCacheFile(languageID)
+        for language in [('EN', const.localizedLanguageEnglishUS), ('ZH', const.localizedLanguageChinese)]:
+            self._CreateCacheFile(language)
 
 
 
 
-    def _CreateCacheFile(self, languageID):
+    def _CreateCacheFile(self, language):
+        (languageID, numericLanguageID,) = language
         cache = {'items': {},
          'hierarchy': {},
          'neighbors': {},
@@ -281,9 +183,6 @@ class MapSvc(service.Service):
         for region in regions:
             cacheHierarchy[region.itemID] = {}
             cacheItems[region.itemID] = util.KeyVal(__doc__='regionInfo', item=region, hierarchy=[region.itemID])
-            print '  ',
-            print repr(region.itemName),
-            print '...'
             cacheChildren[region.itemID] = []
             constellations = configSvc.CacheFileGetConstellations(languageID, region.itemID)
             for constellation in constellations:
@@ -351,10 +250,10 @@ class MapSvc(service.Service):
             if fromcon != tocon:
                 AddConnectionToList(fromcon, tocon, cacheNeighbors)
 
-        landmarks = configSvc.CacheFileGetLandmarks(languageID)
+        landmarks = configSvc.CacheFileGetLandmarks()
         cacheLandmarks = cache['landmarks'] = {}
         for landmark in landmarks:
-            cacheLandmarks[landmark.landmarkID] = util.KeyVal(__doc__='landmark', landmarkName=landmark.landmarkName, description=landmark.description, radius=landmark.radius, x=landmark.x, y=landmark.y, z=landmark.z, importance=landmark.importance, graphicID=landmark.iconID)
+            cacheLandmarks[landmark.landmarkID] = util.KeyVal(__doc__='landmark', landmarkNameID=landmark.landmarkNameID, descriptionID=landmark.descriptionID, radius=landmark.radius, x=landmark.x, y=landmark.y, z=landmark.z, importance=landmark.importance, iconID=landmark.iconID)
 
         planetData = configSvc.CacheFileGetPlanetSolarSystemAndTypes()
         for row in planetData:
@@ -364,15 +263,13 @@ class MapSvc(service.Service):
         self.CreateSolarSystemJumps(cache, languageID)
         import os
         if languageID == 'EN':
-            filename = os.path.join(blue.os.respath, 'UI/Shared/Maps/mapcache.dat')
+            filename = os.path.join(blue.os.ResolvePath(u'res:/'), 'UI/Shared/Maps/mapcache.dat')
         else:
-            filename = os.path.join(blue.os.respath, 'UI/Shared/Maps/mapcache.%s.dat' % languageID)
+            filename = os.path.join(blue.os.ResolvePath(u'res:/'), 'UI/Shared/Maps/mapcache.%s.dat' % languageID)
         cacheStream = cPickle.dumps(cache)
         fileStream = file(filename, 'wb')
         fileStream.write(cacheStream)
         fileStream.close()
-        print 'Saving',
-        print filename
 
 
 
@@ -422,7 +319,7 @@ class MapSvc(service.Service):
     def CreateSolarSystemJumps(self, cache, scene, languageID = None):
         jumpsdone = []
         regionJumpDict = {}
-        turrStart = blue.os.GetTime(1)
+        turrStart = blue.os.GetWallclockTimeNow()
         lineConnectionsToFeedFunction = []
         lineID = 0
         unconnectedSolarSystemIDs = []
@@ -451,7 +348,7 @@ class MapSvc(service.Service):
 
 
 
-        turrEnd = blue.os.GetTime(1)
+        turrEnd = blue.os.GetWallclockTimeNow()
         self.LogInfo('MapSvc: Iterated through all jumps in', blue.os.TimeDiffInMs(turrStart, turrEnd), 'ms')
         solarSystemJumpIDdict = self.CreateJumpLines(lineConnectionsToFeedFunction)
         solarSystemJumpIDdict['regionJumpDict'] = regionJumpDict
@@ -493,6 +390,9 @@ class MapSvc(service.Service):
 
 
     def GetItem(self, itemID, retall = False):
+        if util.IsStation(itemID):
+            station = cfg.stations.Get(itemID)
+            return util.KeyVal(itemID=station.stationID, locationID=station.solarSystemID, itemName=station.stationName, typeID=station.stationTypeID, x=station.x, y=station.y, z=station.z)
         cache = self.GetMapCache()
         if 'items' not in cache:
             self.LogInfo('MapSvc: Error asking for item', itemID, ', there is no items entry in cache')
@@ -741,11 +641,27 @@ class MapSvc(service.Service):
 
 
 
-    def CreateLineSet(self):
+    def CreateLineSet(self, path = LINESET_EFFECT):
         lineSet = trinity.EveLineSet()
         lineSet.effect = trinity.Tr2Effect()
-        lineSet.effect.effectFilePath = LINESET_EFFECT
+        lineSet.effect.effectFilePath = path
         lineSet.renderTransparent = False
+        return lineSet
+
+
+
+    def CreateCurvedLineSet(self, effectPath = None):
+        lineSet = trinity.EveCurveLineSet()
+        if effectPath is not None:
+            lineSet.lineEffect.effectFilePath = effectPath
+        texMap = trinity.TriTexture2DParameter()
+        texMap.name = 'TexMap'
+        texMap.resourcePath = 'res:/dx9/texture/UI/lineSolid.dds'
+        lineSet.lineEffect.resources.append(texMap)
+        overlayTexMap = trinity.TriTexture2DParameter()
+        overlayTexMap.name = 'OverlayTexMap'
+        overlayTexMap.resourcePath = 'res:/dx9/texture/UI/lineOverlay5.dds'
+        lineSet.lineEffect.resources.append(overlayTexMap)
         return lineSet
 
 
@@ -758,6 +674,18 @@ class MapSvc(service.Service):
             self.solarSystemID = solarSystemID
             self.typeID = typeID
 
+
+
+
+    def GetSystemColorString(self, solarSystemID):
+        col = self.GetSystemColor(solarSystemID)
+        return util.Color.RGBtoHex(col.r, col.g, col.b)
+
+
+
+    def GetSystemColor(self, solarSystemID):
+        (sec, col,) = util.FmtSystemSecStatus(self.GetSecurityStatus(solarSystemID), 1)
+        return col
 
 
 

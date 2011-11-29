@@ -1,5 +1,6 @@
 import service
 import form
+import uicls
 
 class PVPTradeService(service.Service):
     __guid__ = 'svc.pvptrade'
@@ -26,37 +27,39 @@ class PVPTradeService(service.Service):
 
 
     def OnInitiate(self, charID, tradeSession):
-        checkWnd = sm.GetService('window').GetWindow('trade_' + str(tradeSession.List().tradeContainerID))
+        self.LogInfo('OnInitiate', charID, tradeSession)
+        tradeContainerID = tradeSession.List().tradeContainerID
+        checkWnd = uicls.Window.GetIfOpen(windowID='trade_%d' % tradeContainerID)
         if checkWnd:
             checkWnd.Maximize()
             return 
-        tradew = sm.GetService('window').GetWindow('trade_' + str(tradeSession.List().tradeContainerID), create=1, decoClass=form.PVPTrade, tradeSession=tradeSession)
+        tradew = form.PVPTrade.Open(windowID='trade_%d' % tradeContainerID, tradeSession=tradeSession)
 
 
 
     def OnCancel(self, containerID):
-        w = sm.GetService('window').GetWindow('trade_' + str(containerID))
+        w = uicls.Window.GetIfOpen(windowID='trade_' + str(containerID))
         if w:
             w.OnCancel()
 
 
 
     def OnStateToggle(self, containerID, state):
-        w = sm.GetService('window').GetWindow('trade_' + str(containerID))
+        w = uicls.Window.GetIfOpen(windowID='trade_' + str(containerID))
         if w:
             w.OnStateToggle(state)
 
 
 
     def OnMoneyOffer(self, containerID, money):
-        w = sm.GetService('window').GetWindow('trade_' + str(containerID))
+        w = uicls.Window.GetIfOpen(windowID='trade_' + str(containerID))
         if w:
             w.OnMoneyOffer(money)
 
 
 
     def OnTradeComplete(self, containerID):
-        w = sm.GetService('window').GetWindow('trade_' + str(containerID))
+        w = uicls.Window.GetIfOpen(windowID='trade_' + str(containerID))
         if w:
             w.OnTradeComplete()
 

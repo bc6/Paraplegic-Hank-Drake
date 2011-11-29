@@ -5,6 +5,7 @@ import uthread
 import moniker
 import log
 import uiconst
+import blue
 
 class ConsiderSvc(service.Service):
     __guid__ = 'svc.consider'
@@ -135,6 +136,7 @@ class ConsiderSvc(service.Service):
         secClass = sm.StartService('map').GetSecurityClass(session.solarsystemid)
         if secClass < const.securityClassLowSec:
             return 1
+        targetAggressions = self.michelle.GetPlayerAggressionsForOwner(item.ownerID)
         if self.michelle.GetAggressionState(item.ownerID) == 2:
             if secClass == const.securityClassHighSec:
                 return 1
@@ -144,6 +146,11 @@ class ConsiderSvc(service.Service):
             if secClass == const.securityClassHighSec:
                 return 1
             if not self.ConfirmationRequest(targetID, 'AidOutlawEmpire2', targetID):
+                return 0
+        elif secClass == const.securityClassHighSec and targetAggressions:
+            if not targetAggressions - self.michelle.GetPlayerAggressionsForOwner(session.charid):
+                return 1
+            if not self.ConfirmationRequest(targetID, 'ConfirmAidFlaggedPersonInEmpire', targetID):
                 return 0
         elif not util.IsSystemOrNPC(item.ownerID):
             corpID = None
@@ -340,6 +347,8 @@ class ConsiderSvc(service.Service):
                 return True
             if item.groupID == const.groupPlanetaryCustomsOffices:
                 return True
+            if sm.StartService('map').GetSecurityClass(eve.session.solarsystemid2) == const.securityClassZeroSec:
+                return True
             cachedFlag = self.containerTakeRights.get(containerID, None)
             if cachedFlag:
                 return True
@@ -348,10 +357,15 @@ class ConsiderSvc(service.Service):
                 self.containerTakeRights[containerID] = aggressionMgr.CheckLootRightExceptions(containerID)
                 if self.containerTakeRights[containerID]:
                     return True
-            if sm.StartService('map').GetSecurityClass(eve.session.solarsystemid2) == const.securityClassZeroSec:
-                return True
+            (charAggressions, corpAggressions,) = sm.GetService('michelle').GetCriminalFlagCountDown()
+            for aggressions in (charAggressions, corpAggressions):
+                for (victim, timestamp,) in aggressions.iteritems():
+                    if victim in (item.ownerID, item.corpID) and timestamp - blue.os.GetSimTime() > 12.5 * const.MIN:
+                        return True
+
+
             cfg.eveowners.Prime([ownerID])
-            if eve.Message('ConfirmStealItem', {'owner': cfg.eveowners.Get(ownerID).name}, uiconst.OKCANCEL) != uiconst.ID_OK:
+            if eve.Message('ConfirmStealItem', {'owner': ownerID}, uiconst.OKCANCEL) != uiconst.ID_OK:
                 return False
         return True
 

@@ -16,19 +16,19 @@ def TextRenderTest():
     import uiutil
     import trinity
     import blue
-    ftime = blue.os.GetTime(1)
+    ftime = blue.os.GetWallclockTimeNow()
     uicore.desktop.Flush()
     print 'flushtime',
-    print blue.os.TimeDiffInMs(ftime)
+    print blue.os.TimeDiffInMs(ftime, blue.os.GetWallclockTime())
     uicore.ul = 0
-    ctime = blue.os.GetTime(1)
+    ctime = blue.os.GetWallclockTimeNow()
     words = LOR.split(' ')
     maxWidth = 0
     topShift = 0
     leftShift = 0
     i = 0
     for word in words:
-        l = uicls.Label(text=word, autowidth=1, autoheight=1, align=uiconst.RELATIVE, parent=uicore.desktop, pos=(leftShift,
+        l = uicls.Label(text=word, align=uiconst.RELATIVE, parent=uicore.desktop, pos=(leftShift,
          topShift,
          0,
          0), name=str(i))
@@ -43,7 +43,7 @@ def TextRenderTest():
     print 'uicore.ul',
     print len(words)
     print 'createtime',
-    print blue.os.TimeDiffInMs(ctime)
+    print blue.os.TimeDiffInMs(ctime, blue.os.GetWallclockTime())
 
 
 
@@ -55,7 +55,7 @@ def DoTarget(amt = 1):
     import blue
     uicore.desktop.Flush()
     for i in xrange(amt):
-        blue.pyos.synchro.Sleep(333)
+        blue.pyos.synchro.SleepWallclock(333)
         _AddTarget()
 
 
@@ -143,7 +143,7 @@ def _AddTarget():
     maintext = uicls.Sprite(parent=mainParent, texturePath='res:/UICore/texture/text.dds', left=96.0, width=200, height=64, effect=trinity.S2D_RFX_BLUR)
     caption = uicls.Sprite(parent=mainParent, texturePath='res:/UICore/texture/caption.dds', left=50, top=56, width=160, height=32, effect=trinity.S2D_RFX_BLUR)
     bracket = uicls.Sprite(parent=mainParent, texturePath='res:/UICore/texture/brackettext.dds', left=200, top=56, width=100, height=32, effect=trinity.S2D_RFX_BLUR)
-    scrolltext = uicls.Label(parent=mainParent, text='0123456789', align=uiconst.TOPLEFT, left=237, top=7, font='res:/UI/Fonts/HelveticaNeueLTStd-Bd.otf', fontsize=9, color=(1.0, 1.0, 1.0, 0.5))
+    scrolltext = uicls.Label(parent=mainParent, text='0123456789', align=uiconst.TOPLEFT, left=237, top=7, fontsize=9, color=(1.0, 1.0, 1.0, 0.5))
     (curve, binding,) = CreateColorCurve(bracket, curveSet, length=0.5, startValue=(1, 1, 1, 1), endValue=(1, 1, 1, 0), cycle=True)
     curve.AddKey(0.0, (1, 1, 1, 0.0))
     curve.AddKey(0.1, (1, 1, 1, 1))

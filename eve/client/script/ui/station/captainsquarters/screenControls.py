@@ -125,9 +125,9 @@ class ScreenFrameBase(uicls.Container):
         uicore.animations.MorphScalar(self.bottomBracket, 'padBottom', h / 2, 0, duration=TIME_BASE, sleep=True)
         for obj in self.bracketLayer.children:
             uthread.new(obj.AnimAppear)
-            blue.pyos.synchro.Sleep(200)
+            blue.pyos.synchro.SleepWallclock(200)
 
-        blue.pyos.synchro.Sleep(2000)
+        blue.pyos.synchro.SleepWallclock(2000)
         for c in self.mainCont.children:
             if hasattr(c, 'AnimAppear'):
                 uthread.new(c.AnimAppear)
@@ -285,7 +285,7 @@ class ScreenHeading3(uicls.Container):
         uicls.Container.ApplyAttributes(self, attributes)
         text = attributes.get('text', self.default_text)
         appear = attributes.get('appear', False)
-        self.label = uicls.Label(parent=self, align=uiconst.CENTER, fontsize=self.height - 25, text=text)
+        self.label = uicls.EveLabelMedium(parent=self, align=uiconst.CENTER, fontsize=self.height - 25, text=text)
         uicls.Fill(bgParent=self, color=(0.5, 0.5, 0.5, 1.0))
         if appear:
             uthread.new(self.AnimAppear)
@@ -315,7 +315,7 @@ class ScreenBlinkingSquares(uicls.Container):
         left1 = uicls.Fill(name='left1', parent=self, align=uiconst.TOLEFT, width=8, padBottom=5, color=util.Color.WHITE)
         left2 = uicls.Fill(name='left2', parent=self, align=uiconst.TOLEFT, width=30, padLeft=3, color=util.Color.WHITE)
         left3 = uicls.Fill(name='left3', parent=self, align=uiconst.TOLEFT, width=8, padLeft=3, color=util.Color.WHITE)
-        self.label = uicls.Label(parent=self, align=uiconst.TOLEFT, width=100, padLeft=5, fontsize=9)
+        self.label = uicls.EveLabelSmall(parent=self, align=uiconst.TOLEFT, width=100, padLeft=5)
         self.right1 = uicls.Fill(name='right1', parent=self, align=uiconst.TORIGHT, width=50, color=util.Color.WHITE)
         self.right2 = uicls.Fill(name='right2', parent=self, align=uiconst.TORIGHT, width=50, color=util.Color.WHITE, padRight=3)
         self.right3 = uicls.Fill(name='right3', parent=self, align=uiconst.TORIGHT, width=50, color=util.Color.WHITE, padRight=3)
@@ -347,7 +347,7 @@ class ScreenBlinkingSquares(uicls.Container):
             for msg in msgList:
                 self.label.text = '<b>%s' % msg
                 uicore.animations.FadeIn(self.label, duration=TIME_BASE / 3, loops=3)
-                blue.pyos.synchro.Sleep(random.randint(1000, 2000))
+                blue.pyos.synchro.SleepWallclock(random.randint(1000, 2000))
 
 
 
@@ -365,7 +365,7 @@ class ScreenBlinkingSquares(uicls.Container):
             count += 1
             if count == 8:
                 count = 0
-            blue.pyos.synchro.Sleep(1000)
+            blue.pyos.synchro.SleepWallclock(1000)
 
 
 

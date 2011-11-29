@@ -13,6 +13,7 @@ import trinity
 import uiutil
 import uiconst
 import uicls
+import localization
 from timerstuff import ClockThis
 TQ_NEWS_HEADLINES_URL = 'http://www.eveonline.com/mb/news-headlines.asp'
 SERENITY_NEWS_HEADLINES_URL = 'http://eve.gtgame.com.cn/gamenews/indexhl.htm'
@@ -158,21 +159,19 @@ class BillboardMgr(Service):
                     self.facePath = texture.resPath
                     width = 256
                     height = 32
-            nameText = '%s: <b>%s</b>' % (uiutil.UpperCase(mls.UI_GENERIC_WANTED), charName)
-            amountText = util.FmtISK(bounty, showFractionsAlways=0) + ' ' + mls.UI_INFLIGHT_UPONTERMINATION
-            extraText = mls.UI_INFLIGHT_WANTEDFORCRIMES
-            totaltext = ' <color=0xffdd4444>%s</color> - %s - %s - ' % (nameText, amountText, extraText)
-            self.RenderText(totaltext, 'bounty_caption')
+            amountText = util.FmtISK(bounty, showFractionsAlways=0)
+            wantedText = localization.GetByLabel('UI/Inflight/Billboards/WantedCharacter', character=characterID, bountyAmount=amountText)
+            self.RenderText(wantedText, 'bounty_caption')
             self.LogInfo('Updating billboard with bounty portrait', portraitURL, 'for character', charName, ', ID= ', characterID)
 
 
 
     def RenderText(self, text, name):
-        txt = uicls.Label(text=text, parent=None, uppercase=1, letterspace=1, shadow=[], state=uiconst.UI_NORMAL)
+        txt = uicls.EveHeaderMedium(text=text, parent=None, state=uiconst.UI_NORMAL)
         txt.Render()
-        surface = trinity.device.CreateOffscreenPlainSurface(txt.width, txt.height, trinity.TRIFMT_A8R8G8B8, trinity.TRIPOOL_SYSTEMMEM)
+        surface = trinity.device.CreateOffscreenPlainSurface(txt.texture.atlasTexture.width, txt.texture.atlasTexture.height, trinity.TRIFMT_A8R8G8B8, trinity.TRIPOOL_SYSTEMMEM)
         txt.texture.atlasTexture.CopyToSurface(surface)
-        surface.SaveSurfaceToFile('%sTemp/%s.dds' % (blue.os.cachepath, name), trinity.TRIIFF_DDS)
+        surface.SaveSurfaceToFile('%sTemp/%s.dds' % (blue.os.ResolvePath(u'cache:/'), name), trinity.TRIIFF_DDS)
 
 
 

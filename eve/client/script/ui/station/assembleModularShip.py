@@ -1,12 +1,11 @@
 import form
-import uix
 import listentry
 import util
 import uiutil
-import xtriui
 import uthread
 import uicls
 import uiconst
+import localization
 
 class AssembleShip(form.ListWindow):
     __guid__ = 'form.AssembleShip'
@@ -27,7 +26,7 @@ class AssembleShip(form.ListWindow):
         self.groupIDs = groupIDs
         self.scope = 'all'
         self.isPreview = isPreview
-        self.SetCaption(mls.UI_GENERIC_PICKSUBSYSTEMS)
+        self.SetCaption(localization.GetByLabel('UI/Station/PickSubSystems'))
         self.startSubSystems = {}
         if not self.isPreview:
             self.DefineButtons(uiconst.OKCANCEL, okFunc=self.Submit, cancelFunc=self.Cancel)
@@ -39,6 +38,9 @@ class AssembleShip(form.ListWindow):
         self.selectedSubSystemsByFlag = {}
         self.LoadScrollList()
         self.UpdateHint()
+        setselected = attributes.setselected
+        if setselected is not None:
+            self.SetSelected(setselected)
 
 
 
@@ -67,7 +69,7 @@ class AssembleShip(form.ListWindow):
 
         elif not session.stationid:
             return 
-        inv = eve.GetInventoryFromId(const.containerHangar)
+        inv = sm.GetService('invCache').GetInventoryFromId(const.containerHangar)
         subSystemsByGroupID = {}
         for item in inv.List():
             if item.categoryID != const.categorySubSystem:
@@ -197,7 +199,7 @@ class AssembleShip(form.ListWindow):
         if self.groupIDs is not None:
             lenGroupIDs = len(self.groupIDs)
         if len(self.subSystems) + lenGroupIDs != const.visibleSubSystems:
-            t = uicls.Label(text='<center>' + mls.UI_STATION_MUSTSELECT5SUBSYSTEMS, top=-3, parent=ep, width=self.minsize[0] - 32, autowidth=False, state=uiconst.UI_DISABLED, color=(1.0, 0.0, 0.0, 1.0), align=uiconst.CENTER)
+            t = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Station/SelectFiveSubsystems'), top=-3, parent=ep, width=self.minsize[0] - 32, state=uiconst.UI_DISABLED, color=(1.0, 0.0, 0.0, 1.0), align=uiconst.CENTER)
             ep.state = uiconst.UI_DISABLED
             ep.height = t.height + 8
         else:
@@ -212,14 +214,14 @@ class AssembleShip(form.ListWindow):
         if len(self.subSystems) != const.visibleSubSystems - lenGroupIDs:
             return 
         sm.StartService('gameui').GetShipAccess().AssembleShip(self.ship.itemID, subSystems=self.subSystems.values())
-        self.SelfDestruct()
+        self.Close()
 
 
 
     def Cancel(self, *args):
         if self.groupIDs is not None:
             uthread.new(sm.StartService('station').SelectShipDlg)
-        self.SelfDestruct()
+        self.Close()
 
 
 

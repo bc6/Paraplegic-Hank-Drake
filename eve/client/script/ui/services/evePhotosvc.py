@@ -5,7 +5,7 @@ import trinity
 import sys
 import util
 import spaceObject
-import string
+import localization
 import xtriui
 import svc
 import uthread
@@ -19,11 +19,13 @@ import datetime
 import log
 import turret
 import shutil
+import numbers
+import yaml
 from pychartdir import DrawArea, Transparent
 from util import ResFile
 from collections import defaultdict
 MAX_PORTRAIT_THREADS = 5
-MAX_CACHE_AGE = 60 * 60 * 24
+MAX_CACHE_AGE = 60 * 60 * 1
 DEFAULT_PORTRAIT_SIZE = 512
 DEFAULT_PORTRAIT_SAVE_SIZE = 1024
 PORTRAIT_SIZES = [32,
@@ -41,6 +43,7 @@ BLUEPRINT_TRANSPARENT_COLOR = (0.679,
  0.0)
 BLUEPRINT_TRANSPARENT_COLOR_INT = 11393254
 DEFAULT_MARKETING_TEST_IMAGE_SERVER = 'http://cdn1.eveonline.com/marketing/InGameVirtualGoodsStore/TestServersImages/'
+LAST_CHECKED_CACHE_FILE_NAME = 'cacheLastChecked.yaml'
 
 def DoLogIt(path):
     if not util.IsFullLogging() and 'portrait' in path.lower():
@@ -87,9 +90,9 @@ class EvePhoto(svc.photo):
         self.faceoptions = {}
         self.chappcache = None
         self.photoscene = None
-        self.CheckDates(blue.os.cachepath + '/Browser/Img')
-        self.CheckDates(blue.os.cachepath + '/Pictures/Portraits')
-        self.CheckDates(blue.os.cachepath + '/Pictures/Gids')
+        self.CheckDates(blue.os.ResolvePathForWriting(u'cache:/Browser/Img'))
+        self.CheckDates(blue.os.ResolvePathForWriting(u'cache:/Pictures/Portraits'))
+        self.CheckDates(blue.os.ResolvePathForWriting(u'cache:/Pictures/Gids'))
         self.urlloading = {}
         self.pendingPI = {}
         self.portraits = None
@@ -148,8 +151,8 @@ class EvePhoto(svc.photo):
         cachePath = 'cache:/%s' % path
         resFile = blue.ResFile()
         try:
-            if resFile.Open(blue.os.cachepath + path):
-                self.LogInfo('DoBlueprint ', blue.os.cachepath + path, ' exists')
+            if resFile.Open(blue.os.ResolvePath(u'cache:/') + path):
+                self.LogInfo('DoBlueprint ', blue.os.ResolvePath(u'cache:/') + path, ' exists')
                 return cachePath
 
         finally:
@@ -315,14 +318,14 @@ class EvePhoto(svc.photo):
 
         if not dontcache:
             cacheData = sm.GetService('browserCache').GetFromCache(fullPath)
-            if cacheData and os.path.exists(cacheData[0].replace('cache:/', blue.os.cachepath)):
+            if cacheData and os.path.exists(cacheData[0].replace('cache:/', blue.os.ResolvePath(u'cache:/'))):
                 if sizeonly:
                     return cacheData
                 return self.ReturnTexture(*cacheData)
         try:
             self.urlloading[fullPath] = 1
             ret = corebrowserutil.GetStringFromURL(fullPath)
-            cacheID = int(str(blue.os.GetTime()) + str(uthread.uniqueId() or uthread.uniqueId()))
+            cacheID = int(str(blue.os.GetWallclockTime()) + str(uthread.uniqueId() or uthread.uniqueId()))
             imagestream = ret.read()
             ext = None
             if 'content-type' in ret.headers.keys() and ret.headers['content-type'].startswith('image/'):
@@ -349,7 +352,7 @@ class EvePhoto(svc.photo):
 
 
             if ext:
-                filename = '%sBrowser/Img/%s.%s' % (blue.os.cachepath, cacheID, ext)
+                filename = '%sBrowser/Img/%s.%s' % (blue.os.ResolvePath(u'cache:/'), cacheID, ext)
                 resfile = blue.os.CreateInstance('blue.ResFile')
                 if not resfile.Open(filename, 0):
                     resfile.Create(filename)
@@ -360,7 +363,7 @@ class EvePhoto(svc.photo):
                     g.setBgColor(Transparent)
                     g.loadGIF(filename.replace(u'/', u'\\').encode('utf8'))
                     ext = 'PNG'
-                    filename = u'%sBrowser/Img/%s.%s' % (blue.os.cachepath, cacheID, ext)
+                    filename = u'%sBrowser/Img/%s.%s' % (blue.os.ResolvePath(u'cache:/'), cacheID, ext)
                     g.outPNG(filename.replace(u'/', u'\\').encode('utf8'))
                 surface = dev.CreateOffscreenPlainSurface(8, 8, trinity.TRIFMT_A8R8G8B8, trinity.TRIPOOL_SYSTEMMEM)
                 data = surface.LoadSurfaceFromFile(ResFile(filename))
@@ -497,16 +500,16 @@ class EvePhoto(svc.photo):
 
     def _SavePortraits(self, charIDs):
         length = len(charIDs)
-        sm.GetService('loading').ProgressWnd(mls.UI_SHARED_GENERATINGPICTURE, '', 0, length)
+        sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Shared/GeneratingPicture'), '', 0, length)
         portraitSaveSize = self.GetPortraitSaveSize()
         for (i, charID,) in enumerate(charIDs):
             imagePath = self.portraits.GetImage(charID, portraitSaveSize, forceUpdate=True)
             if imagePath:
                 cacheFile = blue.rot.PathToFilename(imagePath)
                 shutil.copy2(cacheFile, blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '/EVE/capture/Portraits/%s.jpg' % charID)
-            sm.GetService('loading').ProgressWnd(mls.UI_SHARED_GENERATINGPICTURE, '', i + 1, length)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Shared/GeneratingPicture'), '', i + 1, length)
 
-        sm.GetService('loading').ProgressWnd(mls.UI_SHARED_GENERATINGPICTURE, '', length, length)
+        sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Shared/GeneratingPicture'), '', length, length)
 
 
 
@@ -520,6 +523,10 @@ class EvePhoto(svc.photo):
 
 
     def GetImage(self, itemID, size, handler, sprite = None, orderIfMissing = True, callback = None, defaultIcon = 'res:/UI/Texture/notavailable.dds'):
+        if uicore.desktop.dpiScaling > 1.0:
+            size = size * 2
+        if not isinstance(itemID, numbers.Integral):
+            return defaultIcon
         (path, isFresh,) = handler.GetCachedImage(itemID, size)
         if sprite is not None:
             sprite.LoadTexture(path or defaultIcon)
@@ -566,8 +573,8 @@ class EvePhoto(svc.photo):
 
     def AddPortrait(self, portraitPath, charID):
         self.LogInfo('Adding portrait of', charID, 'from path', portraitPath)
-        shutil.copy2(portraitPath, blue.os.cachepath + '/Pictures/Characters/%s_%s.jpg' % (charID, DEFAULT_PORTRAIT_SIZE))
-        shutil.copy2(portraitPath, blue.os.cachepath + '/Pictures/Characters/%s_%s.jpg' % (charID, 256))
+        shutil.copy2(portraitPath, blue.os.ResolvePathForWriting(u'cache:/Pictures/Characters/%s_%s.jpg' % (charID, DEFAULT_PORTRAIT_SIZE)))
+        shutil.copy2(portraitPath, blue.os.ResolvePathForWriting(u'cache:/Pictures/Characters/%s_%s.jpg' % (charID, 256)))
         portraitCachePath = 'cache:/Pictures/Characters/%s_%s.jpg' % (charID, DEFAULT_PORTRAIT_SIZE)
         res = blue.resMan.GetResource(portraitCachePath, 'atlas')
         res.Reload()
@@ -622,6 +629,8 @@ class EvePhoto(svc.photo):
                 doBlueprint = isCopy = False
             else:
                 (typeID, wnd, size, itemID, doBlueprint, isCopy,) = each
+            if uicore.desktop.dpiScaling > 1.0:
+                size = size * 2
             if wnd is None or wnd.destroyed:
                 orderlist.remove(each)
                 continue
@@ -663,6 +672,8 @@ class EvePhoto(svc.photo):
                 if wnd is None or wnd.destroyed:
                     self.byTypeIDQue.remove(order)
                     continue
+                if uicore.desktop.dpiScaling > 1.0:
+                    size = size * 2
                 typeinfo = cfg.invtypes.Get(typeID)
                 path = self.GetCachePath(typeinfo, size, itemID, doBlueprint, isCopy)
                 if self.CheckAvail(path) is not None:
@@ -671,15 +682,12 @@ class EvePhoto(svc.photo):
                     continue
                 try:
                     group = typeinfo.Group()
-                    if group.categoryID == const.categoryPlanetaryInteraction and group.id not in (const.groupPlanetaryLinks, const.groupPlanetaryCustomsOffices):
+                    if group.categoryID == const.categoryPlanetaryInteraction and group.id != const.groupPlanetaryLinks:
                         photopath = self.GetPinPhoto(typeID, typeinfo=typeinfo, size=size)
                     elif group.id == const.groupSun:
                         photopath = self.GetSunPhoto(itemID, typeID, typeinfo, size)
                     elif group.id in [const.groupPlanet, const.groupMoon]:
                         photopath = self.GetPlanetPhoto(itemID, typeID, typeinfo, size)
-                    elif group.categoryID == const.categoryModule and group.id in const.turretModuleGroups:
-                        bgColor = BLUEPRINT_TRANSPARENT_COLOR if doBlueprint else None
-                        photopath = self.GetTurretPhoto(typeID, typeinfo=typeinfo, size=size, bgColor=bgColor)
                     else:
                         photopath = self.GetPhoto(typeID, typeinfo=typeinfo, size=size, transparentBackground=doBlueprint, bgColor=BLUEPRINT_TRANSPARENT_COLOR)
                 except Exception as e:
@@ -718,7 +726,7 @@ class EvePhoto(svc.photo):
 
 
     def FindHierarchicalBoundingBox(self, transform, matrix = None):
-        transform.Update(blue.os.GetTime())
+        transform.Update(blue.os.GetWallclockTime())
         if matrix is None:
             matrix = trinity.TriMatrix()
         (minVector, maxVector,) = (None, None)
@@ -821,7 +829,7 @@ class EvePhoto(svc.photo):
             for tf in parent.children[:]:
                 if tf.name == 'miniball' and hasattr(tf, 'localTransform'):
                     found += 1
-                    tf.Update(blue.os.GetTime())
+                    tf.Update(blue.os.GetWallclockTime())
                     tf.display = guides
                     pos = tf.translation.CopyTo()
                     xtra = tf.scaling.x * 0.5
@@ -846,26 +854,14 @@ class EvePhoto(svc.photo):
     def GetPlanetScene(self):
         scenepath = sm.GetService('sceneManager').GetScene()
         scene = trinity.Load(scenepath)
-        scene2 = trinity.EveSpaceScene()
-        textures = scene.nebula.children[0].object.areas[0].areaTextures
-        scene2.envMap1ResPath = textures[0].pixels.encode('ascii')
-        if len(textures) > 1:
-            scene2.envMap2ResPath = textures[1].pixels.encode('ascii')
-        rot1 = textures[0].rotation
-        scene2.envMapRotation = (rot1.x,
-         rot1.y,
-         rot1.z,
-         rot1.w)
-        scale1 = textures[0].scaling
-        scene2.envMapScaling = (scale1.x, scale1.y, scale1.z)
-        scene2.backgroundEffect = trinity.Load('res:/dx9/scene/starfield/starfieldNebula.red')
-        if scene2.backgroundEffect is not None:
-            for node in scene2.backgroundEffect.resources.Find('trinity.TriTexture2DParameter'):
+        scene.backgroundEffect = trinity.Load('res:/dx9/scene/starfield/starfieldNebula.red')
+        if scene.backgroundEffect is not None:
+            for node in scene.backgroundEffect.resources.Find('trinity.TriTexture2DParameter'):
                 if node.name == 'NebulaMap':
-                    node.resourcePath = scene2.envMap1ResPath
+                    node.resourcePath = scene.envMap1ResPath
 
-        scene2.backgroundRenderingEnabled = True
-        return scene2
+        scene.backgroundRenderingEnabled = True
+        return scene
 
 
 
@@ -903,47 +899,27 @@ class EvePhoto(svc.photo):
 
     def GetSunPhoto(self, itemID, typeID, typeinfo, size = 512):
         filepath = self.GetCachePath(typeinfo, size, itemID, 0)
-        graphicURL = cfg.invtypes.Get(typeID).GraphicFile()
-        lensflare = trinity.Load(graphicURL)
-        lensflare.position = trinity.TriVector(0.0, 0.0, 0.0)
-        baseName = string.split(graphicURL, '/')
-        baseName = baseName[-1]
-        for flare in lensflare.flares:
-            seq = trinity.TriScalarSequencer()
-            if flare.scaleOverTime and hasattr(flare.scaleOverTime, 'keys'):
-                for key in flare.scaleOverTime.keys:
-                    key.value = key.value + 1.0
-
-                seq.functions.append(flare.scaleOverTime)
-            else:
-                normalCurve = trinity.TriScalarCurve()
-                normalCurve.value = 1.0
-                seq.functions.append(normalCurve)
-            flare.scaleOverTime = seq
-            if not flare.opacityOverDot:
-                dotCurve = trinity.TriScalarCurve()
-                dotCurve.value = 1.0
-                flare.opacityOverDot = dotCurve
-
         scenepath = sm.GetService('sceneManager').GetScene()
         scene = trinity.Load(scenepath)
-        scene.lensFlare = lensflare
+        graphicURL = cfg.invtypes.Get(typeID).GraphicFile()
+        graphicURL = graphicURL.replace(':/Model/', ':/dx9/Model/').replace('.blue', '.red')
+        lensflare = trinity.Load(graphicURL)
+        lensflare.position = (0.0, 0.0, -1.0)
+        lensflare.translationCurve = None
+        lensflare.doOcclusionQueries = False
+        scene.lensflares.append(lensflare)
         trinity.WaitForResourceLoads()
-        scene.Update(blue.os.GetTime())
-        dev = trinity.device
-        vec = trinity.TriVector(0.0, 0.0, -1.4)
-        view = trinity.TriMatrix()
-        projection = trinity.TriMatrix()
+        for flare in lensflare.flares:
+            for param in flare.Find('trinity.TriFloatParameter'):
+                if param.name == 'mainSizeFactor':
+                    param.value = param.value + 1.0
+
+
         fov = 1.0
-        view.LookAtLH(vec, trinity.TriVector(0.0, 0.0, 0.0), trinity.TriVector(0.0, 1.0, 0.0))
-        projection.PerspectiveFovLH(fov, 1.0, 1.0, 100000000.0)
-        scene.camera.update = 0
-        scene.camera.projection = projection
-        scene.camera.view = view
-        (target, stencil, viewport,) = self.TargetAndStencilAndViewport(size, format=trinity.TRIFMT_X8R8G8B8)
-        rgbSource = dev.CreateOffscreenPlainSurface(size, size, trinity.TRIFMT_X8R8G8B8, trinity.TRIPOOL_SYSTEMMEM)
-        dev.RenderScene(scene, target, stencil, viewport, projection, view, blue.os.GetTime(), trinity.TRICLEAR_ZBUFFER | trinity.TRICLEAR_TARGET, rgbSource)
-        return self._SaveSurfaceToFile(rgbSource, filepath)
+        boundingSphereRadius = 100.0
+        boundingSphereCenter = (0.0, 0.0, 0.0)
+        surface = self.TakeSnapShotUsingBoundingSphere(scene, size, boundingSphereRadius, boundingSphereCenter, fov=fov, cameraAngle=(0.0, 0.0, 0.0))
+        return self._SaveSurfaceToFile(surface, filepath)
 
 
 
@@ -974,7 +950,7 @@ class EvePhoto(svc.photo):
         projection = trinity.TriMatrix()
         projection.PerspectiveOffCenterLH(left, right, -bottom, -top, 1.0, 100000000.0)
         try:
-            dev.RenderScene(scene, target, stencil, viewport, projection, scene.camera.view, blue.os.GetTime(), trinity.TRICLEAR_ZBUFFER | trinity.TRICLEAR_TARGET, sur)
+            dev.RenderScene(scene, target, stencil, viewport, projection, scene.camera.view, blue.os.GetWallclockTime(), trinity.TRICLEAR_ZBUFFER | trinity.TRICLEAR_TARGET, sur)
         except trinity.DeviceLostError:
             sys.exc_clear()
         if scene.pointStarfield:
@@ -1126,7 +1102,7 @@ class EvePhoto(svc.photo):
         renderJob.WaitForFinish()
         trinity.device.GetRenderTargetData(target, surface)
         portraits = '/Pictures/Portraits/'
-        filename = blue.os.cachepath + portraits + outputPath
+        filename = blue.os.ResolvePath(u'cache:/') + portraits + outputPath
         surface.SaveSurfaceToFile(filename, format)
         return surface
 
@@ -1135,7 +1111,7 @@ class EvePhoto(svc.photo):
     def GetStorebanner(self, imageID, language, sprite):
         if self.storeBannerImages is None:
             server = self.GetImageServerURL('marketingImageServer', self.defaultMarketingImages)
-            self.storeBannerImages = RemoteImageCacher('Storebanner', self, '.png', server)
+            self.storeBannerImages = RemoteImageCacherWithFileTracking('Storebanner', self, '.png', server)
         return self.GetImage(imageID, language, self.storeBannerImages, sprite)
 
 
@@ -1270,21 +1246,17 @@ class RemoteImageCacher(object):
                 self.initialized = False
                 return 
             cacheFile = blue.rot.PathToFilename(cachePath)
-            lastModified = self._RemoteImageCacher__GetLastModified(cachePath)
+            lastModified = self.GetLastModified(cachePath)
             if forceUpdate or not self._RemoteImageCacher__IsFresh(cachePath):
                 self.LogInfo('Get image for', itemID, 'is fetching/refreshing image. Forced = ', forceUpdate)
-                image = self._RemoteImageCacher__GetImageFromUrl(itemID, size, lastModified)
+                (image, headerLastModifiedTime,) = self._RemoteImageCacher__GetImageFromUrl(itemID, size, lastModified)
                 if image is None:
                     self.LogInfo('No image found for', itemID, 'adding to missing images')
                     self.missingImages[itemID] = time.time()
                     return 
                 if image == NOT_MODIFIED:
                     self.LogInfo('Image has not been modified, updating cached image')
-                    try:
-                        with file(cacheFile, 'a'):
-                            os.utime(cacheFile, None)
-                    except Exception as e:
-                        self.LogError('Failed to update timestamp', repr(e))
+                    self.UpdateLastCheckedTime(cacheFile)
                 else:
                     resfile = blue.os.CreateInstance('blue.ResFile')
                     try:
@@ -1297,6 +1269,8 @@ class RemoteImageCacher(object):
                                 return 
                         resfile.Write(image)
                         resfile.Close()
+                        self.InvalidateResManagerForResource(cachePath)
+                        self.FetchedCacheFile(cachePath, headerLastModifiedTime)
                     except Exception as e:
                         self.LogError('Failed to update cached image', repr(e))
                         return 
@@ -1314,7 +1288,7 @@ class RemoteImageCacher(object):
 
     def __GetImageFromUrl(self, charID, size, lastModified = None):
         if not self.Initialized():
-            return 
+            return (None, None)
         url = (self.imageUri % (charID, size)).strip().encode('ascii')
         request = urllib2.Request(url, None)
         self.LogInfo('Getting image from', url)
@@ -1322,26 +1296,37 @@ class RemoteImageCacher(object):
             cacheTime = datetime.datetime.utcfromtimestamp(lastModified)
             cacheStamp = cacheTime.strftime('%a, %d %b %Y %H:%M:%S GMT')
             request.add_header('If-Modified-Since', cacheStamp)
+            self.LogInfo('adding If-Modified-Since header for', cacheStamp)
         try:
             ret = self.opener.open(request)
         except urllib2.HTTPError as e:
             if e.code == NOT_MODIFIED:
-                return NOT_MODIFIED
+                self.LogInfo('Not Modified', url, 'since', lastModified, time.ctime(lastModified))
+                return (NOT_MODIFIED, None)
             if e.code == TEMP_REDIRECT:
-                return 
+                self.LogInfo('Temp Redirect while getting image', str(e))
+                return (None, None)
             self.LogError('Error while fetching remote image', str(e))
             sys.exc_clear()
-            return 
+            return (None, None)
         except urllib2.URLError as e:
             self.LogError('Error while fetching remote image', str(e))
             sys.exc_clear()
-            return 
+            return (None, None)
         try:
             if 'content-type' not in ret.headers.keys() or not ret.headers['content-type'].startswith('image/'):
                 self.LogError(url, 'was not an actual image')
-                return 
+                return (None, None)
             else:
-                return ret.read()
+                lastModifiedTime = time.time()
+                if 'last-modified' in ret.headers.keys():
+                    try:
+                        t = datetime.datetime.strptime(ret.headers['last-modified'], '%a, %d %b %Y %H:%M:%S GMT')
+                        lastModifiedTime = time.mktime(t.timetuple())
+                    except Exception as e:
+                        self.LogError('Error parsing the Last-Modified response header', str(e))
+                        sys.exc_clear()
+                return (ret.read(), lastModifiedTime)
 
         finally:
             ret.close()
@@ -1349,15 +1334,50 @@ class RemoteImageCacher(object):
 
 
 
-    def __GetLastModified(self, cachePath):
+    def GetLastModified(self, cachePath):
         filepath = blue.rot.PathToFilename(cachePath)
         if os.path.exists(filepath):
             return os.path.getmtime(filepath)
 
 
 
+    def GetLastChecked(self, cachePath):
+        return self.GetLastModified(cachePath)
+
+
+
+    def InvalidateResManagerForResource(self, cacheFile):
+        try:
+            self.LogInfo('Reloading blue res', cacheFile)
+            res = blue.resMan.GetResource(str(cacheFile), 'atlas')
+            if res:
+                res.Reload()
+        except SystemError:
+            sys.exc_clear()
+
+
+
+    def FetchedCacheFile(self, cacheFile, headerLastModifiedTime):
+        pass
+
+
+
+    def UpdateLastCheckedTime(self, cacheFile):
+        self.UpdateFileTimeStamp(cacheFile, None)
+
+
+
+    def UpdateFileTimeStamp(self, cacheFile, timeStamp):
+        try:
+            with file(cacheFile, 'a'):
+                os.utime(cacheFile, timeStamp)
+        except Exception as e:
+            self.LogError('Failed to update timestamp', repr(e))
+
+
+
     def __IsFresh(self, cachePath):
-        lastModified = self._RemoteImageCacher__GetLastModified(cachePath)
+        lastModified = self.GetLastChecked(cachePath)
         if lastModified is None:
             return False
         delta = time.time() - lastModified
@@ -1370,6 +1390,46 @@ class RemoteImageCacher(object):
         filepath = blue.rot.PathToFilename(cachePath)
         if os.path.exists(filepath):
             os.remove(filepath)
+
+
+
+
+class RemoteImageCacherWithFileTracking(RemoteImageCacher):
+
+    def __init__(self, cacheItem, logger, suffix, imageServer):
+        RemoteImageCacher.__init__(self, cacheItem, logger, suffix, imageServer)
+        self.cacheLastCheckedTimes = {}
+        basePath = self.cacheBasePath
+        osPath = blue.rot.PathToFilename(basePath)
+        if not os.path.exists(osPath):
+            os.makedirs(osPath)
+        self.cacheLastCheckedFilePath = osPath + LAST_CHECKED_CACHE_FILE_NAME
+        if os.path.exists(self.cacheLastCheckedFilePath):
+            with open(self.cacheLastCheckedFilePath, 'r') as f:
+                self.cacheLastCheckedTimes = yaml.load(f, Loader=yaml.CLoader)
+
+
+
+    def GetLastChecked(self, cachePath):
+        fileName = cachePath.split('/')[-1]
+        osFile = blue.rot.PathToFilename(cachePath)
+        if fileName in self.cacheLastCheckedTimes and os.path.exists(osFile):
+            return self.cacheLastCheckedTimes[fileName]
+
+
+
+    def FetchedCacheFile(self, cacheFile, headerLastModifiedTime):
+        self.UpdateFileTimeStamp(cacheFile, (headerLastModifiedTime, headerLastModifiedTime))
+        self.UpdateLastCheckedTime(cacheFile)
+
+
+
+    def UpdateLastCheckedTime(self, cacheFile):
+        fileName = cacheFile.replace('\\', '/').split('/')[-1]
+        self.cacheLastCheckedTimes[fileName] = time.time()
+        self.LogInfo('Updating last checked time ', cacheFile, 'to now')
+        with open(self.cacheLastCheckedFilePath, 'w') as f:
+            yaml.dump(self.cacheLastCheckedTimes, f, Dumper=yaml.CDumper)
 
 
 

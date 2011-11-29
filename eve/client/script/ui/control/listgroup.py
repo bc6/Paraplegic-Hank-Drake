@@ -6,6 +6,7 @@ import listentry
 import uiconst
 import uicls
 import log
+import localization
 
 class VirtualGroupWindow(uicls.Window):
     __guid__ = 'form.VirtualGroupWindow'
@@ -50,7 +51,7 @@ class VirtualGroupWindow(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         self.sr.data = None
 
 
@@ -116,7 +117,7 @@ class ListGroup(uicls.SE_ListGroupCore):
          0,
          const.defaultPadding,
          0), clipChildren=1)
-        self.sr.label = uicls.Label(text='', parent=self.sr.labelClipper, left=5, state=uiconst.UI_DISABLED, singleline=1, idx=0, align=uiconst.CENTERLEFT)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=self.sr.labelClipper, left=5, state=uiconst.UI_DISABLED, singleline=1, idx=0, align=uiconst.CENTERLEFT)
         self.sr.fill = uicls.Fill(parent=self, padTop=-1, padBottom=-1)
         self.OnUIColorsChanged()
         self.sr.mainLinePar = uicls.Container(parent=self, name='mainLinePar', align=uiconst.TOALL, idx=0, pos=(0, 0, 0, -15), state=uiconst.UI_DISABLED)
@@ -137,7 +138,7 @@ class ListGroup(uicls.SE_ListGroupCore):
 
     def GetHeight(self, *args):
         (node, width,) = args
-        node.height = uix.GetTextHeight(node.label, autoWidth=1, singleLine=1) + 4
+        node.height = uix.GetTextHeight(node.label, singleLine=1) + 4
         return node.height
 
 
@@ -206,7 +207,10 @@ class ListGroup(uicls.SE_ListGroupCore):
 
     def RefreshGroupWindow(self, create):
         if self.sr.node:
-            wnd = sm.GetService('window').GetWindow(unicode(self.sr.node.id), create=create, decoClass=form.VirtualGroupWindow, node=self.sr.node, caption=self.sr.node.label.replace('<t>', '-'))
+            if create:
+                wnd = form.VirtualGroupWindow.Open(windowID=unicode(self.sr.node.id), node=self.sr.node, caption=self.sr.node.label.replace('<t>', '-'))
+            else:
+                wnd = form.VirtualGroupWindow.GetIfOpen(windowID=unicode(self.sr.node.id))
             if wnd:
                 wnd.LoadContent(self.sr.node, newCaption=self.sr.node.label)
                 if create:
@@ -220,7 +224,7 @@ class ListGroup(uicls.SE_ListGroupCore):
 
 
     def GetNoItemEntry(self):
-        return listentry.Get('Generic', {'label': mls.UI_GENERIC_NOITEM,
+        return listentry.Get('Generic', {'label': localization.GetByLabel('/Carbon/UI/Controls/Common/NoItem'),
          'sublevel': self.sr.node.Get('sublevel', 0) + 1})
 
 
@@ -228,21 +232,21 @@ class ListGroup(uicls.SE_ListGroupCore):
     def GetMenu(self):
         m = []
         if not self.sr.node.Get('BlockOpenWindow', 0):
-            wnd = sm.GetService('window').GetWindow(unicode(self.sr.node.id))
+            wnd = form.VirtualGroupWindow.GetIfOpen(windowID=unicode(self.sr.node.id))
             if wnd:
-                m = [(mls.UI_CMD_SHOWWINDOW, self.RefreshGroupWindow, (1,))]
+                m = [(localization.GetByLabel('/Carbon/UI/Controls/ScrollEntries/ShowWindow'), self.RefreshGroupWindow, (1,))]
             else:
-                m = [(mls.UI_CMD_OPENGROUPWINDOW, self.RefreshGroupWindow, (1,))]
+                m = [(localization.GetByLabel('/Carbon/UI/Controls/ScrollEntries/OpenGroupWindow'), self.RefreshGroupWindow, (1,))]
         node = self.sr.node
         expandable = node.Get('expandable', 1)
         if expandable:
             if not node.open:
-                m += [(mls.UI_CMD_EXPAND, self.Toggle, ())]
+                m += [(localization.GetByLabel('UI/Common/Expand'), self.Toggle, ())]
             else:
-                m += [(mls.UI_CMD_COLLAPSE, self.Toggle, ())]
+                m += [(localization.GetByLabel('UI/Common/Collapse'), self.Toggle, ())]
         if node.Get('state', None) != 'locked':
-            m += [(mls.UI_CMD_CHANGELABEL, self.ChangeLabel)]
-            m += [(mls.UI_CMD_DELETEFOLDER, self.DeleteFolder)]
+            m += [(localization.GetByLabel('/Carbon/UI/Controls/ScrollEntries/ChangeLabel'), self.ChangeLabel)]
+            m += [(localization.GetByLabel('/Carbon/UI/Controls/ScrollEntries/DeleteFolder'), self.DeleteFolder)]
         if node.Get('MenuFunction', None):
             cm = node.MenuFunction(node)
             m += cm
@@ -251,14 +255,12 @@ class ListGroup(uicls.SE_ListGroupCore):
 
 
     def GetNewGroupName(self):
-        return uix.NamePopup(mls.UI_GENERIC_TYPEINNEWNAME, mls.UI_GENERIC_TYPEINNEWNAMEFOLDER)
+        return uix.NamePopup(localization.GetByLabel('/Carbon/UI/Controls/ScrollEntries/TypeInNewName'), localization.GetByLabel('/Carbon/UI/Controls/ScrollEntries/TypeInNewFolderName'))
 
 
 
     def CloseWindow(self, windowID):
-        wnd = sm.GetService('window').GetWindow(windowID)
-        if wnd:
-            wnd.SelfDestruct()
+        form.VirtualGroupWindow.CloseIfOpen(windowID=windowID)
 
 
 

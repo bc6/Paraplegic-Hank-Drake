@@ -13,6 +13,7 @@ import random
 import triui
 import uicls
 import uiconst
+import localization
 VIEWWIDTH = 48
 MAXMAPSIZE = 8000
 MINMAPSIZE = 256
@@ -28,22 +29,24 @@ DRAWLVLSYS = 4
 
 class MapBrowserWnd(uicls.Window):
     __guid__ = 'form.MapBrowserWnd'
-    __notifyevents__ = ['OnSetDevice']
+    __notifyevents__ = ['OnSetDevice', 'OnUIScalingChange']
+    default_windowID = 'mapbrowser'
 
     def ApplyAttributes(self, attributes):
+        attributes.parent = uicore.layer.neocom
         uicls.Window.ApplyAttributes(self, attributes)
         locationID = attributes.locationID
         self.Reset_()
         self.scope = 'station_inflight'
-        self.SetCaption(mls.UI_SHARED_MAPBROWSER)
+        self.SetCaption(localization.GetByLabel('UI/Map/MapBrowser/MapBrowser'))
         self.MakeUnMinimizable()
         self.SetWndIcon()
         self.SetTopparentHeight(0)
         self.HideHeader()
         self.MakeUnResizeable()
         closeX = uicls.Icon(parent=self.sr.main, icon='ui_38_16_220', align=uiconst.TOPRIGHT, top=-1, idx=0)
-        closeX.OnClick = self.CloseX
-        closeX.hint = mls.UI_SHARED_CLOSE_MAPBROWSER
+        closeX.OnClick = self.CloseByUser
+        closeX.hint = localization.GetByLabel('UI/Map/MapBrowser/CloseMapBrowser')
         self.isDockWnd = 0
         self.sr.browser = xtriui.MapBrowser(name='browserX', parent=self.sr.main, pos=(3, 0, 3, 0))
         self.sr.browser.GetMenu = self.GetMenu
@@ -52,7 +55,7 @@ class MapBrowserWnd(uicls.Window):
 
 
     def Hide(self, *args, **kwargs):
-        data = sm.GetService('neocom').PrepareForWindowPush()
+        data = sm.GetService('neocom').PrepareForWindowPush(canWait=True)
         self.state = uiconst.UI_HIDDEN
         if data:
             sm.GetService('neocom').UpdateWindowPush(data, **kwargs)
@@ -60,16 +63,24 @@ class MapBrowserWnd(uicls.Window):
 
 
     def Show(self, *args, **kwargs):
-        data = sm.GetService('neocom').PrepareForWindowPush()
+        data = sm.GetService('neocom').PrepareForWindowPush(canWait=True)
         self.state = uiconst.UI_NORMAL
-        uiutil.SetOrder(self, 0)
         if data:
             sm.GetService('neocom').UpdateWindowPush(data, **kwargs)
 
 
 
+    def OnUIScalingChange(self, change, *args):
+        self.OnSetDevice()
+
+
+
     def OnSetDevice(self):
+        data = sm.GetService('neocom').PrepareForWindowPush()
         self.Close()
+        form.MapBrowserWnd.Open()
+        if data:
+            sm.GetService('neocom').UpdateWindowPush(data)
 
 
 
@@ -84,22 +95,20 @@ class MapBrowserWnd(uicls.Window):
 
 
 
-    def GetSideOffset(self):
-        return (0, uicore.desktop.width - self.absoluteLeft)
-
-
-
-    def InitializeStatesAndPosition(self, skipState = False, *args, **kw):
-        data = sm.GetService('neocom').PrepareForWindowPush()
+    def InitializeStatesAndPosition(self, *args, **kw):
+        windowData = sm.GetService('neocom').PrepareForWindowPush(canWait=True)
         uicls.Window.InitializeStatesAndPosition(self, *args, **kw)
         self.SetAlign([uiconst.TOLEFT, uiconst.TORIGHT][(settings.user.ui.Get('mapbrowseralign', 'right') == 'right')])
-        self.SetCorrectLeft()
         self.height = uicore.desktop.height
         self.width = self.height / 4 + 5
-        if not skipState:
-            self.state = uiconst.UI_PICKCHILDREN
-        if data:
-            uthread.new(sm.GetService('neocom').UpdateWindowPush, data)
+        self.left = 0
+        self.top = 0
+        self.state = uiconst.UI_PICKCHILDREN
+        if windowData:
+            sm.GetService('neocom').UpdateWindowPush(windowData)
+        neocomWindow = sm.GetService('neocom').GetWnd()
+        if neocomWindow:
+            neocomWindow.SetOrder(0)
         self.DoLoad(self.initLocationID)
 
 
@@ -113,7 +122,7 @@ class MapBrowserWnd(uicls.Window):
 
 
     def LoadCurrentDelayed(self):
-        blue.pyos.synchro.Sleep(200)
+        blue.pyos.synchro.SleepWallclock(200)
         if not self.destroyed:
             self.LoadCurrent()
 
@@ -132,29 +141,19 @@ class MapBrowserWnd(uicls.Window):
     def GetMenu(self):
         m = []
         if self.GetAlign() == uiconst.TOLEFT:
-            m.append((mls.UI_CMD_ALIGNRIGHT, self.ChangeAlign, ('right',)))
+            m.append((localization.GetByLabel('UI/Map/MapBrowser/AlignRight'), self.ChangeAlign, ('right',)))
         else:
-            m.append((mls.UI_CMD_ALIGNLEFT, self.ChangeAlign, ('left',)))
+            m.append((localization.GetByLabel('UI/Map/MapBrowser/AlignLeft'), self.ChangeAlign, ('left',)))
         return m
 
 
 
     def ChangeAlign(self, align):
-        data = sm.GetService('neocom').PrepareForWindowPush()
+        data = sm.GetService('neocom').PrepareForWindowPush(canWait=True)
         settings.user.ui.Set('mapbrowseralign', align)
         self.SetAlign([uiconst.TOLEFT, uiconst.TORIGHT][(align == 'right')])
         if data:
             sm.GetService('neocom').UpdateWindowPush(data)
-        self.SetCorrectLeft()
-
-
-
-    def SetCorrectLeft(self):
-        neoAlign = sm.GetService('neocom').GetWnd().GetAlign()
-        if neoAlign == self.GetAlign():
-            self.left = sm.GetService('neocom').GetWnd().width
-        else:
-            self.left = 0
 
 
 
@@ -193,13 +192,13 @@ class MapBrowserWnd(uicls.Window):
 
     def MapScaler(self, where):
         parent = uicls.Container(parent=where, align=uiconst.TOBOTTOM, height=14)
-        uicls.Label(text=mls.UI_GENERIC_ZOOMLEVEL, parent=parent, left=0, top=-12, width=100, autowidth=False, fontsize=9, letterspace=1, color=(1.0, 1.0, 1.0, 0.5), state=uiconst.UI_NORMAL)
+        uicls.EveLabelSmall(text=localization.GetByLabel('UI/Map/MapBrowser/ZoomLevel'), parent=parent, left=0, top=-12, width=100, color=(1.0, 1.0, 1.0, 0.5), state=uiconst.UI_NORMAL)
         for level in (1, 2, 4):
             sub = uicls.Container(parent=parent, align=uiconst.TOLEFT, width=24, state=uiconst.UI_NORMAL)
             sub.OnClick = (self.ChangeZoomLevel, sub, level)
             parent.width += sub.width
             uicls.Frame(parent=sub)
-            txt = uicls.Label(text='%sx' % level, parent=sub, align=uiconst.TOALL, left=6, top=2, fontsize=9, letterspace=1, state=uiconst.UI_DISABLED, autowidth=False, autoheight=False)
+            txt = uicls.EveLabelSmall(text='%sx' % level, parent=sub, align=uiconst.TOALL, left=6, top=2, state=uiconst.UI_DISABLED)
             if settings.user.ui.Get('mapbrowserzoomlevel', 1) == level:
                 uicls.Fill(parent=sub, padding=(1, 1, 1, 1))
 
@@ -218,8 +217,8 @@ class MapBrowserWnd(uicls.Window):
 
 
 
-    def OnClose_(self, wnd, *args):
-        data = sm.GetService('neocom').PrepareForWindowPush()
+    def _OnClose(self, *args):
+        data = sm.GetService('neocom').PrepareForWindowPush(canWait=True)
         settings.user.ui.Set('mapscale', self.mapscale)
         if self.sr.mainmap:
             self.sr.mainmap.Close()

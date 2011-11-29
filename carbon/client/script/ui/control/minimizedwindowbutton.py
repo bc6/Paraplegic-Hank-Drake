@@ -11,22 +11,24 @@ import weakref
 class WindowMinimizeButtonCore(uicls.Container):
     __guid__ = 'uicls.WindowMinimizeButtonCore'
 
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        self.Prepare_()
+        wnd = attributes.wnd
+        self.wnd_wr = weakref.ref(wnd)
+        self.SetLabel(wnd.GetCaption())
+        self.SetBlink(0)
+        self.SetHighlight(0)
+        self.hint = wnd.headerIconHint
+
+
+
     def Prepare_(self):
         uicls.Frame(parent=self)
         self.sr.label = uicls.Label(parent=self, state=uiconst.UI_DISABLED, fontsize=10, letterspace=1, pos=(8, 4, 0, 0), uppercase=1, idx=2)
         self.sr.icon = uicls.Icon(parent=self, state=uiconst.UI_DISABLED, icon='ui_1_16_102')
         self.sr.hilite = uicls.Fill(parent=self)
         self.sr.blink = uicls.Fill(parent=self)
-
-
-
-    def Startup(self, wnd):
-        self.Prepare_()
-        self.wnd_wr = weakref.ref(wnd)
-        self.SetLabel(wnd.GetCaption())
-        self.SetBlink(0)
-        self.SetHighlight(0)
-        self.hint = wnd.headerIconHint
 
 
 
@@ -39,7 +41,7 @@ class WindowMinimizeButtonCore(uicls.Container):
         if not self.destroyed:
             self.Close()
         if wnd:
-            wnd.Maximize(expandIfCollapsed=0)
+            wnd.Maximize()
 
 
 
@@ -67,9 +69,7 @@ class WindowMinimizeButtonCore(uicls.Container):
     def SetLabel(self, labeltext):
         if self.sr.label:
             labeltext = labeltext.strip()
-            if len(labeltext) > 32:
-                labeltext = '%s...' % labeltext[:32]
-            self.sr.label.text = labeltext
+            self.sr.label.text = uiutil.TruncateStringTo(labeltext, 32, '...')
             self.width = self.sr.label.width + self.sr.label.left + 8
             if self.wnd_wr and self.wnd_wr():
                 wnd = self.wnd_wr()
@@ -80,12 +80,14 @@ class WindowMinimizeButtonCore(uicls.Container):
 
 
 
-    def SetBlink(self, blink = 1):
+    def SetBlink(self, blink = True):
         if self.sr.blink:
             if blink:
+                uicore.effect.BlinkSpriteRGB(self.sr.blink, 0.5, 0.5, 0.5, 750, 10000, passColor=1)
                 self.sr.blink.state = uiconst.UI_DISABLED
             else:
                 self.sr.blink.state = uiconst.UI_HIDDEN
+                uicore.effect.StopBlink(self.sr.blink)
 
 
 

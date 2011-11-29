@@ -1,20 +1,29 @@
 import svc
+import math
 import trinity
 import uiconst
 import GameWorld
+import movement
+import geo2
+import blue
+STOP_DELAY = int(0.05 * const.SEC)
 
 class EveNavigationService(svc.navigation):
     __guid__ = 'svc.eveNavigation'
     __replaceservice__ = 'navigation'
-    __dependencies__ = ['entityClient', 'mouseInput']
+    __dependencies__ = ['movementClient', 'entityClient', 'mouseInput']
 
     def Run(self, memStream = None):
         svc.navigation.Run(self, memStream)
+        self.inputMap = movement.EveInputMap()
         self.lastHeading = None
+        self.delayTimerActive = False
+        self.delayTimerEnd = 0
         self.leftMouseDown = False
         self.rightMouseDown = False
         self.lastForwardBackward = None
         self.lastLeftRight = None
+        self.aoClient = sm.GetService('actionObjectClientSvc')
         self.mouseInput.RegisterCallback(const.INPUT_TYPE_MOUSEDOWN, self.OnMouseDown)
         self.mouseInput.RegisterCallback(const.INPUT_TYPE_MOUSEUP, self.OnMouseUp)
 
@@ -49,7 +58,7 @@ class EveNavigationService(svc.navigation):
             return False
         (fwdKey, backKey, moveLKey, moveRKey,) = self.PrimeNavKeys()
         if vkey in self.navKeys:
-            self.hasControl = True
+            self.hasFocus = True
             if vkey == fwdKey:
                 self.lastForwardBackward = const.MOVDIR_FORWARD
             elif vkey == backKey:
@@ -63,43 +72,84 @@ class EveNavigationService(svc.navigation):
 
 
     def RecreatePlayerMovement(self):
+        heading = [0, 0, 0]
         if self.navKeys is None:
             self.PrimeNavKeys()
         if getattr(self, '_delayedMouseUpStillPending', False):
             return 
         player = self.entityClient.GetPlayerEntity()
         if player:
-            isPathing = isinstance(player.movement.avatar.GetActiveMoveMode(), GameWorld.PathToMode)
-            if self.hasControl and trinity.app.IsActive() and player.movement.allowMovement:
+            isPathing = isinstance(player.movement.moveModeManager.GetCurrentMode(), GameWorld.PathToMode)
+            if self.HasControl() and trinity.app.IsActive() and player.movement.moveModeManager.allowedToMove:
                 curKeyState = self.GetKeyState()
                 (fwdActive, backActive, moveLActive, moveRActive,) = curKeyState
                 isKeyPressed = fwdActive or backActive or moveLActive or moveRActive
-                if isKeyPressed and isPathing:
-                    player.movement.avatar.PushMoveMode(GameWorld.KBMouseMode(0.0))
-                    isPathing = False
-                y = 0.0
-                z = 0.0
+                isMouseDriving = self.leftMouseDown and self.rightMouseDown
+                if isKeyPressed or isMouseDriving:
+                    if isPathing:
+                        player.movement.moveModeManager.PushMoveMode(GameWorld.PlayerInputMode())
+                        isPathing = False
+                    if self.aoClient.IsEntityUsingActionObject(player.entityID):
+                        self.aoClient.ExitActionObject(player.entityID)
+                        return 
+                heading[1] = 0.0
+                heading[2] = 0.0
                 if backActive and fwdActive and self.lastForwardBackward == const.MOVDIR_BACKWARD or backActive and not fwdActive:
-                    z = -1.0
-                elif fwdActive or self.leftMouseDown and self.rightMouseDown:
-                    z = 1.0
-                x = 0.0
+                    heading[2] = -1.0
+                elif fwdActive or isMouseDriving:
+                    heading[2] = 1.0
+                heading[0] = 0.0
                 if moveLActive and moveRActive and self.lastLeftRight == const.MOVDIR_LEFT or moveLActive and not moveRActive:
-                    x = 1.0
+                    heading[0] = 1.0
                 elif moveRActive:
-                    x = -1.0
+                    heading[0] = -1.0
                 if not isPathing:
-                    player.movement.avatar.localHeading = (x, y, z)
-                    mode = player.movement.avatar.GetActiveMoveMode()
-                    if isinstance(mode, GameWorld.KBMouseMode):
-                        player.movement.avatar.GetActiveMoveMode().localHeading = (x, y, z)
-                        if self.lastHeading != (x, y, z):
-                            movementComponent = player.GetComponent('movement')
-                            if movementComponent and movementComponent.relay:
-                                movementComponent.relay.SendCurrentMove()
-                            self.lastHeading = (x, y, z)
+                    heading = self.CheckForStop(heading)
+                    mode = player.movement.moveModeManager.GetCurrentMode()
+                    cc = sm.GetService('cameraClient')
+                    cameraOrbitMode = self.rightMouseDown and not self.leftMouseDown
+                    if cameraOrbitMode:
+                        (yawValue, trash, trash,) = geo2.QuaternionRotationGetYawPitchRoll(player.GetComponent('position').rotation)
+                        moving = 1 if heading[2] == 1 else 0
+                        self.inputMap.SetIntendedState(0, moving, 0, False, yawValue)
+                    else:
+                        yawValue = -math.pi / 2.0 - cc.GetActiveCamera().yaw
+                        self.inputMap.SetIntendedState(heading[0], heading[2], int(isMouseDriving), False, yawValue)
+                    if hasattr(mode, 'SetDynamicState'):
+                        if heading[0] != 0 or heading[2] != 0:
+                            mode.SetDynamicState(yawValue)
             elif not isPathing:
-                player.movement.avatar.localHeading = (0, 0, 0)
+                self.inputMap.SetIntendedState(0, 0, 0, 0, 0)
+        self.lastHeading = heading
+
+
+
+    def CheckForStop(self, heading):
+        returnValue = heading
+        headingLength = geo2.Vec3Length(heading)
+        if not self.delayTimerActive and headingLength < const.FLOAT_TOLERANCE and geo2.Vec3Length(self.lastHeading) > 0:
+            returnValue = self.lastHeading
+            self.StartStopDelayTimer()
+        if self.delayTimerActive and self.delayTimerEnd > blue.os.GetWallclockTime():
+            if headingLength < const.FLOAT_TOLERANCE:
+                returnValue = self.lastHeading
+            else:
+                self.StopStopDelayTimer()
+        if self.delayTimerActive and self.delayTimerEnd <= blue.os.GetWallclockTime():
+            self.StopStopDelayTimer()
+        return returnValue
+
+
+
+    def StartStopDelayTimer(self):
+        self.delayTimerEnd = blue.os.GetWallclockTime() + STOP_DELAY
+        self.delayTimerActive = True
+
+
+
+    def StopStopDelayTimer(self):
+        self.delayTimerEnd = 0
+        self.delayTimerActive = False
 
 
 
@@ -157,6 +207,13 @@ class EveNavigationService(svc.navigation):
         self.navKeys = None
         self.leftMouseDown = False
         self.rightMouseDown = False
+
+
+
+    def Focus(self):
+        charControlLayer = sm.GetService('viewState').GetView('station').layer
+        uicore.registry.SetFocus(charControlLayer)
+        self.hasFocus = True
 
 
 

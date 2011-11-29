@@ -1,4 +1,5 @@
 import blue
+import bluepy
 import util
 import sys
 import types
@@ -9,6 +10,8 @@ import service
 import macho
 import dbutil
 import base
+import localization
+import localizationUtil
 globals().update(service.consts)
 
 class DataConfig(service.Service):
@@ -17,24 +20,20 @@ class DataConfig(service.Service):
     __servicename__ = 'dataconfig'
     __displayname__ = 'Data and Configuration Service'
     __exportedcalls__ = {'GetStartupData': [service.ROLE_SERVICE]}
-    __notifyevents__ = ['OnCfgDataChanged',
-     'ProcessInitialData',
-     'OnBsdCfgRowChangePending',
-     'OnBsdCfgRowDeletePending',
-     'OnBsdCfgRowListChangePending']
+    __notifyevents__ = ['OnCfgDataChanged', 'ProcessInitialData', 'OnConfigRevisionChange']
 
     def __init__(self):
         service.Service.__init__(self)
         self.cfg = None
         import __builtin__
-        __builtin__.DATETIME = 14
-        __builtin__.DATE = 15
-        __builtin__.TIME = 16
-        __builtin__.TIMESHRT = 17
-        __builtin__.MSGARGS = 22
+        __builtin__.DATETIME = const.UE_DATETIME
+        __builtin__.DATE = const.UE_DATE
+        __builtin__.TIME = const.UE_TIME
+        __builtin__.TIMESHRT = const.UE_TIMESHRT
+        __builtin__.MSGARGS = const.UE_MSGARGS
         __builtin__.ADD_THE = 22
         __builtin__.ADD_A = 23
-        __builtin__.MLS = 100
+        __builtin__.MLS = const.UE_LOC
 
 
 
@@ -72,7 +71,7 @@ class DataConfig(service.Service):
     def ProcessInitialData(self, initdat):
         self.LogInfo('Processing intial data')
         cfg.GotInitData(initdat)
-        if boot.role == 'client' and prefs.clusterMode in ('MASTER', 'LOCAL'):
+        if boot.role == 'client':
             sm.GetService('bulkSvc').GetUnsubmittedChanges()
 
 
@@ -82,42 +81,127 @@ class DataConfig(service.Service):
 
 
 
-    def OnBsdCfgRowChangePending(self, uniqueRefName, cfgEntryName, updatedRow):
+    def DeleteRowTheHardWay(self, rs, keyIDs, keyCols):
+        (keyID, keyID2, keyID3,) = keyIDs
+        (keyCol1, keyCol2, keyCol3,) = keyCols
+        delRow = None
+        if keyCol3:
+            for r in rs:
+                if r[keyCol1] == keyID and r[keyCol2] == keyID2 and r[keyCol3] == keyID3:
+                    delRow = r
+                    break
+
+        elif keyCol2:
+            for r in rs:
+                if r[keyCol1] == keyID and r[keyCol2] == keyID2:
+                    delRow = r
+                    break
+
+        else:
+            for r in rs:
+                if r[keyCol1] == keyID:
+                    delRow = r
+                    break
+
+        if delRow:
+            rs.remove(delRow)
+
+
+
+    def OnConfigRevisionChange(self, uniqueRefName, cfgEntryName, cacheID, keyIDs, keyCols, oldRow, newRow, source):
         cfgEntry = getattr(cfg, cfgEntryName, None)
-        keyColumnName = cfgEntry.GetKeyColumn()
-        keyID = getattr(updatedRow, keyColumnName)
-        cfgEntry.data[keyID] = updatedRow
+        (keyID, keyID2, keyID3,) = keyIDs
+        (keyCol1, keyCol2, keyCol3,) = keyCols
+        if isinstance(cfgEntry, sys.Recordset):
+            if cfgEntry.keycolumn == keyCol1:
+                if newRow is None:
+                    if keyID in cfgEntry.data:
+                        del cfgEntry.data[keyID]
+                else:
+                    cfgEntry.data[keyID] = newRow
+            else:
+                if oldRow:
+                    specialID = oldRow[cfgEntry.keycolumn]
+                    if specialID in cfgEntry.data:
+                        del cfgEntry.data[specialID]
+                if newRow:
+                    specialID = newRow[cfgEntry.keycolumn]
+                    cfgEntry.data[specialID] = newRow
+        elif isinstance(cfgEntry, dbutil.CFilterRowset):
+            if oldRow:
+                filterID = oldRow[cfgEntry.columnName]
+                if cfgEntry.indexName:
+                    if filterID in cfgEntry:
+                        indexID = oldRow[cfgEntry.indexName]
+                        if indexID in cfgEntry[filterID]:
+                            if cfgEntry.allowDuplicateCompoundKeys:
+                                rs = cfgEntry[filterID][indexID]
+                                if source == 'local':
+                                    if oldRow in rs:
+                                        rs.remove(oldRow)
+                                else:
+                                    self.DeleteRowTheHardWay(rs, keyIDs, keyCols)
+                                if len(rs) == 0:
+                                    del cfgEntry[filterID][indexID]
+                            else:
+                                del cfgEntry[filterID][indexID]
+                            if len(cfgEntry[filterID]) == 0:
+                                del cfgEntry[filterID]
+                elif filterID in cfgEntry:
+                    rs = cfgEntry[filterID]
+                    if source == 'local':
+                        if oldRow in rs:
+                            rs.remove(oldRow)
+                    else:
+                        self.DeleteRowTheHardWay(rs, keyIDs, keyCols)
+                    if len(rs) == 0:
+                        del cfgEntry[filterID]
+            if newRow:
+                filterID = newRow[cfgEntry.columnName]
+                if cfgEntry.indexName:
+                    indexID = newRow[cfgEntry.indexName]
+                    if cfgEntry.allowDuplicateCompoundKeys:
+                        if filterID in cfgEntry:
+                            if indexID in cfgEntry[filterID]:
+                                cfgEntry[filterID][indexID].append(newRow)
+                            else:
+                                rs = dbutil.CRowset(cfgEntry.header, [newRow])
+                                cfgEntry[filterID][indexID] = rs
+                        else:
+                            rs = dbutil.CRowset(cfgEntry.header, [newRow])
+                            cfgEntry[filterID] = {indexID: rs}
+                    elif filterID in cfgEntry:
+                        cfgEntry[filterID][indexID] = newRow
+                    cfgEntry[filterID] = {indexID: newRow}
+                elif filterID in cfgEntry:
+                    rs = cfgEntry[filterID]
+                    rs.append(newRow)
+                rs = dbutil.CRowset(cfgEntry.header, [newRow])
+                cfgEntry[filterID] = rs
+        elif isinstance(cfgEntry, dbutil.CRowset):
+            if source == 'remote':
+                if oldRow:
+                    self.DeleteRowTheHardWay(cfgEntry, keyIDs, keyCols)
+                if newRow:
+                    cfgEntry.append(newRow)
         if cfgEntryName == 'worldspaces':
             cfg._worldspacesDistrictsCache = {}
-
-
-
-    def OnBsdCfgRowDeletePending(self, uniqueRefName, cfgEntryName, deletedRow):
-        cfgEntry = getattr(cfg, cfgEntryName, None)
-        keyColumnName = cfgEntry.GetKeyColumn()
-        keyID = getattr(deletedRow, keyColumnName)
-        del cfgEntry.data[keyID]
-        if cfgEntryName == 'worldspaces':
-            cfg._worldspacesDistrictsCache = {}
-
-
-
-    def OnBsdCfgRowListChangePending(self, uniqueRefName, cfgEntryName, updatedRow, newCRowset):
-        cfgEntry = getattr(cfg, cfgEntryName, None)
-        filterColumnName = cfgEntry.columnName
-        filterID = None
-        if updatedRow is not None:
-            filterID = getattr(updatedRow, filterColumnName)
-        elif newCRowset:
-            filterID = getattr(newCRowset[0], filterColumnName)
-        if filterID is not None:
-            cfgEntry[filterID] = newCRowset
+        sm.ScatterEvent('OnCfgRevisionChange', uniqueRefName, cfgEntryName, cacheID, keyIDs, keyCols, oldRow, newRow)
 
 
 
     def GetStartupData(self):
         self.LogInfo('Getting startup data')
         cfg.GetStartupData()
+
+
+
+
+class ProxyServiceBroker():
+
+    def ConnectToService(self, name):
+        sess = base.GetServiceSession('cfg')
+        return sess.ConnectToRemoteService(name)
 
 
 
@@ -135,15 +219,16 @@ class Config():
         import __builtin__
         __builtin__.const = const
         self.fmtMapping = {}
-        self.fmtMapping[DATETIME] = lambda value, value2: util.FmtDate(value)
-        self.fmtMapping[DATE] = lambda value, value2: util.FmtDate(value, 'ln')
-        self.fmtMapping[TIME] = lambda value, value2: util.FmtDate(value, 'nl')
-        self.fmtMapping[TIMESHRT] = lambda value, value2: util.FmtDate(value, 'ns')
-        self.fmtMapping[MSGARGS] = lambda value, value2: cfg.GetMessage(value[0], value[1]).text
+        self.fmtMapping[const.UE_DATETIME] = lambda value, value2: util.FmtDate(value)
+        self.fmtMapping[const.UE_DATE] = lambda value, value2: util.FmtDate(value, 'ln')
+        self.fmtMapping[const.UE_TIME] = lambda value, value2: util.FmtDate(value, 'nl')
+        self.fmtMapping[const.UE_TIMESHRT] = lambda value, value2: util.FmtDate(value, 'ns')
+        self.fmtMapping[const.UE_MSGARGS] = lambda value, value2: cfg.GetMessage(value[0], value[1]).text
         self.fmtMapping[ADD_A] = lambda value, value2: (value[0] in ('a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U') and 'an ' or 'a ') + value
         self.fmtMapping[ADD_THE] = lambda value, value2: 'the ' + value
         self.fmtMapping[MLS] = lambda value, value2: self._GetMls(value, value2)
-        self.messages = mls.LoadMessages()
+        self.fmtMapping[const.UE_LOC] = lambda value, value2: self._GetLocalization(value, value2)
+        self.fmtMapping[const.UE_LIST] = lambda value, value2: self._GetList(value, value2)
 
 
 
@@ -195,6 +280,9 @@ class Config():
                 config = sess.ConnectToService('config')
                 self.servicebroker = sess
                 self.server = 1
+            elif boot.role == 'proxy':
+                self.servicebroker = ProxyServiceBroker()
+                self.client = 1
             else:
                 self.servicebroker = sess.ConnectToService('connection')
                 if not self.servicebroker.IsConnected():
@@ -215,6 +303,8 @@ class Config():
 
     def GetStartupData(self):
         if boot.role != 'server':
+            if boot.appname != 'EVE' and boot.role == 'client':
+                self.messages = mls.LoadMessages()
             return 
         self.AppGetStartupData()
         if self.IsBulkMgrNode():
@@ -232,44 +322,18 @@ class Config():
 
 
 
-    def LoadFromBulk(self, src, dst):
-        if type(src) == dbutil.CRowset:
-            dst.data.clear()
-            dst.header = src.columns
-            keycol = src.columns.index(dst.keycolumn)
-            for i in src:
-                dst.data[i[keycol]] = i
-
-        else:
-            dst.data.clear()
-            dst.header = src[0]
-            keycol = dst.header.index(dst.keycolumn)
-            for i in src[1]:
-                dst.data[i[keycol]] = i
-
-
-
-
     def ConvertData(self, src, dst):
-        if type(src) == dbutil.CRowset:
-            dst.data.clear()
-            dst.header = src.columns
-            keycol = src.columns.index(dst.keycolumn)
-            for i in src:
-                dst.data[i[keycol]] = i
-
-        else:
-            dst.data.clear()
-            dst.header = src[0]
-            keycol = dst.header.index(dst.keycolumn)
-            for i in src[1]:
-                dst.data[i[keycol]] = i
+        dst.data.clear()
+        dst.header = src.columns
+        keycol = src.columns.index(dst.keycolumn)
+        for i in src:
+            dst.data[i[keycol]] = i
 
 
 
 
     def GetRawBulkData(self, bulkID):
-        if macho.mode == 'client':
+        if macho.mode != 'server':
             bulkSvc = sm.GetService('bulkSvc')
             if bulkSvc.BulkExists(bulkID):
                 return bulkSvc.LoadBulkFromFile(bulkID)
@@ -288,6 +352,7 @@ class Config():
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def GetBulkData(self, bulkID, rowset, rawDataFunction, virtualColumns):
         rawData = rawDataFunction(bulkID)
         if rawData is None:
@@ -299,6 +364,7 @@ class Config():
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def LoadBulk(self, cfgName, bulkID, rowset = None, filterParams = None, tableID = None, rawDataFunctionRef = None, virtualColumns = None):
         if cfgName is not None:
             if bulkID not in self.bulkIDsToCfgNames:
@@ -335,6 +401,18 @@ class Config():
 
 
 
+    def LoadBulkIndex(self, cfgName, cacheID, column, rowClass = None):
+        if rowClass is None:
+            rowClass = sys.Row
+        return self.LoadBulk(cfgName, cacheID, sys.Recordset(rowClass, column))
+
+
+
+    def LoadBulkFilter(self, cfgName, cacheID, filterParams, virtualColumns = None):
+        return self.LoadBulk(cfgName, cacheID, None, filterParams, None, None, virtualColumns)
+
+
+
     def IsBulkMgrNode(self):
         if macho.mode != 'server':
             return False
@@ -342,61 +420,66 @@ class Config():
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def GotInitData(self, initdata):
         self.LogInfo('GotInitData')
         if macho.mode == 'client':
-            sm.ChainEvent('ProcessLoginProgress', 'loginprogress::miscinitdata', 'messages', 2, self.totalLogonSteps)
+            sm.GetService('bulkSvc').Connect()
+            sm.ScatterEvent('OnProcessLoginProgress', 'loginprogress::miscinitdata', 'messages', 2, self.totalLogonSteps)
         if boot.role == 'client':
             mls.LoadTranslations(session.languageID)
-        self.graphics = self.LoadBulk('graphics', const.cacheResGraphics, sys.Recordset(sys.Row, 'graphicID'))
-        self.icons = self.LoadBulk('icons', const.cacheResIcons, sys.Recordset(sys.Row, 'iconID'))
-        self.sounds = self.LoadBulk('sounds', const.cacheResSounds, sys.Recordset(sys.Row, 'soundID'))
-        self.detailMeshes = self.LoadBulk('detailMeshes', const.cacheResDetailMeshes, sys.Recordset(sys.Row, 'detailGraphicID'))
-        self.detailMeshesByTarget = self.LoadBulk('detailMeshesByTarget', const.cacheResDetailMeshes, None, 'targetGraphicID')
+        self.graphics = self.LoadBulkIndex('graphics', const.cacheResGraphics, 'graphicID')
+        self.icons = self.LoadBulkIndex('icons', const.cacheResIcons, 'iconID')
+        self.sounds = self.LoadBulkIndex('sounds', const.cacheResSounds, 'soundID')
+        self.detailMeshes = self.LoadBulkIndex('detailMeshes', const.cacheResDetailMeshes, 'detailGraphicID')
+        self.detailMeshesByTarget = self.LoadBulkFilter('detailMeshesByTarget', const.cacheResDetailMeshes, 'targetGraphicID')
         self._worldspacesDistrictsCache = {}
-        self.worldspaces = self.LoadBulk('worldspaces', const.cacheWorldSpaces, sys.Recordset(sys.Worldspaces, 'worldSpaceTypeID'))
-        self.worldspaceObjects = self.LoadBulk('worldspaceObjects', const.cacheWorldSpaceObjects, sys.Recordset(sys.Row, 'objectID'))
-        self.worldspaceLights = self.LoadBulk('worldspaceLights', const.cacheWorldSpaceLights, None, 'worldSpaceTypeID')
-        self.worldspacePhysicalPortals = self.LoadBulk('worldspacePhysicalPortals', const.cacheWorldSpacePhysicalPortals, None, 'worldSpaceTypeID')
-        self.worldspaceEnlightenAreas = self.LoadBulk('worldspaceEnlightenAreas', const.cacheWorldSpaceEnlightenAreas, None, ['worldSpaceTypeID', 'objectID', True])
-        self.worldspaceObjectsByWorldspaceID = self.LoadBulk('worldspaceObjectsByWorldspaceID', const.cacheWorldSpaceObjects, None, 'worldSpaceTypeID')
-        self.worldspaceOccluders = self.LoadBulk('worldspaceOccluders', const.cacheWorldSpaceOccluders, None, 'worldSpaceTypeID')
-        self.worldspaceLocators = self.LoadBulk('worldspaceLocators', const.cacheWorldSpaceLocators, None, 'worldSpaceTypeID')
-        self.entityGeneratorsByWorldSpace = self.LoadBulk('entityGeneratorsByWorldSpace', const.cacheEntityGenerators, None, 'worldSpaceTypeID')
-        self.entitySpawnByGenerator = self.LoadBulk('entitySpawnByGenerator', const.cacheEntitySpawns, None, 'generatorID')
-        self.entitySpawnInitsBySpawn = self.LoadBulk('entitySpawnInitsBySpawn', const.cacheEntitySpawnOverrides, None, 'spawnID')
-        self.entitySpawns = self.LoadBulk('entitySpawns', const.cacheEntitySpawns, sys.Recordset(sys.Row, 'spawnID'))
-        self.entityIngredientInitialValues = self.LoadBulk('entityIngredientInitialValues', const.cacheEntityIngredientInitialValues, None, 'ingredientID')
-        self.entityIngredientsByParentID = self.LoadBulk('entityIngredientsByParentID', const.cacheEntityIngredients, None, 'parentID')
-        self.ingredients = self.LoadBulk('ingredients', const.cacheEntityIngredients, sys.Recordset(sys.Row, 'ingredientID'))
-        self.treeNodes = self.LoadBulk('treeNodes', const.cacheTreeNodes, sys.Recordset(sys.Row, 'treeNodeID'))
-        self.treeLinks = self.LoadBulk('treeLinks', const.cacheTreeLinks, None, 'parentTreeNodeID')
-        self.treeNodeProperties = self.LoadBulk('treeNodeProperties', const.cacheTreeProperties, sys.Recordset(sys.Row, 'propertyID'))
-        self.actionTreeSteps = self.LoadBulk('actionTreeSteps', const.cacheActionTreeSteps, None, 'actionID')
-        self.actionTreeProcs = self.LoadBulk('actionTreeProcs', const.cacheActionTreeProcs, None, 'actionID')
-        self.actionObjects = self.LoadBulk('actionObjects', const.cacheActionObjects, sys.Recordset(sys.Row, 'actionObjectID'))
-        self.actionStations = self.LoadBulk('actionStations', const.cacheActionStations, sys.Recordset(sys.Row, 'actionStationTypeID'))
-        self.actionStationActions = self.LoadBulk('actionStationActions', const.cacheActionStationActions, None, 'actionStationTypeID')
-        self.actionObjectStations = self.LoadBulk('actionObjectStations', const.cacheActionObjectStations, None, 'actionObjectID')
-        self.actionObjectExits = self.LoadBulk('actionObjectExits', const.cacheActionObjectExits, None, ['actionObjectID', 'actionStationInstanceID', True])
-        self.paperdollModifierLocations = self.LoadBulk('paperdollModifierLocations', const.cachePaperdollModifierLocations, sys.Recordset(sys.Row, 'modifierLocationID'))
-        self.paperdollResources = self.LoadBulk('paperdollResources', const.cachePaperdollResources, sys.Recordset(sys.Row, 'paperdollResourceID'))
-        self.paperdollSculptingLocations = self.LoadBulk('paperdollSculptingLocations', const.cachePaperdollSculptingLocations, sys.Recordset(sys.Row, 'sculptLocationID'))
-        self.paperdollColors = self.LoadBulk('paperdollColors', const.cachePaperdollColors, sys.Recordset(sys.Row, 'colorID'))
-        self.paperdollColorNames = self.LoadBulk('paperdollColorNames', const.cachePaperdollColorNames, sys.Recordset(sys.Row, 'colorNameID'))
-        self.paperdollColorRestrictions = self.LoadBulk('paperdollColorRestrictions', const.cachePaperdollColorRestrictions, None, 'colorNameID')
-        self.perceptionSenses = self.LoadBulk('perceptionSenses', const.cachePerceptionSenses, sys.Recordset(sys.Row, 'senseID'))
-        self.perceptionStimTypes = self.LoadBulk('perceptionStimTypes', const.cachePerceptionStimTypes, sys.Recordset(sys.Row, 'stimTypeID'))
-        self.perceptionSubjects = self.LoadBulk('perceptionSubjects', const.cachePerceptionSubjects, sys.Recordset(sys.Row, 'subjectID'))
-        self.perceptionTargets = self.LoadBulk('perceptionTargets', const.cachePerceptionTargets, sys.Recordset(sys.Row, 'targetID'))
+        self.worldspaces = self.LoadBulkIndex('worldspaces', const.cacheWorldSpaces, 'worldSpaceTypeID', sys.Worldspaces)
+        self.entitySpawns = self.LoadBulkIndex('entitySpawns', const.cacheEntitySpawns, 'spawnID')
+        self.entitySpawnsByWorldSpaceID = self.LoadBulkFilter('entitySpawnsByWorldSpaceID', const.cacheEntitySpawns, 'worldSpaceTypeID')
+        self.entitySpawnsByRecipeID = self.LoadBulkFilter('entitySpawnsByRecipeID', const.cacheEntitySpawns, 'recipeID')
+        self.entityIngredientInitialValues = self.LoadBulkFilter('entityIngredientInitialValues', const.cacheEntityIngredientInitialValues, 'ingredientID')
+        self.entityIngredientsByParentID = self.LoadBulkFilter('entityIngredientsByParentID', const.cacheEntityIngredients, 'parentID')
+        self.entityIngredientsByRecipeID = self.LoadBulkFilter('entityIngredientsByRecipeID', const.cacheEntityIngredients, 'recipeID')
+        self.ingredients = self.LoadBulkIndex('ingredients', const.cacheEntityIngredients, 'ingredientID')
+        self.entitySpawnGroups = self.LoadBulkIndex('entitySpawnGroups', const.cacheEntitySpawnGroups, 'spawnGroupID')
+        self.entitySpawnsBySpawnGroup = self.LoadBulkFilter('entitySpawnsBySpawnGroup', const.cacheEntitySpawnGroupLinks, 'spawnGroupID')
+        self.recipes = self.LoadBulkIndex('recipes', const.cacheEntityRecipes, 'recipeID')
+        self.recipesByParentRecipeID = self.LoadBulkFilter('recipesByParentRecipeID', const.cacheEntityRecipes, 'parentRecipeID')
+        self.treeNodes = self.LoadBulkIndex('treeNodes', const.cacheTreeNodes, 'treeNodeID')
+        self.treeLinks = self.LoadBulkFilter('treeLinks', const.cacheTreeLinks, 'parentTreeNodeID')
+        self.treeNodeProperties = self.LoadBulkIndex('treeNodeProperties', const.cacheTreeProperties, 'propertyID')
+        self.actionTreeSteps = self.LoadBulkFilter('actionTreeSteps', const.cacheActionTreeSteps, 'actionID')
+        self.actionTreeProcs = self.LoadBulkFilter('actionTreeProcs', const.cacheActionTreeProcs, 'actionID')
+        self.actionObjects = self.LoadBulkIndex('actionObjects', const.cacheActionObjects, 'actionObjectID')
+        self.actionStations = self.LoadBulkIndex('actionStations', const.cacheActionStations, 'actionStationTypeID')
+        self.actionStationActions = self.LoadBulkFilter('actionStationActions', const.cacheActionStationActions, 'actionStationTypeID')
+        self.actionObjectStations = self.LoadBulkFilter('actionObjectStations', const.cacheActionObjectStations, 'actionObjectID')
+        self.actionObjectExits = self.LoadBulkFilter('actionObjectExits', const.cacheActionObjectExits, ['actionObjectID', 'actionStationInstanceID', True])
+        self.paperdollModifierLocations = self.LoadBulkIndex('paperdollModifierLocations', const.cachePaperdollModifierLocations, 'modifierLocationID')
+        self.paperdollResources = self.LoadBulkIndex('paperdollResources', const.cachePaperdollResources, 'paperdollResourceID')
+        self.paperdollSculptingLocations = self.LoadBulkIndex('paperdollSculptingLocations', const.cachePaperdollSculptingLocations, 'sculptLocationID')
+        self.paperdollColors = self.LoadBulkIndex('paperdollColors', const.cachePaperdollColors, 'colorID')
+        self.paperdollColorNames = self.LoadBulkIndex('paperdollColorNames', const.cachePaperdollColorNames, 'colorNameID')
+        self.paperdollColorRestrictions = self.LoadBulkFilter('paperdollColorRestrictions', const.cachePaperdollColorRestrictions, 'colorNameID')
+        self.perceptionSenses = self.LoadBulkIndex('perceptionSenses', const.cachePerceptionSenses, 'senseID')
+        self.perceptionStimTypes = self.LoadBulkIndex('perceptionStimTypes', const.cachePerceptionStimTypes, 'stimTypeID')
+        self.perceptionSubjects = self.LoadBulkIndex('perceptionSubjects', const.cachePerceptionSubjects, 'subjectID')
+        self.perceptionTargets = self.LoadBulkIndex('perceptionTargets', const.cachePerceptionTargets, 'targetID')
         self.perceptionBehaviorSenses = self.LoadBulk('perceptionBehaviorSenses', const.cachePerceptionBehaviorSenses)
         self.perceptionBehaviorDecays = self.LoadBulk('perceptionBehaviorDecays', const.cachePerceptionBehaviorDecays)
         self.perceptionBehaviorFilters = self.LoadBulk('perceptionBehaviorFilters', const.cachePerceptionBehaviorFilters)
+        self.encounters = self.LoadBulkIndex('encounters', const.cacheEncounterEncounters, 'encounterID')
+        self.encounterCoordinateSets = self.LoadBulkIndex('encounterCoordinateSets', const.cacheEncounterCoordinateSets, 'coordinateSetID')
+        self.encounterCoordinatesBySet = self.LoadBulkFilter('encounterCoordinatesBySet', const.cacheEncounterCoordinates, 'coordinateSetID')
+        self.encounterCoordinates = self.LoadBulkIndex('encounterCoordinates', const.cacheEncounterCoordinates, 'coordinateID')
+        self.encounterCoordinateSetsByWorldSpaceID = self.LoadBulkFilter('encounterCoordinateSetsByWorldSpaceID', const.cacheEncounterCoordinateSets, 'worldSpaceTypeID')
+        self.encountersByCoordinateSet = self.LoadBulkFilter('encountersByCoordinateSet', const.cacheEncounterEncounters, 'coordinateSetID')
 
 
 
     def GetMessage(self, key, dict = None, onNotFound = 'return', onDictMissing = 'error'):
-        if not self.messages.has_key(key):
+        if key not in self.messages:
             if onNotFound == 'return':
                 return self.GetMessage('ErrMessageNotFound', {'msgid': key,
                  'args': dict})
@@ -408,23 +491,12 @@ class Config():
             raise RuntimeError('GetMessage: WTF', onNotFound)
         msg = self.messages[key]
         (text, title, suppress,) = (msg.messageText, None, 0)
-        if text is not None:
-            ix = text.find('::')
-            if ix != -1:
-                (title, text, suppress,) = (text[:ix], text[(ix + 2):], 0)
-            else:
-                ix = text.find(':s:')
-                if ix != -1:
-                    (title, text, suppress,) = (text[:ix], text[(ix + 3):], 1)
-        else:
-            (text, title, suppress,) = (None, None, 0)
         if dict == -1:
             pass
         elif dict is not None:
             try:
-                dict = self._Config__prepdict(dict)
-                if title is not None:
-                    title = title % dict
+                if dict is not None and dict != -1:
+                    dict = self._Config__prepdict(dict)
                 if text is not None:
                     text = text % dict
             except KeyError as e:
@@ -442,6 +514,18 @@ class Config():
                      'text': msg.messageText})
                 return self.GetMessage('ErrMessageDictMissing', {'msgid': key,
                  'text': msg.messageText})
+        if text is not None:
+            ix = text.find('::')
+            if ix != -1:
+                (title, text,) = text.split('::')
+                suppress = 0
+            else:
+                ix = text.find(':s:')
+                if ix != -1:
+                    (title, text,) = text.split(':s:')
+                    suppress = 1
+        else:
+            (text, title, suppress,) = (None, None, 0)
         return util.KeyVal(text=text, title=title, type=msg.messageType, audio=msg.urlAudio, icon=msg.urlIcon, suppress=suppress)
 
 
@@ -457,6 +541,35 @@ class Config():
                 return getattr(mls, key)
             else:
                 return getattr(mls, key) % keyArgs
+
+
+
+    def _GetLocalization(self, key, keyArgs = None):
+        if boot.role == 'server':
+            if keyArgs is None:
+                return key
+            else:
+                return key + ' - ' + str(keyArgs)
+        else:
+            if keyArgs is None:
+                return localization.GetByLabel(key)
+            else:
+                return localization.GetByLabel(key, **keyArgs)
+
+
+
+    def _GetList(self, fmtList, separator = None):
+        results = []
+        for each in fmtList:
+            value2 = None
+            if len(each) >= 3:
+                value2 = each[2]
+            results.append(self.FormatConvert(each[0], each[1], value2))
+
+        if separator is not None:
+            return separator.join(results)
+        else:
+            return localizationUtil.FormatGenericList(results)
 
 
 
@@ -632,6 +745,8 @@ class Recordset():
 
     def Hint(self, key, value):
         if key:
+            if len(value) < len(self.header):
+                log.LogError('Recordset.Hint is receiving a value that is less than the header length, key=', key, '| classType=', self.rowclass, '| value=', value)
             if len(self.header) == len(value):
                 self.data[key] = value
             else:
@@ -656,9 +771,9 @@ class Recordset():
             if i >= 50:
                 flag = [log.LGINFO, log.LGWARN][(i >= 100)]
                 log.general.Log('%s - Prime() called for %s items from %s' % (self.dbMultiFetcher, i, log.WhoCalledMe()), flag)
-            if boot.role == 'client' and i == 1:
+            if boot.role != 'server' and i == 1:
                 NUM_SEC = 2
-                s = int(blue.os.GetTime() / (NUM_SEC * const.SEC))
+                s = int(blue.os.GetWallclockTime() / (NUM_SEC * const.SEC))
                 if s > self.singlePrimeTimestamp + NUM_SEC:
                     self.singlePrimeCount = 0
                 self.singlePrimeTimestamp = s
@@ -731,7 +846,7 @@ class Recordset():
     def Get(self, key, flush = 0):
         key = int(key)
         if flush or not self.data.has_key(key):
-            if boot.role == 'client':
+            if boot.role != 'server':
                 self.Prime([key])
             else:
                 uthread.Lock(self, key)
@@ -760,6 +875,11 @@ class Recordset():
         if index > len(self.data):
             raise RuntimeError('RecordNotLoaded')
         return self.rowclass(self, self.data.keys()[index])
+
+
+
+    def __getitem__(self, key):
+        return self.rowclass(self, key)
 
 
 

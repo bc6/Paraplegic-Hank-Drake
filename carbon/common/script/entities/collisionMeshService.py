@@ -25,10 +25,15 @@ class CollisionMeshServer(service.Service):
         try:
             if 'graphicID' in state:
                 component.graphicID = state['graphicID']
-            else:
-                component.graphicID = cfg.invtypes.Get(state['_typeID']).Graphic().id
         except Exception:
             sys.exc_clear()
+        try:
+            graphic = cfg.graphics.Get(component.graphicID)
+            collisionFile = graphic.collisionFile
+            if collisionFile in (None, 'None'):
+                return None
+        except:
+            pass
         return component
 
 
@@ -67,11 +72,15 @@ class CollisionMeshServer(service.Service):
 
 
     def PrepareComponent(self, sceneID, entityID, component):
-        if component.graphicID is None:
-            return 
-        collisionFile = miscUtil.GetCommonResourcePath(cfg.graphics.Get(component.graphicID).collisionFile)
-        if collisionFile is None:
-            raise RuntimeError('Cannot create static shape without collision file!')
+        graphic = cfg.graphics.GetIfExists(component.graphicID)
+        if graphic:
+            collisionFile = miscUtil.GetCommonResourcePath(graphic.collisionFile)
+        else:
+            self.LogError('Collision for graphicID:', component.graphicID, 'could not be found.')
+            collisionFile = const.BAD_ASSET_COLLISION
+        if collisionFile == 'None' or collisionFile is None:
+            self.LogError('Collision for graphicID:', component.graphicID, 'could not be found.')
+            collisionFile = const.BAD_ASSET_COLLISION
         gw = GameWorld.Manager.GetGameWorld(long(sceneID))
         component.avatar = gw.CreateStaticMesh(collisionFile)
         component.avatar.entID = entityID
@@ -101,8 +110,9 @@ class CollisionMeshServer(service.Service):
             return 
         gw = GameWorld.Manager.GetGameWorld(long(entity.scene.sceneID))
         gw.RemoveStaticShape(component.avatar)
-        component.avatar.positionComponent = None
-        component.avatar.boundingVolumeComponent = None
+        if component.avatar:
+            component.avatar.positionComponent = None
+            component.avatar.boundingVolumeComponent = None
 
 
 

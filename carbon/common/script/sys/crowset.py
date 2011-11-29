@@ -59,73 +59,24 @@ class CRowset(list):
 
 
     def Index(self, columnName):
-        d = CIndexedRowset(self.header, columnName)
-        if '.' in columnName:
-            keys = columnName.split('.')
-            c = 0
-            for row in self:
-                combinedKey = []
-                for key in keys:
-                    combinedKey.append(row[key])
-
-                d[tuple(combinedKey)] = row
-                c += 1
-                if c == 25000:
-                    c = 0
-                    blue.pyos.BeNice()
-
-            return d
-        else:
-            return blue.pyos.XUtil_Index(self, columnName, d)
+        ir = CIndexedRowset(self.header, columnName)
+        ir.Build(self)
+        return ir
 
 
 
     def Filter(self, columnName, indexName = None, allowDuplicateCompoundKeys = False, giveMeSets = False):
-        fr = CFilterRowset(self.header, columnName)
-        c = 0
-        keyIdx = fr.header.Keys().index(columnName)
-        if indexName is None:
-            for row in self:
-                key = row[keyIdx]
-                if key in fr:
-                    if giveMeSets:
-                        fr[key].add(row)
-                    else:
-                        fr[key].append(row)
-                elif giveMeSets:
-                    fr[key] = set([row])
-                else:
-                    fr[key] = CRowset(row.__header__, [row])
-                c += 1
-                if c == 10000:
-                    c = 0
-                    blue.pyos.BeNice()
-
-        else:
-            key2Idx = fr.header.Keys().index(indexName)
-            for row in self:
-                key = row[keyIdx]
-                key2 = row[key2Idx]
-                if key not in fr:
-                    fr[key] = {}
-                if allowDuplicateCompoundKeys:
-                    if key2 not in fr[key]:
-                        if giveMeSets:
-                            fr[key][key2] = set()
-                        else:
-                            fr[key][key2] = CRowset(row.__header__, [])
-                    if giveMeSets:
-                        fr[key][key2].add(row)
-                    else:
-                        fr[key][key2].append(row)
-                else:
-                    fr[key][key2] = row
-                c += 1
-                if c == 10000:
-                    c = 0
-                    blue.pyos.BeNice()
-
+        fr = CFilterRowset(self.header, columnName, indexName, allowDuplicateCompoundKeys, giveMeSets)
+        fr.Build(self)
         return fr
+
+
+
+    def Rebuild(self, rowset):
+        del self[0:len(self)]
+        for row in rowset:
+            self.append(row)
+
 
 
 
@@ -178,19 +129,101 @@ class CIndexedRowset(dict):
 
 
 
+    def Build(self, rowset):
+        if '.' in self.columnName:
+            keys = self.columnName.split('.')
+            c = 0
+            for row in rowset:
+                combinedKey = []
+                for key in keys:
+                    combinedKey.append(row[key])
+
+                self[tuple(combinedKey)] = row
+                c += 1
+                if c == 25000:
+                    c = 0
+                    blue.pyos.BeNice()
+
+        else:
+            blue.pyos.XUtil_Index(rowset, self.columnName, self)
+
+
+
+    def Rebuild(self, rowset):
+        self.clear()
+        self.Build(rowset)
+
+
+
 
 class CFilterRowset(dict):
     __guid__ = 'dbutil.CFilterRowset'
 
-    def __init__(self, header, columnName):
+    def __init__(self, header, columnName, indexName = None, allowDuplicateCompoundKeys = False, giveMeSets = False):
         self.header = header
         self.columnName = columnName
+        self.indexName = indexName
+        self.allowDuplicateCompoundKeys = allowDuplicateCompoundKeys
+        self.giveMeSets = giveMeSets
 
 
 
     @property
     def columns(self):
         return self.header.Keys()
+
+
+
+    def Build(self, rowset):
+        c = 0
+        keyIdx = self.header.Keys().index(self.columnName)
+        if self.indexName is None:
+            for row in rowset:
+                key = row[keyIdx]
+                if key in self:
+                    if self.giveMeSets:
+                        self[key].add(row)
+                    else:
+                        self[key].append(row)
+                elif self.giveMeSets:
+                    self[key] = set([row])
+                else:
+                    self[key] = CRowset(row.__header__, [row])
+                c += 1
+                if c == 10000:
+                    c = 0
+                    blue.pyos.BeNice()
+
+        else:
+            key2Idx = self.header.Keys().index(self.indexName)
+            for row in rowset:
+                key = row[keyIdx]
+                key2 = row[key2Idx]
+                if key not in self:
+                    self[key] = {}
+                if self.allowDuplicateCompoundKeys:
+                    if key2 not in self[key]:
+                        if self.giveMeSets:
+                            self[key][key2] = set()
+                        else:
+                            self[key][key2] = CRowset(row.__header__, [])
+                    if self.giveMeSets:
+                        self[key][key2].add(row)
+                    else:
+                        self[key][key2].append(row)
+                else:
+                    self[key][key2] = row
+                c += 1
+                if c == 10000:
+                    c = 0
+                    blue.pyos.BeNice()
+
+
+
+
+    def Rebuild(self, rowset):
+        self.clear()
+        self.Build(rowset)
 
 
 
@@ -313,7 +346,7 @@ class CRowsetDiskBase(object):
 
     def __getitem__(self, key):
         if key in self.loaded:
-            self.loaded[key][1] = blue.os.GetTime()
+            self.loaded[key][1] = blue.os.GetWallclockTime()
             self.loaded[key][2] += 1
             return dict.__getitem__(self, key)
         (pos, size,) = self.offsets[key]
@@ -326,7 +359,7 @@ class CRowsetDiskBase(object):
         else:
             row = data
         self[key] = row
-        self.loaded[key] = [blue.os.GetTime(), blue.os.GetTime(), 1]
+        self.loaded[key] = [blue.os.GetWallclockTime(), blue.os.GetWallclockTime(), 1]
         return row
 
 
@@ -342,7 +375,7 @@ class CRowsetDiskBase(object):
 
 
     def Flush(self):
-        expire = blue.os.GetTime() - self.minAge * const.SEC
+        expire = blue.os.GetWallclockTime() - self.minAge * const.SEC
         deleted = 0
         for (k, v,) in self.loaded.items():
             if v[2] <= self.maxUsage and v[1] < expire:

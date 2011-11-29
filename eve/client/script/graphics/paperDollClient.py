@@ -1,13 +1,19 @@
 import svc
 import paperDollUtil
 import bluepy
+import paperDoll
 from ccConst import TEXTURE_RESOLUTIONS
 
 class EvePaperDollClient(svc.paperDollClient):
     __guid__ = 'svc.evePaperDollClient'
     __replaceservice__ = 'paperDollClient'
     __notifyevents__ = svc.paperDollClient.__notifyevents__ + ['OnGraphicSettingsChanged']
-    __dependencies__ = ['info', 'character', 'device']
+    __dependencies__ = svc.paperDollClient.__dependencies__ + ['info', 'character', 'device']
+
+    def _AppPerformanceOptions(self):
+        paperDoll.PerformanceOptions.EnableEveOptimizations()
+
+
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def GetDollDNA(self, scene, entity, dollGender, dollDnaInfo, typeID):
@@ -18,13 +24,31 @@ class EvePaperDollClient(svc.paperDollClient):
 
     def SetupComponent(self, entity, component):
         svc.paperDollClient.SetupComponent(self, entity, component)
+        doll = component.doll.doll
         if session.charid == entity.entityID:
             import paperDoll
-            doll = component.doll.doll
             cs = paperDoll.CompressionSettings(compressTextures=True, generateMipmap=False)
             cs.compressNormalMap = False
             doll.compressionSettings = cs
+        doll.usePrepassAlphaTestHair = prefs.GetValue('interiorShaderQuality', self.device.GetDefaultInteriorShaderQuality()) == 0
         self.SetBoneOffsets(entity, component)
+
+        def UpdateDoneCallback():
+            if component.doll and component.doll.avatar:
+                for curveSet in component.doll.avatar.curveSets:
+                    if curveSet.name == 'HeadMatrixCurves':
+                        trinityScene = sm.GetService('graphicClient').GetScene(entity.scene.sceneID)
+                        if trinityScene:
+                            for each in trinityScene.curveSets:
+                                if each.name == 'HeadMatrixCurves':
+                                    trinityScene.curveSets.remove(each)
+
+                            trinityScene.curveSets.append(curveSet)
+                            component.doll.avatar.curveSets.remove(curveSet)
+
+
+
+        component.doll.doll.AddUpdateDoneListener(UpdateDoneCallback)
 
 
 
@@ -51,6 +75,13 @@ class EvePaperDollClient(svc.paperDollClient):
             for character in self.paperDollManager:
                 character.doll.SetTextureSize(resolution)
                 character.Update()
+
+        if 'interiorShaderQuality' in changes:
+            for character in self.paperDollManager:
+                character.doll.usePrepassAlphaTestHair = prefs.GetValue('interiorShaderQuality', self.device.GetDefaultInteriorShaderQuality()) == 0
+                if character.doll.usePrepass:
+                    paperDoll.prePassFixup.AddPrepassAreasToAvatar(character.avatar, character.avatar.visualModel, character.doll, character.factory.clothSimulationActive)
+                    character.avatar.ResetAnimationBindings()
 
 
 

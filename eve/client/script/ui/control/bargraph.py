@@ -4,6 +4,7 @@ import blue
 import uthread
 import util
 import math
+import localization
 COLOR_FRAME = (1.0,
  1.0,
  1.0,
@@ -122,7 +123,7 @@ class BarGraph(uicls.Container):
 
 
     def _EnforceUpdateInterval(self, updateInterval):
-        blue.pyos.synchro.Sleep(updateInterval)
+        blue.pyos.synchro.SleepWallclock(updateInterval)
         if not self or self.destroyed:
             return 
         self.busy = False
@@ -141,7 +142,7 @@ class BarGraph(uicls.Container):
             else:
                 bar.SetValue(rawValue=val, maxRawValue=self.maxValue)
             if self.barUpdateDelayMs:
-                blue.pyos.synchro.Sleep(self.barUpdateDelayMs)
+                blue.pyos.synchro.SleepWallclock(self.barUpdateDelayMs)
                 if not self or self.destroyed:
                     return 
 
@@ -259,7 +260,7 @@ class Bar(uicls.Container):
 
 
     def _GetBarHint(self, num, rawValue, maxRawValue):
-        return '#%s: %5.2f / %5.2f' % (num, rawValue, maxRawValue)
+        return localization.GetByLabel('UI/BarGraph/DefaultBarHint', num=num, rawValue=rawValue, maxRawValue=maxRawValue)
 
 
 
@@ -276,12 +277,9 @@ class Bar(uicls.Container):
 
 
 
-class LabelText(uicls.Label):
+class LabelText(uicls.EveLabelSmall):
     __guid__ = 'uicls._GraphLabelText'
     default_color = (1.0, 1.0, 1.0, 0.6)
-    default_fontsize = 9
-    default_autoheight = True
-    default_autowidth = True
 
 
 class YLabel(uicls.Container):

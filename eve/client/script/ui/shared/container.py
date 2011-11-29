@@ -14,11 +14,15 @@ import sys
 import uiconst
 import uicls
 import log
+import localization
 colMargin = rowMargin = 12
 
 class VirtualInvWindow(uicls.Window):
     __guid__ = 'form.VirtualInvWindow'
     __notifyevents__ = ['OnSessionChanged', 'OnPostCfgDataChanged']
+    default_width = 317
+    default_height = 200
+    default_stackID = '126831469216044537'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -29,10 +33,11 @@ class VirtualInvWindow(uicls.Window):
         self.iconWidth = 64
         self.iconHeight = 92
         self.sr.resizeTimer = None
+        self.scrollTimer = None
         self.shellSemaphore = uthread.Semaphore()
         self.tmpDropIdx = {}
         self.refreshingView = 0
-        self.displayName = mls.UI_GENERIC_CONTAINER
+        self.displayName = localization.GetByLabel('UI/Inventory/Container')
         self.hasCapacity = 0
         self.locationFlag = None
         self.oneWay = 0
@@ -44,6 +49,9 @@ class VirtualInvWindow(uicls.Window):
         self.minHeight = 34
         self.maxHeight = 68
         self.hintText = None
+        self.dragStart = None
+        self.previouslyHighlighted = None
+        self.dragContainer = None
 
 
 
@@ -65,10 +73,13 @@ class VirtualInvWindow(uicls.Window):
         self.sr.scroll.SetColumnsHiddenByDefault(uix.GetInvItemDefaultHiddenHeaders())
         self.ownProxy = _weakref.proxy(self)
         self.sr.scroll.dad = self.ownProxy
-        content = self.sr.scroll.sr.content
+        content = self.sr.scroll.GetContentContainer()
         content.OnDropData = self.OnContentDropData
         content.OnClick = self.OnClickContent
         content.GetMenu = lambda : GetContainerMenu(self.ownProxy)
+        content.OnMouseUp = self.sr.scroll.OnMouseUp = self.OnScrollMouseUp
+        content.OnMouseDown = self.sr.scroll.OnMouseDown = self.OnScrollMouseDown
+        content.OnMouseMove = self.sr.scroll.OnMouseMove = self.OnScrollMouseMove
         self.sr.cookie = sm.GetService('inv').Register(self)
         if self.enableQuickFilter:
             boxTop = const.defaultPadding + 6
@@ -78,7 +89,7 @@ class VirtualInvWindow(uicls.Window):
              16), align=uiconst.TOPLEFT)
             self.sr.quickFilterClear.state = uiconst.UI_HIDDEN
             self.sr.quickFilterClear.Click = self.ClearQuickFilterInput
-            self.sr.quickFilterClear.hint = mls.UI_CMD_CLEAR
+            self.sr.quickFilterClear.hint = localization.GetByLabel('UI/Inventory/Clear')
             self.sr.quickFilterClear.OnMouseEnter = self.Nothing
             self.sr.quickFilterClear.OnMouseDown = self.Nothing
             self.sr.quickFilterClear.OnMouseUp = self.Nothing
@@ -88,14 +99,14 @@ class VirtualInvWindow(uicls.Window):
             self.sr.quickFilterInputBox = uicls.SinglelineEdit(name='', parent=self.sr.right, pos=(const.defaultPadding,
              boxTop,
              100,
-             0), align=uiconst.TOPRIGHT, OnChange=self.SetQuickFilterInput)
+             0), align=uiconst.TOPRIGHT, OnChange=self.SetQuickFilterInput, hinttext=localization.GetByLabel('UI/Inventory/Filter'))
             self.sr.quickFilterInputBox.SetHistoryVisibility(0)
             uicore.registry.SetFocus(self.sr.scroll)
         if self.hasCapacity:
             self.minHeight = 52
             self.SetTopparentHeight(self.minHeight)
             self.SetMinSize((256, 198))
-            self.capacityText = uicls.Label(text=' ', name='capacityText', parent=self.sr.right, left=const.defaultPadding, top=29, letterspace=1, fontsize=10, state=uiconst.UI_DISABLED, uppercase=0, color=(1.0, 1.0, 1.0, 1.0), align=uiconst.TOPRIGHT)
+            self.capacityText = uicls.EveLabelSmall(text=' ', name='capacityText', parent=self.sr.right, left=const.defaultPadding, top=29, state=uiconst.UI_DISABLED, color=(1.0, 1.0, 1.0, 1.0), align=uiconst.TOPRIGHT)
             self.sr.gaugeParent = uicls.Container(name='gaugeParent', align=uiconst.TOPRIGHT, parent=self.sr.right, left=const.defaultPadding, height=7, width=100, state=uiconst.UI_DISABLED, top=self.capacityText.top + self.capacityText.textheight + 1)
             uicls.Frame(parent=self.sr.gaugeParent, color=(0.5, 0.5, 0.5, 0.3))
             self.sr.gauge = uicls.Container(name='gauge', align=uiconst.TOLEFT, parent=self.sr.gaugeParent, state=uiconst.UI_PICKCHILDREN, width=0)
@@ -107,15 +118,15 @@ class VirtualInvWindow(uicls.Window):
         i = 0
         j = 0
         for (num, hint, attrname, group, func,) in [(156,
-          mls.UI_GENERIC_ICONS,
+          localization.GetByLabel('UI/Inventory/Icons'),
           'iconsModeBtn',
           'viewMode',
           lambda *args: self.ChangeViewMode(0)), (157,
-          mls.UI_GENERIC_DETAILS,
+          localization.GetByLabel('UI/Inventory/Details'),
           'detailsModeBtn',
           'viewMode',
           lambda *args: self.ChangeViewMode(1)), (158,
-          mls.UI_GENERIC_LIST,
+          localization.GetByLabel('UI/Inventory/List'),
           'listModeBtn',
           'viewMode',
           lambda *args: self.ChangeViewMode(2))]:
@@ -152,7 +163,7 @@ class VirtualInvWindow(uicls.Window):
 
 
     def _SetQuickFilterInput(self):
-        blue.synchro.Sleep(400)
+        blue.synchro.SleepWallclock(400)
         filter = self.sr.quickFilterInputBox.GetValue()
         if len(filter) > 0:
             self.quickFilterInput = filter.lower()
@@ -185,7 +196,7 @@ class VirtualInvWindow(uicls.Window):
     def FilterOptionsChange(self, combo, label, value, *args):
         if combo and combo.name == 'filterCateg':
             if value is None:
-                ops = [(mls.UI_GENERIC_ALL, None)]
+                ops = [(localization.GetByLabel('UI/Inventory/All'), None)]
             else:
                 ops = sm.GetService('marketutils').GetFilterops(value)
             self.sr.filterGroup.LoadOptions(ops)
@@ -220,14 +231,14 @@ class VirtualInvWindow(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         self.ownProxy = None
         self.shellSemaphore = None
         self.items = None
-        if self is not None and not self.destroyed and self.sr.Get('scroll', None) and self.sr.scroll.sr.content:
+        if self is not None and not self.destroyed and self.sr.Get('scroll', None) and self.sr.scroll.GetContentContainer():
             for attr in ('OnDropData', 'OnClick', 'GetMenu'):
-                if hasattr(self.sr.scroll.sr.content, attr):
-                    setattr(self.sr.scroll.sr.content, attr, None)
+                if hasattr(self.sr.scroll.GetContentContainer(), attr):
+                    setattr(self.sr.scroll.GetContentContainer(), attr, None)
 
             self.sr.scroll.dad = None
             self.sr.scroll = None
@@ -245,7 +256,7 @@ class VirtualInvWindow(uicls.Window):
 
     def List(self):
         if self.locationFlag:
-            return self.GetShell().List(self.locationFlag)
+            return self.GetShell().List(flag=self.locationFlag)
         else:
             return self.GetShell().List()
 
@@ -277,7 +288,7 @@ class VirtualInvWindow(uicls.Window):
             flag = None
             shell = self.GetShell()
             if getattr(shell, 'typeID', None) and cfg.invtypes.Get(shell.typeID).groupID == const.groupAuditLogSecureContainer:
-                thisContainer = eve.GetInventoryFromId(self.id).item
+                thisContainer = sm.GetService('invCache').GetInventoryFromId(self.id).item
                 rollsNotNeeded = thisContainer is not None and (util.IsStation(thisContainer.locationID) or thisContainer.locationID == session.shipid)
                 flag = settings.user.ui.Get('defaultContainerLock_%s' % shell.itemID, None)
                 if flag is None:
@@ -309,7 +320,7 @@ class VirtualInvWindow(uicls.Window):
                     raise 
                 item = data[0][3]
                 if item.typeID == const.typePlasticWrap:
-                    volume = eve.GetInventoryFromId(item.itemID).GetCapacity().used
+                    volume = sm.GetService('invCache').GetInventoryFromId(item.itemID).GetCapacity().used
                 else:
                     volume = cfg.GetItemVolume(item, 1)
                 maxQty = min(item.stacksize, int(free / (volume or 1)))
@@ -317,17 +328,17 @@ class VirtualInvWindow(uicls.Window):
                     if volume < 0.01:
                         req = 0.01
                     else:
-                        req = util.FmtAmt(volume, showFraction=2)
-                    eve.Message('NotEnoughCargoSpaceFor1Unit', {'typeName': cfg.invtypes.Get(item.typeID).name,
-                     'free': util.FmtAmt(free, showFraction=2),
+                        req = volume
+                    eve.Message('NotEnoughCargoSpaceFor1Unit', {'type': item.typeID,
+                     'free': free,
                      'required': req})
                     return 
                 if self.DBLessLimitationsCheck(what.args[0], item):
                     return 
                 if maxQty == item.stacksize:
-                    errmsg = mls.UI_INFLIGHT_NOMOREUNITSINSOURCE
+                    errmsg = localization.GetByLabel('UI/Common/NoMoreUnits')
                 else:
-                    errmsg = mls.UI_INFLIGHT_NOROOMFORMOREINDEST
+                    errmsg = localization.GetByLabel('UI/Common/NoRoomForMore')
                 ret = uix.QtyPopup(int(maxQty), 0, int(maxQty), errmsg)
                 if ret is None:
                     quantity = None
@@ -383,7 +394,7 @@ class VirtualInvWindow(uicls.Window):
             else:
                 self.RefreshView()
         except UserError:
-            self.SelfDestruct()
+            self.Close()
             if self.sr.Get('cookie', None):
                 sm.GetService('inv').Unregister(self.sr.cookie)
             raise 
@@ -393,7 +404,7 @@ class VirtualInvWindow(uicls.Window):
 
     def UpdateHint(self):
         if len(self.items) == 0:
-            self.hintText = mls.UI_GENERIC_NOTHINGFOUND
+            self.hintText = localization.GetByLabel('UI/Common/NothingFound')
         else:
             self.hintText = ''
         self.sr.scroll.ShowHint(self.hintText)
@@ -662,7 +673,7 @@ class VirtualInvWindow(uicls.Window):
             if node.Get('__guid__', None) == 'listentry.PlaceEntry' and self.OnItemDropBookmark(node):
                 bms.append(node)
                 continue
-            if node.Get('__guid__', None) in ('xtriui.ShipUIModule', 'xtriui.InvItem', 'listentry.InvItem', 'xtriui.FittingSlot', 'listentry.InvFittingItem'):
+            if node.Get('__guid__', None) in ('xtriui.ShipUIModule', 'xtriui.InvItem', 'listentry.InvItem', 'xtriui.FittingSlot'):
                 if node.rec.categoryID == const.categoryCharge and cfg.IsShipFittingFlag(node.item.flagID):
                     hasChargeLoaded = i
                 inv.append(node)
@@ -719,8 +730,8 @@ class VirtualInvWindow(uicls.Window):
                                 break
 
                         if inBank:
-                            ret = eve.Message('CustomQuestion', {'header': mls.UI_GENERIC_CONFIRM,
-                             'question': mls.UI_SHARED_WEAPONLINK_UNFITMANY}, uiconst.YESNO)
+                            ret = eve.Message('CustomQuestion', {'header': localization.GetByLabel('UI/Common/Confirm'),
+                             'question': localization.GetByLabel('UI/Inventory/WeaponLinkUnfitMany')}, uiconst.YESNO)
                             if ret != uiconst.ID_YES:
                                 return 
                     if hasChargeLoaded >= 0:
@@ -768,7 +779,7 @@ class VirtualInvWindow(uicls.Window):
     def OnItemDrop(self, index, node):
         log.LogInfo('OnItemDrop', index, node.item)
         if uicore.uilib.Key(uiconst.VK_SHIFT) and node.item.stacksize > 1 and self.ContainerAllowsSplit():
-            ret = uix.QtyPopup(node.item.stacksize, 0, 1, None, mls.UI_GENERIC_DIVIDESTACK)
+            ret = uix.QtyPopup(node.item.stacksize, 0, 1, None, localization.GetByLabel('UI/Inventory/ItemActions/DivideItemStack'))
             if ret is not None and ret['qty'] > 0:
                 self.Add(node.item.itemID, node.item.locationID, ret['qty'], dividing=True)
         elif self.viewMode not in ('details', 'list'):
@@ -910,9 +921,15 @@ class VirtualInvWindow(uicls.Window):
                 scrolllist = []
                 for rec in self.items:
                     if rec:
-                        scrolllist.append(listentry.Get('InvItem', data=uix.GetItemData(rec, self.viewMode, self.viewOnly, container=self, scrollID=self.sr.scroll.sr.id)))
+                        id = self.sr.scroll.sr.id
+                        theData = uix.GetItemData(rec, self.viewMode, self.viewOnly, container=self, scrollID=id)
+                        list = listentry.Get('InvItem', data=theData)
+                        scrolllist.append(list)
 
-                self.sr.scroll.Load(contentList=scrolllist, headers=uix.GetInvItemDefaultHeaders(), scrollTo=self.sr.scroll.GetScrollProportion())
+                hdr = uix.GetInvItemDefaultHeaders()
+                scrll = self.sr.scroll.GetScrollProportion()
+                theSc = self.sr.scroll
+                theSc.Load(contentList=scrolllist, headers=hdr, scrollTo=scrll)
                 self.sr.scroll.ShowHint(self.hintText)
             elif not self.cols:
                 self.RefreshCols()
@@ -949,7 +966,7 @@ class VirtualInvWindow(uicls.Window):
         finally:
             if self and not self.destroyed:
                 if self.viewMode == 'details':
-                    self.sr.scroll.sr.minColumnWidth = {mls.UI_GENERIC_NAME: 44}
+                    self.sr.scroll.sr.minColumnWidth = {localization.GetByLabel('UI/Common/Name'): 44}
                     self.sr.scroll.UpdateTabStops()
                 else:
                     self.sr.scroll.sr.minColumnWidth = {}
@@ -967,7 +984,8 @@ class VirtualInvWindow(uicls.Window):
         if self.destroyed:
             return 
         (total, full,) = (cap.capacity, cap.used)
-        self.capacityText.text = '%s/%s m\xb3' % (util.FmtAmt(full, showFraction=1), util.FmtAmt(total, showFraction=1))
+        self.capacityText.text = '%s/%s m\xb3' % (util.FmtAmt(full, showFraction=2), util.FmtAmt(total, showFraction=2))
+        self.capacityText.text = localization.GetByLabel('UI/Inventory/ContainerQuantityAndCapacity', quantity=full, capacity=total)
         if total:
             proportion = min(1.0, max(0.0, full / float(total)))
         else:
@@ -984,16 +1002,19 @@ class VirtualInvWindow(uicls.Window):
 
 
     def GetCaption(self, compact = 0):
+        items = []
+        if self.items is not None:
+            items = self.items
         if self.quickFilterInput:
             total = self.totalCount
             total = total or '0'
             if compact:
-                return '%s [%s/%s]' % (self.displayName[0], len(filter(None, self.items)), total)
-            return '%s [%s/%s]' % (self.displayName, len(filter(None, self.items)), total)
+                return localization.GetByLabel('UI/Inventory/InventoryNameWithQuantityAndTotal', inventoryName=self.displayName[0], itemCount=len(filter(None, items)), totalCount=total)
+            return localization.GetByLabel('UI/Inventory/InventoryNameWithQuantityAndTotal', inventoryName=self.displayName, itemCount=len(filter(None, items)), totalCount=total)
         else:
             if compact:
-                return '%s [%s]' % (self.displayName[0], len(filter(None, self.items)))
-            return '%s [%s]' % (self.displayName, len(filter(None, self.items)))
+                return localization.GetByLabel('UI/Inventory/InventoryNameWithQuantity', inventoryName=self.displayName[0], itemCount=len(filter(None, items)))
+            return localization.GetByLabel('UI/Inventory/InventoryNameWithQuantity', inventoryName=self.displayName, itemCount=len(filter(None, items)))
 
 
 
@@ -1026,12 +1047,16 @@ class VirtualInvWindow(uicls.Window):
                             else:
                                 maxQty = itemQuantity
                             if maxQty == itemQuantity:
-                                errmsg = mls.UI_INFLIGHT_NOMOREUNITSINSOURCE
+                                errmsg = localization.GetByLabel('UI/Common/NoMoreUnits')
                             else:
-                                errmsg = mls.UI_INFLIGHT_NOROOMFORMOREINDEST
+                                errmsg = localization.GetByLabel('UI/Common/NoRoomForMore')
                             ret = uix.QtyPopup(int(maxQty), 0, int(maxQty), errmsg)
                         else:
-                            ret = uix.QtyPopup(itemQuantity, 1, 1, None, mls.UI_GENERIC_DIVIDESTACK)
+                            ret = uix.QtyPopup(itemQuantity, 1, 1, None, localization.GetByLabel('UI/Inventory/ItemActions/DivideItemStack'))
+                        if item.locationID != session.stationid2:
+                            if not sm.GetService('invCache').IsInventoryPrimedAndListed(item.locationID):
+                                log.LogError('Item disappeared before we could add it', item)
+                                return 
                         if ret is None:
                             quantity = None
                         else:
@@ -1047,22 +1072,23 @@ class VirtualInvWindow(uicls.Window):
                     self.Add(item.itemID, sourceLocation, quantity)
                     return 
             except UserError as what:
-                if what.args[0] in ('NotEnoughCargoSpace', 'NotEnoughCargoSpaceOverload', 'NotEnoughDroneBaySpace', 'NotEnoughDroneBaySpaceOverload', 'NoSpaceForThat', 'NoSpaceForThatOverload', 'NotEnoughChargeSpace', 'NotEnoughSpecialBaySpace', 'NotEnoughSpecialBaySpaceOverload'):
+                if what.args[0] in ('NotEnoughCargoSpace', 'NotEnoughCargoSpaceOverload', 'NotEnoughDroneBaySpace', 'NotEnoughDroneBaySpaceOverload', 'NoSpaceForThat', 'NoSpaceForThatOverload', 'NotEnoughChargeSpace', 'NotEnoughSpecialBaySpace', 'NotEnoughSpecialBaySpaceOverload', 'NotEnoughSpace'):
                     cap = self.GetCapacity()
                     free = cap.capacity - cap.used
                     if free < 0:
                         raise 
                     if item.typeID == const.typePlasticWrap:
-                        volume = eve.GetInventoryFromId(item.itemID).GetCapacity().used
+                        volume = sm.GetService('invCache').GetInventoryFromId(item.itemID).GetCapacity().used
                     else:
                         volume = cfg.GetItemVolume(item, 1)
                     maxQty = min(item.stacksize, int(free / (volume or 1)))
                     if maxQty <= 0:
-                        req = util.FmtAmt(volume, showFraction=2)
-                        if float(req == 0.0):
-                            req = '0.01'
-                        eve.Message('NotEnoughCargoSpaceFor1Unit', {'typeName': cfg.invtypes.Get(item.typeID).name,
-                         'free': util.FmtAmt(free, showFraction=2),
+                        if volume < 0.1:
+                            req = 0.01
+                        else:
+                            req = volume
+                        eve.Message('NotEnoughCargoSpaceFor1Unit', {'type': item.typeID,
+                         'free': free,
                          'required': req})
                         return 
                     if self.DBLessLimitationsCheck(what.args[0], item):
@@ -1080,7 +1106,7 @@ class VirtualInvWindow(uicls.Window):
             return 
         inv = []
         for node in self.sr.scroll.sr.nodes:
-            if node.Get('__guid__', None) in ('xtriui.InvItem', 'listentry.InvItem', 'listentry.InvFittingItem'):
+            if node.Get('__guid__', None) in ('xtriui.InvItem', 'listentry.InvItem'):
                 inv.append(node)
 
         if inv and not sm.GetService('consider').ConfirmTakeFromContainer(inv[0].rec.locationID):
@@ -1099,11 +1125,11 @@ class VirtualInvWindow(uicls.Window):
         except UserError as what:
             if what.args[0] == 'PermissionDenied':
                 if securityCode:
-                    caption = mls.UI_GENERIC_INCORRECTPASSWORD
-                    label = mls.UI_GENERIC_PLEASETRYAGAIN
+                    caption = localization.GetByLabel('UI/Menusvc/IncorrectPassword')
+                    label = localization.GetByLabel('UI/Menusvc/PleaseTryEnteringPasswordAgain')
                 else:
-                    caption = mls.UI_GENERIC_PASSWORDREQUIRED
-                    label = mls.UI_GENERIC_PLEASEENTERPASSWORD
+                    caption = localization.GetByLabel('UI/Menusvc/PasswordRequired')
+                    label = localization.GetByLabel('UI/Menusvc/PleaseEnterPassword')
                 passw = uix.NamePopup(caption=caption, label=label, setvalue='', icon=-1, modal=1, btns=None, maxLength=50, passwordChar='*')
                 if passw is None:
                     raise UserError('IgnoreToTop')
@@ -1130,7 +1156,142 @@ class VirtualInvWindow(uicls.Window):
 
 
     def GetIcons(self):
-        return [ icon for row in self.sr.scroll.sr.content.children for icon in row.sr.icons if icon.state == uiconst.UI_NORMAL ]
+        return [ icon for row in self.sr.scroll.GetContentContainer().children for icon in row.sr.icons if icon.state == uiconst.UI_NORMAL ]
+
+
+
+    def OnScrollMouseDown(self, *args):
+        if args[0] == uiconst.MOUSELEFT:
+            self.dragStart = (uicore.uilib.x - self.sr.scroll.GetContentContainer().absoluteLeft, uicore.uilib.y - self.sr.scroll.GetContentContainer().absoluteTop)
+            if uicore.uilib.Key(uiconst.VK_CONTROL) or uicore.uilib.Key(uiconst.VK_SHIFT):
+                self.previouslyHighlighted = [ x.panel for x in self.sr.scroll.GetSelected() ]
+            else:
+                self.previouslyHighlighted = []
+            self.dragContainer = uicls.Container(parent=self.sr.scroll.GetContentContainer(), align=uiconst.TOPLEFT, idx=0)
+            dragFrame = uicls.Frame(parent=self.dragContainer, color=(1, 1, 1, 0.3), frameConst=uiconst.FRAME_BORDER1_CORNER3)
+            dragFill = uicls.Fill(parent=self.dragContainer, color=(1, 1, 1, 0.15), frameConst=uiconst.FRAME_FILLED_CORNER3)
+            self.dragContainer.Hide()
+
+
+
+    def OnScrollMouseMove(self, *args):
+        if self.dragStart:
+            (startX, startY,) = self.dragStart
+            (currentX, currentY,) = (uicore.uilib.x - self.sr.scroll.GetContentContainer().absoluteLeft, uicore.uilib.y - self.sr.scroll.GetContentContainer().absoluteTop)
+            if startX > currentX:
+                temp = currentX
+                currentX = startX
+                startX = temp
+            if startY > currentY:
+                temp = currentY
+                currentY = startY
+                startY = temp
+            left = max(startX, 0)
+            width = min(currentX, self.sr.scroll.GetContentContainer().width) - max(startX, 0)
+            top = max(startY, 0)
+            height = min(currentY, self.sr.scroll.GetContentContainer().height) - max(startY, 0)
+            self.dragContainer.left = left
+            self.dragContainer.top = top
+            self.dragContainer.width = width
+            self.dragContainer.height = height
+            self.dragContainer.Show()
+            if not self.scrollTimer:
+                self.scrollTimer = base.AutoTimer(250, self.ScrollTimer)
+            for each in self.sr.scroll.GetContentContainer().children:
+                if isinstance(each, listentry.VirtualContainerRow):
+                    if each.top >= startY and each.top + each.height <= currentY or each.top + each.height >= startY and each.top <= currentY:
+                        for icon in each.sr.icons:
+                            if icon.left >= startX and icon.left + icon.width <= currentX or icon.left + icon.width >= startX and icon.left <= currentX:
+                                if icon in self.previouslyHighlighted:
+                                    if uicore.uilib.Key(uiconst.VK_SHIFT):
+                                        icon.Select()
+                                    elif uicore.uilib.Key(uiconst.VK_CONTROL):
+                                        icon.Deselect()
+                                else:
+                                    icon.Select()
+                            elif icon not in self.previouslyHighlighted:
+                                icon.Deselect()
+                            else:
+                                icon.Select()
+
+                    else:
+                        for icon in each.sr.icons:
+                            if icon not in self.previouslyHighlighted:
+                                icon.Deselect()
+                            else:
+                                icon.Select()
+
+                elif isinstance(each, listentry.InvItem):
+                    if each.top >= startY and each.top + each.height <= currentY or each.top + each.height >= startY and each.top <= currentY:
+                        each.Select()
+                        if each in self.previouslyHighlighted:
+                            if uicore.uilib.Key(uiconst.VK_SHIFT):
+                                each.Select()
+                            elif uicore.uilib.Key(uiconst.VK_CONTROL):
+                                each.Deselect()
+                        else:
+                            each.Select()
+                    else:
+                        if each not in self.previouslyHighlighted:
+                            each.Deselect()
+                        else:
+                            each.Select()
+
+        else:
+            self.scrollTimer = None
+
+
+
+    def OnScrollMouseUp(self, *args):
+        if self.dragStart and args[0] == uiconst.MOUSELEFT:
+            (startX, startY,) = self.dragStart
+            (endX, endY,) = (uicore.uilib.x - self.sr.scroll.GetContentContainer().absoluteLeft, uicore.uilib.y - self.sr.scroll.GetContentContainer().absoluteTop)
+            if startX > endX:
+                temp = endX
+                endX = startX
+                startX = temp
+            if startY > endY:
+                temp = endY
+                endY = startY
+                startY = temp
+            preSelectedNodes = self.sr.scroll.GetSelected() if uicore.uilib.Key(uiconst.VK_CONTROL) or uicore.uilib.Key(uiconst.VK_SHIFT) else []
+            selectedNodes = []
+            for each in self.sr.scroll.GetContentContainer().children:
+                if isinstance(each, listentry.VirtualContainerRow):
+                    if each.top >= startY and each.top + each.height <= endY or each.top + each.height >= startY and each.top <= endY:
+                        for icon in each.sr.icons:
+                            if icon.left >= startX and icon.left + icon.width <= endX or icon.left + icon.width >= startX and icon.left <= endX:
+                                if icon.sr.node:
+                                    selectedNodes.append(icon.sr.node)
+
+                elif isinstance(each, listentry.InvItem):
+                    if each.top >= startY and each.top + each.height <= endY or each.top + each.height >= startY and each.top <= endY:
+                        selectedNodes.append(each.sr.node)
+
+            if uicore.uilib.Key(uiconst.VK_SHIFT):
+                selectedNodes.extend(preSelectedNodes)
+            elif uicore.uilib.Key(uiconst.VK_CONTROL):
+                newSelectedNodes = [ item for item in selectedNodes if item not in preSelectedNodes ]
+                newSelectedNodes.extend([ item for item in preSelectedNodes if item not in selectedNodes ])
+                selectedNodes = newSelectedNodes
+            self.sr.scroll.SelectNodes(selectedNodes)
+            self.dragStart = None
+            self.previouslyHighlighted = None
+            self.scrollTimer = None
+            self.dragContainer.Close()
+
+
+
+    def ScrollTimer(self):
+        if not self.dragStart:
+            self.scrollTimer = None
+            return 
+        (aL, aT, aW, aH,) = self.sr.scroll.GetAbsolute()
+        if uicore.uilib.y < aT + 10:
+            self.sr.scroll.Scroll(1)
+        elif uicore.uilib.y > aT + aH - 10:
+            self.sr.scroll.Scroll(-1)
+        self.OnScrollMouseMove()
 
 
 
@@ -1141,7 +1302,7 @@ class VirtualInvWindow(uicls.Window):
 
 
     def GetIcon(self, index):
-        for each in self.sr.scroll.sr.content.children:
+        for each in self.sr.scroll.GetContentContainer().children:
             if each.index == index // self.cols * self.cols:
                 lg.Info('vcont', 'GetIcon(', index, ') returns', each.sr.icons[(index % self.cols)].name)
                 return each.sr.icons[(index % self.cols)]
@@ -1215,22 +1376,37 @@ class Row(uicls.SE_BaseClassCore):
 
 
 
+    def OnMouseDown(self, *etc):
+        self.dad.sr.scroll.OnMouseDown(*etc)
+
+
+
+    def OnMouseUp(self, *etc):
+        self.dad.sr.scroll.OnMouseUp(*etc)
+
+
+
+    def OnMouseMove(self, *etc):
+        self.dad.sr.scroll.OnMouseMove(*etc)
+
+
+
 
 def GetContainerMenu(containerWindow):
     if eve.rookieState:
         return []
-    m = [(mls.UI_CMD_SELECTALL, containerWindow.SelectAll), (mls.UI_CMD_INVERSESELECTION, containerWindow.InvertSelection)]
+    m = [(localization.GetByLabel('UI/Common/SelectAll'), containerWindow.SelectAll), (localization.GetByLabel('UI/Inventory/InvertSelection'), containerWindow.InvertSelection)]
     if eve.session.role & (service.ROLE_GML | service.ROLE_WORLDMOD):
-        m += [(mls.UI_CMD_REFRESH, containerWindow.Refresh)]
+        m += [(localization.GetByLabel('UI/Commands/Refresh'), containerWindow.Refresh)]
     if containerWindow.viewMode == 'icons':
-        m += [(mls.UI_CMD_SORTBY, [(mls.UI_CMD_NAME, containerWindow.SortIconsBy, ('name', 0)),
-           (mls.UI_CMD_NAMEREVERSED, containerWindow.SortIconsBy, ('name', 1)),
+        m += [(localization.GetByLabel('UI/Common/SortBy'), [(localization.GetByLabel('UI/Common/Name'), containerWindow.SortIconsBy, ('name', 0)),
+           (localization.GetByLabel('UI/Inventory/NameReversed'), containerWindow.SortIconsBy, ('name', 1)),
            None,
-           (mls.UI_CMD_QUANTITY, containerWindow.SortIconsBy, ('qty', 0)),
-           (mls.UI_CMD_QUANTITYREVERSED, containerWindow.SortIconsBy, ('qty', 1)),
+           (localization.GetByLabel('UI/Inventory/ItemQuantity'), containerWindow.SortIconsBy, ('qty', 0)),
+           (localization.GetByLabel('UI/Inventory/QuantityReversed'), containerWindow.SortIconsBy, ('qty', 1)),
            None,
-           (mls.UI_CMD_TYPE, containerWindow.SortIconsBy, ('type', 0)),
-           (mls.UI_CMD_TYPEREVERSED, containerWindow.SortIconsBy, ('type', 1))])]
+           (localization.GetByLabel('UI/Common/Type'), containerWindow.SortIconsBy, ('type', 0)),
+           (localization.GetByLabel('UI/Inventory/TypeReversed'), containerWindow.SortIconsBy, ('type', 1))])]
     if containerWindow.viewOnly:
         return m
     containerItem = containerWindow.GetShell().GetItem()
@@ -1239,7 +1415,7 @@ def GetContainerMenu(containerWindow):
     containerSlim = sm.GetService('michelle').GetItem(containerItem.itemID)
     stackAll = containerItem.groupID in (const.groupStation, const.groupPlanetaryCustomsOffices) or containerOwnerID in myOwnerIDs or session.corpid == getattr(containerSlim, 'corpID', None) or session.allianceid and session.allianceid == getattr(containerSlim, 'allianceID', None)
     if stackAll:
-        m += [(mls.UI_CMD_STACKALL, containerWindow.StackAll)]
+        m += [(localization.GetByLabel('UI/Inventory/StackAll'), containerWindow.StackAll)]
     return m
 
 

@@ -2,7 +2,6 @@ import sys
 import blue
 import uthread
 import util
-import xtriui
 import uix
 import uiutil
 import form
@@ -10,18 +9,20 @@ import listentry
 import log
 import uicls
 import uiconst
+import localization
+import localizationUtil
 
 class WizardDialogBase(uicls.Window):
     __guid__ = 'form.WizardDialogBase'
 
     def OnOK(self, *args):
         self.closedByOK = 1
-        self.CloseX()
+        self.CloseByUser()
 
 
 
     def OnCancel(self, *args):
-        self.CloseX()
+        self.CloseByUser()
 
 
 
@@ -94,22 +95,22 @@ class WizardDialogBase(uicls.Window):
         else:
             uicls.Container(name='push', parent=self.sr.main, align=uiconst.TOTOP, height=6)
         buttonParams = []
-        buttonParams.append([mls.UI_CMD_OK,
+        buttonParams.append([localization.GetByLabel('UI/Generic/OK'),
          self.OnOK,
          (),
          66,
          0,
          1,
          0])
-        buttonParams.append([mls.UI_CMD_BACK,
+        buttonParams.append([localization.GetByLabel('UI/Commands/Back'),
          self.OnBack,
          (),
          66])
-        buttonParams.append([mls.UI_CMD_CANCEL,
+        buttonParams.append([localization.GetByLabel('UI/Commands/Cancel'),
          self.OnCancel,
          (),
          66])
-        buttonParams.append([mls.UI_CMD_NEXT,
+        buttonParams.append([localization.GetByLabel('UI/Commands/Next'),
          self.OnNext,
          (),
          66,
@@ -118,10 +119,10 @@ class WizardDialogBase(uicls.Window):
          0])
         buttons = uicls.ButtonGroup(btns=buttonParams, parent=self.sr.main, idx=0)
         self.navigationBtns = buttons
-        self.EnableNavigationButton(mls.UI_CMD_BACK, back)
-        self.EnableNavigationButton(mls.UI_CMD_OK, ok)
-        self.EnableNavigationButton(mls.UI_CMD_CANCEL, cancel)
-        self.EnableNavigationButton(mls.UI_CMD_NEXT, next)
+        self.EnableNavigationButton(localization.GetByLabel('UI/Commands/Back'), back)
+        self.EnableNavigationButton(localization.GetByLabel('UI/Generic/OK'), ok)
+        self.EnableNavigationButton(localization.GetByLabel('UI/Commands/Cancel'), cancel)
+        self.EnableNavigationButton(localization.GetByLabel('UI/Commands/Next'), next)
 
 
 
@@ -142,7 +143,7 @@ class WizardDialogBase(uicls.Window):
 
     def SetHeading(self, heading):
         if self.heading is None:
-            self.heading = uicls.CaptionLabel(text=heading, parent=self.sr.topParent, align=uiconst.CENTERLEFT, left=70, idx=0)
+            self.heading = uicls.EveCaptionMedium(text=heading, parent=self.sr.topParent, align=uiconst.CENTERLEFT, left=70, idx=0)
         else:
             self.heading.text = heading
 
@@ -157,6 +158,7 @@ class WizardDialogBase(uicls.Window):
 
 class VoteWizardDialog(WizardDialogBase):
     __guid__ = 'form.VoteWizardDialog'
+    default_windowID = 'VoteWizardDialog'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -164,31 +166,31 @@ class VoteWizardDialog(WizardDialogBase):
         self.heading = None
         self.step = 0
         self.navigationBtns = None
-        self.voteTypes = [[mls.UI_CORP_CREATESHARES, const.voteShares]]
-        if eve.session.allianceid is None:
-            self.voteTypes.append([mls.UI_CMD_DECLAREWAR, const.voteWar])
-        self.voteTypes.append([mls.UI_CMD_EXPELMEMBER, const.voteKickMember])
-        self.voteTypes.append([mls.UI_CORP_GENERALVOTE, const.voteGeneral])
-        if eve.session.stationid is not None:
-            self.voteTypes.append([mls.UI_CORP_LOCKBLUEPRINT, const.voteItemLockdown])
-            self.voteTypes.append([mls.UI_CORP_UNLOCKBLUEPRINT, const.voteItemUnlock])
+        self.voteTypes = [[localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/VoteTypeCreateShares'), const.voteShares]]
+        if session.allianceid is None:
+            self.voteTypes.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/VoteTypeDeclareWar'), const.voteWar])
+        self.voteTypes.append([localization.GetByLabel('UI/Corporations/Common/ExpelCorpMember'), const.voteKickMember])
+        self.voteTypes.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/VoteTypeGeneral'), const.voteGeneral])
+        if session.stationid is not None:
+            self.voteTypes.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/VoteTypeLockBlueprint'), const.voteItemLockdown])
+            self.voteTypes.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/VoteTypeUnlockBlueprint'), const.voteItemUnlock])
         self.voteTypesDict = {}
         for (description, value,) in self.voteTypes:
             self.voteTypesDict[value] = description
 
         self.voteType = self.voteTypes[0][1]
-        self.locationID = eve.session.stationid
+        self.locationID = session.stationid
         self.InitVote()
-        steps = {1: (mls.UI_CORP_SELECTVOTETYPE, self.OnSelectVoteType, None),
-         2: (mls.UI_CMD_DECLAREWAR, self.OnSelectWarVote, self.OnLeaveWarVote),
-         3: (mls.UI_CORP_CREATESHARES, self.OnSelectShareVote, self.OnLeaveShareVote),
-         4: (mls.UI_CMD_EXPELMEMBER, self.OnSelectExpelVote, self.OnLeaveExpelVote),
-         5: (mls.UI_CORP_LOCKBLUEPRINT, self.OnSelectLockdownVote, self.OnLeaveLockdownVote),
-         6: (mls.UI_CORP_UNLOCKBLUEPRINT, self.OnSelectUnlockVote, self.OnLeaveUnlockVote),
-         7: (mls.UI_CORP_GENERALVOTE, self.OnSelectGeneralVote, self.OnLeaveGeneralVote),
-         8: (mls.UI_CORP_VOTEOPS, self.OnSelectVoteOptions, self.OnLeaveVoteOptions),
-         9: (mls.UI_CORP_VOTEDETAILS, self.OnSelectVoteDetails, self.OnLeaveVoteDetails),
-         10: (mls.UI_CORP_VOTESUMMARY, self.OnSelectVoteSummary, None)}
+        steps = {1: (localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/SelectVoteType'), self.OnSelectVoteType, None),
+         2: (localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/VoteTypeDeclareWar'), self.OnSelectWarVote, self.OnLeaveWarVote),
+         3: (localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/VoteTypeCreateShares'), self.OnSelectShareVote, self.OnLeaveShareVote),
+         4: (localization.GetByLabel('UI/Corporations/Common/ExpelCorpMember'), self.OnSelectExpelVote, self.OnLeaveExpelVote),
+         5: (localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/VoteTypeLockBlueprint'), self.OnSelectLockdownVote, self.OnLeaveLockdownVote),
+         6: (localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/VoteTypeUnlockBlueprint'), self.OnSelectUnlockVote, self.OnLeaveUnlockVote),
+         7: (localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/VoteTypeGeneral'), self.OnSelectGeneralVote, self.OnLeaveGeneralVote),
+         8: (localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/VoteOptions'), self.OnSelectVoteOptions, self.OnLeaveVoteOptions),
+         9: (localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/VoteDetails'), self.OnSelectVoteDetails, self.OnLeaveVoteDetails),
+         10: (localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/VoteSummary'), self.OnSelectVoteSummary, None)}
         uix.Flush(self.sr.main)
         self.sr.scroll = uicls.Scroll(parent=self.sr.main, padding=(const.defaultPadding,
          const.defaultPadding,
@@ -198,8 +200,8 @@ class VoteWizardDialog(WizardDialogBase):
         if len(steps):
             step = 1
         self.SetSteps(steps, step)
-        self.SetHeading(mls.UI_CORP_PROPOSEVOTE)
-        self.SetCaption(mls.UI_CORP_PROPOSEVOTE)
+        self.SetHeading(localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/ProposeVote'))
+        self.SetCaption(localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/ProposeVote'))
         self.SetMinSize([400, 300])
         self.SetWndIcon('ui_7_64_9', mainTop=-2)
         self.SetTopparentHeight(58)
@@ -208,14 +210,14 @@ class VoteWizardDialog(WizardDialogBase):
 
 
     def InitVote(self):
-        self.ownerName = mls.UI_CORP_HINT56
+        self.ownerName = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/HintSelectCorporationOrAlliance')
         self.ownerID = 0
         self.voteTitle = None
         self.voteDescription = None
         self.voteDays = 1
         self.voteShares = 1
         self.memberID = 0
-        self.memberName = mls.UI_CORP_HINT57
+        self.memberName = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/HintSelectMember')
         self.voteOptions = []
         self.voteOptionsCount = 2
         self.itemID = 0
@@ -227,7 +229,7 @@ class VoteWizardDialog(WizardDialogBase):
     def OnSelectVoteType(self, step, scrolllist):
         self.SetNavigationButtons(back=0, ok=0, cancel=1, next=1)
         scrolllist.append(listentry.Get('Combo', {'options': self.voteTypes,
-         'label': mls.UI_CORP_SELECTVOTETYPE,
+         'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/SelectVoteType'),
          'cfgName': 'voteType',
          'setValue': self.voteType,
          'OnChange': self.OnComboChange,
@@ -236,7 +238,7 @@ class VoteWizardDialog(WizardDialogBase):
 
 
     def LogCurrentVoteType(self):
-        log.LogInfo('%s:' % mls.UI_CORP_CURRENTVOTETYPE, self.voteType, 'name:', self.voteTypesDict[self.voteType])
+        log.LogInfo(localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/CurrentVoteType'), self.voteType, 'name:', self.voteTypesDict[self.voteType])
 
 
 
@@ -301,17 +303,17 @@ class VoteWizardDialog(WizardDialogBase):
             log.LogInfo('>OnSelectUnlockVote')
             self.SetNavigationButtons(back=1, ok=0, cancel=1, next=self.itemID != 0)
             lockedItems = []
-            if eve.session.stationid is not None:
+            if session.stationid is not None:
                 lockedItems = sm.GetService('corp').GetLockedItemsByLocation(self.locationID)
             if len(lockedItems) == 0:
-                scrolllist.append(listentry.Get('Header', {'label': mls.UI_CORP_HINT58}))
+                scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/HintNoLockedItemsInLocation')}))
                 log.LogInfo('No Corp Hangar available')
                 return 
             hangarItems = self.GetHangarItemsToUse()
             options = []
             if hangarItems is not None:
                 options = self.GetAvailableHangars()
-            options.append((mls.UI_CORP_HINT59, const.flagHangarAll))
+            options.append((localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/OptionAllLockedItemsAtStation'), const.flagHangarAll))
             default = None
             if hangarItems is None:
                 log.LogInfo('No Corp Hangar available')
@@ -332,7 +334,7 @@ class VoteWizardDialog(WizardDialogBase):
                 self.flagInput = options[0][1]
                 default = self.flagInput
             data = {'options': options,
-             'label': mls.UI_CORP_HINT60,
+             'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/SelectItemToUnlock'),
              'cfgName': 'install_item_from',
              'setValue': default,
              'OnChange': self.OnComboChange,
@@ -350,19 +352,34 @@ class VoteWizardDialog(WizardDialogBase):
 
 
 
+    def GenerateBlueprintExtraInfo(self, blueprint):
+        infoList = []
+        if blueprint.copy == 1:
+            if blueprint.licensedProductionRunsRemaining != -1:
+                infoList.append(localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/CopyRuns', runsRemaining=blueprint.licensedProductionRunsRemaining))
+            else:
+                infoList.append(localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/CopyRunsInfinite'))
+        if blueprint.productivityLevel:
+            infoList.append(localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/ProductivityLevel', productivityLevel=blueprint.productivityLevel))
+        if blueprint.materialLevel:
+            infoList.append(localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/MaterialLevel', materialLevel=blueprint.materialLevel))
+        return localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/ExtraInfoWrapper', extraInfo=localizationUtil.FormatGenericList(infoList))
+
+
+
     def PopulateAllLockedItems(self, scrolllist):
         try:
             log.LogInfo('>PopulateAllLockedItems')
-            if eve.session.stationid is None:
+            if session.stationid is None:
                 return 
             lockedItems = sm.GetService('corp').GetLockedItemsByLocation(self.locationID)
             listentries = []
             hangarID = self.GetHangarLocationIDToUse()
             if hangarID is None:
-                hangarID = eve.session.stationid
+                hangarID = session.stationid
             blueprints = sm.RemoteSvc('factory').GetBlueprintInformationAtLocation(hangarID, 1)
-            sanctionedActionsInEffect = sm.GetService('corp').GetSanctionedActionsByCorporation(eve.session.corpid, 1).itervalues()
-            voteCases = sm.GetService('corp').GetVoteCasesByCorporation(eve.session.corpid, 2)
+            sanctionedActionsInEffect = sm.GetService('corp').GetSanctionedActionsByCorporation(session.corpid, 1).itervalues()
+            voteCases = sm.GetService('corp').GetVoteCasesByCorporation(session.corpid, 2)
             sanctionedActionsByLockedItemID = util.IndexRowset(sanctionedActionsInEffect.header, [], 'parameter')
             if sanctionedActionsInEffect and len(sanctionedActionsInEffect):
                 for sanctionedActionInEffect in sanctionedActionsInEffect:
@@ -372,7 +389,7 @@ class VoteWizardDialog(WizardDialogBase):
             voteCaseIDByItemToUnlockID = {}
             if voteCases and len(voteCases):
                 for voteCase in voteCases.itervalues():
-                    if voteCase.voteType in [const.voteItemUnlock] and voteCase.endDateTime > blue.os.GetTime() - DAY:
+                    if voteCase.voteType in [const.voteItemUnlock] and voteCase.endDateTime > blue.os.GetWallclockTime() - DAY:
                         options = sm.GetService('corp').GetVoteCaseOptions(voteCase.voteCaseID, voteCase.corporationID)
                         if len(options):
                             for option in options.itervalues():
@@ -399,7 +416,7 @@ class VoteWizardDialog(WizardDialogBase):
                  self.locationID,
                  const.flagHangar]
                 item = util.Row(header, line)
-                if item.ownerID != eve.session.corpid:
+                if item.ownerID != session.corpid:
                     continue
                 if not sanctionedActionsByLockedItemID.has_key(item.itemID):
                     continue
@@ -415,38 +432,22 @@ class VoteWizardDialog(WizardDialogBase):
                     if blueprint is None:
                         log.LogInfo('Someone nabbed', item.itemID, 'while I was looking for it.')
                         continue
+                    if blueprint.copy == 1 and blueprint.licensedProductionRunsRemaining == 0:
+                        continue
                     itemTypeInfo = cfg.invtypes.Get(item.typeID)
                     description = itemTypeInfo.name
-                    extraInfo = ''
-                    if blueprint.copy == 1:
-                        extraInfo = '%s,' % mls.UI_GENERIC_COPY
-                        if blueprint.licensedProductionRunsRemaining == 0:
-                            continue
-                        if blueprint.licensedProductionRunsRemaining != -1:
-                            extraInfo = '%s %s' % (extraInfo, mls.UI_CORP_LICENSEDRUNSREMAINING2 % {'runsRemaining': blueprint.licensedProductionRunsRemaining})
-                        else:
-                            extraInfo = '%s %s' % (extraInfo, mls.UI_CORP_LICENSEDRUNSREMAINING2 % {'runsRemaining': mls.UI_GENERIC_INFINITE})
-                    if blueprint.productivityLevel:
-                        if len(extraInfo):
-                            extraInfo = extraInfo + ','
-                        extraInfo = '%s %s' % (extraInfo, mls.UI_SHARED_PRODUCTIVITY2 % {'productivityLevel': blueprint.productivityLevel})
-                    if blueprint.materialLevel:
-                        if len(extraInfo):
-                            extraInfo = extraInfo + ','
-                        extraInfo = '%s %s' % (extraInfo, mls.UI_SHARED_MATERIALEFF2 % {'materialLevel': blueprint.materialLevel})
-                    if extraInfo == '':
-                        extraInfo = ' (' + extraInfo + ')'
+                    extraInfo = self.GenerateBlueprintExtraInfo(blueprint)
                     data = {'info': item,
                      'itemID': item.itemID,
                      'typeID': item.typeID,
-                     'label': '%s %s%s' % (itemTypeInfo.name, uiutil.UpperCase(mls.UI_GENERIC_LOCKED), extraInfo),
+                     'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/LockedBlueprintLabel', item=item.typeID, extraInfo=extraInfo),
                      'getIcon': 1,
                      'OnClick': self.ClickHangarItem}
                 else:
                     data = {'info': item,
                      'itemID': item.itemID,
                      'typeID': item.typeID,
-                     'label': '%s %s' % (cfg.invtypes.Get(item.typeID).name, uiutil.UpperCase(mls.UI_GENERIC_LOCKED)),
+                     'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/LockedItemLabel', item=item.typeID),
                      'getIcon': 1,
                      'OnClick': self.ClickHangarItem}
                 listentries.append((data['label'], listentry.Get('Item', data)))
@@ -471,8 +472,8 @@ class VoteWizardDialog(WizardDialogBase):
             sm.GetService('corp').GetLockedItemsByLocation(self.locationID)
             locationID = self.GetHangarLocationIDToUse()
             blueprints = sm.RemoteSvc('factory').GetBlueprintInformationAtLocationWithFlag(locationID, self.flagInput, 1)
-            sanctionedActionsInEffect = sm.GetService('corp').GetSanctionedActionsByCorporation(eve.session.corpid, 1).itervalues()
-            voteCases = sm.GetService('corp').GetVoteCasesByCorporation(eve.session.corpid, 2)
+            sanctionedActionsInEffect = sm.GetService('corp').GetSanctionedActionsByCorporation(session.corpid, 1).itervalues()
+            voteCases = sm.GetService('corp').GetVoteCasesByCorporation(session.corpid, 2)
             sanctionedActionsByLockedItemID = util.IndexRowset(sanctionedActionsInEffect.header, [], 'parameter')
             if sanctionedActionsInEffect and len(sanctionedActionsInEffect):
                 for sanctionedActionInEffect in sanctionedActionsInEffect:
@@ -482,7 +483,7 @@ class VoteWizardDialog(WizardDialogBase):
             voteCaseIDByItemToUnlockID = {}
             if voteCases and len(voteCases):
                 for voteCase in voteCases.itervalues():
-                    if voteCase.voteType in [const.voteItemUnlock] and voteCase.endDateTime > blue.os.GetTime() - DAY:
+                    if voteCase.voteType in [const.voteItemUnlock] and voteCase.endDateTime > blue.os.GetWallclockTime() - DAY:
                         options = sm.GetService('corp').GetVoteCaseOptions(voteCase.voteCaseID, voteCase.corporationID)
                         if len(options):
                             for option in options.itervalues():
@@ -493,6 +494,7 @@ class VoteWizardDialog(WizardDialogBase):
             itemCount = len(hangarItems)
             for item in hangarItems:
                 locked = sm.GetService('corp').IsItemLocked(item)
+                extraInfo = None
                 if not locked:
                     continue
                 if not sanctionedActionsByLockedItemID.has_key(item.itemID):
@@ -509,43 +511,18 @@ class VoteWizardDialog(WizardDialogBase):
                     if blueprint is None:
                         log.LogInfo('Someone nabbed', item.itemID, 'while I was looking for it.')
                         continue
+                    if blueprint.copy == 1 and blueprint.licensedProductionRunsRemaining == 0:
+                        continue
                     itemTypeInfo = cfg.invtypes.Get(item.typeID)
                     description = itemTypeInfo.name
-                    extraInfo = ''
-                    if blueprint.copy == 1:
-                        extraInfo = '%s,' % mls.UI_GENERIC_COPY
-                        if blueprint.licensedProductionRunsRemaining == 0:
-                            continue
-                        if blueprint.licensedProductionRunsRemaining != -1:
-                            extraInfo = '%s %s' % (extraInfo, mls.UI_CORP_LICENSEDRUNSREMAINING2 % {'runsRemaining': blueprint.licensedProductionRunsRemaining})
-                        else:
-                            extraInfo = '%s %s' % (extraInfo, mls.UI_CORP_LICENSEDRUNSREMAINING2 % {'runsRemaining': mls.UI_GENERIC_INFINITE})
-                    if blueprint.productivityLevel:
-                        if len(extraInfo):
-                            extraInfo = extraInfo + ','
-                        extraInfo = '%s %s' % (extraInfo, mls.UI_SHARED_PRODUCTIVITY2 % {'productivityLevel': blueprint.productivityLevel})
-                    if blueprint.materialLevel:
-                        if len(extraInfo):
-                            extraInfo = extraInfo + ','
-                        extraInfo = '%s %s' % (extraInfo, mls.UI_SHARED_MATERIALEFF2 % {'materialLevel': blueprint.materialLevel})
-                    if extraInfo != '':
-                        extraInfo = ' (' + extraInfo + ')'
-                    data = {'info': item,
-                     'itemID': item.itemID,
-                     'typeID': item.typeID,
-                     'label': '%s %s[%s]%s' % (itemTypeInfo.name,
-                               ['', mls.UI_GENERIC_LOCKED + ' '][(not not locked)],
-                               item.stacksize,
-                               extraInfo),
-                     'getIcon': 1,
-                     'OnClick': self.ClickHangarItem}
-                else:
-                    data = {'info': item,
-                     'itemID': item.itemID,
-                     'typeID': item.typeID,
-                     'label': '%s %s[%s]' % (cfg.invtypes.Get(item.typeID).name, ['', mls.UI_GENERIC_LOCKED + ' '][(not not locked)], item.stacksize),
-                     'getIcon': 1,
-                     'OnClick': self.ClickHangarItem}
+                    extraInfo = self.GenerateBlueprintExtraInfo(blueprint)
+                label = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/LockedBlueprintWithSize', item=item.typeID, stacksize=item.stacksize, extraInfo=extraInfo)
+                data = {'info': item,
+                 'itemID': item.itemID,
+                 'typeID': item.typeID,
+                 'label': label,
+                 'getIcon': 1,
+                 'OnClick': self.ClickHangarItem}
                 listentries.append((data['label'], listentry.Get('Item', data)))
 
             listentries = uiutil.SortListOfTuples(listentries)
@@ -573,7 +550,8 @@ class VoteWizardDialog(WizardDialogBase):
             self.SetNavigationButtons(back=1, ok=0, cancel=1, next=self.itemID != 0)
             options = self.GetAvailableHangars()
             if len(options) == 0 or 0 == len(sm.GetService('corp').GetMyCorporationsOffices().SelectByUniqueColumnValues('stationID', [self.locationID])):
-                scrolllist.append(listentry.Get('Header', {'label': mls.UI_CORP_HINT61}))
+                label = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/NoCorpHangarAvailable')
+                scrolllist.append(listentry.Get('Header', {'label': label}))
                 log.LogInfo('No Corp Hangar available')
                 return 
             default = None
@@ -583,14 +561,14 @@ class VoteWizardDialog(WizardDialogBase):
                         default = flag
                         break
 
-            label = mls.UI_CORP_HINT62
+            label = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/SelectItemsToLockDown')
             data = {'options': options,
              'label': label,
              'cfgName': 'install_item_from',
              'setValue': default,
              'OnChange': self.OnComboChange,
              'name': 'install_item_from'}
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_CORP_HINT63}))
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/OnlyUsedBPCanBeLocked')}))
             scrolllist.append(listentry.Get('Combo', data))
             scrolllist.append(listentry.Get('Divider'))
             if default is None:
@@ -621,10 +599,10 @@ class VoteWizardDialog(WizardDialogBase):
                 i += 1
                 param = paramsByDivision[i]
                 if canView:
-                    if eve.session.corprole & param[1] != param[1]:
+                    if session.corprole & param[1] != param[1]:
                         continue
                 if canTake:
-                    if eve.session.corprole & param[2] != param[2]:
+                    if session.corprole & param[2] != param[2]:
                         continue
                 hangarDescription = divisions[i]
                 options.append((hangarDescription, param[0]))
@@ -640,7 +618,7 @@ class VoteWizardDialog(WizardDialogBase):
     def GetHangarItemsToUse(self, flagID = None):
         try:
             log.LogInfo('>GetHangarItemsToUse')
-            listing = sm.RemoteSvc('corpmgr').GetAssetInventoryForLocation(eve.session.corpid, self.locationID, 'offices')
+            listing = sm.RemoteSvc('corpmgr').GetAssetInventoryForLocation(session.corpid, self.locationID, 'offices')
             if len(listing):
                 header = listing.header
                 header.virtual = header.virtual + [('groupID', lambda i: cfg.invtypes.Get(i.typeID).groupID), ('categoryID', lambda i: cfg.invtypes.Get(i.typeID).categoryID)]
@@ -658,7 +636,6 @@ class VoteWizardDialog(WizardDialogBase):
         try:
             log.LogInfo('>GetHangarLocationIDToUse')
             offices = sm.GetService('corp').GetMyCorporationsOffices().SelectByUniqueColumnValues('stationID', [self.locationID])
-            office = None
             if len(offices):
                 return offices[0].officeID
 
@@ -688,23 +665,7 @@ class VoteWizardDialog(WizardDialogBase):
                     continue
                 itemTypeInfo = cfg.invtypes.Get(blueprint.typeID)
                 description = itemTypeInfo.name
-                extraInfo = ''
-                if blueprint.copy == 1:
-                    extraInfo = '%s,' % mls.UI_GENERIC_COPY
-                    if blueprint.licensedProductionRunsRemaining == 0:
-                        continue
-                    if blueprint.licensedProductionRunsRemaining != -1:
-                        extraInfo = '%s %s' % (extraInfo, mls.UI_CORP_LICENSEDRUNSREMAINING2 % {'runsRemaining': blueprint.licensedProductionRunsRemaining})
-                    else:
-                        extraInfo = '%s %s' % (extraInfo, mls.UI_CORP_LICENSEDRUNSREMAINING2 % {'runsRemaining': mls.UI_GENERIC_INFINITE})
-                if blueprint.productivityLevel:
-                    if len(extraInfo):
-                        extraInfo = extraInfo + ','
-                    extraInfo = '%s %s' % (extraInfo, mls.UI_SHARED_PRODUCTIVITY2 % {'productivityLevel': blueprint.productivityLevel})
-                if blueprint.materialLevel:
-                    if len(extraInfo):
-                        extraInfo = extraInfo + ','
-                    extraInfo = '%s %s' % (extraInfo, mls.UI_SHARED_MATERIALEFF2 % {'materialLevel': blueprint.materialLevel})
+                extraInfo = self.GenerateBlueprintExtraInfo(blueprint)
                 item = None
                 for hangarItem in hangarItems:
                     if hangarItem.itemID == blueprint.itemID:
@@ -715,15 +676,14 @@ class VoteWizardDialog(WizardDialogBase):
                     log.LogInfo('Someone nabbed', blueprint.itemID, 'while I was looking for it.')
                     continue
                 locked = sm.GetService('corp').IsItemLocked(item)
-                if extraInfo != '':
-                    extraInfo = ' (' + extraInfo + ')'
+                if locked:
+                    label = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/LockedBlueprintWithSize', item=item.typeID, stacksize=item.stacksize, extraInfo=extraInfo)
+                else:
+                    label = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/BlueprintWithSize', item=item.typeID, stacksize=item.stacksize, extraInfo=extraInfo)
                 data = {'info': item,
                  'itemID': item.itemID,
                  'typeID': item.typeID,
-                 'label': '%s %s[%s]%s' % (itemTypeInfo.name,
-                           ['', mls.UI_GENERIC_LOCKED + ' '][(not not locked)],
-                           item.stacksize,
-                           extraInfo),
+                 'label': label,
                  'getIcon': 1,
                  'OnClick': self.ClickHangarItem}
                 listentries.append((data['label'], listentry.Get('Item', data)))
@@ -778,21 +738,21 @@ class VoteWizardDialog(WizardDialogBase):
 
     def OnSelectWarVote(self, step, scrolllist):
         self.SetNavigationButtons(back=1, ok=0, cancel=1, next=1)
-        scrolllist.append(listentry.Get('LabelTextTop', {'label': mls.UI_CORP_DECLAREWARAGAINST,
+        scrolllist.append(listentry.Get('LabelTextTop', {'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/DeclareWarAgainst'),
          'text': self.ownerName}))
         scrolllist.append(listentry.Get('Button', {'label': '',
-         'caption': mls.UI_CMD_PICK,
+         'caption': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Pick'),
          'OnClick': self.PickCorporationOrAlliance,
          'args': (None,)}))
 
 
 
     def PickCorporationOrAlliance(self, *args):
-        dlg = sm.GetService('window').GetWindow('CorporationOrAlliancePickerDailog', create=1, decoClass=form.CorporationOrAlliancePickerDailog, warableEntitysOnly=True)
+        dlg = form.CorporationOrAlliancePickerDailog.Open(warableEntitysOnly=True)
         dlg.ShowModal()
         if dlg.ownerID:
-            if dlg.ownerID in [eve.session.corpid, eve.session.allianceid]:
-                eve.Message('CustomInfo', {'info': mls.UI_CORP_HINT64})
+            if dlg.ownerID in [session.corpid, session.allianceid]:
+                eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/CannotStartWarWithSelf')})
                 return 
             self.ownerID = dlg.ownerID
             self.ownerName = cfg.eveowners.Get(self.ownerID).ownerName
@@ -812,7 +772,7 @@ class VoteWizardDialog(WizardDialogBase):
     def OnSelectShareVote(self, step, scrolllist):
         self.SetNavigationButtons(back=1, ok=0, cancel=1, next=1)
         scrolllist.append(listentry.Get('Edit', {'OnReturn': None,
-         'label': mls.UI_CORP_NUMBEROFSHARES,
+         'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/NumberOfShares'),
          'setValue': self.voteShares,
          'name': 'voteSharesCtrl',
          'intmode': (1, 10000000)}))
@@ -831,10 +791,10 @@ class VoteWizardDialog(WizardDialogBase):
 
     def OnSelectExpelVote(self, step, scrolllist):
         self.SetNavigationButtons(back=1, ok=0, cancel=1, next=1)
-        scrolllist.append(listentry.Get('LabelTextTop', {'label': mls.UI_CORP_EXPEL,
+        scrolllist.append(listentry.Get('LabelTextTop', {'label': localization.GetByLabel('UI/Corporations/Common/ExpelCorpMember'),
          'text': self.memberName}))
         scrolllist.append(listentry.Get('Button', {'label': '',
-         'caption': mls.UI_CMD_PICK,
+         'caption': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Pick'),
          'OnClick': self.PickMember,
          'args': (None,)}))
 
@@ -846,10 +806,10 @@ class VoteWizardDialog(WizardDialogBase):
             who = cfg.eveowners.Get(memberID).ownerName
             memberslist.append([who, memberID, const.typeCharacterAmarr])
 
-        res = uix.ListWnd(memberslist, 'character', mls.UI_CORP_SELECTMEMBER, mls.UI_CORP_HINT65, 1)
+        res = uix.ListWnd(memberslist, 'character', localization.GetByLabel('UI/Corporations/Common/SelectCorpMember'), localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/SelectMemberToExpel'), 1)
         if res:
-            if eve.session.charid == res[1]:
-                eve.Message('CustomInfo', {'info': mls.UI_CORP_HINT66})
+            if session.charid == res[1]:
+                eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/CannotExpelYourself')})
                 return 
             self.memberID = res[1]
             self.memberName = res[0]
@@ -869,7 +829,7 @@ class VoteWizardDialog(WizardDialogBase):
     def OnSelectGeneralVote(self, step, scrolllist):
         self.SetNavigationButtons(back=1, ok=0, cancel=1, next=1)
         scrolllist.append(listentry.Get('Edit', {'OnReturn': None,
-         'label': mls.UI_CORP_NUMBEROFOPTIONS,
+         'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/NumberOfOptions'),
          'setValue': self.voteOptionsCount,
          'name': 'voteOptionsCtrl',
          'intmode': (2, 50)}))
@@ -891,9 +851,9 @@ class VoteWizardDialog(WizardDialogBase):
         i = 0
         while i < self.voteOptionsCount:
             i += 1
-            title = '%s %s' % (mls.UI_CORP_OPTIONTEXT, i)
+            title = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/OptionText', option=i)
             identifier = 'voteOption%s' % i
-            value = mls.UI_CORP_HINT67 % {'num': i}
+            value = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/EnterTextForOption', option=i)
             if len(self.voteOptions) >= i:
                 value = self.voteOptions[(i - 1)]
             scrolllist.append(listentry.Get('Edit', {'OnReturn': None,
@@ -918,7 +878,7 @@ class VoteWizardDialog(WizardDialogBase):
             if len(value) == 0:
                 if nextStep < self.step:
                     continue
-                eve.Message('CustomInfo', {'info': mls.UI_CORP_HINT68})
+                eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/OptionCannotBeMepty')})
                 return 0
             self.voteOptions.append(value)
 
@@ -937,17 +897,17 @@ class VoteWizardDialog(WizardDialogBase):
     def OnSelectVoteDetails(self, step, scrolllist):
         self.SetNavigationButtons(back=1, ok=0, cancel=1, next=1)
         scrolllist.append(listentry.Get('Edit', {'OnReturn': None,
-         'label': mls.UI_GENERIC_TITLE,
+         'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Title'),
          'setValue': self.GetVoteTitle(),
          'name': 'voteTitleCtrl',
          'maxLength': 100}))
         scrolllist.append(listentry.Get('Edit', {'OnReturn': None,
-         'label': mls.UI_GENERIC_DESCRIPTION,
+         'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Description'),
          'setValue': self.GetVoteDescription(),
          'name': 'voteDescriptionCtrl',
          'maxLength': 1000}))
         scrolllist.append(listentry.Get('Edit', {'OnReturn': None,
-         'label': mls.UI_CORP_NUMBEROFDAYS,
+         'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/NumberOfDays'),
          'setValue': self.voteDays,
          'name': 'voteDaysCtrl',
          'intmode': (1, 30)}))
@@ -973,10 +933,10 @@ class VoteWizardDialog(WizardDialogBase):
         if nextStep < self.step:
             return 1
         if len(self.voteTitle) == 0:
-            eve.Message('CustomInfo', {'info': mls.UI_CORP_HINT69})
+            eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/HintTitleCannotBeEmpty')})
             return 0
         if len(self.voteDescription) == 0:
-            eve.Message('CustomInfo', {'info': mls.UI_CORP_HINT70})
+            eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/HintDescriptionCannotBeMEmpty')})
             return 0
         return 1
 
@@ -986,42 +946,42 @@ class VoteWizardDialog(WizardDialogBase):
         self.SetNavigationButtons(back=1, ok=1, cancel=1, next=0)
         for (name, type,) in self.voteTypes:
             if type == self.voteType:
-                scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_GENERIC_TYPE,
+                scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Common/Type'),
                  'text': name}))
 
         if self.voteType == const.voteWar:
-            scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_CORP_AGAINST,
+            scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Against'),
              'text': self.ownerName}))
             cost = sm.GetService('war').GetCostOfWarAgainst(self.ownerID)
-            text = mls.UI_CORP_HINT71 % {'cost': util.FmtISK(cost)}
-            scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_CORP_CURRENTCOST,
+            text = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/HintCostOfSanctioning', cost=util.FmtISK(cost))
+            scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/CurrentCost'),
              'text': text}))
         elif self.voteType == const.voteItemLockdown:
-            scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_CORP_LOCKDOWN,
+            scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Lockdown'),
              'text': cfg.invtypes.Get(self.typeID).typeName}))
         elif self.voteType == const.voteItemUnlock:
-            scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_CORP_UNLOCK,
+            scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Unlock'),
              'text': cfg.invtypes.Get(self.typeID).typeName}))
         elif self.voteType == const.voteShares:
-            scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_CORP_SHARESTOCREATE,
+            scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/SharesToCreate'),
              'text': self.voteShares}))
         elif self.voteType == const.voteKickMember:
-            scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_CORP_EXPEL,
+            scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Corporations/Common/ExpelCorpMember'),
              'text': self.memberName}))
         elif self.voteType == const.voteGeneral:
             i = 0
             while i < self.voteOptionsCount:
                 i += 1
-                title = '%s %s' % (mls.UI_CORP_OPTIONTEXT, i)
+                title = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/OptionText', option=i)
                 value = self.voteOptions[(i - 1)]
                 scrolllist.append(listentry.Get('LabelText', {'label': title,
                  'text': value}))
 
-        scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_GENERIC_TITLE,
+        scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Title'),
          'text': self.voteTitle}))
-        scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_GENERIC_DESCRIPTION,
+        scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Description'),
          'text': self.voteDescription}))
-        scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_CORP_NUMBEROFDAYS,
+        scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/NumberOfDays'),
          'text': self.voteDays}))
 
 
@@ -1029,15 +989,15 @@ class VoteWizardDialog(WizardDialogBase):
     def GetVoteTitle(self):
         if self.voteTitle is None:
             if self.voteType == const.voteShares:
-                self.voteTitle = mls.UI_CORP_CREATESOMESHARES % {'what': self.voteShares}
+                self.voteTitle = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/CreateShares', shares=self.voteShares)
             elif self.voteType == const.voteWar:
-                self.voteTitle = '%s %s' % (mls.UI_CORP_DECLAREWARAGAINST, self.ownerName)
+                self.voteTitle = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/DeclareWarAgainst', name=self.ownerName)
             elif self.voteType == const.voteItemLockdown:
-                self.voteTitle = '%s %s' % (mls.UI_CORP_LOCKDOWNTHE, cfg.invtypes.Get(self.typeID).typeName)
+                self.voteTitle = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/LockdownItem', item=self.typeID)
             elif self.voteType == const.voteItemUnlock:
-                self.voteTitle = '%s %s' % (mls.UI_CORP_UNLOCKTHE, cfg.invtypes.Get(self.typeID).typeName)
+                self.voteTitle = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/UnlockItem', item=self.typeID)
             elif self.voteType == const.voteKickMember:
-                self.voteTitle = mls.UI_CORP_EXPELSOMEONEFROMCORP % {'who': self.memberName}
+                self.voteTitle = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/ExpelFromCorporation', char=self.memberName)
             elif self.voteType == const.voteGeneral:
                 self.voteTitle = ''
             else:
@@ -1054,7 +1014,7 @@ class VoteWizardDialog(WizardDialogBase):
 
 
     def OnOK(self, *args):
-        self.EnableNavigationButton(mls.UI_CMD_OK, False)
+        self.EnableNavigationButton(localization.GetByLabel('UI/Generic/OK'), False)
         SEC = 10000000L
         MIN = SEC * 60L
         HOUR = MIN * 60L
@@ -1063,50 +1023,50 @@ class VoteWizardDialog(WizardDialogBase):
          'parameter',
          'parameter1',
          'parameter2'])
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         endFileTime = long(self.voteDays * hoursInADay) + now
         if self.voteType == const.voteShares:
-            options.lines.append([mls.UI_CORP_CREATESOMESHARES % {'what': self.voteShares},
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/CreateShares', shares=self.voteShares),
              self.voteShares,
              None,
              None])
-            options.lines.append([mls.UI_CORP_DONOTCREATESHARES,
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/DoNotCreateShares'),
              0,
              None,
              None])
         elif self.voteType == const.voteWar:
-            options.lines.append(['%s %s' % (mls.UI_CORP_DECLAREWARAGAINST, self.ownerName),
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/DeclareWarAgainst', name=self.ownerName),
              self.ownerID,
              None,
              None])
-            options.lines.append([mls.UI_CORP_CONTDECLAREWAR,
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/DontDeclareWar'),
              0,
              None,
              None])
         elif self.voteType == const.voteItemLockdown:
-            options.lines.append(['%s %s' % (mls.UI_CORP_LOCKDOWNTHE, cfg.invtypes.Get(self.typeID).typeName),
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/LockdownItem', item=self.typeID),
              self.itemID,
              self.typeID,
              self.locationID])
-            options.lines.append(['%s %s' % (mls.UI_CORP_DONTLOCKDOWNTHE, cfg.invtypes.Get(self.typeID).typeName),
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/DontLockdownItem', item=self.typeID),
              0,
              None,
              None])
         elif self.voteType == const.voteItemUnlock:
-            options.lines.append(['%s %s' % (mls.UI_CORP_UNLOCKTHE, cfg.invtypes.Get(self.typeID).typeName),
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/UnlockItem', item=self.typeID),
              self.itemID,
              self.typeID,
              self.locationID])
-            options.lines.append(['%s %s' % (mls.UI_CORP_DONTUNLOCKTHE, cfg.invtypes.Get(self.typeID).typeName),
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/DontUnlockItem', item=self.typeID),
              0,
              None,
              None])
         elif self.voteType == const.voteKickMember:
-            options.lines.append([mls.UI_CORP_EXPELSOMEONEFROMCORP % {'who': self.memberName},
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/ExpelFromCorporation', char=self.memberName),
              self.memberID,
              None,
              None])
-            options.lines.append([mls.UI_CORP_DONTEXPELSOMEONEFROMCORP % {'who': self.memberName},
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/DontExpelFromCorporation', memberName=self.memberName),
              0,
              None,
              None])
@@ -1122,7 +1082,7 @@ class VoteWizardDialog(WizardDialogBase):
         else:
             log.LogError('Unknown Vote type')
             return 
-        sm.GetService('corp').InsertVoteCase(self.voteTitle, self.voteDescription, eve.session.corpid, self.voteType, options, now, endFileTime)
+        sm.GetService('corp').InsertVoteCase(self.voteTitle, self.voteDescription, session.corpid, self.voteType, options, now, endFileTime)
         WizardDialogBase.OnOK(self, args)
 
 
@@ -1159,35 +1119,35 @@ class CorpVotes(uicls.Container):
         self.corpID = None
         self.isCorpPanel = 1
         self.sr.inited = 0
-        self.sr.headers = [mls.UI_GENERIC_TITLE, mls.UI_GENERIC_STARTED, mls.UI_GENERIC_ENDS]
+        self.sr.headers = [localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Title'), localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Started'), localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Ends')]
 
 
 
     def IAmAMemberOfThisCorp(self):
-        return self.corpID == eve.session.corpid
+        return self.corpID == session.corpid
 
 
 
     def Load(self, args):
         if self.corpID is None:
-            self.corpID = eve.session.corpid
+            self.corpID = session.corpid
         if not self.sr.Get('inited', 0):
             self.state = uiconst.UI_HIDDEN
             self.sr.inited = 1
             btns = None
             buttonOptions = []
             self.toolbarContainer = uicls.Container(name='toolbarContainer', align=uiconst.TOBOTTOM, parent=self)
-            if self.IAmAMemberOfThisCorp() and eve.session.corprole & const.corpRoleDirector == const.corpRoleDirector:
-                buttonOptions.append([mls.UI_CORP_PROPOSEVOTE,
+            if self.IAmAMemberOfThisCorp() and session.corprole & const.corpRoleDirector == const.corpRoleDirector:
+                buttonOptions.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/ProposeVote'),
                  self.ProposeVote,
                  (),
                  81])
-            if self.IAmAMemberOfThisCorp() and eve.session.charid != sm.GetService('corp').GetCorporation().ceoID:
-                buttonOptions.append([mls.UI_CORP_RUNFORCEO,
+            if self.IAmAMemberOfThisCorp() and session.charid != sm.GetService('corp').GetCorporation().ceoID:
+                buttonOptions.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/RunForCEO'),
                  self.ProposeCEOVote,
                  (),
                  81])
-            buttonOptions.append([mls.UI_CORP_CLOSEDVOTES_SHOWALL,
+            buttonOptions.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/ClosedVotesShowAll'),
              self.ShowClosedVotes,
              (0,),
              81])
@@ -1203,15 +1163,15 @@ class CorpVotes(uicls.Container):
              const.defaultPadding,
              const.defaultPadding))
             self.sr.tabs = uicls.TabGroup(name='tabparent', parent=self, idx=0)
-            self.sr.tabs.Startup([[mls.UI_CORP_OPENVOTES,
+            self.sr.tabs.Startup([[localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/OpenVotes'),
               self,
               self,
-              'open'], [mls.UI_CORP_CLOSEDVOTES,
+              'open'], [localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/ClosedVotes'),
               self,
               self,
               'closed']], 'corporationvotes')
         if self.isCorpPanel:
-            sm.GetService('corpui').LoadTop('ui_7_64_9', mls.UI_CORP_VOTES)
+            sm.GetService('corpui').LoadTop('ui_7_64_9', localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Votes'))
         self.state = uiconst.UI_PICKCHILDREN
         if args == 'open':
             self.ShowOpenVotes()
@@ -1251,11 +1211,11 @@ class CorpVotes(uicls.Container):
             starts = util.FmtDate(voteCase.startDateTime, 'ls')
             ends = util.FmtDate(voteCase.endDateTime, 'ls')
             data = {'GetSubContent': self.GetOpenVoteSubContent,
-             'label': '%s<t>%s<t>%s' % (title, starts, ends),
-             'sort_%s' % mls.UI_GENERIC_TITLE: title.lower(),
-             'sort_%s' % mls.UI_GENERIC_DESCRIPTION: description.lower(),
-             'sort_%s' % mls.UI_GENERIC_STARTED: voteCase.startDateTime,
-             'sort_%s' % mls.UI_GENERIC_ENDS: voteCase.endDateTime,
+             'label': title + '<t>' + starts + '<t>' + ends,
+             'sort_%s' % localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Title'): title.lower(),
+             'sort_%s' % localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Description'): description.lower(),
+             'sort_%s' % localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Started'): voteCase.startDateTime,
+             'sort_%s' % localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Ends'): voteCase.endDateTime,
              'groupItems': None,
              'id': ('corpopenvotes', voteCase.voteCaseID),
              'tabs': [],
@@ -1294,7 +1254,7 @@ class CorpVotes(uicls.Container):
         log.LogInfo(self.__class__.__name__, 'OnCorporationVoteChanged')
         if self is None or self.destroyed or not self.sr.inited:
             return 
-        if characterID != eve.session.charid:
+        if characterID != session.charid:
             return 
         self.ReloadVoteCaseSubContentIfVisible(corporationID, voteCaseID)
 
@@ -1346,7 +1306,7 @@ class CorpVotes(uicls.Container):
             if entry.GetSubContent and uicore.registry.GetListGroupOpenState(entry.id):
                 subcontent = entry.GetSubContent(entry)
                 if not len(subcontent):
-                    subcontent.append(listentry.Get('Generic', {'label': mls.UI_GENERIC_NOITEM,
+                    subcontent.append(listentry.Get('Generic', {'label': localization.GetByLabel('/Carbon/UI/Controls/Common/NoItem'),
                      'sublevel': entry.Get('sublevel', 0) + 1}))
                 self.sr.scroll.AddEntries(entry.idx + 1, subcontent, entry)
                 entry.open = 1
@@ -1371,7 +1331,7 @@ class CorpVotes(uicls.Container):
     def ShowOpenVotes(self, *args):
         try:
             sm.GetService('corpui').ShowLoad()
-            uix.HideButtonFromGroup(self.sr.mainBtns, mls.UI_CORP_CLOSEDVOTES_SHOWALL)
+            uix.HideButtonFromGroup(self.sr.mainBtns, localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/ClosedVotesShowAll'))
             try:
                 scrolllist = []
                 if sm.GetService('corp').CanViewVotes(self.corpID):
@@ -1383,11 +1343,11 @@ class CorpVotes(uicls.Container):
                             starts = util.FmtDate(vote.startDateTime, 'ls')
                             ends = util.FmtDate(vote.endDateTime, 'ls')
                             data = {'GetSubContent': self.GetOpenVoteSubContent,
-                             'label': '%s<t>%s<t>%s' % (title, starts, ends),
-                             'sort_%s' % mls.UI_GENERIC_TITLE: title.lower(),
-                             'sort_%s' % mls.UI_GENERIC_DESCRIPTION: description.lower(),
-                             'sort_%s' % mls.UI_GENERIC_STARTED: vote.startDateTime,
-                             'sort_%s' % mls.UI_GENERIC_ENDS: vote.endDateTime,
+                             'label': title + '<t>' + starts + '<t>' + ends,
+                             'sort_%s' % localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Title'): title.lower(),
+                             'sort_%s' % localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Description'): description.lower(),
+                             'sort_%s' % localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Started'): vote.startDateTime,
+                             'sort_%s' % localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Ends'): vote.endDateTime,
                              'groupItems': None,
                              'id': ('corpopenvotes', vote.voteCaseID),
                              'tabs': [],
@@ -1400,13 +1360,13 @@ class CorpVotes(uicls.Container):
                             uicore.registry.SetListGroupOpenState(('corpopenvotes', vote.voteCaseID), 0)
 
                 else:
-                    self.SetHint(mls.UI_CORP_ACCESSDENIED10)
+                    self.SetHint(localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/AccessDeniedOnlyShareholders'))
                 if len(scrolllist):
                     self.SetHint('')
                     self.sr.scroll.Load(fixedEntryHeight=19, contentList=scrolllist, headers=self.sr.headers)
                 else:
                     self.sr.scroll.Load(fixedEntryHeight=19, contentList=scrolllist)
-                    self.SetHint(mls.UI_CORP_NOOPENVOTES)
+                    self.SetHint(localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/NoOpenVotes'))
 
             finally:
                 sm.GetService('corpui').HideLoad()
@@ -1426,54 +1386,50 @@ class CorpVotes(uicls.Container):
                 charVotes = sm.GetService('corp').GetVotes(self.corpID, vote.voteCaseID)
                 hasVoted = 0
                 votedFor = -1
-                if charVotes and charVotes.has_key(eve.session.charid):
+                if charVotes and charVotes.has_key(session.charid):
                     hasVoted = 1
-                    votedFor = charVotes[eve.session.charid].optionID
+                    votedFor = charVotes[session.charid].optionID
                 canVote = sm.GetService('corp').CanVote(self.corpID)
                 i = 0
                 for option in options.itervalues():
                     i += 1
                     listentryType = ''
                     textEntryName = ''
-                    text = ''
-                    textpre = ''
+                    text = option.optionText
                     dict = {}
                     if hasVoted or not canVote:
                         listentryType = 'Text'
                         textEntryName = 'text'
-                        text = option.optionText
                         if option.optionID == votedFor:
-                            textpre = ' ' + mls.UI_SHARED_YOURVOTE
+                            dict[textEntryName] = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/VoteItemHasVoted', optionNumber=i, optionText=text)
+                        else:
+                            dict[textEntryName] = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/VoteItemCannotVote', optionNumber=i, optionText=text)
                     else:
                         listentryType = 'Button'
                         textEntryName = 'label'
-                        text = option.optionText
-                        dict['caption'] = mls.UI_CORP_VOTE
+                        dict['caption'] = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Vote')
                         dict['OnClick'] = self.InsertVote
                         dict['args'] = (self.corpID, vote.voteCaseID, option.optionID)
-                    dict[textEntryName] = '  %s [%s]%s, %s<t><t>' % (mls.UI_CORP_OPTION,
-                     i,
-                     textpre,
-                     text)
+                        dict[textEntryName] = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/VoteItemCanVote', optionNumber=i, optionText=text)
+                    dict['sublevel'] = 1
                     scrolllist.append(listentry.Get(listentryType, dict))
 
-            if len(options):
                 dict = {'line': 1}
                 for option in options.itervalues():
                     if not option.parameter:
                         continue
                     if vote.voteType in [const.voteWar, const.voteKickMember, const.voteCEO]:
                         owner = cfg.eveowners.Get(option.parameter)
-                        dict['text'] = '  %s, ' % mls.UI_GENERIC_MOREINFO + owner.ownerName
+                        dict['text'] = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/MoreInfo', ownerName=owner.ownerName)
                         dict['itemID'] = option.parameter
                         dict['typeID'] = owner.typeID
+                        dict['sublevel'] = 1
                         scrolllist.append(listentry.Get('Text', dict))
                     elif vote.voteType in [const.voteItemLockdown, const.voteItemUnlock]:
-                        locationText = mls.UI_SHARED_SOMETHINGATSOMEWHERE % {'typeName': cfg.invtypes.Get(option.parameter1).typeName,
-                         'location': cfg.evelocations.Get(option.parameter2).locationName}
-                        dict['text'] = '  %s, %s' % (mls.UI_GENERIC_MOREINFO, locationText)
+                        dict['text'] = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/MoreInfoItemLocatedAtLocation', item=option.parameter1, loc=option.parameter2)
                         dict['itemID'] = option.parameter
                         dict['typeID'] = option.parameter1
+                        dict['sublevel'] = 1
                         scrolllist.append(listentry.Get('Text', dict))
 
             return scrolllist
@@ -1486,7 +1442,7 @@ class CorpVotes(uicls.Container):
     def ShowClosedVotes(self, maxLen = 20, *args):
         try:
             sm.GetService('corpui').ShowLoad()
-            uix.ShowButtonFromGroup(self.sr.mainBtns, mls.UI_CORP_CLOSEDVOTES_SHOWALL)
+            uix.ShowButtonFromGroup(self.sr.mainBtns, localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/ClosedVotesShowAll'))
             try:
                 if maxLen > 0 or eve.Message('ConfirmShowAllClosedVotes', {}, uiconst.YESNO, suppress=uiconst.ID_YES) == uiconst.ID_YES:
                     votes = sm.GetService('corp').GetVoteCasesByCorporation(self.corpID, 1, maxLen)
@@ -1498,11 +1454,11 @@ class CorpVotes(uicls.Container):
                             starts = util.FmtDate(vote.startDateTime, 'ls')
                             ends = util.FmtDate(vote.endDateTime, 'ls')
                             data = {'GetSubContent': self.GetClosedVoteSubContent,
-                             'label': '%s<t>%s<t>%s' % (title, starts, ends),
-                             'sort_%s' % mls.UI_GENERIC_TITLE: title.lower(),
-                             'sort_%s' % mls.UI_GENERIC_DESCRIPTION: description.lower(),
-                             'sort_%s' % mls.UI_GENERIC_STARTED: vote.startDateTime,
-                             'sort_%s' % mls.UI_GENERIC_ENDS: vote.endDateTime,
+                             'label': title + '<t>' + starts + '<t>' + ends,
+                             'sort_%s' % localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Title'): title.lower(),
+                             'sort_%s' % localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Description'): description.lower(),
+                             'sort_%s' % localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Started'): vote.startDateTime,
+                             'sort_%s' % localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Ends'): vote.endDateTime,
                              'groupItems': None,
                              'id': ('corpclosedvotes', vote.voteCaseID),
                              'tabs': [],
@@ -1521,7 +1477,7 @@ class CorpVotes(uicls.Container):
                         self.sr.showAll = uicls.Checkbox(text='checkbox 1', parent=uicls.Container(), configName='checkbox', retval=None, checked=0, callback=self.OnCheckboxChange)
                     else:
                         self.sr.scroll.Load(fixedEntryHeight=19, contentList=scrolllist)
-                        self.SetHint(mls.UI_CORP_NOCLOSEDVOTES)
+                        self.SetHint(localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/NoClosedVotes'))
 
             finally:
                 sm.GetService('corpui').HideLoad()
@@ -1552,10 +1508,8 @@ class CorpVotes(uicls.Container):
                     percent = 0
                     if totalVotes:
                         percent = option.votesFor / totalVotes * 100
-                    scrolllist.append(listentry.Get('Text', {'text': '%s<t>%s %% (%s/%s)' % (text,
-                              percent,
-                              option.votesFor,
-                              totalVotes)}))
+                    voteInfo = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/ClosedVoteResultColumn', percentage=percent, votesFor=option.votesFor, totalVotes=totalVotes)
+                    scrolllist.append(listentry.Get('Text', {'text': '<t>'.join((text, voteInfo))}))
 
             if len(options):
                 dict = {'line': 1}
@@ -1564,13 +1518,12 @@ class CorpVotes(uicls.Container):
                         continue
                     if vote.voteType in [const.voteWar, const.voteKickMember, const.voteCEO]:
                         owner = cfg.eveowners.Get(option.parameter)
-                        dict['text'] = '  %s<t>' % mls.UI_GENERIC_MOREINFO + owner.ownerName
+                        dict['text'] = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/MoreInfo', ownerName=owner.ownerName)
                         dict['itemID'] = option.parameter
                         dict['typeID'] = owner.typeID
                         scrolllist.append(listentry.Get('Text', dict))
                     elif vote.voteType in [const.voteItemLockdown, const.voteItemUnlock]:
-                        locationText = mls.UI_SHARED_LOCATEDATSOMEWHERE % {'location': cfg.evelocations.Get(option.parameter2).locationName}
-                        dict['text'] = '  %s<t>%s<t>%s' % (mls.UI_GENERIC_MOREINFO, cfg.invtypes.Get(option.parameter1).typeName, locationText)
+                        dict['text'] = localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/MoreInfoItemLocatedAtLocation', item=option.parameter1, loc=option.parameter2)
                         dict['itemID'] = option.parameter
                         dict['typeID'] = option.parameter1
                         scrolllist.append(listentry.Get('Text', dict))
@@ -1600,10 +1553,10 @@ class CorpVotes(uicls.Container):
 
     def ProposeVote(self, *args):
         local = sm.GetService('corp')
-        if not (self.IAmAMemberOfThisCorp() and eve.session.corprole & const.corpRoleDirector == const.corpRoleDirector):
+        if not (self.IAmAMemberOfThisCorp() and session.corprole & const.corpRoleDirector == const.corpRoleDirector):
             eve.Message('CrpOnlyDirectorsCanProposeVotes')
             return 
-        dlg = sm.GetService('window').GetWindow('VoteWizardDialog', create=1)
+        dlg = form.VoteWizardDialog.Open()
         dlg.ShowModal()
 
 
@@ -1625,9 +1578,9 @@ class CorpVotes(uicls.Container):
          'frame': 1,
          'height': 6})
         format.append({'type': 'edit',
-         'setvalue': mls.UI_CORP_VOTESOMEONEFORCEO % {'who': cfg.eveowners.Get(eve.session.charid).name},
+         'setvalue': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/VoteMemberForCEO', char=session.charid),
          'key': 'title',
-         'label': mls.UI_GENERIC_TITLE,
+         'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Title'),
          'required': 1,
          'frame': 1,
          'maxlength': 500})
@@ -1638,7 +1591,7 @@ class CorpVotes(uicls.Container):
          'frame': 1})
         format.append({'type': 'textedit',
          'key': 'description',
-         'label': mls.UI_GENERIC_DESCRIPTION,
+         'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Description'),
          'frame': 1,
          'maxLength': 100})
         format.append({'type': 'push',
@@ -1652,10 +1605,10 @@ class CorpVotes(uicls.Container):
          'setvalue': 1,
          'intonly': [1, 5],
          'key': 'time',
-         'label': mls.UI_CORP_DAYSTOLIVE,
+         'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/DaysToLive'),
          'frame': 1})
         format.append({'type': 'bbline'})
-        retval = uix.HybridWnd(format, mls.UI_CORP_PROPOSEVOTE, 1, None, uiconst.OKCANCEL, None, 320)
+        retval = uix.HybridWnd(format, localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/ProposeVote'), 1, None, uiconst.OKCANCEL, None, 320)
         if retval is not None:
             self.CreateVote(retval, self.corpID)
 
@@ -1673,32 +1626,32 @@ class CorpVotes(uicls.Container):
          'parameter',
          'parameter1',
          'parameter2'])
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         endFileTime = long(result['time'] * hoursInADay) + now
         if voteType == const.voteShares:
-            options.lines.append([mls.UI_CORP_CREATESOMESHARES % {'what': result['shares']},
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/CreateShares', shares=result['shares']),
              result['shares'],
              None,
              None])
-            options.lines.append([mls.UI_CORP_DONOTCREATESHARES,
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/DoNotCreateShares'),
              0,
              None,
              None])
         elif voteType == const.voteWar:
-            options.lines.append(['%s %s' % (mls.UI_CORP_DECLAREWARAGAINST, result['corpwar'][0]),
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/DeclareWarAgainst', name=result['corpwar'][0]),
              result['corpwar'][1],
              None,
              None])
-            options.lines.append([mls.UI_CORP_CONTDECLAREWAR,
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/DontDeclareWar'),
              0,
              None,
              None])
         elif voteType == const.voteKickMember:
-            options.lines.append([mls.UI_CORP_EXPELSOMEONEFROMCORP % {'who': result['kickmember'][0]},
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/ExpelFromCorporation', char=result['kickmember'][0]),
              result['kickmember'][1],
              None,
              None])
-            options.lines.append([mls.UI_CORP_DONTEXPELSOMEONEFROMCORP % {'who': result['kickmember'][0]},
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/DontExpelFromCorporation', memberName=result['kickmember'][0]),
              0,
              None,
              None])
@@ -1712,11 +1665,11 @@ class CorpVotes(uicls.Container):
                 i = i + 1
 
         elif voteType == const.voteCEO:
-            options.lines.append([mls.UI_CORP_SOMEONEFORCEO % {'who': cfg.eveowners.Get(eve.session.charid).name},
-             eve.session.charid,
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/SomeoneForCEO', char=session.charid),
+             session.charid,
              None,
              None])
-            options.lines.append([mls.UI_CORP_DONTCHANGECEO,
+            options.lines.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/DontChangeCEO'),
              0,
              None,
              None])
@@ -1730,13 +1683,13 @@ class CorpVotes(uicls.Container):
     def ProposeVoteErrorCheck(self, ret):
         typeconst = ret['votetype']
         if typeconst == const.voteWar and ret['corpwar'] is None:
-            return mls.UI_CORP_HINT72
+            return localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/CannotGoToWarWithNoOne')
         if typeconst == const.voteShares and ret['shares'] == 0:
-            return mls.UI_CORP_HINT73
+            return localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/HaveToSetAmountOfShares')
         if typeconst == const.voteKickMember and ret['kickmember'] is None:
-            return mls.UI_CORP_HINT74
+            return localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/HaveToPickMember')
         if typeconst == const.voteGeneral and (ret['options'] is None or len(ret['options']) <= 1):
-            return mls.UI_CORP_HINT75
+            return localization.GetByLabel('UI/Corporations/CorporationWindow/Politics/Min2OptionsForVote')
         if typeconst == const.voteCEO:
             return ''
         return ''

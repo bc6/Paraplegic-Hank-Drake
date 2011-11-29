@@ -1,10 +1,11 @@
 import log
 import blue
 import string
-import math
-import sys
 import re
 import const
+import math
+import localization
+import localizationUtil
 SMALLDATETIME_MIN = 94432608000000000L
 SMALLDATETIME_MAX = 150973632000000000L
 __dateseptbl = string.maketrans('/-. ', '----')
@@ -36,393 +37,164 @@ def EscapeAdHocSQL(s):
 
 
 
-def FmtTimeInterval(interval, breakAt = None, rounding = False):
+def FmtTimeInterval(interval, breakAt = 'msec', *args):
     if interval < 10000L:
-        return mls.UI_SHARED_FORMAT_SHORTAMOUNTTIME
-    (year, month, wd, day, hour, min, sec, ms,) = blue.os.GetTimeParts(interval)
-    year -= 1601
-    month -= 1
-    day -= 1
-    items = []
-    _s = ['', 's']
-    if rounding:
-        newInterval = interval
-        if breakAt == 'sec':
-            if ms >= 500:
-                newInterval = interval / const.MSEC * const.MSEC + const.SEC
-        elif breakAt == 'min':
-            if sec >= 30:
-                newInterval = interval / const.SEC * const.SEC + const.MIN
-        elif breakAt == 'hour':
-            if min >= 30:
-                newInterval = interval / const.MIN * const.MIN + const.HOUR
-        elif breakAt == 'day':
-            if hour >= 12:
-                newInterval = interval / const.HOUR * const.HOUR + const.DAY
-        else:
-            raise RuntimeError('Unsupported breakAt option for rounding=True')
-        if newInterval != interval:
-            return FmtTimeInterval(newInterval, breakAt)
-    languageID = mls.GetLanguageID()
-    while 1:
-        if languageID == 'RU':
-            if year:
-                yearString = FindRussianYearString(year)
-                items.append(str(year) + ' ' + yearString)
-            if breakAt == 'year':
-                break
-            if month:
-                items.append(str(month) + ' ' + mls.UI_GENERIC_MONTHVERYSHORT)
-            if breakAt == 'month':
-                break
-            if day:
-                items.append(str(day) + ' ' + mls.UI_GENERIC_DAYVERYSHORT)
-            if breakAt == 'day':
-                break
-            if hour:
-                items.append(str(hour) + ' ' + mls.UI_GENERIC_HOURVERYSHORT)
-            if breakAt == 'hour':
-                break
-            if min:
-                items.append(str(min) + ' ' + mls.UI_GENERIC_MINUTEVERYSHORT)
-            if breakAt == 'min':
-                break
-            if sec:
-                items.append(str(sec) + ' ' + mls.UI_GENERIC_SECONDVERYSHORT)
-            if breakAt == 'sec':
-                break
-            if ms:
-                items.append(str(ms) + ' ' + mls.UI_GENERIC_MILLISECVERYSHORT)
-            break
-        else:
-            if year:
-                items.append(str(year) + ' ' + [mls.UI_GENERIC_YEARLOWER, mls.UI_GENERIC_YEARSLOWER][(year > 1)])
-            if breakAt == 'year':
-                break
-            if month:
-                items.append(str(month) + ' ' + [mls.UI_GENERIC_MONTHLOWER, mls.UI_GENERIC_MONTHSLOWER][(month > 1)])
-            if breakAt == 'month':
-                break
-            if day:
-                items.append(str(day) + ' ' + [mls.UI_GENERIC_DAYLOWER, mls.UI_GENERIC_DAYSLOWER][(day > 1)])
-            if breakAt == 'day':
-                break
-            if hour:
-                items.append(str(hour) + ' ' + [mls.UI_GENERIC_HOURLOWER, mls.UI_GENERIC_HOURSLOWER][(hour > 1)])
-            if breakAt == 'hour':
-                break
-            if min:
-                items.append(str(min) + ' ' + [mls.UI_GENERIC_MINUTELOWER, mls.UI_GENERIC_MINUTESLOWER][(min > 1)])
-            if breakAt == 'min':
-                break
-            if sec:
-                items.append(str(sec) + ' ' + [mls.UI_GENERIC_SECONDLOWER, mls.UI_GENERIC_SECONDSLOWER][(sec > 1)])
-            if breakAt == 'sec':
-                break
-            if ms:
-                items.append(str(ms) + ' ' + [mls.UI_GENERIC_MILLISECONDLOWER, mls.UI_GENERIC_MILLISECONDSLOWER][(ms > 1)])
-            break
-
-    if items:
-        if len(items) == 1:
-            return items[0]
-        else:
-            lastItem = items.pop()
-            return ', '.join(items) + ' ' + mls.UI_GENERIC_AND + ' ' + lastItem
-    elif breakAt == 'sec':
-        return mls.UI_GENERIC_LESSTHANASECOND
-    if breakAt == 'min':
-        return mls.UI_GENERIC_LESSTHANAMINUTE
-    try:
-        return getattr(mls, 'UI_GENERIC_LESSTHANA' + breakAt.upper(), '')
-    except:
-        log.LogError('Missing translation for: UI_GENERIC_' + breakAt.upper())
-        return mls.UI_GENERIC_LESSTHANA + breakAt
-
-
-
-def FindRussianYearString(year):
-    yearInt = int(year)
-    yearString = ''
-    fmod = math.fmod(yearInt, 10)
-    fmods = {1.0: '11',
-     2.0: '12',
-     3.0: '13',
-     4.0: '14'}
-    if fmod in fmods:
-        specialCase = fmods.get(fmod, None)
-        string = str(year)
-        if string.endswith(specialCase):
-            yearString = mls.UI_GENERIC_YEARSHORT
-        else:
-            yearString = mls.UI_GENERIC_1YEARSHORT
-    else:
-        yearString = mls.UI_GENERIC_YEARHORT
-    return yearString
+        return localization.GetByLabel('/Carbon/UI/Common/Formatting/ShortAmountTime')
+    breakAt2 = breakAt
+    if breakAt2 == 'min':
+        breakAt2 = 'minute'
+    elif breakAt2 == 'sec':
+        breakAt2 = 'second'
+    elif breakAt2 in ('msec', None):
+        breakAt2 = 'millisecond'
+    timeInterval = localizationUtil.FormatTimeIntervalWritten(interval, showFrom='year', showTo=breakAt2)
+    return timeInterval
 
 
 
 def FmtDate(date, fmt = 'll'):
     if date is None:
         return 
-    else:
-        if fmt == 'nn':
-            log.LogTraceback("Incorrect format statement used, 'nn' would result in a return value of None for all input.")
-            fmt = 'll'
-        if date < 0:
-            date *= -1
-            neg = '-'
+    if fmt == 'nn':
+        log.LogTraceback("Incorrect format statement used, 'nn' would result in a return value of None for all input.")
+        fmt = 'll'
+    if date < 0:
+        log.LogTraceback('Negative value in FmtDate')
+        date *= -1
+    year1800 = const.YEAR365 * 199L
+    if date >= year1800 and date % const.DAY and boot.region == 'optic':
+        date += 8 * const.HOUR
+    if fmt[1] not in ('l', 's', 'n'):
+        log.LogTraceback('Incorrect format statement used', fmt)
+        raise RuntimeError('InvalidArg', fmt)
+    if date < year1800:
+        if fmt[1] == 's':
+            return localizationUtil.FormatTimeIntervalShortWritten(date, showFrom='day', showTo='second')
         else:
-            neg = ''
-        year1800 = const.YEAR365 * 199L
-        if date >= year1800 and date % const.DAY and boot.region == 'optic':
-            date += 8 * const.HOUR
-        (year, month, wd, day, hour, min, sec, ms,) = blue.os.GetTimeParts(date)
-        sd = '%d.%.2d.%.2d' % (year, month, day)
-        ld = sd
-        lt = '%.2d:%.2d:%.2d' % (hour, min, sec)
-        if fmt[0] == 'x':
-            lt += ':%3d' % ms
-        ed = '%d-%.2d-%.2d' % (year, month, day)
-        st = lt[:-3]
-        if fmt[1] == 'l':
-            hrs = lt
-        elif fmt[1] == 's':
-            hrs = st
-        elif fmt[1] == 'n':
-            hrs = None
-        else:
-            raise RuntimeError('InvalidArg', fmt)
-        if date % const.DAY == 0:
-            hrs = None
-        if date < year1800:
-            datefmt = None
-            days = date / const.DAY
-            s = date % const.MIN / const.SEC
-            m = date % const.HOUR / const.MIN
-            h = date % const.DAY / const.HOUR
-            hrs = ''
-
-            def Xtra(value):
-                if value != 1:
-                    return 's'
-                else:
-                    return ''
+            return localizationUtil.FormatTimeIntervalWritten(date, showFrom='day', showTo='second')
+    elif fmt in ('ll', 'sl', 'nn', 'xs'):
+        return localization.GetByLabel('/Carbon/UI/Common/DateTime/SimpleDateUTC', datetime=date)
+    if fmt in ('ls', 'ss'):
+        return localization.GetByLabel('/Carbon/UI/Common/DateTime/DateLongShort', datetime=date)
+    if fmt in ('ln', 'sn', 'xn'):
+        return localization.GetByLabel('/Carbon/UI/Common/DateTime/DateLongNone', datetime=date)
+    if fmt == 'nl':
+        return localization.GetByLabel('/Carbon/UI/Common/DateTime/Time', datetime=date)
+    if fmt == 'ns':
+        return localization.GetByLabel('/Carbon/UI/Common/DateTime/HoursAndMinutes', datetime=date)
+    if fmt == 'xl':
+        return localization.GetByLabel('/Carbon/UI/Common/DateTime/SimpleDateUTC', datetime=date)
+    if fmt == 'el':
+        return localization.GetByLabel('/Carbon/UI/Common/DateTime/DateExtendedLong', datetime=date)
+    if fmt == 'es':
+        return localization.GetByLabel('/Carbon/UI/Common/DateTime/DateExtendedShort', datetime=date)
+    if fmt == 'en':
+        return localization.GetByLabel('/Carbon/UI/Common/DateTime/DateExtendedNone', datetime=date)
+    log.LogTraceback('InvalidArg', fmt)
+    raise RuntimeError('InvalidArg', fmt)
 
 
-            if fmt[1] == 's':
-                if days:
-                    hrs = '%d%s' % (days, mls.UI_GENERIC_DAYVERYSHORT)
-                if h:
-                    hrs = hrs + ' %d%s' % (h, mls.UI_GENERIC_HOURVERYSHORT)
-                if m:
-                    hrs = hrs + ' %d%s' % (m, mls.UI_GENERIC_MINUTEVERYSHORT)
-                if s:
-                    hrs = hrs + ' %d%s' % (s, mls.UI_GENERIC_SECONDVERYSHORT)
-            else:
-                if days:
-                    hrs = '%d %s' % (days, [mls.GENERIC_DAY_LOWER, mls.GENERIC_DAYS_LOWER][(days != 1)])
-                if h:
-                    hrs = hrs + ' %d %s' % (h, [mls.UI_GENERIC_HOUR, mls.UI_GENERIC_HOURS][(h != 1)])
-                if m:
-                    hrs = hrs + ' %d %s' % (m, [mls.UI_GENERIC_MINUTE, mls.UI_GENERIC_MINUTES][(m != 1)])
-                if s or hrs == '':
-                    hrs = hrs + ' %d %s' % (s, [mls.UI_GENERIC_SECOND, mls.UI_GENERIC_SECONDS][(s != 1)])
-        elif fmt[0] == 'l' or fmt[0] == 'x':
-            datefmt = ld
-        elif fmt[0] == 's':
-            datefmt = sd
-        elif fmt[0] == 'n':
-            datefmt = None
-        elif fmt[0] == 'e':
-            datefmt = ed
-        else:
-            raise RuntimeError('InvalidArg', fmt)
-        if datefmt is None and hrs is None:
-            return 
-        if datefmt is not None and hrs is None:
-            return neg + datefmt
-        if datefmt is None and hrs is not None:
-            return neg + hrs.strip()
-        if fmt[0] == 'e':
-            return '%s%sT%s.000' % (neg, datefmt, hrs)
-        return '%s%s %s' % (neg, datefmt, hrs)
-
-
-y1800 = const.YEAR365 * 199L
 
 def FmtSimpleDateUTC(date):
     if date is None:
         return 
-    (year, month, wd, day, hour, min, sec, ms,) = blue.os.GetTimeParts(date)
-    return '%d.%.2d.%.2d %.2d:%.2d:%.2d' % (year,
-     month,
-     day,
-     hour,
-     min,
-     sec)
+    return localization.GetByLabel('/Carbon/UI/Common/DateTime/SimpleDateUTC', datetime=date)
 
 
 
 def FmtTime(time):
-    return '%.2d:%.2d:%.2d' % (time / const.HOUR, time % const.HOUR / const.MIN, time % const.MIN / const.SEC)
+    hours = localizationUtil.FormatNumeric(time / const.HOUR, leadingZeroes=2)
+    mins = localizationUtil.FormatNumeric(time % const.HOUR / const.MIN, leadingZeroes=2)
+    secs = localizationUtil.FormatNumeric(time % const.MIN / const.SEC, leadingZeroes=2)
+    return localization.GetByLabel('/Carbon/UI/Common/DateTimeQuantity/DateTimeShort3Elements', value1=hours, value2=mins, value3=secs)
 
 
 
 def FmtSec(time):
     if not time:
-        return '0'
-    (h, m, s,) = (time / const.HOUR, time % const.HOUR / const.MIN, time % const.MIN / float(const.SEC))
-    return "%.2d:%.2d'%06.3f" % (h, m, s)
+        return localizationUtil.LocalizationSafeString('0')
+    h = time / const.HOUR
+    m = time % const.HOUR / const.MIN
+    s = time % const.MIN / float(const.SEC)
+    return localization.GetByLabel('/Carbon/UI/Common/FormatTime/FmtSecSpecial', hours=h, minutes=m, seconds=s)
 
 
 
-def Ess(value):
-    if value == 1:
-        return ''
-    else:
-        return 's'
-
-
-
-def FmtAmt(amount, fmt = 'ln', showFraction = 0, fillWithZero = 0):
+def FmtAmt(amount, fmt = 'ln', showFraction = 0, *args):
     if amount == None:
         amount = 0
     orgamount = amount
     try:
         amount = long(amount)
     except:
-        raise RuntimeError('AmountMustBeInteger', amount)
-    minus = ['', '-'][(float(orgamount) < 0.0)]
-    fraction = ''
-    ret = ''
-    fractionNumber = None
+        raise RuntimeError('Amount (%s) is not an integer' % str(amount))
     if fmt[0] == 'l':
-        if showFraction:
-            fraction = abs(math.fmod(orgamount, 1.0))
-            fraction = round(fraction, showFraction)
-            if fraction >= 1.0:
-                amount += [-1, 1][(amount >= 0.0)]
-                fraction = 0.0
-            fraction = str(fraction)[2:]
-            if fillWithZero:
-                while len(fraction) < showFraction:
-                    fraction += '0'
-
-            fractionNumber = float('%s.%s' % (amount, fraction))
-            fraction = DECIMAL + str(fraction)
-        digit = ''
-        amt = '%d' % abs(amount)
-        for i in xrange(len(amt) % 3, len(amt) + 3, 3):
-            if i < 3:
-                ret = ret + amt[:i]
-            else:
-                ret = ret + digit + amt[(i - 3):i]
-            if i != 0:
-                digit = DIGIT
-
-    elif fmt[0] == 's':
+        amt = orgamount
+        if showFraction == 0:
+            amt = amount
+        return localizationUtil.FormatNumeric(amt, useGrouping=True, decimalPlaces=showFraction)
+    if fmt[0] == 's':
+        amt = amount
         val = abs(amount)
-        fractionNumber = val
-        if val < 10000.0:
-            ret = str(val)
-        elif val < 100000.0:
-            ret = TruncateAmt(val, long(1000.0)) + [mls.K_FOR_THOUSAND, [mls.THOUSAND.lower(), mls.THOUSANDS.lower()][(str(val)[0] != '1')]][(fmt[1] == 'l')]
-        elif val < 100000000.0:
-            ret = TruncateAmt(val, long(1000000.0)) + [mls.M_FOR_MILLION, [mls.MILLION.lower(), mls.MILLIONS.lower()][(str(val)[0] != '1')]][(fmt[1] == 'l')]
-        if val < 100000000000.0:
-            ret = TruncateAmt(val, long(1000000000.0)) + [mls.B_FOR_BILLION, [mls.BILLION.lower(), mls.BILLIONS.lower()][(str(val)[0] != '1')]][(fmt[1] == 'l')]
-        elif val < 100000000000000.0:
-            ret = TruncateAmt(val, long(1000000000000.0)) + [mls.T_FOR_TRILLION, [mls.TRILLION.lower(), mls.TRILLIONS.lower()][(str(val)[0] != '1')]][(fmt[1] == 'l')]
+        labelPathDict = {('thousand', 'short'): '/Carbon/UI/Common/Formatting/FmtThousandShort',
+         ('thousand', 'long'): '/Carbon/UI/Common/Formatting/FmtThousandLong',
+         ('million', 'short'): '/Carbon/UI/Common/Formatting/FmtMillionShort',
+         ('million', 'long'): '/Carbon/UI/Common/Formatting/FmtMillionLong',
+         ('billion', 'short'): '/Carbon/UI/Common/Formatting/FmtBillionShort',
+         ('billion', 'long'): '/Carbon/UI/Common/Formatting/FmtBillionLong',
+         ('trillion', 'short'): '/Carbon/UI/Common/Formatting/FmtTrillionShort',
+         ('trillion', 'long'): '/Carbon/UI/Common/Formatting/FmtTrillionLong'}
+        if fmt[1] == 'l':
+            labelLength = 'long'
         else:
+            labelLength = 'short'
+        if val >= 100000000000000.0:
             raise UserError('WhatKindOfAmountIsThis', {'amount': amount})
-    else:
-        ret = '%d' % abs(amount)
-    if fractionNumber == 0:
-        minus = ''
-    return minus + ret + fraction
+        if val < 10000.0:
+            return localizationUtil.FormatNumeric(amt, useGrouping=True)
+        if val < 100000.0:
+            amt = float(amt) / long(1000.0)
+            labelPath = labelPathDict.get(('thousand', labelLength))
+        elif val < 100000000.0:
+            amt = float(amt) / long(1000000.0)
+            labelPath = labelPathDict.get(('million', labelLength))
+        elif val < 100000000000.0:
+            amt = float(amt) / long(1000000000.0)
+            labelPath = labelPathDict.get(('billion', labelLength))
+        elif val < 100000000000000.0:
+            amt = float(amt) / long(1000000000000.0)
+            labelPath = labelPathDict.get(('trillion', labelLength))
+        return localization.GetByLabel(labelPath, amount=amt)
+    return localizationUtil.LocalizationSafeString(orgamount)
 
 
 
-def TruncateAmt(val, unit):
-    rest = val % unit / (unit / 100L)
-    ret = str(val / unit)
-    if rest > 0:
-        ret = ret + '%s%02d' % (DECIMAL, rest)
-        if ret[-1:] == '0':
-            ret = ret[:-1]
-    return ret
-
-
-
-def FmtDist(dist, maxdemicals = 3, signed = False):
+def FmtDist(dist, maxdemicals = 2, signed = False):
     if signed and dist < 0.0:
-        formatString = '-%s %s'
         dist = abs(dist)
-    else:
-        formatString = '%s %s'
     dist = max(0, dist)
-    if dist < 1.0:
-        return '%s %s' % (TruncateDemicals(str(dist)[:5], maxdemicals), mls.M_IN_METER)
+    if dist < 10000.0:
+        if dist == 0 or dist >= 1.0:
+            dist = int(dist)
+            maxdemicals = None
+        fmtUrl = '/Carbon/UI/Common/FormatDistance/fmtDistInMeters'
+    elif dist < 10000000000.0:
+        dist = long(dist / 1000.0)
+        maxdemicals = None
+        fmtUrl = '/Carbon/UI/Common/FormatDistance/fmtDistInKiloMeters'
     else:
-        if dist < 10000.0:
-            return '%s %s' % (TruncateDemicals(FmtAmt(long(dist)), maxdemicals), mls.M_IN_METER)
-        if dist < 10000000000.0:
-            return '%s %s' % (TruncateDemicals(FmtAmt(long(dist / 1000.0)), maxdemicals), mls.KM)
-        return '%s %s' % (TruncateDemicals(str(round(dist / const.AU, maxdemicals)), maxdemicals), mls.AU_FOR_LIGHTYEAR)
-
-
-
-def FmtDist2(dist, maxDecimals = 3):
-    if dist < 0.0:
-        dist = abs(dist)
-    if dist < 10.0:
-        return '%s %s' % (TruncateDemicals(str(dist)[:1], maxDecimals), mls.M_IN_METER)
-    else:
-        if dist < 100.0:
-            return '%s %s' % (TruncateDemicals(str(dist)[:2], maxDecimals), mls.M_IN_METER)
-        if dist < 1000.0:
-            return '%s %s' % (TruncateDemicals(str(dist)[:3], maxDecimals), mls.M_IN_METER)
-        if dist < 10000.0:
-            return '%s %s' % (TruncateDemicals(str(dist)[:4], maxDecimals), mls.M_IN_METER)
-        if dist < 10000000000.0:
-            dist = float(dist) / 1000.0
-            return '%s %s' % (TruncateDemicals(str(dist), maxDecimals), mls.KM)
-        dist = round(dist / const.AU, maxDecimals)
-        return '%s %s' % (TruncateDemicals(str(dist), maxDecimals), mls.AU_FOR_LIGHTYEAR)
+        dist = round(dist / const.AU, maxdemicals)
+        fmtUrl = '/Carbon/UI/Common/FormatDistance/fmtDistInAU'
+    if maxdemicals == 0:
+        maxdemicals = None
+        dist = int(dist)
+    distStr = localizationUtil.FormatNumeric(dist, useGrouping=True, decimalPlaces=maxdemicals)
+    return localization.GetByLabel(fmtUrl, distance=distStr)
 
 
 
 def FmtVec(vec, maxdecimals = 3):
     return '[%s, %s, %s]' % (FmtDist(vec[0], maxdecimals, signed=True), FmtDist(vec[1], maxdecimals, signed=True), FmtDist(vec[2], maxdecimals, signed=True))
-
-
-
-def TruncateDemicals(dist, maxdemicals):
-    if dist.find(DECIMAL) == -1 or maxdemicals is None:
-        return dist
-    dist = dist.split(DECIMAL)
-    dist = DECIMAL.join(dist[:-1]) + DECIMAL + dist[-1][:maxdemicals]
-    return dist
-
-
-
-def FmtUnit(unit, value, fmt = None):
-    if unit == 1:
-        return FmtDist(value)
-    if unit == 3:
-        if fmt is None:
-            return FmtDate(value, 'ns')
-        else:
-            return FmtDate(value, fmt)
-    else:
-        unitStr = 'mojo'
-        value = float(value)
-        if value < 1000.0:
-            pre = mls.K_FOR_THOUSAND
-        else:
-            pre = mls.M_FOR_MILLION
-        return '%.1f %s%s' % (value, pre, unitStr)
 
 
 
@@ -474,21 +246,10 @@ def ParseTimeInterval(time):
 
 
 
-def GetTimeParts(datetime = None, utc = False):
-    if datetime is None:
-        datetime = blue.os.GetTime()
+def GetTimeParts(datetime, utc = False):
     if not utc and datetime % const.DAY and boot.region == 'optic':
         datetime += 8 * const.HOUR
     return blue.os.GetTimeParts(datetime)
-
-
-
-def CapTimeForDateTime2(time):
-    if time < 62798112000000000L:
-        time = 62798112000000000L
-    elif time > 2650152384000000000L:
-        time = 2650152384000000000L
-    return time
 
 
 months = [31,
@@ -655,55 +416,13 @@ def HoursMinsSecsFromSecs(s):
 
 
 def FormatTimeAgo(theTime):
-    delta = blue.os.GetTime() - theTime
+    delta = blue.os.GetWallclockTime() - theTime
     (hours, minutes, seconds,) = HoursMinsSecsFromSecs(SecsFromBlueTimeDelta(delta))
-    days = 0
-    if hours > 48:
-        days = int(hours / 24)
-        hours %= 24
-    t = FormatTimeDelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
-    if t is None:
-        howLongAgo = mls.UI_GENERIC_RIGHTNOW
+    if hours + minutes + seconds <= 0:
+        howLongAgo = localization.GetByLabel('/Carbon/UI/Common/FormatTime/FmtTimeAgoRightNow')
     else:
-        howLongAgo = mls.UI_GENERIC_AGO_WITH_FORMAT % {'time': t}
+        howLongAgo = localization.GetByLabel('/Carbon/UI/Common/FormatTime/FmtTimeAgoDays', time=delta)
     return howLongAgo
-
-
-
-def Plural(n, constant):
-    if session.languageID in 'IS':
-        if n > 1:
-            constant += 'S'
-    elif n != 1:
-        constant += 'S'
-    return getattr(mls, constant)
-
-
-
-def Possessive(owner):
-    if session.languageID == 'EN':
-        if owner.endswith('s'):
-            owner += "'"
-        else:
-            owner += "'s"
-    return owner
-
-
-
-def FormatTimeDelta(days = None, hours = None, minutes = None, seconds = None):
-    ret = []
-    if days:
-        ret.append('%s %s' % (days, Plural(days, 'UI_GENERIC_DAY').lower()))
-    if hours:
-        ret.append('%s %s' % (hours, Plural(hours, 'UI_GENERIC_HOUR').lower()))
-    if minutes:
-        ret.append('%s %s' % (minutes, Plural(minutes, 'UI_GENERIC_MINUTE').lower()))
-    if seconds:
-        ret.append('%s %s' % (seconds, Plural(seconds, 'UI_GENERIC_SECOND').lower()))
-    if ret:
-        return ', '.join(ret)
-    else:
-        return None
 
 
 
@@ -742,7 +461,7 @@ def IntToRoman(n):
             n -= integer
 
 
-    return result
+    return localizationUtil.LocalizationSafeString(result)
 
 
 
@@ -759,6 +478,247 @@ def FormatUrl(url):
     return url
 
 
+
+def FmtDateEng(date, fmt = 'll'):
+    if date is None:
+        return 
+    else:
+        if fmt == 'nn':
+            log.LogTraceback("Incorrect format statement used, 'nn' would result in a return value of None for all input.")
+            fmt = 'll'
+        if date < 0:
+            date *= -1
+            neg = '-'
+        else:
+            neg = ''
+        year1800 = const.YEAR365 * 199L
+        if date >= year1800 and date % const.DAY and boot.region == 'optic':
+            date += 8 * const.HOUR
+        (year, month, wd, day, hour, min, sec, ms,) = blue.os.GetTimeParts(date)
+        sd = '%d.%.2d.%.2d' % (year, month, day)
+        ld = sd
+        lt = '%.2d:%.2d:%.2d' % (hour, min, sec)
+        if fmt[0] == 'x':
+            lt += ':%3d' % ms
+        ed = '%d-%.2d-%.2d' % (year, month, day)
+        st = lt[:-3]
+        if fmt[1] == 'l':
+            hrs = lt
+        elif fmt[1] == 's':
+            hrs = st
+        elif fmt[1] == 'n':
+            hrs = None
+        else:
+            raise RuntimeError('InvalidArg', fmt)
+        if date % const.DAY == 0:
+            hrs = None
+        if date < year1800:
+            datefmt = None
+            days = date / const.DAY
+            s = date % const.MIN / const.SEC
+            m = date % const.HOUR / const.MIN
+            h = date % const.DAY / const.HOUR
+            hrs = ''
+            if fmt[1] == 's':
+                if days:
+                    hrs = '%d%s' % (days, 'D')
+                if h:
+                    hrs = hrs + ' %d%s' % (h, 'H')
+                if m:
+                    hrs = hrs + ' %d%s' % (m, 'M')
+                if s:
+                    hrs = hrs + ' %d%s' % (s, 'S')
+            else:
+                if days:
+                    hrs = '%d %s' % (days, ['day', 'days'][(days != 1)])
+                if h:
+                    hrs = hrs + ' %d %s' % (h, ['hour', 'hours'][(h != 1)])
+                if m:
+                    hrs = hrs + ' %d %s' % (m, ['minute', 'minutes'][(m != 1)])
+                if s or hrs == '':
+                    hrs = hrs + ' %d %s' % (s, ['second', 'seconds'][(s != 1)])
+        elif fmt[0] == 'l' or fmt[0] == 'x':
+            datefmt = ld
+        elif fmt[0] == 's':
+            datefmt = sd
+        elif fmt[0] == 'n':
+            datefmt = None
+        elif fmt[0] == 'e':
+            datefmt = ed
+        else:
+            raise RuntimeError('InvalidArg', fmt)
+        if datefmt is None and hrs is None:
+            return 
+        if datefmt is not None and hrs is None:
+            return neg + datefmt
+        if datefmt is None and hrs is not None:
+            return neg + hrs.strip()
+        if fmt[0] == 'e':
+            return '%s%sT%s.000' % (neg, datefmt, hrs)
+        return '%s%s %s' % (neg, datefmt, hrs)
+
+
+
+def FmtTimeIntervalEng(interval, breakAt = None, *args, **kwargs):
+    if interval < 10000L:
+        return 'A short amount of time'
+    (year, month, wd, day, hour, min, sec, ms,) = blue.os.GetTimeParts(interval)
+    year -= 1601
+    month -= 1
+    day -= 1
+    items = []
+    while 1:
+        if year:
+            items.append(str(year) + ' ' + ['year', 'years'][(year > 1)])
+        if breakAt == 'year':
+            break
+        if month:
+            items.append(str(month) + ' ' + ['month', 'months'][(month > 1)])
+        if breakAt == 'month':
+            break
+        if day:
+            items.append(str(day) + ' ' + ['day', 'days'][(day > 1)])
+        if breakAt == 'day':
+            break
+        if hour:
+            items.append(str(hour) + ' ' + ['hour', 'hours'][(hour > 1)])
+        if breakAt == 'hour':
+            break
+        if min:
+            items.append(str(min) + ' ' + ['minute', 'minutes'][(min > 1)])
+        if breakAt == 'min':
+            break
+        if sec:
+            items.append(str(sec) + ' ' + ['second', 'seconds'][(sec > 1)])
+        if breakAt == 'sec':
+            break
+        if ms:
+            items.append(str(ms) + ' ' + ['millisecond', 'milliseconds'][(ms > 1)])
+        break
+
+    if items:
+        if len(items) == 1:
+            return items[0]
+        else:
+            lastItem = items.pop()
+            return ', '.join(items) + ' ' + 'and' + ' ' + lastItem
+    else:
+        if breakAt == 'sec':
+            return 'Less than a second'
+        else:
+            if breakAt == 'min':
+                return 'Less than a minute'
+            return {'DAY': 'less than a day',
+             'HOUR': 'less than an hour',
+             'MILLISECOND': 'less than a millisecond',
+             'MINUTE': 'less than a minute',
+             'MONTH': 'less than a month',
+             'SECOND': 'less than a second',
+             'YEAR': 'less than a year'}.get(breakAt.upper(), 'less than a ' + breakAt)
+
+
+
+def FmtTimeEng(time):
+    return '%.2d:%.2d:%.2d' % (time / const.HOUR, time % const.HOUR / const.MIN, time % const.MIN / const.SEC)
+
+
+
+def FmtAmtEng(amount, fmt = 'ln', showFraction = 0, fillWithZero = 0):
+    if amount == None:
+        amount = 0
+    orgamount = amount
+    try:
+        amount = long(amount)
+    except:
+        raise RuntimeError('AmountMustBeInteger', amount)
+    minus = ['', '-'][(float(orgamount) < 0.0)]
+    fraction = ''
+    ret = ''
+    fractionNumber = None
+    if fmt[0] == 'l':
+        if showFraction:
+            fraction = abs(math.fmod(orgamount, 1.0))
+            fraction = round(fraction, showFraction)
+            if fraction >= 1.0:
+                amount += [-1, 1][(amount >= 0.0)]
+                fraction = 0.0
+            fraction = str(fraction)[2:]
+            if fillWithZero:
+                while len(fraction) < showFraction:
+                    fraction += '0'
+
+            fractionNumber = float('%s.%s' % (amount, fraction))
+            fraction = DECIMAL + str(fraction)
+        digit = ''
+        amt = '%d' % abs(amount)
+        for i in xrange(len(amt) % 3, len(amt) + 3, 3):
+            if i < 3:
+                ret = ret + amt[:i]
+            else:
+                ret = ret + digit + amt[(i - 3):i]
+            if i != 0:
+                digit = DIGIT
+
+    elif fmt[0] == 's':
+        val = abs(amount)
+        fractionNumber = val
+        isOne = str(val)[0] == '1'
+        if val < 10000.0:
+            ret = str(val)
+        elif val < 100000.0:
+            if fmt[1] == 'l':
+                unitString = ['thousands', 'thousand'][isOne]
+            else:
+                unitString = 'K'
+            ret = '%s%s' % (TruncateAmt(val, long(1000.0)), unitString)
+        elif val < 100000000.0:
+            if fmt[1] == 'l':
+                unitString = ['millions', 'million'][isOne]
+            else:
+                unitString = 'M'
+            ret = '%s%s' % (TruncateAmt(val, long(1000000.0)), unitString)
+        if val < 100000000000.0:
+            if fmt[1] == 'l':
+                unitString = ['billions', 'billion'][isOne]
+            else:
+                unitString = 'B'
+            ret = '%s%s' % (TruncateAmt(val, long(1000000000.0)), unitString)
+        elif val < 100000000000000.0:
+            if fmt[1] == 'l':
+                unitString = ['trillions', 'trillion'][isOne]
+            else:
+                unitString = 'T'
+            ret = '%s%s' % (TruncateAmt(val, long(1000000000000.0)), unitString)
+        else:
+            raise UserError('WhatKindOfAmountIsThis', {'amount': amount})
+    else:
+        ret = '%d' % abs(amount)
+    if fractionNumber == 0:
+        minus = ''
+    return minus + ret + fraction
+
+
+
+def TruncateAmt(val, unit):
+    rest = val % unit / (unit / 100L)
+    ret = str(val / unit)
+    if rest > 0:
+        ret = ret + '%s%02d' % (DECIMAL, rest)
+        if ret[-1:] == '0':
+            ret = ret[:-1]
+    return ret
+
+
+
+def FmtSecEng(time):
+    if not time:
+        return '0'
+    h = time / const.HOUR
+    m = time % const.HOUR / const.MIN
+    s = time % const.MIN / float(const.SEC)
+    return "%.2d:%.2d'%06.3f" % (h, m, s)
+
+
 exports = {'util.GetKeyAndNormalize': GetKeyAndNormalize,
  'util.CaseFoldCompare': CaseFoldCompare,
  'util.CaseFold': CaseFold,
@@ -773,19 +733,15 @@ exports = {'util.GetKeyAndNormalize': GetKeyAndNormalize,
  'util.FmtTimeInterval': FmtTimeInterval,
  'util.FmtAmt': FmtAmt,
  'util.FmtDist': FmtDist,
- 'util.FmtDist2': FmtDist2,
- 'util.FmtUnit': FmtUnit,
  'util.ParseDate': ParseDate,
  'util.ParseSmallDate': ParseSmallDate,
  'util.ParseTime': ParseTime,
  'util.ParseDateTime': ParseDateTime,
  'util.ParseTimeInterval': ParseTimeInterval,
  'util.GetTimeParts': GetTimeParts,
- 'util.CapTimeForDateTime2': CapTimeForDateTime2,
  'util.dateConvert': dateConvert,
  'util.ConvertDate': ConvertDate,
  'util.FmtCdkey': FmtCdkey,
- 'util.Ess': Ess,
  'util.StrFromColor': StrFromColor,
  'util.LFromUI': LFromUI,
  'util.RomanToInt': RomanToInt,
@@ -794,5 +750,11 @@ exports = {'util.GetKeyAndNormalize': GetKeyAndNormalize,
  'util.DECIMAL': DECIMAL,
  'util.DIGIT': DIGIT,
  'util.GetYearMonthFromTime': GetYearMonthFromTime,
- 'util.FormatUrl': FormatUrl}
+ 'util.FormatUrl': FormatUrl,
+ 'util.FormatTimeAgo': FormatTimeAgo,
+ 'util.FmtTimeIntervalEng': FmtTimeIntervalEng,
+ 'util.FmtDateEng': FmtDateEng,
+ 'util.FmtTimeEng': FmtTimeEng,
+ 'util.FmtAmtEng': FmtAmtEng,
+ 'util.FmtSecEng': FmtSecEng}
 

@@ -2,23 +2,22 @@ import blue
 import util
 import sys
 import types
-import string
-import cPickle
-import re
 import random
 import copy
-import uthread
-import log
 import svc
 import const
 import service
 import dbutil
 import macho
-import yaml
 import math
+import localization
+import localizationUtil
+import re
 globals().update(service.consts)
 from sys import *
 import standingUtil
+OWNER_AURA_IDENTIFIER = -1
+OWNER_SYSTEM_IDENTIFIER = -2
 
 class Standings():
     __guid__ = 'sys.Standings'
@@ -164,30 +163,27 @@ class EveDataConfig(svc.dataconfig):
         __builtin__.WEEK = DAY * 7L
         __builtin__.MONTH = DAY * 30L
         __builtin__.YEAR = MONTH * 12L
-        __builtin__.OWNERID = 1
-        __builtin__.OWNERID = 2
-        __builtin__.LOCID = 3
-        __builtin__.TYPEID = 4
-        __builtin__.TYPEID2 = 5
-        __builtin__.TYPEIDL = 29
-        __builtin__.BPTYPEID = 6
-        __builtin__.GROUPID = 7
-        __builtin__.GROUPID2 = 8
-        __builtin__.CATID = 9
-        __builtin__.CATID2 = 10
-        __builtin__.DGMATTR = 11
-        __builtin__.DGMFX = 12
-        __builtin__.DGMTYPEFX = 13
-        __builtin__.AMT = 18
-        __builtin__.AMT2 = 19
-        __builtin__.AMT3 = 20
-        __builtin__.DIST = 21
-        __builtin__.TYPEIDANDQUANTITY = 24
-        __builtin__.OWNERIDNICK = 25
-        __builtin__.SESSIONSENSITIVESTATIONID = 26
-        __builtin__.SESSIONSENSITIVELOCID = 27
-        __builtin__.ISK = 28
-        __builtin__.AUR = 30
+        __builtin__.OWNERID = const.UE_OWNERID
+        __builtin__.LOCID = const.UE_LOCID
+        __builtin__.TYPEID = const.UE_TYPEID
+        __builtin__.TYPEID2 = const.UE_TYPEID2
+        __builtin__.TYPEIDL = const.UE_TYPEIDL
+        __builtin__.BPTYPEID = const.UE_BPTYPEID
+        __builtin__.GROUPID = const.UE_GROUPID
+        __builtin__.GROUPID2 = const.UE_GROUPID2
+        __builtin__.CATID = const.UE_CATID
+        __builtin__.CATID2 = const.UE_CATID2
+        __builtin__.DGMATTR = const.UE_DGMATTR
+        __builtin__.DGMFX = const.UE_DGMFX
+        __builtin__.DGMTYPEFX = const.UE_DGMTYPEFX
+        __builtin__.AMT = const.UE_AMT
+        __builtin__.AMT2 = const.UE_AMT2
+        __builtin__.AMT3 = const.UE_AMT3
+        __builtin__.DIST = const.UE_DIST
+        __builtin__.TYPEIDANDQUANTITY = const.UE_TYPEIDANDQUANTITY
+        __builtin__.OWNERIDNICK = const.UE_OWNERIDNICK
+        __builtin__.ISK = const.UE_ISK
+        __builtin__.AUR = const.UE_AUR
 
 
 
@@ -202,25 +198,23 @@ class EveConfig(util.config):
 
     def __init__(self):
         util.config.__init__(self)
-        self.fmtMapping[OWNERID] = lambda value, value2: cfg.eveowners.Get(value).ownerName
-        self.fmtMapping[OWNERIDNICK] = lambda value, value2: cfg.eveowners.Get(value).ownerName.split(' ')[0]
-        self.fmtMapping[LOCID] = lambda value, value2: cfg.evelocations.Get(value).locationName
-        self.fmtMapping[SESSIONSENSITIVELOCID] = self._EveConfig__FormatSessionSensitiveLOCID
-        self.fmtMapping[SESSIONSENSITIVESTATIONID] = self._EveConfig__FormatSessionSensitiveStationID
-        self.fmtMapping[TYPEID] = lambda value, value2: cfg.invtypes.Get(value).typeName
-        self.fmtMapping[TYPEID2] = lambda value, value2: cfg.invtypes.Get(value).description
-        self.fmtMapping[TYPEIDL] = self.TypeNameList
-        self.fmtMapping[BPTYPEID] = lambda value, value2: cfg.invbptypes.Get(value).blueprintTypeName
-        self.fmtMapping[GROUPID] = lambda value, value2: cfg.invgroups.Get(value).groupName
-        self.fmtMapping[GROUPID2] = lambda value, value2: cfg.invgroups.Get(value).description
-        self.fmtMapping[CATID] = lambda value, value2: cfg.invcategories.Get(value).categoryName
-        self.fmtMapping[CATID2] = lambda value, value2: cfg.invcategories.Get(value).description
-        self.fmtMapping[AMT] = lambda value, value2: util.FmtAmt(value)
-        self.fmtMapping[AMT2] = lambda value, value2: util.FmtISK(value)
-        self.fmtMapping[AMT3] = lambda value, value2: util.FmtISK(value)
-        self.fmtMapping[ISK] = lambda value, value2: util.FmtISK(value)
-        self.fmtMapping[AUR] = lambda value, value2: util.FmtAUR(value)
-        self.fmtMapping[DIST] = lambda value, value2: util.FmtDist(value)
+        self.fmtMapping[const.UE_OWNERID] = lambda value, value2: cfg.eveowners.Get(value).ownerName
+        self.fmtMapping[const.UE_OWNERIDNICK] = lambda value, value2: cfg.eveowners.Get(value).ownerName.split(' ')[0]
+        self.fmtMapping[const.UE_LOCID] = lambda value, value2: cfg.evelocations.Get(value).locationName
+        self.fmtMapping[const.UE_TYPEID] = lambda value, value2: cfg.invtypes.Get(value).typeName
+        self.fmtMapping[const.UE_TYPEID2] = lambda value, value2: cfg.invtypes.Get(value).description
+        self.fmtMapping[const.UE_TYPEIDL] = lambda value, value2: cfg.FormatConvert(const.UE_LIST, [ (const.UE_TYPEID, x) for x in value ], value2)
+        self.fmtMapping[const.UE_BPTYPEID] = lambda value, value2: cfg.invbptypes.Get(value).blueprintTypeName
+        self.fmtMapping[const.UE_GROUPID] = lambda value, value2: cfg.invgroups.Get(value).groupName
+        self.fmtMapping[const.UE_GROUPID2] = lambda value, value2: cfg.invgroups.Get(value).description
+        self.fmtMapping[const.UE_CATID] = lambda value, value2: cfg.invcategories.Get(value).categoryName
+        self.fmtMapping[const.UE_CATID2] = lambda value, value2: cfg.invcategories.Get(value).description
+        self.fmtMapping[const.UE_AMT] = lambda value, value2: util.FmtAmt(value)
+        self.fmtMapping[const.UE_AMT2] = lambda value, value2: util.FmtISK(value)
+        self.fmtMapping[const.UE_AMT3] = lambda value, value2: util.FmtISK(value)
+        self.fmtMapping[const.UE_ISK] = lambda value, value2: util.FmtISK(value)
+        self.fmtMapping[const.UE_AUR] = lambda value, value2: util.FmtAUR(value)
+        self.fmtMapping[const.UE_DIST] = lambda value, value2: util.FmtDist(value)
         self.fmtMapping[TYPEIDANDQUANTITY] = self._EveConfig__FormatTypeIDAndQuantity
         self.crystalgroups = []
         self.planetattributes = Recordset(Row, None)
@@ -260,7 +254,7 @@ class EveConfig(util.config):
         self.certificates = None
         self.certificaterelationships = None
         self.locationwormholeclasses = None
-        self.locationscene = None
+        self.nebulas = None
         self.planetattributes = None
         self.schematics = None
         self.schematicstypemap = None
@@ -272,6 +266,35 @@ class EveConfig(util.config):
         self.overviewDefaults = None
         self.overviewDefaultGroups = None
         self.positions = None
+        self.messages = None
+
+
+
+    def GetStartupData(self):
+        util.config.GetStartupData(self)
+        if boot.role == 'client':
+            self.messages = self.LoadBulkIndex('messages', const.cacheEveMessages, 'messageKey')
+
+
+
+    def GetMessage(self, key, dict = None, onNotFound = 'return', onDictMissing = 'error'):
+        try:
+            msg = self.messages.data[key]
+        except KeyError:
+            if key != 'ErrMessageNotFound':
+                return self.GetMessage('ErrMessageNotFound', {'msgid': key,
+                 'args': dict})
+            else:
+                return util.KeyVal(text='Could not find message with key ' + key + '. This is most likely due to a missing or outdatad 10000001.cache2 bulkdata file, or the message is missing.', title='Message not found', type='fatal', audio='', icon='', suppress=False)
+        (bodyID, titleID,) = (msg.bodyID, msg.titleID)
+        if dict is not None and dict != -1:
+            dict = self._EveConfig__prepdict(dict)
+            title = localization.GetByMessageID(titleID, **dict) if titleID is not None else None
+            text = localization.GetByMessageID(bodyID, **dict) if bodyID is not None else None
+        else:
+            title = localization.GetByMessageID(titleID) if titleID is not None else None
+            text = localization.GetByMessageID(bodyID) if bodyID is not None else None
+        return util.KeyVal(text=text, title=title, type=msg.messageType, audio=msg.urlAudio, icon=msg.urlIcon, suppress=msg.suppressable)
 
 
 
@@ -309,7 +332,7 @@ class EveConfig(util.config):
     def GetItemVolume(self, item, qty = None, invmgr = None):
         if item.typeID == const.typePlasticWrap:
             if invmgr is None:
-                volume = eve.GetInventoryFromId(item.itemID).GetCapacity().used
+                volume = sm.GetService('invCache').GetInventoryFromId(item.itemID).GetCapacity().used
             else:
                 volume = invmgr.GetInventoryFromIdEx(item.itemID, -1).GetCapacity().used
         elif item.categoryID == const.categoryShip and not item.singleton and item.groupID in self.__containerVolumes__ and item.typeID != const.typeBHMegaCargoShip:
@@ -339,6 +362,7 @@ class EveConfig(util.config):
         configSvc = sm.GetService('config')
         initdata = configSvc.GetInitVals()
         self.GotInitData(initdata)
+        configSvc.RegisterTablesForUpdates()
 
 
 
@@ -346,7 +370,7 @@ class EveConfig(util.config):
         if totalSteps is not None:
             self.totalLogonSteps = totalSteps
         if macho.mode == 'client':
-            sm.ChainEvent('ProcessLoginProgress', 'loginprogress::gettingbulkdata', section, stepNum, self.totalLogonSteps)
+            sm.ScatterEvent('OnProcessLoginProgress', 'loginprogress::gettingbulkdata', section, stepNum, self.totalLogonSteps)
         else:
             cfg.LogInfo(section, stepNum)
 
@@ -355,15 +379,15 @@ class EveConfig(util.config):
     def GotInitData(self, initdata):
         cfg.LogInfo('App GotInitData')
         util.config.GotInitData(self, initdata)
-        self.dgmunits = self.LoadBulk('dgmunits', const.cacheDogmaUnits, Recordset(Row, 'unitID'))
-        self.invbptypes = self.LoadBulk('invbptypes', const.cacheInvBlueprintTypes, Recordset(Row, 'blueprintTypeID'))
-        self.invcategories = self.LoadBulk('invcategories', const.cacheInvCategories, Recordset(InvCategory, 'categoryID'))
-        self.invmetagroups = self.LoadBulk('invmetagroups', const.cacheInvMetaGroups, Recordset(InvMetaGroup, 'metaGroupID'))
-        self.invgroups = self.LoadBulk('invgroups', const.cacheInvGroups, Recordset(InvGroup, 'groupID'))
-        self.invtypes = self.LoadBulk('invtypes', const.cacheInvTypes, Recordset(InvType, 'typeID'))
-        self.invtypereactions = self.LoadBulk('invtypereactions', const.cacheInvTypeReactions, None, 'reactionTypeID')
-        self.invmetatypes = self.LoadBulk('invmetatypes', const.cacheInvMetaTypes, Recordset(Row, 'typeID'))
-        self.invmetatypesByParent = self.LoadBulk('invmetatypesByParent', const.cacheInvMetaTypes, None, 'parentTypeID')
+        self.dgmunits = self.LoadBulkIndex('dgmunits', const.cacheDogmaUnits, 'unitID')
+        self.invbptypes = self.LoadBulkIndex('invbptypes', const.cacheInvBlueprintTypes, 'blueprintTypeID')
+        self.invcategories = self.LoadBulkIndex('invcategories', const.cacheInvCategories, 'categoryID', InvCategory)
+        self.invmetagroups = self.LoadBulkIndex('invmetagroups', const.cacheInvMetaGroups, 'metaGroupID', InvMetaGroup)
+        self.invgroups = self.LoadBulkIndex('invgroups', const.cacheInvGroups, 'groupID', InvGroup)
+        self.invtypes = self.LoadBulkIndex('invtypes', const.cacheInvTypes, 'typeID', InvType)
+        self.invtypereactions = self.LoadBulkFilter('invtypereactions', const.cacheInvTypeReactions, 'reactionTypeID')
+        self.invmetatypes = self.LoadBulkIndex('invmetatypes', const.cacheInvMetaTypes, 'typeID')
+        self.invmetatypesByParent = self.LoadBulkFilter('invmetatypesByParent', const.cacheInvMetaTypes, 'parentTypeID')
         invcontrabandtypes = self.LoadBulk(None, const.cacheInvContrabandTypes)
         self.invcontrabandTypesByFaction = {}
         self.invcontrabandFactionsByType = {}
@@ -376,17 +400,18 @@ class EveConfig(util.config):
                 self.invcontrabandFactionsByType[each.typeID] = {}
             self.invcontrabandFactionsByType[each.typeID][each.factionID] = each
 
-        self.dgmattribs = self.LoadBulk('dgmattribs', const.cacheDogmaAttributes, Recordset(DgmAttribute, 'attributeID'))
-        self.dgmeffects = self.LoadBulk('dgmeffects', const.cacheDogmaEffects, Recordset(DgmEffect, 'effectID'))
-        self.dgmtypeattribs = self.LoadBulk('dgmtypeattribs', const.cacheDogmaTypeAttributes, None, 'typeID')
-        self.dgmtypeeffects = self.LoadBulk('dgmtypeeffects', const.cacheDogmaTypeEffects, None, 'typeID')
-        self.shiptypes = self.LoadBulk('shiptypes', const.cacheShipTypes, Recordset(Row, 'shipTypeID'))
-        self.ramaltypes = self.LoadBulk('ramaltypes', const.cacheRamAssemblyLineTypes, Recordset(Row, 'assemblyLineTypeID'))
-        self.ramaltypesdetailpercategory = self.LoadBulk('ramaltypesdetailpercategory', const.cacheRamAssemblyLineTypesCategory, None, 'assemblyLineTypeID', virtualColumns=[('activityID', RamActivityVirtualColumn)])
-        self.ramaltypesdetailpergroup = self.LoadBulk('ramaltypesdetailpergroup', const.cacheRamAssemblyLineTypesGroup, None, 'assemblyLineTypeID', virtualColumns=[('activityID', RamActivityVirtualColumn)])
-        self.ramactivities = self.LoadBulk('ramactivities', const.cacheRamActivities, Recordset(RamActivity, 'activityID'))
-        self.ramcompletedstatuses = self.LoadBulk('ramcompletedstatuses', const.cacheRamCompletedStatuses, Recordset(RamCompletedStatus, 'completedStatus'))
-        self.invtypematerials = self.LoadBulk('invtypematerials', const.cacheInvTypeMaterials, None, 'typeID')
+        self.dgmattribs = self.LoadBulkIndex('dgmattribs', const.cacheDogmaAttributes, 'attributeID', DgmAttribute)
+        self.dgmeffects = self.LoadBulkIndex('dgmeffects', const.cacheDogmaEffects, 'effectID', DgmEffect)
+        self.dgmtypeattribs = self.LoadBulkFilter('dgmtypeattribs', const.cacheDogmaTypeAttributes, 'typeID')
+        self.dgmtypeeffects = self.LoadBulkFilter('dgmtypeeffects', const.cacheDogmaTypeEffects, 'typeID')
+        self.dgmexpressions = self.LoadBulkIndex('dgmexpressions', const.cacheDogmaExpressions, 'expressionID')
+        self.shiptypes = self.LoadBulkIndex('shiptypes', const.cacheShipTypes, 'shipTypeID')
+        self.ramaltypes = self.LoadBulkIndex('ramaltypes', const.cacheRamAssemblyLineTypes, 'assemblyLineTypeID')
+        self.ramaltypesdetailpercategory = self.LoadBulkFilter('ramaltypesdetailpercategory', const.cacheRamAssemblyLineTypesCategory, 'assemblyLineTypeID', virtualColumns=[('activityID', RamActivityVirtualColumn)])
+        self.ramaltypesdetailpergroup = self.LoadBulkFilter('ramaltypesdetailpergroup', const.cacheRamAssemblyLineTypesGroup, 'assemblyLineTypeID', virtualColumns=[('activityID', RamActivityVirtualColumn)])
+        self.ramactivities = self.LoadBulkIndex('ramactivities', const.cacheRamActivities, 'activityID', RamActivity)
+        self.ramcompletedstatuses = self.LoadBulkIndex('ramcompletedstatuses', const.cacheRamCompletedStatuses, 'completedStatus', RamCompletedStatus)
+        self.invtypematerials = self.LoadBulkFilter('invtypematerials', const.cacheInvTypeMaterials, 'typeID')
         ramtyperequirements = self.LoadBulk('ramtyperequirements', const.cacheRamTypeRequirements)
         d = {}
         for row in ramtyperequirements:
@@ -397,27 +422,30 @@ class EveConfig(util.config):
                 d[key] = [row]
 
         self.ramtyperequirements = d
-        self.mapcelestialdescriptions = self.LoadBulk('mapcelestialdescriptions', const.cacheMapCelestialDescriptions, Recordset(MapCelestialDescription, 'itemID'))
-        self.certificates = self.LoadBulk('certificates', const.cacheCertificates, Recordset(Certificate, 'certificateID'))
-        self.certificaterelationships = self.LoadBulk('certificaterelationships', const.cacheCertificateRelationships, Recordset(Row, 'relationshipID'))
-        self.certificateRelationshipsByChildID = self.LoadBulk('certificateRelationshipsByChildID', const.cacheCertificateRelationships, Recordset(Row, 'relationshipID'))
-        self.locationwormholeclasses = self.LoadBulk('locationwormholeclasses', const.cacheMapLocationWormholeClasses, Recordset(Row, 'locationID'))
-        self.locationscenes = self.LoadBulk('locationscenes', const.cacheMapLocationScenes, Recordset(Row, 'locationID'))
-        self.schematics = self.LoadBulk('schematics', const.cachePlanetSchematics, Recordset(Schematic, 'schematicID'))
-        self.schematicstypemap = self.LoadBulk('schematicstypemap', const.cachePlanetSchematicsTypeMap, None, 'schematicID')
-        self.schematicspinmap = self.LoadBulk('schematicspinmap', const.cachePlanetSchematicsPinMap, None, 'schematicID')
-        self.schematicsByPin = self.LoadBulk('schematicsByPin', const.cachePlanetSchematicsPinMap, None, 'pinTypeID')
-        self.schematicsByType = self.LoadBulk('schematicsByType', const.cachePlanetSchematicsTypeMap, None, 'typeID')
-        self.groupsByCategories = self.LoadBulk('groupsByCategories', const.cacheInvGroups, None, 'categoryID')
-        self.typesByGroups = self.LoadBulk('typesByGroups', const.cacheInvTypes, None, 'groupID')
-        self.typesByMarketGroups = self.LoadBulk('typesByMarketGroups', const.cacheInvTypes, None, 'marketGroupID')
-        self.billtypes = self.LoadBulk('billtypes', const.cacheActBillTypes, Recordset(Billtype, 'billTypeID'))
-        self.overviewDefaults = self.LoadBulk('overviewDefaults', const.cacheChrDefaultOverviews, Recordset(OverviewDefault, 'overviewID'))
-        self.overviewDefaultGroups = self.LoadBulk('overviewDefaultGroups', const.cacheChrDefaultOverviewGroups, None, 'overviewID')
-        self.bloodlineNames = self.LoadBulk('bloodlineNames', const.cacheChrBloodlineNames, None, 'bloodlineID')
-        self.factions = self.LoadBulk('factions', const.cacheChrFactions, Recordset(Row, 'factionID'))
-        self.npccorporations = self.LoadBulk('npccorporations', const.cacheCrpNpcCorporations, Recordset(Row, 'corporationID'))
+        self.mapcelestialdescriptions = self.LoadBulkIndex('mapcelestialdescriptions', const.cacheMapCelestialDescriptions, 'itemID', MapCelestialDescription)
+        self.certificates = self.LoadBulkIndex('certificates', const.cacheCertificates, 'certificateID', Certificate)
+        self.certificaterelationships = self.LoadBulkIndex('certificaterelationships', const.cacheCertificateRelationships, 'relationshipID')
+        self.certificateRelationshipsByChildID = self.LoadBulkIndex('certificateRelationshipsByChildID', const.cacheCertificateRelationships, 'relationshipID')
+        self.locationwormholeclasses = self.LoadBulkIndex('locationwormholeclasses', const.cacheMapLocationWormholeClasses, 'locationID')
+        self.nebulas = self.LoadBulkIndex('nebulas', const.cacheMapNebulas, 'locationID')
+        self.schematics = self.LoadBulkIndex('schematics', const.cachePlanetSchematics, 'schematicID', Schematic)
+        self.schematicstypemap = self.LoadBulkFilter('schematicstypemap', const.cachePlanetSchematicsTypeMap, 'schematicID')
+        self.schematicspinmap = self.LoadBulkFilter('schematicspinmap', const.cachePlanetSchematicsPinMap, 'schematicID')
+        self.schematicsByPin = self.LoadBulkFilter('schematicsByPin', const.cachePlanetSchematicsPinMap, 'pinTypeID')
+        self.schematicsByType = self.LoadBulkFilter('schematicsByType', const.cachePlanetSchematicsTypeMap, 'typeID')
+        self.groupsByCategories = self.LoadBulkFilter('groupsByCategories', const.cacheInvGroups, 'categoryID')
+        self.typesByGroups = self.LoadBulkFilter('typesByGroups', const.cacheInvTypes, 'groupID')
+        self.typesByMarketGroups = self.LoadBulkFilter('typesByMarketGroups', const.cacheInvTypes, 'marketGroupID')
+        self.billtypes = self.LoadBulkIndex('billtypes', const.cacheActBillTypes, 'billTypeID', Billtype)
+        self.overviewDefaults = self.LoadBulkIndex('overviewDefaults', const.cacheChrDefaultOverviews, 'overviewID', OverviewDefault)
+        self.overviewDefaultGroups = self.LoadBulkFilter('overviewDefaultGroups', const.cacheChrDefaultOverviewGroups, 'overviewID')
+        self.bloodlineNames = self.LoadBulkFilter('bloodlineNames', const.cacheChrBloodlineNames, 'bloodlineID')
+        self.bloodlines = self.LoadBulkIndex('bloodlines', const.cacheChrBloodlines, 'bloodlineID')
+        self.factions = self.LoadBulkIndex('factions', const.cacheChrFactions, 'factionID', Faction)
+        self.races = self.LoadBulkIndex('races', const.cacheChrRaces, 'raceID')
+        self.npccorporations = self.LoadBulkIndex('npccorporations', const.cacheCrpNpcCorporations, 'corporationID')
         self.corptickernames = self.LoadBulk('corptickernames', const.cacheCrpTickerNamesStatic, Recordset(CrpTickerNames, 'corporationID', 'GetCorpTickerNamesEx', 'GetMultiCorpTickerNamesEx'), tableID=const.cacheCrpNpcCorporations)
+        self.messages = self.LoadBulkIndex('messages', const.cacheEveMessages, 'messageKey')
         self.LoadEveOwners()
         self.LoadEveLocations()
         allianceshortnameRowHeader = blue.DBRowDescriptor((('allianceID', const.DBTYPE_I4), ('shortName', const.DBTYPE_WSTR)))
@@ -546,107 +574,7 @@ class EveConfig(util.config):
 
 
     def __FormatTypeIDAndQuantity(self, typeID, quantity):
-        if boot.role == 'client':
-            languageID = eve.session.languageID
-        elif charsession:
-            languageID = charsession.languageID
-        elif session and session.languageID:
-            languageID = session.languageID
-        else:
-            languageID = prefs.languageID
-        if languageID != 'EN':
-            return '%d %s' % (quantity, self.invtypes.Get(typeID).typeName)
-        if quantity > 1 or quantity == 0:
-            plural = 1
-        else:
-            plural = 0
-        quantity = self.__numberstrings__.get(quantity, quantity)
-        if typeID == const.typeCredits:
-            r = '%s credit%s' % (quantity, ['', 's'][plural])
-        elif typeID in (const.typeSlaver,):
-            r = '%s %s%s' % (quantity, cfg.invtypes.Get(typeID).typeName, ['', 's'][plural])
-        elif self.invtypes.Get(typeID).groupID == const.groupPirateDrone:
-            r = '%s %s%s' % (quantity, self.invtypes.Get(typeID).typeName, ['', 's'][plural])
-        elif self.invtypes.Get(typeID).groupID in (const.groupProjectileAmmo, const.groupHybridAmmo):
-            tn = self.invtypes.Get(typeID).typeName
-            if tn.endswith(' S'):
-                if tn.endswith(' Charge S'):
-                    tn = 'small %s charge%s' % (tn[:-9], ['', 's'][plural])
-                else:
-                    tn = 'small %s ammunition' % tn[:-2]
-            elif tn.endswith(' M'):
-                if tn.endswith(' Charge M'):
-                    tn = 'medium %s charge%s' % (tn[:-9], ['', 's'][plural])
-                else:
-                    tn = 'medium %s ammunition' % tn[:-2]
-            elif tn.endswith(' L'):
-                if tn.endswith(' Charge L'):
-                    tn = 'large %s charge%s' % (tn[:-9], ['', 's'][plural])
-                else:
-                    tn = 'large %s ammunition' % tn[:-2]
-            r = '%s unit%s of %s' % (quantity, ['', 's'][plural], tn)
-        elif self.invgroups.Get(self.invtypes.Get(typeID).groupID).categoryID == const.categoryEntity:
-            r = '%s %s%s' % (quantity, cfg.invtypes.Get(typeID).typeName, ['', 's'][plural])
-        elif cfg.invtypes.Get(typeID).typeName.endswith('Unit') or cfg.invtypes.Get(typeID).typeName.endswith('unit'):
-            r = '%s %s%s' % (quantity, cfg.invtypes.Get(typeID).typeName, ['', 's'][plural])
-        else:
-            r = '%s unit%s of %s' % (quantity, ['', 's'][plural], cfg.invtypes.Get(typeID).typeName)
-        if cfg.invtypes.Get(typeID).typeName[-2:] == 'ss':
-            if r.endswith('sss'):
-                r = r[:-1]
-        elif r.endswith('ss'):
-            r = r[:-1]
-        return r
-
-
-
-    def __FormatSessionSensitiveStationID(self, stationID, solarsystemID):
-        if boot.role == 'client':
-            sess = eve.session
-            (bla, regionID, constellationID, gra, sma,) = sm.GetService('map').GetParentLocationID(solarsystemID, gethierarchy=1)
-        else:
-            sess = charsession
-            stationStuff = sm.services['stationSvc'].GetStation(stationID)
-            (regionID, constellationID,) = (stationStuff.regionID, stationStuff.constellationID)
-        ret = cfg.evelocations.Get(stationID).name
-        if sess:
-            if solarsystemID and solarsystemID != sess.solarsystemid and ret.find(cfg.evelocations.Get(solarsystemID).name) == -1:
-                ret += mls.COMMON_INTHESYSTEM % {'system': cfg.evelocations.Get(solarsystemID).name}
-            if constellationID and constellationID != sess.constellationid:
-                ret += mls.COMMON_INTHECONSTELLATION % {'constellation': cfg.evelocations.Get(constellationID).name}
-                if regionID and regionID != sess.regionid:
-                    ret += mls.COMMON_OFTHEREGION % {'region': cfg.evelocations.Get(regionID).name}
-        return ret
-
-
-
-    def __FormatSessionSensitiveLOCID(self, solarsystemID, bla):
-        if boot.role == 'client':
-            sess = eve.session
-            (bla, regionID, constellationID, gra, sma,) = sm.GetService('map').GetParentLocationID(solarsystemID, gethierarchy=1)
-        else:
-            sess = charsession
-            (regionID, constellationID,) = (None, None)
-        system = cfg.evelocations.Get(solarsystemID).name
-        ret = system
-        if sess:
-            if constellationID and constellationID != sess.constellationid:
-                if regionID and regionID != sess.regionid:
-                    ret = mls.UI_COMMON_INTHESYSTEMINTHECONSTOFTHEREG % {'system': system,
-                     'constellation': cfg.evelocations.Get(constellationID).name,
-                     'region': cfg.evelocations.Get(regionID).name}
-                else:
-                    ret = mls.UI_COMMON_INTHESYSTEMINTHECONST % {'system': system,
-                     'constellation': cfg.evelocations.Get(constellationID).name}
-        return ret
-
-
-
-    def TypeNameList(self, value, value2):
-        if len(value) == 1:
-            return cfg.invtypes.Get(value[0]).typeName
-        leadingTypeNames = [ cfg.invtypes.Get(typeID).typeName for typeID in value[:-1] ]
-        return ', '.join(leadingTypeNames) + ' ' + mls.AND + ' ' + cfg.invtypes.Get(value[-1]).typeName
+        return localization.GetByLabel('UI/Common/QuantityAndItem', quantity=quantity, item=typeID)
 
 
 
@@ -679,33 +607,40 @@ class EveConfig(util.config):
 
 
 
-    def GetLocationScene(self, solarSystemID):
+    def GetNebula(self, solarSystemID, constellationID, regionID, returnPath = True):
         try:
             try:
-                sceneID = self.locationscenes.Get(solarSystemID, 0).sceneID
+                graphicID = self.nebulas.Get(solarSystemID).graphicID
             except KeyError:
-                sceneID = 0
+                try:
+                    graphicID = self.nebulas.Get(constellationID).graphicID
+                except KeyError:
+                    try:
+                        graphicID = self.nebulas.Get(regionID).graphicID
+                    except KeyError:
+                        graphicID = 0
 
         finally:
-            return sceneID
+            if returnPath:
+                return cfg.graphics.Get(graphicID).graphicFile
+            return graphicID
 
-
-
-
-    def GetLocationSceneIndex(self, solarSystemID, constellationID, regionID):
-        if util.IsWormholeSystem(solarSystemID):
-            nebulaType = -self.GetLocationWormholeClass(solarSystemID, constellationID, regionID)
-        else:
-            nebulaType = self.GetLocationScene(solarSystemID)
-        return nebulaType
 
 
 
     def LoadEveOwners(self):
-        npccharacters = self.LoadBulk(None, const.cacheChrNpcCharacters, Recordset(Row, 'characterID'))
-        rowDescriptor = blue.DBRowDescriptor((('ownerID', const.DBTYPE_I4), ('ownerName', const.DBTYPE_WSTR), ('typeID', const.DBTYPE_I2)))
+        npccharacters = self.LoadBulkIndex(None, const.cacheChrNpcCharacters, 'characterID')
+        rowDescriptor = blue.DBRowDescriptor((('ownerID', const.DBTYPE_I4),
+         ('ownerName', const.DBTYPE_WSTR),
+         ('typeID', const.DBTYPE_I2),
+         ('gender', const.DBTYPE_I2),
+         ('ownerNameID', const.DBTYPE_I4)))
         self.eveowners = Recordset(EveOwners, 'ownerID', 'GetOwnersEx', 'GetMultiOwnersEx')
-        self.eveowners.header = ['ownerID', 'ownerName', 'typeID']
+        self.eveowners.header = ['ownerID',
+         'ownerName',
+         'typeID',
+         'gender',
+         'ownerNameID']
         bloodlinesToTypes = {const.bloodlineDeteis: const.typeCharacterDeteis,
          const.bloodlineCivire: const.typeCharacterCivire,
          const.bloodlineSebiestor: const.typeCharacterSebiestor,
@@ -721,63 +656,98 @@ class EveConfig(util.config):
          const.bloodlineKhanid: const.typeCharacterKhanid,
          const.bloodlineVherokior: const.typeCharacterVherokior}
         for row in self.factions:
-            self.eveowners.data[row.factionID] = blue.DBRow(rowDescriptor, [row.factionID, row.factionName, const.typeFaction])
+            self.eveowners.data[row.factionID] = blue.DBRow(rowDescriptor, [row.factionID,
+             row.factionName,
+             const.typeFaction,
+             None,
+             row.factionNameID])
 
         for row in self.npccorporations:
-            self.eveowners.data[row.corporationID] = blue.DBRow(rowDescriptor, [row.corporationID, row.corporationName, const.typeCorporation])
+            self.eveowners.data[row.corporationID] = blue.DBRow(rowDescriptor, [row.corporationID,
+             row.corporationName,
+             const.typeCorporation,
+             None,
+             row.corporationNameID])
 
         for row in npccharacters:
-            self.eveowners.data[row.characterID] = blue.DBRow(rowDescriptor, [row.characterID, row.characterName, bloodlinesToTypes[row.bloodlineID]])
+            self.eveowners.data[row.characterID] = blue.DBRow(rowDescriptor, [row.characterID,
+             row.characterName,
+             bloodlinesToTypes[row.bloodlineID],
+             row.gender,
+             row.characterNameID])
 
-        self.eveowners.data[1] = blue.DBRow(rowDescriptor, [1, 'EVE System', 0])
+        for i in const.auraAgentIDs:
+            self.eveowners.data[i].ownerNameID = OWNER_AURA_IDENTIFIER
+
+        self.eveowners.data[1] = blue.DBRow(rowDescriptor, [1,
+         'EVE System',
+         0,
+         None,
+         OWNER_SYSTEM_IDENTIFIER])
 
 
 
     def LoadEveLocations(self):
-        regions = self.LoadBulk(None, const.cacheMapRegionsTable, Recordset(Row, 'regionID'))
-        constellations = self.LoadBulk(None, const.cacheMapConstellationsTable, Recordset(Row, 'constellationID'))
-        self.solarsystems = self.LoadBulk(None, const.cacheMapSolarSystemsTable, Recordset(SolarSystem, 'solarSystemID'))
-        stations = self.LoadBulk(None, const.cacheStaStationsStatic, Recordset(Row, 'stationID'))
+        self.regions = self.LoadBulkIndex('regions', const.cacheMapRegionsTable, 'regionID')
+        self.constellations = self.LoadBulkIndex('constellations', const.cacheMapConstellationsTable, 'constellationID')
+        self.solarsystems = self.LoadBulkIndex('solarsystems', const.cacheMapSolarSystemsTable, 'solarSystemID', SolarSystem)
+        self.stations = self.LoadBulk('stations', const.cacheStaStationsStatic, Recordset(sys.Row, 'stationID', 'GetStationEx', 'GetMultiStationEx'))
         rowDescriptor = blue.DBRowDescriptor((('locationID', const.DBTYPE_I4),
          ('locationName', const.DBTYPE_WSTR),
          ('x', const.DBTYPE_R5),
          ('y', const.DBTYPE_R5),
-         ('z', const.DBTYPE_R5)))
+         ('z', const.DBTYPE_R5),
+         ('locationNameID', const.DBTYPE_I4)))
         self.evelocations = Recordset(EveLocations, 'locationID', 'GetLocationsEx', 'GetMultiLocationsEx')
         self.evelocations.header = ['locationID',
          'locationName',
          'x',
          'y',
-         'z']
-        for row in regions:
+         'z',
+         'locationNameID']
+        for row in self.regions:
             self.evelocations.data[row.regionID] = blue.DBRow(rowDescriptor, [row.regionID,
              row.regionName,
              row.x,
              row.y,
-             -row.z])
+             row.z,
+             None])
 
-        for row in constellations:
+        for row in self.constellations:
             self.evelocations.data[row.constellationID] = blue.DBRow(rowDescriptor, [row.constellationID,
              row.constellationName,
              row.x,
              row.y,
-             -row.z])
+             row.z,
+             None])
 
         for row in self.solarsystems:
             self.evelocations.data[row.solarSystemID] = blue.DBRow(rowDescriptor, [row.solarSystemID,
              row.solarSystemName,
              row.x,
              row.y,
-             -row.z])
+             row.z,
+             None])
 
-        for row in stations:
+        for row in self.stations:
             self.evelocations.data[row.stationID] = blue.DBRow(rowDescriptor, [row.stationID,
              row.stationName,
              row.x,
              row.y,
-             -row.z])
+             row.z,
+             None])
 
 
+
+
+
+def GetStrippedEnglishMessage(messageID):
+    msg = localization.GetByMessageID(messageID, 'en-us')
+    if msg:
+        regex = '</localized>|<localized>|<localized .*?>|<localized *=.*?>'
+        return ''.join(re.split(regex, msg))
+    else:
+        return ''
 
 
 
@@ -811,12 +781,12 @@ class InvGroup(Row):
 
     def __getattr__(self, name):
         if name == '_groupName':
-            return Row.__getattr__(self, 'groupName')
+            return GetStrippedEnglishMessage(self.groupNameID)
         if name == 'name':
             name = 'groupName'
         value = Row.__getattr__(self, name)
         if name == 'groupName':
-            return Tr(value, 'inventory.groups.groupName', self.dataID)
+            return localization.GetByMessageID(self.groupNameID)
         return value
 
 
@@ -840,12 +810,12 @@ class InvCategory(Row):
 
     def __getattr__(self, name):
         if name == '_categoryName':
-            return Row.__getattr__(self, 'categoryName')
+            return GetStrippedEnglishMessage(self.categoryNameID)
         if name == 'name' or name == 'description':
             name = 'categoryName'
         value = Row.__getattr__(self, name)
         if name == 'categoryName':
-            return Tr(value, 'inventory.categories.categoryName', self.dataID)
+            return localization.GetByMessageID(self.categoryNameID)
         return value
 
 
@@ -943,18 +913,17 @@ class InvType(Row):
 
     def __getattr__(self, name):
         if name == '_typeName':
-            return Row.__getattr__(self, 'typeName')
+            return GetStrippedEnglishMessage(self.typeNameID)
         else:
             if name == 'name':
                 name = 'typeName'
             if name == 'categoryID':
                 return cfg.invgroups.Get(self.groupID).categoryID
-            value = Row.__getattr__(self, name)
             if name == 'typeName':
-                return Tr(value, 'inventory.types.typeName', self.dataID)
+                return localization.GetByMessageID(self.typeNameID)
             if name == 'description':
-                return Tr(value, 'inventory.types.description', self.dataID)
-            return value
+                return localization.GetByMessageID(self.descriptionID)
+            return Row.__getattr__(self, name)
 
 
 
@@ -1054,12 +1023,14 @@ def IsCorporation(ownerID):
 def IsCharacter(ownerID):
     if ownerID >= 3000000 and ownerID < 4000000:
         return 1
-    else:
-        if ownerID < 90000000 or ownerID > 2147483647:
-            return 0
-        if boot.role == 'server' and sm.GetService('standing2').IsKnownToBeAPlayerCorp(ownerID):
-            return 0
+    if ownerID < 90000000 or ownerID > 2147483647:
+        return 0
+    if boot.role == 'server' and sm.GetService('standing2').IsKnownToBeAPlayerCorp(ownerID):
+        return 0
+    try:
         return cfg.eveowners.Get(ownerID).IsCharacter()
+    except KeyError:
+        return 0
 
 
 
@@ -1303,6 +1274,29 @@ def IsPlaceable(typeID):
 
 
 
+def IsEveUser(userID):
+    if userID < const.minDustUser:
+        return True
+    return False
+
+
+
+def IsDustUser(userID):
+    if userID > const.minDustUser:
+        return True
+    return False
+
+
+
+def IsDustCharacter(characterID):
+    if characterID > const.minDustCharacter and characterID < const.maxDustCharacter:
+        return True
+    return False
+
+
+OWNER_NAME_OVERRIDES = {OWNER_AURA_IDENTIFIER: 'UI/Agents/AuraAgentName',
+ OWNER_SYSTEM_IDENTIFIER: 'UI/Chat/ChatEngine/EveSystem'}
+
 class EveOwners(Row):
     __guid__ = 'cfg.EveOwners'
 
@@ -1311,14 +1305,13 @@ class EveOwners(Row):
             name = 'ownerName'
         elif name == 'groupID':
             return cfg.invtypes.Get(self.typeID).groupID
-        value = Row.__getattr__(self, name)
-        if name == 'ownerName' and IsSystemOrNPC(self.ownerID):
-            if self.IsFaction():
-                return Tr(value, 'character.factions.factionName', self.ownerID)
-            if self.IsCorporation():
-                return Tr(value, 'corporation.npcCorporations.corporationName', self.ownerID)
-            if self.IsCharacter():
-                return Tr(value, 'character.npcCharacters.characterName', self.ownerID)
+        if name == 'ownerName' and self.ownerNameID is not None:
+            if self.ownerNameID > 0:
+                value = localization.GetByMessageID(self.ownerNameID)
+            else:
+                value = localization.GetByLabel(OWNER_NAME_OVERRIDES[self.ownerNameID])
+        else:
+            value = Row.__getattr__(self, name)
         return value
 
 
@@ -1394,7 +1387,7 @@ class DgmAttribute(Row):
         if name == 'displayName':
             if len(value) == 0:
                 value = self.attributeName
-            value = Tr(value, 'dogma.attributes.displayName', self.dataID)
+            value = localization.GetByMessageID(self.displayNameID)
         return value
 
 
@@ -1404,14 +1397,11 @@ class DgmEffect(Row):
     __guid__ = 'cfg.DgmEffect'
 
     def __getattr__(self, name):
-        value = Row.__getattr__(self, name)
         if name == 'displayName':
-            if len(value) == 0:
-                value = self.effectName
-            value = Tr(value, 'dogma.effects.displayName', self.dataID)
+            return localization.GetByMessageID(self.displayNameID)
         if name == 'description':
-            value = Tr(value, 'dogma.effects.description', self.dataID)
-        return value
+            return localization.GetByMessageID(self.descriptionID)
+        return Row.__getattr__(self, name)
 
 
 
@@ -1439,6 +1429,11 @@ class EveLocations(Row):
     def __getattr__(self, name):
         if name == 'name' or name == 'description':
             name = 'locationName'
+        if name == 'locationName' and self.locationNameID is not None:
+            if isinstance(self.locationNameID, (int, long)):
+                return localization.GetByMessageID(self.locationNameID)
+            if isinstance(self.locationNameID, tuple):
+                return localization.GetByLabel(self.locationNameID[0], **self.locationNameID[1])
         value = Row.__getattr__(self, name)
         return value
 
@@ -1463,9 +1458,9 @@ class RamCompletedStatus(Row):
             name = 'completedStatusText'
         value = Row.__getattr__(self, name)
         if name == 'completedStatusText':
-            value = Tr(value, 'dbo.ramCompletedStatuses.completedStatusText', self.completedStatus)
+            value = localization.GetByMessageID(self.completedStatusTextID)
         elif name == 'description':
-            return Tr(value, 'dbo.ramCompletedStatuses.description', self.completedStatus)
+            return localization.GetByMessageID(self.descriptionID)
         return value
 
 
@@ -1484,14 +1479,11 @@ class RamActivity(Row):
     __guid__ = 'cfg.RamActivity'
 
     def __getattr__(self, name):
-        if name == 'name':
-            name = 'activityName'
-        value = Row.__getattr__(self, name)
-        if name == 'activityName':
-            value = Tr(value, 'dbo.ramActivities.activityName', self.activityID)
-        elif name == 'description':
-            return Tr(value, 'dbo.ramActivities.description', self.activityID)
-        return value
+        if name in ('activityName', 'name'):
+            return localization.GetByMessageID(self.activityNameID)
+        if name == 'description':
+            return localization.GetByMessageID(self.descriptionID)
+        return Row.__getattr__(self, name)
 
 
 
@@ -1511,7 +1503,7 @@ class MapCelestialDescription(Row):
     def __getattr__(self, name):
         value = Row.__getattr__(self, name)
         if name == 'description':
-            value = Tr(value, 'map.itemDescriptions.description', self.dataID)
+            value = localization.GetByMessageID(self.descriptionID)
         return value
 
 
@@ -1527,12 +1519,12 @@ class InvMetaGroup(Row):
 
     def __getattr__(self, name):
         if name == '_metaGroupName':
-            return Row.__getattr__(self, 'metaGroupName')
+            return GetStrippedEnglishMessage(self.metaGroupNameID)
         if name == 'name':
             name = 'metaGroupName'
         value = Row.__getattr__(self, name)
         if name == 'metaGroupName':
-            return Tr(value, 'inventory.metaGroups.metaGroupName', self.dataID)
+            return localization.GetByMessageID(self.metaGroupNameID)
         return value
 
 
@@ -1540,7 +1532,7 @@ class InvMetaGroup(Row):
     def __str__(self):
         try:
             cat = self.Category()
-            return 'InvMetaGroup ID: %d, "%s"' % (self.groupID,
+            return 'InvMetaGroup ID: %d, "%s", "%s", "%s"' % (self.metaGroupID,
              cat.id,
              cat.name,
              self.metaGroupName)
@@ -1557,7 +1549,7 @@ class Certificate(Row):
     def __getattr__(self, name):
         value = Row.__getattr__(self, name)
         if name == 'description':
-            value = Tr(value, 'cert.certificates.description', self.dataID)
+            value = localization.GetByMessageID(self.descriptionID)
         return value
 
 
@@ -1572,10 +1564,9 @@ class Schematic(Row):
     __guid__ = 'cfg.Schematic'
 
     def __getattr__(self, name):
-        value = Row.__getattr__(self, name)
         if name == 'schematicName':
-            value = Tr(value, 'planet.schematics.schematicName', self.dataID)
-        return value
+            return localization.GetByMessageID(self.schematicNameID)
+        return Row.__getattr__(self, name)
 
 
 
@@ -1599,7 +1590,7 @@ class Billtype(Row):
     def __getattr__(self, name):
         value = Row.__getattr__(self, name)
         if name == 'billTypeName':
-            value = Tr(value, 'accounting.billTypes.billTypeName', self.dataID)
+            value = localization.GetByMessageID(self.billTypeNameID)
         return value
 
 
@@ -1742,147 +1733,21 @@ class PropertyBag():
 
 
 
-class OrderTypeInfo():
-    __guid__ = 'util.OrderTypeInfo'
-    __passbyvalue__ = 1
-
-    def __init__(self, typeID, subTypeID = None):
-        self.SetBlueprintInfo(typeID)
-        self.subTypeID = subTypeID
-        self.isBlueprint = self.IsBlueprint()
-        self.isVoucher = self.IsVoucher()
-
-
-
-    def SetBlueprintInfo(self, typeID, productivityLevel = 0, materialLevel = 0, isCopy = 1):
-        self.typeID = typeID
-        self.productivityLevel = productivityLevel
-        self.materialLevel = materialLevel
-        self.isCopy = isCopy
-
-
-
-    def IsVoucher(self):
-        return cfg.invtypes.Get(self.typeID).groupID == const.groupVoucher
-
-
-
-    def IsBlueprint(self):
-        return cfg.invtypes.Get(self.typeID).categoryID == const.categoryBlueprint
-
-
-
-    def ItemMeetsRequirements(self, item, info):
-        if self.IsVoucher():
-            if not hasattr(item, '__vouchertype__'):
-                raise RuntimeError('ItemNeedsToBeAVoucherIfItIsAVoucher')
-            vti = item.GetTypeInfo()
-            myvti = (self.typeID, self.subTypeID)
-            return vti == myvti
-        if self.IsBlueprint():
-            if self.typeID != item.typeID:
-                return 0
-            if item.categoryID == const.categoryBlueprint:
-                materialLevelRequired = self.materialLevel
-                productivityLevelRequired = self.productivityLevel
-                isCopy = self.isCopy
-            if materialLevelRequired == 0 and productivityLevelRequired == 0 and isCopy != 1:
-                return 1
-            if not info:
-                raise RuntimeError('PassTheBlueprintInfoInParam_info')
-            isCopy = self.isCopy
-            if isCopy is not None:
-                if info.isCopy and isCopy == 0:
-                    return 0
-            if info.materialLevel >= materialLevelRequired and info.productivityLevel >= productivityLevelRequired:
-                return 1
-        raise RuntimeError('Slowness comparison detected')
-
-
-
-    def GetDescription(self):
-        typeID = self.typeID
-        subTypeID = self.subTypeID
-        description = ''
-        if self.IsVoucher():
-            if typeID == const.typeCompanyShares:
-                description = mls.COMMON_SHARES
-                if subTypeID is not None:
-                    description = mls.COMMON_SHARESDESCRIPTION % {'shares': cfg.eveowners.Get(subTypeID).name}
-                return description
-            if typeID == const.typeBookmark:
-                description = mls.COMMON_BOOKMARK
-                if subTypeID is not None:
-                    description = '%s - %s' % (description, cfg.evelocations.Get(subTypeID).name)
-                return description
-            if typeID == const.typePlayerKill:
-                description = mls.COMMON_KILL
-                if subTypeID is not None:
-                    description = '%s: %s' % (description, cfg.eveowners.Get(subTypeID).name)
-                return description
-        elif self.IsBlueprint():
-            materialLevel = self.materialLevel
-            productivityLevel = self.productivityLevel
-            isCopy = self.isCopy
-            description = cfg.invtypes.Get(typeID).name
-            if productivityLevel:
-                description = mls.COMMON_PRODUCTIVITYDESCRIPTION % {'type': description,
-                 'prodLevel': productivityLevel}
-            if materialLevel:
-                description = mls.COMMON_MATERIALDESCRIPTION % {'type': description,
-                 'matLevel': materialLevel}
-            if isCopy is not None:
-                description = mls.COMMON_COPYDESCRIPTION % {'type': description,
-                 'isCopy': isCopy}
-            return description
-        if typeID is not None:
-            return cfg.invtypes.Get(typeID).name
-
-
-
-    def GetTypeKey(self):
-        return (self.typeID, self.subTypeID)
-
-
-
-    def __getstate__(self):
-        if self.isBlueprint:
-            return (self.typeID,
-             self.productivityLevel,
-             self.materialLevel,
-             self.isCopy)
-        if self.isVoucher:
-            return (self.typeID, self.subTypeID)
-        return self.typeID
-
-
-
-    def __setstate__(self, state):
-        if type(state) == type(0):
-            self.__init__(state)
-        elif len(state) == 2:
-            self.__init__(*state)
-        elif len(state) == 4:
-            self.SetBlueprintInfo(*state)
-            self.subTypeID = None
-            self.isBlueprint = 1
-            self.isVoucher = 0
-
-
-
-
 class OverviewDefault(Row):
     __guid__ = 'sys.OverviewDefault'
 
     def __getattr__(self, name):
         if name == '_overviewName':
             return Row.__getattr__(self, 'overviewName')
-        if name == 'name':
-            name = 'overviewName'
+        if name in ('name', 'overviewName'):
+            return localization.GetByMessageID(self.overviewNameID)
         value = Row.__getattr__(self, name)
-        if name == 'overviewName':
-            return Tr(value, 'character.defaultOverviews.overviewName', self.dataID)
         return value
+
+
+
+    def __str__(self):
+        return 'DefaultOverview ID: %d, "%s"' % (self.overviewID, self.overviewName)
 
 
 
@@ -1909,16 +1774,27 @@ class Position(Row):
 
 
 
+class Faction(Row):
+    __guid__ = 'cfg.Faction'
+
+    def __getattr__(self, name):
+        if name == 'factionName':
+            return localization.GetByMessageID(self.factionNameID)
+        return Row.__getattr__(self, name)
+
+
+
+
 def IsWarInHostileState(row):
-    if not row.retracted or blue.os.GetTime() - row.retracted < 24 * const.HOUR:
-        if blue.os.GetTime() - row.timeDeclared >= 24 * const.HOUR:
+    if not row.retracted or blue.os.GetWallclockTime() - row.retracted < 24 * const.HOUR:
+        if blue.os.GetWallclockTime() - row.timeDeclared >= 24 * const.HOUR:
             return 1
     return 0
 
 
 
 def IsWarActive(row):
-    if not row.retracted or blue.os.GetTime() - row.retracted < 24 * const.HOUR:
+    if not row.retracted or blue.os.GetWallclockTime() - row.retracted < 24 * const.HOUR:
         return 1
     return 0
 
@@ -1944,7 +1820,7 @@ def GetReprocessingOptions(types):
         isRefinable = 0
         typeInfo = cfg.invtypes.Get(typeID)
         if typeID not in noneTypes and typeInfo.groupID not in noneGroups and typeInfo.categoryID not in noneCategories:
-            if cfg.invtypematerials.has_key(typeID):
+            if typeID in cfg.invtypematerials:
                 materials = cfg.invtypematerials[typeID]
                 if len(materials) > 0:
                     if typeInfo.categoryID == const.categoryAsteroid or typeInfo.groupID == const.groupHarvestableCloud:
@@ -1986,45 +1862,51 @@ def IsFlagSubSystem(flag):
 
 def GetShipFlagLocationName(flag):
     if flag >= const.flagHiSlot0 and flag <= const.flagHiSlot7:
-        locationName = mls.UI_GENERIC_HIGHSLOT
+        locationName = localization.GetByLabel('UI/Ship/HighSlot')
     elif flag >= const.flagMedSlot0 and flag <= const.flagMedSlot7:
-        locationName = mls.UI_GENERIC_MEDSLOT
+        locationName = localization.GetByLabel('UI/Ship/MediumSlot')
     elif flag >= const.flagLoSlot0 and flag <= const.flagLoSlot7:
-        locationName = mls.UI_GENERIC_LOWSLOT
+        locationName = localization.GetByLabel('UI/Ship/LowSlot')
     elif flag >= const.flagRigSlot0 and flag <= const.flagRigSlot7:
-        locationName = mls.UI_GENERIC_RIGSLOT
+        locationName = localization.GetByLabel('UI/Ship/RigSlot')
     elif flag >= const.flagSubSystemSlot0 and flag <= const.flagSubSystemSlot7:
-        locationName = mls.UI_GENERIC_SUBSYSTEM
+        locationName = localization.GetByLabel('UI/Ship/Subsystem')
     elif flag == const.flagCargo:
-        locationName = mls.UI_GENERIC_CARGO
+        locationName = localization.GetByLabel('UI/Ship/CargoHold')
     elif flag == const.flagDroneBay:
-        locationName = mls.UI_GENERIC_DRONEBAY
+        locationName = localization.GetByLabel('UI/Ship/DroneBay')
     elif flag == const.flagShipHangar:
-        locationName = mls.UI_GENERIC_SHIPBAY
+        locationName = localization.GetByLabel('UI/Ship/ShipMaintenanceBay')
     elif flag == const.flagHangar or flag >= const.flagCorpSAG2 and flag <= const.flagCorpSAG7:
-        locationName = mls.UI_GENERIC_CORPHANGAR
+        locationName = localization.GetByLabel('UI/Corporations/Common/CorporateHangar')
     elif flag == const.flagSpecializedFuelBay:
-        locationName = mls.UI_GENERIC_FUELBAY
+        locationName = localization.GetByLabel('UI/Ship/FuelBay')
     elif flag == const.flagSpecializedOreHold:
-        locationName = mls.UI_GENERIC_OREHOLD
+        locationName = localization.GetByLabel('UI/Ship/OreHold')
     elif flag == const.flagSpecializedGasHold:
-        locationName = mls.UI_GENERIC_GASHOLD
+        locationName = localization.GetByLabel('UI/Ship/GasHold')
     elif flag == const.flagSpecializedMineralHold:
-        locationName = mls.UI_GENERIC_MINERALHOLD
+        locationName = localization.GetByLabel('UI/Ship/MineralHold')
     elif flag == const.flagSpecializedSalvageHold:
-        locationName = mls.UI_GENERIC_SALVAGEHOLD
+        locationName = localization.GetByLabel('UI/Ship/SalvageHold')
     elif flag == const.flagSpecializedShipHold:
-        locationName = mls.UI_GENERIC_SHIPHOLD
+        locationName = localization.GetByLabel('UI/Ship/ShipHold')
     elif flag == const.flagSpecializedSmallShipHold:
-        locationName = mls.UI_GENERIC_SMALLSHIPHOLD
+        locationName = localization.GetByLabel('UI/Ship/SmallShipHold')
     elif flag == const.flagSpecializedMediumShipHold:
-        locationName = mls.UI_GENERIC_MEDIUMSHIPHOLD
+        locationName = localization.GetByLabel('UI/Ship/MediumShipHold')
     elif flag == const.flagSpecializedLargeShipHold:
-        locationName = mls.UI_GENERIC_LARGESHIPHOLD
+        locationName = localization.GetByLabel('UI/Ship/LargeShipHold')
     elif flag == const.flagSpecializedIndustrialShipHold:
-        locationName = mls.UI_GENERIC_INDUSTRIALSHIPHOLD
+        locationName = localization.GetByLabel('UI/Ship/IndustrialShipHold')
     elif flag == const.flagSpecializedAmmoHold:
-        locationName = mls.UI_GENERIC_AMMOHOLD
+        locationName = localization.GetByLabel('UI/Ship/AmmoHold')
+    elif flag == const.flagSpecializedCommandCenterHold:
+        locationName = localization.GetByLabel('UI/Ship/CommandCenterHold')
+    elif flag == const.flagSpecializedPlanetaryCommoditiesHold:
+        locationName = localization.GetByLabel('UI/Ship/PlanetaryCommoditiesHold')
+    elif flag == const.flagSpecializedMaterialBay:
+        locationName = localization.GetByLabel('UI/Ship/MaterialBay')
     else:
         locationName = ''
     return locationName
@@ -2091,6 +1973,11 @@ def GetActiveShip():
     return shipID
 
 
+
+def IsBookmarkModerator(corpRole):
+    return corpRole & const.corpRoleChatManager == const.corpRoleChatManager
+
+
 exports = {'util.GraphicFile': GraphicFile,
  'util.IconFile': IconFile,
  'util.StackSize': StackSize,
@@ -2138,9 +2025,14 @@ exports = {'util.GraphicFile': GraphicFile,
  'util.GetShipFlagLocationName': GetShipFlagLocationName,
  'util.GetPlanetWarpInPoint': GetPlanetWarpInPoint,
  'util.IsPlaceable': IsPlaceable,
+ 'util.IsEveUser': IsEveUser,
+ 'util.IsDustUser': IsDustUser,
+ 'util.IsDustCharacter': IsDustCharacter,
  'util.IsOrbital': IsOrbital,
  'util.GetCurrencyTypeFromKey': GetCurrencyTypeFromKey,
  'util.GetActiveShip': GetActiveShip,
  'util.DgmAttribute': DgmAttribute,
- 'util.DgmEffect': DgmEffect}
+ 'util.DgmEffect': DgmEffect,
+ 'util.IsNPCCorporation': IsNPCCorporation,
+ 'util.IsBookmarkModerator': IsBookmarkModerator}
 

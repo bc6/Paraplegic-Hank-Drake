@@ -83,7 +83,7 @@ class Session(object):
         self.platform = 0
         self.testbedName = testbedName or '?'
         self.description = description
-        self.startTime = blue.os.GetTime()
+        self.startTime = blue.os.GetWallclockTime()
         self.stopTime = self.startTime
         self.version = str(boot.version)
         self.build = boot.build
@@ -104,7 +104,7 @@ class Session(object):
         self.capturing = True
         while self.capturing:
             self.Snap()
-            blue.pyos.synchro.Sleep(1000)
+            blue.pyos.synchro.SleepWallclock(1000)
 
 
 
@@ -116,7 +116,9 @@ class Session(object):
 
 
     def Snap(self):
-        self.snapshots.append((blue.os.GetTime(), Snapshot()))
+        snapshot = Snapshot()
+        self.snapshots.append((blue.os.GetWallclockTime(), snapshot))
+        return snapshot
 
 
 
@@ -182,13 +184,13 @@ class Session(object):
 
 
     def Start(self):
-        self.startTime = blue.os.GetTime()
+        self.startTime = blue.os.GetWallclockTime()
         self.data = Snapshot()
 
 
 
     def Stop(self):
-        self.stopTime = blue.os.GetTime()
+        self.stopTime = blue.os.GetWallclockTime()
         s = Snapshot()
         self.data += s
 
@@ -196,14 +198,14 @@ class Session(object):
 
     def AddValue(self, key, platformIndependent, description, format, value):
         self.data[key] = Value(ValueType(platformIndependent, format, description), value)
-        self.stopTime = blue.os.GetTime()
+        self.stopTime = blue.os.GetWallclockTime()
 
 
 
     def GetOrMakeFile(self, *args):
         import os
         invalidChars = '\\/:*?"<>| '
-        timestamp = util.FmtDate(blue.os.GetTime())
+        timestamp = util.FmtDateEng(blue.os.GetWallclockTime())
         for char in invalidChars:
             timestamp = timestamp.replace(char, '.')
 
@@ -506,7 +508,7 @@ class Snapshot(ValueDict):
 
 
     def GetTimestamp(self):
-        return Value(ValueType(False, 't'), blue.os.GetTime(1))
+        return Value(ValueType(False, 't'), blue.os.GetWallclockTimeNow())
 
 
 

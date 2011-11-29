@@ -1,5 +1,6 @@
 import uiconst
 import uicls
+import localization
 
 class MessageBoxCore(uicls.Window):
     __guid__ = 'uicls.MessageBoxCore'
@@ -22,13 +23,13 @@ class MessageBoxCore(uicls.Window):
 
 
     def Prepare_Caption_(self):
-        self.sr.caption = uicls.Label(text='', align=uiconst.CENTERLEFT, parent=self.sr.topArea, pos=(64, 0, 270, 0), autoheight=1, autowidth=0)
+        self.sr.caption = uicls.Label(text='', align=uiconst.CENTERLEFT, parent=self.sr.topArea, pos=(64, 0, 270, 0))
 
 
 
     def Execute(self, text, title, buttons, icon, suppText, customicon = None, height = None, default = None):
         if title is None:
-            title = mls.UI_GENERIC_INFORMATION
+            title = localization.GetByLabel('/Carbon/UI/Common/Information')
         self.sr.topArea = self.Split(uiconst.SPLITTOP, 56, line=0)
         self.SetButtons(buttons, defaultBtn=default)
         if suppText:

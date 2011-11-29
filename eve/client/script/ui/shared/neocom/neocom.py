@@ -14,17 +14,24 @@ import log
 import uiconst
 import math
 from collections import deque
-FRAME_WIDTH = 10
-FRAME_SEPERATION = 30
+import form
+import localization
+import fontConst
+import bookmarkUtil
+from service import ROLE_GML
+FRAME_WIDTH = 20
+FRAME_SEPERATION = 10
+NEOCOM_PANELWIDTH = 328
+LOCATION_PANELWIDTH = 600
 BACKGROUND_COLOR = (0,
  0,
  0,
  0.1)
-BTN_BACKGROUND_COLOR = (0,
- 0,
- 0,
- 0.6)
 BUTTONHEIGHT = 30
+ROUTE_MARKERSIZE = 8
+ROUTE_MARKERGAP = 2
+IDLE_ROUTEMARKER_ALPHA = 0.75
+STD_TEXTSHADOWOFFSET = (0, 1)
 MO = [3.5455531962,
  3.36937132567,
  2.59914513634,
@@ -32,34 +39,130 @@ MO = [3.5455531962,
  0.63290495212,
  0.05177315618,
  0.0]
-LOCATION_LINE_HEIGHT = 14
+EXPANDED_SIZE = 132
+COLLAPSED_SIZE = 36
+
+class SessionTimeIndicator(uicls.Container):
+    __guid__ = 'uicls.SessionTimeIndicator'
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        size = 24
+        self.ramps = uicls.Container(parent=self, name='ramps', pos=(0,
+         0,
+         size,
+         size), align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED)
+        leftRampCont = uicls.Container(parent=self.ramps, name='leftRampCont', pos=(0,
+         0,
+         size / 2,
+         size), align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, clipChildren=True)
+        self.leftRamp = uicls.Transform(parent=leftRampCont, name='leftRamp', pos=(0,
+         0,
+         size,
+         size), align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED)
+        uicls.Sprite(parent=self.leftRamp, name='rampSprite', pos=(0,
+         0,
+         size / 2,
+         size), state=uiconst.UI_DISABLED, texturePath='res:/UI/Texture/classes/TiDiIndicator/left.png', color=(0, 0, 0, 0.5))
+        rightRampCont = uicls.Container(parent=self.ramps, name='rightRampCont', pos=(0,
+         0,
+         size / 2,
+         size), align=uiconst.TOPRIGHT, state=uiconst.UI_DISABLED, clipChildren=True)
+        self.rightRamp = uicls.Transform(parent=rightRampCont, name='rightRamp', pos=(-size / 2,
+         0,
+         size,
+         size), align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED)
+        uicls.Sprite(parent=self.rightRamp, name='rampSprite', pos=(size / 2,
+         0,
+         size / 2,
+         size), state=uiconst.UI_DISABLED, texturePath='res:/UI/Texture/classes/TiDiIndicator/right.png', color=(0, 0, 0, 0.5))
+        self.coloredPie = uicls.Sprite(parent=self, name='tidiColoredPie', pos=(0,
+         0,
+         size,
+         size), texturePath='res:/UI/Texture/classes/TiDiIndicator/circle.png', state=uiconst.UI_DISABLED, color=(1, 1, 1, 0.5))
+
+
+
+    def SetStopTime(self, stopTime):
+        startTime = blue.os.GetSimTime()
+        duration = stopTime - startTime
+        while blue.os.GetSimTime() < stopTime:
+            timeDiff = stopTime - blue.os.GetSimTime()
+            progress = timeDiff / float(duration)
+            self.SetProgress(1.0 - progress)
+            timeLeft = util.FmtTimeInterval(timeDiff, breakAt='sec')
+            self.hint = localization.GetByLabel('UI/Neocom/SessionChangeHint', timeLeft=timeLeft)
+            self.state = uiconst.UI_NORMAL
+            uicore.CheckHint()
+            blue.pyos.synchro.Yield()
+
+        self.SetProgress(1.0)
+        self.state = uiconst.UI_HIDDEN
+
+
+
+    def SetProgress(self, progress):
+        progress = max(0.0, min(1.0, progress))
+        leftRamp = min(1.0, max(0.0, progress * 2))
+        rightRamp = min(1.0, max(0.0, progress * 2 - 1.0))
+        self.leftRamp.SetRotation(math.pi + math.pi * leftRamp)
+        self.rightRamp.SetRotation(math.pi + math.pi * rightRamp)
+
+
+
 
 class NeocomContainer(uicls.Container):
     __guid__ = 'uicls.NeocomContainer'
     default_name = 'neocomContainer'
     default_padTop = FRAME_SEPERATION
+    default_padRight = LOCATION_PANELWIDTH - NEOCOM_PANELWIDTH
     default_align = uiconst.TOTOP
     default_collapsable = False
-    FRAME_PADDING = (-FRAME_WIDTH,
-     -FRAME_WIDTH,
-     -FRAME_WIDTH,
-     -FRAME_WIDTH)
 
     def ApplyAttributes(self, attributes):
         uicls.Container.ApplyAttributes(self, attributes)
         self.collapsable = attributes.get('collapsable', self.default_collapsable)
         if self.collapsable:
-            self.collapseContainer = uicls.Container(parent=self, name='collapseContainer', align=uiconst.TOPRIGHT, pos=(0, 0, 15, 15), state=uiconst.UI_NORMAL)
-            self.collapseIcon = uicls.Sprite(name='collapseIcon', parent=self.collapseContainer, texturePath='res:/UI/Texture/Shared/expanderUp.png', pos=(1, 2, 11, 11), hint=mls.UI_CMD_COLLAPSE)
+            self.collapseContainer = uicls.Container(parent=self, name='collapseContainer', align=uiconst.TOPRIGHT, pos=(FRAME_WIDTH,
+             0,
+             15,
+             15), state=uiconst.UI_NORMAL)
+            self.collapseIcon = uicls.Sprite(name='collapseIcon', parent=self.collapseContainer, texturePath='res:/UI/Texture/Shared/expanderUp.png', pos=(1, 2, 11, 11), hint=localization.GetByLabel('UI/Neocom/Collapse'))
             self.collapseHighlight = uicls.Fill(parent=self.collapseContainer, color=(1, 1, 1, 0.25), state=uiconst.UI_HIDDEN)
             self.collapseIcon.OnClick = self.ToggleCollapseState
             self.collapseIcon.OnMouseEnter = (self.CollapseButtonEnter, self.collapseIcon)
             self.collapseIcon.OnMouseExit = (self.CollapseButtonExit, self.collapseIcon)
             self.collapsed = False
-        self.content = uicls.Container(parent=self, name='content', align=uiconst.TOALL)
-        background = uicls.Container(parent=self, name='background', align=uiconst.TOALL, padding=self.FRAME_PADDING)
-        uicls.Frame(parent=background, color=BACKGROUND_COLOR, name='backgroundFrame')
-        uicls.Fill(parent=background, color=BACKGROUND_COLOR, name='backgroundColor')
+        contentPadding = attributes.get('contentPadding', FRAME_WIDTH)
+        self.content = uicls.Container(parent=self, name='content', align=uiconst.TOALL, padding=(contentPadding,
+         0,
+         contentPadding,
+         0))
+
+
+
+    def PostApplyAttributes(self, attributes):
+        self.UpdateStandardAppearance()
+
+
+
+    def UpdateStandardAppearance(self, *args):
+
+        def WalkContainer(container):
+            for each in container.children:
+                if getattr(each, 'children', None):
+                    WalkContainer(each)
+                elif isinstance(each, uicls.Label):
+                    each.shadowOffset = STD_TEXTSHADOWOFFSET
+
+
+
+        WalkContainer(self.content)
+
+
+
+    def Flush(self):
+        self.content.Flush()
 
 
 
@@ -67,10 +170,10 @@ class NeocomContainer(uicls.Container):
         self.collapsed = not self.collapsed
         if self.collapsed:
             self.collapseIcon.LoadTexture('res:/UI/Texture/Shared/expanderDown.png')
-            self.collapseIcon.SetHint(mls.UI_CMD_EXPAND)
+            self.collapseIcon.SetHint(localization.GetByLabel('UI/Neocom/Expand'))
         else:
             self.collapseIcon.LoadTexture('res:/UI/Texture/Shared/expanderUp.png')
-            self.collapseIcon.SetHint(mls.UI_CMD_COLLAPSE)
+            self.collapseIcon.SetHint(localization.GetByLabel('UI/Neocom/Collapse'))
         self.OnCollapse(self.collapsed)
 
 
@@ -90,21 +193,28 @@ class NeocomContainer(uicls.Container):
 
 
 
+    def _OnSizeChange_NoBlock(self, newWidth, newHeight):
+        softShadow = uicore.layer.neocom.FindChild('softShadow')
+        if softShadow:
+            totalHeight = sum([ each.height + each.padTop + each.padBottom for each in self.parent.children if isinstance(each, uicls.NeocomContainer) ])
+            softShadow.height = int(totalHeight * 2)
+
+
+
 
 class NeocomSvc(service.Service):
     __update_on_reload__ = 0
     __exportedcalls__ = {'Blink': [],
      'BlinkOff': [],
      'Position': [],
-     'SetXtraText': [],
+     'LoadRouteData': [],
      'GetSideOffset': [],
      'Minimize': [],
      'Maximize': [],
      'UpdateMenu': [],
-     'UpdateNeocom': [],
      'SetLocationInfoState': []}
     __guid__ = 'svc.neocom'
-    __dependencies__ = ['settings']
+    __dependencies__ = ['settings', 'contracts']
     __notifyevents__ = ['OnSetDevice',
      'OnSessionChanged',
      'OnAggressionChanged',
@@ -112,7 +222,9 @@ class NeocomSvc(service.Service):
      'OnSystemStatusChanged',
      'OnSovereigntyChanged',
      'OnPostCfgDataChanged',
-     'OnEntitySelectionChanged']
+     'ProcessUIRefresh',
+     'OnEntitySelectionChanged',
+     'OnViewStateChanged']
 
     def __init__(self):
         service.Service.__init__(self)
@@ -129,6 +241,10 @@ class NeocomSvc(service.Service):
         self.Reset()
         if eve.session.charid and not (eve.rookieState and eve.rookieState < 2):
             self.UpdateNeocom()
+            if 'starmap' in sm.services:
+                routeData = sm.GetService('starmap').GetDestinationPath()
+                if routeData != [None]:
+                    self.LoadRouteData(routeData)
 
 
 
@@ -141,6 +257,12 @@ class NeocomSvc(service.Service):
 
 
 
+    def ProcessUIRefresh(self):
+        self.Stop()
+        self.Run()
+
+
+
     def OnSystemStatusChanged(self, *args):
         if eve.session.charid:
             self.UpdateNeocom(0)
@@ -148,12 +270,12 @@ class NeocomSvc(service.Service):
 
 
     def OnSovereigntyChanged(self, solarSystemID, allianceID):
-        self.UpdateLocationText()
+        self.UpdateAllLocationInfo()
 
 
 
     def OnEntitySelectionChanged(self, entityID):
-        self.UpdateLocationText()
+        self.UpdateAllLocationInfo()
 
 
 
@@ -172,31 +294,7 @@ class NeocomSvc(service.Service):
 
 
 
-    def ShowToggleHangarCQButton(self):
-        if not session.stationid or not prefs.GetValue('loadstationenv', 1):
-            if getattr(self, 'toggleHangarCQButton', None) is not None:
-                self.toggleHangarCQButton.Close()
-            self.toggleHangarCQButton = None
-            return 
-        if self.neocomLeftSide is None:
-            return 
-        view = util.GetCurrentView()
-        if getattr(self, 'toggleHangarCQButton', None) is None:
-            self.toggleHangarCQButton = uicls.Container(parent=self.neocomLeftSide, name='toggleHangarCQButton', state=uiconst.UI_NORMAL, align=uiconst.TOTOP, height=24, padding=16)
-            self.toggleHangarCQButtonLabel = uicls.Label(parent=self.toggleHangarCQButton, align=uiconst.CENTER)
-            self.toggleHangarCQButtonFill = uicls.Fill(parent=self.toggleHangarCQButton, color=BTN_BACKGROUND_COLOR)
-        if view == 'station':
-            self.toggleHangarCQButton.OnClick = sm.GetService('cmd').CmdEnterHangar
-            self.toggleHangarCQButtonLabel.SetText('Enter Ship Hangar')
-        else:
-            self.toggleHangarCQButton.OnClick = sm.GetService('cmd').CmdEnterCQ
-            self.toggleHangarCQButtonLabel.SetText("Enter Captain's Quarters")
-        self.toggleHangarCQButton.Show()
-
-
-
     def OnSessionChanged(self, isRemote, sess, change):
-        self.ShowToggleHangarCQButton()
         if session.charid is None:
             self.CloseNeocomLeftSide()
             if self.wnd is not None and not self.wnd.destroyed:
@@ -205,8 +303,12 @@ class NeocomSvc(service.Service):
             self.Reset()
         else:
             self.UpdateNeocom('solarsystemid2' in change or 'solarsystemid' in change or 'stationid' in change)
-            if settings.user.ui.Get('showSessionTimer', 0):
-                uthread.new(self.UpdateChangeTimer)
+            self.UpdateSessionTimer()
+
+
+
+    def OnViewStateChanged(self, oldViewName, newViewName):
+        uthread.new(self.UpdateRouteInfo)
 
 
 
@@ -230,7 +332,7 @@ class NeocomSvc(service.Service):
         blue.pyos.synchro.Yield()
         (charcrimes, corpcrimes,) = sm.GetService('michelle').GetCriminalFlagCountDown()
         if charcrimes or corpcrimes:
-            self.UpdateCriminal(charcrimes, corpcrimes)
+            self.UpdateCrimeInfo(charcrimes, corpcrimes)
 
 
 
@@ -248,24 +350,19 @@ class NeocomSvc(service.Service):
         self.neocomLeftSide = None
         self.expander = None
         self.autohidearea = None
-        self.exitbtn = None
         self.clock = None
         self.clocktimer = None
         self.locationTimer = None
         self.btnresettimer = None
         self.lastLocationID = None
         self.updating = False
-        self.pushUpdatePending = None
-        self.pushUpdatePendingData = None
-        self.updatingPush = False
-        self.ahidden = 0
+        self.updatingWindowPush = False
         self.activeshipicon = None
         self.activeshipname = None
-        self.locationText = None
-        self.extraText = None
-        self.xtratext = ''
-        self.destPathData = None
-        self.destPathColorCont = None
+        self.mainLocationInfo = None
+        self.routeContainer = None
+        if not hasattr(self, 'routeData'):
+            self.routeData = None
         self.wnd = None
         self.menubtn = None
         self.bottomline = None
@@ -277,29 +374,24 @@ class NeocomSvc(service.Service):
         self.btnsready = 0
         self.blinkingBtns = {}
         self.main = None
-        self.moving = False
         self.inited = 0
         self.criminalTimer = None
-        self.ShowToggleHangarCQButton()
 
 
 
     def Initialize(self):
-        for each in uicore.layer.main.children[:]:
-            if each.name in ('neocom', 'locationInfo', 'neocomLeftSide'):
+        for each in uicore.layer.neocom.children[:]:
+            if each.name in ('neocom', 'softShadow'):
                 each.Close()
 
-        self.wnd = uicls.Container(parent=uicore.layer.neocom, idx=0, pos=(0,
-         0,
-         136,
-         uicore.desktop.height), name='neocom', state=uiconst.UI_HIDDEN, align=uiconst.RELATIVE)
+        self.wnd = uicls.Container(parent=uicore.layer.neocom, name='neocom', state=uiconst.UI_HIDDEN, align=uiconst.TOLEFT, idx=0)
         autohideparent = uicls.Container(parent=self.wnd, name='autohideparent', state=uiconst.UI_PICKCHILDREN)
         autohidedetector = uicls.Container(parent=autohideparent, width=8, name='autohidedetector', state=uiconst.UI_NORMAL, align=uiconst.TOLEFT)
         maincontainer = uicls.Container(parent=self.wnd, padding=(2, 0, 2, 0), name='maincontainer', state=uiconst.UI_NORMAL)
         mainNameParent = uicls.Container(parent=maincontainer, align=uiconst.TOPRIGHT, pos=(0, 0, 32, 128), state=uiconst.UI_NORMAL)
         expander = uicls.Sprite(parent=mainNameParent, name='expander', pos=(5, 5, 11, 11), align=uiconst.RELATIVE, state=uiconst.UI_NORMAL, texturePath='res:/UI/Texture/Shared/expanderLeft.png')
         nameParent = uicls.Transform(parent=mainNameParent, pos=(-41, 52, 116, 28), name='nameParent', state=uiconst.UI_DISABLED, align=uiconst.RELATIVE)
-        self.wnd.sr.charname = uicls.Label(text='', parent=nameParent, left=0, top=0, align=uiconst.TOPLEFT, width=100, fontsize=12, state=uiconst.UI_DISABLED)
+        self.wnd.sr.charname = uicls.EveLabelMedium(text='', parent=nameParent, align=uiconst.TOPLEFT, width=100, state=uiconst.UI_DISABLED)
         self.nameFill = uicls.Fill(name='nameFill', parent=mainNameParent, color=(0.0, 0.0, 0.0, 0.6))
         charpic = uicls.Sprite(parent=maincontainer, height=128, name='charactersheet', state=uiconst.UI_NORMAL, align=uiconst.TOTOP)
         clockpar = uicls.Container(parent=maincontainer, pos=(0, 0, 128, 16), name='clockpar', state=uiconst.UI_DISABLED, align=uiconst.TOBOTTOM)
@@ -307,13 +399,16 @@ class NeocomSvc(service.Service):
         uicls.Line(parent=linepar, color=(1.0, 1.0, 1.0, 0.25), align=uiconst.TOBOTTOM, name='white')
         uicls.Line(parent=linepar, color=(0.0, 0.0, 0.0, 1.0), align=uiconst.TOBOTTOM, name='black')
         exitbtnParent = uicls.Container(parent=maincontainer, height=64, name='exitbtnParent', state=uiconst.UI_NORMAL, align=uiconst.TOBOTTOM)
-        exitbtn = uicls.Container(parent=exitbtnParent, name='exitbtn', align=uiconst.RELATIVE, state=uiconst.UI_NORMAL, pos=(0, 0, 64, 64))
-        exitIcon = uicls.Icon(parent=exitbtn, icon='ui_9_64_6', state=uiconst.UI_DISABLED, align=uiconst.TOALL, ignoreSize=True, filter=True)
+        self.undockBlinker = uicls.Container(parent=exitbtnParent, state=uiconst.UI_NORMAL)
+        self.undockIcon = uicls.Sprite(parent=self.undockBlinker, texturePath='res:/UI/Texture/Icons/9_64_6.png', state=uiconst.UI_NORMAL)
         self.wnd.sr.btnparent = uicls.Container(parent=maincontainer, name='btnparent', state=uiconst.UI_PICKCHILDREN, clipChildren=True, align=uiconst.TOALL)
         onLeft = settings.user.windows.Get('neoalign', 'left') == 'left'
         self.wnd.SetAlign([uiconst.TORIGHT, uiconst.TOLEFT][onLeft])
-        BIG = settings.user.windows.Get('neowidth', 1) and not self.ahidden
-        self.wnd.width = [[36, 2], [132, 2]][BIG][self.ahidden]
+        if settings.user.windows.Get('neoautohide', 0):
+            self.AutoHide()
+        else:
+            BIG = settings.user.windows.Get('neowidth', 1)
+            self.wnd.width = [COLLAPSED_SIZE, EXPANDED_SIZE][BIG]
         self.wnd.sr.underlay = uicls.WindowUnderlay(parent=self.wnd)
         self.wnd.sr.underlay.SetPadding(-1, -10, -1, -10)
         self.main = maincontainer
@@ -339,28 +434,21 @@ class NeocomSvc(service.Service):
         self.clockparDeco.cmdstr = 'OpenCalendar'
         self.clockparDeco.state = uiconst.UI_NORMAL
         self.clockparDeco.GetMenu = self.GetMainMenu
-        self.clockparDeco.displayName = mls.UI_CAL_CALENDAR
-        self.clock = uicls.Label(text='', parent=self.clockparDeco, left=0, top=3, align=uiconst.TOPLEFT, width=120, height=14, letterspace=1, fontsize=9, state=uiconst.UI_DISABLED, uppercase=1, autowidth=False, autoheight=False)
-        self.dateCont = uicls.Container(parent=self.clockparDeco, name='dateCont', align=uiconst.TOBOTTOM, pos=(0, 0, 0, 14), clipChildren=1)
-        self.dateText = uicls.Label(text='', parent=self.dateCont, left=0, top=0, align=uiconst.TOPLEFT, width=120, height=14, letterspace=1, fontsize=14, state=uiconst.UI_DISABLED, uppercase=1, idx=0, autowidth=False, autoheight=False)
+        self.clockparDeco.displayName = localization.GetByLabel('UI/Neocom/CalendarBtn')
+        self.clock = uicls.EveHeaderSmall(parent=self.clockparDeco, left=0, top=3, align=uiconst.CENTERTOP, state=uiconst.UI_DISABLED, idx=0)
+        self.dateText = uicls.Label(parent=self.clockparDeco, align=uiconst.CENTERTOP, fontsize=14, state=uiconst.UI_DISABLED, idx=0)
         self.autohidearea = autohidedetector
         self.autohidearea.OnMouseEnter = self.OnAutohideEnter
-        self.exitbtn = exitbtn
-        self.exitbtn.top = -4
-        self.wnd.sr.exitbtnText = uicls.Label(text='', parent=uiutil.GetChild(self.wnd, 'exitbtnParent'), left=0, top=44, align=uiconst.CENTERTOP, width=100, height=14, letterspace=2, fontsize=11, state=uiconst.UI_DISABLED, uppercase=1, autowidth=False, autoheight=False)
-        self.neocomLeftSide = uicls.Container(parent=uicore.layer.neocom, name='neocomLeftside', align=uiconst.TOLEFT, pos=(8, 0, 288, 0), padding=(16, 0, 0, 0))
-        self.locationParent = uicls.NeocomContainer(parent=self.neocomLeftSide, name='locationInfo', padTop=10)
-        self.locationParent.children[1].padTop = 0
+        self.neocomLeftSide = uicls.Container(parent=uicore.layer.neocom, name='neocomLeftside', align=uiconst.TOLEFT, width=LOCATION_PANELWIDTH, padLeft=12)
+        uicls.Sprite(parent=uicore.layer.neocom, name='softShadow', texturePath='res:/UI/Texture/classes/Neocom/infopanelSoftShadow2.png', width=500, height=500, left=-20, state=uiconst.UI_DISABLED, color=(0, 0, 0, 0.3))
+        self.locationParent = uicls.NeocomContainer(parent=self.neocomLeftSide, name='locationInfo', padRight=0, showBackground=True, contentPadding=0)
         self.locationInfo = self.locationParent.content
-        if settings.user.windows.Get('neoautohide', 0):
-            self.AutoHide()
         if eve.session.role & service.ROLEMASK_ELEVATEDPLAYER:
             if settings.public.ui.Get('Insider', True):
                 uthread.pool('neocom::ShowInsider', self.ShowInsider)
         self.inited = 1
         self.UpdateClock()
         uthread.pool('neocom::CheckSkills', self.CheckSkills)
-        sm.GetService('ui').SortGlobalLayer()
 
 
 
@@ -369,28 +457,9 @@ class NeocomSvc(service.Service):
 
 
 
-    def UpdateChangeTimer(self):
-        if hasattr(self, 'changeTimer') and not self.changeTimer.destroyed:
-            self.changeTimer.Close()
-        TIMER_LENGTH = 30
-        SEC = 10000000L
-        self.changeTimer = uicls.Container(name='changeTimer', align=uiconst.TOPLEFT, parent=self.neocomLeftSide, pos=(self.solText.left + self.solText.textwidth,
-         self.solText.top + 7,
-         16,
-         16), clipChildren=True, idx=0)
-        changing = uicls.AnimSprite(icons=[ 'ui_38_16_%s' % (210 + i) for i in xrange(8) ], align=uiconst.TOPLEFT, parent=self.changeTimer, pos=(-2, 0, 16, 16), state=uiconst.UI_NORMAL)
-        changing.hint = mls.UI_GENERIC_SESSIONCHANGEHINT % {'time': util.FmtTimeInterval(TIMER_LENGTH * SEC, breakAt='sec')}
-        changing.Play()
-        t = blue.os.GetTime()
-        while blue.os.GetTime() < t + TIMER_LENGTH * SEC:
-            if hasattr(changing, 'hint'):
-                changing.hint = mls.UI_GENERIC_SESSIONCHANGEHINT % {'time': util.FmtTimeInterval(int(t + TIMER_LENGTH * SEC) - blue.os.GetTime(), breakAt='sec')}
-            blue.pyos.synchro.Sleep(500)
-            if self.changeTimer.destroyed or changing.destroyed:
-                return 
-
-        changing.Stop()
-        self.changeTimer.Close()
+    def UpdateSessionTimer(self):
+        if settings.user.ui.Get('showSessionTimer', 0):
+            uthread.new(self.sessionTimer.SetStopTime, session.nextSessionChange)
 
 
 
@@ -405,151 +474,35 @@ class NeocomSvc(service.Service):
 
 
 
-    def GetLocationInfo(self):
-        itemmapping = [['nearest', mls.UI_GENERIC_NEAREST],
-         ['occupancy', mls.UI_SHARED_OCCUPANCY],
-         ['sovereignty', mls.UI_SHARED_MAPSOVEREIGNTY],
-         ['constellation', mls.UI_GENERIC_CONSTELLATION],
-         ['region', mls.UI_GENERIC_REGION],
-         ['signature', mls.UI_GENERIC_LOCUSSIGN],
-         ['security', mls.UI_INFOWND_SECURITYLEVEL],
-         ['station', mls.UI_SHARED_MAPDOCKEDIN]]
-        inView = settings.user.windows.Get('neocomLocationInfo2', None)
-        if inView is None:
-            inView = [ each[0] for each in itemmapping ]
-        return (itemmapping, inView)
-
-
-
     def GetIconMappings(self, btnname = None):
-        mapping = [['charactersheet',
-          'OpenCharactersheet',
-          mls.UI_SHARED_CHARACTERSHEET,
-          'ui_2_64_16',
-          False],
-         ['addressbook',
-          'OpenPeopleAndPlaces',
-          mls.UI_SHARED_PEOPLEANDPLACES,
-          'ui_12_64_2',
-          False],
-         ['mail',
-          'OpenMail',
-          mls.UI_SHARED_EVEMAIL,
-          'ui_94_64_8',
-          False],
-         ['fitting',
-          'OpenFitting',
-          mls.UI_GENERIC_FITTING,
-          'ui_17_128_4',
-          False],
-         ['notepad',
-          'OpenNotepad',
-          mls.UI_SHARED_NOTEPAD,
-          'ui_49_64_2',
-          False],
-         ['market',
-          'OpenMarket',
-          mls.UI_MARKET_MARKET,
-          'ui_18_128_1',
-          False],
-         ['factories',
-          'OpenFactories',
-          mls.UI_RMR_SCIENCEANDINDUSTRY,
-          'ui_57_64_9',
-          False],
-         ['contracts',
-          'OpenContracts',
-          mls.UI_CONTRACTS_CONTRACTS,
-          'ui_64_64_10',
-          False],
-         ['map',
-          'CmdToggleMap',
-          mls.UI_SHARED_MAP,
-          'ui_7_64_4',
-          False],
-         ['corporation',
-          'OpenCorporationPanel',
-          mls.UI_GENERIC_CORPORATION,
-          'ui_7_64_6',
-          False],
-         ['assets',
-          'OpenAssets',
-          mls.UI_CORP_ASSETS,
-          'ui_7_64_13',
-          False],
-         ['wallet',
-          'OpenWallet',
-          mls.UI_SHARED_WALLET,
-          'ui_7_64_12',
-          False],
-         ['fleet',
-          'OpenFleet',
-          mls.UI_FLEET_FLEET,
-          'ui_94_64_9',
-          False],
-         ['calculator',
-          'OpenCalculator',
-          mls.UI_GENERIC_CALCULATOR,
-          'ui_49_64_1',
-          False],
-         ['browser',
-          'OpenBrowser',
-          mls.UI_SHARED_BROWSER,
-          'ui_9_64_4',
-          False],
-         ['journal',
-          'OpenJournal',
-          mls.UI_GENERIC_JOURNAL,
-          'ui_25_64_3',
-          False],
-         ['jukebox',
-          'OpenJukebox',
-          mls.UI_SHARED_JUKEBOX,
-          'ui_12_64_5',
-          False],
-         ['log',
-          'OpenLog',
-          mls.UI_SHARED_LOG,
-          'ui_34_64_4',
-          False],
-         ['accessories',
-          None,
-          mls.UI_CMD_ACCESSORIES,
-          'ui_6_64_2',
-          False],
-         ['stationservices',
-          None,
-          mls.UI_GENERIC_SERVICES,
-          'ui_76_64_2',
-          False],
-         ['navyoffices',
-          'OpenMilitia',
-          mls.UI_STATION_MILITIAOFFICE,
-          'ui_61_128_3',
-          False],
-         ['help',
-          'OpenHelp',
-          mls.UI_SHARED_HELP,
-          'ui_74_64_13',
-          False],
-         ['ships',
-          'OpenShipHangar',
-          mls.UI_GENERIC_SHIPS,
-          'ui_9_64_5',
-          True],
-         ['items',
-          'OpenHangarFloor',
-          mls.UI_GENERIC_ITEMS,
-          'ui_12_64_3',
-          True]]
+        mapping = [util.KeyVal(name='charactersheet', command='OpenCharactersheet', label=localization.GetByLabel('UI/Neocom/CharacterSheetBtn'), iconID='ui_2_64_16', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='addressbook', command='OpenPeopleAndPlaces', label=localization.GetByLabel('UI/Neocom/PeopleAndPlacesBtn'), iconID='ui_12_64_2', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='mail', command='OpenMail', label=localization.GetByLabel('UI/Neocom/EvemailBtn'), iconID='ui_94_64_8', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='fitting', command='OpenFitting', label=localization.GetByLabel('UI/Neocom/FittingBtn'), iconID='ui_17_128_4', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='notepad', command='OpenNotepad', label=localization.GetByLabel('UI/Neocom/NotepadBtn'), iconID='ui_49_64_2', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='market', command='OpenMarket', label=localization.GetByLabel('UI/Neocom/MarketBtn'), iconID='ui_18_128_1', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='factories', command='OpenScienceAndIndustry', label=localization.GetByLabel('UI/Neocom/ScienceAndIndustryBtn'), iconID='ui_57_64_9', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='contracts', command='OpenContracts', label=localization.GetByLabel('UI/Neocom/ContractsBtn'), iconID='ui_64_64_10', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='map', command='CmdToggleMap', label=localization.GetByLabel('UI/Neocom/MapBtn'), iconID='ui_7_64_4', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='corporation', command='OpenCorporationPanel', label=localization.GetByLabel('UI/Neocom/CorporationBtn'), iconID='ui_7_64_6', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='assets', command='OpenAssets', label=localization.GetByLabel('UI/Neocom/AssetsBtn'), iconID='ui_7_64_13', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='wallet', command='OpenWallet', label=localization.GetByLabel('UI/Neocom/WalletBtn'), iconID='ui_7_64_12', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='fleet', command='OpenFleet', label=localization.GetByLabel('UI/Neocom/FleetBtn'), iconID='ui_94_64_9', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='calculator', command='OpenCalculator', label=localization.GetByLabel('UI/Neocom/CalculatorBtn'), iconID='ui_49_64_1', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='browser', command='OpenBrowser', label=localization.GetByLabel('UI/Neocom/BrowserBtn'), iconID='ui_9_64_4', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='journal', command='OpenJournal', label=localization.GetByLabel('UI/Neocom/JournalBtn'), iconID='ui_25_64_3', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='jukebox', command='OpenJukebox', label=localization.GetByLabel('UI/Neocom/JukeboxBtn'), iconID='ui_12_64_5', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='log', command='OpenLog', label=localization.GetByLabel('UI/Neocom/logBtn'), iconID='ui_34_64_4', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='accessories', command=None, label=localization.GetByLabel('UI/Neocom/AccessoriesBtn'), iconID='ui_6_64_2', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='stationservices', command=None, label=localization.GetByLabel('UI/Neocom/ServicesBtn'), iconID='ui_76_64_2', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='navyoffices', command='OpenMilitia', label=localization.GetByLabel('UI/Neocom/MilitiaOfficeBtn'), iconID='ui_61_128_3', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='help', command='OpenHelp', label=localization.GetByLabel('UI/Neocom/HelpBtn'), iconID='ui_74_64_13', scope=const.neocomButtonScopeEverywhere),
+         util.KeyVal(name='ships', command='OpenShipHangar', label=localization.GetByLabel('UI/Neocom/ShipsBtn'), iconID='ui_9_64_5', scope=const.neocomButtonScopeStationOrWorldspace),
+         util.KeyVal(name='items', command='OpenHangarFloor', label=localization.GetByLabel('UI/Neocom/ItemsBtn'), iconID='ui_12_64_3', scope=const.neocomButtonScopeStationOrWorldspace)]
         newmapping = {}
         for (i, iconmap,) in enumerate(mapping):
-            (lbl, cmdstr, label, icon, stationonly,) = iconmap
-            newmapping[lbl] = (i,
-             cmdstr,
-             label,
-             icon,
-             stationonly)
+            iconmap.index = i
+            newmapping[iconmap.name] = iconmap
 
         if btnname:
             return newmapping.get(btnname, None)
@@ -561,19 +514,15 @@ class NeocomSvc(service.Service):
         iconmapping = []
         icons = self.GetIconMappings()
         for (service, info,) in icons.iteritems():
-            sortby = info[0]
+            sortItem = info.index
             if sortBy == 'name':
-                sortby = info[2]
+                sortItem = info.label
             if eve.session.stationid and settings.user.windows.Get('dockshipsanditems', 0) and service in ('ships', 'items'):
                 continue
             if service == 'navyoffices' and not sm.StartService('facwar').CheckStationElegibleForMilitia():
                 continue
-            if not info[4] or info[4] and session.stationid2:
-                iconmapping.append((sortby, (service,
-                  info[1],
-                  info[2],
-                  info[3],
-                  info[4])))
+            if info.scope == const.neocomButtonScopeEverywhere or info.scope == const.neocomButtonScopeInflight and session.stationid2 is None or info.scope == const.neocomButtonScopeStation and session.stationid2 is not None and session.stationid2 == session.worldspaceid or info.scope == const.neocomButtonScopeStationOrWorldspace and session.stationid2 is not None:
+                iconmapping.append(((sortItem, service), info))
 
         (stationiconmapping, inStationServices,) = self.GetStationServiceMapping(sortBy, all)
         iconmapping.extend(stationiconmapping)
@@ -590,27 +539,28 @@ class NeocomSvc(service.Service):
         iconmapping = []
         services = sm.GetService('station').GetStationServices()
         for (service, info,) in services.iteritems():
-            if info[4] == True:
+            if info.scope in (const.neocomButtonScopeStation, const.neocomButtonScopeStationOrWorldspace):
                 continue
-            sortby = info[0]
+            sortItem = info.name
             if sortBy == 'name':
-                sortby = info[2]
-            if not info[4] or all or info[4] and session.stationid:
-                for serviceID in info[5]:
-                    if not info[4] or all or eve.stationItem.serviceMask & serviceID == serviceID:
+                sortItem = info.label
+            subSortBy = service
+            if all or info.scope in (const.neocomButtonScopeStation, const.neocomButtonScopeStationOrWorldspace) and session.stationid2 is not None or info.scope == const.neocomButtonScopeEverywhere:
+                for serviceID in info.serviceIDs:
+                    if info.scope not in (const.neocomButtonScopeStation, const.neocomButtonScopeStationOrWorldspace) or all or eve.stationItem.serviceMask & serviceID == serviceID:
                         if service not in icons:
-                            data = (sortby, (service,
-                              info[1],
-                              info[2],
-                              info[3],
-                              info[4]))
+                            data = ((sortItem,
+                              service,
+                              info.command,
+                              info.label,
+                              info.iconID), info)
                             if data not in iconmapping:
                                 iconmapping.append(data)
 
 
         inStationServices = settings.user.windows.Get('neocomStationservices', None)
         if inStationServices is None:
-            inStationServices = [ service for (service, info,) in services.iteritems() if service not in icons if not info[4] ]
+            inStationServices = [ service for (service, info,) in services.iteritems() if service not in icons if info.scope not in (const.neocomButtonScopeStation, const.neocomButtonScopeStationOrWorldspace) ]
         if applySort:
             iconmapping = uiutil.SortListOfTuples(iconmapping)
         return (iconmapping, inStationServices)
@@ -624,21 +574,21 @@ class NeocomSvc(service.Service):
         btnpar.Flush()
         self.btns = []
         (iconMapping, inUtils, inStationServices,) = self.GetIconMapping()
-        for (name, cmdstr, displayName, iconNum, stationOnly,) in iconMapping:
-            if name == 'accessories' and not inUtils:
+        for info in iconMapping:
+            if info.name == 'accessories' and not inUtils:
                 continue
-            if name == 'stationservices' and not inStationServices:
+            if info.name == 'stationservices' and not inStationServices:
                 continue
-            btn = self.GetButton(displayName, iconNum, btnpar)
-            btn.name = name
-            btn.cmdstr = cmdstr
+            btn = self.GetButton(info.label, info.iconID, btnpar)
+            btn.name = info.name
+            btn.cmdstr = info.command
             btn.OnClick = (self.BtnClick, btn)
             btn.OnMouseEnter = (self.BtnEnter, btn)
             btn.OnMouseExit = (self.BtnExit, btn)
-            if name in ('accessories', 'stationservices'):
-                if name == 'accessories' and inUtils:
+            if info.name in ('accessories', 'stationservices'):
+                if info.name == 'accessories' and inUtils:
                     btn.GetMenu = self.GetToolsMenu
-                if name == 'stationservices' and inStationServices:
+                if info.name == 'stationservices' and inStationServices:
                     btn.GetMenu = self.GetStationServiceMenu
                 btn.GetMenuPosition = self.ReturnMenuPos
                 btn.expandOnLeft = 1
@@ -647,15 +597,15 @@ class NeocomSvc(service.Service):
                 btn.sr.menuArrow = menuArrow
                 self.btns.append(btn)
                 continue
-            if name in inUtils or name in inStationServices:
+            if info.name in inUtils or info.name in inStationServices:
                 continue
-            if name == 'jukebox':
+            if info.name == 'jukebox':
                 btn.GetMenu = self.GetJukeboxMenu
                 btn.GetMenuPosition = self.ReturnMenuPos
-            if name in ('items', 'ships'):
+            if info.name in ('items', 'ships'):
                 btn.OnDropData = self.DropInHangar
             self.btns.append(btn)
-            setattr(self, '%sbtn' % name, btn)
+            setattr(self, '%sbtn' % info.name, btn)
             btn.state = uiconst.UI_NORMAL
 
         if self.menubtn is not None and not self.menubtn.destroyed:
@@ -665,15 +615,16 @@ class NeocomSvc(service.Service):
         if self.bottomline is not None and not self.bottomline.destroyed:
             self.bottomline.Close()
             self.bottomline = None
-        self.exitbtn.parent.state = uiconst.UI_HIDDEN
+        self.undockIcon.parent.state = uiconst.UI_HIDDEN
         if session.stationid2:
-            self.exitbtn.OnClick = (self.BtnClick, self.exitbtn)
-            self.exitbtn.parent.state = uiconst.UI_NORMAL
-            self.exitbtn.OnMouseEnter = (self.BtnEnter, self.exitbtn)
-            self.exitbtn.OnMouseExit = (self.BtnExit, self.exitbtn)
-            self.exitbtn.name = 'undock'
-            self.exitbtn.displayName = mls.UI_GENERIC_UNDOCK
-            self.exitbtn.cmdstr = 'CmdExitStation'
+            self.undockIcon.OnClick = (self.BtnClick, self.undockIcon)
+            self.undockIcon.parent.state = uiconst.UI_NORMAL
+            self.undockIcon.OnMouseEnter = (self.BtnEnter, self.undockIcon)
+            self.undockIcon.OnMouseExit = (self.BtnExit, self.undockIcon)
+            self.undockIcon.name = 'undock'
+            self.undockIcon.displayName = localization.GetByLabel('UI/Neocom/UndockBtn')
+            self.undockIcon.hint = self.undockIcon.displayName
+            self.undockIcon.cmdstr = 'CmdExitStation'
         self.bottomline = uicls.Line(parent=btnpar, color=(1.0, 1.0, 1.0, 0.25), align=uiconst.TOTOP, name='whiteline')
         self.Position()
         self.btnsready = 1
@@ -706,13 +657,13 @@ class NeocomSvc(service.Service):
     def GetStationServiceMenu(self, *args):
         m = []
         (iconMapping, inUtils, inStationServices,) = self.GetIconMapping('name')
-        for (name, cmdstr, displayName, iconNum, stationOnly,) in iconMapping:
-            if name not in inStationServices:
+        for info in iconMapping:
+            if info.name not in inStationServices:
                 continue
-            m.append((displayName,
+            m.append((info.label,
              self.CmdMenuAction,
-             (cmdstr,),
-             (iconNum, 32)))
+             (info.command,),
+             (info.iconID, 32)))
 
         return m
 
@@ -721,25 +672,25 @@ class NeocomSvc(service.Service):
     def GetToolsMenu(self, *args):
         m = []
         (iconMapping, inUtils, inStationServices,) = self.GetIconMapping('name')
-        for (name, cmdstr, displayName, iconNum, stationOnly,) in iconMapping:
-            if name not in inUtils:
+        for info in iconMapping:
+            if info.name not in inUtils:
                 continue
-            m.append((displayName,
+            m.append((info.label,
              self.CmdMenuAction,
-             (cmdstr,),
-             (iconNum, 32)))
+             (info.command,),
+             (info.iconID, 32)))
 
         return m
 
 
 
     def GetJukeboxMenu(self, *args):
-        ret = [(mls.UI_GENERIC_SHOW, lambda *args: uicore.cmd.OpenJukebox()), None]
+        ret = [(localization.GetByLabel('UI/Jukebox/ShowJukebox'), lambda *args: uicore.cmd.OpenJukebox()), None]
         if sm.GetService('jukebox').jukeboxState == 'play':
-            ret += [(mls.UI_SHARED_JUKEBOXPAUSE, lambda *args: sm.GetService('jukebox').Pause())]
+            ret += [(localization.GetByLabel('UI/Jukebox/Pause'), lambda *args: sm.GetService('jukebox').Pause())]
         else:
-            ret += [(mls.UI_SHARED_JUKEBOXPLAY, lambda *args: sm.GetService('jukebox').Play())]
-        ret += [(mls.UI_SHARED_JUKEBOXNEXT, lambda *args: sm.GetService('jukebox').AdvanceTrack()), (mls.UI_SHARED_JUKEBOXPREV, lambda *args: sm.GetService('jukebox').AdvanceTrack(forward=False))]
+            ret += [(localization.GetByLabel('UI/Jukebox/Play'), lambda *args: sm.GetService('jukebox').Play())]
+        ret += [(localization.GetByLabel('UI/Jukebox/Next'), lambda *args: sm.GetService('jukebox').AdvanceTrack()), (localization.GetByLabel('UI/Jukebox/Previous'), lambda *args: sm.GetService('jukebox').AdvanceTrack(forward=False))]
         return ret
 
 
@@ -754,7 +705,7 @@ class NeocomSvc(service.Service):
         iconPar = uicls.Container(name='iconpar', parent=btn, idx=0, state=uiconst.UI_DISABLED, top=-1, height=-1)
         icon = uicls.Icon(icon=iconNum, parent=iconPar, align=uiconst.TORIGHT, ignoreSize=True, size=32)
         textPar = uicls.Container(name='textPar', parent=iconPar, clipChildren=1)
-        btn.sr.nme = uicls.Label(text='', parent=textPar, left=4, align=uiconst.CENTERLEFT, top=1, width=90, letterspace=1, fontsize=10, uppercase=1, linespace=10)
+        btn.sr.nme = uicls.EveLabelSmall(text='', parent=textPar, align=uiconst.CENTERLEFT, top=1)
         btn.sr.icon = icon
         return btn
 
@@ -764,9 +715,6 @@ class NeocomSvc(service.Service):
         if btn.sr.blink:
             return btn.sr.blink
         if not hasattr(btn, 'children'):
-            print 'NOBLINK',
-            print btn.name,
-            print btn.children
             return None
         blink = uicls.Fill(parent=btn, name='hiliteFrame', padTop=1, state=uiconst.UI_DISABLED, color=(0.28, 0.3, 0.35, 1.0), align=uiconst.TOALL, blendMode=trinity.TR2_SBM_ADD)
         btn.sr.blink = blink
@@ -786,14 +734,14 @@ class NeocomSvc(service.Service):
 
 
 
-    def Position(self, autohiding = None, action = None):
-        if autohiding is not None:
-            self.ahidden = autohiding
+    def Position(self, action = None, windowData = None):
         LEFT = settings.user.windows.Get('neoalign', 'left') == 'left'
-        BIG = settings.user.windows.Get('neowidth', 1) and not self.ahidden
-        width = [[36, 2], [132, 2]][BIG][self.ahidden]
-        data = self.PrepareForWindowPush(neoWidth=width)
-        self.moving = True
+        BIG = settings.user.windows.Get('neowidth', 1)
+        if BIG:
+            width = EXPANDED_SIZE
+        else:
+            width = COLLAPSED_SIZE
+        windowData = windowData or self.PrepareForWindowPush()
         try:
             if self.wnd is None or self.wnd.destroyed:
                 return 
@@ -807,53 +755,42 @@ class NeocomSvc(service.Service):
                     self.nameFill.SetAlpha(0.6)
                 else:
                     self.nameFill.SetAlpha(1.0)
-            topdown = 0
             if unicode(cn) != unicode(cn).encode('ascii', 'replace'):
                 cn = '<center>' + ''.join([ letter + '<br>' for letter in cn ])
-                topdown = 1
-                charname.autoheight = 0
                 charname.height = 100
                 charname.text = cn
                 charname.parent.SetRotation(0.0)
                 charname.parent.top = 24
             else:
                 charname.parent.SetRotation(math.pi / 2)
-                charname.autoheight = 1
                 charname.text = cn
             if LEFT:
                 self.expander.SetTexturePath(['res:/UI/Texture/Shared/expanderRight.png', 'res:/UI/Texture/Shared/expanderLeft.png'][BIG])
             else:
                 self.expander.SetTexturePath(['res:/UI/Texture/Shared/expanderLeft.png', 'res:/UI/Texture/Shared/expanderRight.png'][BIG])
-            width = [[36, 2], [132, 2]][BIG][self.ahidden]
             bh = self.GetButtonHeight()
             for btn in self.btns:
                 btn.sr.icon.align = [uiconst.TOLEFT, uiconst.TORIGHT][LEFT]
-                btn.sr.nme.left = [4, 8][LEFT]
                 if btn.sr.menuArrow:
                     btn.sr.menuArrow.SetAlign([uiconst.CENTERLEFT, uiconst.CENTERRIGHT][LEFT])
                     btn.sr.menuArrow.LoadIcon(['ui_38_16_227', 'ui_38_16_228'][LEFT])
                 if BIG:
+                    (labelParWidth, labelParHeight,) = btn.sr.nme.parent.GetAbsoluteSize()
+                    btn.sr.nme.left = [4, 8][LEFT]
+                    btn.sr.nme.width = max(88, labelParWidth - btn.sr.nme.left)
                     btn.sr.nme.text = btn.displayName
                 else:
                     btn.sr.nme.text = ''
 
-            self.wnd.sr.exitbtnText.text = ['', '<center><b>%s</b>' % mls.UI_GENERIC_UNDOCK][BIG]
-            if session.stationid2:
-                uicore.effect.MorphUI(self.exitbtn.parent, 'height', [max(BUTTONHEIGHT, bh), 60][BIG], time)
-                uicore.effect.MorphUI(self.exitbtn, 'left', [[[0, 0], [37, 37]], [[0, -37], [37, -37]]][LEFT][BIG][self.ahidden], time)
-                uicore.effect.MorphUI(self.exitbtn, 'width', [BUTTONHEIGHT, 54][BIG], time, 1, 1)
-            if data:
-                self.UpdateWindowPush(data, width, action)
+            self.AlignUndockButton(BIG, bh)
+            self.UpdateWindowPush(windowData, width, action)
             self.ResetBtns(0)
-            blue.pyos.synchro.Sleep(int(time))
+            blue.pyos.synchro.SleepWallclock(int(time))
             self.UpdateClock()
 
         finally:
-            self.moving = False
+            pass
 
-        mb = sm.GetService('window').GetWindow('mapbrowser', create=0)
-        if mb and mb.state != uiconst.UI_HIDDEN:
-            mb.SetCorrectLeft()
 
 
 
@@ -862,66 +799,43 @@ class NeocomSvc(service.Service):
 
 
 
-    def PrepareForWindowPush(self, neoWidth = None):
-        if self.updatingPush:
-            self.pushUpdatePending = True
-            self.pushUpdatePendingData = neoWidth
-            return 
-        self.updatingPush = True
-        lpush = 0
-        rpush = 0
-        mbLeftPush = 0
-        mbRightPush = 0
-        currentMBWidth = 0
-        mb = sm.GetService('window').GetWindow('mapbrowser', create=0)
-        if mb:
-            currentMBWidth = mb.width
-            if mb.GetAlign() == uiconst.TOLEFT:
-                mbLeftPush = currentMBWidth
-            else:
-                mbRightPush = currentMBWidth
-        onLeft = settings.user.windows.Get('neoalign', 'left') == 'left'
-        neo = self.GetWnd()
-        currentWidth = neo.width
-        neoLeftPush = [0, currentWidth][onLeft]
-        neoRightPush = [0, currentWidth][(not onLeft)]
-        validWnds = sm.GetService('window').GetValidWindows(floatingOnly=True)
-        d = uicore.desktop
-        leftEdge0 = 0
-        leftEdge1 = neoLeftPush
-        leftEdge2 = mbLeftPush
-        leftEdge3 = neoLeftPush + mbLeftPush
-        rightEdge0 = d.width
-        rightEdge1 = d.width - neoRightPush
-        rightEdge2 = d.width - mbRightPush
-        rightEdge3 = d.width - neoRightPush - mbRightPush
+    def AlignUndockButton(self, big, bh):
+        self.undockIcon.align = uiconst.CENTER
+        self.undockIcon.width = 54 if big else max(BUTTONHEIGHT, bh)
+        self.undockIcon.height = 60 if big else max(BUTTONHEIGHT, bh)
+
+
+
+    def PrepareForWindowPush(self, canWait = False):
+        if canWait:
+            while self.updatingWindowPush:
+                blue.pyos.synchro.Sleep(1)
+
+        if settings.user.windows.Get('neoautohide', 0) and getattr(self, 'isAutoExpanded', False):
+            (leftOffset, rightOffset,) = self.GetSideOffset(ignoreAutoHide=True)
+        else:
+            (leftOffset, rightOffset,) = self.GetSideOffset(ignoreAutoHide=False)
+        validWnds = uicore.registry.GetValidWindows(floatingOnly=True)
+        desktopWidth = uicore.desktop.width
         wndsOnLeft = []
         wndsOnRight = []
         wndsOnLeftOffset = []
         wndsOnRightOffset = []
         for wnd in validWnds:
-            (l, t, w, h,) = wnd.GetAbsolute()
-            if l in (leftEdge0,
-             leftEdge1,
-             leftEdge2,
-             leftEdge3):
+            (l, t, w, h,) = (wnd.left,
+             wnd.top,
+             wnd.width,
+             wnd.height)
+            if l in (0, leftOffset):
                 wndsOnLeft.append(wnd)
-            elif l in (leftEdge0 + 16,
-             leftEdge1 + 16,
-             leftEdge2 + 16,
-             leftEdge3 + 16):
+            elif l in (16, leftOffset + 16):
                 wndsOnLeftOffset.append(wnd)
-            if l + w in (rightEdge0,
-             rightEdge1,
-             rightEdge2,
-             rightEdge3):
+            if l + w in (desktopWidth, desktopWidth - rightOffset):
                 wndsOnRight.append(wnd)
-            elif l + w in (rightEdge0 - 16,
-             rightEdge1 - 16,
-             rightEdge2 - 16,
-             rightEdge3 - 16):
+            elif l + w in (desktopWidth - 16, desktopWidth - rightOffset - 16):
                 wndsOnRightOffset.append(wnd)
 
+        self.LogInfo('Neocom.PrepareForWindowPush', wndsOnLeft, wndsOnLeftOffset, wndsOnRight, wndsOnRightOffset, 'canWait', canWait)
         return (wndsOnLeft,
          wndsOnLeftOffset,
          wndsOnRight,
@@ -929,74 +843,93 @@ class NeocomSvc(service.Service):
 
 
 
-    def UpdateWindowPush(self, data, setNeoWidth = None, action = None, time = 150.0):
-        if data:
-            (wndsOnLeft, wndsOnLeftOffset, wndsOnRight, wndsOnRightOffset,) = data
-        else:
-            wndsOnLeft = wndsOnLeftOffset = wndsOnRight = wndsOnRightOffset = []
-        mbLeftPush = 0
-        mbRightPush = 0
-        mb = sm.GetService('window').GetWindow('mapbrowser', create=0)
-        if mb and uiutil.IsVisible(mb):
-            if mb.GetAlign() == uiconst.TOLEFT:
-                mbLeftPush = mb.width
-            else:
-                mbRightPush = mb.width
-        neoLeftPush = 0
-        neoRightPush = 0
-        onLeft = settings.user.windows.Get('neoalign', 'left') == 'left'
-        imBig = settings.user.windows.Get('neowidth', 1) and not self.ahidden
-        neo = self.GetWnd()
-        if neo:
-            neoWidth = setNeoWidth or neo.width
-            if uiutil.IsVisible(neo):
-                if onLeft:
-                    neoLeftPush = neoWidth
-                else:
-                    neoRightPush = neoWidth
-                if action and self.wnd.width != neoWidth:
-                    eve.Message('NeoCom' + action)
-                uicore.effect.MorphUI(self.wnd, 'width', neoWidth, time)
+    def UpdateWindowPush(self, windowData, setNeoWidth = None, action = None, time = 150.0):
+        self.updatingWindowPush = True
+        try:
+            autoHide = settings.user.windows.Get('neoautohide', 0)
+            if self.wnd and setNeoWidth is not None:
+                onLeft = settings.user.windows.Get('neoalign', 'left') == 'left'
+                imBig = settings.user.windows.Get('neowidth', 1)
                 self.wnd.SetAlign([uiconst.TORIGHT, uiconst.TOLEFT][onLeft])
                 if onLeft:
                     self.expander.SetTexturePath(['res:/UI/Texture/Shared/expanderRight.png', 'res:/UI/Texture/Shared/expanderLeft.png'][imBig])
                 else:
                     self.expander.SetTexturePath(['res:/UI/Texture/Shared/expanderLeft.png', 'res:/UI/Texture/Shared/expanderRight.png'][imBig])
+                if autoHide:
+                    self.AutoHide()
+                elif uiutil.IsVisible(self.wnd):
+                    if action and self.wnd.width != setNeoWidth:
+                        eve.Message('NeoCom' + action)
+                    uicore.effect.MorphUI(self.wnd, 'width', setNeoWidth, time)
+                self.wnd.width = setNeoWidth
+            if autoHide and getattr(self, 'isAutoExpanded', False):
+                (leftOffset, rightOffset,) = self.GetSideOffset(ignoreAutoHide=True)
             else:
-                self.wnd.width = neoWidth
-        if mb and mb.align == self.wnd.align == uiconst.TOLEFT:
-            uicore.effect.MorphUI(mb, 'left', neoLeftPush, time)
-        elif mb and mb.align == self.wnd.align == uiconst.TORIGHT:
-            uicore.effect.MorphUI(mb, 'left', neoRightPush, time)
-        lpush = mbLeftPush + neoLeftPush
-        rpush = mbRightPush + neoRightPush
-        for wnd in wndsOnLeft:
-            uicore.effect.MorphUI(wnd, 'left', lpush, time)
+                (leftOffset, rightOffset,) = self.GetSideOffset(ignoreAutoHide=False)
+            self.LogInfo('Neocom.UpdateWindowPush, leftOffset', leftOffset, 'rightOffset', rightOffset)
+            if windowData:
+                (wndsOnLeft, wndsOnLeftOffset, wndsOnRight, wndsOnRightOffset,) = windowData
+                for wnd in wndsOnLeft:
+                    self.LogInfo('Neocom.UpdateWindowPush, window on left', wnd.windowID)
+                    uicore.effect.MorphUI(wnd, 'left', leftOffset, time)
 
-        for wnd in wndsOnLeftOffset:
-            uicore.effect.MorphUI(wnd, 'left', lpush + 16, time)
+                for wnd in wndsOnLeftOffset:
+                    self.LogInfo('Neocom.UpdateWindowPush, window on left+16', wnd.windowID)
+                    uicore.effect.MorphUI(wnd, 'left', leftOffset + 16, time)
 
-        dw = uicore.desktop.width
-        for wnd in wndsOnRight:
-            uicore.effect.MorphUI(wnd, 'left', dw - wnd.width - rpush, time)
+                dw = uicore.desktop.width
+                for wnd in wndsOnRight:
+                    self.LogInfo('Neocom.UpdateWindowPush, window on right', wnd.windowID)
+                    uicore.effect.MorphUI(wnd, 'left', dw - wnd.width - rightOffset, time)
 
-        for wnd in wndsOnRightOffset:
-            uicore.effect.MorphUI(wnd, 'left', dw - wnd.width - rpush - 16, time)
+                for wnd in wndsOnRightOffset:
+                    self.LogInfo('Neocom.UpdateWindowPush, window on right+16', wnd.windowID)
+                    uicore.effect.MorphUI(wnd, 'left', dw - wnd.width - rightOffset - 16, time)
 
-        uicore.effect.MorphUI(uicore.layer.inflight, 'left', lpush, time, ifWidthConstrain=0)
-        uicore.effect.MorphUI(uicore.layer.station, 'left', lpush, time, ifWidthConstrain=0)
-        uicore.effect.MorphUI(uicore.layer.inflight, 'width', rpush, time, ifWidthConstrain=0)
-        uicore.effect.MorphUI(uicore.layer.station, 'width', rpush, time, ifWidthConstrain=0)
+            uicore.effect.MorphUI(uicore.layer.inflight, 'padLeft', leftOffset, time)
+            uicore.effect.MorphUI(uicore.layer.station, 'padLeft', leftOffset, time)
+            uicore.effect.MorphUI(uicore.layer.inflight, 'padRight', rightOffset, time)
+            uicore.effect.MorphUI(uicore.layer.station, 'padRight', rightOffset, time)
+            blue.pyos.synchro.SleepWallclock(int(time))
 
-        def UpdateDone():
-            blue.pyos.synchro.Sleep(int(time) + 100)
-            self.updatingPush = 0
-            if self.pushUpdatePending:
-                self.UpdateWindowPush(self.PrepareForWindowPush(self.pushUpdatePendingData), setNeoWidth=self.pushUpdatePendingData)
-            self.pushUpdatePending = False
+        finally:
+            self.updatingWindowPush = False
 
 
-        uthread.new(UpdateDone)
+
+
+    def GetSolarSystemTrace(self, itemID, altText = None):
+        if util.IsStation(itemID):
+            solarSystemID = cfg.stations.Get(itemID).solarSystemID
+        else:
+            solarSystemID = itemID
+        try:
+            (sec, col,) = util.FmtSystemSecStatus(sm.GetService('map').GetSecurityStatus(solarSystemID), 1)
+            col.a = 1.0
+            securityLabel = "</b> <color=%s><hint='%s'>%s</hint></color>" % (util.StrFromColor(col), localization.GetByLabel('UI/Map/StarMap/SecurityStatus'), sec)
+        except KeyError:
+            self.LogError('Neocom failed to get security status for item', solarSystemID, 'displaying BROKEN')
+            log.LogException()
+            sys.exc_clear()
+            securityLabel = ''
+        constellationID = cfg.solarsystems.Get(solarSystemID).constellationID
+        regionID = cfg.constellations.Get(constellationID).regionID
+        if altText:
+            solarSystemAlt = " alt='%s'" % altText
+        else:
+            solarSystemAlt = ''
+        locationTrace = '<url=showinfo:%s//%s%s>%s</url>%s &lt; <url=showinfo:%s//%s>%s</url> &lt; <url=showinfo:%s//%s>%s</url>' % (const.typeSolarSystem,
+         solarSystemID,
+         solarSystemAlt,
+         cfg.evelocations.Get(solarSystemID).locationName,
+         securityLabel,
+         const.typeConstellation,
+         constellationID,
+         cfg.evelocations.Get(constellationID).locationName,
+         const.typeRegion,
+         regionID,
+         cfg.evelocations.Get(regionID).locationName)
+        return locationTrace
 
 
 
@@ -1015,48 +948,48 @@ class NeocomSvc(service.Service):
             self.wnd.state = uiconst.UI_NORMAL
             if self.locationInfo is None or self.locationInfo.destroyed:
                 return 
-            if not self.locationText:
+            if not self.mainLocationInfo:
                 self.locationInfo.Flush()
-                self.criminalText = uicls.Label(name='criminalText', text='XXX', parent=self.locationInfo, top=-2, left=11, color=None, state=uiconst.UI_HIDDEN)
-                caption = uicls.CaptionLabel(text='', align=uiconst.TOPLEFT, fontsize=14, parent=self.locationInfo, left=18, letterspace=5, top=10)
-                caption.name = 'caption'
-                self.solText = caption
-                listbtn = xtriui.ListSurroundingsBtn(parent=self.locationInfo, align=uiconst.TOPLEFT, pos=(-6, 5, 24, 24), showIcon=True)
-                listbtn.hint = mls.UI_SHARED_LISTITEMSINSOLARSYSTEM
+                self.criminalText = uicls.EveLabelSmall(name='criminalText', parent=self.locationInfo, left=FRAME_WIDTH, state=uiconst.UI_HIDDEN)
+                listbtn = xtriui.ListSurroundingsBtn(parent=self.locationInfo, align=uiconst.TOPLEFT, pos=(-4, 9, 24, 24), showIcon=True)
+                listbtn.hint = localization.GetByLabel('UI/Neocom/ListItemsInSystem')
                 listbtn.sr.owner = self
                 listbtn.sr.groupByType = 1
                 listbtn.filterCurrent = 1
                 listbtn.sr.itemID = eve.session.solarsystemid2
                 listbtn.sr.typeID = const.typeSolarSystem
                 self.listbtn = listbtn
-                self.locationTextTopOffset = 30
-                txt = uicls.Label(name='locationText', text='', parent=self.locationInfo, width=400, top=self.locationTextTopOffset, color=None, state=uiconst.UI_DISABLED, autowidth=False, tabs=[110, 120, 300])
-                txt._tabMargin = 0
-                self.locationText = txt
-                self.extraTextCont = uicls.NeocomContainer(name='extraTextContainer', parent=self.neocomLeftSide, state=uiconst.UI_HIDDEN)
-                txt = uicls.Label(name='autopilotText', text='', parent=self.extraTextCont.content, color=None, tabs=[110, 120, 300])
-                txt._tabMargin = 0
-                self.extraText = txt
-                self.destPathColorCont = uicls.Container(parent=self.extraTextCont.content, name='destPathColorCont', align=uiconst.TOBOTTOM, pos=(0, 0, 0, 10), padBottom=8)
-                sovLabelText = '<url=localsvc:service=sov&method=GetSovOverview>%s</url>' % mls.UI_SHARED_MAPSOVEREIGNTY
-                self.sovLabel = uicls.Label(name='sovLink', text=sovLabelText, parent=self.locationInfo, top=self.locationTextTopOffset, color=None, state=uiconst.UI_HIDDEN)
+                self.mainLocationInfo = uicls.EveCaptionMedium(name='caption', align=uiconst.TOPLEFT, parent=self.locationInfo, left=FRAME_WIDTH, top=8)
+                self.sessionTimer = uicls.SessionTimeIndicator(parent=self.locationInfo, pos=(-4, -4, 24, 24), state=uiconst.UI_HIDDEN, align=uiconst.TOPLEFT)
+                self.nearestLocationInfo = uicls.EveLabelMedium(name='nearestLocationInfo', parent=self.locationInfo, left=FRAME_WIDTH)
+                self.sovLocationInfo = uicls.EveLabelMedium(name='sovLocationInfo', hint=localization.GetByLabel('UI/Neocom/Sovereignty'), parent=self.locationInfo, left=FRAME_WIDTH)
+                self.occupancyLocationInfo = uicls.EveLabelMedium(name='occupancyLocationInfo', hint=localization.GetByLabel('UI/Neocom/Occupancy'), parent=self.locationInfo, left=FRAME_WIDTH)
+                bgColor = (1, 1, 1, 0.15)
+                self.routeContainer = uicls.Container(parent=self.locationInfo, align=uiconst.TOPLEFT, name='routeContainer', left=FRAME_WIDTH, width=NEOCOM_PANELWIDTH - FRAME_WIDTH - FRAME_WIDTH)
+                self.routeContainer.headerParent = uicls.Container(parent=self.routeContainer, align=uiconst.TOTOP, padTop=16, padBottom=4)
+                self.routeContainer.header = uicls.EveCaptionMedium(name='header', parent=self.routeContainer.headerParent)
+                self.routeContainer.currentParent = uicls.Container(parent=self.routeContainer, align=uiconst.TOTOP, padBottom=12, height=19)
+                self.routeContainer.currentTrace = uicls.EveLabelMedium(name='currentTrace', parent=self.routeContainer.currentParent, align=uiconst.CENTER, state=uiconst.UI_NORMAL, width=NEOCOM_PANELWIDTH - 16, lineSpacing=-0.15)
+                uicls.Fill(parent=self.routeContainer.currentParent, color=bgColor)
+                currentPointer = uicls.Sprite(parent=self.routeContainer.currentParent, texturePath='res:/UI/Texture/classes/LocationInfo/pointerDown.png', pos=(0, -10, 10, 10), state=uiconst.UI_DISABLED, align=uiconst.BOTTOMLEFT, color=bgColor, idx=0)
+                import ccConst
+                frame = uicls.Frame(parent=self.routeContainer.currentParent, frameConst=ccConst.FRAME_SOFTSHADE, color=(0, 0, 0, 0.25))
+                frame.SetPadding(-5, -5, -5, -10)
+                self.routeContainer.markersParent = uicls.Container(parent=self.routeContainer, align=uiconst.TOTOP)
+                self.routeContainer.endParent = uicls.Container(parent=self.routeContainer, align=uiconst.TOBOTTOM, padTop=12, height=19)
+                self.routeContainer.endTrace = uicls.EveLabelMedium(name='endTrace', parent=self.routeContainer.endParent, align=uiconst.CENTER, state=uiconst.UI_NORMAL, width=NEOCOM_PANELWIDTH - 16, lineSpacing=-0.15)
+                uicls.Fill(parent=self.routeContainer.endParent, color=bgColor)
+                self.routeContainer.endPointer = uicls.Sprite(parent=self.routeContainer.endParent, texturePath='res:/UI/Texture/classes/LocationInfo/pointerUp.png', pos=(0, -10, 10, 10), state=uiconst.UI_DISABLED, color=bgColor, idx=0)
+                frame = uicls.Frame(parent=self.routeContainer.endParent, frameConst=ccConst.FRAME_SOFTSHADE, color=(0, 0, 0, 0.25))
+                frame.SetPadding(-5, -5, -5, -10)
+                self.tidiIndicator = uicls.tidiIndicator(parent=self.locationInfo, name='tidiIndicator', align=uiconst.TOPLEFT, pos=(0, 18, 24, 24))
+                self.locationParent.UpdateStandardAppearance()
             if eve.session.solarsystemid2:
-                self.locationText.state = uiconst.UI_DISABLED
-                self.listbtn.state = uiconst.UI_NORMAL
-                self.solText.state = uiconst.UI_DISABLED
-                self.UpdateLocationText()
-                solarsystemitems = sm.RemoteSvc('config').GetMapObjects(eve.session.solarsystemid2, 0, 0, 0, 1, 0)
-                self.listbtn.sr.mapitems = solarsystemitems
-                self.listbtn.solarsystemid = eve.session.solarsystemid2
-                self.listbtn.sr.itemID = eve.session.solarsystemid2
-                self.listbtn.sr.typeID = const.typeSolarSystem
-                solarSystemName = cfg.evelocations.Get(eve.session.solarsystemid2).name
-                self.solText.text = '<b>%s</b>' % solarSystemName
+                self.UpdateAllLocationInfo()
             else:
-                self.locationText.state = uiconst.UI_HIDDEN
+                self.mainLocationInfo.state = uiconst.UI_HIDDEN
                 self.listbtn.state = uiconst.UI_HIDDEN
-                self.solText.state = uiconst.UI_HIDDEN
-            self.UpdateCriminal()
+            self.AutoHide()
 
         finally:
             self.updating = False
@@ -1069,153 +1002,292 @@ class NeocomSvc(service.Service):
             systemStatus = sm.StartService('facwar').GetSystemStatus()
         xtra = ''
         if systemStatus == const.contestionStateCaptured:
-            xtra = mls.UI_INFLIGHT_SYSTEMLOST
+            xtra = localization.GetByLabel('UI/Neocom/SystemLost')
         elif systemStatus == const.contestionStateVulnerable:
-            xtra = mls.UI_INFLIGHT_SYSTEMVULNERABLE
+            xtra = localization.GetByLabel('UI/Neocom/Vulnerable')
         elif systemStatus == const.contestionStateContested:
-            xtra = mls.UI_INFLIGHT_SYSTEMCONTESTED
+            xtra = localization.GetByLabel('UI/Neocom/Contested')
         elif systemStatus == const.contestionStateNone and returnNone:
-            xtra = mls.UI_INFLIGHT_SYSTEMUNCONTESTED
+            xtra = localization.GetByLabel('UI/Neocom/Uncontested')
         return xtra
 
 
 
-    def UpdateLocationText(self, nearestBall = None):
-        (itemmapping, inView,) = self.GetLocationInfo()
-        trace = []
-        sovOffset = None
-        lines = 0
-        if 'station' in inView:
+    def UpdateAllLocationInfo(self):
+        self.UpdateCrimeInfo()
+        self.UpdateMainLocationInfo()
+        self.UpdateNearestOrStationLocationInfo()
+        self.UpdateSOVLocationInfo()
+        self.UpdateOccupancyLocationInfo()
+        self.UpdateRouteInfo()
+
+
+
+    def UpdateMainLocationInfo(self):
+        if eve.session.solarsystemid2:
+            solarSystemLabel = "<url=showinfo:%d//%d alt='%s'>%s</url>" % (const.typeSolarSystem,
+             eve.session.solarsystemid2,
+             localization.GetByLabel('UI/Neocom/Autopilot/CurrentLocationType', itemType=const.typeSolarSystem),
+             cfg.evelocations.Get(eve.session.solarsystemid2).name)
+            try:
+                (sec, col,) = util.FmtSystemSecStatus(sm.GetService('map').GetSecurityStatus(eve.session.solarsystemid2), 1)
+                col.a = 1.0
+                securityLabel = "</b> <color=%s><hint='%s'>%s</hint></color>" % (util.StrFromColor(col), localization.GetByLabel('UI/Map/StarMap/SecurityStatus'), sec)
+            except KeyError:
+                self.LogError('Neocom failed to get security status for item', eve.session.solarsystemid2, 'displaying BROKEN')
+                log.LogException()
+                sys.exc_clear()
+                securityLabel = '</b>'
+            if util.IsWormholeRegion(eve.session.regionid):
+                locationTrace = ''
+            else:
+                locationTrace = "<fontsize=14> &lt; <url=showinfo:%s//%s alt='%s'>%s</url> &lt; <url=showinfo:%s//%s alt='%s'>%s</url></fontsize>" % (const.typeConstellation,
+                 eve.session.constellationid,
+                 localization.GetByLabel('UI/Neocom/Autopilot/CurrentLocationType', itemType=const.typeConstellation),
+                 cfg.evelocations.Get(eve.session.constellationid).name,
+                 const.typeRegion,
+                 eve.session.regionid,
+                 localization.GetByLabel('UI/Neocom/Autopilot/CurrentLocationType', itemType=const.typeRegion),
+                 cfg.evelocations.Get(eve.session.regionid).name)
+            self.mainLocationInfo.text = solarSystemLabel + securityLabel + locationTrace
+            self.mainLocationInfo.state = uiconst.UI_NORMAL
+            self.tidiIndicator.left = self.mainLocationInfo.left + self.mainLocationInfo.textwidth + 4
+            solarsystemitems = sm.RemoteSvc('config').GetMapObjects(eve.session.solarsystemid2, 0, 0, 0, 1, 0)
+            self.listbtn.sr.mapitems = solarsystemitems
+            self.listbtn.solarsystemid = eve.session.solarsystemid2
+            self.listbtn.sr.itemID = eve.session.solarsystemid2
+            self.listbtn.sr.typeID = const.typeSolarSystem
+            self.listbtn.state = uiconst.UI_NORMAL
+
+
+
+    def UpdateNearestOrStationLocationInfo(self, nearestBall = None):
+        infoSettings = self.GetLocationInfoSettings()
+        nearestOrStationLabel = ''
+        if 'nearest' in infoSettings and eve.session.solarsystemid2:
             if eve.session.stationid2:
-                stationName = cfg.evelocations.Get(eve.session.stationid2).name
-                trace.append('%s<t>&gt;<t><b>%s</b>' % (mls.UI_SHARED_MAPDOCKEDIN.capitalize(), stationName))
-                lines += 1
-        if 'nearest' in inView:
-            nearestBall = nearestBall or self.GetNearestBall()
-            if nearestBall:
-                self.nearby = nearestBall.id
-                trace.append('%s<t>&gt;<t><b>%s</b>' % (mls.UI_GENERIC_NEAREST, nearestBall.name))
-                lines += 1
-        if 'occupancy' in inView:
+                stationName = cfg.evelocations.Get(eve.stationItem.itemID).name
+                nearestOrStationLabel = "<url=showinfo:%d//%d alt='%s'>%s</url>" % (eve.stationItem.stationTypeID,
+                 eve.stationItem.itemID,
+                 localization.GetByLabel('UI/Generic/CurrentStation'),
+                 stationName)
+            else:
+                nearestBall = nearestBall or self.GetNearestBall()
+                if nearestBall:
+                    self.nearby = nearestBall.id
+                    slimItem = sm.StartService('michelle').GetItem(nearestBall.id)
+                    if slimItem:
+                        nearestOrStationLabel = "<url=showinfo:%d//%d alt='%s'>%s</url>" % (slimItem.typeID,
+                         slimItem.itemID,
+                         localization.GetByLabel('UI/Neocom/Nearest'),
+                         cfg.evelocations.Get(nearestBall.id).locationName)
+                if self.locationTimer is None:
+                    self.locationTimer = base.AutoTimer(1313, self.CheckNearest)
+        if nearestOrStationLabel:
+            self.nearestLocationInfo.text = nearestOrStationLabel
+            self.nearestLocationInfo.state = uiconst.UI_NORMAL
+        else:
+            self.nearestLocationInfo.state = uiconst.UI_HIDDEN
+        self.UpdateLocationInfoLayout()
+
+
+
+    def UpdateOccupancyLocationInfo(self):
+        infoSettings = self.GetLocationInfoSettings()
+        occupancyLabel = ''
+        if 'occupancy' in infoSettings and eve.session.solarsystemid2:
             facwarsys = sm.StartService('facwar').GetFacWarSystem(eve.session.solarsystemid2)
             if facwarsys:
                 xtra = self.GetSolarSystemStatusText()
+                facOwner = cfg.eveowners.Get(facwarsys.get('occupierID'))
+                occupancyLabel = "<url=showinfo:%d//%d alt='%s'>%s</url>" % (facOwner.typeID,
+                 facOwner.ownerID,
+                 localization.GetByLabel('UI/Neocom/Occupancy'),
+                 facOwner.name)
                 if xtra:
-                    xtra = ' (%s)' % xtra
-                fac = cfg.eveowners.Get(facwarsys.get('occupierID')).name
-                trace.append('%s<t>&gt;<t><b>%s</b>%s' % (mls.UI_SHARED_OCCUPANCY, fac, xtra))
-                lines += 1
-        if 'sovereignty' in inView:
+                    occupancyLabel += ' ' + xtra
+        if occupancyLabel:
+            self.occupancyLocationInfo.text = occupancyLabel
+            self.occupancyLocationInfo.state = uiconst.UI_NORMAL
+        else:
+            self.occupancyLocationInfo.state = uiconst.UI_HIDDEN
+        self.UpdateLocationInfoLayout()
+
+
+
+    def UpdateSOVLocationInfo(self):
+        sovLabel = ''
+        infoSettings = self.GetLocationInfoSettings()
+        if 'sovereignty' in infoSettings and eve.session.solarsystemid2:
             ss = sm.RemoteSvc('stationSvc').GetSolarSystem(eve.session.solarsystemid2)
             if ss:
                 solSovOwner = ss.factionID
-                sovInfo = None
                 if solSovOwner is None:
                     sovInfo = sm.GetService('sov').GetSystemSovereigntyInfo(session.solarsystemid2)
                     if sovInfo:
                         solSovOwner = sovInfo.allianceID
+                contestedState = ''
                 if solSovOwner:
-                    trace.append('<t>&gt;<t><b>%s</b>%s' % (cfg.eveowners.Get(solSovOwner).name, sm.GetService('sov').GetContestedState(session.solarsystemid2)))
+                    sovText = cfg.eveowners.Get(solSovOwner).name
+                    contestedState = sm.GetService('sov').GetContestedState(session.solarsystemid2) or ''
                 elif util.IsWormholeRegion(eve.session.regionid):
-                    unclaimText = mls.UI_SHARED_UNCLAIMABLE
+                    sovText = localization.GetByLabel('UI/Neocom/Unclaimable')
                 else:
-                    unclaimText = mls.UI_SHARED_UNCLAIMED
-                trace.append('<t>&gt;<t><i>%s</i>' % unclaimText)
-                sovOffset = lines
-                lines += 1
-        if util.IsWormholeSystem(eve.session.solarsystemid2):
-            if 'signature' in inView:
-                trace.append('%s<t>&gt;<t>%s' % (mls.UI_GENERIC_LOCUSSIGN, cfg.evelocations.Get(eve.session.solarsystemid2).name))
-                lines += 1
-        elif 'constellation' in inView or 'region' in inView:
-            for (locationID, label, config,) in [(eve.session.constellationid, mls.UI_GENERIC_CONSTELLATION, 'constellation'), (eve.session.regionid, mls.UI_GENERIC_REGION, 'region')]:
-                if locationID and config in inView:
-                    trace.append('%s<t>&gt;<t>%s' % (label, cfg.evelocations.Get(locationID).name))
-                    lines += 1
-
-        if 'security' in inView:
-            try:
-                (sec, col,) = util.FmtSystemSecStatus(sm.GetService('map').GetSecurityStatus(eve.session.solarsystemid2), 1)
-                col.a = 1.0
-                trace.append(u'%s<t>&gt;<t><color=%s>%.1f</color>' % (mls.UI_INFOWND_SECURITYLEVEL, util.StrFromColor(col), sec))
-                lines += 1
-            except KeyError:
-                self.LogError('Neocom failed to get security status for item', ss.itemID, 'displaying BROKEN')
-                log.LogException()
-                trace.append('%s > %s' % (mls.UI_INFOWND_SECURITYLEVEL, mls.UI_GENERIC_BROKEN))
-                lines += 1
-                sys.exc_clear()
-        self.locationText.text = '<br>'.join(trace)
-        self.locationParent.height = self.locationTextTopOffset + self.locationText.textheight
-        if sovOffset is None:
-            self.sovLabel.state = uiconst.UI_HIDDEN
+                    sovText = localization.GetByLabel('UI/Neocom/Unclaimed')
+                sovLabel = "<url=localsvc:service=sov&method=GetSovOverview alt='%s'>%s</url> %s" % (localization.GetByLabel('UI/Neocom/Sovereignty'), sovText, contestedState)
+        if sovLabel:
+            self.sovLocationInfo.text = sovLabel
+            self.sovLocationInfo.state = uiconst.UI_NORMAL
         else:
-            numLines = self.locationText._numLines
-            textheight = (self.locationText.textheight - 1) / numLines
-            sovOffset += numLines - lines
-            self.sovLabel.top = self.locationTextTopOffset + sovOffset * textheight
-            self.sovLabel.state = uiconst.UI_NORMAL
-        self.destPathColorCont.Flush()
-        waypoints = deque(sm.GetService('starmap').GetWaypoints())
-        if self.destPathData:
-            MAXPERROW = 36
-            WIDTH = 6
-            HEIGHT = 6
-            for (i, solarSystemID,) in enumerate(self.destPathData):
-                row = i / MAXPERROW
-                if waypoints and solarSystemID == waypoints[0]:
+            self.sovLocationInfo.state = uiconst.UI_HIDDEN
+        self.UpdateLocationInfoLayout()
+
+
+
+    def UpdateRouteInfo(self, jumpChange = False):
+        if not session.solarsystemid2:
+            return 
+        planetView = sm.GetService('viewState').IsViewActive('planet')
+        autoPilotActive = sm.GetService('autoPilot').GetState()
+        updatingRouteData = getattr(self, 'updatingRouteData', None)
+        if updatingRouteData == (autoPilotActive, planetView, self.routeData):
+            return 
+        if not self.routeData:
+            if self.routeContainer:
+                self.routeContainer.Hide()
+                self.routeContainer.markersParent.Flush()
+                self.UpdateLocationInfoLayout()
+            return 
+        self.updatingRouteData = (autoPilotActive, planetView, self.routeData[:])
+        numJumps = self._GetNumJumps(self.routeData)
+        self.routeContainer.header.text = '%s <fontsize=13></b>%s %s' % (localization.GetByLabel('UI/InfoWindow/TabNames/Route'), numJumps, localization.GetByLabel('UI/Common/Jumps'))
+        self.routeContainer.headerParent.height = self.routeContainer.header.height
+        self.routeContainer.Show()
+        infoSettings = self.GetLocationInfoSettings()
+        if planetView or 'route' not in infoSettings:
+            self.routeContainer.currentParent.Hide()
+            self.routeContainer.markersParent.Hide()
+            self.routeContainer.endParent.Hide()
+        else:
+            self.routeContainer.currentParent.Show()
+            self.routeContainer.endParent.Show()
+            self.routeContainer.markersParent.Show()
+            currentTrace = self.routeContainer.currentTrace
+            currentTrace.text = '<center>' + self.GetSolarSystemTrace(self.routeData[0], localization.GetByLabel('UI/Neocom/Autopilot/NextSystemInRoute'))
+            self.routeContainer.currentParent.height = max(19, currentTrace.textheight + 4)
+            waypoints = deque(sm.GetService('starmap').GetWaypoints())
+            markersParent = self.routeContainer.markersParent
+            doBlink = autoPilotActive and jumpChange
+            routeIDs = []
+            lastStationSystemID = None
+            for (i, id,) in enumerate(self.routeData):
+                isLast = i == len(self.routeData) - 1
+                if util.IsSolarSystem(id) and not isLast and not util.IsSolarSystem(self.routeData[(i + 1)]):
+                    continue
+                if util.IsSolarSystem(id) and lastStationSystemID == id:
+                    continue
+                if util.IsStation(id):
+                    lastStationSystemID = cfg.stations.Get(id).solarSystemID
+                routeIDs.append(id)
+
+            if len(markersParent.children):
+                while markersParent.children and markersParent.children[0].solarSystemID != routeIDs[0]:
+                    markersParent.children[0].Close()
+
+            if len(markersParent.children) > len(routeIDs):
+                for each in markersParent.children[len(routeIDs):]:
+                    each.Close()
+
+            (absWidth, absHeight,) = markersParent.GetAbsoluteSize()
+            markerX = 0
+            markerY = 0
+            for (i, destinationID,) in enumerate(routeIDs):
+                if waypoints and destinationID == waypoints[0]:
                     isWaypoint = True
                     waypoints.popleft()
                 else:
                     isWaypoint = False
-                SolarSystemIcon(parent=self.destPathColorCont, pos=(i % MAXPERROW * WIDTH + 2 * (i % MAXPERROW),
-                 row * (HEIGHT + 2),
-                 WIDTH,
-                 HEIGHT), solarSystemID=solarSystemID, isWaypoint=isWaypoint)
+                if util.IsSolarSystem(destinationID):
+                    isStation = False
+                    solarSystemID = destinationID
+                elif util.IsStation(destinationID):
+                    isStation = True
+                    solarSystemID = cfg.stations.Get(destinationID).solarSystemID
+                else:
+                    self.LogError('UpdateRouteInfo: Unknown item. I can only handle solar systems and stations, you gave me', destinationID)
+                if len(markersParent.children) > i:
+                    systemIcon = markersParent.children[i]
+                    systemIcon.left = markerX
+                    systemIcon.top = markerY
+                    systemIcon.SetSolarSystemAndDestinationID(solarSystemID, destinationID)
+                    systemIcon.SetIsWaypoint(isWaypoint)
+                    systemIcon.SetIsStation(isStation)
+                else:
+                    systemIcon = uicls.AutopilotDestinationIcon(parent=markersParent, pos=(markerX,
+                     markerY,
+                     ROUTE_MARKERSIZE,
+                     ROUTE_MARKERSIZE), solarSystemID=solarSystemID, isWaypoint=isWaypoint, isStation=isStation, destinationID=destinationID, idx=i)
+                markerX += ROUTE_MARKERGAP + ROUTE_MARKERSIZE
+                if markerX + ROUTE_MARKERSIZE > absWidth:
+                    markerX = 0
+                    markerY += ROUTE_MARKERGAP + ROUTE_MARKERSIZE
+                lastSystemIcon = markersParent.children[-1]
+                markersParent.height = markerY + ROUTE_MARKERSIZE
+                self.routeContainer.height = sum((each.height + each.padTop + each.padBottom for each in self.routeContainer.children if each.state != uiconst.UI_HIDDEN))
 
-            numRows = len(self.destPathData) / MAXPERROW + 1
-            self.destPathColorCont.height = numRows * HEIGHT
-        if self.xtratext != '':
-            if sm.GetService('map').ViewingStarMap():
-                self.extraText.tabs = [110, 120, 300]
+            if len(routeIDs) > 1:
+                endTrace = self.routeContainer.endTrace
+                endTrace.text = '<center>' + self.GetSolarSystemTrace(routeIDs[-1], localization.GetByLabel('UI/Neocom/Autopilot/CurrentDestination'))
+                self.routeContainer.endParent.height = max(19, endTrace.textheight + 4)
+                self.routeContainer.endPointer.left = markerX - ROUTE_MARKERSIZE - ROUTE_MARKERGAP - 1
+                self.routeContainer.endParent.Show()
             else:
-                self.extraText.tabs = [110, 120, 300]
-            self.extraText.text = self.xtratext
-            self.extraTextCont.state = uiconst.UI_PICKCHILDREN
-            self.extraTextCont.height = self.extraText.height + self.destPathColorCont.height + 9
-        else:
-            self.extraTextCont.state = uiconst.UI_HIDDEN
-            self.extraText.text = ''
-        if self.locationTimer is None:
-            self.locationTimer = base.AutoTimer(1313, self.CheckNearest)
+                self.routeContainer.endParent.Hide()
+        self.routeContainer.height = sum((each.height + each.padTop + each.padBottom for each in self.routeContainer.children if each.state != uiconst.UI_HIDDEN))
+        self.UpdateLocationInfoLayout()
+        self.updatingRouteData = None
 
 
 
-    def UpdateCriminal(self, charcrimes = None, corpcrimes = None):
-        if charcrimes is None:
-            (charcrimes, corpcrimes,) = sm.GetService('michelle').GetCriminalFlagCountDown()
+    def _GetNumJumps(self, routeData):
+        ids = []
+        lastID = None
+        for id in routeData:
+            if util.IsStation(id):
+                id = cfg.stations.Get(id).solarSystemID
+            if id != lastID:
+                ids.append(id)
+            lastID = id
+
+        numJumps = len(ids)
+        if ids and ids[0] == session.solarsystemid2:
+            numJumps -= 1
+        return numJumps
+
+
+
+    def UpdateCrimeInfo(self, charcrimes = None, corpcrimes = None):
         if getattr(self, 'criminalText', None) is None:
             return 
-        if charcrimes.has_key(None) or corpcrimes.has_key(None):
+        if charcrimes is None:
+            (charcrimes, corpcrimes,) = sm.GetService('michelle').GetCriminalFlagCountDown()
+        if None in charcrimes or None in corpcrimes:
             criminalTimer = max(charcrimes.get(None, 0), corpcrimes.get(None, 0))
-            (color, text,) = ('0xffff0000', mls.UI_SHARED_GLOBALCRIMINAL)
+            labelPath = 'UI/Neocom/UpdateCriminalGlobalCriminal'
         elif charcrimes and corpcrimes:
             criminalTimer = max(max(charcrimes.values()), max(corpcrimes.values()))
-            (color, text,) = ('0xffffff00', mls.UI_GENERIC_AGGRESSION)
+            labelPath = 'UI/Neocom/UpdateCriminalAggression'
         elif charcrimes:
             criminalTimer = max(charcrimes.values())
-            (color, text,) = ('0xffffff00', mls.UI_GENERIC_AGGRESSION)
+            labelPath = 'UI/Neocom/UpdateCriminalAggression'
         elif corpcrimes:
             criminalTimer = max(corpcrimes.values())
-            (color, text,) = ('0xffffff00', mls.UI_GENERIC_AGGRESSION)
+            labelPath = 'UI/Neocom/UpdateCriminalAggression'
         else:
             criminalTimer = 0
         if criminalTimer > 0:
             self.criminalText.state = uiconst.UI_NORMAL
-            self.criminalText.text = '<b><color=%s>%s %s: %s ' % (color,
-             text,
-             mls.UI_GENERIC_COUNTDOWN,
-             util.FmtTimeInterval(criminalTimer - blue.os.GetTime(), breakAt='min'))
+            self.criminalText.text = localization.GetByLabel(labelPath, countdownTimer=util.FmtTimeInterval(criminalTimer - blue.os.GetSimTime(), breakAt='min'))
             if uicore.uilib.mouseOver == self.criminalText:
                 keystoprime = charcrimes.keys() + corpcrimes.keys()
                 while None in keystoprime:
@@ -1223,34 +1295,62 @@ class NeocomSvc(service.Service):
 
                 cfg.eveowners.Prime(keystoprime)
                 criminal = []
-                if charcrimes.has_key(None):
-                    criminal.append('%s: %s<br>' % (mls.UI_SHARED_GLOBALCRIMINALFLAG, util.FmtDate(charcrimes[None] - blue.os.GetTime(), 'ns')))
-                charcrimestr = [ '%s: %s<br>' % (cfg.eveowners.Get(key).name, util.FmtDate(value - blue.os.GetTime(), 'ns')) for (key, value,) in charcrimes.iteritems() if key is not None ]
+                if None in charcrimes:
+                    string = localization.GetByLabel('UI/Neocom/CriminalFlagGlobal', timeLeft=util.FmtDate(charcrimes[None] - blue.os.GetSimTime(), 'ns'))
+                    criminal.append(string)
+                charcrimestr = []
+                for (key, value,) in charcrimes.iteritems():
+                    if key is not None:
+                        string = localization.GetByLabel('UI/Neocom/CriminalFlagYourOrCorpCrimes', victim=cfg.eveowners.Get(key).name, timeLeft=util.FmtDate(value - blue.os.GetSimTime(), 'ns'))
+                        charcrimestr.append(string)
+
                 if charcrimestr:
-                    criminal.append('%s:<br>' % mls.UI_SHARED_YOURCRIMES)
+                    criminal.append(localization.GetByLabel('UI/Neocom/YourCrimes'))
                     criminal += charcrimestr
-                corpcrimestr = [ '%s: %s<br>' % (cfg.eveowners.Get(key).name, util.FmtDate(value - blue.os.GetTime(), 'ns')) for (key, value,) in corpcrimes.iteritems() ]
+                corpcrimestr = []
+                for (key, value,) in corpcrimes.iteritems():
+                    string = localization.GetByLabel('UI/Neocom/CriminalFlagYourOrCorpCrimes', victim=cfg.eveowners.Get(key).name, timeLeft=util.FmtDate(value - blue.os.GetSimTime(), 'ns'))
+                    corpcrimestr.append(string)
+
                 if corpcrimestr:
-                    criminal.append('%s:<br>' % mls.UI_SHARED_CRIMESOFYOURCORP)
+                    criminal.append(localization.GetByLabel('UI/Neocom/YourCorpsCrimes'))
                     criminal += corpcrimestr
-                self.criminalText.sr.hint = ''.join(criminal)
+                self.criminalText.hint = '<br>'.join(criminal)
                 uicore.UpdateHint(self.criminalText)
             if not self.criminalTimer:
-                self.criminalTimer = base.AutoTimer(1000, self.UpdateCriminal)
+                self.criminalTimer = base.AutoTimer(1000, self.UpdateCrimeInfo)
         else:
-            self.criminalText.sr.hint = ''
+            self.criminalText.hint = ''
             self.criminalText.state = uiconst.UI_HIDDEN
             self.criminalTimer = None
 
 
 
+    def UpdateLocationInfoLayout(self):
+        mainInfoTop = 16
+        self.mainLocationInfo.top = mainInfoTop
+        self.listbtn.top = mainInfoTop
+        textY = self.mainLocationInfo.top + self.mainLocationInfo.textheight
+        for textControl in (self.nearestLocationInfo, self.sovLocationInfo, self.occupancyLocationInfo):
+            if textControl.state == uiconst.UI_HIDDEN:
+                continue
+            textControl.top = textY
+            textY += textControl.height
+
+        if self.routeContainer.state != uiconst.UI_HIDDEN:
+            self.routeContainer.top = textY + 16
+            textY = self.routeContainer.top + self.routeContainer.height
+        self.locationParent.height = textY + FRAME_WIDTH
+
+
+
     def CheckNearest(self):
-        if not eve.session.solarsystemid or not self.locationText:
+        if not eve.session.solarsystemid or not self.mainLocationInfo:
             self.locationTimer = None
             return 
         nearestBall = self.GetNearestBall()
         if nearestBall and self.nearby != nearestBall.id:
-            self.UpdateLocationText(nearestBall)
+            self.UpdateNearestOrStationLocationInfo(nearestBall)
 
 
 
@@ -1276,12 +1376,20 @@ class NeocomSvc(service.Service):
 
 
 
-    def SetXtraText(self, txt = None, destPathData = None):
-        change = self.xtratext != (txt or '') or destPathData != self.destPathData
-        self.xtratext = txt or ''
-        self.destPathData = destPathData
-        if change:
-            self.UpdateNeocom(0)
+    def FakeJump(self):
+        if self.routeData:
+            self.LoadRouteData(self.routeData[1:])
+
+
+
+    def LoadRouteData(self, routeData = None):
+        change = routeData != self.routeData
+        if self.routeData:
+            jumpChange = routeData == self.routeData[1:]
+        else:
+            jumpChange = False
+        self.routeData = routeData
+        uthread.new(self.UpdateRouteInfo, jumpChange)
 
 
 
@@ -1305,8 +1413,11 @@ class NeocomSvc(service.Service):
     def Blink(self, what, hint = None, force = 1, blinkcount = 3, frequency = 750, bright = 0):
         if not self.wnd:
             return 
+        if not settings.user.windows.Get('neoblink', True):
+            self.blinkingBtns[what] = 1
+            return 
         while self.btnsready == 0:
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
 
         self.OnAutohideEnter()
         for each in self.btns:
@@ -1320,18 +1431,16 @@ class NeocomSvc(service.Service):
                 setattr(self, each.name + '_hint', hint)
 
         if what == 'undock':
-            hilite = self.GetBlink(self.exitbtn)
+            hilite = self.GetBlink(self.undockBlinker)
             hilite.state = uiconst.UI_DISABLED
             hilite.top = hilite.height = 0
             hilite.padBottom = -8
-            sm.GetService('ui').BlinkSpriteRGB(self.exitbtn.sr.blink, min(1.0, self.exitbtn.r * (1.0 + bright * 0.25)), min(1.0, self.exitbtn.g * (1.0 + bright * 0.25)), min(1.0, self.exitbtn.b * (1.0 + bright * 0.25)), frequency, blinkcount, passColor=1)
+            sm.GetService('ui').BlinkSpriteRGB(self.undockBlinker.sr.blink, min(1.0, self.undockBlinker.r * (1.0 + bright * 0.25)), min(1.0, self.undockBlinker.g * (1.0 + bright * 0.25)), min(1.0, self.undockBlinker.b * (1.0 + bright * 0.25)), frequency, blinkcount, passColor=1)
             self.Maximize()
         if what == 'clock':
-            blink = self.GetBlink(self.dateCont)
+            blink = self.GetBlink(self.clockparDeco)
             blink.state = uiconst.UI_DISABLED
-            blink.top = -8
-            blink.height = -20
-            sm.GetService('ui').BlinkSpriteRGB(blink, min(1.0, self.dateCont.r * (1.0 + bright * 0.25)), min(1.0, self.dateCont.g * (1.0 + bright * 0.25)), min(1.0, self.dateCont.b * (1.0 + bright * 0.25)), frequency, blinkcount, passColor=1)
+            sm.GetService('ui').BlinkSpriteRGB(blink, min(1.0, self.clockparDeco.r * (1.0 + bright * 0.25)), min(1.0, self.clockparDeco.g * (1.0 + bright * 0.25)), min(1.0, self.clockparDeco.b * (1.0 + bright * 0.25)), frequency, blinkcount, passColor=1)
         self.blinkingBtns[what] = 1
 
 
@@ -1347,9 +1456,9 @@ class NeocomSvc(service.Service):
                 setattr(self, each.name + '_hint', None)
 
         if what == 'undock':
-            self.GetBlink(self.exitbtn).state = uiconst.UI_HIDDEN
+            self.GetBlink(self.undockBlinker).state = uiconst.UI_HIDDEN
         if what == 'clock':
-            self.GetBlink(self.dateCont).state = uiconst.UI_HIDDEN
+            self.GetBlink(self.clockparDeco).state = uiconst.UI_HIDDEN
         if self.blinkingBtns.has_key(what):
             del self.blinkingBtns[what]
 
@@ -1403,23 +1512,20 @@ class NeocomSvc(service.Service):
             return 
         if self.clocktimer is None:
             self.clocktimer = base.AutoTimer(60000, self.UpdateClock)
-        now = blue.os.GetTime()
-        (date, hours,) = util.FmtDate(now, 'ss').split(' ')
-        (year, month, wd, day, hour, min, sec, ms,) = util.GetTimeParts(now)
+        now = blue.os.GetWallclockTime()
+        hours = localization.GetByLabel('/Carbon/UI/Common/DateTime/HoursAndMinutes', datetime=now)
         if settings.user.windows.Get('neowidth', 1):
-            self.clock.width = 124
-            self.clock.text = '<center>%s' % hours
-            self.dateText.width = 124
-            self.dateText.text = '<center>%s' % date
-            self.dateText.fontsize = 9
-            self.dateText.top = 1
+            date = localization.GetByLabel('/Carbon/UI/Common/DateTime/DateLongNone', datetime=now)
+            self.clock.text = hours
+            self.dateText.text = date
+            self.dateText.fontsize = fontConst.EVE_SMALL_FONTSIZE
+            self.dateText.top = self.clock.top + self.clock.textheight - 2
         else:
-            self.clock.width = 32
-            self.clock.text = '<center>%s' % hours
-            self.dateText.width = 32
-            self.dateText.text = '<center>%s' % day
-            self.dateText.fontsize = 14
-            self.dateText.top = -1
+            day = localization.GetByLabel('/Carbon/UI/Common/DateTime/DateDay', datetime=now)
+            self.clock.text = hours
+            self.dateText.text = day
+            self.dateText.fontsize = fontConst.EVE_LARGE_FONTSIZE
+            self.dateText.top = self.clock.top + self.clock.textheight - 5
 
 
 
@@ -1479,41 +1585,45 @@ class NeocomSvc(service.Service):
         btn.sr.hintAbRight = None
         eve.Message('NeocomButtonEnter')
         self.autohidetimer = None
-        if btn.name != 'undock':
+        if btn.name not in ('cq', 'undock'):
             btn.sr.selection.state = uiconst.UI_DISABLED
         hint = btn.displayName
         cmdstr = getattr(btn, 'cmdstr', None)
         if cmdstr:
             cmdshortcut = uicore.cmd.GetShortcutByString(cmdstr)
-            hint += (' [%s]' % cmdshortcut, '')[(cmdshortcut is None)]
+            if cmdshortcut is not None:
+                hint = localization.GetByLabel('UI/Neocom/NeocomBtnHintWithShortcut', btnDisplayName=btn.displayName, shortcut=cmdshortcut)
         if btn.name == 'wallet':
-            wealth = util.FmtISK(sm.GetService('wallet').GetWealth())
-            aurWealth = util.FmtAUR(sm.GetService('wallet').GetAurWealth())
-            hint += '<br>%s:<br>%s<br>%s' % (mls.UI_GENERIC_BALANCE, wealth, aurWealth)
-            if settings.user.windows.Get('neowidth', 1) == 1:
-                btn.hint = hint
+            uthread.new(self.GetWalletHint, btn)
+            return 
         if btn.name == 'charactersheet':
             skill = sm.GetService('skills').SkillInTraining()
             if skill is None:
-                hint += ' - %s' % mls.UI_SHARED_NOSKILLINTRAINING
+                hint = localization.GetByLabel('UI/Neocom/CharacterSheetBtnHintNotTraining', btnNameAndShortcut=hint)
             elif sm.GetService('godma').GetStateManager().HasTrainingTimeForSkill(skill.itemID):
                 if skill.skillTrainingEnd is None:
-                    hint += ' - %s' % mls.UI_SHARED_NOSKILLINTRAINING
+                    hint = localization.GetByLabel('UI/Neocom/CharacterSheetBtnHintNotTraining', btnNameAndShortcut=hint)
                 else:
-                    secUntilDone = (skill.skillTrainingEnd - blue.os.GetTime()) / const.SEC
-                    hint += '<br>%s: %s' % (mls.GENERIC_TRAINING, skill.name)
-                    hint += '<br>%s: %s' % (mls.CHAR_SKILLS_LEVEL, skill.skillLevel + 1)
-                    hint += '<br>%s: %s' % (mls.UI_GENERIC_ETA, uix.GetTimeText(secUntilDone))
+                    timeUntilDone = long(skill.skillTrainingEnd - blue.os.GetWallclockTime())
+                    if timeUntilDone < const.SEC:
+                        finishTime = localization.GetByLabel('UI/Neocom/CompletionImminent')
+                    else:
+                        finishTime = util.FmtTimeInterval(timeUntilDone, breakAt='sec')
+                    hint = localization.GetByLabel('UI/Neocom/CharacterSheetBtnTrainingSkill', btnNameAndShortcut=hint, skillName=skill.name, skillLevel=skill.skillLevel + 1, finishTime=finishTime)
             else:
-                hint += '<br>%s: %s' % (mls.GENERIC_TRAINING, skill.name)
-                hint += '<br>%s: %s' % (mls.CHAR_SKILLS_LEVEL, skill.skillLevel + 1)
-                hint += '<br>%s: %s' % (mls.UI_GENERIC_ETA, mls.UI_GENERIC_LOADING)
+                hint = localization.GetByLabel('UI/Neocom/CharacterSheetBtnTrainingSkillLoading', btnNameAndShortcut=hint, skillName=skill.name, skillLevel=skill.skillLevel + 1)
                 uthread.new(self.RefreshSkillTrainingTime)
             if settings.user.windows.Get('neowidth', 1) == 1:
                 btn.hint = hint
+        self.UpdateHint(btn, hint)
+        btn.sr.timer = base.AutoTimer(250, self.ResetHilite, btn)
+
+
+
+    def UpdateHint(self, btn, hint):
         blinkhint = getattr(self, btn.name + '_hint', None)
         if blinkhint:
-            hint += ' - ' + blinkhint
+            hint = localization.GetByLabel('UI/Neocom/NeocomBtnHintWithBlinkHint', hint=hint, blinkhint=blinkhint)
         left = settings.user.windows.Get('neoalign', 'left') == 'left'
         if settings.user.windows.Get('neowidth', 1) != 1:
             btn.hint = hint
@@ -1523,6 +1633,27 @@ class NeocomSvc(service.Service):
                 btn.sr.hintAbLeft = xtraLeft
             else:
                 btn.sr.hintAbRight = uicore.desktop.width - xtraRight
+
+
+
+    def GetWalletHint(self, btn):
+        walletSvc = sm.GetService('wallet')
+        personalWealth = util.FmtISK(walletSvc.GetWealth())
+        canAccess = walletSvc.HaveReadAccessToCorpWalletDivision(session.corpAccountKey)
+        btnName = btn.displayName
+        cmdstr = getattr(btn, 'cmdstr', None)
+        if cmdstr:
+            cmdshortcut = uicore.cmd.GetShortcutByString(cmdstr)
+            if cmdshortcut is not None:
+                btnName = localization.GetByLabel('UI/Neocom/NeocomBtnHintWithShortcut', btnDisplayName=btn.displayName, shortcut=cmdshortcut)
+        if canAccess:
+            corpWealth = util.FmtISK(walletSvc.GetCorpWealth(session.corpAccountKey))
+            hint = localization.GetByLabel('UI/Neocom/WalletBtnHintCorp', btnNameAndShortcut=btnName, iskWealth=personalWealth, corpWealth=corpWealth)
+        else:
+            hint = localization.GetByLabel('UI/Neocom/WalletBtnHintPersonal', btnNameAndShortcut=btnName, iskWealth=personalWealth)
+        if settings.user.windows.Get('neowidth', 1) == 1:
+            btn.hint = hint
+        self.UpdateHint(btn, hint)
         btn.sr.timer = base.AutoTimer(250, self.ResetHilite, btn)
 
 
@@ -1540,7 +1671,7 @@ class NeocomSvc(service.Service):
 
 
     def BtnExit(self, btn, *args):
-        if btn.name != 'undock':
+        if btn.name not in ('cq', 'undock'):
             btn.sr.selection.state = uiconst.UI_HIDDEN
         self.SetResetBtnTimer()
         if settings.user.windows.Get('neoautohide', 0):
@@ -1560,15 +1691,32 @@ class NeocomSvc(service.Service):
 
 
 
-    def GetSideOffset(self):
+    def GetSideOffset(self, ignoreAutoHide = False):
         xtraLeft = 0
         xtraRight = 0
-        if self.wnd and not self.moving:
-            w = self.wnd.width
-            if settings.user.windows.Get('neoalign', 'left') == 'left':
-                xtraLeft += w
+        if eve.session.charid:
+            if not ignoreAutoHide:
+                autoHideMode = settings.user.windows.Get('neoautohide', 0)
             else:
-                xtraRight += w
+                autoHideMode = False
+            onLeft = settings.user.windows.Get('neoalign', 'left') == 'left'
+            isBig = settings.user.windows.Get('neowidth', 1)
+            if autoHideMode:
+                size = 0
+            elif isBig:
+                size = EXPANDED_SIZE
+            else:
+                size = COLLAPSED_SIZE
+            if onLeft:
+                xtraLeft += size
+            else:
+                xtraRight += size
+        mb = form.MapBrowserWnd.GetIfOpen()
+        if mb and mb.state != uiconst.UI_HIDDEN:
+            if mb.GetAlign() == uiconst.TOLEFT:
+                xtraLeft += mb.width
+            else:
+                xtraRight += mb.width
         return (xtraLeft, xtraRight)
 
 
@@ -1576,12 +1724,15 @@ class NeocomSvc(service.Service):
     def GetMainMenu(self):
         m = []
         if settings.user.windows.Get('neoalign', 'left') == 'left':
-            m.append((mls.UI_CMD_ALIGNRIGHT, self.ChangeAlign, ('right',)))
+            m.append((localization.GetByLabel('UI/Neocom/AlignRight'), self.ChangeAlign, ('right',)))
         else:
-            m.append((mls.UI_CMD_ALIGNLEFT, self.ChangeAlign, ('left',)))
+            m.append((localization.GetByLabel('UI/Neocom/AlignLeft'), self.ChangeAlign, ('left',)))
         neoautohide = settings.user.windows.Get('neoautohide', 0)
-        m.append(([mls.UI_CMD_TURNAUTOHIDEON, mls.UI_CMD_TURNAUTOHIDEOFF][(neoautohide == 1)], self.ChangeConfig, ('neoautohide', neoautohide != 1)))
-        m.append((mls.UI_GENERIC_CONFIGURE, ('isDynamic', self.ConfigureNeocom, ())))
+        m.append(([localization.GetByLabel('UI/Neocom/AutohideOn'), localization.GetByLabel('UI/Neocom/AutohideOff')][(neoautohide == 1)], self.ChangeConfig, ('neoautohide', neoautohide != 1)))
+        neoblink = settings.user.windows.Get('neoblink', True)
+        blinkText = localization.GetByLabel('UI/Neocom/ConfigBlinkOn') if not neoblink else localization.GetByLabel('UI/Neocom/ConfigBlinkOff')
+        m.append((blinkText, self.ChangeConfig, ('neoblink', not neoblink)))
+        m.append((localization.GetByLabel('UI/Neocom/ConfigureSubmenu'), ('isDynamic', self.ConfigureNeocom, ())))
         if eve.session.role & service.ROLEMASK_ELEVATEDPLAYER:
             m.append(None)
             m += [('Toggle Insider', lambda : sm.StartService('insider').Toggle(forceShow=True))]
@@ -1590,11 +1741,41 @@ class NeocomSvc(service.Service):
 
 
 
+    def ConfigureLocationInfo(self):
+        label = localization.GetByLabel('UI/Neocom/ConfigureWoldInfoText')
+        setting = 'neocomLocationInfo_3'
+        valid = ['nearest',
+         'occupancy',
+         'sovereignty',
+         'signature',
+         'route']
+        current = self.GetLocationInfoSettings()
+        itemmapping = [util.KeyVal(name='nearest', label='%s / %s' % (localization.GetByLabel('UI/Neocom/Nearest'), localization.GetByLabel('UI/Neocom/DockedIn'))),
+         util.KeyVal(name='occupancy', label=localization.GetByLabel('UI/Neocom/Occupancy')),
+         util.KeyVal(name='sovereignty', label=localization.GetByLabel('UI/Neocom/Sovereignty')),
+         util.KeyVal(name='signature', label=localization.GetByLabel('UI/Neocom/LocusSignature')),
+         util.KeyVal(name='route', label=localization.GetByLabel('UI/InfoWindow/TabNames/Route'))]
+        self.ConfigureNeocomOptions(label, setting, valid, (itemmapping, current))
+
+
+
+    def GetLocationInfoSettings(self):
+        inView = settings.user.windows.Get('neocomLocationInfo_3', None)
+        if inView is None:
+            inView = ['nearest',
+             'occupancy',
+             'sovereignty',
+             'signature',
+             'route']
+        return inView
+
+
+
     def ConfigureNeocom(self, *args):
         m = []
-        m.append((mls.UI_CMD_ACCESSORIES, self.ConfigureNeocomIcons, ('accessories',)))
-        m.append((mls.UI_GENERIC_SERVICES, self.ConfigureNeocomIcons, ('stationservices',)))
-        m.append((mls.UI_SHARED_MAPWORLDINFO, self.ConfigureNeocomInfo))
+        m.append((localization.GetByLabel('UI/Neocom/AccessoriesBtn'), self.ConfigureNeocomIcons, ('accessories',)))
+        m.append((localization.GetByLabel('UI/Neocom/ServicesBtn'), self.ConfigureNeocomIcons, ('stationservices',)))
+        m.append((localization.GetByLabel('UI/Neocom/WorldInformationMenuOption'), self.ConfigureLocationInfo))
         return m
 
 
@@ -1608,24 +1789,22 @@ class NeocomSvc(service.Service):
          {'type': 'push',
           'frame': 1}]
         (iconMapping, inView,) = current
-        for each in iconMapping:
-            if len(each) == 5:
-                (name, cmdstr, displayName, iconNum, stationOnly,) = each
-            elif len(each) == 2:
-                (name, displayName,) = each
-            if name not in valid:
+        for info in iconMapping:
+            if info.name not in valid:
                 continue
             format.append({'type': 'checkbox',
-             'setvalue': bool(name in inView),
-             'key': name,
+             'setvalue': bool(info.name in inView),
+             'key': info.name,
              'label': '_hide',
              'required': 1,
-             'text': displayName,
-             'frame': 1})
+             'text': info.label,
+             'frame': 1,
+             'onchange': self.ConfigCheckboxChange})
 
         format += [{'type': 'push',
           'frame': 1}, {'type': 'bbline'}]
-        retval = uix.HybridWnd(format, mls.UI_CMD_UPDATENEOCOMSETTINGS, 1, buttons=uiconst.OKCANCEL, minW=240, minH=100, icon='ui_2_64_16', unresizeAble=1)
+        caption = localization.GetByLabel('UI/Neocom/UpdateLocationSettings')
+        retval = uix.HybridWnd(format, caption, 1, buttons=uiconst.OKCANCEL, minW=240, minH=100, icon='ui_2_64_16', unresizeAble=1)
         if retval:
             newsettings = []
             for (k, v,) in retval.iteritems():
@@ -1640,24 +1819,21 @@ class NeocomSvc(service.Service):
 
 
 
-    def ConfigureNeocomInfo(self):
-        label = mls.UI_SHARED_SHOWHIDEINFO
-        setting = 'neocomLocationInfo2'
-        valid = ['nearest',
-         'occupancy',
-         'sovereignty',
-         'constellation',
-         'region',
-         'signature',
-         'security',
-         'station']
-        current = self.GetLocationInfo()
-        self.ConfigureNeocomOptions(label, setting, valid, current)
+    def ConfigCheckboxChange(self, checkbox, *args):
+        if checkbox.data['key'] in ('nearest', 'occupancy', 'sovereignty', 'signature', 'route'):
+            current = self.GetLocationInfoSettings()
+            if checkbox.GetValue():
+                if checkbox.data['key'] not in current:
+                    current.append(checkbox.data['key'])
+            elif checkbox.data['key'] in current:
+                current.remove(checkbox.data['key'])
+            settings.user.windows.Set('neocomLocationInfo_3', current)
+            self.UpdateAllLocationInfo()
 
 
 
     def ConfigureNeocomIcons(self, option = 'accessories', *args):
-        label = mls.UI_SHARED_SHOWHIDEBTNS2 % {'category': self.GetIconMappings(option)[2]}
+        label = localization.GetByLabel('UI/Neocom/ConfigureCategoryText', category=self.GetIconMappings(option).label)
         setting = 'neocom%s' % option.capitalize()
         (iconMapping, inUtils, inStationServices,) = self.GetIconMapping('name', True)
         if option == 'accessories':
@@ -1668,14 +1844,9 @@ class NeocomSvc(service.Service):
              'log']
             current = (iconMapping, inUtils)
         if option == 'stationservices':
-            valid = [ each[0] for each in sm.StartService('station').GetStationServiceInfo() ]
+            valid = [ each.name for each in sm.StartService('station').GetStationServiceInfo() ]
             current = (iconMapping, inStationServices)
         self.ConfigureNeocomOptions(label, setting, valid, current)
-
-
-
-    def OnAutohideEnter(self, *args):
-        uthread.new(self.Position, 0, action='In')
 
 
 
@@ -1685,27 +1856,64 @@ class NeocomSvc(service.Service):
             if value:
                 self.AutoHide()
             else:
-                self.autohidetimer = None
-                uthread.new(self.Position, 0, action='In')
+                self.ExpandAutoHide()
+        if configname == 'neoblink':
+            if value:
+                for each in self.blinkingBtns:
+                    self.Blink(each, force=0)
+
+            else:
+                for each in self.btns:
+                    if each.destroyed:
+                        continue
+                    blink = self.GetBlink(each)
+                    if blink:
+                        blink.Hide()
+
+
+
+
+    def OnAutohideEnter(self, *args):
+        uthread.new(self.ExpandAutoHide)
+
+
+
+    def ExpandAutoHide(self):
+        imBig = settings.user.windows.Get('neowidth', 1)
+        if imBig:
+            setWidth = EXPANDED_SIZE
+        else:
+            setWidth = COLLAPSED_SIZE
+        if self.wnd.width != setWidth:
+            windowData = self.PrepareForWindowPush()
+            self.isAutoExpanded = True
+            uicore.effect.MorphUI(self.wnd, 'width', setWidth, 150.0, newthread=False)
+            eve.Message('NeoComIn')
+            self.UpdateWindowPush(windowData)
 
 
 
     def AutoHide(self):
+        if not settings.user.windows.Get('neoautohide', 0):
+            return 
         mo = uicore.uilib.mouseOver
         if uiutil.IsUnder(mo, self.wnd):
             return 
-        if settings.user.windows.Get('neoautohide', 0):
-            self.Position(1, action='Out')
+        self.LogInfo('Neocom.AutoHide')
+        windowData = self.PrepareForWindowPush()
+        self.isAutoExpanded = False
+        if self.wnd.width != 2:
+            uicore.effect.MorphUI(self.wnd, 'width', 2, 150.0, newthread=False)
+            eve.Message('NeoComOut')
+        self.UpdateWindowPush(windowData)
         self.autohidetimer = None
 
 
 
     def ChangeAlign(self, align):
-        data = self.PrepareForWindowPush()
+        windowData = self.PrepareForWindowPush()
         settings.user.windows.Set('neoalign', align)
-        if data:
-            self.UpdateWindowPush(data)
-        self.Position()
+        self.Position(windowData=windowData)
 
 
 
@@ -1721,15 +1929,17 @@ class NeocomSvc(service.Service):
 
 
     def ExpanderClick(self, *args):
+        windowData = self.PrepareForWindowPush()
         settings.user.windows.Set('neowidth', not settings.user.windows.Get('neowidth', 1))
-        self.Position(action=('Out', 'In')[settings.user.windows.Get('neowidth', 1)])
+        self.Position(action=('Out', 'In')[settings.user.windows.Get('neowidth', 1)], windowData=windowData)
 
 
 
     def Minimize(self):
         if settings.user.windows.Get('neowidth', 1):
+            windowData = self.PrepareForWindowPush()
             settings.user.windows.Set('neowidth', 0)
-            self.Position(action='Out')
+            self.Position(action='Out', windowData=windowData)
 
 
 
@@ -1741,21 +1951,14 @@ class NeocomSvc(service.Service):
 
 
     def ShowSkillNotification(self, skillTypeIDs):
-        ahidden = self.ahidden or settings.user.windows.Get('neoalign', 'left') != 'left'
-        BIG = settings.user.windows.Get('neowidth', 1) and not ahidden
-        left = [[36, 2], [132, 2]][BIG][ahidden] + 14
-        sm.GetService('skills').ShowSkillNotification(skillTypeIDs, left)
+        (leftSide, rightSide,) = self.GetSideOffset()
+        sm.GetService('skills').ShowSkillNotification(skillTypeIDs, leftSide + 14)
 
 
 
     def OnPostCfgDataChanged(self, what, data):
         if what == 'evelocations':
-            self.UpdateLocationText()
-
-
-
-    def GetAHidden(self):
-        return self.ahidden
+            self.UpdateAllLocationInfo()
 
 
 
@@ -1774,7 +1977,7 @@ class NeocomSvc(service.Service):
                     inv.append(node.itemID)
 
         if inv:
-            eve.GetInventoryFromId(const.containerHangar).MultiAdd(inv, locationID, flag=const.flagHangar)
+            sm.GetService('invCache').GetInventoryFromId(const.containerHangar).MultiAdd(inv, locationID, flag=const.flagHangar)
 
 
 
@@ -1825,16 +2028,9 @@ class ListSurroundingsBtn(uicls.Container):
                 name = cfg.evelocations.Get(item.itemID).name
                 entryName = uix.EditStationName(name, 1)
             elif item.groupID == const.groupStargate:
-                nameParts = item.itemName.split('(')
-                if len(nameParts) > 1:
-                    systemName = nameParts[-1].replace(')', '')
-                    entryName = mls.UI_INFLIGHT_TOSTARGATE % {'solarsystemName': systemName}
-                else:
-                    entryName = item.itemName
+                entryName = cfg.evelocations.Get(item.itemID).locationName
                 typemenu.append((entryName.lower(), (entryName, ('isDynamic', self.ExpandCelestial, (item,)))))
                 continue
-            elif item.groupID == const.groupAsteroidBelt:
-                entryName = item.itemName.replace(mls.UI_GENERIC_ASTEROIDBELT + ' ', '')
             else:
                 entryName = item.itemName or 'no name!'
             escapeSorter = roman = typeName = None
@@ -1858,19 +2054,16 @@ class ListSurroundingsBtn(uicls.Container):
         if self.sr.Get('groupByType', 0):
             typedict = {}
             if self.sr.typeID and self.sr.itemID:
-                m += [(mls.UI_CMD_SHOWINFO, sm.GetService('menu').ShowInfo, (self.sr.typeID, self.sr.itemID))]
-            menuItems = {const.groupAsteroidBelt: 'GENERIC_ASTEROIDBELTS',
-             const.groupPlanet: 'GENERIC_PLANETS',
-             const.groupStargate: 'UI_GENERIC_STARGATES',
-             const.groupStation: 'UI_GENERIC_STATIONS'}
+                m += [(localization.GetByLabel('UI/Commands/ShowInfo'), sm.GetService('menu').ShowInfo, (self.sr.typeID, self.sr.itemID))]
+            menuItems = {const.groupAsteroidBelt: 'UI/Common/LocationTypes/AsteroidBelts',
+             const.groupPlanet: 'UI/Common/LocationTypes/Planets',
+             const.groupStargate: 'UI/Common/LocationTypes/Stargates',
+             const.groupStation: 'UI/Common/LocationTypes/Stations'}
             for item in self.sr.mapitems:
                 if item.groupID in (const.groupMoon, const.groupSun, const.groupSecondarySun):
                     continue
-                mlskey = menuItems[item.groupID]
-                if mls.HasLabel(mlskey):
-                    name = getattr(mls, mlskey)
-                else:
-                    name = cfg.invgroups.Get(item.groupID).name
+                labelPath = menuItems[item.groupID]
+                name = localization.GetByLabel(labelPath)
                 if not typedict.has_key(name):
                     typedict[name] = []
                 typedict[name].append(item)
@@ -1879,77 +2072,20 @@ class ListSurroundingsBtn(uicls.Container):
             for key in sortkeys:
                 m.append((key, ('isDynamic', self.ExpandTypeMenu, (typedict[key],))))
 
-            places = sm.GetService('addressbook').GetMapBookmarks(1)
-            bookmarkMenu = []
-            if places:
-                if self.filterCurrent:
-                    places = filter(lambda each: each.locationID == eve.session.solarsystemid2, places)
-                bmsByID = {}
-                for each in places:
-                    bmsByID[each.bookmarkID] = each
-
-                if len(bmsByID):
-                    cfg.evelocations.Prime([ bookmark.itemID for bookmark in bmsByID.itervalues() if bookmark.itemID is not None ])
-                idsInGroups = []
-                groups = uicore.registry.GetListGroups('places2_%s' % eve.session.charid)
-                bookmarkGroups = []
-                for group in groups.itervalues():
-                    if not group or not group['groupItems']:
-                        continue
-                    sub = []
-                    ok = filter(lambda bookmarkID: bookmarkID in bmsByID, group['groupItems'])
-                    if not ok:
-                        continue
-                    for bookmarkID in ok:
-                        bookmark = bmsByID[bookmarkID]
-                        (hint, comment,) = sm.GetService('addressbook').UnzipMemo(bookmark.memo)
-                        if len(hint) > 25:
-                            hint = hint[:25] + ' ...'
-                        sub.append((hint, (hint, ('isDynamic', self.CelestialMenu, (bookmark.itemID,
-                            None,
-                            None,
-                            0,
-                            None,
-                            None,
-                            bookmark)))))
-                        idsInGroups.append(bookmark.bookmarkID)
-
-                    if sub:
-                        sub = uiutil.SortListOfTuples(sub)
-                        hint = group['label']
-                        if len(hint) > 25:
-                            hint = hint[:25] + ' ...'
-                        bookmarkGroups.append((hint.lower(), ((hint, None), sub)))
-
-                bookmarkGroups = uiutil.SortListOfTuples(bookmarkGroups)
-                if bookmarkGroups:
-                    bookmarkMenu += bookmarkGroups
-                theRest = []
-                for (bookmarkID, bookmark,) in bmsByID.iteritems():
-                    if bookmarkID in idsInGroups:
-                        continue
-                    (hint, comment,) = sm.GetService('addressbook').UnzipMemo(bookmark.memo)
-                    if len(hint) > 25:
-                        hint = hint[:25] + ' ...'
-                    theRest.append(((hint.lower(), bookmarkID), ((hint, None), ('isDynamic', self.CelestialMenu, (bookmark.itemID,
-                        None,
-                        None,
-                        0,
-                        None,
-                        None,
-                        bookmark)))))
-
-                if theRest:
-                    theRest = uiutil.SortListOfTuples(theRest)
-                    theRest.insert(0, None)
-                    bookmarkMenu += theRest
+            bookmarks = {}
+            folders = {}
+            (b, f,) = sm.GetService('bookmarkSvc').GetBookmarksAndFolders()
+            bookmarks.update(b)
+            folders.update(f)
+            bookmarkMenu = bookmarkUtil.GetBookmarkMenuForSystem(bookmarks, folders)
             if bookmarkMenu:
-                m += [None, ('%s:' % mls.UI_GENERIC_MYPLACES, self.DoNothing)] + bookmarkMenu
+                m += [None, (localization.GetByLabel('UI/Neocom/MyPlacesSubmenu'), self.DoNothing)] + bookmarkMenu
             agentMenu = sm.GetService('journal').GetMyAgentJournalBookmarks()
             if agentMenu:
                 agentMenu2 = []
                 for (missionName, bms, agentID,) in agentMenu:
-                    tmp = ['%s (%s)' % (missionName, sm.GetService('agents').GetAgentDisplayName(agentID)), []]
+                    agentMenuText = localization.GetByLabel('UI/Neocom/MissionNameSubmenu', missionName=missionName, agent=agentID)
+                    tmp = [agentMenuText, []]
                     for bm in bms:
                         if bm.solarsystemID == eve.session.solarsystemid2:
                             txt = bm.hint
@@ -1972,7 +2108,8 @@ class ListSurroundingsBtn(uicls.Container):
                         agentMenu2.append(tmp)
 
                 if agentMenu2:
-                    m += [None, ('%s:' % mls.UI_GENERIC_AGENTMISSIONS, self.DoNothing)] + agentMenu2
+                    agentMenuText = localization.GetByLabel('UI/Neocom/AgentMissionsSubmenu')
+                    m += [None, (agentMenuText, self.DoNothing)] + agentMenu2
             contractsMenu = sm.GetService('contracts').GetContractsBookmarkMenu()
             if contractsMenu:
                 m += contractsMenu
@@ -2009,18 +2146,25 @@ class ListSurroundingsBtn(uicls.Container):
         m.append(None)
         starmapSvc = sm.GetService('starmap')
         showRoute = settings.user.ui.Get('neocomRouteVisible', 1)
-        if showRoute:
-            m.append((mls.UI_SHARED_HIDEROUTE, self.ShowHideRoute, (0,)))
+        infoSettings = sm.GetService('neocom').GetLocationInfoSettings()
+        if 'route' in infoSettings:
+            m.append((localization.GetByLabel('UI/Neocom/HideAutopilotRoute'), self.ShowHideRoute, (0,)))
         else:
-            m.append((mls.UI_SHARED_SHOWROUTE, self.ShowHideRoute, (1,)))
+            m.append((localization.GetByLabel('UI/Neocom/ShowAutopilotRoute'), self.ShowHideRoute, (1,)))
         if len(starmapSvc.GetWaypoints()) > 0:
-            m.append(((mls.UI_SHARED_MAPCLEARALLWAYPOINTS, None), starmapSvc.ClearWaypoints, (None,)))
+            m.append(((localization.GetByLabel('UI/Neocom/ClearAllAutopilotWaypoints'), None), starmapSvc.ClearWaypoints, (None,)))
         return m
 
 
 
     def ShowHideRoute(self, show = 1):
-        settings.user.ui.Set('neocomRouteVisible', show)
+        current = sm.GetService('neocom').GetLocationInfoSettings()
+        if show:
+            if 'route' not in current:
+                current.append('route')
+        elif 'route' in current:
+            current.remove('route')
+        settings.user.windows.Set('neocomLocationInfo_3', current)
         sm.GetService('starmap').DecorateNeocom()
 
 
@@ -2040,7 +2184,7 @@ class ListSurroundingsBtn(uicls.Container):
     def DoTutorial(self):
         bp = sm.GetService('michelle').GetRemotePark()
         if bp is not None and sm.GetService('space').CanWarp(forTut=True):
-            eve.Message('Command', {'command': mls.UI_SHARED_WARPINGTOTUTSITE})
+            eve.Message('Command', {'command': localization.GetByLabel('UI/Neocom/WarpingToTutorialSide')})
             bp.WarpToTutorial()
 
 
@@ -2053,9 +2197,9 @@ class ListSurroundingsBtn(uicls.Container):
         label = ''
         if typeID in (const.typeRegion, const.typeConstellation, const.typeSolarSystem):
             label += cfg.evelocations.Get(itemID).name
-            elabel = {const.typeRegion: mls.UI_GENERIC_REGION,
-             const.typeConstellation: mls.UI_GENERIC_CONSTELLATION,
-             const.typeSolarSystem: mls.UI_GENERIC_SOLARSYSTEM}
+            elabel = {const.typeRegion: localization.GetByLabel('UI/Neocom/Region'),
+             const.typeConstellation: localization.GetByLabel('UI/Neocom/Constellation'),
+             const.typeSolarSystem: localization.GetByLabel('UI/Neocom/SolarSystem')}
             label += ' %s' % elabel.get(typeID)
         entry = util.KeyVal()
         entry.itemID = itemID
@@ -2079,45 +2223,118 @@ class ListSurroundingsBtn(uicls.Container):
 
 
 
-class SolarSystemIcon(uicls.Icon):
+class AutopilotDestinationIcon(uicls.Container):
+    __guid__ = 'uicls.AutopilotDestinationIcon'
     default_align = uiconst.TOPLEFT
     default_state = uiconst.UI_NORMAL
-    default_size = 8
-    default_ignoreSize = True
 
     def ApplyAttributes(self, attributes):
-        self.solarSystemID = attributes.solarSystemID
-        self.isWaypoint = attributes.isWaypoint
-        num = attributes.num
-        if self.isWaypoint:
-            icon = 'ui_73_16_51'
-        else:
-            icon = 'ui_73_16_52'
-        attributes['icon'] = icon
-        uicls.Icon.ApplyAttributes(self, attributes)
-        color = sm.GetService('starmap').GetSystemColor(self.solarSystemID)
-        self.color.SetRGB(color.r, color.g, color.b)
-        self.rectTop += 4
-        self.rectLeft += 4
-        self.rectWidth = 8
-        self.rectHeight = 8
+        uicls.Container.ApplyAttributes(self, attributes)
+        self.fill = uicls.Fill(parent=self)
+        self.wayPointIcon = None
+        self.isWaypoint = None
+        self.solarSystemID = None
+        self.destinationID = None
+        self.stationIcon = None
+        self.isStation = None
+        self.hiliteTimer = None
+        self.SetSolarSystemAndDestinationID(attributes.solarSystemID, attributes.destinationID)
+        self.SetIsWaypoint(attributes.isWaypoint)
+        self.SetIsStation(attributes.isStation)
+
+
+
+    def SetIsStation(self, isStation):
+        if self.isStation == isStation:
+            return 
+        if isStation and not self.isStation:
+            self.stationIcon = uicls.Sprite(parent=self, texturePath='res:/UI/Texture/classes/LocationInfo/stationRoute.png', pos=(0, 0, 8, 8), state=uiconst.UI_DISABLED, idx=0)
+        elif not isStation and self.stationIcon:
+            self.stationIcon.Close()
+            self.stationIcon = None
+        self.isStation = isStation
+
+
+
+    def SetIsWaypoint(self, isWaypoint):
+        if self.isWaypoint == isWaypoint:
+            return 
+        if isWaypoint and not self.wayPointIcon:
+            self.wayPointIcon = uicls.Sprite(parent=self, texturePath='res:/UI/Texture/classes/LocationInfo/waypoint.png', pos=(0, 0, 10, 10), state=uiconst.UI_DISABLED, align=uiconst.CENTER, idx=0)
+        elif not isWaypoint and self.wayPointIcon:
+            self.wayPointIcon.Close()
+            self.wayPointIcon = None
+        self.isWaypoint = isWaypoint
+
+
+
+    def SetSolarSystemAndDestinationID(self, solarSystemID, destinationID):
+        if self.solarSystemID == solarSystemID and self.destinationID == destinationID:
+            return 
+        c = sm.GetService('map').GetSystemColor(solarSystemID)
+        self.fill.SetRGB(c.r, c.g, c.b, IDLE_ROUTEMARKER_ALPHA)
+        self.solarSystemID = solarSystemID
+        self.destinationID = destinationID
+
+
+
+    def OnMouseEnter(self, *args):
+        uicore.animations.FadeTo(self.fill, startVal=self.fill.color.a, endVal=1.0, duration=0.125, loops=1)
+        if self.hiliteTimer is None:
+            self.hiliteTimer = base.AutoTimer(111, self.CheckIfMouseOver)
+
+
+
+    def CheckIfMouseOver(self, *args):
+        if uicore.uilib.mouseOver == self:
+            return 
+        uicore.animations.FadeTo(self.fill, startVal=self.fill.color.a, endVal=IDLE_ROUTEMARKER_ALPHA, duration=0.5, loops=1)
+        self.hiliteTimer = None
+
+
+
+    def OnMouseExit(self, *args):
+        self.CheckIfMouseOver()
 
 
 
     def GetHint(self, *args):
-        (securityTxt, color,) = util.FmtSystemSecStatus(sm.GetService('map').GetSecurityStatus(self.solarSystemID), 1)
-        colorHex = sm.GetService('starmap').GetSystemColorString(self.solarSystemID)
-        return '%s <color=%s>%s' % (cfg.evelocations.Get(self.solarSystemID).name, colorHex, securityTxt)
+        ret = sm.GetService('neocom').GetSolarSystemTrace(self.destinationID)
+        if util.IsStation(self.destinationID):
+            ret += '<br>' + cfg.evelocations.Get(self.destinationID).name
+        return ret
 
 
 
     def GetMenu(self, *args):
-        return sm.GetService('menu').GetMenuFormItemIDTypeID(self.solarSystemID, const.typeSolarSystem)
+        if util.IsSolarSystem(self.destinationID):
+            return sm.GetService('menu').GetMenuFormItemIDTypeID(self.destinationID, const.typeSolarSystem)
+        if util.IsStation(self.destinationID):
+            station = sm.StartService('ui').GetStation(self.destinationID)
+            return sm.GetService('menu').GetMenuFormItemIDTypeID(self.destinationID, station.stationTypeID)
 
 
 
     def OnClick(self, *args):
-        sm.GetService('info').ShowInfo(const.typeSolarSystem, self.solarSystemID)
+        if util.IsSolarSystem(self.destinationID):
+            sm.GetService('info').ShowInfo(const.typeSolarSystem, self.destinationID)
+        elif util.IsStation(self.destinationID):
+            station = sm.StartService('ui').GetStation(self.destinationID)
+            sm.GetService('info').ShowInfo(station.stationTypeID, self.destinationID)
+
+
+
+    def GetDragData(self, *args):
+        entry = util.KeyVal()
+        entry.__guid__ = 'xtriui.ListSurroundingsBtn'
+        entry.itemID = self.destinationID
+        entry.label = cfg.evelocations.Get(self.destinationID).name
+        if util.IsSolarSystem(self.destinationID):
+            entry.typeID = const.typeSolarSystem
+        else:
+            station = sm.StartService('ui').GetStation(self.destinationID)
+            entry.typeID = station.stationTypeID
+        return [entry]
 
 
 

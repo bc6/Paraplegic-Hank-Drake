@@ -97,7 +97,7 @@ class EntityBracket(uicls.BoundingBoxBracket):
         align = (uiconst.CENTERBOTTOM, uiconst.CENTERTOP)[isAtTop]
         self.buttonCont.height = 50
         i = 0
-        for (actionID, (label, isEnabled,),) in actionList.iteritems():
+        for (actionID, (label, isEnabled, trash,),) in actionList.iteritems():
             isAtLeft = (i + 1 + isAtTop + len(actionList)) % 2
             if isMultiAction:
                 button = ActionObjectButton(parent=self.buttonCont, align=align, top=i * btnOffsetY, func=self.OnButtonClicked, actionID=actionID, text=label, isEnabled=isEnabled, isReversed=isAtLeft, scalingCenter=(isAtLeft, float(not isAtTop)), opacity=0.0)
@@ -130,7 +130,7 @@ class EntityBracket(uicls.BoundingBoxBracket):
         buttons.reverse()
         for b in buttons:
             uicore.animations.FadeIn(b, duration=0.3)
-            blue.synchro.Sleep(50)
+            blue.synchro.SleepWallclock(50)
 
 
 
@@ -166,7 +166,7 @@ class EntityBracket(uicls.BoundingBoxBracket):
 
         for c in treeMainCont.children:
             uicore.animations.FadeIn(c, duration=0.8)
-            blue.synchro.Sleep(100)
+            blue.synchro.SleepWallclock(100)
 
 
 
@@ -196,7 +196,7 @@ class EntityBracket(uicls.BoundingBoxBracket):
 
     def HideThread(self):
         while True:
-            blue.pyos.synchro.Sleep(2000)
+            blue.pyos.synchro.SleepWallclock(2000)
             if not uiutil.IsUnder(uicore.uilib.mouseOver, self):
                 break
 
@@ -206,7 +206,7 @@ class EntityBracket(uicls.BoundingBoxBracket):
 
     def UpdateThread(self):
         while True:
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
             aoSvc = sm.GetService('actionObjectClientSvc')
             actionList = aoSvc.GetActionList(session.charid, self.entity.entityID)
             for b in self.buttonCont.children:
@@ -280,7 +280,7 @@ class EntityBracket(uicls.BoundingBoxBracket):
         self.state = uiconst.UI_PICKCHILDREN
         self.opacity = 1.0
         self.AnimBlinkCornersIn(sleep=True)
-        blue.synchro.Sleep(2000)
+        blue.synchro.SleepWallclock(2000)
         if not uiutil.IsUnder(uicore.uilib.mouseOver, self):
             self.AnimFadeOut()
 

@@ -13,6 +13,7 @@ import math
 from math import pi
 import uicls
 import uiconst
+import localization
 from pychartdir import setLicenseCode, DrawArea
 setLicenseCode('DIST-0000-05de-f7ec-ffbeURDT-232Q-M544-C2XM-BD6E-C452')
 DRAWLVLREG = 1
@@ -118,7 +119,7 @@ class Map2D(uicls.Container):
                 self.sr.marks = uicls.Container(name='marks', parent=self, align=uiconst.TOALL, pos=(0, 0, 0, 0), idx=0, state=uiconst.UI_DISABLED)
             mark = uicls.Sprite(parent=self.sr.marks, name='area', left=x - mark.width / 2, top=y - mark.height / 2 + 1, width=128, height=128, state=uiconst.UI_PICKCHILDREN, texturePath='res:/UI/Texture/circle_full.png', color=(1.0, 1.0, 1.0, 0.21))
             if hint:
-                uicls.Label(text=hint, parent=self.sr.marks, left=mark.left + mark.width, top=mark.top + 2, autowidth=False, width=min(128, max(64, size - mark.left - mark.width)), state=uiconst.UI_NORMAL)
+                uicls.EveLabelMedium(text=hint, parent=self.sr.marks, left=mark.left + mark.width, top=mark.top + 2, width=min(128, max(64, size - mark.left - mark.width)), state=uiconst.UI_NORMAL)
 
 
 
@@ -482,7 +483,7 @@ class Map2D(uicls.Container):
 
     def CheckIfCached(self, imageid):
         if settings.public.ui.Get('browsercacheversion', CACHEVERSION) != CACHEVERSION:
-            util.DelTree(unicode(os.path.join(blue.os.cachepath, 'Temp/Mapbrowser')))
+            util.DelTree(unicode(os.path.join(blue.os.ResolvePath(u'cache:/Temp/Mapbrowser'))))
             settings.public.ui.Set('browsercacheversion', CACHEVERSION)
             return None
         return settings.user.ui.Get('map2d_%s' % imageid, None)
@@ -748,7 +749,7 @@ class Map2D(uicls.Container):
 
     def SetHint(self, hint):
         self.hilite.state = uiconst.UI_HIDDEN
-        self.sr.hint = hint.replace('[ ', '').replace(' ]', '').strip()
+        self.sr.hint = hint
         self.hilite.state = uiconst.UI_DISABLED
 
 
@@ -769,6 +770,7 @@ class Map2D(uicls.Container):
                 self.hilite.top = y - self.hilite.height / 2 + 1
                 self.hilite.state = uiconst.UI_DISABLED
                 locStr = ''
+                locStrList = []
                 for id in areas:
                     (datarec, datahint,) = self.GetDataArgs(id)
                     (item, insider,) = self.GetItemRecord(id)
@@ -776,15 +778,13 @@ class Map2D(uicls.Container):
                         groupname = cfg.invgroups.Get(item.groupID).name
                         if item.itemName.lower().find(groupname.lower()) >= 0:
                             groupname = ''
-                        locStr += '%s %s%s<br>' % (item.itemName, groupname, datahint)
+                        locStrList.append(localization.GetByLabel('UI/Map/Map2D/hintMouseMoveFormating', locationName=item.itemName, dataHint=datahint, locationGroupName=groupname))
                         if not insider:
                             parent = sm.GetService('map').GetItem(item.locationID)
-                            locStr = mls.UI_SHARED_MAPLINKTO % {'linkto': locStr[:-4],
-                             'parent': parent.itemName,
-                             'group': cfg.invgroups.Get(parent.groupID).name} + '<br>'
+                            linkTo = '<br>'.join(locStrList)
+                            locStrList = [localization.GetByLabel('UI/Map/Map2D/hintMouseMove', group=cfg.invgroups.Get(parent.groupID).name, parent=parent.itemName, linkTo=linkTo)]
 
-                if locStr[-4:] == '<br>':
-                    locStr = locStr[:-4]
+                locStr = '<br>'.join(locStrList)
                 self.SetHint(locStr)
                 return 
         self.SetHint('')
@@ -819,7 +819,7 @@ class Map2D(uicls.Container):
                         groupname = cfg.invgroups.Get(item.groupID).name
                         if locationName.lower().find(groupname.lower()) >= 0:
                             groupname = ''
-                        locationName += ' %s' % groupname
+                        locationName = localization.GetByLabel('UI/Map/Map2D/menuLocationEntry', locationName=locationName, groupName=groupname)
                         m.append((locationName, submenu))
 
             m.sort()
@@ -828,7 +828,11 @@ class Map2D(uicls.Container):
         if self.drawlevel == DRAWLVLSYS:
             if self.allowAbstract:
                 isAbstract = settings.user.ui.Get('solarsystemmapabstract', 0) == 1
-                m += [None, ([mls.UI_SHARED_MAPSHOWABSTRACT, mls.UI_SHARED_MAPSHOWNONABSTRACT][isAbstract], self.ToggleAbstract, (not isAbstract,))]
+                if isAbstract:
+                    lbl = localization.GetByLabel('UI/Map/Map2D/menuShowNonAbstract')
+                else:
+                    lbl = localization.GetByLabel('UI/Map/Map2D/menuShowAbstract')
+                m += [None, (lbl, self.ToggleAbstract, (not isAbstract,))]
         return m
 
 
@@ -1042,9 +1046,9 @@ class Map2D(uicls.Container):
 
 
     def Fade(self, what, f, t):
-        (start, ndt,) = (blue.os.GetTime(), 0.0)
+        (start, ndt,) = (blue.os.GetWallclockTime(), 0.0)
         while ndt != 1.0:
-            ndt = min(blue.os.TimeDiffInMs(start) / 1000.0, 1.0)
+            ndt = min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / 1000.0, 1.0)
             what.color.a = mathUtil.Lerp(f, t, ndt)
             blue.pyos.synchro.Yield()
 

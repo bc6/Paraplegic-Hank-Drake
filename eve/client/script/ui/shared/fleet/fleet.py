@@ -18,6 +18,7 @@ import form
 import fleetcommon
 import log
 import trinity
+import localization
 from fleetcommon import CHANNELSTATE_LISTENING, CHANNELSTATE_SPEAKING, CHANNELSTATE_MAYSPEAK, CHANNELSTATE_NONE
 from fleetcommon import SQUAD_STATUS_NOSQUADCOMMANDER, SQUAD_STATUS_TOOMANYMEMBERS, SQUAD_STATUS_TOOFEWMEMBERS, FLEET_STATUS_TOOFEWWINGS, FLEET_STATUS_TOOMANYWINGS
 
@@ -26,7 +27,7 @@ def CommanderName(group):
     if cmdr:
         return cfg.eveowners.Get(cmdr).name
     else:
-        return '<color=0x%%(alpha)xffffff>%s</color>' % mls.UI_FLEET_NOCOMMANDER
+        return '<color=0x%%(alpha)xffffff>%s</color>' % localization.GetByLabel('UI/Fleet/FleetWindow/NoCommander')
 
 
 
@@ -35,7 +36,7 @@ def SquadronName(fleet, squadID):
     squadronName = squadron['name']
     if squadronName == '':
         squadno = GroupNumber(fleet, 'squad', squadID)
-        squadronName = '%s %s' % (mls.UI_FLEET_SQUAD, squadno)
+        squadronName = localization.GetByLabel('UI/Fleet/DefaultSquadName', squadNumber=squadno)
     return squadronName
 
 
@@ -45,7 +46,7 @@ def WingName(fleet, wingID):
     wingName = wing['name']
     if wingName == '':
         wingno = GroupNumber(fleet, 'wing', wingID)
-        wingName = '%s %s' % (mls.UI_FLEET_WING, wingno)
+        wingName = localization.GetByLabel('UI/Fleet/DefaultWingName', wingNumber=wingno)
     return wingName
 
 
@@ -98,16 +99,16 @@ def GetChannelMenu(what, id):
     m = []
     state = sm.GetService('fleet').GetVoiceChannelState(channelName)
     if state in [CHANNELSTATE_LISTENING, CHANNELSTATE_SPEAKING, CHANNELSTATE_MAYSPEAK]:
-        m.append((mls.UI_CMD_LEAVECHANNEL, sm.GetService('vivox').LeaveChannel, (channelName,)))
+        m.append((localization.GetByLabel('UI/Chat/ChannelWindow/LeaveChannel'), sm.GetService('vivox').LeaveChannel, (channelName,)))
     elif sm.GetService('fleet').CanIJoinChannel(what, id):
-        m.append((mls.UI_CMD_JOINCHANNEL, sm.GetService('vivox').JoinChannel, (channelName,)))
+        m.append((localization.GetByLabel('UI/Chat/ChannelWindow/JoinChannel'), sm.GetService('vivox').JoinChannel, (channelName,)))
     if not (session.fleetrole == const.fleetRoleLeader and what != 'fleetid' or session.fleetrole == const.fleetRoleWingCmdr and (what != 'wingid' or id != session.wingid or session.fleetrole == const.fleetRoleSquadCmdr and (what != 'squadid' or id != session.squadid or session.fleetrole == const.fleetRoleMember))):
         if sm.GetService('fleet').GetChannelMuteStatus(channelName):
-            m.append((mls.UI_CMD_UNMUTECHANNEL, sm.GetService('fleet').SetVoiceMuteStatus, (0, channelName)))
+            m.append((localization.GetByLabel('UI/Chat/UnmuteChannel'), sm.GetService('fleet').SetVoiceMuteStatus, (0, channelName)))
         else:
-            m.append((mls.UI_CMD_MUTECHANNEL, sm.GetService('fleet').SetVoiceMuteStatus, (1, channelName)))
+            m.append((localization.GetByLabel('UI/Chat/MuteChannel'), sm.GetService('fleet').SetVoiceMuteStatus, (1, channelName)))
     if m:
-        m = [(mls.UI_GENERIC_CHANNEL, m)]
+        m = [(localization.GetByLabel('UI/Chat/Channel'), m)]
     return m
 
 
@@ -115,9 +116,9 @@ def GetChannelMenu(what, id):
 def GetSquadMenu(squadID):
     m = []
     if sm.GetService('fleet').IsBoss() or session.fleetrole in (const.fleetRoleLeader, const.fleetRoleWingCmdr, const.fleetRoleSquadCmdr):
-        m = [(mls.UI_FLEET_CHANGENAME, lambda : sm.GetService('fleet').ChangeSquadName(squadID)), (mls.UI_FLEET_DELETESQUAD, lambda : sm.GetService('fleet').DeleteSquad(squadID))]
+        m = [(localization.GetByLabel('UI/Fleet/FleetWindow/ChangeName'), lambda : sm.GetService('fleet').ChangeSquadName(squadID)), (localization.GetByLabel('UI/Fleet/FleetWindow/DeleteSquad'), lambda : sm.GetService('fleet').DeleteSquad(squadID))]
     m += GetChannelMenu('squadid', squadID)
-    m.append((mls.UI_FLEET_ADDSQUADTOWATCHLIST, lambda : sm.GetService('fleet').AddFavoriteSquad(squadID)))
+    m.append((localization.GetByLabel('UI/Fleet/FleetWindow/AddSquadMembersToWatchlist'), lambda : sm.GetService('fleet').AddFavoriteSquad(squadID)))
     return m
 
 
@@ -189,14 +190,15 @@ class FleetView(uicls.Container):
 
 
     def UpdateHeader(self):
-        wnd = sm.GetService('window').GetWindow('fleetwindow')
-        wnd.UpdateHeader()
+        wnd = form.FleetWindow.GetIfOpen()
+        if wnd:
+            wnd.UpdateHeader()
 
 
 
     def CheckHint(self):
         if not self.sr.scroll.GetNodes():
-            self.sr.scroll.ShowHint(mls.UI_INFLIGHT_NOFLEET)
+            self.sr.scroll.ShowHint(localization.GetByLabel('UI/Fleet/NoFleet'))
         else:
             self.sr.scroll.ShowHint()
         self.UpdateHeader()
@@ -229,9 +231,9 @@ class FleetView(uicls.Container):
         if headerNode:
             numMembers = len(sm.GetService('fleet').GetMembersInSquad(squadID))
             if numMembers == 0:
-                headerNode.label = '%s (%s)' % (name, mls.UI_FLEET_NOMEMBERS)
+                headerNode.label = localization.GetByLabel('UI/Fleet/FleetWindow/UnitHeaderEmpty', unitName=name)
             else:
-                headerNode.groupInfo = '%s (%s)' % (name, numMembers)
+                headerNode.groupInfo = localization.GetByLabel('UI/Fleet/FleetWindow/UnitHeaderWithCount', unitName=name, memberCount=numMembers)
             if headerNode.panel:
                 headerNode.panel.Load(headerNode)
 
@@ -243,9 +245,9 @@ class FleetView(uicls.Container):
         if headerNode:
             numMembers = len(sm.GetService('fleet').GetMembersInWing(wingID))
             if numMembers == 0:
-                headerNode.groupInfo = '%s (%s)' % (name, mls.UI_FLEET_NOMEMBERS)
+                headerNode.groupInfo = localization.GetByLabel('UI/Fleet/FleetWindow/UnitHeaderEmpty', unitName=name)
             else:
-                headerNode.groupInfo = '%s (%s)' % (name, numMembers)
+                headerNode.groupInfo = localization.GetByLabel('UI/Fleet/FleetWindow/UnitHeaderWithCount', unitName=name, memberCount=numMembers)
             if headerNode.panel:
                 headerNode.panel.Load(headerNode)
 
@@ -287,11 +289,6 @@ class FleetView(uicls.Container):
             self.HandleFleetChanged()
         else:
             self.AddChar(rec)
-
-
-
-    def GetPanel(self, what):
-        return sm.GetService('window').GetWindow(what)
 
 
 
@@ -368,6 +365,7 @@ class FleetView(uicls.Container):
                 self.RemoveChar(charID)
                 UpdateRec()
                 self.AddChar(rec)
+            self.UpdateHeader()
         else:
             UpdateRec()
             if oldRole == const.fleetRoleSquadCmdr != newRole:
@@ -483,7 +481,7 @@ class FleetView(uicls.Container):
             setattr(self, 'pending_HandleFleetChanged', 1)
             return 
         setattr(self, 'loading_HandleFleetChanged', 1)
-        blue.pyos.synchro.Sleep(1000)
+        blue.pyos.synchro.SleepWallclock(1000)
         setattr(self, 'pending_HandleFleetChanged', 0)
         try:
             try:
@@ -507,7 +505,7 @@ class FleetView(uicls.Container):
 
     def EmptyGroupEntry(self, label, indent):
         data = util.KeyVal()
-        data.label = '( %s )' % label
+        data.label = label
         data.indent = indent
         return listentry.Get('EmptyGroup', data=data)
 
@@ -527,7 +525,7 @@ class FleetView(uicls.Container):
             data.squadID = squadID
             data.groupType = 'squad'
             data.groupID = squadID
-            data.label = '%s (%s)' % (headerdata.groupInfo, mls.UI_FLEET_NOMEMBERS)
+            data.label = localization.GetByLabel('UI/Fleet/FleetWindow/UnitHeaderEmpty', unitName=SquadronName(self.fleet, squadID))
             data.GetMenu = self.EmptySquadMenu
             data.indent = 2
             return listentry.Get('EmptyGroup', data=data)
@@ -593,7 +591,6 @@ class FleetView(uicls.Container):
         data.squadID = None
         data.wingID = None
         data.displayName = data.charRec.name
-        data.roleString = ''
         data.roleIcons = []
         data.muteStatus = sm.GetService('fleet').CanIMuteOrUnmuteCharInMyChannel(charID)
         member = member or self.members.get(charID)
@@ -602,35 +599,26 @@ class FleetView(uicls.Container):
             data.wingID = member.wingID
             data.role = member.role
             if member.job & const.fleetJobCreator:
-                data.roleString += ' (%s)' % mls.UI_FLEET_ABBREV_JOBCREATOR
                 data.roleIcons.append({'id': '73_20',
-                 'hint': mls.UI_FLEET_BOSS})
-            if member.role in (const.fleetRoleLeader, const.fleetRoleWingCmdr, const.fleetRoleSquadCmdr):
-                data.roleString += ' (%s)' % mls.UI_FLEET_ABBREV_COMMANDER
-            b = None
+                 'hint': localization.GetByLabel('UI/Fleet/Ranks/Boss')})
             if member.roleBooster == const.fleetBoosterFleet:
-                b = mls.UI_FLEET_FLEETINITIAL
                 data.roleIcons.append({'id': '73_22',
-                 'hint': mls.UI_FLEET_FLEETBOOSTER})
+                 'hint': localization.GetByLabel('UI/Fleet/Ranks/FleetBooster')})
             elif member.roleBooster == const.fleetBoosterWing:
-                b = mls.UI_FLEET_WINGINITIAL
                 data.roleIcons.append({'id': '73_23',
-                 'hint': mls.UI_FLEET_WINGBOOSTER})
+                 'hint': localization.GetByLabel('UI/Fleet/Ranks/WingBooster')})
             elif member.roleBooster == const.fleetBoosterSquad:
-                b = mls.UI_FLEET_SQUADINITIAL
                 data.roleIcons.append({'id': '73_24',
-                 'hint': mls.UI_FLEET_SQUADBOOSTER})
-            if b:
-                data.roleString += ' (%s)' % b
+                 'hint': localization.GetByLabel('UI/Fleet/Ranks/SquadBooster')})
             if member.role == const.fleetRoleLeader:
                 data.roleIcons.append({'id': '73_17',
-                 'hint': mls.UI_FLEET_FLEETCOMMANDER})
+                 'hint': localization.GetByLabel('UI/Fleet/Ranks/FleetCommander')})
             elif member.role == const.fleetRoleWingCmdr:
                 data.roleIcons.append({'id': '73_18',
-                 'hint': mls.UI_FLEET_WINGCOMMANDER})
+                 'hint': localization.GetByLabel('UI/Fleet/Ranks/WingCommander')})
             elif member.role == const.fleetRoleSquadCmdr:
                 data.roleIcons.append({'id': '73_19',
-                 'hint': mls.UI_FLEET_SQUADCOMMANDER})
+                 'hint': localization.GetByLabel('UI/Fleet/Ranks/SquadCommander')})
         data.label = data.displayName
         data.isSub = 0
         data.sort_name = data.displayName
@@ -676,17 +664,17 @@ class FleetView(uicls.Container):
             data.GetSubContent = self.SquadContentGetter(gid, sublevel)
             num = len(sm.GetService('fleet').GetMembersInSquad(gid))
             if num == 0:
-                data.groupInfo = SquadronName(self.fleet, gid)
+                data.groupInfo = localization.GetByLabel('UI/Fleet/FleetWindow/UnitHeaderEmpty', unitName=SquadronName(self.fleet, gid))
             else:
-                data.groupInfo = '%s (%s)' % (SquadronName(self.fleet, gid), num)
+                data.groupInfo = localization.GetByLabel('UI/Fleet/FleetWindow/UnitHeaderWithCount', unitName=SquadronName(self.fleet, gid), memberCount=num)
         elif gtype == 'wing':
             data.GetSubContent = self.WingContentGetter(gid, sublevel)
             num = len(sm.GetService('fleet').GetMembersInWing(gid))
-            data.groupInfo = '%s (%s)' % (WingName(self.fleet, gid), num)
+            data.groupInfo = localization.GetByLabel('UI/Fleet/FleetWindow/UnitHeaderWithCount', unitName=WingName(self.fleet, gid), memberCount=num)
         elif gtype == 'fleet':
             data.GetSubContent = self.FleetContentGetter(gid, sublevel)
             num = len(self.members)
-            data.groupInfo = '%s (%s)' % (mls.UI_FLEET_FLEET, num)
+            data.groupInfo = localization.GetByLabel('UI/Fleet/FleetWindow/UnitHeaderWithCount', unitName=localization.GetByLabel('UI/Fleet/Fleet'), memberCount=num)
             data.scroll = self.sr.scroll
         else:
             raise NotImplementedError
@@ -740,7 +728,7 @@ class FleetView(uicls.Container):
                     ret.append(self.MakeCharEntry(charID, sublevel=sublevel + 1, isLast=i == len(sortedMembers) - 1))
 
             if not ret:
-                ret = [self.EmptyGroupEntry(mls.UI_FLEET_NOMEMBERS, sublevel + 1)]
+                ret = [self.EmptyGroupEntry(localization.GetByLabel('UI/Fleet/FleetWindow/SquadEmpty'), sublevel + 1)]
             return ret
 
 
@@ -759,7 +747,7 @@ class FleetView(uicls.Container):
                 ret.append(self.MakeSquadEntry(squadID, sublevel + 1))
 
             if not ret:
-                ret = [self.EmptyGroupEntry(mls.UI_FLEET_NOCOMMANDERORSQUADS, sublevel + 1)]
+                ret = [self.EmptyGroupEntry(localization.GetByLabel('UI/Fleet/FleetWindow/WingEmpty'), sublevel + 1)]
             return ret
 
 
@@ -884,8 +872,8 @@ class FleetHeader(listentry.Group):
         uicls.Container(name='toppush', parent=self.sr.label.parent, align=uiconst.TOTOP, height=14)
         roleIconsContainer = uicls.Container(name='roleIconsContainer', parent=self.sr.label.parent, width=0, align=uiconst.TORIGHT)
         self.roleIconsContainer = roleIconsContainer
-        self.sr.topLabel = uicls.Label(text='', parent=self.sr.label.parent, left=0, top=0, state=uiconst.UI_DISABLED, color=None, idx=0)
-        self.sr.bottomLabel = uicls.Label(text='', parent=self.sr.label.parent, left=0, top=12, state=uiconst.UI_DISABLED, color=None, idx=0)
+        self.sr.topLabel = uicls.EveLabelMedium(text='', parent=self.sr.label.parent, left=0, top=0, state=uiconst.UI_DISABLED, color=None, idx=0)
+        self.sr.bottomLabel = uicls.EveLabelMedium(text='', parent=self.sr.label.parent, left=0, top=12, state=uiconst.UI_DISABLED, color=None, idx=0)
         changing = uicls.AnimSprite(icons=[ 'ui_38_16_%s' % (210 + i) for i in xrange(8) ], align=uiconst.TOPRIGHT, parent=self, pos=(0, 13, 16, 16))
         self.sr.changing = changing
         changing.state = uiconst.UI_NORMAL
@@ -910,21 +898,24 @@ class FleetHeader(listentry.Group):
         self.sr.label.left = left
         self.sr.topLabel.left = left
         self.sr.bottomLabel.left = left
-        self.sr.topLabel.text = '<b>' + node.groupInfo + '</b>'
-        if node.numMembers == 0:
-            self.sr.topLabel.text = '<color=0x88ffffff>%s</color>' % self.sr.topLabel.text
         if node.channelIsMuted:
-            self.sr.topLabel.text += ' (<color=0xff992222>%s</color>)' % mls.UI_FLEET_MUTED
+            label = localization.GetByLabel('UI/Fleet/FleetWindow/UnitHeaderMuted', unitTitle=node.groupInfo)
+        else:
+            label = localization.GetByLabel('UI/Fleet/FleetWindow/UnitHeader', unitTitle=node.groupInfo)
+        if node.numMembers == 0:
+            label = '<color=0x88ffffff>%s</color>' % label
+        self.sr.topLabel.text = label
         self.sr.bottomLabel.top = max(12, self.sr.topLabel.top + self.sr.topLabel.textheight)
-        self.sr.bottomLabel.text = node.commanderName
         if node.commanderMuteStatus > 0:
-            self.sr.bottomLabel.text += ' (%s)' % mls.UI_FLEET_UNMUTED
+            self.sr.bottomLabel.text = localization.GetByLabel('UI/Fleet/FleetWindow/CommanderNameUnmuted', name=node.commanderName)
+        else:
+            self.sr.bottomLabel.text = node.commanderName
         icons = getattr(node.commanderData, 'roleIcons', [])
         UpdateRoleIcons(self.roleIconsContainer, icons)
         self.CreateVoiceIcon()
         if node.commanderData and node.commanderData.changing:
             self.sr.changing.state = uiconst.UI_DISABLED
-            self.hint = mls.UI_FLEET_MEMBERCHANGING
+            self.hint = localization.GetByLabel('UI/Fleet/FleetWindow/MemberChanging')
             self.sr.changing.Play()
         else:
             self.hint = None
@@ -935,8 +926,8 @@ class FleetHeader(listentry.Group):
 
     def GetHeight(self, *args):
         (node, width,) = args
-        topLabelHeight = uix.GetTextHeight('<b>' + node.groupInfo + '</b>', autoWidth=1, singleLine=1)
-        bottomLabelHeight = uix.GetTextHeight(node.commanderName, autoWidth=1, singleLine=1)
+        topLabelHeight = uix.GetTextHeight('<b>' + node.groupInfo + '</b>', singleLine=1)
+        bottomLabelHeight = uix.GetTextHeight(node.commanderName, singleLine=1)
         node.height = max(12, topLabelHeight) + bottomLabelHeight + 2
         return node.height
 
@@ -978,7 +969,7 @@ class FleetHeader(listentry.Group):
             return m + [None] + self.GetWingMenu(self.sr.node.groupID)
         if self.sr.node.groupType == 'fleet':
             m += [None] + self.GetFleetMenu()
-            m += [None, (mls.UI_FLEET_OPENALLSQUADS, self.ToggleAllSquads, (self.sr.node, True)), (mls.UI_FLEET_CLOSEALLSQUADS, self.ToggleAllSquads, (self.sr.node, False))]
+            m += [None, (localization.GetByLabel('UI/Fleet/FleetWindow/OpenAllSquads'), self.ToggleAllSquads, (self.sr.node, True)), (localization.GetByLabel('UI/Fleet/FleetWindow/CloseAllSquads'), self.ToggleAllSquads, (self.sr.node, False))]
             return m
         raise NotImplementedError
 
@@ -987,16 +978,16 @@ class FleetHeader(listentry.Group):
     def GetFleetMenu(self):
         ret = []
         if session.fleetrole != const.fleetRoleLeader:
-            ret += [(mls.UI_FLEET_LEAVE, FleetSvc().LeaveFleet)]
+            ret += [(localization.GetByLabel('UI/Fleet/LeaveMyFleet'), FleetSvc().LeaveFleet)]
         if FleetSvc().IsBoss() or session.fleetrole == const.fleetRoleLeader:
-            ret.extend([None, (mls.UI_FLEET_CREATEWING, lambda : FleetSvc().CreateWing())])
+            ret.extend([None, (localization.GetByLabel('UI/Fleet/FleetWindow/CreateNewWing'), lambda : FleetSvc().CreateWing())])
         else:
             ret.append(None)
         if session.fleetrole in [const.fleetRoleLeader, const.fleetRoleWingCmdr, const.fleetRoleSquadCmdr]:
-            ret.append((mls.UI_FLEET_REGROUP, lambda : FleetSvc().Regroup()))
+            ret.append((localization.GetByLabel('UI/Fleet/FleetWindow/Regroup'), lambda : FleetSvc().Regroup()))
         if FleetSvc().HasActiveBeacon(session.charid):
-            ret.append((mls.UI_FLEET_BROADCASTBEACON, lambda : FleetSvc().SendBroadcast_JumpBeacon()))
-        ret.append((mls.UI_FLEET_BROADCASTLOCATION, lambda : FleetSvc().SendBroadcast_Location()))
+            ret.append((localization.GetByLabel('UI/Fleet/FleetBroadcast/Commands/JumpBeacon'), lambda : FleetSvc().SendBroadcast_JumpBeacon()))
+        ret.append((localization.GetByLabel('UI/Fleet/FleetBroadcast/Commands/Location'), lambda : FleetSvc().SendBroadcast_Location()))
         ret += GetChannelMenu('fleetid', session.fleetid)
         return ret
 
@@ -1004,7 +995,7 @@ class FleetHeader(listentry.Group):
 
     def GetWingMenu(self, wingID):
         if FleetSvc().IsBoss() or session.fleetrole in (const.fleetRoleLeader, const.fleetRoleWingCmdr):
-            m = [(mls.UI_FLEET_DELETEWING, lambda : sm.GetService('fleet').DeleteWing(wingID)), (mls.UI_FLEET_CHANGENAME, lambda : sm.GetService('fleet').ChangeWingName(wingID)), (mls.UI_FLEET_CREATESQUAD, lambda : sm.GetService('fleet').CreateSquad(wingID))]
+            m = [(localization.GetByLabel('UI/Fleet/FleetWindow/DeleteWing'), lambda : sm.GetService('fleet').DeleteWing(wingID)), (localization.GetByLabel('UI/Fleet/FleetWindow/ChangeName'), lambda : sm.GetService('fleet').ChangeWingName(wingID)), (localization.GetByLabel('UI/Fleet/FleetWindow/CreateNewSquad'), lambda : sm.GetService('fleet').CreateSquad(wingID))]
             m += GetChannelMenu('wingid', wingID)
             return m
         else:
@@ -1043,16 +1034,16 @@ class FleetHeader(listentry.Group):
         canJoinChannel = sm.GetService('fleet').CanIJoinChannel(self.sr.node.groupType, self.sr.node.groupID)
         if state == fleetcommon.CHANNELSTATE_LISTENING:
             self.sr.voiceIcon.LoadIcon('ui_73_16_37')
-            self.sr.voiceIcon.parent.hint = mls.UI_FLEET_LISTENING_HINT
+            self.sr.voiceIcon.parent.hint = localization.GetByLabel('UI/Fleet/FleetWindow/VoiceListeningHint')
         elif state == fleetcommon.CHANNELSTATE_SPEAKING:
             self.sr.voiceIcon.LoadIcon('ui_73_16_33')
-            self.sr.voiceIcon.parent.hint = mls.UI_FLEET_SPEAKING_HINT
+            self.sr.voiceIcon.parent.hint = localization.GetByLabel('UI/Fleet/FleetWindow/VoiceSpeakingHint')
         elif state == fleetcommon.CHANNELSTATE_MAYSPEAK:
             self.sr.voiceIcon.LoadIcon('ui_73_16_35')
-            self.sr.voiceIcon.parent.hint = mls.UI_FLEET_MAYSPEAK_HINT
+            self.sr.voiceIcon.parent.hint = localization.GetByLabel('UI/Fleet/FleetWindow/VoiceMaySpeakHint')
         elif canJoinChannel:
             self.sr.voiceIcon.LoadIcon('ui_73_16_36')
-            self.sr.voiceIcon.parent.hint = mls.UI_FLEET_CLICKTOJOIN_HINT
+            self.sr.voiceIcon.parent.hint = localization.GetByLabel('UI/Fleet/FleetWindow/VoiceClickToJoinHint')
         else:
             self.sr.voiceIcon.state = uiconst.UI_HIDDEN
 
@@ -1061,22 +1052,6 @@ class FleetHeader(listentry.Group):
     def VoiceIconClicked(self, *etc):
         sm.ScatterEvent('OnVoiceChannelIconClicked', self)
 
-
-
-
-def RefreshDiode(self, groupType, groupID, active):
-    diode = self.sr.Get('diode', None)
-    if groupType == 'fleet' or groupType == 'wing' and groupID == session.wingid or groupType == 'squad' and groupID == session.squadid:
-        if diode is None:
-            diode = self.sr.diode = Diode(parent=self, idx=0, left=4, top=3)
-        if active:
-            diode.hint = getattr(mls, 'UI_FLEET_GETTINGBONUSESFROM%s' % groupType.upper())
-            diode.On()
-        else:
-            diode.hint = getattr(mls, 'UI_FLEET_NOTGETTINGBONUSESFROM%s' % groupType.upper())
-            diode.Off()
-    elif diode is not None:
-        diode.Hide()
 
 
 
@@ -1104,14 +1079,14 @@ def FleetSvc():
 
 
 def GetFleetMenu():
-    ret = [(mls.UI_FLEET_LEAVE, FleetSvc().LeaveFleet)]
+    ret = [(localization.GetByLabel('UI/Fleet/LeaveMyFleet'), FleetSvc().LeaveFleet)]
     if FleetSvc().IsBoss() or session.fleetrole == const.fleetRoleLeader:
-        ret.extend([None, (mls.UI_FLEET_REGROUP, lambda : FleetSvc().Regroup())])
+        ret.extend([None, (localization.GetByLabel('UI/Fleet/FleetWindow/Regroup'), lambda : FleetSvc().Regroup())])
     else:
         ret.append(None)
     if FleetSvc().HasActiveBeacon(session.charid):
-        ret.append((mls.UI_FLEET_BROADCASTBEACON, lambda : FleetSvc().SendBroadcast_JumpBeacon()))
-    ret.append((mls.UI_FLEET_BROADCASTLOCATION, lambda : FleetSvc().SendBroadcast_Location()))
+        ret.append((localization.GetByLabel('UI/Fleet/FleetBroadcast/Commands/JumpBeacon'), lambda : FleetSvc().SendBroadcast_JumpBeacon()))
+    ret.append((localization.GetByLabel('UI/Fleet/FleetBroadcast/Commands/Location'), lambda : FleetSvc().SendBroadcast_Location()))
     return ret
 
 
@@ -1173,7 +1148,7 @@ class FleetMember(listentry.BaseTacticalEntry):
         UpdateRoleIcons(self.roleIconsContainer, icons)
         if node.changing:
             self.sr.changing.state = uiconst.UI_DISABLED
-            self.hint = mls.UI_FLEET_MEMBERCHANGING
+            self.hint = localization.GetByLabel('UI/Fleet/FleetWindow/MemberChanging')
             self.sr.changing.Play()
         else:
             self.hint = None
@@ -1184,7 +1159,7 @@ class FleetMember(listentry.BaseTacticalEntry):
 
     def GetHeight(_self, *args):
         (node, width,) = args
-        node.height = uix.GetTextHeight(node.label, autoWidth=1, singleLine=1) + 4
+        node.height = uix.GetTextHeight(node.label, singleLine=1) + 4
         return node.height
 
 
@@ -1194,10 +1169,10 @@ class FleetMember(listentry.BaseTacticalEntry):
         if shipItem is None:
             ret = []
         else:
-            ret = [ entry for entry in sm.GetService('menu').CelestialMenu(shipItem.itemID) if entry if entry[0] in (mls.UI_CMD_LOCKTARGET,
-             mls.UI_CMD_APPROACH,
-             mls.UI_CMD_ORBIT,
-             mls.UI_CMD_KEEPATRANGE) ]
+            ret = [ entry for entry in sm.GetService('menu').CelestialMenu(shipItem.itemID) if entry if entry[0] in (localization.GetByLabel('UI/Inflight/LockTarget'),
+             localization.GetByLabel('UI/Inflight/ApproachObject'),
+             localization.GetByLabel('UI/Inflight/OrbitObject'),
+             localization.GetByLabel('UI/Inflight/Submenus/KeepAtRange')) ]
             ret.append(None)
         ret.extend(sm.GetService('menu').FleetMenu(self.sr.node.charID, unparsed=False))
         return ret
@@ -1329,19 +1304,19 @@ class FleetChannels(uicls.Container):
         if info is None:
             return 
         roleMap = {const.fleetRoleLeader: {'id': 'ui_73_16_17',
-                                 'hint': mls.UI_FLEET_FLEETCOMMANDER},
+                                 'hint': localization.GetByLabel('UI/Fleet/Ranks/FleetCommander')},
          const.fleetRoleWingCmdr: {'id': 'ui_73_16_18',
-                                   'hint': mls.UI_FLEET_WINGCOMMANDER},
+                                   'hint': localization.GetByLabel('UI/Fleet/Ranks/WingCommander')},
          const.fleetRoleSquadCmdr: {'id': 'ui_73_16_19',
-                                    'hint': mls.UI_FLEET_SQUADCOMMANDER}}
+                                    'hint': localization.GetByLabel('UI/Fleet/Ranks/SquadCommander')}}
         jobMap = {const.fleetJobCreator: {'id': 'ui_73_16_20',
-                                 'hint': mls.UI_FLEET_BOSS}}
+                                 'hint': localization.GetByLabel('UI/Fleet/Ranks/Boss')}}
         boosterMap = {const.fleetBoosterFleet: {'id': 'ui_73_16_22',
-                                   'hint': mls.UI_FLEET_FLEETBOOSTER},
+                                   'hint': localization.GetByLabel('UI/Fleet/Ranks/FleetBooster')},
          const.fleetBoosterWing: {'id': 'ui_73_16_23',
-                                  'hint': mls.UI_FLEET_WINGBOOSTER},
+                                  'hint': localization.GetByLabel('UI/Fleet/Ranks/WingBooster')},
          const.fleetBoosterSquad: {'id': 'ui_73_16_24',
-                                   'hint': mls.UI_FLEET_SQUADBOOSTER}}
+                                   'hint': localization.GetByLabel('UI/Fleet/Ranks/SquadBooster')}}
         icons = []
         if info.role in [const.fleetRoleLeader, const.fleetRoleWingCmdr, const.fleetRoleSquadCmdr]:
             icons.append(roleMap[info.role])
@@ -1405,49 +1380,42 @@ class FleetChannels(uicls.Container):
         if session.fleetrole == const.fleetRoleLeader:
             if fleetActive > 0:
                 amIActive = True
-                hint = mls.UI_FLEET_GIVINGBONUSFLEET
-            else:
-                hint = '<b>' + mls.UI_FLEET_NOTGIVINGBONUSES + '</b><br>'
-                if fleetActive == fleetcommon.FLEET_STATUS_TOOFEWWINGS:
-                    hint += mls.UI_FLEET_NOTGIVINGBONUSFLEET_TOOFEW
-                elif fleetActive == fleetcommon.FLEET_STATUS_TOOMANYWINGS:
-                    hint += mls.UI_FLEET_NOTGIVINGBONUSFLEET_TOOMANY
+                hint = localization.GetByLabel('UI/Fleet/FleetWindow/GivingBonusFleet')
+            elif fleetActive == fleetcommon.FLEET_STATUS_TOOFEWWINGS:
+                hint = localization.GetByLabel('UI/Fleet/FleetWindow/NotGivingBonusFleetTooFew')
+            elif fleetActive == fleetcommon.FLEET_STATUS_TOOMANYWINGS:
+                hint = localization.GetByLabel('UI/Fleet/FleetWindow/NotGivingBonusFleetTooMany')
         elif session.fleetrole == const.fleetRoleWingCmdr:
             if wingActive > 0:
                 amIActive = True
-                hint = mls.UI_FLEET_GIVINGBONUSWING
+                hint = localization.GetByLabel('UI/Fleet/FleetWindow/GivingBonusWing')
             else:
-                hint = '<b>' + mls.UI_FLEET_NOTGIVINGBONUSES + '</b><br>'
-                hint += mls.UI_FLEET_NOTGIVINGBONUSWING
+                hint = localization.GetByLabel('UI/Fleet/FleetWindow/NotGivingBonusWing')
         elif session.fleetrole == const.fleetRoleSquadCmdr:
             if squadActive > 0:
                 amIActive = True
-                hint = mls.UI_FLEET_GIVINGBONUSSQUAD
-            else:
-                hint = '<b>' + mls.UI_FLEET_NOTGIVINGBONUSES + '</b><br>'
-                if squadActive == SQUAD_STATUS_NOSQUADCOMMANDER:
-                    hint += mls.UI_FLEET_NOTGIVINGBONUSSQUAD_NOCMDR
-                elif squadActive == SQUAD_STATUS_TOOMANYMEMBERS:
-                    hint += mls.UI_FLEET_NOTGIVINGBONUSSQUAD_TOOMANY
-                elif squadActive == SQUAD_STATUS_TOOFEWMEMBERS:
-                    hint += mls.UI_FLEET_NOTGIVINGBONUSSQUAD_TOOFEW
+                hint = localization.GetByLabel('UI/Fleet/FleetWindow/GivingBonusSquad')
+            elif squadActive == SQUAD_STATUS_NOSQUADCOMMANDER:
+                hint = localization.GetByLabel('UI/Fleet/FleetWindow/NotGivingBonusSquadNoCmdr')
+            elif squadActive == SQUAD_STATUS_TOOMANYMEMBERS:
+                hint = localization.GetByLabel('UI/Fleet/FleetWindow/NotGivingBonusSquadTooMany')
+            elif squadActive == SQUAD_STATUS_TOOFEWMEMBERS:
+                hint = localization.GetByLabel('UI/Fleet/FleetWindow/NotGivingBonusSquadTooFew')
         elif squadActive > 0:
             amIActive = True
-            hint = mls.UI_FLEET_YOUAREGETTINGBONUSESFROM + '<br><b>'
-            hint += mls.UI_FLEET_SQUADBOOSTER
             if wingActive > 0:
-                hint += ', ' + mls.UI_FLEET_WINGBOOSTER
                 if fleetActive > 0:
-                    hint += ', ' + mls.UI_FLEET_FLEETBOOSTER
-            hint += '</b>'
-        else:
-            hint = '<b>' + mls.UI_FLEET_NOTRECEIVINGBONUSES + '</b><br>'
-            if squadActive == SQUAD_STATUS_NOSQUADCOMMANDER:
-                hint += mls.UI_FLEET_NOTGETTINGBONUS_NOCMDR
-            elif squadActive == SQUAD_STATUS_TOOMANYMEMBERS:
-                hint += mls.UI_FLEET_NOTGETTINGBONUS_TOOMANY
-            elif squadActive == SQUAD_STATUS_TOOFEWMEMBERS:
-                pass
+                    hint = localization.GetByLabel('UI/Fleet/FleetWindow/GettingBonusFromSquadWingFleet')
+                else:
+                    hint = localization.GetByLabel('UI/Fleet/FleetWindow/GettingBonusFromSquadWing')
+            else:
+                hint = localization.GetByLabel('UI/Fleet/FleetWindow/GettingBonusFromSquad')
+        elif squadActive == SQUAD_STATUS_NOSQUADCOMMANDER:
+            hint = localization.GetByLabel('UI/Fleet/FleetWindow/NotGettingBonusNoSquadCmdr')
+        elif squadActive == SQUAD_STATUS_TOOMANYMEMBERS:
+            hint = localization.GetByLabel('UI/Fleet/FleetWindow/NotGettingBonusTooManyMembers')
+        elif squadActive == SQUAD_STATUS_TOOFEWMEMBERS:
+            pass
         icon = 'ui_38_16_193' if amIActive else 'ui_38_16_194'
         lastHint = getattr(self, 'bonusIconHint', '')
         setattr(self, 'bonusIconHint', hint)
@@ -1543,23 +1511,25 @@ class ChannelsPanelAction(uicls.Container):
         m = []
         state = sm.GetService('fleet').GetVoiceChannelState(self.channelID)
         if state in [CHANNELSTATE_LISTENING, CHANNELSTATE_SPEAKING, CHANNELSTATE_MAYSPEAK]:
-            m.append((mls.UI_CMD_LEAVECHANNEL, sm.GetService('vivox').LeaveChannel, (self.channelID,)))
+            m.append((localization.GetByLabel('UI/Chat/ChannelWindow/LeaveChannel'), sm.GetService('vivox').LeaveChannel, (self.channelID,)))
             m.append(None)
         wings = sm.GetService('fleet').wings
         wingids = wings.keys()
         wingids.sort()
         if self.name == 'fleet' and sm.GetService('vivox').IsVoiceChannel(('fleetid', session.fleetid)) == False:
-            m.append((mls.UI_CMD_JOINCHANNEL + ': ' + mls.UI_FLEET_FLEET, sm.GetService('vivox').JoinChannel, (('fleetid', session.fleetid),)))
+            label = localization.GetByLabel('UI/Fleet/FleetWindow/JoinNamedChannel', channelName=localization.GetByLabel('UI/Fleet/Fleet'))
+            m.append((label, sm.GetService('vivox').JoinChannel, (('fleetid', session.fleetid),)))
         elif self.name == 'wing':
             for i in range(len(wingids)):
                 wid = wingids[i]
                 w = wings[wid]
                 if sm.GetService('fleet').CanIJoinChannel('wing', wid):
-                    name = w.name
-                    if not name:
-                        name = mls.UI_FLEET_WING + ' %s' % (i + 1)
                     if sm.GetService('vivox').IsVoiceChannel(('wingid', wid)) == False:
-                        m.append((mls.UI_CMD_JOINCHANNEL + ': ' + name, sm.GetService('vivox').JoinChannel, (('wingid', wid),)))
+                        name = w.name
+                        if not name:
+                            name = localization.GetByLabel('UI/Fleet/DefaultWingName', wingNumber=i + 1)
+                        label = localization.GetByLabel('UI/Fleet/FleetWindow/JoinNamedChannel', channelName=name)
+                        m.append((label, sm.GetService('vivox').JoinChannel, (('wingid', wid),)))
                 i += 1
 
         elif self.name == 'squad':
@@ -1579,18 +1549,21 @@ class ChannelsPanelAction(uicls.Container):
             squadids.sort()
             for i in range(len(squadids)):
                 sid = squadids[i]
-                name = squadNames[sid]
-                if not name:
-                    name = mls.UI_FLEET_SQUAD + ' %s' % (i + 1)
                 if sm.GetService('fleet').CanIJoinChannel('squad', sid) and sm.GetService('vivox').IsVoiceChannel(('squadid', sid)) == False:
-                    m.append((mls.UI_CMD_JOINCHANNEL + ': ' + name, sm.GetService('vivox').JoinChannel, (('squadid', sid),)))
+                    name = squadNames[sid]
+                    if not name:
+                        name = localization.GetByLabel('UI/Fleet/DefaultSquadName', squadNumber=i + 1)
+                    label = localization.GetByLabel('UI/Fleet/FleetWindow/JoinNamedChannel', channelName=name)
+                    m.append((label, sm.GetService('vivox').JoinChannel, (('squadid', sid),)))
 
         elif self.name.startswith('op'):
             import copy
             if not util.IsNPC(session.corpid) and not sm.GetService('vivox').IsVoiceChannel((('corpid', session.corpid),)):
-                m.append((mls.UI_CMD_JOINCHANNEL + ': ' + mls.UI_GENERIC_CORP, sm.GetService('vivox').JoinChannel, (('corpid', session.corpid),)))
+                label = localization.GetByLabel('UI/Fleet/FleetWindow/JoinNamedChannel', channelName=localization.GetByLabel('UI/Common/Corporation'))
+                m.append((label, sm.GetService('vivox').JoinChannel, (('corpid', session.corpid),)))
             if session.allianceid and not sm.GetService('vivox').IsVoiceChannel((('allianceid', session.allianceid),)):
-                m.append((mls.UI_CMD_JOINCHANNEL + ': ' + mls.UI_GENERIC_ALLIANCE, sm.GetService('vivox').JoinChannel, (('allianceid', session.allianceid),)))
+                label = localization.GetByLabel('UI/Fleet/FleetWindow/JoinNamedChannel', channelName=localization.GetByLabel('UI/Common/Alliance'))
+                m.append((label, sm.GetService('vivox').JoinChannel, (('allianceid', session.allianceid),)))
             channels = copy.copy(settings.char.ui.Get('lscengine_mychannels', []))
             for c in channels:
                 channel = sm.services['LSC'].channels.get(c, None)
@@ -1604,7 +1577,8 @@ class ChannelsPanelAction(uicls.Container):
                     ownerID = channel.info.ownerID
                     name = channel.info.displayName
                 if ownerID not in (session.allianceid, session.corpid) and not sm.GetService('vivox').IsVoiceChannel(channel.channelID):
-                    m.append((mls.UI_CMD_JOINCHANNEL + ': ' + name, sm.GetService('vivox').JoinChannel, (channel.channelID,)))
+                    label = localization.GetByLabel('UI/Fleet/FleetWindow/JoinNamedChannel', channelName=name)
+                    m.append((label, sm.GetService('vivox').JoinChannel, (channel.channelID,)))
 
         return m
 
@@ -1651,7 +1625,7 @@ class ChannelsPanelAction(uicls.Container):
         self.sr.icon.LoadIcon('ui_73_16_35')
         self.channelState = CHANNELSTATE_MAYSPEAK
         displayName = chat.GetDisplayName(self.channelID)
-        self.container.hint = '<b>%s</b><br>%s' % (displayName, mls.UI_FLEET_SET_AS_SPEAKING_CHANNEL)
+        self.container.hint = localization.GetByLabel('UI/Fleet/FleetWindow/SetAsSpeakingChannelHint', channelName=displayName)
 
 
 
@@ -1659,14 +1633,14 @@ class ChannelsPanelAction(uicls.Container):
         self.sr.icon.LoadIcon('ui_73_16_33')
         self.channelState = CHANNELSTATE_SPEAKING
         displayName = chat.GetDisplayName(self.channelID)
-        self.container.hint = '<b>%s</b><br>%s' % (displayName, mls.UI_FLEET_SPEAKING_IN_CHANNEL)
+        self.container.hint = localization.GetByLabel('UI/Fleet/FleetWindow/SpeakingInChannelHint', channelName=displayName)
 
 
 
     def SetAsMuted(self):
         self.sr.icon.LoadIcon('ui_73_16_37')
         displayName = chat.GetDisplayName(self.channelID)
-        self.container.hint = '<b>%s</b><br>%s' % (displayName, mls.UI_FLEET_MUTED_IN_CHANNEL)
+        self.container.hint = localization.GetByLabel('UI/Fleet/FleetWindow/MutedInChannelHint', channelName=displayName)
 
 
 
@@ -1679,12 +1653,12 @@ class ChannelsPanelAction(uicls.Container):
 
 
     def GetChannelNotSetHint(self):
-        channelType = {'fleet': mls.UI_FLEET_FLEET,
-         'wing': mls.UI_FLEET_WING,
-         'squad': mls.UI_FLEET_SQUAD,
-         'op1': mls.UI_FLEET_OPTIONAL_CHANNEL,
-         'op2': mls.UI_FLEET_OPTIONAL_CHANNEL}[self.name]
-        hint = '<b>%s</b><br>%s' % (channelType, mls.UI_FLEET_CHANNEL_NOT_SET)
+        channelType = {'fleet': localization.GetByLabel('UI/Fleet/Fleet'),
+         'wing': localization.GetByLabel('UI/Fleet/Wing'),
+         'squad': localization.GetByLabel('UI/Fleet/Squad'),
+         'op1': localization.GetByLabel('UI/Fleet/FleetWindow/OptionalChannel'),
+         'op2': localization.GetByLabel('UI/Fleet/FleetWindow/OptionalChannel')}[self.name]
+        hint = localization.GetByLabel('UI/Fleet/FleetWindow/ChannelNotSet', channelType=channelType)
         return hint
 
 
@@ -1705,6 +1679,7 @@ class WatchListPanel(form.ActionPanel):
      'OnVoiceChannelLeft',
      'OnMyFleetInfoChanged']
     __dependencies__ = ['vivox', 'fleet']
+    default_windowID = 'watchlistpanel'
 
     def IsFavorite(self, charid):
         return charid in sm.GetService('fleet').GetFavorites()
@@ -1714,7 +1689,7 @@ class WatchListPanel(form.ActionPanel):
     def AddBroadcastIcon(self, charid, icon, hint):
         if not self.IsFavorite(charid):
             return 
-        self.broadcasts[charid] = util.KeyVal(icon=icon, hint=hint, timestamp=blue.os.GetTime())
+        self.broadcasts[charid] = util.KeyVal(icon=icon, hint=hint, timestamp=blue.os.GetWallclockTime())
         self.UpdateAll()
 
 
@@ -1724,9 +1699,7 @@ class WatchListPanel(form.ActionPanel):
             icon = 'ui_38_16_70'
         else:
             icon = fleetbr.types[broadcast.name]['smallIcon']
-        self.AddBroadcastIcon(broadcast.charID, icon, broadcast.broadcastName)
-        caption = fleetbr.GetCaption(broadcast.charID, broadcast.broadcastName, broadcast.broadcastExtra)
-        caption = '<b>%s</b>' % caption
+        self.AddBroadcastIcon(broadcast.charID, icon, broadcast.broadcastLabel)
 
 
 
@@ -1775,9 +1748,9 @@ class WatchListPanel(form.ActionPanel):
     def GetWatchListMenu(self):
         ret = []
         if FleetSvc().IsDamageUpdates():
-            ret.append((mls.UI_FLEET_TURNOFFDAMAGEUPDATES, self.SetDamageUpdates, (False,)))
+            ret.append((localization.GetByLabel('UI/Fleet/Watchlist/TurnOffDamageUpdates'), self.SetDamageUpdates, (False,)))
         else:
-            ret.append((mls.UI_FLEET_TURNONDAMAGEUPDATES, self.SetDamageUpdates, (True,)))
+            ret.append((localization.GetByLabel('UI/Fleet/Watchlist/TurnOnDamageUpdates'), self.SetDamageUpdates, (True,)))
         return ret
 
 
@@ -1857,7 +1830,6 @@ class WatchListPanel(form.ActionPanel):
         data.wingID = member.wingID
         data.displayName = member.charName
         data.roleString = member.roleName
-        data.hint = '<b>' + mls.UI_FLEET_ROLE + ':</b>' + data.roleString + '<br>'
         data.voiceStatus = CHANNELSTATE_NONE
         data.channelName = None
         if sm.GetService('vivox').GetInstantVoiceParticipant() == charID:
@@ -1868,21 +1840,15 @@ class WatchListPanel(form.ActionPanel):
             elif sm.GetService('vivox').IsVoiceChannel(channelNameOther):
                 data.channelName = channelNameOther
             data.voiceStatus = [CHANNELSTATE_MAYSPEAK, CHANNELSTATE_SPEAKING][(sm.GetService('vivox').GetSpeakingChannel() == data.channelName)]
-        if member.job:
-            data.hint += '<b>' + mls.UI_FLEET_JOB + ':</b>' + member.jobName + '<br>'
-        if member.booster:
-            data.hint += '<b>' + mls.UI_FLEET_BOOSTER + ':</b>' + member.boosterName + '<br>'
-        data.label = data.displayName
+        data.label = localization.GetByLabel('UI/Common/CharacterNameLabel', charID=charID)
         data.member = member
         data.slimItem = None
         if charID in self.broadcasts:
             data.icon = self.broadcasts[charID].icon
-            data.hint += '<b>%s %s:</b>%s (%s)<br>' % (mls.UI_GENERIC_LAST,
-             mls.UI_FLEET_BROADCAST,
-             self.broadcasts[charID].hint,
-             util.FmtDate(self.broadcasts[charID].timestamp, 'ns'))
+            data.hint = localization.GetByLabel('UI/Fleet/Watchlist/WatchlistHintWithBroadcast', role=fleetbr.GetRankName(member), broadcast=self.broadcasts[charID].hint, time=self.broadcasts[charID].timestamp)
         else:
             data.icon = None
+            data.hint = localization.GetByLabel('UI/Fleet/Watchlist/WatchlistHint', role=fleetbr.GetRankName(member))
         if slimItem:
             data.slimItem = _weakref.ref(slimItem)
         return data
@@ -1903,7 +1869,7 @@ class WatchListEntry(listentry.BaseTacticalEntry):
         gaugesContainer = uicls.Container(name='gaugesContainer', parent=self, width=85, align=uiconst.TORIGHT)
         self.sr.gaugesContainer = gaugesContainer
         uicls.Line(parent=self, align=uiconst.TORIGHT)
-        broadcastIconContainer = uicls.Container(name='broadcastIconContainer', parent=self, align=uiconst.TORIGHT)
+        broadcastIconContainer = uicls.Container(name='broadcastIconContainer', parent=self, width=20, align=uiconst.TORIGHT)
         self.broadcastIconContainer = broadcastIconContainer
         self.voiceStatus = CHANNELSTATE_NONE
         self.isSpeaking = False
@@ -1949,14 +1915,14 @@ class WatchListEntry(listentry.BaseTacticalEntry):
             self.sr.icon = uicls.Icon(icon=node.icon, parent=self.broadcastIconContainer, pos=(1, 1, 16, 16), align=uiconst.TOPRIGHT)
             self.sr.icon.state = uiconst.UI_DISABLED
         icon = 'ui_73_16_36'
-        hint = mls.UI_FLEET_OPENPRIVATEVOICECHANNEL
+        hint = localization.GetByLabel('UI/Fleet/Watchlist/OpenPrivateVoiceChannel')
         self.voiceStatus = data.voiceStatus
         if data.voiceStatus == CHANNELSTATE_SPEAKING:
             icon = 'ui_73_16_33'
-            hint = mls.UI_FLEET_LEAVEPRIVATEVOICECHANNEL
+            hint = localization.GetByLabel('UI/Fleet/Watchlist/LeavePrivateVoiceChannel')
         elif data.voiceStatus == CHANNELSTATE_MAYSPEAK:
             icon = 'ui_73_16_35'
-            hint = mls.UI_FLEET_SET_AS_SPEAKING_CHANNEL
+            hint = localization.GetByLabel('UI/Fleet/FleetWindow/SetAsSpeakingChannel')
         self.instaSpeakButton = uicls.Icon(icon=icon, parent=self.instaSpeakContainer, size=16, align=uiconst.RELATIVE)
         charID = self.sr.node.charID
         instant = sm.GetService('vivox').GetInstantVoiceParticipant()
@@ -2010,7 +1976,7 @@ class WatchListEntry(listentry.BaseTacticalEntry):
 
     def GetHeight(_self, *args):
         (node, width,) = args
-        node.height = uix.GetTextHeight(node.label, autoWidth=1, singleLine=1) + 4
+        node.height = uix.GetTextHeight(node.label, singleLine=1) + 4
         return node.height
 
 
@@ -2030,10 +1996,10 @@ class WatchListEntry(listentry.BaseTacticalEntry):
         if shipItem is None:
             ret = []
         else:
-            ret = [ entry for entry in sm.GetService('menu').CelestialMenu(shipItem.itemID) if entry if entry[0] in (mls.UI_CMD_LOCKTARGET,
-             mls.UI_CMD_APPROACH,
-             mls.UI_CMD_ORBIT,
-             mls.UI_CMD_KEEPATRANGE) ]
+            ret = [ entry for entry in sm.GetService('menu').CelestialMenu(shipItem.itemID) if entry if entry[0] in (localization.GetByLabel('UI/Inflight/LockTarget'),
+             localization.GetByLabel('UI/Inflight/ApproachObject'),
+             localization.GetByLabel('UI/Inflight/OrbitObject'),
+             localization.GetByLabel('UI/Inflight/Submenus/KeepAtRange')) ]
             ret.append(None)
         ret += sm.GetService('menu').FleetMenu(charID, unparsed=False)
         instant = sm.GetService('vivox').GetInstantVoiceParticipant()
@@ -2042,9 +2008,9 @@ class WatchListEntry(listentry.BaseTacticalEntry):
         if session.fleetrole == const.fleetRoleLeader or session.fleetrole == const.fleetRoleWingCmdr and member.wingID == session.wingid or session.fleetrole == const.fleetRoleSquadCmdr and member.squadID == session.squadid:
             isSubordinate = True
         if instant is None and isSubordinate:
-            ret.append((mls.UI_FLEET_OPENPRIVATEVOICECHANNEL, self.InstantVoice))
+            ret.append((localization.GetByLabel('UI/Fleet/Watchlist/OpenPrivateVoiceChannel'), self.InstantVoice))
         elif instant == charID or instant == session.charid:
-            ret.append((mls.UI_FLEET_LEAVEPRIVATEVOICECHANNEL, sm.GetService('vivox').LeaveInstantChannel))
+            ret.append((localization.GetByLabel('UI/Fleet/Watchlist/LeavePrivateVoiceChannel'), sm.GetService('vivox').LeaveInstantChannel))
         return ret
 
 
@@ -2054,7 +2020,7 @@ class WatchListEntry(listentry.BaseTacticalEntry):
         self.sr.progress.state = uiconst.UI_NORMAL
         self.sr.progress.Play()
         self.instaSpeakButton.state = uiconst.UI_HIDDEN
-        self.instaSpeakContainer.hint = mls.UI_FLEET_CONNECTINGOTHERUSER
+        self.instaSpeakContainer.hint = localization.GetByLabel('UI/Fleet/FleetWindow/ConnectingOtherUser')
 
 
 

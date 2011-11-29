@@ -107,7 +107,7 @@ class CachedMethodCallResult:
             self.version = None
         else:
             self.result = blue.marshal.Save(result)
-            self.version = [blue.os.GetTime(), zlib.adler32(self.result)]
+            self.version = [blue.os.GetWallclockTime(), zlib.adler32(self.result)]
 
 
 

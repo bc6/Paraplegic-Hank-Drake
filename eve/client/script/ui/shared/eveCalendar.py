@@ -6,21 +6,24 @@ import xtriui
 import form
 import util
 import listentry
-import draw
 import uiconst
 import uicls
 import calendar
+import localization
+import localizationUtil
+import time
 NUM_DAYROWS = 6
 
 class CalendarWnd(uicls.Window):
     __guid__ = 'form.eveCalendarWnd'
     __notifyevents__ = []
+    default_windowID = 'calendar'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         sm.RegisterNotify(self)
         self.SetTopparentHeight(0)
-        self.SetCaption(mls.UI_CAL_CALENDAR)
+        self.SetCaption(localization.GetByLabel('UI/Calendar/CalendarWindow/Caption'))
         self.SetMinSize([580, 400])
         self.SetWndIcon('ui_94_64_12')
         self.sr.leftSide = uicls.Container(name='leftSide', parent=self.sr.main, align=uiconst.TOLEFT, pos=(0, 0, 150, 0), padding=(const.defaultPadding,
@@ -51,46 +54,48 @@ class CalendarWnd(uicls.Window):
         self.sr.yDivider.Startup(self.sr.updatedCont, 'height', 'y', 50, 205)
         self.sr.yDivider.OnSizeChanged = self.OnListsSizeChanged
         self.sr.todoCont = uicls.Container(name='todoCont', parent=self.sr.leftSideBottom, align=uiconst.TOALL, pos=(0, 0, 0, 0))
-        uix.GetContainerHeader(mls.UI_CAL_TODO, self.sr.todoCont, 0)
-        self.sr.toDoForm = uicls.EventList(pos=(0, 0, 0, 0), parent=self.sr.todoCont, name='toDoForm', listentryClass='CalendarListEntry', getEventsFunc=sm.GetService('calendar').GetMyNextEvents, header=mls.UI_CAL_TODO)
-        uix.GetContainerHeader(mls.UI_CAL_UPDATEDEVENTS, self.sr.updatedCont, 1)
+        hdrText = localization.GetByLabel('UI/Calendar/CalendarWindow/UpcomingEvents')
+        uix.GetContainerHeader(hdrText, self.sr.todoCont, 0)
+        self.sr.toDoForm = uicls.EventList(pos=(0, 0, 0, 0), parent=self.sr.todoCont, name='toDoForm', listentryClass='CalendarListEntry', getEventsFunc=sm.GetService('calendar').GetMyNextEvents, header=hdrText)
+        hdrText = localization.GetByLabel('UI/Calendar/CalendarWindow/LatestUpdates')
+        uix.GetContainerHeader(hdrText, self.sr.updatedCont, 1)
         uicls.Line(parent=self.sr.updatedCont, align=uiconst.TOBOTTOM)
-        self.sr.changesForm = uicls.UpdateEventsList(pos=(0, 0, 0, 0), parent=self.sr.updatedCont, name='changesForm', listentryClass='CalendarUpdatedEntry', getEventsFunc=sm.GetService('calendar').GetMyChangedEvents, header=mls.UI_CAL_UPDATEDEVENTS)
+        self.sr.changesForm = uicls.UpdateEventsList(pos=(0, 0, 0, 0), parent=self.sr.updatedCont, name='changesForm', listentryClass='CalendarUpdatedEntry', getEventsFunc=sm.GetService('calendar').GetMyChangedEvents, header=hdrText)
         self.AddCheckBoxes()
         cont = uicls.Container(name='tabs', parent=self.sr.cbCont, align=uiconst.TOTOP, pos=(0, 10, 0, 36))
-        uicls.Checkbox(text=mls.UI_CAL_SHOWDECLINED, parent=cont, configName='showDeclined', retval=0, checked=settings.user.ui.Get('calendar_showDeclined', 1), groupname=None, align=uiconst.TOPLEFT, pos=(6, 0, 200, 0), callback=self.DisplayCheckboxesChecked)
-        uicls.Checkbox(text=mls.UI_CAL_SHOWTIMESTAMP, parent=cont, configName='showTimestamp', retval=0, checked=settings.user.ui.Get('calendar_showTimestamp', 1), groupname=None, align=uiconst.TOPLEFT, pos=(6, 18, 200, 0), callback=self.DisplayCheckboxesChecked)
+        uicls.Checkbox(text=localization.GetByLabel('UI/Calendar/CalendarWindow/DeclinedEvents'), parent=cont, configName='showDeclined', retval=0, checked=settings.user.ui.Get('calendar_showDeclined', 1), groupname=None, align=uiconst.TOTOP, padLeft=6, callback=self.DisplayCheckboxesChecked)
+        uicls.Checkbox(text=localization.GetByLabel('UI/Calendar/CalendarWindow/ShowTimestamp'), parent=cont, configName='showTimestamp', retval=0, checked=settings.user.ui.Get('calendar_showTimestamp', 1), groupname=None, align=uiconst.TOTOP, padLeft=6, callback=self.DisplayCheckboxesChecked)
         self.sr.cbCont.height += cont.height + cont.top + 18
-        newEvent = uicls.Button(parent=self.sr.leftSideTop, label=mls.UI_CAL_NEW_EVENT, func=self.CreateNewEvent, pos=(0, 7, 0, 0))
-        self.sr.todayBtn = today = uicls.Button(parent=self.sr.leftSideTop, label=mls.UI_CAL_TODAY, func=self.GetToday, pos=(0, 7, 0, 0), align=uiconst.TOPRIGHT)
+        uicls.Button(parent=self.sr.leftSideTop, label=localization.GetByLabel('UI/Calendar/CalendarWindow/NewEvent'), func=self.CreateNewEvent, pos=(0, 7, 0, 0))
+        self.sr.todayBtn = uicls.Button(parent=self.sr.leftSideTop, label=localization.GetByLabel('UI/Calendar/CalendarWindow/Today'), func=self.GetToday, pos=(0, 7, 0, 0), align=uiconst.TOPRIGHT)
 
 
 
     def AddCheckBoxes(self, *args):
         self.sr.cbCont.Flush()
-        uix.GetContainerHeader(mls.UI_GENERIC_FILTERS, self.sr.cbCont, 0)
-        checkboxInfo = [(mls.UI_CAL_GROUPPERSONCAL,
+        uix.GetContainerHeader(localization.GetByLabel('UI/Calendar/CalendarWindow/Filters'), self.sr.cbCont, 0)
+        checkboxInfo = [(localization.GetByLabel('UI/Calendar/CalendarWindow/GroupPersonal'),
           'personal',
           const.calendarTagPersonal,
           settings.user.ui.Get('calendarTagCheked_%s' % const.calendarTagPersonal, 1))]
         if session.corpid and not util.IsNPC(session.corpid):
-            checkboxInfo.append((mls.UI_CAL_GROUPCORP,
+            checkboxInfo.append((localization.GetByLabel('UI/Calendar/CalendarWindow/GroupCorp'),
              'corp',
              const.calendarTagCorp,
              settings.user.ui.Get('calendarTagCheked_%s' % const.calendarTagCorp, 1)))
         if session.allianceid:
-            checkboxInfo.append((mls.UI_CAL_GROUPALLIANCE,
+            checkboxInfo.append((localization.GetByLabel('UI/Calendar/CalendarWindow/GroupAlliance'),
              'alliance',
              const.calendarTagAlliance,
              settings.user.ui.Get('calendarTagCheked_%s' % const.calendarTagAlliance, 1)))
-        checkboxInfo.append((mls.UI_CAL_GROUPCCP,
+        checkboxInfo.append((localization.GetByLabel('UI/Calendar/CalendarWindow/GroupCcp'),
          'ccp',
          const.calendarTagCCP,
          settings.user.ui.Get('calendarTagCheked_%s' % const.calendarTagCCP, 1)))
         self.sr.checkboxes = []
         for (label, config, tag, checked,) in checkboxInfo:
             cont = uicls.Container(name='tabs', parent=self.sr.cbCont, align=uiconst.TOTOP, pos=(0, 0, 0, 18))
-            cb = uicls.Checkbox(text=label, parent=cont, configName=config, retval=tag, checked=checked, groupname=None, align=uiconst.TOPLEFT, pos=(6, 0, 200, 0), callback=self.CheckboxChecked)
+            cb = uicls.Checkbox(text=label, parent=cont, configName=config, retval=tag, checked=checked, groupname=None, align=uiconst.TOTOP, pos=(0, 0, 0, 0), padLeft=6, callback=self.CheckboxChecked)
             self.sr.checkboxes.append(cb)
 
         self.sr.cbCont.height = len(self.sr.checkboxes) * 18
@@ -124,7 +129,7 @@ class CalendarWnd(uicls.Window):
             monthday = day.monthday
         else:
             eve.Message('CalendarCannotPlanThePast2')
-            now = blue.os.GetTime()
+            now = blue.os.GetWallclockTime()
             (year, month, wd, monthday, hour, min, sec, ms,) = util.GetTimeParts(now)
         if not sm.GetService('calendar').IsInPast(year, month, monthday, allowToday=1):
             sm.GetService('calendar').OpenNewEventWnd(year, month, monthday)
@@ -194,7 +199,7 @@ class CalendarWnd(uicls.Window):
 
 
     def OnExpanded_thread(self, *args):
-        blue.pyos.synchro.Sleep(50)
+        blue.pyos.synchro.SleepWallclock(50)
         if self and not self.dead:
             self.UpdateIndicators()
 
@@ -212,11 +217,11 @@ class Calendar(form.Calendar):
     def InsertBrowseControls(self, *args):
         self.sr.backBtn = btn = uix.GetBigButton(24, self.sr.monthTextCont, 0, 0)
         btn.OnClick = (self.ChangeMonth, -1)
-        btn.hint = mls.UI_GENERIC_PREVIOUS
+        btn.hint = localization.GetByLabel('UI/Calendar/Hints/Previous')
         btn.sr.icon.LoadIcon('ui_23_64_1')
         self.sr.fwdBtn = btn = uix.GetBigButton(24, self.sr.monthTextCont, 0, 0)
         btn.OnClick = (self.ChangeMonth, 1)
-        btn.hint = mls.UI_CMD_NEXT
+        btn.hint = localization.GetByLabel('UI/Calendar/Hints/Next')
         btn.sr.icon.LoadIcon('ui_23_64_2')
         btn.SetAlign(uiconst.TOPRIGHT)
 
@@ -224,7 +229,7 @@ class Calendar(form.Calendar):
 
     def AddMonthText(self, text = '', *args):
         if self.sr.Get('monthText', None) is None:
-            self.sr.monthText = uicls.Label(text=text, parent=self.sr.monthTextCont, left=0, fontsize=20, top=0, state=uiconst.UI_NORMAL, align=uiconst.CENTERTOP)
+            self.sr.monthText = uicls.EveCaptionMedium(text=text, parent=self.sr.monthTextCont, state=uiconst.UI_NORMAL, align=uiconst.CENTERTOP)
         return self.sr.monthText
 
 
@@ -238,8 +243,17 @@ class Calendar(form.Calendar):
             if eventKV.isDeleted:
                 continue
             (year, month, wd, day, hour, min, sec, ms,) = util.GetTimeParts(eventKV.eventDateTime)
-            time = '%02d:%02d' % (hour, min)
-            eventKV.eventTimeStamp = time
+            ts = time.struct_time((year,
+             month,
+             day,
+             hour,
+             min,
+             sec,
+             0,
+             1,
+             0))
+            timeStr = localizationUtil.FormatDateTime(value=ts, dateFormat='none', timeFormat='short')
+            eventKV.eventTimeStamp = timeStr
             if showTag is None or showTag & eventKV.flag != 0:
                 eventsThisDay = eventsByDates.get(day, {})
                 eventsThisDay[eventKV.eventID] = eventKV
@@ -273,14 +287,14 @@ class CalendarDay(uicls.CalendarDayCore):
 
 
     def AddFill(self, *args):
-        self.sr.fill = fill = uicls.BumpedUnderlay(parent=self, padding=(1, 1, 1, 1))
+        self.sr.fill = uicls.BumpedUnderlay(parent=self, padding=(1, 1, 1, 1))
         self.sr.frame = uicls.Frame(parent=self, color=(0.5, 0.5, 0.5, 0.0))
 
 
 
     def AddDayNumber(self, text = '', *args):
         if self.sr.Get('dayNumberText', None) is None:
-            self.sr.dayNumberText = uicls.Label(text=text, parent=self.sr.dayNumberCont, state=uiconst.UI_DISABLED, left=1, align=uiconst.TOPRIGHT)
+            self.sr.dayNumberText = uicls.EveLabelMedium(text=text, parent=self.sr.dayNumberCont, state=uiconst.UI_DISABLED, left=1, align=uiconst.TOPRIGHT)
         return self.sr.dayNumberText
 
 
@@ -302,7 +316,7 @@ class CalendarHeader(uicls.CalendarHeaderCore):
 
     def AddDayNameText(self, text = '', *args):
         if self.sr.Get('dayNameText', None) is None:
-            self.sr.dayNameText = uicls.Label(text=text, parent=self.sr.dayNameCont, state=uiconst.UI_NORMAL, align=uiconst.CENTERBOTTOM)
+            self.sr.dayNameText = uicls.EveLabelMedium(text=text, parent=self.sr.dayNameCont, state=uiconst.UI_NORMAL, align=uiconst.CENTERBOTTOM)
         return self.sr.dayNameText
 
 
@@ -312,7 +326,7 @@ class CalendarEventEntry(uicls.CalendarEventEntryCore):
     __guid__ = 'uicls.CalendarEventEntry'
 
     def AddLabel(self, text, *args):
-        self.sr.label = uicls.Label(text=text, parent=self, left=12, top=-1, state=uiconst.UI_DISABLED, color=None, align=uiconst.CENTERLEFT, singleline=1, clipped=1)
+        self.sr.label = uicls.EveLabelSmall(text=text, parent=self, left=14, top=0, state=uiconst.UI_DISABLED, color=None, align=uiconst.CENTERLEFT, singleline=1, clipped=1)
 
 
 
@@ -343,7 +357,7 @@ class CalendarNewEventWnd(uicls.Window):
         self.SetWndIcon('ui_94_64_12')
         self.HideMainIcon()
         self.SetMinSize([380, 370])
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         (cyear, cmonth, cwd, cday, chour, cmin, csec, cms,) = util.GetTimeParts(now)
         if year is None or month is None:
             year = cyear
@@ -367,24 +381,24 @@ class CalendarNewEventWnd(uicls.Window):
         self.sr.tabCont = uicls.Container(name='tabCont', parent=self.sr.main, align=uiconst.TOALL, pos=(0, 0, 0, 0))
         self.sr.eventDescrCont = uicls.Container(name='invitedScroll', parent=self.sr.tabCont, align=uiconst.TOALL, pos=(0, 0, 0, 0))
         self.sr.invitedCont = uicls.Container(name='invitedScroll', parent=self.sr.tabCont, align=uiconst.TOALL, pos=(0, 0, 0, 0))
-        subtabs = [[mls.UI_CAL_DESCRIPTION,
+        subtabs = [[localization.GetByLabel('UI/Calendar/EventWindow/TabDescription'),
           self.sr.eventDescrCont,
           self,
           'descr']]
         flag = util.GetAttrs(eventInfo, 'flag')
         if flag is None or flag == const.calendarTagPersonal:
-            subtabs.append([mls.UI_CAL_INVITATIONS,
+            subtabs.append([localization.GetByLabel('UI/Calendar/EventWindow/TabInvitations'),
              self.sr.invitedCont,
              self,
              'invitations'])
         elif flag in [const.calendarTagCorp, const.calendarTagAlliance] and session.corpid and session.corprole & const.corpRoleChatManager == const.corpRoleChatManager:
-            subtabs.append([mls.UI_CAL_INVITATIONS,
+            subtabs.append([localization.GetByLabel('UI/Calendar/EventWindow/TabInvitations'),
              self.sr.invitedCont,
              self,
              'invitations'])
         self.sr.tabs = uicls.TabGroup(name='tabs', parent=self.sr.tabCont, idx=0, tabs=subtabs, groupID='calenderEvent_tabs', autoselecttab=0)
-        self.sr.tabs.ShowPanelByName(mls.UI_CAL_DESCRIPTION)
-        invTab = self.sr.tabs.sr.Get('%s_tab' % mls.UI_CAL_INVITATIONS, None)
+        self.sr.tabs.ShowPanelByName(localization.GetByLabel('UI/Calendar/EventWindow/TabDescription'))
+        invTab = self.sr.tabs.sr.Get('%s_tab' % localization.GetByLabel('UI/Calendar/EventWindow/TabInvitations'), None)
         if invTab is not None:
             invTab.OnTabDropData = self.OnDropData
         if eventInfo is not None:
@@ -457,36 +471,39 @@ class CalendarNewEventWnd(uicls.Window):
         uiutil.Flush(self.sr.bottom2)
         btns = []
         if new:
-            caption = mls.UI_CAL_NEW_EVENT
-            btns.append([mls.UI_CMD_CREATE,
+            caption = localization.GetByLabel('UI/Calendar/EventWindow/CaptionNew')
+            btns.append([localization.GetByLabel('UI/Calendar/EventWindow/Create'),
              self.CreateOrEditEvent,
              (1,),
              None])
         else:
-            caption = mls.UI_CAL_EDITEVENT
-            btns.append([mls.UI_CMD_SAVE,
+            caption = localization.GetByLabel('UI/Calendar/EventWindow/CaptionEdit')
+            btns.append([localization.GetByLabel('UI/Calendar/EventWindow/Save'),
              self.CreateOrEditEvent,
              (0,),
              None])
-        btns.append([mls.UI_CMD_CANCEL,
-         self.CloseX,
+        btns.append([localization.GetByLabel('UI/Generic/Cancel'),
+         self.CloseByUser,
          (),
          None])
         self.SetCaption(caption)
-        statebtns = uicls.ButtonGroup(btns=btns, parent=self.sr.bottom2, idx=0)
+        uicls.ButtonGroup(btns=btns, parent=self.sr.bottom2, idx=0)
         self.sr.titleEdit = uicls.SinglelineEdit(name='titleEdit', parent=self.sr.infoCont, setvalue=self.title, maxLength=const.calendarMaxTitleSize, pos=(left - 1,
          top,
          326,
-         0), label=mls.UI_GENERIC_TITLE)
+         0), label=localization.GetByLabel('UI/Calendar/SingleDayWindow/Title'))
         top += 40
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         (cyear, cmonth, cwd, cday, chour, cmin, csec, cms,) = util.GetTimeParts(now)
         yearRange = const.calendarViewRangeInMonths / 12 + 1
         self.sr.fromDate = uix.GetDatePicker(self.sr.infoCont, setval=thisDay, left=5, top=top, idx=None, withTime=True, timeparts=4, startYear=cyear, yearRange=yearRange)
-        durationOptions = [(mls.UI_SHARED_NOTSPECIFIED, None), (mls.UI_CAL_ONEHOUR, 60)]
-        durationOptions += [ (mls.UI_CAL_NUMHOURS % {'num': i}, i * 60) for i in xrange(2, 25) ]
+        durationOptions = [(localization.GetByLabel('UI/Calendar/EventWindow/DateNotSpecified'), None)]
+        for i in xrange(1, 25):
+            str = localization.GetByLabel('UI/Calendar/EventWindow/DateSpecified', hours=i)
+            durationOptions += [(str, i * 60)]
+
         dLeft = self.sr.fromDate.left + self.sr.fromDate.width + 16
-        self.sr.durationCombo = uicls.Combo(label=mls.UI_GENERIC_DURATION, parent=self.sr.infoCont, options=durationOptions, name='duration', select=self.duration, pos=(dLeft,
+        self.sr.durationCombo = uicls.Combo(label=localization.GetByLabel('UI/Calendar/EventWindow/Duration'), parent=self.sr.infoCont, options=durationOptions, name='duration', select=self.duration, pos=(dLeft,
          top,
          0,
          0), width=90, align=uiconst.TOPLEFT)
@@ -495,27 +512,27 @@ class CalendarNewEventWnd(uicls.Window):
          top,
          0,
          20))
-        self.sr.importantCB = uicls.Checkbox(text=mls.UI_GENERIC_IMPORTANT, parent=self.sr.cbCont2, configName='personal', retval=1, checked=self.importance, align=uiconst.TOPLEFT, pos=(6, 0, 200, 0))
+        self.sr.importantCB = uicls.Checkbox(text=localization.GetByLabel('UI/Calendar/EventWindow/Important'), parent=self.sr.cbCont2, configName='personal', retval=1, checked=self.importance, align=uiconst.TOPLEFT, pos=(6, 0, 200, 0))
         top += space2
         self.sr.eventTypeCont = uicls.Container(name='eventTypeCont', parent=self.sr.infoCont, align=uiconst.TOTOP, pos=(0, 0, 0, 200))
         cbTop = 0
         self.sr.radioBtns = []
         if new:
-            checkboxes = [(mls.UI_CAL_GROUPPERSONCAL,
+            checkboxes = [(localization.GetByLabel('UI/Calendar/EventWindow/GroupPersonal'),
               'personal',
               const.calendarTagPersonal,
               const.calendarTagPersonal == self.eventTag,
               cbTop)]
             cbTop += 18
             if session.corpid and session.corprole & const.corpRoleChatManager == const.corpRoleChatManager:
-                checkboxes.append((mls.UI_CAL_GROUPCORP,
+                checkboxes.append((localization.GetByLabel('UI/Calendar/EventWindow/GroupCorporation'),
                  'corp',
                  const.calendarTagCorp,
                  const.calendarTagCorp == self.eventTag,
                  cbTop))
                 cbTop += 18
             if session.allianceid and session.corprole & const.corpRoleChatManager == const.corpRoleChatManager:
-                checkboxes.append((mls.UI_CAL_GROUPALLIANCE,
+                checkboxes.append((localization.GetByLabel('UI/Calendar/EventWindow/GroupAlliance'),
                  'alliance',
                  const.calendarTagAlliance,
                  const.calendarTagAlliance == self.eventTag,
@@ -529,23 +546,19 @@ class CalendarNewEventWnd(uicls.Window):
                 self.sr.radioBtns.append(cb)
 
         else:
-            eventTypeH = uiutil.UpperCase(mls.UI_CAL_EVENTTYPE)
+            eventTypeH = localization.GetByLabel('UI/Calendar/EventWindow/EventType')
             eventType = sm.GetService('calendar').GetEventTypes().get(self.eventTag, '-')
-            uicls.Label(text=eventTypeH, parent=self.sr.eventTypeCont, name='eventType', align=uiconst.TOPLEFT, top=cbTop, fontsize=10, letterspace=1, left=left, idx=1, state=uiconst.UI_NORMAL)
-            uicls.Label(text=eventType, parent=self.sr.eventTypeCont, left=left, top=cbTop + space, width=200, state=uiconst.UI_NORMAL)
+            uicls.EveHeaderSmall(text=eventTypeH, parent=self.sr.eventTypeCont, name='eventType', align=uiconst.TOPLEFT, top=cbTop, left=left, idx=1, state=uiconst.UI_NORMAL)
+            uicls.EveLabelMedium(text=eventType, parent=self.sr.eventTypeCont, left=left, top=cbTop + space, width=200, state=uiconst.UI_NORMAL)
             cbTop += 26
         self.sr.eventTypeCont.height = cbTop
         top += cbTop
         self.sr.infoCont.height = top
         uiutil.Flush(self.sr.eventDescrCont)
-        descCont = uicls.Container(name='descCont', parent=self.sr.eventDescrCont, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(const.defaultPadding,
-         const.defaultPadding,
-         const.defaultPadding,
-         const.defaultPadding))
-        self.sr.descrEdit = uicls.EditPlainText(setvalue=self.descr, parent=descCont, align=uiconst.TOALL, maxLength=const.calendarMaxDescrSize)
+        self.sr.descrEdit = uicls.EditPlainText(setvalue=self.descr, parent=self.sr.eventDescrCont, align=uiconst.TOALL, padding=const.defaultPadding, maxLength=const.calendarMaxDescrSize)
         uiutil.Flush(self.sr.invitedCont)
         self.sr.addIviteeeBtnCont = uicls.Container(name='btnCont', parent=self.sr.invitedCont, align=uiconst.TOTOP, pos=(0, 0, 0, 26), state=uiconst.UI_HIDDEN)
-        addBtn = uicls.Button(parent=self.sr.addIviteeeBtnCont, label=mls.UI_CAL_ADDINVITEE, func=self.OpenAddInvteeWnd, pos=(6, 6, 0, 0))
+        uicls.Button(parent=self.sr.addIviteeeBtnCont, label=localization.GetByLabel('UI/Calendar/EventWindow/AddInvitee'), func=self.OpenAddInvteeWnd, pos=(6, 6, 0, 0))
         if new or self.eventTag == const.calendarTagPersonal:
             self.sr.addIviteeeBtnCont.state = uiconst.UI_PICKCHILDREN
         self.AddpQuickFilter(self.sr.addIviteeeBtnCont)
@@ -594,7 +607,7 @@ class CalendarNewEventWnd(uicls.Window):
         top = 6
         space = 10
         space2 = 30
-        self.SetCaption(mls.UI_SHARED_EVENT)
+        self.SetCaption(localization.GetByLabel('UI/Calendar/EventWindow/CaptionRead'))
         btns = []
         if not sm.GetService('calendar').IsInPastFromBlueTime(then=self.eventInfo.eventDateTime) and not self.eventInfo.isDeleted:
             if self.eventInfo.flag in [const.calendarTagCorp, const.calendarTagAlliance]:
@@ -606,72 +619,65 @@ class CalendarNewEventWnd(uicls.Window):
                     self.AddAcceptDeclineBtns(btns)
                 else:
                     self.InsertEditDeleteBtns(btns)
-        btns.append([mls.UI_CMD_CLOSE,
-         self.CloseX,
+        btns.append([localization.GetByLabel('UI/Generic/Close'),
+         self.CloseByUser,
          (),
          None])
         uiutil.Flush(self.sr.bottom2)
-        statebtns = uicls.ButtonGroup(btns=btns, parent=self.sr.bottom2, idx=0)
-        title = uiutil.UpperCase(self.title)
+        uicls.ButtonGroup(btns=btns, parent=self.sr.bottom2, idx=0)
+        title = self.title
         if self.importance > 0:
-            title = '<color=red>!</color> %s' % title
+            title = '<color=red>!</color>%s' % title
         titleCont = uicls.Container(name='titleCont', parent=self.sr.infoCont, align=uiconst.TOTOP, pos=(0, 0, 0, 30), clipChildren=True)
-        uicls.Label(text=title, parent=titleCont, left=left, top=top, fontsize=20, state=uiconst.UI_NORMAL)
+        uicls.EveCaptionMedium(text=title, parent=titleCont, left=left, top=top, state=uiconst.UI_NORMAL)
         top += 26
-        startH = uiutil.UpperCase(mls.UI_CAL_STARTTIME)
-        uicls.Label(text=startH, parent=self.sr.infoCont, name='startTime', align=uiconst.TOPLEFT, top=top, fontsize=10, letterspace=1, left=left, idx=1, state=uiconst.UI_NORMAL)
+        startH = localization.GetByLabel('UI/Calendar/EventWindow/StartTime')
+        uicls.EveLabelSmallBold(text=startH, parent=self.sr.infoCont, name='startTime', align=uiconst.TOPLEFT, top=top, left=left, idx=1, state=uiconst.UI_NORMAL)
         startTime = util.FmtDate(self.eventInfo.eventDateTime, 'ls')
-        uicls.Label(text=startTime, parent=self.sr.infoCont, left=left, top=top + space, state=uiconst.UI_NORMAL)
-        eventTypeH = uiutil.UpperCase(mls.UI_CAL_EVENTTYPE)
-        uicls.Label(text=eventTypeH, parent=self.sr.infoCont, name='eventType', align=uiconst.TOPLEFT, top=top, fontsize=10, letterspace=1, left=secondCol, idx=1, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=startTime, parent=self.sr.infoCont, left=left, top=top + space, state=uiconst.UI_NORMAL)
+        eventTypeH = localization.GetByLabel('UI/Calendar/EventWindow/EventType')
+        uicls.EveLabelSmallBold(text=eventTypeH, parent=self.sr.infoCont, name='eventType', align=uiconst.TOPLEFT, top=top, left=secondCol, idx=1, state=uiconst.UI_NORMAL)
         eventType = sm.GetService('calendar').GetEventTypes().get(self.eventTag, '-')
-        uicls.Label(text=eventType, parent=self.sr.infoCont, left=secondCol, top=top + space, width=200, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=eventType, parent=self.sr.infoCont, left=secondCol, top=top + space, width=200, state=uiconst.UI_NORMAL)
         top += space2
-        durationH = uiutil.UpperCase(mls.UI_GENERIC_DURATION)
-        uicls.Label(text=durationH, parent=self.sr.infoCont, name='duration', align=uiconst.TOPLEFT, top=top, fontsize=10, letterspace=1, left=left, idx=1, state=uiconst.UI_NORMAL)
+        durationH = localization.GetByLabel('UI/Calendar/EventWindow/Duration')
+        uicls.EveLabelSmallBold(text=durationH, parent=self.sr.infoCont, name='duration', align=uiconst.TOPLEFT, top=top, left=left, idx=1, state=uiconst.UI_NORMAL)
         if self.eventInfo.eventDuration is None:
-            durationLabel = mls.UI_SHARED_NOTSPECIFIED
+            durationLabel = localization.GetByLabel('UI/Calendar/EventWindow/DateNotSpecified')
         else:
             hours = self.eventInfo.eventDuration / 60
-            if hours > 1:
-                durationLabel = mls.UI_CAL_NUMHOURS % {'num': hours}
-            else:
-                durationLabel = mls.UI_CAL_ONEHOUR
-        uicls.Label(text=durationLabel, parent=self.sr.infoCont, left=left, top=top + space, state=uiconst.UI_NORMAL)
-        creatorH = uiutil.UpperCase(mls.UI_GENERIC_CREATOR)
-        creatorName = cfg.eveowners.Get(self.creatorID).name
+            durationLabel = localization.GetByLabel('UI/Calendar/EventWindow/DateSpecified', hours=hours)
+        uicls.EveLabelMedium(text=durationLabel, parent=self.sr.infoCont, left=left, top=top + space, state=uiconst.UI_NORMAL)
+        creatorH = localization.GetByLabel('UI/Calendar/EventWindow/Creator')
+        creatorInfo = cfg.eveowners.Get(self.creatorID)
         creatorLeft = secondCol
         if self.eventTag == const.calendarTagCCP:
-            creatorNameText = mls.UI_CAL_GROUPCCP
+            creatorNameText = localization.GetByLabel('UI/Calendar/CalendarWindow/GroupCcp')
         else:
-            creatorLeft -= 4
-            creatorNameText = '<url=localsvc:service=calendar&method=ShowCharacterInfo&itemID=%s> %s </url>' % (self.creatorID, creatorName)
-        uicls.Label(text=creatorH, parent=self.sr.infoCont, name='eventType', align=uiconst.TOPLEFT, top=top, fontsize=10, letterspace=1, left=secondCol, idx=1, state=uiconst.UI_NORMAL)
-        uicls.Label(text=creatorNameText, parent=self.sr.infoCont, top=top + space, color=None, state=uiconst.UI_NORMAL, left=creatorLeft)
+            showInfoData = ('showinfo', creatorInfo.typeID, self.creatorID)
+            creatorNameText = localization.GetByLabel('UI/Calendar/EventWindow/CreatorLink', charID=self.creatorID, showInfoData=showInfoData)
+        uicls.EveLabelSmallBold(text=creatorH, parent=self.sr.infoCont, name='eventType', align=uiconst.TOPLEFT, top=top, left=secondCol, idx=1, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=creatorNameText, parent=self.sr.infoCont, top=top + space, color=None, state=uiconst.UI_NORMAL, left=creatorLeft)
         top += space2
         (iconPath, myResponse,) = sm.GetService('calendar').GetMyResponseIconFromID(self.eventID, long=1, getDeleted=self.eventInfo.isDeleted)
-        response = sm.GetService('calendar').GetResponseType().get(myResponse, mls.UI_GENERIC_UNKNOWN)
-        statusH = uiutil.UpperCase(mls.UI_GENERIC_STATUS)
-        uicls.Label(text=statusH, parent=self.sr.infoCont, name='status', align=uiconst.TOPLEFT, top=top, fontsize=10, letterspace=1, left=left, idx=1, state=uiconst.UI_NORMAL)
+        response = sm.GetService('calendar').GetResponseType().get(myResponse, localization.GetByLabel('UI/Generic/Unknown'))
+        statusH = localization.GetByLabel('UI/Calendar/EventWindow/Status')
+        uicls.EveLabelSmallBold(text=statusH, parent=self.sr.infoCont, name='status', align=uiconst.TOPLEFT, top=top, left=left, idx=1, state=uiconst.UI_NORMAL)
         self.sr.statusIconCont = uicls.Container(name='statusIconCont', parent=self.sr.infoCont, align=uiconst.TOPLEFT, pos=(left,
          top + space,
          16,
          16))
-        self.sr.reponseText = uicls.Label(text=response, parent=self.sr.infoCont, left=left + 16, top=top + space, state=uiconst.UI_NORMAL)
+        self.sr.reponseText = uicls.EveLabelMedium(text=response, parent=self.sr.infoCont, left=left + 16, top=top + space, state=uiconst.UI_NORMAL)
         if iconPath:
-            icon = uicls.Icon(icon=iconPath, parent=self.sr.statusIconCont, align=uiconst.CENTER, pos=(0, 0, 16, 16))
-        updateH = uiutil.UpperCase(mls.UI_CAL_LASTUPDATED)
-        uicls.Label(text=updateH, parent=self.sr.infoCont, name='updated', align=uiconst.TOPLEFT, top=top, fontsize=10, letterspace=1, left=secondCol, idx=1, state=uiconst.UI_NORMAL)
+            uicls.Icon(icon=iconPath, parent=self.sr.statusIconCont, align=uiconst.CENTER, pos=(0, 0, 16, 16))
+        updateH = localization.GetByLabel('UI/Calendar/EventWindow/LastUpdated')
+        uicls.EveLabelSmallBold(text=updateH, parent=self.sr.infoCont, name='updated', align=uiconst.TOPLEFT, top=top, left=secondCol, idx=1, state=uiconst.UI_NORMAL)
         updateTime = util.FmtDate(self.eventInfo.dateModified, 'ls')
-        uicls.Label(text=updateTime, parent=self.sr.infoCont, left=secondCol, top=top + space, width=200, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=updateTime, parent=self.sr.infoCont, left=secondCol, top=top + space, width=200, state=uiconst.UI_NORMAL)
         top += space2
         self.sr.infoCont.height = top
         descr = self.descr
-        descCont = uicls.Container(name='descCont', parent=self.sr.eventDescrCont, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(const.defaultPadding,
-         const.defaultPadding,
-         const.defaultPadding,
-         const.defaultPadding))
-        self.sr.descrEdit = uicls.Edit(setvalue=descr, parent=descCont, align=uiconst.TOALL, maxLength=1000, readonly=1)
+        self.sr.descrEdit = uicls.EditPlainText(setvalue=descr, parent=self.sr.eventDescrCont, align=uiconst.TOALL, maxLength=1000, padding=const.defaultPadding, readonly=1)
         uiutil.Flush(self.sr.invitedCont)
         self.sr.searchCont = uicls.Container(name='searchCont', parent=self.sr.invitedCont, align=uiconst.TOTOP, pos=(0, 0, 0, 26))
         self.AddpQuickFilter(self.sr.searchCont)
@@ -688,11 +694,11 @@ class CalendarNewEventWnd(uicls.Window):
 
     def InsertEditDeleteBtns(self, btns, top = 6, *args):
         editDeleteCont = uicls.Container(name='editCont', parent=self.sr.infoCont, align=uiconst.TORIGHT, pos=(0, 0, 30, 0))
-        editBtn = uicls.Button(parent=editDeleteCont, label=mls.UI_CMD_EDIT, func=self.ChangeToEditMode, pos=(const.defaultPadding,
+        editBtn = uicls.Button(parent=editDeleteCont, label=localization.GetByLabel('UI/Calendar/EventWindow/Edit'), func=self.ChangeToEditMode, pos=(const.defaultPadding,
          top,
          0,
          0), align=uiconst.TOPRIGHT)
-        deleteBtn = uicls.Button(parent=editDeleteCont, label=mls.UI_CMD_DELETE, func=self.Delete, pos=(const.defaultPadding,
+        deleteBtn = uicls.Button(parent=editDeleteCont, label=localization.GetByLabel('UI/Calendar/EventWindow/Delete'), func=self.Delete, pos=(const.defaultPadding,
          top + 24,
          0,
          0), align=uiconst.TOPRIGHT)
@@ -704,17 +710,17 @@ class CalendarNewEventWnd(uicls.Window):
     def AddAcceptDeclineBtns(self, btns):
         (iconPath, myResponse,) = sm.GetService('calendar').GetMyResponseIconFromID(self.eventID)
         if myResponse != const.eventResponseAccepted:
-            btns.insert(0, [mls.UI_CMD_ACCEPT,
+            btns.insert(0, [localization.GetByLabel('/Carbon/UI/Calendar/Accept'),
              self.RespondToEvent,
              (const.eventResponseAccepted,),
              None])
         if myResponse != const.eventResponseMaybe:
-            btns.insert(1, [mls.UI_CAL_MAYBEREPLY,
+            btns.insert(1, [localization.GetByLabel('/Carbon/UI/Calendar/MaybeReply'),
              self.RespondToEvent,
              (const.eventResponseMaybe,),
              None])
         if myResponse != const.eventResponseDeclined:
-            btns.insert(2, [mls.UI_CMD_DECLINE,
+            btns.insert(2, [localization.GetByLabel('/Carbon/UI/Calendar/Decline'),
              self.RespondToEvent,
              (const.eventResponseDeclined,),
              None])
@@ -725,7 +731,7 @@ class CalendarNewEventWnd(uicls.Window):
         self.sr.quickFilterClear = xtriui.MiniButton(icon='ui_73_16_210', parent=cont, pos=(11, 7, 0, 0), align=uiconst.TOPRIGHT, idx=0)
         self.sr.quickFilterClear.state = uiconst.UI_HIDDEN
         self.sr.quickFilterClear.Click = self.ClearQuickFilterInput
-        self.sr.quickFilterClear.hint = mls.UI_CMD_CLEAR
+        self.sr.quickFilterClear.hint = localization.GetByLabel('UI/Calendar/Hints/Clear')
         self.sr.quickFilterClear.OnMouseEnter = self.Nothing
         self.sr.quickFilterClear.OnMouseDown = self.Nothing
         self.sr.quickFilterClear.OnMouseUp = self.Nothing
@@ -738,16 +744,11 @@ class CalendarNewEventWnd(uicls.Window):
 
 
     def OpenAddInvteeWnd(self, *args):
-        actionBtn = [(mls.UI_CMD_ADD, self.AddInviteeToEvent, 1)]
-        caption = mls.UI_CAL_FINDINVITEES
-        wnd = sm.GetService('window').GetWindow('searchWindow_calendar', 0, decoClass=form.SearchWindow)
-        if wnd:
-            wnd.CloseX()
-        wnd = sm.GetService('window').GetWindow('searchWindow_calendar', 0, decoClass=form.SearchWindow)
-        if wnd:
-            wnd.CloseX()
-        extraIconHintFlag = ['ui_73_16_13', mls.UI_CAL_CHARACTERADDED, False]
-        wnd = sm.GetService('window').GetWindow('searchWindow_calendar', 1, decoClass=form.SearchWindow, actionBtns=actionBtn, caption=caption, input='', getMyCorp=False, getMyLists=False, getMyAlliance=False, showContactList=True, extraIconHintFlag=extraIconHintFlag, configname=self.configname)
+        actionBtn = [(localization.GetByLabel('UI/Calendar/FindInviteesWindow/Add'), self.AddInviteeToEvent, 1)]
+        caption = localization.GetByLabel('UI/Calendar/FindInviteesWindow/Caption')
+        form.SearchWindow.CloseIfOpen(windowID='searchWindow_calendar')
+        extraIconHintFlag = ['ui_73_16_13', localization.GetByLabel('UI/Calendar/Hints/CharacterAdded'), False]
+        wnd = form.SearchWindow.Open(windowID='searchWindow_calendar', actionBtns=actionBtn, caption=caption, input='', getMyCorp=False, getMyLists=False, getMyAlliance=False, showContactList=True, extraIconHintFlag=extraIconHintFlag, configname=self.configname)
         wnd.ExtraMenuFunction = self.InviteeMenuFunction
         wnd.IsAdded = self.CheckIfAdded
 
@@ -780,7 +781,7 @@ class CalendarNewEventWnd(uicls.Window):
             if charID == session.charid or charID is None:
                 continue
             if len(self.invitees) >= const.calendarMaxInvitees:
-                eve.Message('CustomInfo', {'info': mls.UI_CAL_TOOMANYINVITEES % {'maxCharacters': const.calendarMaxInvitees}})
+                eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Calendar/FindInviteesWindow/TooMany', max=const.calendarMaxInvitees)})
                 break
             if charID not in self.invitees:
                 self.invitees[charID] = const.eventResponseUndecided
@@ -799,7 +800,7 @@ class CalendarNewEventWnd(uicls.Window):
         if self.eventTag == const.calendarTagPersonal:
             responseCategoryList.insert(-1, const.eventResponseUndecided)
         for response in responseCategoryList:
-            label = sm.GetService('calendar').GetResponseType().get(response, mls.UI_GENERIC_UNKNOWN)
+            label = sm.GetService('calendar').GetResponseType().get(response, localization.GetByLabel('UI/Generic/Unknown'))
             data = {'GetSubContent': self.GetResponseSubContent,
              'label': label,
              'cleanLabel': label,
@@ -810,7 +811,7 @@ class CalendarNewEventWnd(uicls.Window):
              'showlen': 1,
              'groupName': 'labels',
              'groupItems': responseDict[response],
-             'noItemText': mls.UI_CAL_NOCHARACTER,
+             'noItemText': localization.GetByLabel('UI/Calendar/EventWindow/NoCharacter'),
              'response': response,
              'DropData': self.DropUserOnGroup,
              'allowGuids': ['listentry.User', 'listentry.Sender', 'listentry.ChatUser']}
@@ -825,10 +826,9 @@ class CalendarNewEventWnd(uicls.Window):
         scrolllist = []
         if len(data.groupItems) > const.calendarMaxInviteeDisplayed:
             if response == const.eventResponseDeclined:
-                string = mls.UI_CAL_TOOMANYDECLINED
+                label = localization.GetByLabel('UI/Calendar/EventWindow/TooManyDeclined', max=const.calendarMaxInviteeDisplayed)
             else:
-                string = mls.UI_CAL_TOOMANYACCEPTED
-            label = string % {'maxNum': const.calendarMaxInviteeDisplayed}
+                label = localization.GetByLabel('UI/Calendar/EventWindow/TooManyAccepted', max=const.calendarMaxInviteeDisplayed)
             return [listentry.Get('Generic', {'label': label,
               'sublevel': 1})]
         cfg.eveowners.Prime(data.groupItems)
@@ -856,9 +856,7 @@ class CalendarNewEventWnd(uicls.Window):
             charIDs.remove(session.charid)
         numCharIDs = len(charIDs)
         if numCharIDs > 0:
-            label = mls.UI_CAL_REMOVEINVITEE
-            if numCharIDs > 1:
-                label = '%s (%s)' % (label, numCharIDs)
+            label = localization.GetByLabel('UI/Calendar/EventWindow/RemoveInvitee', num=numCharIDs)
             m = [(label, self.RemoveInviteeFromScroll, (charIDs,))]
         return m
 
@@ -952,7 +950,7 @@ class CalendarNewEventWnd(uicls.Window):
             self.editing = 0
 
         sm.ScatterEvent('OnReloadEvents')
-        self.CloseX()
+        self.CloseByUser()
 
 
 
@@ -962,12 +960,12 @@ class CalendarNewEventWnd(uicls.Window):
 
 
     def Delete(self, *args):
-        wasDeleted = sm.GetService('calendar').DeleteEvent(self.eventID, self.eventInfo.ownerID)
+        sm.GetService('calendar').DeleteEvent(self.eventID, self.eventInfo.ownerID)
 
 
 
     def Cancel(self, *args):
-        self.CloseX()
+        self.CloseByUser()
 
 
 
@@ -987,10 +985,10 @@ class CalendarNewEventWnd(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
-        wnd = sm.GetService('window').GetWindow('searchWindow_calendar', 0, decoClass=form.SearchWindow)
+    def _OnClose(self, *args):
+        wnd = form.SearchWindow.GetIfOpen(windowID='searchWindow_calendar')
         if wnd and wnd.configname == self.configname:
-            wnd.CloseX()
+            wnd.CloseByUser()
 
 
 
@@ -1000,7 +998,7 @@ class CalendarNewEventWnd(uicls.Window):
 
 
     def _SetQuickFilterInput(self):
-        blue.synchro.Sleep(400)
+        blue.synchro.SleepWallclock(400)
         filter = self.sr.searchBox.GetValue()
         if len(filter) > 0:
             self.quickFilterInput = filter.lower()
@@ -1051,7 +1049,7 @@ class CalendarNewEventWnd(uicls.Window):
             scrolllist.append(entryTuple)
 
         scrolllist = uiutil.SortListOfTuples(scrolllist)
-        self.sr.inviteScroll.Load(contentList=scrolllist, headers=[], noContentHint=mls.UI_GENERIC_NOTHINGFOUND)
+        self.sr.inviteScroll.Load(contentList=scrolllist, headers=[], noContentHint=localization.GetByLabel('UI/Calendar/FindInviteesWindow/NothingFound'))
 
 
 
@@ -1073,13 +1071,13 @@ class CalendarNewEventWnd(uicls.Window):
 
 
     def OnRespondToEvent(self, *args):
-        self.CloseX()
+        self.CloseByUser()
 
 
 
     def OnRemoveCalendarEvent(self, eventID, eventDateTime, isDeleted):
         if self.eventID == eventID:
-            self.CloseX()
+            self.CloseByUser()
 
 
 
@@ -1107,17 +1105,23 @@ class CalendarSingleDayWnd(uicls.Window):
         self.isADay = isADay
         sm.RegisterNotify(self)
         if isADay:
-            monthText = getattr(mls, 'UI_CAL_MONTH_%s' % month, '')
-            caption = mls.UI_CAL_DAYMONTHYEAR % {'month': monthText,
-             'monthday': monthday,
-             'year': year}
+            dayDate = time.struct_time((year,
+             month,
+             monthday,
+             0,
+             0,
+             0,
+             0,
+             1,
+             0))
+            caption = localizationUtil.FormatDateTime(value=dayDate, dateFormat='long', timeFormat='none')
         else:
             caption = config
         self.SetCaption(caption)
         uicls.WndCaptionLabel(text=caption, parent=self.sr.topParent, align=uiconst.RELATIVE)
         self.SetMinSize([315, 300])
-        btns = uicls.ButtonGroup(btns=[[mls.UI_CMD_CLOSE,
-          self.CloseX,
+        uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Generic/Close'),
+          self.CloseByUser,
           (),
           None]], parent=self.sr.main, idx=0)
         self.sr.eventScroll = uicls.Scroll(name='eventScroll', parent=self.sr.main, padding=(const.defaultPadding,
@@ -1125,7 +1129,7 @@ class CalendarSingleDayWnd(uicls.Window):
          const.defaultPadding,
          const.defaultPadding))
         self.sr.eventScroll.sr.id = 'calendar_singedaywnd'
-        self.sr.eventScroll.sr.maxDefaultColumns = {mls.UI_GENERIC_TITLE: 150}
+        self.sr.eventScroll.sr.maxDefaultColumns = {localization.GetByLabel('UI/Generic/Unknown'): 150}
         self.LoadDaysEvents(events)
 
 
@@ -1133,7 +1137,7 @@ class CalendarSingleDayWnd(uicls.Window):
     def LoadDaysEvents(self, events, *args):
         self.events = events
         scrolllist = []
-        includeUpdatedColumn = self.config == mls.UI_CAL_UPDATEDEVENTS
+        includeUpdatedColumn = self.config == localization.GetByLabel('UI/Calendar/CalendarWindow/LatestUpdates')
         for (eventID, event,) in events.iteritems():
             (iconPath, myResponse,) = sm.GetService('calendar').GetMyResponseIconFromID(eventID, long=1, getDeleted=event.isDeleted)
             if not settings.user.ui.Get('calendar_showDeclined', 1) and myResponse == const.eventResponseDeclined:
@@ -1164,10 +1168,10 @@ class CalendarSingleDayWnd(uicls.Window):
             scrolllist.append((sortBy, entry))
 
         scrolllist = uiutil.SortListOfTuples(scrolllist, reverse=includeUpdatedColumn)
-        headers = [mls.UI_GENERIC_TIME, mls.UI_GENERIC_TITLE]
+        headers = [localization.GetByLabel('UI/Calendar/SingleDayWindow/Time'), localization.GetByLabel('UI/Calendar/SingleDayWindow/Title')]
         if includeUpdatedColumn:
-            headers.append(mls.UI_CAL_LASTUPDATED)
-        self.sr.eventScroll.Load(contentList=scrolllist, headers=headers, noContentHint=mls.UI_CAL_NOPLANNEDEVENTS)
+            headers.append(localization.GetByLabel('UI/Calendar/CalendarWindow/LatestUpdates'))
+        self.sr.eventScroll.Load(contentList=scrolllist, headers=headers, noContentHint=localization.GetByLabel('UI/Calendar/SingleDayWindow/NoPlannedEvents'))
 
 
 
@@ -1202,11 +1206,11 @@ class CalendarSingleDayWnd(uicls.Window):
 
             self.events = eventDict
             self.LoadDaysEvents(eventDict)
-        elif self.config == mls.UI_CAL_TODO:
+        elif self.config == localization.GetByLabel('UI/Calendar/CalendarWindow/UpcomingEvents'):
             events = sm.GetService('calendar').GetMyNextEvents()
             self.events = events
             self.LoadDaysEvents(events)
-        elif self.config == mls.UI_CAL_UPDATEDEVENTS:
+        elif self.config == localization.GetByLabel('UI/Calendar/CalendarWindow/LatestUpdates'):
             events = sm.GetService('calendar').GetMyChangedEvents()
             self.events = events
             self.LoadDaysEvents(events)
@@ -1237,7 +1241,7 @@ class CalendarSingleDayEntry(listentry.Generic):
         sm.GetService('calendar').LoadTagIconInContainer(node.eventInfo.flag, self.sr.flagIconCont)
         if node.eventInfo.importance > 0:
             self.UpdateLabel(node)
-        node.Set('sort_%s' % mls.UI_GENERIC_TIME, node.eventInfo.eventDateTime)
+        node.Set('sort_%s' % localization.GetByLabel('UI/Calendar/SingleDayWindow/Time'), node.eventInfo.eventDateTime)
         self.hint = sm.GetService('calendar').GetEventHint(node.eventInfo, node.response)
 
 
@@ -1245,7 +1249,7 @@ class CalendarSingleDayEntry(listentry.Generic):
     def LoadStatusIcon(self, data):
         uiutil.Flush(self.sr.statusIconCont)
         icon = uicls.Icon(icon=data.iconPath, parent=self.sr.statusIconCont, align=uiconst.CENTERLEFT, pos=(0, 0, 16, 16))
-        icon.hint = sm.GetService('calendar').GetResponseType().get(data.response, mls.UI_GENERIC_UNKNOWN)
+        icon.hint = sm.GetService('calendar').GetResponseType().get(data.response, localization.GetByLabel('UI/Generic/Unknown'))
 
 
 
@@ -1286,7 +1290,7 @@ class EventList(uicls.EventListCore):
         if showTag is not None and showTag & eventInfo.flag == 0:
             return 
         (icon, myResponse,) = sm.GetService('calendar').GetMyResponseIconFromID(eventInfo.eventID, long=0, getDeleted=eventInfo.isDeleted)
-        hint = sm.GetService('calendar').GetResponseType().get(myResponse, mls.UI_GENERIC_UNKNOWN)
+        hint = sm.GetService('calendar').GetResponseType().get(myResponse, localization.GetByLabel('UI/Generic/Unknown'))
         data = util.KeyVal()
         data.label = eventInfo.eventTitle
         data.eventInfo = eventInfo
@@ -1334,7 +1338,7 @@ class CalendarListEntry(listentry.Generic):
         self.sr.label.align = uiconst.TOPLEFT
         self.sr.label.top = 2
         self.sr.label.mmbold = 1.0
-        self.sr.timeLabel = uicls.Label(text='', parent=self, left=20, top=14, state=uiconst.UI_DISABLED, align=uiconst.TOPLEFT, singleline=1, color=(0.7, 0.7, 0.7, 0.75))
+        self.sr.timeLabel = uicls.EveLabelMedium(text='', parent=self, left=20, top=14, state=uiconst.UI_DISABLED, align=uiconst.TOPLEFT, singleline=1, color=(0.7, 0.7, 0.7, 0.75))
         uiutil.SetOrder(self.sr.fill, -1)
         sm.RegisterNotify(self)
 
@@ -1406,7 +1410,9 @@ class CalendarUpdatedEntry(CalendarListEntry):
     __guid__ = 'listentry.CalendarUpdatedEntry'
 
     def GetEventHint(self, eventInfo, myResponse, *args):
-        hint = '%s<br>%s<br>%s' % (util.FmtDate(eventInfo.eventDateTime, 'ls'), eventInfo.eventTitle, '%s: %s ' % (mls.UI_CAL_LASTUPDATED, util.FmtDate(eventInfo.dateModified, 'ls')))
+        eventDateTime = util.FmtDate(eventInfo.eventDateTime, 'ls')
+        lastUpdatedTime = util.FmtDate(eventInfo.dateModified, 'ls')
+        hint = localization.GetByLabel('UI/Calendar/EventWindow/LastUpdateHint', eventDateTime=eventDateTime, eventTitle=eventInfo.eventTitle, lastUpdatedTime=lastUpdatedTime)
         return hint
 
 

@@ -1,8 +1,6 @@
 import blue
 import uthread
-import uix
 import uiutil
-import form
 import trinity
 import util
 import listentry
@@ -11,9 +9,10 @@ import uiconst
 import uicls
 import maputils
 import log
+import form
 import mapcommon
 from service import ROLE_GML
-import util
+import localization
 ROUTECOL = {'White': trinity.TriColor(1.0, 1.0, 1.0, 0.5),
  'Red': trinity.TriColor(1.0, 0.0, 0.0, 0.5),
  'Green': trinity.TriColor(0.0, 1.0, 0.0, 0.5),
@@ -40,10 +39,17 @@ class MapPalette(uicls.Window):
      'OnMapModeChangeDone',
      'OnLoadWMCPSettings',
      'OnFlattenModeChanged']
-    default_left = '__right__'
-    default_top = 0
+    default_top = '__center__'
     default_width = 400
     default_height = 320
+    default_windowID = 'mapspalette'
+
+    @staticmethod
+    def default_left(*args):
+        (leftpush, rightpush,) = uicls.Window.GetSideOffset(uicls.Window)
+        return uicore.desktop.width - rightpush - form.MapsPalette.default_width - 80
+
+
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -59,11 +65,20 @@ class MapPalette(uicls.Window):
         self.SetWndIcon('ui_7_64_4', mainTop=-14)
         self.SetMinSize([400, 200])
         self.SetTopparentHeight(36)
-        self.SetCaption(mls.UI_SHARED_MAPWORLDCTRLPANEL)
+        self.SetCaption(localization.GetByLabel('UI/Map/MapPallet/CaptionMapPallet'))
         self.MakeUnKillable()
         self.loadedTab = None
         if self.destroyed:
             return 
+        waypointbtns2 = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Map/MapPallet/btnOptimizeRoute'),
+          self.TravellingSalesman,
+          (),
+          66]], parent=self.sr.main, idx=0)
+        self.waypointBtns = waypointbtns2
+        waypointopt = uicls.Container(name='waypointopt', parent=self.sr.main, align=uiconst.TOBOTTOM, height=0, clipChildren=1, padding=(const.defaultPadding,
+         0,
+         const.defaultPadding,
+         0))
         self.sr.scroll = uicls.Scroll(parent=self.sr.main, padding=(const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding,
@@ -76,28 +91,23 @@ class MapPalette(uicls.Window):
         self.sr.scroll2.sr.id = 'mapspalletescroll_withhoutsort'
         self.sr.scroll2.OnSelectionChange = self.OnSelectionChange
         self.sr.scroll2.sr.content.OnDropData = self.MoveWaypoints
-        waypointopt = uicls.Container(name='waypointopt', parent=self.sr.main, align=uiconst.TOBOTTOM, height=85, idx=0)
-        waypointbtns2 = uicls.ButtonGroup(btns=[[mls.UI_SHARED_MAPOPTIMIZE,
-          self.TravellingSalesman,
-          (),
-          66]], parent=waypointopt)
-        label = uicls.Label(text=mls.UI_SHARED_MAPMOVEWAYPOINTS, parent=waypointopt, pos=(5, 2, 0, 0))
-        cbox = uicls.Checkbox(text=mls.UI_SHARED_MAPWAYPOINTSEXPANDED, parent=waypointopt, configName='expandwaypoints', retval=None, checked=settings.user.ui.Get('expandwaypoints', 1), groupname=None, callback=self.CheckBoxChange, align=uiconst.TOPLEFT, pos=(5, 18, 140, 0))
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/Map/MapPallet/lblChangeWaypointPriority'), parent=waypointopt, pos=(3, 2, 0, 0), padding=(0, 0, 0, 0))
+        cbox = uicls.Checkbox(text=localization.GetByLabel('UI/Map/MapPallet/cbExpandWaypoints'), parent=waypointopt, configName='expandwaypoints', retval=None, checked=settings.user.ui.Get('expandwaypoints', 1), groupname=None, callback=self.CheckBoxChange, align=uiconst.TOPLEFT, pos=(1, 18, 140, 0))
         cbox.data = {'key': 'expandwaypoints',
          'retval': None}
-        waypointopt.height = waypointbtns2.height + cbox.height + const.defaultPadding + 18
+        waypointopt.height = cbox.height + const.defaultPadding + 18
         self.sr.waypointopt = waypointopt
         flattened = settings.user.ui.Get('mapFlattened', 1)
-        toggleFlatLabel = mls.UI_CMD_FLATTENMAP
+        toggleFlatLabel = localization.GetByLabel('UI/Map/MapPallet/btnFlattenMap')
         if flattened:
-            toggleFlatLabel = mls.UI_CMD_UNFLATTEN
-        if sm.GetService('map').ViewingStarMap():
-            toggleMapLabel = mls.UI_GENERIC_SOLARSYSTEMMAP
+            toggleFlatLabel = localization.GetByLabel('UI/Map/MapPallet/btnUnflattenMap')
+        if sm.GetService('viewState').IsViewActive('starmap'):
+            toggleMapLabel = localization.GetByLabel('UI/Map/MapPallet/btnSolarsystemMap')
         else:
-            toggleMapLabel = mls.UI_GENERIC_STARMAP
+            toggleMapLabel = localization.GetByLabel('UI/Map/MapPallet/btnStarMap')
         btns = uicls.ButtonGroup(btns=[['mapCloseBtn',
-          mls.UI_CMD_CLOSEMAP,
-          sm.GetService('map').Close,
+          localization.GetByLabel('UI/Map/MapPallet/btnCloseMap'),
+          sm.GetService('viewState').CloseSecondaryView,
           (),
           80], ['mapToggleMapBtn',
           toggleMapLabel,
@@ -114,46 +124,46 @@ class MapPalette(uicls.Window):
         inpt = uicls.SinglelineEdit(name='', parent=searchpar, pos=(5, 22, 98, 0), maxLength=64)
         inpt.OnReturn = self.OnReturnSearch
         self.sr.searchinput = inpt
-        uicls.Label(text=mls.UI_SHARED_MAPTYPELOCATIONNAME, parent=inpt, letterspace=1, fontsize=9, left=0, top=-14, state=uiconst.UI_DISABLED, uppercase=1)
-        uicls.Button(parent=inpt.parent, label=mls.UI_CMD_SEARCH, func=self.Search, args=1, pos=(inpt.left + inpt.width + 4,
+        uicls.EveLabelSmall(text=localization.GetByLabel('UI/Map/MapPallet/lblSearchForLocation'), parent=inpt, left=0, top=-14, state=uiconst.UI_DISABLED)
+        uicls.Button(parent=inpt.parent, label=localization.GetByLabel('UI/Map/MapPallet/btnSearchForLocation'), func=self.Search, args=1, pos=(inpt.left + inpt.width + 4,
          inpt.top,
          0,
          0), btn_default=1)
         starviewstabs = uicls.TabGroup(name='tabparent', parent=self.sr.main, idx=0)
-        starviewstabs.Startup([[mls.UI_SHARED_MAPSTARS,
+        starviewstabs.Startup([[localization.GetByLabel('UI/Map/MapPallet/tabStars'),
           self.sr.scroll2,
           self,
           'starview_color'],
-         [mls.UI_SHARED_MAPLABELS,
+         [localization.GetByLabel('UI/Map/MapPallet/tabLabels'),
           self.sr.scroll2,
           self,
           'mapsettings_labels'],
-         [mls.UI_SHARED_MAPLINES,
+         [localization.GetByLabel('UI/Map/MapPallet/tabMapLines'),
           self.sr.scroll2,
           self,
           'mapsettings_lines'],
-         [mls.UI_SHARED_MAP_TILES,
+         [localization.GetByLabel('UI/Map/MapPallet/tabTiles'),
           self.sr.scroll2,
           self,
           'mapsettings_tiles'],
-         [mls.UI_SHARED_MAPLEGEND,
+         [localization.GetByLabel('UI/Map/MapPallet/tabLegend'),
           self.sr.scroll2,
           self,
           'mapsettings_legend'],
-         [mls.UI_SHARED_MAPANIMATION,
+         [localization.GetByLabel('UI/Map/MapPallet/tabMapAnimation'),
           self.sr.scroll2,
           self,
           'mapsettings_other']], 'starviewssub', autoselecttab=0)
         autopilottabs = uicls.TabGroup(name='tabparent', parent=self.sr.main, idx=0)
-        autopilottabs.Startup([[mls.UI_SHARED_MAPWAYPOINTS,
+        autopilottabs.Startup([[localization.GetByLabel('UI/Map/MapPallet/tabWaypoints'),
           self.sr.scroll2,
           self,
           'waypointconf',
-          waypointopt], [mls.UI_GENERIC_SETTINGS,
+          waypointopt], [localization.GetByLabel('UI/Map/MapPallet/tabSettings'),
           self.sr.scroll2,
           self,
           'autopilotconf',
-          None], [mls.UI_SHARED_MAPAVOIDANCE,
+          None], [localization.GetByLabel('UI/Map/MapPallet/tabMapAdvoidance'),
           self.sr.scroll2,
           self,
           'avoidconf',
@@ -161,22 +171,22 @@ class MapPalette(uicls.Window):
         self.sr.autopilottabs = autopilottabs
         self.sr.starviewstabs = starviewstabs
         self.sr.maintabs = uicls.TabGroup(name='tabparent', parent=self.sr.main, idx=0)
-        self.sr.maintabs.Startup([[mls.UI_SHARED_MAPSEARCH,
+        self.sr.maintabs.Startup([[localization.GetByLabel('UI/Map/MapPallet/tabSearch'),
           self.sr.scroll,
           self,
           'mapsearchpanel',
           searchpar],
-         [mls.UI_GENERIC_STARMAP,
+         [localization.GetByLabel('UI/Map/MapPallet/tabStarMap'),
           self.sr.scroll2,
           self,
           'mapsettings',
           starviewstabs],
-         [mls.UI_GENERIC_SOLARSYSTEMMAP,
+         [localization.GetByLabel('UI/Map/MapPallet/tabSolarSystemMap'),
           self.sr.scroll2,
           self,
           'mapsettings_solarsystem',
           None],
-         [mls.UI_GENERIC_AUTOPILOT,
+         [localization.GetByLabel('UI/Map/MapPallet/tabAutoPilot'),
           self.sr.scroll2,
           self,
           'autopilot',
@@ -207,16 +217,16 @@ class MapPalette(uicls.Window):
     def OnFlattenModeChanged(self, isFlat, *args):
         btn = self.sr.flattenBtns.children[0].children[2]
         if isFlat:
-            btn.SetLabel(mls.UI_CMD_UNFLATTEN)
+            btn.SetLabel(localization.GetByLabel('UI/Map/MapPallet/btnUnflattenMap'))
         else:
-            btn.SetLabel(mls.UI_CMD_FLATTENMAP)
+            btn.SetLabel(localization.GetByLabel('UI/Map/MapPallet/btnFlattenMap'))
 
 
 
     def ShowPanel(self, panelname):
-        if panelname == mls.UI_SHARED_MAPWAYPOINTS:
-            self.sr.autopilottabs.ShowPanelByName(mls.UI_SHARED_MAPWAYPOINTS)
-            self.sr.maintabs.ShowPanelByName(mls.UI_GENERIC_AUTOPILOT)
+        if panelname == localization.GetByLabel('UI/Map/MapPallet/tabWaypoints'):
+            self.sr.autopilottabs.ShowPanelByName(localization.GetByLabel('UI/Map/MapPallet/tabWaypoints'))
+            self.sr.maintabs.ShowPanelByName(localization.GetByLabel('UI/Map/MapPallet/tabAutoPilot'))
         else:
             uthread.pool('MapPalette::ShowPanel', self.sr.maintabs.ShowPanelByName, panelname)
 
@@ -224,17 +234,18 @@ class MapPalette(uicls.Window):
 
     def Load(self, key):
         self.SetHint()
+        self.waypointBtns.display = False
         if key == 'mapsettings_solarsystem':
-            self.sr.waypointopt.state = uiconst.UI_HIDDEN
+            self.sr.waypointopt.display = False
         if key == 'mapsearchpanel':
             self.Search(0)
-            self.sr.waypointopt.state = uiconst.UI_HIDDEN
+            self.sr.waypointopt.display = False
         elif key == 'mapsettings':
             self.sr.starviewstabs.AutoSelect()
-            self.sr.waypointopt.state = uiconst.UI_HIDDEN
+            self.sr.waypointopt.display = False
         elif key == 'options':
             self.sr.optionstabs.AutoSelect()
-            self.sr.waypointopt.state = uiconst.UI_HIDDEN
+            self.sr.waypointopt.display = False
         elif key == 'autopilot':
             self.sr.autopilottabs.AutoSelect()
         elif key[:11] == 'mapsettings' or key == 'autopilotconf' or key[:8] == 'starview':
@@ -242,6 +253,7 @@ class MapPalette(uicls.Window):
                 return 
             self.LoadSettings(key)
         elif key == 'waypointconf':
+            self.waypointBtns.display = True
             self.LoadWaypoints()
         elif key == 'avoidconf':
             self.LoadAvoidance()
@@ -251,9 +263,9 @@ class MapPalette(uicls.Window):
 
 
 
-    def CloseX(self, *args):
+    def CloseByUser(self, *args):
         if not eve.rookieState:
-            uicls.Window.CloseX(self, *args)
+            uicls.Window.CloseByUser(self, *args)
 
 
 
@@ -264,10 +276,10 @@ class MapPalette(uicls.Window):
         btnMode = self.sr.flattenBtns.children[0].children[1]
         if mode == 'starmap':
             btnFlat.Enable()
-            btnMode.SetLabel(mls.UI_GENERIC_SOLARSYSTEMMAP)
+            btnMode.SetLabel(localization.GetByLabel('UI/Map/MapPallet/tabSolarSystemMap'))
         elif mode == 'systemmap':
             btnFlat.Disable()
-            btnMode.SetLabel(mls.UI_GENERIC_STARMAP)
+            btnMode.SetLabel(localization.GetByLabel('UI/Map/MapPallet/tabStarMap'))
 
 
 
@@ -289,7 +301,7 @@ class MapPalette(uicls.Window):
         search = self.sr.searchinput.GetValue().strip()
         if len(search) < 1:
             if errorifnothing:
-                eve.Message('CustomInfo', {'info': mls.UI_SHARED_PLEASETYPESOMETHINGINFO})
+                eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Map/MapPallet/msgPleaseTypeSomething')})
                 return 
         else:
             self.SetHint()
@@ -315,23 +327,30 @@ class MapPalette(uicls.Window):
         if self.searchresult and len(self.searchresult):
             for each in self.searchresult:
                 wasID = each.itemID
-                trace = ''
+                found = [each.itemName]
                 while wasID:
                     wasID = mapSvc.GetParent(wasID)
                     if wasID:
                         item = mapSvc.GetItem(wasID)
                         if item is not None:
-                            trace += ' / ' + item.itemName
+                            found.append(item.itemName)
 
+                if len(found) == 3:
+                    trace = localization.GetByLabel('UI/Map/MapPallet/Trace3Locations', location1=found[0], location2=found[1], location3=found[2])
+                elif len(found) == 2:
+                    trace = localization.GetByLabel('UI/Map/MapPallet/Trace2Locations', location1=found[0], location2=found[1])
+                else:
+                    trace = '/'.join(found)
                 scrolllist.append(listentry.Get('Item', {'itemID': each.itemID,
                  'typeID': each.typeID,
-                 'label': '%s%s<t>%s' % (each.itemName, trace, cfg.invtypes.Get(each.typeID).name)}))
+                 'label': '%s<t>%s' % (trace, cfg.invtypes.Get(each.typeID).name)}))
 
         if self is None or self.destroyed:
             return 
-        self.sr.scroll.Load(contentList=scrolllist, headers=[mls.UI_GENERIC_NAME, mls.UI_GENERIC_TYPE])
+        headers = [localization.GetByLabel('UI/Map/MapPallet/hdrSearchName'), localization.GetByLabel('UI/Map/MapPallet/hdrSearchType')]
+        self.sr.scroll.Load(contentList=scrolllist, headers=headers)
         if not len(scrolllist):
-            self.SetHint(mls.UI_GENERIC_NOTHINGFOUND)
+            self.SetHint(localization.GetByLabel('UI/Map/MapPallet/lblSearchNothingFound'))
 
 
 
@@ -365,16 +384,17 @@ class MapPalette(uicls.Window):
             self.SetHint()
             counter = 0
             currentPlace = mapSvc.GetItem(eve.session.solarsystemid2)
-            scrolllist.append(listentry.Get('Item', {'itemID': currentPlace.itemID,
+            opts = {'itemID': currentPlace.itemID,
              'typeID': currentPlace.typeID,
-             'label': '%s:  ' % mls.UI_SHARED_MAPCURRENTLOCTION + currentPlace.itemName,
+             'label': localization.GetByLabel('UI/Map/MapPallet/lblCurrentLocation', locationName=currentPlace.itemName),
              'orderID': -1,
-             'actualID': 0}))
+             'actualID': 0}
+            scrolllist.append(listentry.Get('Item', opts))
             for waypointID in waypoints:
                 blue.pyos.BeNice()
                 actualID = actualID + 1
                 each = mapSvc.GetItem(waypointID)
-                description = ' ( ' + cfg.invgroups.Get(each.typeID).name + ' ) '
+                description = localization.GetByLabel('UI/Map/MapPallet/lblActiveColorCategory', activeLabel=cfg.invtypes.Get(each.typeID).name)
                 wasID = each.itemID
                 while wasID:
                     wasID = mapSvc.GetParent(wasID)
@@ -391,13 +411,14 @@ class MapPalette(uicls.Window):
                             sunItem = mapSvc.GetItem(solarsystemID)
                             scrolllist.append(listentry.Get('AutoPilotItem', {'itemID': solarsystemID,
                              'typeID': sunItem.typeID,
-                             'label': '   \x95 ' + sunItem.itemName,
+                             'label': localization.GetByLabel('UI/Map/MapPallet/lblWaypointListEntryNoCount', itemName=sunItem.itemName),
                              'orderID': -1,
                              'actualID': actualID}))
 
+                lblTxt = localization.GetByLabel('UI/Map/MapPallet/lblWaypointListEntry', counter=counter + 1, itemName=each.itemName, description=description)
                 scrolllist.append(listentry.Get('AutoPilotItem', {'itemID': waypointID,
                  'typeID': each.typeID,
-                 'label': str(counter + 1) + '. ' + each.itemName + description,
+                 'label': lblTxt,
                  'orderID': counter,
                  'actualID': actualID,
                  'canDrag': 1}))
@@ -411,7 +432,7 @@ class MapPalette(uicls.Window):
         destinationPath = starmapSvc.GetDestinationPath()
         self.sr.scroll2.Load(contentList=scrolllist)
         if not len(scrolllist):
-            self.SetHint(mls.UI_SHARED_NOWAYPOINTS)
+            self.SetHint(localization.GetByLabel('UI/Map/MapPallet/hintNoWaypoints'))
         if selectedItem is not None:
             self.sr.scroll2.SetSelected(selectedItem)
 
@@ -427,7 +448,7 @@ class MapPalette(uicls.Window):
             for itemsID in items:
                 blue.pyos.BeNice()
                 each = mapSvc.GetItem(itemsID)
-                description = ' ( ' + cfg.invgroups.Get(each.typeID).name + ' ) '
+                description = localization.GetByLabel('UI/Map/MapPallet/lblActiveColorCategory', activeLabel=cfg.invgroups.Get(each.typeID).name)
                 wasID = each.itemID
                 while wasID:
                     wasID = mapSvc.GetParent(wasID)
@@ -438,13 +459,13 @@ class MapPalette(uicls.Window):
 
                 scrolllist.append(listentry.Get('Item', {'itemID': itemsID,
                  'typeID': each.typeID,
-                 'label': each.itemName + description}))
+                 'label': localization.GetByLabel('UI/Map/MapPallet/lblAdvoidanceListEntry', itemName=each.itemName, description=description)}))
 
         if self == None:
             return 
         self.sr.scroll2.Load(contentList=scrolllist)
         if not len(scrolllist):
-            self.SetHint(mls.UI_SHARED_NOAVOIDANCEITEMS)
+            self.SetHint(localization.GetByLabel('UI/Map/MapPallet/hintNoAdvoidanceItems'))
 
 
 
@@ -467,11 +488,11 @@ class MapPalette(uicls.Window):
                 return 
             msg = None
             if numWaypoints > 12:
-                msg = mls.UI_SHARED_MAPQUESTION1
+                msg = 'UI/Map/MapPallet/msgOptimizeQuestion1'
             elif numWaypoints > 10:
-                msg = mls.UI_SHARED_MAPQUESTION2
+                msg = 'UI/Map/MapPallet/msgOptimizeQuestion2'
             if msg:
-                yesNo = eve.Message('AskAreYouSure', {'cons': msg % {'num': len(waypoints)}}, uiconst.YESNO)
+                yesNo = eve.Message('AskAreYouSure', {'cons': localization.GetByLabel(msg, numWaypoints=len(waypoints))}, uiconst.YESNO)
                 if yesNo != uiconst.ID_YES:
                     return 
             distance = {}
@@ -485,7 +506,7 @@ class MapPalette(uicls.Window):
 
 
             waypoints.pop()
-            startTime = blue.os.GetTime(1)
+            startTime = blue.os.GetWallclockTimeNow()
             prefix = [None]
             _push = prefix.append
             _pop = prefix.pop
@@ -524,8 +545,8 @@ class MapPalette(uicls.Window):
             indexes = range(len(waypoints))
             FindShortestRoute(prefix, 0, eve.session.solarsystemid2)
             (distance, waypoints, last,) = shortestRouteSoFar
-            blue.pyos.synchro.Sleep(1)
-            endTime = blue.os.GetTime(1)
+            blue.pyos.synchro.SleepWallclock(1)
+            endTime = blue.os.GetWallclockTimeNow()
             if waypoints is None:
                 raise UserError('AutoPilotDisabledUnreachable')
             if isReturnTrip == True:
@@ -594,101 +615,107 @@ class MapPalette(uicls.Window):
         scrolllist = []
         if what == 'autopilotconf':
             pfRouteType = settings.char.ui.Get('pfRouteType', 'safe')
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_SHARED_MAPROUTEPLANNING}))
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Map/MapPallet/hdrRoutePlanning')}))
             for config in [['pfRouteType',
               'shortest',
-              mls.UI_SHARED_MAPOPS1,
+              localization.GetByLabel('UI/Map/MapPallet/cbPreferShorter'),
               pfRouteType == 'shortest'], ['pfRouteType',
               'safe',
-              mls.UI_SHARED_MAPOPS2,
+              localization.GetByLabel('UI/Map/MapPallet/cbPreferSafer'),
               pfRouteType == 'safe'], ['pfRouteType',
               'unsafe',
-              mls.UI_SHARED_MAPOPS3,
+              localization.GetByLabel('UI/Map/MapPallet/cbPreferRisky'),
               pfRouteType == 'unsafe']]:
                 self.AddCheckBox(config, scrolllist, 'pfRouteType', 1)
 
             for config in [['pfAvoidPodKill',
               None,
-              mls.UI_SHARED_MAPAVOIDSYS,
+              localization.GetByLabel('UI/Map/MapPallet/cbAdvoidPodkill'),
               settings.char.ui.Get('pfAvoidPodKill', 0) == 1], ['pfAvoidSystems',
               None,
-              mls.UI_SHARED_MAPAVOIDSELSYS,
+              localization.GetByLabel('UI/Map/MapPallet/cbAdvoidSystemsOnList'),
               settings.char.ui.Get('pfAvoidSystems', 1) == 1]]:
                 self.AddCheckBox(config, scrolllist, usecharsettings=1)
 
-            self.AddSlider('pfPenalty', scrolllist, mls.UI_SHARED_MAPSECURITYPENALTY, 1.0, 100.0, mls.UI_SHARED_MAPHINT5)
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_SHARED_MAPWAYPOINTS}))
+            self.AddSlider('pfPenalty', scrolllist, localization.GetByLabel('UI/Map/MapPallet/lblSecurityPenelity'), 1.0, 100.0, localization.GetByLabel('UI/Map/MapPallet/hintSecurityPeneltySlider'))
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Map/MapPallet/tabWaypoints')}))
             autopilot_stop_at_each_waypoint = settings.user.ui.Get('autopilot_stop_at_each_waypoint', 0)
             for config in [['autopilot_stop_at_each_waypoint',
               0,
-              mls.UI_SHARED_MAPOPS4,
+              localization.GetByLabel('UI/Map/MapPallet/cbDisableAtEachWaypoint'),
               autopilot_stop_at_each_waypoint == 0], ['autopilot_stop_at_each_waypoint',
               1,
-              mls.UI_SHARED_MAPOPS5,
+              localization.GetByLabel('UI/Map/MapPallet/cbContinueAtEachWaypoint'),
               autopilot_stop_at_each_waypoint == 1]]:
                 self.AddCheckBox(config, scrolllist, 'autopilot_stop_at_each_waypoint')
 
         if what == 'mapsettings_lines':
             showlines = settings.user.ui.Get('showlines', 4)
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_SHARED_MAPCONNLINES}))
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Map/MapPallet/hdrConnectionLines')}))
             for config in [['showlines',
               0,
-              mls.UI_SHARED_MAPOPS6,
+              localization.GetByLabel('UI/Map/MapPallet/cbNoLines'),
               showlines == 0],
              ['showlines',
               1,
-              mls.UI_SHARED_MAPOPS7,
+              localization.GetByLabel('UI/Map/MapPallet/cbSelectionLinesOnly'),
               showlines == 1],
              ['showlines',
               2,
-              mls.UI_SHARED_MAPOPS8,
+              localization.GetByLabel('UI/Map/MapPallet/cbSelectionRegionLinesOnly'),
               showlines == 2],
              ['showlines',
               3,
-              mls.UI_SHARED_MAPOPS9,
+              localization.GetByLabel('UI/Map/MapPallet/cbSelectionRegionNeighborLinesOnly'),
               showlines == 3],
              ['showlines',
               4,
-              mls.UI_SHARED_MAPOPS10,
+              localization.GetByLabel('UI/Map/MapPallet/cbAllLinesOnly'),
               showlines == 4]]:
                 self.AddCheckBox(config, scrolllist, 'showlines')
 
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_SHARED_MAPCOLORLINESBY}))
+            for config in [['map_alliance_jump_lines',
+              None,
+              localization.GetByLabel('UI/Map/MapPallet/cbAllianceJumpLines'),
+              settings.user.ui.Get('map_alliance_jump_lines', 1) == 1]]:
+                self.AddCheckBox(config, scrolllist)
+
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Map/MapPallet/hdrColorLinesBy')}))
             for config in [['mapcolorby',
               mapcommon.COLORMODE_UNIFORM,
-              mls.UI_SHARED_MAPJUMPTYPE,
+              localization.GetByLabel('UI/Map/MapPallet/cbColorByJumpType'),
               settings.user.ui.Get('mapcolorby', mapcommon.COLORMODE_UNIFORM) == mapcommon.COLORMODE_UNIFORM], ['mapcolorby',
               mapcommon.COLORMODE_REGION,
-              mls.UI_GENERIC_REGION,
+              localization.GetByLabel('UI/Map/MapPallet/cbColorByRegion'),
               settings.user.ui.Get('mapcolorby', mapcommon.COLORMODE_UNIFORM) == mapcommon.COLORMODE_REGION], ['mapcolorby',
               mapcommon.COLORMODE_STANDINGS,
-              mls.UI_GENERIC_STANDINGS,
+              localization.GetByLabel('UI/Map/MapPallet/cbColorByStanding'),
               settings.user.ui.Get('mapcolorby', mapcommon.COLORMODE_UNIFORM) == mapcommon.COLORMODE_STANDINGS]]:
                 self.AddCheckBox(config, scrolllist, 'mapcolorby')
 
         if what == 'mapsettings_tiles':
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_SHARED_MAP_TILE_SETTINGS}))
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Map/MapPallet/hdrTileSettings')}))
             for config in [['map_tile_no_tiles',
               None,
-              mls.UI_SHARED_MAP_NO_TILES,
+              localization.GetByLabel('UI/Map/MapPallet/cbTilesNone'),
               settings.user.ui.Get('map_tile_no_tiles', 1) == 1],
              ['map_tile_activity',
               None,
-              mls.UI_SHARED_MAPSOVEREIGNTY_SHOW_CHANGES,
+              localization.GetByLabel('UI/Map/MapPallet/cbTilesSovChanges'),
               settings.user.ui.Get('map_tile_activity', 0) == 1],
              ['map_tile_show_unflattened',
               None,
-              mls.UI_SHARED_MAPSOVEREIGNTY_SHOW_WHILE_UNFLATTENED,
+              localization.GetByLabel('UI/Map/MapPallet/cbTilesSovChangesUnflattened'),
               settings.user.ui.Get('map_tile_show_unflattened', 0) == 1],
              ['map_tile_show_outlines',
               None,
-              mls.UI_SHARED_MAPSOVEREIGNTY_SHOW_OUTLINES,
+              localization.GetByLabel('UI/Map/MapPallet/cbTilesSovChangesOutlined'),
               settings.user.ui.Get('map_tile_show_outlines', 1) == 1]]:
                 self.AddCheckBox(config, scrolllist)
 
             activeTileMode = settings.user.ui.Get('map_tile_mode', 0)
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_SHARED_MAPSOVEREIGNTY_COLOR_TILES_BY}))
-            for (tileMode, text,) in [(0, mls.UI_SHARED_MAPSOVEREIGNTY), (1, mls.UI_GENERIC_STANDINGS)]:
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Map/MapPallet/hdrTileSovColorBy')}))
+            for (tileMode, text,) in [(0, localization.GetByLabel('UI/Map/MapPallet/cbTilesSovereignty')), (1, localization.GetByLabel('UI/Map/MapPallet/cbTilesStandings'))]:
                 config = ['map_tile_mode',
                  tileMode,
                  text,
@@ -705,43 +732,43 @@ class MapPalette(uicls.Window):
         if what == 'mapsettings_other':
             self.AddCheckBox(['mapautoframe',
              None,
-             mls.UI_SHARED_MAPOPS53,
+             localization.GetByLabel('UI/Map/MapPallet/cbAnimFrameSelect'),
              settings.user.ui.Get('mapautoframe', 1) == 1], scrolllist)
             if settings.user.ui.Get('mapautoframe', 1) == 1:
                 self.AddCheckBox(['mapautozoom',
                  None,
-                 mls.UI_SHARED_MAPOPS54,
+                 localization.GetByLabel('UI/Map/MapPallet/cbAnimAutoZoom'),
                  settings.user.ui.Get('mapautozoom', 0) == 1], scrolllist)
         if what == 'mapsettings_labels':
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_SHARED_MAPREGIONLABELS}))
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Map/MapPallet/hdrRegionLables')}))
             for config in [['rlabel_region',
               0,
-              mls.UI_SHARED_MAPOPS55,
+              localization.GetByLabel('UI/Map/MapPallet/cbRegionNoLabel'),
               settings.user.ui.Get('rlabel_region', 1) == 0],
              ['rlabel_region',
               1,
-              mls.UI_SHARED_MAPOPS56,
+              localization.GetByLabel('UI/Map/MapPallet/cbRegionSelected'),
               settings.user.ui.Get('rlabel_region', 1) == 1],
              ['rlabel_region',
               2,
-              mls.UI_SHARED_MAPOPS57,
+              localization.GetByLabel('UI/Map/MapPallet/cbRegionAndNeigbour'),
               settings.user.ui.Get('rlabel_region', 1) == 2],
              ['rlabel_region',
               3,
-              mls.UI_SHARED_MAPOPS58,
+              localization.GetByLabel('UI/Map/MapPallet/cbRegionAll'),
               settings.user.ui.Get('rlabel_region', 1) == 3]]:
                 self.AddCheckBox(config, scrolllist, 'rlabel_region')
 
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_SHARED_MAPOTHERLABELS}))
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Map/MapPallet/hdrOtherLables')}))
             for config in [['label_constellation',
               None,
-              mls.UI_SHARED_MAPOPS59,
+              localization.GetByLabel('UI/Map/MapPallet/cbOtherConstellation'),
               settings.user.ui.Get('label_constellation', 1) == 1], ['label_solarsystem',
               None,
-              mls.UI_SHARED_MAPOPS60,
+              localization.GetByLabel('UI/Map/MapPallet/cbOtherSolarSysytem'),
               settings.user.ui.Get('label_solarsystem', 1) == 1], ['label_landmarknames',
               None,
-              mls.UI_SHARED_MAPOPS61,
+              localization.GetByLabel('UI/Map/MapPallet/cbOtherLandmarks'),
               settings.user.ui.Get('label_landmarknames', 1) == 1]]:
                 self.AddCheckBox(config, scrolllist)
 
@@ -773,8 +800,8 @@ class MapPalette(uicls.Window):
         if starscolorby not in self.starColorByID:
             if type(starscolorby) == types.TupleType and starscolorby[0] in (mapcommon.STARMODE_FACTION, mapcommon.STARMODE_MILITIA, mapcommon.STARMODE_FACTIONEMPIRE):
                 (_starmode, factionID,) = starscolorby
-                options = {mapcommon.STARMODE_FACTION: ('Sovereignty', mls.UI_SHARED_MAPOPS52),
-                 mapcommon.STARMODE_MILITIA: ('Occupancy', mls.UI_SHARED_MAPOPS70)}.get(_starmode, (None, None))
+                options = {mapcommon.STARMODE_FACTION: ('Sovereignty', localization.GetByLabel('UI/Map/MapPallet/cbModeFactions')),
+                 mapcommon.STARMODE_MILITIA: ('Occupancy', localization.GetByLabel('UI/Map/MapPallet/cbModeMilitias'))}.get(_starmode, (None, None))
                 (colorBy, factionName,) = options
                 if factionID >= 0:
                     factionName = cfg.eveowners.Get(factionID).name
@@ -804,77 +831,77 @@ class MapPalette(uicls.Window):
 
 
     def GetRootOptions(self):
-        ret = [[mls.UI_SHARED_MAPOPS11, mapcommon.STARMODE_REAL],
-         [mls.UI_SHARED_MAPOPS12, mapcommon.STARMODE_SECURITY],
-         [mls.UI_GENERIC_REGION, mapcommon.STARMODE_REGION],
-         [mls.UI_SHARED_MAPOPS63, mapcommon.STARMODE_DUNGEONS],
-         [mls.UI_SHARED_MAPOPS68, mapcommon.STARMODE_DUNGEONSAGENTS],
-         [mls.UI_SHARED_MAP_INCURSIONS, mapcommon.STARMODE_INCURSION]]
+        ret = [[localization.GetByLabel('UI/Map/MapPallet/cbStarsActual'), mapcommon.STARMODE_REAL],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsSecurity'), mapcommon.STARMODE_SECURITY],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsRegion'), mapcommon.STARMODE_REGION],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsDedDeadspace'), mapcommon.STARMODE_DUNGEONS],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsDedAgents'), mapcommon.STARMODE_DUNGEONSAGENTS],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsIncursion'), mapcommon.STARMODE_INCURSION]]
         if eve.session.role & ROLE_GML:
-            ret.append([mls.UI_SHARED_MAP_INCURSIONSGM, mapcommon.STARMODE_INCURSIONGM])
+            ret.append([localization.GetByLabel('UI/Map/MapPallet/cbStarsIncursionGM'), mapcommon.STARMODE_INCURSIONGM])
         ret.sort()
         return ret
 
 
 
     def GetAutopilotOptions(self):
-        ret = [[mls.UI_SHARED_MAPOPS73, mapcommon.STARMODE_AVOIDANCE]]
+        ret = [[localization.GetByLabel('UI/Map/MapPallet/cbStarsAdvoidance'), mapcommon.STARMODE_AVOIDANCE]]
         return ret
 
 
 
     def GetStatisticsOptions(self):
-        ret = [[mls.UI_SHARED_MAPOPS16, mapcommon.STARMODE_PLAYERCOUNT],
-         [mls.UI_SHARED_MAPOPS17, mapcommon.STARMODE_PLAYERDOCKED],
-         [mls.UI_SHARED_MAPOPS18, mapcommon.STARMODE_JUMPS1HR],
-         [mls.UI_SHARED_MAPOPS19, mapcommon.STARMODE_SHIPKILLS1HR],
-         [mls.UI_SHARED_MAPOPS20, mapcommon.STARMODE_SHIPKILLS24HR],
-         [mls.UI_SHARED_MAPOPS21, mapcommon.STARMODE_PODKILLS1HR],
-         [mls.UI_SHARED_MAPOPS22, mapcommon.STARMODE_PODKILLS24HR],
-         [mls.UI_SHARED_MAPOPS23, mapcommon.STARMODE_FACTIONKILLS1HR],
-         [mls.UI_SHARED_MAPOPS25, mapcommon.STARMODE_STATIONCOUNT],
-         [mls.UI_SHARED_MAPOPS27, mapcommon.STARMODE_CYNOSURALFIELDS]]
+        ret = [[localization.GetByLabel('UI/Map/MapPallet/cbStarsPilots30Min'), mapcommon.STARMODE_PLAYERCOUNT],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsPilotsDocked'), mapcommon.STARMODE_PLAYERDOCKED],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsJumps'), mapcommon.STARMODE_JUMPS1HR],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsDestroyed'), mapcommon.STARMODE_SHIPKILLS1HR],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsDestroyed24H'), mapcommon.STARMODE_SHIPKILLS24HR],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsPoded1H'), mapcommon.STARMODE_PODKILLS1HR],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsPoded24H'), mapcommon.STARMODE_PODKILLS24HR],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsNPCDestroyed'), mapcommon.STARMODE_FACTIONKILLS1HR],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsStationCount'), mapcommon.STARMODE_STATIONCOUNT],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsCynosuarl'), mapcommon.STARMODE_CYNOSURALFIELDS]]
         ret.sort()
         return ret
 
 
 
     def GetOccupancy_StatisticsOptions(self):
-        ret = [[mls.UI_SHARED_MAPOPS71, mapcommon.STARMODE_MILITIAKILLS1HR], [mls.UI_SHARED_MAPOPS72, mapcommon.STARMODE_MILITIAKILLS24HR]]
+        ret = [[localization.GetByLabel('UI/Map/MapPallet/cbStarsMilitiaDestroyed1H'), mapcommon.STARMODE_MILITIAKILLS1HR], [localization.GetByLabel('UI/Map/MapPallet/cbStarsMilitiaDestroyed24H'), mapcommon.STARMODE_MILITIAKILLS24HR]]
         ret.sort()
         return ret
 
 
 
     def GetPersonalOptions(self):
-        ret = [[mls.UI_SHARED_MAPOPS14, mapcommon.STARMODE_BOOKMARKED],
-         [mls.UI_SHARED_MAPOPS15, mapcommon.STARMODE_ASSETS],
-         [mls.UI_SHARED_MAPOPS24, mapcommon.STARMODE_VISITED],
-         [mls.UI_SHARED_MAPOPS26, mapcommon.STARMODE_CARGOILLEGALITY],
-         [mls.UI_PI_SCAN_RANGE, mapcommon.STARMODE_PISCANRANGE]]
+        ret = [[localization.GetByLabel('UI/Map/MapPallet/cbStarsMyBookmarks'), mapcommon.STARMODE_BOOKMARKED],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsMyAssets'), mapcommon.STARMODE_ASSETS],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsIVisited'), mapcommon.STARMODE_VISITED],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsCargoLeagal'), mapcommon.STARMODE_CARGOILLEGALITY],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsPIScanRange'), mapcommon.STARMODE_PISCANRANGE]]
         if (const.corpRoleAccountant | const.corpRoleJuniorAccountant) & eve.session.corprole != 0:
-            ret += [[mls.UI_CORP_OFFICES, mapcommon.STARMODE_CORPOFFICES],
-             [mls.UI_CORP_IMPOUNDED, mapcommon.STARMODE_CORPIMPOUNDED],
-             [mls.UI_CORP_PROPERTY, mapcommon.STARMODE_CORPPROPERTY],
-             [mls.UI_CORP_DELIVERIES, mapcommon.STARMODE_CORPDELIVERIES]]
-        ret += [[mls.UI_SHARED_MAPOPS28, mapcommon.STARMODE_FRIENDS_CORP], [mls.UI_SHARED_MAPOPS29, mapcommon.STARMODE_FRIENDS_FLEET], [mls.UI_SHARED_MAPOPS30, mapcommon.STARMODE_FRIENDS_AGENT]]
-        ret.append([mls.UI_PI_MY_COLONIES, mapcommon.STARMODE_MYCOLONIES])
+            ret += [[localization.GetByLabel('UI/Map/MapPallet/cbStarsCorpOffices'), mapcommon.STARMODE_CORPOFFICES],
+             [localization.GetByLabel('UI/Map/MapPallet/cbStarsCorpImpounded'), mapcommon.STARMODE_CORPIMPOUNDED],
+             [localization.GetByLabel('UI/Map/MapPallet/cbStarsCorpProperty'), mapcommon.STARMODE_CORPPROPERTY],
+             [localization.GetByLabel('UI/Map/MapPallet/cbStarsCorpDeliveries'), mapcommon.STARMODE_CORPDELIVERIES]]
+        ret += [[localization.GetByLabel('UI/Map/MapPallet/cbStarsCorpMembers'), mapcommon.STARMODE_FRIENDS_CORP], [localization.GetByLabel('UI/Map/MapPallet/cbStarsFleetMembers'), mapcommon.STARMODE_FRIENDS_FLEET], [localization.GetByLabel('UI/Map/MapPallet/cbStarsMyAgents'), mapcommon.STARMODE_FRIENDS_AGENT]]
+        ret.append([localization.GetByLabel('UI/Map/MapPallet/cbStarsMyColonies'), mapcommon.STARMODE_MYCOLONIES])
         ret.sort()
         return ret
 
 
 
     def GetServicesOptions(self):
-        ret = [[mls.UI_SHARED_MAPOPS33, mapcommon.STARMODE_SERVICE_BountyMissions],
-         [mls.UI_SHARED_MAPOPS34, mapcommon.STARMODE_SERVICE_Cloning],
-         [mls.UI_SHARED_MAPOPS37, mapcommon.STARMODE_SERVICE_Factory],
-         [mls.UI_SHARED_MAPOPS38, mapcommon.STARMODE_SERVICE_Fitting],
-         [mls.UI_SHARED_MAPOPS40, mapcommon.STARMODE_SERVICE_Insurance],
-         [mls.UI_SHARED_MAPOPS42, mapcommon.STARMODE_SERVICE_Laboratory],
-         [mls.UI_SHARED_MAPOPS46, mapcommon.STARMODE_SERVICE_Refinery],
-         [mls.UI_SHARED_MAPOPS47, mapcommon.STARMODE_SERVICE_RepairFacilities],
-         [mls.UI_STATION_MILITIAOFFICE, mapcommon.STARMODE_SERVICE_NavyOffices],
-         [mls.UI_SHARED_MAPOPS48, mapcommon.STARMODE_SERVICE_ReprocessingPlant]]
+        ret = [[localization.GetByLabel('UI/Map/MapPallet/cbStarsBounties'), mapcommon.STARMODE_SERVICE_BountyMissions],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsClone'), mapcommon.STARMODE_SERVICE_Cloning],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsFactory'), mapcommon.STARMODE_SERVICE_Factory],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsFitting'), mapcommon.STARMODE_SERVICE_Fitting],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsInsurance'), mapcommon.STARMODE_SERVICE_Insurance],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsLaboratory'), mapcommon.STARMODE_SERVICE_Laboratory],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsRefinery'), mapcommon.STARMODE_SERVICE_Refinery],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsRepair'), mapcommon.STARMODE_SERVICE_RepairFacilities],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsMilitia'), mapcommon.STARMODE_SERVICE_NavyOffices],
+         [localization.GetByLabel('UI/Map/MapPallet/cbStarsReprocessing'), mapcommon.STARMODE_SERVICE_ReprocessingPlant]]
         ret.sort()
         return ret
 
@@ -887,7 +914,7 @@ class MapPalette(uicls.Window):
             warfactionlist.append([factionName.lower(), factionName, factionID])
 
         warfactionlist.sort()
-        ret = [[mls.UI_SHARED_MAPOPS70, (mapcommon.STARMODE_MILITIA, mapcommon.STARMODE_FILTER_FACWAR_ENEMY)]]
+        ret = [[localization.GetByLabel('UI/Map/MapPallet/cbModeMilitias'), (mapcommon.STARMODE_MILITIA, mapcommon.STARMODE_FILTER_FACWAR_ENEMY)]]
         for (fNL, factionName, factionID,) in warfactionlist:
             ret.append([factionName, (mapcommon.STARMODE_MILITIA, factionID)])
 
@@ -915,9 +942,9 @@ class MapPalette(uicls.Window):
         warfactionlist.sort()
         ret = []
         if eve.session.warfactionid:
-            ret.append([mls.UI_FACWAR_MYMILITIA, (starmode, mapcommon.STARMODE_FILTER_FACWAR_MINE)])
+            ret.append([localization.GetByLabel('UI/Map/MapPallet/cbStarsMyMilitia'), (starmode, mapcommon.STARMODE_FILTER_FACWAR_MINE)])
             if direction == 'defending':
-                ret.append([mls.UI_FACWAR_ENEMYMILITIA, (starmode, mapcommon.STARMODE_FILTER_FACWAR_ENEMY)])
+                ret.append([localization.GetByLabel('UI/Map/MapPallet/cbStarsEnemyMilitia'), (starmode, mapcommon.STARMODE_FILTER_FACWAR_ENEMY)])
         for (fNL, factionName, factionID,) in warfactionlist:
             ret.append([factionName, (starmode, factionID)])
 
@@ -928,7 +955,7 @@ class MapPalette(uicls.Window):
     def GetSovereignty_SovereigntyOptions(self):
         loadSvc = sm.StartService('loading')
         try:
-            loadSvc.ProgressWnd(mls.UI_RMR_FETCHINGDATA, '', 1, 3)
+            loadSvc.ProgressWnd(localization.GetByLabel('UI/Map/MapPallet/msgFetchingData'), '', 1, 3)
             factionlist = []
             factionIDs = sm.GetService('starmap').GetAllFactionsAndAlliances()
             cfg.eveowners.Prime(factionIDs)
@@ -936,34 +963,34 @@ class MapPalette(uicls.Window):
                 factionName = cfg.eveowners.Get(factionID).name
                 factionlist.append([factionName.lower(), factionName, factionID])
 
-            loadSvc.ProgressWnd(mls.UI_RMR_FETCHINGDATA, mls.UI_SHARED_MAPSORTINGDATA, 2, 3)
+            loadSvc.ProgressWnd(localization.GetByLabel('UI/Map/MapPallet/msgFetchingData'), localization.GetByLabel('UI/Map/MapPallet/msgSortingData'), 2, 3)
             factionlist.sort()
-            ret = [[mls.UI_SHARED_MAPOPS52, (mapcommon.STARMODE_FACTION, mapcommon.STARMODE_FILTER_FACWAR_ENEMY)]]
-            ret.append([mls.UI_FLEET_STANDINGONLY, mapcommon.STARMODE_SOV_STANDINGS])
-            ret.append([mls.UI_SHARED_MAPOPS74, (mapcommon.STARMODE_FACTIONEMPIRE, mapcommon.STARMODE_FILTER_EMPIRE)])
+            ret = [[localization.GetByLabel('UI/Map/MapPallet/cbModeFactions'), (mapcommon.STARMODE_FACTION, mapcommon.STARMODE_FILTER_FACWAR_ENEMY)]]
+            ret.append([localization.GetByLabel('UI/Map/MapPallet/cbStarsByStandings'), mapcommon.STARMODE_SOV_STANDINGS])
+            ret.append([localization.GetByLabel('UI/Map/MapPallet/cbStarsByEmpireFactions'), (mapcommon.STARMODE_FACTIONEMPIRE, mapcommon.STARMODE_FILTER_EMPIRE)])
             for (fNL, factionName, factionID,) in factionlist:
                 ret.append([factionName, (mapcommon.STARMODE_FACTION, factionID)])
 
 
         finally:
-            loadSvc.ProgressWnd(mls.UI_RMR_FETCHINGDATA, mls.UI_GENERIC_DONE, 3, 3)
+            loadSvc.ProgressWnd(localization.GetByLabel('UI/Map/MapPallet/msgFetchingData'), localization.GetByLabel('UI/Generic/Done'), 3, 3)
 
         return ret
 
 
 
     def GetSovereignty_ChangesOptions(self):
-        ret = [(mls.SOVEREIGNTY_RECENTCHANGES, mapcommon.STARMODE_SOV_CHANGE),
-         (mls.SOVEREIGNTY_SOVGAIN, mapcommon.STARMODE_SOV_GAIN),
-         (mls.SOVEREIGNTY_SOVLOSS, mapcommon.STARMODE_SOV_LOSS),
-         (mls.SOVEREIGNTY_STATIONGAIN, mapcommon.STARMODE_OUTPOST_GAIN),
-         (mls.SOVEREIGNTY_STATIONLOSS, mapcommon.STARMODE_OUTPOST_LOSS)]
+        ret = [(localization.GetByLabel('UI/Map/MapPallet/cbStarsByRecientSovChanges'), mapcommon.STARMODE_SOV_CHANGE),
+         (localization.GetByLabel('UI/Map/MapPallet/cbStarsBySovGain'), mapcommon.STARMODE_SOV_GAIN),
+         (localization.GetByLabel('UI/Map/MapPallet/cbStarsBySovLoss'), mapcommon.STARMODE_SOV_LOSS),
+         (localization.GetByLabel('UI/Map/MapPallet/cbStarsByStationGain'), mapcommon.STARMODE_OUTPOST_GAIN),
+         (localization.GetByLabel('UI/Map/MapPallet/cbStarsByStationLoss'), mapcommon.STARMODE_OUTPOST_LOSS)]
         return ret
 
 
 
     def GetSovereignty_Development_IndicesOptions(self):
-        ret = [[mls.SOVEREIGNTY_STRATEGIC, mapcommon.STARMODE_INDEX_STRATEGIC], [mls.UI_TUTORIAL_MILITARY, mapcommon.STARMODE_INDEX_MILITARY], [mls.UI_TUTORIAL_INDUSTRY, mapcommon.STARMODE_INDEX_INDUSTRY]]
+        ret = [[localization.GetByLabel('UI/Map/MapPallet/cbStarsByDevIdxStrategic'), mapcommon.STARMODE_INDEX_STRATEGIC], [localization.GetByLabel('UI/Map/MapPallet/cbStarsByDevIdxMilitary'), mapcommon.STARMODE_INDEX_MILITARY], [localization.GetByLabel('UI/Map/MapPallet/cbStarsByDevIdxIndustry'), mapcommon.STARMODE_INDEX_INDUSTRY]]
         return ret
 
 
@@ -989,7 +1016,9 @@ class MapPalette(uicls.Window):
             data.showhint = groupID in wantedHints
             data.groupID = groupID
             if type(groupID) in types.StringTypes:
-                data.label = getattr(mls, 'UI_GENERIC_' + groupID.upper())
+                cerbString = {'bookmark': 'UI/Map/MapPallet/cbSolarSystem_bookmark',
+                 'scanresult': 'UI/Map/MapPallet/cbSolarSystem_scanresult'}[groupID]
+                data.label = localization.GetByLabel(cerbString)
             else:
                 data.label = cfg.invgroups.Get(groupID).name
             scrolllist.append((data.label, listentry.Get('BracketSelectorEntry', data=data)))
@@ -1014,16 +1043,16 @@ class MapPalette(uicls.Window):
 
     def GetStarColorGroupsSorted(self):
         if not self.starColorGroups:
-            starColorGroups = [('Personal', mls.UI_SHARED_MAPPERSONAL, []),
-             ('Services', mls.UI_SHARED_MAPSERVICES, []),
-             ('Statistics', mls.UI_SHARED_MAPSTATISTICS, []),
-             ('Sovereignty', mls.UI_SHARED_MAPSOVEREIGNTY, [('Sovereignty_Sovereignty', mls.UI_SHARED_MAPSOVEREIGNTY, []), ('Sovereignty_Changes', mls.SOVEREIGNTY_RECENTCHANGES, []), ('Sovereignty_Development_Indices', mls.SOVEREIGNTY_DEVELOPMENTINDICES, [])]),
-             ('Occupancy', mls.UI_GENERIC_OCCUPANCY, [('Occupancy_Occupancy', mls.UI_GENERIC_OCCUPANCY, []),
-               ('Occupancy_Defensive', mls.UI_GENERIC_DEFENSIVE, []),
-               ('Occupancy_Offensive', mls.UI_GENERIC_OFFENSIVE, []),
-               ('Occupancy_Statistics', mls.UI_SHARED_MAPSTATISTICS, [])]),
-             ('Autopilot', mls.UI_GENERIC_AUTOPILOT, []),
-             ('Planets', mls.UI_GENERIC_PLANETS, [])]
+            starColorGroups = [('Personal', localization.GetByLabel('UI/Map/MapPallet/hdrStarsMyInformation'), []),
+             ('Services', localization.GetByLabel('UI/Map/MapPallet/hdrStarsServices'), []),
+             ('Statistics', localization.GetByLabel('UI/Map/MapPallet/hdrStarsStatistics'), []),
+             ('Sovereignty', localization.GetByLabel('UI/Map/MapPallet/hdrStarsSovereignty'), [('Sovereignty_Sovereignty', localization.GetByLabel('UI/Map/MapPallet/hdrStarsSovereignty'), []), ('Sovereignty_Changes', localization.GetByLabel('UI/Map/MapPallet/hdrStarsSovereigntyChanges'), []), ('Sovereignty_Development_Indices', localization.GetByLabel('UI/Map/MapPallet/hdrStarsSovereigntyIndixes'), [])]),
+             ('Occupancy', localization.GetByLabel('UI/Map/MapPallet/hdrStarsOccupancy'), [('Occupancy_Occupancy', localization.GetByLabel('UI/Map/MapPallet/hdrStarsOccupancy'), []),
+               ('Occupancy_Defensive', localization.GetByLabel('UI/Map/MapPallet/hdrStarsDefensive'), []),
+               ('Occupancy_Offensive', localization.GetByLabel('UI/Map/MapPallet/hdrStarsOffensive'), []),
+               ('Occupancy_Statistics', localization.GetByLabel('UI/Map/MapPallet/hdrStarsMapStats'), [])]),
+             ('Autopilot', localization.GetByLabel('UI/Map/MapPallet/hdrStarsAutoPilot'), []),
+             ('Planets', localization.GetByLabel('UI/Map/MapPallet/hdrStarsPlanets'), [])]
             for (group, label, subitems,) in starColorGroups:
                 if subitems:
                     temp = []
@@ -1056,10 +1085,9 @@ class MapPalette(uicls.Window):
              'showlen': 0,
              'state': 'locked',
              'BlockOpenWindow': 1,
-             'key': groupName,
-             'posttext': ''}
+             'key': groupName}
             if activeGroup == groupName:
-                data['posttext'] = ' (' + activeLabel + ')'
+                data['posttext'] = localization.GetByLabel('UI/Map/MapPallet/lblActiveColorCategory', activeLabel=activeLabel)
             scrolllist.append(listentry.Get('Group', data))
 
         return scrolllist
@@ -1081,10 +1109,9 @@ class MapPalette(uicls.Window):
              'state': 'locked',
              'BlockOpenWindow': 1,
              'key': groupName,
-             'posttext': '',
              'sublevel': 1}
             if activeGroup == groupName:
-                data['posttext'] = ' (' + activeLabel + ')'
+                data['posttext'] = localization.GetByLabel('UI/Map/MapPallet/lblActiveColorCategory', activeLabel=activeLabel)
             scrolllist.append(listentry.Get('Group', data))
 
         return scrolllist
@@ -1117,7 +1144,7 @@ class MapPalette(uicls.Window):
                 continue
             post = ''
             if entry.key == activeGroup:
-                post = ' (' + activeLabel + ')'
+                post = localization.GetByLabel('UI/Map/MapPallet/lblActiveColorCategory', activeLabel=activeLabel)
             entry.posttext = post
             if entry.panel:
                 entry.panel.UpdateLabel()
@@ -1130,10 +1157,10 @@ class MapPalette(uicls.Window):
          'iconMargin': 32,
          'showlen': 0,
          'state': 'locked',
-         'BlockOpenWindow': 1,
-         'posttext': ''}
+         'BlockOpenWindow': 1}
         scrolllist = []
-        for (groupName, groupLabel,) in [('star', mls.UI_SHARED_MAPSTARS), ('tile', mls.UI_SHARED_MAP_TILES)]:
+        forLst = [('star', localization.GetByLabel('UI/Map/MapPallet/tabStars')), ('tile', localization.GetByLabel('UI/Map/MapPallet/tabTiles'))]
+        for (groupName, groupLabel,) in forLst:
             id = ('mappalette', groupName)
             uicore.registry.SetListGroupOpenState(id, 0)
             data = common.copy()
@@ -1180,17 +1207,11 @@ class MapPalette(uicls.Window):
         data.config = config
         data.label = ''
         data.sliderID = config
-        data.displayName = uiutil.UpperCase(displayName)
-        data.setsliderlabel = self.SetSliderLabel
+        data.displayName = displayName
         data.endsetslidervalue = self.EndSetSliderValue
         data.hint = hint
         data.selectable = False
         scrolllist.append(listentry.Get('Slider', data=data))
-
-
-
-    def SetSliderLabel(self, label, idname, dname, value):
-        label.text = '%s %d' % (dname, int(value))
 
 
 
@@ -1236,7 +1257,7 @@ class MapPalette(uicls.Window):
             settings.user.ui.Set(key, val)
         if key == 'mapautoframe':
             self.LoadSettings('mapsettings_other')
-        viewingStarmap = sm.GetService('map').ViewingStarMap()
+        viewingStarmap = sm.GetService('viewState').IsViewActive('starmap')
         if viewingStarmap:
             if key == 'mapautoframe':
                 starmapSvc.SetInterest()
@@ -1245,6 +1266,8 @@ class MapPalette(uicls.Window):
             elif key == 'mapcolorby':
                 starmapSvc.UpdateLines(updateColor=1)
             elif key == 'showlines':
+                starmapSvc.UpdateLines()
+            elif key == 'map_alliance_jump_lines':
                 starmapSvc.UpdateLines()
             elif key == 'starscolorby':
                 starmapSvc.SetStarColorMode()
@@ -1279,7 +1302,7 @@ class MapPalette(uicls.Window):
 
 
     def AddHeader(self, header, where, height = 12):
-        uicls.Label(text=header, parent=where, align=uiconst.TOTOP, height=12, autowidth=False, autoheight=False, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=header, parent=where, align=uiconst.TOTOP, height=12, state=uiconst.UI_NORMAL)
 
 
 
@@ -1293,8 +1316,22 @@ class MapPalette(uicls.Window):
                 else:
                     colorList.append(node.legend.color)
 
-        if sm.GetService('map').ViewingStarMap():
+        if sm.GetService('viewState').IsViewActive('starmap'):
             sm.GetService('starmap').HighlightTiles(dataList, colorList)
+
+
+
+    def Minimize(self, *args, **kwds):
+        if self.windowID == 'mapspalette':
+            settings.user.ui.Set('MapWindowMinimized', True)
+        uicls.Window.Minimize(self, *args, **kwds)
+
+
+
+    def Maximize(self, *args, **kwds):
+        if self.windowID == 'mapspalette':
+            settings.user.ui.Set('MapWindowMinimized', False)
+        uicls.Window.Maximize(self, *args, **kwds)
 
 
 
@@ -1314,10 +1351,10 @@ class BracketSelectorEntry(listentry.Generic):
          'align': uiconst.TOPRIGHT,
          'idx': 0}
         pos = (18, 0, 0, 0)
-        eye = uicls.Icon(icon='ui_38_16_110', pos=pos, name='eye', hint=mls.UI_GENERIC_SHOW, **props)
+        eye = uicls.Icon(icon='ui_38_16_110', pos=pos, name='eye', hint=localization.GetByLabel('UI/Map/MapPallet/hintShow'), **props)
         eye.OnClick = self.ToggleVisibility
         self.sr.eyeoff = uicls.Icon(icon='ui_38_16_111', pos=pos, **props)
-        hint = uicls.Icon(icon='ui_38_16_109', name='hint', hint=mls.UI_GENERIC_SHOWHINT, **props)
+        hint = uicls.Icon(icon='ui_38_16_109', name='hint', hint=localization.GetByLabel('UI/Map/MapPallet/hintShowHint'), **props)
         hint.OnClick = self.ToggleBubbleHint
         self.sr.hintoff = uicls.Icon(icon='ui_38_16_111', **props)
 

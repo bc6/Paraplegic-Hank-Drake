@@ -1,7 +1,6 @@
 import uicls
 import uiutil
 import uiconst
-import uix
 import trinity
 import GameWorld
 import uthread
@@ -21,11 +20,11 @@ import geo2
 import form
 import service
 import paperDollUtil
-from sceneManager import SCENE_TYPE_INTERIOR
+import localization
 MINSIDESIZE = 200
 LEFTSIZE = 200
 RIGHTSIZE = 350
-SKINTONE_BASE_COLOR_PATH = 'res:/Graphics/Character/Modular/Female/Skintone/Basic/'
+SKINTONE_BASE_COLOR_PATH = 'res:/Graphics/Character/Female/Paperdoll/Skintone/Basic/'
 DOLLSTATES_TO_RETURN_TO_CC = [const.paperdollStateNoExistingCustomization, const.paperdollStateForceRecustomize]
 
 class CharacterCreationLayer(uicls.LayerCore):
@@ -35,7 +34,8 @@ class CharacterCreationLayer(uicls.LayerCore):
      'OnHideUI',
      'OnShowUI',
      'OnDollUpdated',
-     'OnMapShortcut']
+     'OnMapShortcut',
+     'OnUIRefresh']
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def OnSetDevice(self, *args):
@@ -58,7 +58,13 @@ class CharacterCreationLayer(uicls.LayerCore):
     @bluepy.CCP_STATS_ZONE_METHOD
     def OnOpenView(self):
         uicore.cmd.commandMap.UnloadAllAccelerators()
-        uicore.cmd.commandMap.LoadAcceleratorsByCategory(mls.UI_GENERIC_GENERAL)
+        uicore.cmd.commandMap.LoadAcceleratorsByCategory('general')
+        previewWnd = form.PreviewWnd.GetIfOpen()
+        if previewWnd and previewWnd.previewingWhat == 'character':
+            self.previewWindowWasOpenOn = previewWnd.previewCharacter
+            previewWnd.CloseByUser()
+        else:
+            self.previewWindowWasOpenOn = None
         sm.GetService('tutorial').ChangeTutorialWndState(visible=False)
         if hasattr(trinity, 'InitializeApex'):
             trinity.InitializeApex(GameWorld.GWPhysXWrapper())
@@ -66,7 +72,8 @@ class CharacterCreationLayer(uicls.LayerCore):
         self._setSpecularityByCategory = {}
         self._setIntensityByCategory = {}
         self.characterSvc = sm.GetService('character')
-        self.backdropPath = None
+        if not getattr(self, 'alreadyLoadedOldPortraitData', False):
+            self.backdropPath = None
         self.posePath = None
         self.lightingID = ccConst.LIGHT_SETTINGS_ID[0]
         self.lightColorID = ccConst.LIGHT_COLOR_SETTINGS_ID[0]
@@ -97,6 +104,12 @@ class CharacterCreationLayer(uicls.LayerCore):
         self.stepID = None
         self.floor = None
         self.showingHelp = 0
+        self.CreateUI()
+        self.avatarScene = None
+
+
+
+    def CreateUI(self):
         self.sr.loadingWheel = uicls.LoadingWheel(parent=self, align=uiconst.CENTER, state=uiconst.UI_NORMAL)
         self.sr.loadingWheel.forcedOn = 0
         self.sr.uiContainer = uicls.Container(name='uiContainer', parent=self, align=uiconst.TOALL)
@@ -109,25 +122,33 @@ class CharacterCreationLayer(uicls.LayerCore):
          RIGHTSIZE,
          64))
         self.sr.buttonNav = uicls.Container(name='buttonPar', parent=self.sr.rightSide, align=uiconst.TOTOP, height=25, padRight=2)
-        self.sr.finalizeBtn = uicls.CharCreationButton(parent=self.sr.buttonNav, align=uiconst.TORIGHT, label=mls.UI_CHARCREA_FINALIZE, func=self.SaveWithStartLocation, left=10, args=(0,), state=uiconst.UI_HIDDEN, fixedwidth=70)
-        self.sr.saveBtn = uicls.CharCreationButton(parent=self.sr.buttonNav, align=uiconst.TORIGHT, label=mls.UI_CHARCREA_FINALIZE, func=self.Save, left=10, args=(), state=uiconst.UI_HIDDEN, fixedwidth=70)
-        self.sr.approveBtn = uicls.CharCreationButton(parent=self.sr.buttonNav, align=uiconst.TORIGHT, label=mls.UI_CMD_NEXT, func=self.Approve, left=10, args=(), fixedwidth=70)
-        self.sr.backBtn = uicls.CharCreationButton(parent=self.sr.buttonNav, align=uiconst.TORIGHT, label=mls.UI_GENERIC_BACK, func=self.Back, args=(), left=10, fixedwidth=70)
+        self.sr.finalizeBtn = uicls.CharCreationButton(parent=self.sr.buttonNav, align=uiconst.TORIGHT, label=localization.GetByLabel('UI/CharacterCreation/Finalize'), func=self.SaveWithStartLocation, left=10, args=(0,), state=uiconst.UI_HIDDEN, fixedwidth=70)
+        self.sr.saveBtn = uicls.CharCreationButton(parent=self.sr.buttonNav, align=uiconst.TORIGHT, label=localization.GetByLabel('UI/CharacterCreation/Finalize'), func=self.Save, left=10, args=(), state=uiconst.UI_HIDDEN, fixedwidth=70)
+        self.sr.approveBtn = uicls.CharCreationButton(parent=self.sr.buttonNav, align=uiconst.TORIGHT, label=localization.GetByLabel('UI/Generic/Next'), func=self.Approve, left=10, args=(), fixedwidth=70)
+        self.sr.backBtn = uicls.CharCreationButton(parent=self.sr.buttonNav, align=uiconst.TORIGHT, label=localization.GetByLabel('UI/Commands/Back'), func=self.Back, args=(), left=10, fixedwidth=70)
         self.sr.blackOut = uicls.Fill(parent=self, color=(0.0, 0.0, 0.0, 0.0))
         self.sr.mainCont = uicls.Container(name='mainCont', parent=self, align=uiconst.TOALL)
-        self.sr.helpButton = uicls.Container(parent=self.sr.uiContainer, pos=(13, 19, 26, 26), state=uiconst.UI_HIDDEN, align=uiconst.BOTTOMLEFT, hint=mls.UI_SHARED_GETHELP, idx=0)
+        self.sr.helpButton = uicls.Container(parent=self.sr.uiContainer, pos=(13, 19, 26, 26), state=uiconst.UI_HIDDEN, align=uiconst.BOTTOMLEFT, hint=localization.GetByLabel('UI/CharacterCreation/GetHelp'), idx=0)
         helpIcon = uicls.Icon(parent=self.sr.helpButton, icon=ccConst.ICON_HELP, state=uiconst.UI_DISABLED, align=uiconst.CENTER, color=ccConst.COLOR50)
         self.sr.helpButton.OnClick = self.SetStepHelpText
         self.sr.helpButton.OnMouseEnter = (self.OnHelpMouseEnter, self.sr.helpButton)
         self.sr.helpButton.OnMouseExit = (self.OnHelpMouseExit, self.sr.helpButton)
         self.sr.helpButton.sr.icon = helpIcon
         self.sr.helpBox = uicls.Container(name='helpBox', parent=self.sr.uiContainer, pos=(0, 200, 350, 200), state=uiconst.UI_HIDDEN, align=uiconst.CENTER)
-        self.sr.helpText = uicls.Label(text='', parent=self.sr.helpBox, align=uiconst.TOPLEFT, width=self.sr.helpBox.width)
+        self.sr.helpText = uicls.EveLabelMedium(text='', parent=self.sr.helpBox, align=uiconst.TOPLEFT, width=self.sr.helpBox.width)
         self.sr.helpFill = uicls.Fill(name='fill', parent=self.sr.helpBox, color=(0.0, 0.0, 0.0, 0.5), padding=(-8, -8, -8, -8), state=uiconst.UI_NORMAL)
         self.sr.helpFill.OnClick = self.SetStepHelpText
-        self.avatarScene = None
         self.UpdateLayout()
-        sm.RegisterNotify(self)
+
+
+
+    def OnUIRefresh(self):
+        while getattr(self, 'doll', None) and self.doll.IsBusyUpdating():
+            blue.synchro.Yield()
+
+        self.Flush()
+        self.CreateUI()
+        self.SwitchStep(self.stepID)
 
 
 
@@ -159,12 +180,19 @@ class CharacterCreationLayer(uicls.LayerCore):
 
 
     def SetStepHelpText(self, *args):
-        postfix = ''
+        limited = 0
         if self.mode in [ccConst.MODE_LIMITED_RECUSTOMIZATION]:
-            postfix = '_LIMITED'
+            limited = 1
         if not self.showingHelp and self.stepID in (ccConst.CUSTOMIZATIONSTEP, ccConst.PORTRAITSTEP, ccConst.NAMINGSTEP):
-            text = 'UI_CHARCREA_HELPTEXT_%d%s' % (self.stepID, postfix)
-            self.sr.helpText.text = getattr(mls, text)
+            helpTextDict = {(1, 0): 'UI/CharacterCreation/HelpTexts/Step1',
+             (2, 0): 'UI/CharacterCreation/HelpTexts/Step2',
+             (3, 0): 'UI/CharacterCreation/HelpTexts/Step3',
+             (3, 1): 'UI/CharacterCreation/HelpTexts/Step3Limited',
+             (4, 0): 'UI/CharacterCreation/HelpTexts/Step4',
+             (4, 1): 'UI/CharacterCreation/HelpTexts/Step4Limited',
+             (5, 0): 'UI/CharacterCreation/HelpTexts/Step5'}
+            labelPath = helpTextDict.get((self.stepID, limited), 'UI/Common/Unknown')
+            self.sr.helpText.text = localization.GetByLabel(labelPath)
             self.ShowHelpText()
         else:
             self.HideHelpText()
@@ -187,9 +215,8 @@ class CharacterCreationLayer(uicls.LayerCore):
             self.genderID = int(gender)
             self.charID = charID
             self.dna = None
-            dollData = sm.GetService('cc').GetPaperDollData(self.charID)
-            if dollData is not None and dollState != const.paperdollStateForceRecustomize:
-                self.dna = dollData
+            if dollState not in (const.paperdollStateForceRecustomize, const.paperdollStateNoExistingCustomization):
+                self.dna = sm.GetService('paperdoll').GetMyPaperDollData(self.charID)
             bloodlineInfo = sm.GetService('cc').GetBloodlineDataByID().get(self.bloodlineID, None)
             if bloodlineInfo is None:
                 raise UserError('CCNoBloodlineInfo')
@@ -218,9 +245,6 @@ class CharacterCreationLayer(uicls.LayerCore):
         stepID = self.availableSteps[0]
         self.stepsUsed = set([stepID])
         self.sr.mainCont.Flush()
-        if self.sr.mainNav:
-            self.sr.mainNav.Close()
-        self.sr.mainNav = uicls.CharCreationNavigation(name='navigation', align=uiconst.CENTERTOP, parent=self.sr.leftSide, pos=(0, 16, 0, 60), stepID=stepID, func=self.SwitchStep, stepsUsed=self.stepsUsed, availableSteps=self.availableSteps)
         self.SwitchStep(stepID)
 
 
@@ -259,6 +283,8 @@ class CharacterCreationLayer(uicls.LayerCore):
     @bluepy.CCP_STATS_ZONE_METHOD
     def SwitchStep(self, toStep, *args):
         self.HideHelpText()
+        if not self.sr.mainNav or self.sr.mainNav.destroyed:
+            self.sr.mainNav = uicls.CharCreationNavigation(name='navigation', align=uiconst.CENTERTOP, parent=self.sr.leftSide, pos=(0, 16, 0, 60), stepID=toStep, func=self.SwitchStep, stepsUsed=self.stepsUsed, availableSteps=self.availableSteps)
         if toStep == ccConst.RACESTEP:
             sm.StartService('audio').SendUIEvent(unicode('wise:/music_switch_full'))
         else:
@@ -280,7 +306,7 @@ class CharacterCreationLayer(uicls.LayerCore):
         self.LockEverything()
         self.sr.step = None
         uthread.new(self.sr.mainNav.PerformStepChange, toStep, self.stepsUsed)
-        self.FadeToBlack(why=mls.UI_GENERIC_LOADING)
+        self.FadeToBlack(why=localization.GetByLabel('UI/Generic/Loading'))
         if toStep == self.availableSteps[-1]:
             self.sr.approveBtn.state = uiconst.UI_HIDDEN
             if not self.charID:
@@ -329,7 +355,8 @@ class CharacterCreationLayer(uicls.LayerCore):
              'yaw': self.camera.yaw,
              'distance': self.camera.distance,
              'xFactor': self.camera.xFactor,
-             'yFactor': self.camera.yFactor}
+             'yFactor': self.camera.yFactor,
+             'fieldOfView': self.camera.fieldOfView}
 
 
 
@@ -415,13 +442,11 @@ class CharacterCreationLayer(uicls.LayerCore):
                     try:
                         settings.user.ui.Set('doTutorialDungeon%s' % charID, 0)
                         settings.user.ui.Set('doIntroTutorial%s' % charID, 1)
-                        sm.GetService('loading').ProgressWnd(mls.UI_CHARCREA_CHARACTERCREATION, mls.UI_CHARSEL_ENTERGAMEAS % {'name': cfg.eveowners.Get(charID).name}, 1, 2)
-                        sm.GetService('loading').FadeToBlack(4000)
+                        sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/CharacterCreation'), localization.GetByLabel('UI/CharacterCreation/EnteringGameAs', player=charID), 1, 2)
                         sm.GetService('sessionMgr').PerformSessionChange('charcreation', sm.RemoteSvc('charUnboundMgr').SelectCharacterID, charID, False, None)
                     except:
-                        sm.GetService('loading').ProgressWnd(mls.UI_CHARSEL_CHARACTERSELECTION, mls.UI_CHARSEL_FAILED, 2, 2)
-                        sm.GetService('loading').FadeFromBlack()
-                        uthread.pool('GameUI :: GoCharacterSelection', sm.GetService('gameui').GoCharacterSelection, 1)
+                        sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/CharacterCreation/CharacterSelection'), localization.GetByLabel('UI/CharacterCreation/FailedToEnterGame'), 2, 2)
+                        uthread.pool('GameUI::ActivateView::charsel', sm.GetService('viewState').ActivateView, 'charsel')
                         raise 
 
         finally:
@@ -445,6 +470,8 @@ class CharacterCreationLayer(uicls.LayerCore):
                 self.ExitToStation(updateDoll=False)
             elif self.mode == ccConst.MODE_FULL_RECUSTOMIZATION and self.dollState not in DOLLSTATES_TO_RETURN_TO_CC:
                 self.ExitToStation(updateDoll=False)
+            elif self.mode == ccConst.MODE_LIMITED_RECUSTOMIZATION and self.dollState == const.paperdollStateNoRecustomization:
+                self.ExitToStation(updateDoll=False)
             else:
                 sm.StartService('cc').GoBack()
         else:
@@ -458,7 +485,7 @@ class CharacterCreationLayer(uicls.LayerCore):
     def LockEverything(self, *args):
         if not getattr(self, 'setupDone', 0):
             return 
-        self.state = uiconst.UI_DISABLED
+        self.pickState = uiconst.TR2_SPS_OFF
         self.LockNavigation()
 
 
@@ -474,7 +501,7 @@ class CharacterCreationLayer(uicls.LayerCore):
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def UnlockEverything(self, *args):
-        self.state = uiconst.UI_PICKCHILDREN
+        self.pickState = uiconst.TR2_SPS_CHILDREN
         self.UnlockNavigation()
 
 
@@ -615,8 +642,8 @@ class CharacterCreationLayer(uicls.LayerCore):
     @bluepy.CCP_STATS_ZONE_METHOD
     def OnGraphicSettingsChanged(self, changes):
         if 'fastCharacterCreation' in changes:
-            if eve.Message('CustomQuestion', {'header': mls.UI_SHARED_LOSE_CHANGES,
-             'question': mls.UI_CHARCREATION_LOSE_CHANGES}, uiconst.YESNO) == uiconst.ID_YES:
+            if eve.Message('CustomQuestion', {'header': localization.GetByLabel('UI/CharacterCreation/LoseChangesHeader'),
+             'question': localization.GetByLabel('UI/CharacterCreation/LoseChanges')}, uiconst.YESNO) == uiconst.ID_YES:
                 self.avatarScene = None
                 self.SwitchStep(self.availableSteps[0])
             else:
@@ -638,8 +665,7 @@ class CharacterCreationLayer(uicls.LayerCore):
         self.scene = None
         self.avatarScene = None
         self.ClearCamera()
-        if self.cameraUpdateJob and self.cameraUpdateJob in trinity.device.scheduledRecurring:
-            trinity.device.scheduledRecurring.remove(self.cameraUpdateJob)
+        sm.GetService('sceneManager').charCreationCamera = None
         self.cameraUpdateJob = None
         if self.bloodlineSelector is not None:
             self.bloodlineSelector.TearDown()
@@ -792,6 +818,7 @@ class CharacterCreationLayer(uicls.LayerCore):
             self.poseID = cache.poseData['PortraitPoseNumber']
             self.cameraPos = cache.cameraPosition
             self.cameraPoi = cache.cameraPoi
+            self.cameraFov = cache.cameraFieldOfView
             params = []
             for key in cache.poseData:
                 params.append((PREFIX + key, cache.poseData[key]))
@@ -811,6 +838,7 @@ class CharacterCreationLayer(uicls.LayerCore):
                 FPP = paperDollUtil.FACIAL_POSE_PARAMETERS
                 self.cameraPos = (portraitData.cameraX, portraitData.cameraY, portraitData.cameraZ)
                 self.cameraPoi = (portraitData.cameraPoiX, portraitData.cameraPoiY, portraitData.cameraPoiZ)
+                self.cameraFov = portraitData.cameraFieldOfView
                 params = [[PREFIX + FPP.PortraitPoseNumber, portraitData['portraitPoseNumber']],
                  [PREFIX + FPP.HeadLookTarget, (portraitData['headLookTargetX'], portraitData['headLookTargetY'], portraitData['headLookTargetZ'])],
                  [PREFIX + FPP.HeadTilt, portraitData['headTilt']],
@@ -863,6 +891,7 @@ class CharacterCreationLayer(uicls.LayerCore):
             self.camera.distance = self.storedPortraitCameraSettings['distance']
             self.camera.xFactor = self.storedPortraitCameraSettings['xFactor']
             self.camera.yFactor = self.storedPortraitCameraSettings['yFactor']
+            self.camera.fieldOfView = self.storedPortraitCameraSettings['fieldOfView']
         self.UpdateLights()
         paperDoll.SkinSpotLightShadows.SetupForCharacterCreator(self.scene)
         self.characterSvc.StartPosing(charID=info.charID, callback=self.sr.step.ChangeSculptingCursor)
@@ -966,9 +995,8 @@ class CharacterCreationLayer(uicls.LayerCore):
             if hasattr(scene2, 'shadowCubeMap'):
                 scene2.shadowCubeMap.enabled = False
         self.scene = scene2
-        if hasattr(trinity, 'Tr2PhysXScene'):
-            trinityPhysXScene = trinity.Tr2PhysXScene()
-            trinityPhysXScene.CreatePlane((0, 0, 0), (0, 1, 0), 0)
+        if hasattr(scene2, 'apexScene') and scene2.apexScene is not None:
+            scene2.apexScene.CreatePlane((0, 0, 0), (0, 1, 0), 0)
         sceneManager = sm.GetService('sceneManager')
         sceneManager.RegisterScenes('characterCreation', scene1, scene2)
         sceneManager.SetRegisteredScenes('characterCreation')
@@ -1401,7 +1429,8 @@ class CharacterCreationLayer(uicls.LayerCore):
             r = trinity.TriStepPythonCB()
             r.SetCallback(self.UpdateCamera)
             self.cameraUpdateJob.steps.append(r)
-            self.cameraUpdateJob.ScheduleRecurring()
+        sceneManager.charCreationCamera = self.cameraUpdateJob
+        sceneManager.cameraUpdateStep.job = self.cameraUpdateJob
 
 
 
@@ -1433,7 +1462,7 @@ class CharacterCreationLayer(uicls.LayerCore):
     @bluepy.CCP_STATS_ZONE_METHOD
     def SaveCurrentCharacter(self, charactername, bloodlineID, genderID, portraitID):
         total = 3
-        sm.GetService('loading').ProgressWnd(mls.UI_LOAD_REGISTERING, mls.UI_LOAD_COMPILEPREFS, 1, total)
+        sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/CharacterCreation/Registering'), localization.GetByLabel('UI/CharacterCreation/CompilePrefs'), 1, total)
         try:
             try:
                 if self.portraitInfo[portraitID] is None:
@@ -1441,17 +1470,15 @@ class CharacterCreationLayer(uicls.LayerCore):
                 info = self.GetInfo()
                 charInfo = self.characterSvc.GetCharacterAppearanceInfo(info.charID)
                 charID = sm.GetService('cc').CreateCharacterWithDoll(charactername, bloodlineID, genderID, info.ancestryID, charInfo, self.portraitInfo[portraitID], info.schoolID)
-                sm.GetService('loading').ProgressWnd(mls.UI_LOAD_REGISTERING, mls.UI_CHARSEL_INSERTRECORD, 2, total)
+                sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/CharacterCreation/Registering'), localization.GetByLabel('UI/CharacterCreation/InsertingRecord'), 2, total)
                 sm.GetService('photo').AddPortrait(self.GetPortraitSnapshotPath(portraitID), charID)
-                sm.GetService('loading').ProgressWnd(mls.UI_LOAD_REGISTERING, mls.UI_GENERIC_DONE, 3, total)
+                sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/CharacterCreation/Registering'), localization.GetByLabel('UI/Generic/Done'), 3, total)
                 return charID
             except UserError as what:
                 if not what.msg.startswith('CharNameInvalid'):
                     eve.Message(*what.args)
                     return 
-                errorMsg = cfg.GetMessage(*what.args).text
-                errorMsg += '<br><br>%s' % mls.UI_CHARSEL_CREATECHARERROR1
-                sm.GetService('loading').ProgressWnd(mls.UI_LOAD_REGISTERING, mls.UI_CHARSEL_FAILEDSOMEREASON, 3, total)
+                sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/CharacterCreation/Registering'), localization.GetByLabel('UI/CharacterCreation/FailedForSomeReason'), 3, total)
 
         finally:
             self.sessionSounds = []
@@ -1474,8 +1501,7 @@ class CharacterCreationLayer(uicls.LayerCore):
             if resourceID:
                 info = cfg.paperdollResources.Get(resourceID)
                 if info.typeID is not None and info.typeID not in availableTypeIDs:
-                    typeName = cfg.invtypes.Get(info.typeID).typeName
-                    raise UserError('ItemNotAtStation', {'item': typeName})
+                    raise UserError('ItemNotAtStation', {'item': info.typeID})
 
         if self.mode == ccConst.MODE_FULL_RECUSTOMIZATION:
             sm.GetService('cc').UpdateExistingCharacterFull(charID, dollInfo, self.portraitInfo[portraitID], dollExists)
@@ -1489,7 +1515,7 @@ class CharacterCreationLayer(uicls.LayerCore):
         if self.dollState != const.paperdollStateForceRecustomize:
             self.ExitToStation()
         else:
-            uthread.pool('GameUI :: GoCharacterSelection', sm.GetService('gameui').GoCharacterSelection, 1)
+            uthread.pool('GameUI::ActivateView::charsel', sm.GetService('viewState').ActivateView, 'charsel')
 
 
 
@@ -1639,17 +1665,19 @@ class CharacterCreationLayer(uicls.LayerCore):
         for each in bdScene.curveSets[:]:
             bdScene.curveSets.remove(each)
 
-        size = min(uicore.desktop.height, uicore.desktop.width)
+        desktopWidth = int(uicore.desktop.width * uicore.desktop.dpiScaling)
+        desktopHeight = int(uicore.desktop.height * uicore.desktop.dpiScaling)
+        size = min(desktopHeight, desktopWidth)
         margin = -200
         info = self.GetInfo()
         if self.stepID == ccConst.RACESTEP:
-            bgSize = min(uicore.desktop.width, uicore.desktop.height) * 1.5
+            bgSize = min(desktopWidth, desktopHeight) * 1.5
             backdropSprite = trinity.Tr2Sprite2d()
             backdropSprite.name = u'backdropSprite'
             backdropSprite.displayWidth = bgSize
             backdropSprite.displayHeight = bgSize
-            backdropSprite.displayX = (uicore.desktop.width - bgSize) / 2
-            backdropSprite.displayY = (uicore.desktop.height - bgSize) / 2
+            backdropSprite.displayX = (desktopWidth - bgSize) / 2
+            backdropSprite.displayY = (desktopHeight - bgSize) / 2
             backdropSprite.texturePrimary = trinity.Tr2Sprite2dTexture()
             backdropSprite.texturePrimary.resPath = 'res:/UI/Texture/CharacterCreation/bg/RACE_Background_START_None.dds'
             backdropSprite.display = True
@@ -1662,8 +1690,8 @@ class CharacterCreationLayer(uicls.LayerCore):
                 mouseoverSprite.name = u'mouseoverSprite_%d' % race
                 mouseoverSprite.displayWidth = bgSize
                 mouseoverSprite.displayHeight = bgSize
-                mouseoverSprite.displayX = (uicore.desktop.width - bgSize) / 2
-                mouseoverSprite.displayY = (uicore.desktop.height - bgSize) / 2
+                mouseoverSprite.displayX = (desktopWidth - bgSize) / 2
+                mouseoverSprite.displayY = (desktopHeight - bgSize) / 2
                 mouseoverSprite.texturePrimary = trinity.Tr2Sprite2dTexture()
                 mouseoverSprite.texturePrimary.resPath = 'res:/UI/Texture/CharacterCreation/bg/RACE_Background_START_%d.dds' % race
                 mouseoverSprite.display = False
@@ -1672,13 +1700,13 @@ class CharacterCreationLayer(uicls.LayerCore):
             if info.raceID:
                 self.UpdateBackdropLite(info.raceID)
         elif self.stepID == ccConst.BLOODLINESTEP:
-            bgSize = max(uicore.desktop.width, uicore.desktop.height)
+            bgSize = max(desktopWidth, desktopHeight)
             backdropSprite = trinity.Tr2Sprite2d()
             backdropSprite.name = u'backdropSprite'
             backdropSprite.displayWidth = bgSize
             backdropSprite.displayHeight = bgSize
-            backdropSprite.displayY = (uicore.desktop.height - bgSize) / 2
-            backdropSprite.displayX = (uicore.desktop.width - bgSize) / 2
+            backdropSprite.displayY = (desktopHeight - bgSize) / 2
+            backdropSprite.displayX = (desktopWidth - bgSize) / 2
             backdropSprite.texturePrimary = trinity.Tr2Sprite2dTexture()
             backdropSprite.texturePrimary.resPath = 'res:/UI/Texture/CharacterCreation/bg/Bloodline_Background_%d.dds' % info.raceID
             backdropSprite.display = True
@@ -1708,9 +1736,9 @@ class CharacterCreationLayer(uicls.LayerCore):
          g * 0.75,
          b * 0.75,
          1.0)
-        mainHalo.displayWidth = mainHalo.displayHeight = max(uicore.desktop.width, uicore.desktop.height) * 1.5
-        mainHalo.displayX = (uicore.desktop.width - mainHalo.displayWidth) / 2
-        mainHalo.displayY = (uicore.desktop.height - mainHalo.displayHeight) / 2
+        mainHalo.displayWidth = mainHalo.displayHeight = max(desktopWidth, desktopHeight) * 1.5
+        mainHalo.displayX = (desktopWidth - mainHalo.displayWidth) / 2
+        mainHalo.displayY = (desktopHeight - mainHalo.displayHeight) / 2
         mainHalo.display = True
         mainHalo.texturePrimary.resPath = 'res:/UI/Texture/CharacterCreation/mainCenterHalo.dds'
         bdScene.children.append(mainHalo)
@@ -1720,8 +1748,8 @@ class CharacterCreationLayer(uicls.LayerCore):
                 portraitBackground = trinity.Tr2Sprite2d()
                 portraitBackground.name = u'portraitBackground'
                 bdScene.children.insert(0, portraitBackground)
-                portraitBackground.displayX = (uicore.desktop.width - size) * 0.5
-                portraitBackground.displayY = (uicore.desktop.height - size) * 0.5
+                portraitBackground.displayX = (desktopWidth - size) * 0.5
+                portraitBackground.displayY = (desktopHeight - size) * 0.5
                 portraitBackground.displayWidth = size
                 portraitBackground.displayHeight = size
                 if not portraitBackground.texturePrimary:
@@ -1741,8 +1769,8 @@ class CharacterCreationLayer(uicls.LayerCore):
              (4, 1.0)):
                 tf = trinity.Tr2Sprite2dTransform()
                 tf.name = u'tf'
-                tf.displayX = uicore.desktop.width * 0.5
-                tf.displayY = uicore.desktop.height * 0.5
+                tf.displayX = desktopWidth * 0.5
+                tf.displayY = desktopHeight * 0.5
                 bdScene.children.append(tf)
                 circleBG = trinity.Tr2Sprite2d()
                 circleBG.name = u'circleBG'
@@ -1845,7 +1873,10 @@ class CharacterCreationLayer(uicls.LayerCore):
     def CapturePortrait(self, portraitID, *args):
         if self.camera is None:
             return 
-        self.portraitInfo[portraitID] = util.KeyVal(cameraPosition=self.camera.GetPosition(), cameraFieldOfView=self.camera.fieldOfView, cameraPoi=self.camera.GetPointOfInterest(), backgroundID=self.GetBackgroundID(), lightID=self.lightingID, lightColorID=self.lightColorID, lightIntensity=self.GetLightIntensity(), poseData=self.characterSvc.GetPoseData())
+        poseData = self.characterSvc.GetPoseData()
+        if poseData is None:
+            return 
+        self.portraitInfo[portraitID] = util.KeyVal(cameraPosition=self.camera.GetPosition(), cameraFieldOfView=self.camera.fieldOfView, cameraPoi=self.camera.GetPointOfInterest(), backgroundID=self.GetBackgroundID(), lightID=self.lightingID, lightColorID=self.lightColorID, lightIntensity=self.GetLightIntensity(), poseData=poseData)
         size = 512
         sceneManager = sm.GetService('sceneManager')
         scene = sceneManager.GetActiveScene2()
@@ -1867,7 +1898,7 @@ class CharacterCreationLayer(uicls.LayerCore):
         renderJob.SetRenderTarget(target)
         renderJob.SetDepthStencil(depth)
         projection = trinity.TriProjection()
-        projection.PerspectiveFov(self.camera.fieldOfView, 1, 0.01, 200)
+        projection.PerspectiveFov(self.camera.fieldOfView, 1, 0.5, 5.0)
         view = self.camera.viewMatrix
         renderJob.Clear((0.0, 0.0, 0.0, 1.0), 1.0)
         renderJob.SetProjection(projection)
@@ -1891,7 +1922,7 @@ class CharacterCreationLayer(uicls.LayerCore):
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def GetPortraitSnapshotPath(self, portraitID):
-        return blue.os.cachepath + '/Pictures/Portraits/PortraitSnapshot_%s_%s.jpg' % (portraitID, session.userid)
+        return blue.os.ResolvePathForWriting(u'cache:/Pictures/Portraits/PortraitSnapshot_%s_%s.jpg' % (portraitID, session.userid))
 
 
 
@@ -1937,7 +1968,7 @@ class CharacterCreationLayer(uicls.LayerCore):
 
     def OnMapShortcut(self, *args):
         uicore.cmd.commandMap.UnloadAllAccelerators()
-        uicore.cmd.commandMap.LoadAcceleratorsByCategory(mls.UI_GENERIC_GENERAL)
+        uicore.cmd.commandMap.LoadAcceleratorsByCategory('general')
 
 
 
@@ -1972,26 +2003,29 @@ class CharacterCreationLayer(uicls.LayerCore):
         if sm.GetService('audio').GetWorldVolume() == 0.0:
             sm.GetService('audio').SetWorldVolume(self.worldLevel)
         sm.GetService('cc').ClearMyAvailabelTypeIDs()
+        self.Flush()
+        self.sr.step = None
+        if self.previewWindowWasOpenOn is not None:
+            charID = self.previewWindowWasOpenOn
+            self.previewWindowWasOpenOn = None
+            sm.GetService('preview').PreviewCharacter(charID)
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def ExitToStation(self, updateDoll = True):
         dna = self.GetDNA()
-        self.OnCloseView()
         if session.worldspaceid is not None:
-            change = {'stationid': [None, session.stationid],
-             'worldspaceid': [None, session.worldspaceid]}
-            sm.GetService('gameui').OnSessionChanged(False, session, change)
-            sm.GetService('entityClient').ProcessSessionChange(False, session, change)
-            sm.GetService('navigation').OnSessionChanged(False, session, change)
-            sm.GetService('graphicClient').OnSessionChanged(False, session, change)
-            if updateDoll is True and prefs.GetValue('loadstationenv', 1):
+            sm.GetService('viewState').CloseSecondaryView()
+            if self.isopen:
+                self.OnCloseView()
+            if updateDoll is True and prefs.GetValue('loadstationenv2', 1):
                 pdc = sm.GetService('entityClient').GetPlayerEntity(canBlock=True).components['paperdoll'].doll
                 pdc.doll.buildDataManager = paperDoll.BuildDataManager()
                 pdc.doll.LoadDNA(dna, pdc.factory)
                 pdc.Update()
         else:
+            self.OnCloseView()
             change = {'stationid': (None, session.stationid)}
             sm.GetService('gameui').OnSessionChanged(isRemote=False, session=session, change=change)
 
@@ -2115,7 +2149,7 @@ class CharacterCreationLayer(uicls.LayerCore):
 
     def AskForPortraitConfirmation(self, *args):
         photo = self.GetActivePortrait()
-        wnd = sm.StartService('window').GetWindow('ccConfirmationWindow', create=1, decoClass=form.CCConfirmationWindow, photo=photo)
+        wnd = form.CCConfirmationWindow.Open(photo=photo)
         if wnd.ShowModal() == uiconst.ID_YES:
             return True
         else:
@@ -2141,7 +2175,7 @@ class CharacterCreationLayer(uicls.LayerCore):
                     return 
             if self.dnaList is not None:
                 self.CheckDnaLog('UpdateDoll')
-                dna = self.GetDNA(getHiddenModifiers=True, getWeightless=True)
+                dna = self.GetDNA(getHiddenModifiers=False, getWeightless=True)
                 if not allowReduntant:
                     try:
                         (currentIndex, maxIndex,) = self.sr.step.sr.historySlider.GetCurrentIndexAndMaxIndex()
@@ -2221,6 +2255,11 @@ class CharCreationNavigation(uicls.Container):
     ACTIVEOPACITY = 1.0
     NUMSTEPS = 5
     FONTSIZE = 16
+    stepLabelDict = {1: 'UI/CharacterCreation/Step1',
+     2: 'UI/CharacterCreation/Step2',
+     3: 'UI/CharacterCreation/Step3',
+     4: 'UI/CharacterCreation/Step4',
+     5: 'UI/CharacterCreation/Step5'}
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def ApplyAttributes(self, attributes):
@@ -2230,15 +2269,14 @@ class CharCreationNavigation(uicls.Container):
         self.availableSteps = attributes.availableSteps
         self.attributesApplied = 0
         self.callbackFunc = attributes.func
-        self.sr.header = uicls.CCLabel(name='header', parent=self, align=uiconst.TOTOP, top=0, autowidth=0, width=300, uppercase=1, letterspace=2, color=(0.9, 0.9, 0.9, 0.8), fontsize=self.FONTSIZE, bold=False)
+        self.sr.header = uicls.CCLabel(name='header', parent=self, align=uiconst.TOTOP, top=0, width=300, uppercase=1, letterspace=2, color=(0.9, 0.9, 0.9, 0.8), fontsize=self.FONTSIZE, bold=False)
         width = self.NUMSTEPS * 36
         self.width = width
         self.sr.stepCont = uicls.Container(name='stepCont', parent=self, align=uiconst.CENTERTOP, pos=(0,
          26,
          width,
          26))
-        self.CreateSteps()
-        self.ResetToStep(self.stepID, set([self.availableSteps[0]]))
+        self.ResetToStep(self.stepID, set(self.stepsUsed))
 
 
 
@@ -2325,8 +2363,9 @@ class CharCreationNavigation(uicls.Container):
             time = self.ANIMATIONTIME
         self.stepID = stepID
         self.stepsUsed = stepsUsed
-        headerText = getattr(mls, 'UI_CHARCREA_STEP%s' % stepID, '')
-        self.sr.header.text = '<center>%s' % headerText
+        labelPath = self.stepLabelDict.get(stepID)
+        headerText = localization.GetByLabel(labelPath)
+        self.sr.header.text = headerText
         self.sr.header.SetAlpha(1.0)
         container = getattr(self.sr, 'step%s' % stepID, None)
         mousedStep = container.id
@@ -2389,8 +2428,9 @@ class CharCreationNavigation(uicls.Container):
             container.SetOpacity(self.MOUSEOVEROPACITY)
         else:
             return 
-        headerText = getattr(mls, 'UI_CHARCREA_STEP%s' % mousedStep, '')
-        self.sr.header.text = '<center>%s' % headerText
+        labelPath = self.stepLabelDict.get(mousedStep)
+        headerText = localization.GetByLabel(labelPath)
+        self.sr.header.text = headerText
         self.sr.header.SetAlpha(0.3)
 
 
@@ -2401,8 +2441,9 @@ class CharCreationNavigation(uicls.Container):
             container.SetOpacity(self.ACTIVEOPACITY)
             return 
         container.SetOpacity(self.NORMALOPACITY)
-        headerText = getattr(mls, 'UI_CHARCREA_STEP%s' % self.stepID, '')
-        self.sr.header.text = '<center>%s' % headerText
+        labelPath = self.stepLabelDict.get(self.stepID)
+        headerText = localization.GetByLabel(labelPath)
+        self.sr.header.text = headerText
         self.sr.header.SetAlpha(1.0)
 
 
@@ -2436,6 +2477,7 @@ class CCConfirmationWindow(uicls.Window):
     __guid__ = 'form.CCConfirmationWindow'
     default_width = 540
     default_height = 326
+    default_windowID = 'ccConfirmationWindow'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -2449,7 +2491,7 @@ class CCConfirmationWindow(uicls.Window):
         self.width = self.default_width
         self.height = self.default_height
         top = 40
-        btns = uicls.ButtonGroup(btns=[[mls.UI_CMD_OK, self.Confirm, ()], [mls.UI_CMD_CANCEL, self.Cancel, ()]], parent=buttonContainer, idx=0)
+        btns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Generic/OK'), self.Confirm, ()], [localization.GetByLabel('UI/Generic/Cancel'), self.Cancel, ()]], parent=buttonContainer, idx=0)
         self.sr.centerCont = uicls.Container(name='centerCont', parent=self.sr.main, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(20, 20, 20, 0))
         self.sr.leftSide = uicls.Container(name='leftSide', parent=self.sr.centerCont, align=uiconst.TOLEFT, pos=(0, 0, 260, 0))
         self.sr.portraitCont = uicls.Container(name='portraitCont', parent=self.sr.leftSide, align=uiconst.TOPLEFT, pos=(0, 0, 256, 256))
@@ -2459,8 +2501,8 @@ class CCConfirmationWindow(uicls.Window):
             self.sr.facePortrait.texture.atlasTexture = photo
             self.sr.facePortrait.texture.atlasTexture.Reload()
         self.sr.rightSide = uicls.Container(name='rightSide', parent=self.sr.centerCont, align=uiconst.TOALL, padding=(10, 0, 0, 0))
-        caption = uicls.Label(text=mls.UI_CHARCREA_CONFIRMATIONHEADER, parent=self.sr.rightSide, align=uiconst.TOTOP, pos=(0, 0, 0, 50), fontsize=20, linespace=20, letterspace=1, idx=-1, state=uiconst.UI_DISABLED, uppercase=1, autowidth=0, autoheight=0, name='caption')
-        text = uicls.Label(text=mls.UI_CHARCREA_CONFIRMATION, parent=self.sr.rightSide, align=uiconst.TOALL, autowidth=0, autoheight=0)
+        caption = uicls.EveCaptionMedium(text=localization.GetByLabel('UI/CharacterCreation/ConfirmationHeader'), parent=self.sr.rightSide, align=uiconst.TOTOP, pos=(0, 0, 0, 50), idx=-1, state=uiconst.UI_DISABLED, name='caption')
+        text = uicls.EveLabelMedium(text=localization.GetByLabel('UI/CharacterCreation/Confirmation'), parent=self.sr.rightSide, align=uiconst.TOTOP)
 
 
 

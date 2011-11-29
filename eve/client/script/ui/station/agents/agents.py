@@ -11,11 +11,14 @@ import service
 import uicls
 from service import ROLE_SERVICE, ROLE_IGB
 import uiconst
+import uiutil
+import localization
+import localizationUtil
 globals().update(service.consts)
 
 class Agents(service.Service):
     __exportedcalls__ = {'InteractWith': [],
-     'NamePopup': [ROLE_SERVICE],
+     'RemoteNamePopup': [ROLE_SERVICE],
      'GetQuantity': [ROLE_SERVICE],
      'PopupSelect': [ROLE_SERVICE],
      'YesNo': [ROLE_SERVICE],
@@ -39,7 +42,10 @@ class Agents(service.Service):
     __servicename__ = 'agents'
     __displayname__ = 'Agent Service'
     __dependencies__ = []
-    __notifyevents__ = ['OnAgentMissionChange', 'OnSessionChanged', 'OnInteractWith']
+    __notifyevents__ = ['OnAgentMissionChange',
+     'OnSessionChanged',
+     'OnInteractWith',
+     'ProcessUIRefresh']
 
     def __GetAllAgents(self):
         if self.allAgents is None:
@@ -97,22 +103,12 @@ class Agents(service.Service):
 
 
 
-    def GetAgentDisplayName(self, agentID):
-        agentInfo = self.GetAgentByID(agentID)
-        if agentInfo is not None and agentInfo.agentTypeID == const.agentTypeAura:
-            return 'Aura'
-        else:
-            return cfg.eveowners.Get(agentID).name
-
-
-
     def GetDivisions(self):
         if self.divisions is None:
             self.divisions = sm.RemoteSvc('corporationSvc').GetNPCDivisions().Index('divisionID')
-            if prefs.languageID != 'EN':
-                for row in self.divisions.values():
-                    row.divisionName = Tr(row.divisionName, 'dbo.crpNPCDivisions.divisionName', row.divisionID)
-                    row.leaderType = Tr(row.leaderType, 'dbo.crpNPCDivisions.leaderType', row.divisionID)
+            for row in self.divisions.values():
+                row.divisionName = localization.GetByMessageID(row.divisionNameID)
+                row.leaderType = localization.GetByMessageID(row.leaderTypeID)
 
         return self.divisions
 
@@ -124,26 +120,26 @@ class Agents(service.Service):
         self.allAgents = None
         self.divisions = None
         self.agentMonikers = {}
-        self.lastMonikerAccess = blue.os.GetTime()
+        self.lastMonikerAccess = blue.os.GetWallclockTime()
         uthread.worker('agents::ClearMonikers', self._Agents__ClearAgentMonikers)
 
 
 
     def GetAgentMoniker(self, agentID):
         if agentID not in self.agentMonikers:
-            if getattr(self, 'allAgentsByID', False) and agentID in self.allAgentsByID and agentID in self.allAgentsByID and self.allAgentsByID[agentID].stationID:
+            if getattr(self, 'allAgentsByID', False) and agentID in self.allAgentsByID and self.allAgentsByID[agentID].stationID:
                 self.agentMonikers[agentID] = moniker.GetAgent(agentID, self.allAgentsByID[agentID].stationID)
             else:
                 self.agentMonikers[agentID] = moniker.GetAgent(agentID)
-        self.lastMonikerAccess = blue.os.GetTime()
+        self.lastMonikerAccess = blue.os.GetWallclockTime()
         return self.agentMonikers[agentID]
 
 
 
     def __ClearAgentMonikers(self):
         while self.state == service.SERVICE_RUNNING:
-            blue.pyos.synchro.Sleep(300000)
-            if blue.os.GetTime() + 30 * MIN < self.lastMonikerAccess:
+            blue.pyos.synchro.SleepWallclock(300000)
+            if blue.os.GetWallclockTime() > self.lastMonikerAccess + 30 * MIN:
                 self.agentMonikers.clear()
 
 
@@ -166,25 +162,32 @@ class Agents(service.Service):
         else:
             (capacity, used,) = sm.GetService('invCache').GetInventoryFromId(activeShipID).GetCapacity(const.flagCargo)
         if session.stationid2 is None and capacity - (used + mandatoryCargoUnits) < 0:
-            rejectMessage = mls.AGT_STANDARDMISSION_ACCEPT_CARGOCAPWARNING_DIALOGUE % {'external.mandatorycargounits': '%-2.2f' % mandatoryCargoUnits}
-            self.MessageBox(mls.AGT_STANDARDMISSION_ACCEPT_FAILURE_TITLE, rejectMessage)
+            rejectMessage = localization.GetByLabel('UI/Agents/StandardMissionCargoCapWarning', cargoUnits=mandatoryCargoUnits)
+            self.MessageBox(localization.GetByLabel('UI/Agents/CannotAcceptMission'), rejectMessage)
             return ('mission.offeredinsufficientcargospace', rejectMessage)
         if capacity - (used + cargoUnits) < 0:
             if capacity - (used + cargoUnits) < 1:
-                c1 = '%-2.2f' % cargoUnits
-                c2 = '%-2.2f' % (capacity - used)
+                c1 = cargoUnits
+                c2 = capacity - used
             else:
                 c1 = cargoUnits
                 c2 = capacity - used
-            if not self.YesNo(mls.AGT_STANDARDMISSION_ACCEPT_CARGOCAPWARNING_TITLE, mls.AGT_STANDARDMISSION_ACCEPT_CARGOCAPWARNING_MESSAGE % {'external.required': c1,
-             'external.available': c2}, 'AgtMissionAcceptBigCargo'):
+            if not self.YesNo(localization.GetByLabel('UI/Agents/CargoCapacityWarning'), localization.GetByLabel('UI/Agents/StandardMissionAcceptCargoCapWarning', requiredUnits=c1, availableUnits=c2), 'AgtMissionAcceptBigCargo'):
                 return 'mission.offered'
 
 
 
     def YesNo(self, title, body, suppressID = None):
-        options = {'text': body,
-         'title': title,
+        if type(title) is tuple:
+            titleText = localization.GetByLabel(title[0], **title[1])
+        else:
+            titleText = title
+        if type(body) is tuple:
+            bodyText = localization.GetByLabel(body[0], **body[1])
+        else:
+            bodyText = body
+        options = {'text': bodyText,
+         'title': titleText,
          'buttons': uiconst.YESNO,
          'icon': uiconst.QUESTION}
         ret = self.ShowMessageWindow(options, suppressID)
@@ -193,8 +196,16 @@ class Agents(service.Service):
 
 
     def MessageBox(self, title, body, suppressID = None):
-        options = {'text': body,
-         'title': title,
+        if type(title) is tuple:
+            titleText = localization.GetByLabel(title[0], **title[1])
+        else:
+            titleText = title
+        if type(body) is tuple:
+            bodyText = localization.GetByLabel(body[0], **body[1])
+        else:
+            bodyText = body
+        options = {'text': bodyText,
+         'title': titleText,
          'buttons': triui.OK,
          'icon': triui.INFO}
         self.ShowMessageWindow(options, suppressID)
@@ -206,7 +217,7 @@ class Agents(service.Service):
             supp = settings.user.suppress.Get('suppress.' + suppressID, None)
             if supp is not None:
                 return supp
-            options['suppText'] = mls.UI_SHARED_SUPPRESS2
+            options['suppText'] = localization.GetByLabel('UI/Common/SuppressionShowMessage')
         (ret, block,) = sm.StartService('gameui').MessageBox(**options)
         if suppressID and block and ret not in [uiconst.ID_NO]:
             settings.user.suppress.Set('suppress.' + suppressID, ret)
@@ -215,16 +226,31 @@ class Agents(service.Service):
 
 
     def SingleChoiceBox(self, title, body, choices, suppressID = None):
-        options = {'text': body,
-         'title': title,
+        if type(title) is tuple:
+            titleText = localization.GetByLabel(title[0], **title[1])
+        else:
+            titleText = title
+        if type(body) is tuple:
+            bodyText = localization.GetByLabel(body[0], **body[1])
+        else:
+            bodyText = body
+        choicesText = []
+        for choice in choices:
+            if type(choice) is tuple:
+                choicesText.append(localization.GetByLabel(choice[0], **choice[1]))
+            else:
+                choicesText.append(choice)
+
+        options = {'text': bodyText,
+         'title': titleText,
          'icon': triui.QUESTION,
          'buttons': uiconst.OKCANCEL,
-         'radioOptions': choices}
+         'radioOptions': choicesText}
         if suppressID:
             supp = settings.user.suppress.Get('suppress.' + suppressID, None)
             if supp is not None:
                 return supp
-            options['suppText'] = mls.UI_SHARED_SUPPRESS4
+            options['suppText'] = localization.GetByLabel('UI/Common/SuppressionShowMessageRemember')
         (ret, block,) = sm.StartService('gameui').RadioButtonMessageBox(**options)
         if suppressID and block:
             settings.user.suppress.Set('suppress.' + suppressID, ret)
@@ -240,8 +266,16 @@ class Agents(service.Service):
 
 
 
-    def NamePopup(self, *args, **keywords):
-        ret = uix.NamePopup(*args, **keywords)
+    def RemoteNamePopup(self, caption, label):
+        if type(caption) is tuple:
+            captionText = localization.GetByLabel(caption[0], **caption[1])
+        else:
+            captionText = caption
+        if type(label) is tuple:
+            labelText = localization.GetByLabel(label[0], **label[1])
+        else:
+            labelText = label
+        ret = uix.NamePopup(captionText, labelText)
         if ret is not None:
             return ret['name']
         else:
@@ -250,12 +284,20 @@ class Agents(service.Service):
 
 
     def PopupSelect(self, title, explanation, **keywords):
+        if type(title) is tuple:
+            titleText = localization.GetByLabel(title[0], **title[1])
+        else:
+            titleText = title
+        if type(explanation) is tuple:
+            explanationText = localization.GetByLabel(explanation[0], **explanation[1])
+        else:
+            explanationText = explanation
         if 'typeIDs' in keywords:
             displayList = []
             for typeID in keywords['typeIDs']:
                 displayList.append([cfg.invtypes.Get(typeID).name, typeID, typeID])
 
-            ret = uix.ListWnd(displayList, 'type', title, explanation, 0, 300)
+            ret = uix.ListWnd(displayList, 'type', titleText, explanationText, 0, 300)
         else:
             return None
         if ret:
@@ -321,6 +363,22 @@ class Agents(service.Service):
 
 
 
+    def ProcessUIRefresh(self):
+        if not getattr(self, 'divisions', None):
+            return 
+        for row in self.divisions.values():
+            row.divisionName = localization.GetByMessageID(row.divisionNameID)
+            row.leaderType = localization.GetByMessageID(row.leaderTypeID)
+
+        for agentID in self.windows:
+            state = self.windows[agentID].state
+            self.windows[agentID].Close()
+            self.InteractWith(agentID)
+            self.windows[agentID].SetState(state)
+
+
+
+
     def __GetConversation(self, wnd, actionID):
         if wnd is None or wnd.destroyed or wnd.sr is None:
             return (None, None, None)
@@ -335,13 +393,13 @@ class Agents(service.Service):
             firstActionDialogue = wnd.sr.dialogue[0][1]
             agentHasLocatorService = False
             for (id, dlg,) in wnd.sr.dialogue:
-                if mls.AGT_LOCATECHARACTER in dlg:
+                if dlg == const.agentDialogueButtonLocateCharacter:
                     agentHasLocatorService = True
 
             isResearchAgent = False
             if self.GetAgentByID(wnd.sr.agentID).agentTypeID == const.agentTypeResearchAgent:
                 isResearchAgent = True
-            if mls.AGT_STANDARDMISSION_ASK in firstActionDialogue and not agentHasLocatorService and not isResearchAgent:
+            if firstActionDialogue == const.agentDialogueButtonRequestMission and not agentHasLocatorService and not isResearchAgent:
                 self.LogInfo("Agent Service: Automatically executing the 'Ask' dialogue action for the player.")
                 tmp = wnd.sr.agentMoniker.DoAction(firstActionID)
                 if wnd is None or wnd.destroyed or wnd.sr is None:
@@ -377,7 +435,7 @@ class Agents(service.Service):
                  const.agentMissionOfferExpired,
                  const.agentMissionOfferDeclined,
                  const.agentMissionOfferAccepted):
-                    window.SelfDestruct()
+                    window.Close()
                 else:
                     self.PopupOfferJournal(agentID)
         elif (agentID, 'mission') in self.journalwindows:
@@ -390,7 +448,7 @@ class Agents(service.Service):
                  const.agentMissionFailed,
                  const.agentMissionOffered,
                  const.agentMissionOfferRemoved):
-                    window.SelfDestruct()
+                    window.Close()
                 else:
                     self.PopupMissionJournal(agentID)
         if agentID in self.windows:
@@ -399,13 +457,13 @@ class Agents(service.Service):
                 del agentDialogueWindow.htmlCache['objectiveBrowser']
             if what in (const.agentMissionOfferRemoved, const.agentMissionReset, const.agentTalkToMissionCompleted):
                 if not agentDialogueWindow.destroyed:
-                    agentDialogueWindow.CloseX()
+                    agentDialogueWindow.CloseByUser()
                 del self.windows[agentID]
 
 
 
     def OnSessionChanged(self, isRemote, sess, change):
-        if 'stationid' in change:
+        if 'stationid2' in change:
             for (key, window,) in self.journalwindows.iteritems():
                 (agentID, missionState,) = key
                 if window is not None and not window.destroyed:
@@ -429,7 +487,7 @@ class Agents(service.Service):
                 ret = self.InsertSecurityWarning(ret)
                 html = ret.html
                 if (agentID, 'mission') not in self.journalwindows or self.journalwindows[(agentID, 'mission')].destroyed:
-                    browser = sm.GetService('window').GetWindow('%s - %s' % (mls.AGT_MISSIONJOURNAL_CAPTION_PREFIX, self.GetAgentDisplayName(agentID)), decoClass=form.AgentBrowser, create=1, maximize=1)
+                    browser = form.AgentBrowser.Open(caption=localization.GetByLabel('UI/Agents/MissionJournalWithAgent', agentID=agentID))
                     self.journalwindows[(agentID, 'mission')] = browser
                 else:
                     browser = self.journalwindows[(agentID, 'mission')]
@@ -444,42 +502,43 @@ class Agents(service.Service):
 
     def PopupDungeonShipRestrictionList(self, agentID, charID = None, dungeonID = None):
         restrictions = self.GetAgentMoniker(agentID).GetDungeonShipRestrictions(dungeonID)
-        title = mls.AGT_STANDARDMISSION_GETJOURNALINFO_DUNGEONOBJECTIVE_PERMITTEDSHIPS_HEADER
-        ship = sm.GetService('godma').GetItem(eve.session.shipid)
+        title = localization.GetByLabel('UI/Agents/Dialogue/DungeonShipRestrictionsHeader')
         ship = None
         shipID = util.GetActiveShip()
         if shipID is not None:
             ship = sm.GetService('clientDogmaIM').GetDogmaLocation().GetDogmaItem(shipID)
+        shipGroupID = shipTypeID = None
+        body = ''
         if ship:
             shipGroupID = getattr(ship, 'groupID', None)
-            if shipGroupID:
-                if shipGroupID in restrictions.restrictedShipTypes:
-                    fontTagOpen = '<font color=#E3170D>'
-                    fontTagClose = '</font>'
-                    body = mls.AGT_STANDARDMISSION_GETJOURNALINFO_DUNGEONOBJECTIVE_PERMITTEDSHIPLIST_PLAYERSHIPISRESTRICTED % {'external.fontTagOpen': fontTagOpen,
-                     'external.fontTagClose': fontTagClose,
-                     'external.shipType': cfg.invtypes.Get(ship.typeID).name}
-                elif shipGroupID in restrictions.allowedShipTypes:
-                    if len(restrictions.allowedShipTypes) > 1:
-                        body = mls.AGT_STANDARDMISSION_GETJOURNALINFO_DUNGEONOBJECTIVE_PERMITTEDSHIPLIST_PLAYERSHIPISNOTRESTRICTED % {'external.shipType': cfg.invtypes.Get(ship.typeID).name}
-                    else:
-                        restrictions.allowedShipTypes.remove(shipGroupID)
-                        body = mls.AGT_STANDARDMISSION_GETJOURNALINFO_DUNGEONOBJECTIVE_PERMITTEDSHIP_PLAYERSHIPISNOTRESTRICTED % {'external.shipGroup': cfg.invgroups.Get(shipGroupID).groupName,
-                         'external.shipType': cfg.invtypes.Get(ship.typeID).name}
+            shipTypeID = ship.typeID
+        if shipGroupID:
+            if shipGroupID in restrictions.restrictedShipTypes:
+                msgPath = 'UI/Agents/Dialogue/DungeonShipRestrictionsListShipIsRestricted'
+            elif shipGroupID in restrictions.allowedShipTypes:
+                if len(restrictions.allowedShipTypes) > 1:
+                    msgPath = 'UI/Agents/Dialogue/DungeonShipRestrictionsListShipIsNotRestricted'
+                else:
+                    restrictions.allowedShipTypes.remove(shipGroupID)
+                    body = localization.GetByLabel('UI/Agents/Dialogue/DungeonShipRestrictionShipIsNotRestricted', groupName=cfg.invgroups.Get(shipGroupID).groupName, typeID=shipTypeID)
         else:
-            body = mls.AGT_STANDARDMISSION_GETJOURNALINFO_DUNGEONOBJECTIVE_PERMITTEDSHIPLIST
-        body += '<br><br>'
-        permittedShipTypeList = []
-        for shipGroupID in restrictions.allowedShipTypes:
-            permittedShipTypeList.append(cfg.invgroups.Get(shipGroupID).groupName)
+            msgPath = 'UI/Agents/Dialogue/DungeonShipRestrictionsShowList'
+        if len(restrictions.allowedShipTypes) > 0:
+            permittedShipGroupList = []
+            for shipGroupID in restrictions.allowedShipTypes:
+                permittedShipGroupList.append(cfg.invgroups.Get(shipGroupID).groupName)
 
-        permittedShipTypeList.sort()
-        body += '<ul>'
-        for each in permittedShipTypeList:
-            body += '<li>' + each + '</li>'
+            localizationUtil.Sort(permittedShipGroupList)
+            shipList = ''
+            for each in permittedShipGroupList:
+                shipList += u'  \u2022' + each + '<br>'
 
-        body += '</ul>'
-        self.MessageBox(title, body)
+            body = localization.GetByLabel(msgPath, shipTypeID=shipTypeID, shipList=shipList)
+        options = {'text': body,
+         'title': title,
+         'buttons': triui.OK,
+         'icon': triui.INFO}
+        self.ShowMessageWindow(options)
 
 
 
@@ -489,8 +548,7 @@ class Agents(service.Service):
 
 
     def OpenAgentDialogueWindow(self, windowName = 'agentDialogueWindow', agentID = None):
-        window = sm.StartService('window').GetWindow(windowName, decoClass=form.AgentDialogueWindow, maximize=1, create=1)
-        window.SetAgentID(agentID)
+        window = form.AgentDialogueWindow.Open(windowID=windowName, agentID=agentID)
         return window
 
 
@@ -516,7 +574,7 @@ class Agents(service.Service):
                     print html
                     print '-----------------------------------------------------------------------------------'
                 if (agentID, 'offer') not in self.journalwindows or self.journalwindows[(agentID, 'offer')].destroyed:
-                    browser = sm.GetService('window').GetWindow('%s - %s' % (mls.AGT_OFFERJOURNAL_CAPTION_PREFIX, self.GetAgentDisplayName(agentID)), decoClass=form.AgentBrowser, create=1, maximize=1)
+                    browser = form.AgentBrowser(caption=localization.GetByLabel('UI/Agents/MissionJournalWithAgent', agentID=agentID))
                     self.journalwindows[(agentID, 'offer')] = browser
                 else:
                     browser = self.journalwindows[(agentID, 'offer')]
@@ -570,17 +628,18 @@ class Agents(service.Service):
             else:
                 route = sm.GetService('pathfinder').GetPathBetween(routeStart, each)
             if route is None:
-                secWarning += ' <font color=#E3170D>(%s)</font>' % mls.AGT_UTILS_NOROUTEWARNING
+                secWarning = localization.GetByLabel('UI/Agents/Dialogue/AutopilotRouteNotFound')
+                break
             elif len(route) > 0:
                 routeStart = route[(len(route) - 1)]
                 for solarsystem in route:
                     s = sm.GetService('map').GetItem(solarsystem)
-                    if len(secWarning) > 0:
-                        break
                     if charSecStatus > -5.0 and sm.StartService('map').GetSecurityClass(solarsystem) <= const.securityClassLowSec:
-                        secWarning += ' <font color=#E3170D>(%s)</font>' % mls.AGT_UTILS_ROUTELOWSECWARNING
+                        secWarning = localization.GetByLabel('UI/Agents/Dialogue/AutopilotRouteLowSecWarning')
+                        break
                     elif charSecStatus < -5.0 and sm.StartService('map').GetSecurityClass(solarsystem) == const.securityClassHighSec:
-                        secWarning += ' <font color=#E3170D>(%s)</font>' % mls.AGT_UTILS_ROUTEHIGHSECWARNING
+                        secWarning = localization.GetByLabel('UI/Agents/Dialogue/AutopilotRouteHighSecWarning')
+                        break
 
 
         if ret.html:
@@ -599,6 +658,30 @@ class Agents(service.Service):
         return wnd.sr.agentMoniker.GetMissionBriefingInfo()
 
 
+    _buttonLabelMapping = {const.agentDialogueButtonViewMission: 'UI/Agents/Dialogue/Buttons/ViewMission',
+     const.agentDialogueButtonRequestMission: 'UI/Agents/Dialogue/Buttons/RequestMission',
+     const.agentDialogueButtonAccept: 'UI/Agents/Dialogue/Buttons/AcceptMission',
+     const.agentDialogueButtonAcceptChoice: 'UI/Agents/Dialogue/Buttons/AcceptThisChoice',
+     const.agentDialogueButtonAcceptRemotely: 'UI/Agents/Dialogue/Buttons/AcceptRemotely',
+     const.agentDialogueButtonComplete: 'UI/Agents/Dialogue/Buttons/CompleteMission',
+     const.agentDialogueButtonCompleteRemotely: 'UI/Agents/Dialogue/Buttons/CompleteRemotely',
+     const.agentDialogueButtonContinue: 'UI/Agents/Dialogue/Buttons/Continue',
+     const.agentDialogueButtonDecline: 'UI/Agents/Dialogue/Buttons/DeclineMission',
+     const.agentDialogueButtonDefer: 'UI/Agents/Dialogue/Buttons/DeferMission',
+     const.agentDialogueButtonQuit: 'UI/Agents/Dialogue/Buttons/QuitMission',
+     const.agentDialogueButtonStartResearch: 'UI/Agents/Dialogue/Buttons/StartResearch',
+     const.agentDialogueButtonCancelResearch: 'UI/Agents/Dialogue/Buttons/CancelResearch',
+     const.agentDialogueButtonBuyDatacores: 'UI/Agents/Dialogue/Buttons/BuyDatacores',
+     const.agentDialogueButtonLocateCharacter: 'UI/Agents/Dialogue/Buttons/LocateCharacter',
+     const.agentDialogueButtonLocateAccept: 'UI/Agents/Dialogue/Buttons/LocateCharacterAccept',
+     const.agentDialogueButtonLocateReject: 'UI/Agents/Dialogue/Buttons/LocateCharacterReject',
+     const.agentDialogueButtonYes: 'UI/Common/Buttons/Yes',
+     const.agentDialogueButtonNo: 'UI/Common/Buttons/No'}
+
+    def GetLabelForButtonID(self, buttonID):
+        return self._buttonLabelMapping.get(buttonID, '')
+
+
 
     def __Interact(self, agentDialogueWindow, actionID = None, closeWindowAfterInteraction = False):
         if actionID:
@@ -609,10 +692,10 @@ class Agents(service.Service):
         if agentSays is None:
             return 
         if closeWindowAfterInteraction:
-            agentDialogueWindow.CloseX()
+            agentDialogueWindow.CloseByUser()
             return 
         if extraInfo.get('missionQuit', None):
-            agentDialogueWindow.CloseX()
+            agentDialogueWindow.CloseByUser()
             return 
         customAgentButtons = {'okLabel': [],
          'okFunc': [],
@@ -622,8 +705,10 @@ class Agents(service.Service):
         extraMissionInfo = ''
         numDialogChoices = 0
         isAgentInteractionMission = False
+        appendCloseButton = False
+        adminBlock = ''
         if dialogue:
-            charSays = '<OL>'
+            adminOptions = []
             for each in dialogue:
                 if not agentDialogueWindow or agentDialogueWindow.destroyed:
                     return 
@@ -635,45 +720,49 @@ class Agents(service.Service):
                     extraMissionInfo += '<span id=subheader><a href="localsvc:service=agents&method=DoAction&agentID=%d&actionID=%d">%s</a> &gt;&gt;</span><br>' % (agentDialogueWindow.sr.agentID, each[0], each[1]['Mission Title'])
                     extraMissionInfo += each[1]['Mission Briefing']
                     numDialogChoices += 1
-                elif '[Button]' in each[1]:
-                    label = each[1].replace('[Button]', '')
-                    closeWindowOnClick = False
-                    if '[CloseOnClick]' in label:
-                        label = label.replace('[CloseOnClick]', '')
-                        closeWindowOnClick = True
-                    if '[Disabled]' in label:
-                        label = label.replace('[Disabled]', '')
-                        disabledButtons.append(label)
+                elif type(each[1]) is int:
+                    labelPath = self.GetLabelForButtonID(each[1])
+                    if labelPath:
+                        label = localization.GetByLabel(labelPath)
+                    else:
+                        self.LogError('Unknown button ID for agent action, id =', each[1])
+                        label = 'Unknown ID ' + str(each[1])
+                    closeWindowOnClick = each[1] == const.agentDialogueButtonDefer
+                    if each[1] in (const.agentDialogueButtonRequestMission,
+                     const.agentDialogueButtonContinue,
+                     const.agentDialogueButtonQuit,
+                     const.agentDialogueButtonCancelResearch):
+                        appendCloseButton = True
                     customAgentButtons['okLabel'].append(label)
                     customAgentButtons['okFunc'].append(self.DoAction)
                     customAgentButtons['args'].append((agentDialogueWindow.sr.agentID, each[0], closeWindowOnClick))
                 else:
-                    charSays += '<li><a href="localsvc:service=agents&method=DoAction&agentID=%d&actionID=%d">%s</a></li><br>' % (agentDialogueWindow.sr.agentID, each[0], each[1])
-                    numDialogChoices += 1
+                    adminOptions.append('<a href="localsvc:service=agents&method=DoAction&agentID=%d&actionID=%d">%s</a>' % (agentDialogueWindow.sr.agentID, each[0], each[1]))
 
-            charSays += '</OL>'
-        if numDialogChoices < 2:
-            charSays = charSays.replace('<li>', '')
-            charSays = charSays.replace('</li>', '')
-            alignCharSays = 'align=center'
-        else:
-            alignCharSays = ''
+            if adminOptions:
+                if len(adminOptions) == 1:
+                    adminBlock = '<TR><TD align=center><BR>'
+                    adminBlock += adminOptions[0]
+                else:
+                    adminBlock = '<TR><TD>'
+                    adminBlock += '<OL>'
+                    adminBlock += ''.join([ '<BR><LI>%s</LI>' % x for x in adminOptions ])
+                    adminBlock += '</OL>'
+                adminBlock += '</TR></TD>'
         a = self.GetAgentByID(agentDialogueWindow.sr.agentID)
         agentCorpID = a.corporationID
-        agentDivision = self.GetDivisions()[a.divisionID].divisionName.replace('&', '&amp;')
+        agentDivisionID = a.divisionID
         s = [sm.GetService('standing').GetEffectiveStanding(a.factionID, eve.session.charid)[0], sm.GetService('standing').GetEffectiveStanding(a.corporationID, eve.session.charid)[0], sm.GetService('standing').GetEffectiveStanding(a.agentID, eve.session.charid)[0]]
         if min(*s) <= -2.0:
-            effectiveStanding = '<b>%-2.1f</b>' % min(*s)
+            blurbEffectiveStanding = localization.GetByLabel('UI/Agents/Dialogue/EffectiveStandingLow', effectiveStanding=min(*s))
         else:
-            effectiveStanding = '%-2.1f' % max(sm.GetService('standing').GetEffectiveStanding(a.factionID, eve.session.charid)[0], sm.GetService('standing').GetEffectiveStanding(a.corporationID, eve.session.charid)[0], sm.GetService('standing').GetEffectiveStanding(a.agentID, eve.session.charid)[0]) or 0.0
-        if getattr(agentDialogueWindow.sr, 'oob', {}).get('loyaltyPoints', 0):
-            loyaltyPoints = '<TR><TD>%s</TD><TD>%s</TD></TR>' % (mls.AGT_DIALOGUE_LOYALTYPOINTS, getattr(agentDialogueWindow.sr, 'oob', {}).get('loyaltyPoints', 0))
+            es = max(*s) or 0.0
+            blurbEffectiveStanding = localization.GetByLabel('UI/Agents/Dialogue/EffectiveStanding', effectiveStanding=es)
+        lp = getattr(agentDialogueWindow.sr, 'oob', {}).get('loyaltyPoints', 0)
+        if lp:
+            loyaltyPoints = localization.GetByLabel('UI/Agents/Dialogue/LoyaltyPointsTableRow', loyaltyPoints=lp)
         else:
             loyaltyPoints = ''
-        agentBloodline = sm.GetService('cc').GetData('bloodlines', ['bloodlineID', a.bloodlineID])
-        agentRace = sm.GetService('cc').GetData('races', ['raceID', agentBloodline.raceID])
-        raceName = Tr(agentRace.raceName, 'character.races.raceName', agentRace.dataID)
-        bloodlineName = Tr(agentBloodline.bloodlineName, 'character.bloodlines.bloodlineName', agentBloodline.dataID)
         if isAgentInteractionMission:
             extraMissionInfo += '<BR>'
             if briefingInformation['Decline Warning']:
@@ -694,56 +783,35 @@ class Agents(service.Service):
             missionTitle = '<BR><span id=subheader>' + briefingInformation['Mission Title'] + '</span><BR>'
         if self.GetAgentByID(agentDialogueWindow.sr.agentID).agentTypeID == const.agentTypeAura:
             agentInfoIcon = ''
-            conversationTitle = '%s - %s' % (mls.AGT_DIALOGUE_BLURBCONVERSATION, 'Aura')
             blurbEffectiveStanding = ''
             blurbDivision = ''
         else:
-            agentInfoIcon = '<a href=showinfo:%d//%d><img src=icon:38_208 size=16 alt="%s"></a>' % (self.GetAgentInventoryTypeByBloodline(a.bloodlineID), a.agentID, mls.UI_CMD_SHOWINFO)
-            conversationTitle = '%s - %s' % (mls.AGT_DIALOGUE_BLURBCONVERSATION, cfg.eveowners.Get(agentDialogueWindow.sr.agentID).name)
-            blurbEffectiveStanding = mls.AGT_DIALOGUE_EFFECTIVESTANDING % {'external.effectiveStanding': effectiveStanding}
-            blurbDivision = mls.AGT_DIALOGUE_AGENTDIVISION % {'external.agentDivision': agentDivision}
+            agentInfoIcon = '<a href=showinfo:%d//%d><img src=icon:38_208 size=16 alt="%s"></a>' % (self.GetAgentInventoryTypeByBloodline(a.bloodlineID), a.agentID, uiutil.StripTags(localization.GetByLabel('UI/Commands/ShowInfo'), stripOnly=['localized']))
+            divisions = self.GetDivisions()
+            blurbDivision = localization.GetByLabel('UI/Agents/Dialogue/Division', divisionName=divisions[agentDivisionID].divisionName)
         agentLocationWrap = self.GetAgentMoniker(agentDialogueWindow.sr.agentID).GetAgentLocationWrap()
-        props = {'agentCorpName': cfg.eveowners.Get(agentCorpID).name,
-         'agentName': sm.GetService('agents').GetAgentDisplayName(agentDialogueWindow.sr.agentID),
-         'agentLevel': a.level,
-         'agentRace': raceName,
-         'agentBloodline': bloodlineName,
-         'agentInfoIcon': agentInfoIcon,
-         'agentLocation': agentLocationWrap,
-         'charName': cfg.eveowners.Get(eve.session.charid).name,
-         'corpName': cfg.eveowners.Get(eve.session.corpid).name,
-         'agentSays': agentSays,
-         'charSays': charSays,
-         'alignCharSays': alignCharSays,
-         'agentID': agentDialogueWindow.sr.agentID,
-         'agentCorpID': agentCorpID,
-         'loyaltyPoints': loyaltyPoints,
-         'extraMissionInfo': extraMissionInfo,
-         'conversationTitle': conversationTitle,
-         'blurbName': mls.AGT_DIALOGUE_BLURBNAME,
-         'blurbCorporation': mls.AGT_DIALOGUE_BLURBCORPORATION,
+        bodyProps = {'agentID': agentDialogueWindow.sr.agentID,
+         'agentName': cfg.eveowners.Get(agentDialogueWindow.sr.agentID).name,
+         'showInfoLink': agentInfoIcon,
          'blurbDivision': blurbDivision,
-         'blurbRace': mls.AGT_DIALOGUE_BLURBRACE,
-         'blurbBloodline': mls.AGT_DIALOGUE_BLURBBLOODLINE,
+         'agentLocation': agentLocationWrap,
          'blurbEffectiveStanding': blurbEffectiveStanding,
-         'missionTitle': missionTitle}
-        head = '\n<HTML>\n<HEAD>\n<LINK REL="stylesheet" TYPE="text/css" HREF="res:/ui/css/agentconvo.css">\n<TITLE>%(conversationTitle)s</TITLE>\n</HEAD>\n<BODY background-color=#00000000 link=#FFA800>\n' % props
-        body = '\n    <TABLE border=0 cellpadding=1 cellspacing=1>\n        <TR>\n            <TD valign=top >\n                <TABLE border=0 cellpadding=1 cellspacing=1>\n                    <TR>\n                    </TR>\n                    <TR>\n                    </TR>\n                    <TR>\n                    </TR>\n                    <TR>\n                        <TD valign=top><img src="portrait:%(agentID)d" width=120 height=120 size=256 align=left style=margin-right:10></TD>\n                    </TR>\n                </TABLE>\n            </TD>\n            <TD valign=top>\n                    <TABLE border=0 width=290 cellpadding=1 cellspacing=1>\n                    <TR>\n                        <TD width=120 valign=top colspan=2><font size=24>%(agentName)s</font> %(agentInfoIcon)s</TD>\n                    </TR>\n                    <TR>\n                        <TD>%(blurbDivision)s</TD>\n                    </TR>\n                    <TR>\n                        <TD height=12> </TD>\n                    </TR>\n                    <TR>\n                        <TD>%(agentLocation)s</TD>\n                    </TR>\n                    <TR>\n                        <TD height=12> </TD>\n                    </TR>\n                    <TR>\n                        <TD>%(blurbEffectiveStanding)s</TD>\n                    </TR>\n                    %(loyaltyPoints)s\n                </TABLE>\n            </TD>\n        </TR>\n    </TABLE>\n\n    <table width=380 cellpadding=2>\n    <tr>\n        <td>\n            %(missionTitle)s\n            <div id=basetext><font size=12>%(agentSays)s</font></div>\n        </td>\n    </tr>\n    </table>\n    <TABLE width="380">\n        <TR>\n            <TD>\n                %(extraMissionInfo)s\n            </TD>\n        </TR>\n        <TR>\n            <TD %(alignCharSays)s>\n                <BR>\n                %(charSays)s\n            </TD>\n        </TR>\n    </TABLE>\n        ' % props
-        foot = '\n</BODY>\n</HTML>\n        ' % props
-        html = head + body + foot
+         'loyaltyPoints': loyaltyPoints,
+         'missionTitle': missionTitle,
+         'agentSays': agentSays,
+         'extraMissionInfo': extraMissionInfo,
+         'adminBlock': adminBlock}
+        body = '\n<HTML>\n<HEAD>\n<LINK REL="stylesheet" TYPE="text/css" HREF="res:/ui/css/agentconvo.css">\n</HEAD>\n<BODY background-color=#00000000 link=#FFA800>\n    <TABLE border=0 cellpadding=1 cellspacing=1>\n        <TR>\n            <TD valign=top >\n                <TABLE border=0 cellpadding=1 cellspacing=1>\n                    <TR>\n                    </TR>\n                    <TR>\n                    </TR>\n                    <TR>\n                    </TR>\n                    <TR>\n                        <TD valign=top><img src="portrait:%(agentID)d" width=120 height=120 size=256 align=left style=margin-right:10></TD>\n                    </TR>\n                </TABLE>\n            </TD>\n            <TD valign=top>\n                    <TABLE border=0 width=290 cellpadding=1 cellspacing=1>\n                    <TR>\n                        <TD width=120 valign=top colspan=2><font size=24>%(agentName)s</font> \n                        %(showInfoLink)s\n                        </TD>\n                    </TR>\n                    <TR>\n                        <TD>%(blurbDivision)s</TD>\n                    </TR>\n                    <TR>\n                        <TD height=12> </TD>\n                    </TR>\n                    <TR>\n                        <TD>%(agentLocation)s</TD>\n                    </TR>\n                    <TR>\n                        <TD height=12> </TD>\n                    </TR>\n                    <TR>\n                        <TD>%(blurbEffectiveStanding)s</TD>\n                    </TR>\n                    %(loyaltyPoints)s\n                </TABLE>\n            </TD>\n        </TR>\n    </TABLE>\n\n    <table width=380 cellpadding=2>\n    <tr>\n        <td>\n            %(missionTitle)s\n            <div id=basetext><font size=12>%(agentSays)s</font></div>\n        </td>\n    </tr>\n    </table>\n    <TABLE width="380">\n        <TR>\n            <TD>\n                %(extraMissionInfo)s\n            </TD>\n        </TR>\n        %(adminBlock)s\n    </TABLE>\n</BODY>\n</HTML>\n    '
+        html = body % bodyProps
         if self.printHTML:
             print '-----------------------------------------------------------------------------------'
             print html
             print '-----------------------------------------------------------------------------------'
         numButtons = len(customAgentButtons['okLabel'])
-        if numButtons < 3:
-            for each in (mls.AGT_STANDARDMISSION_ASK, mls.AGT_STANDARDMISSION_QUIT, mls.AGT_STANDARDMISSION_CONTINUE):
-                if each in customAgentButtons['okLabel']:
-                    customAgentButtons['okLabel'].append(mls.UI_CMD_CLOSE)
-                    customAgentButtons['okFunc'].append(agentDialogueWindow.CloseX)
-                    customAgentButtons['args'].append('self')
-                    break
-
+        if appendCloseButton and numButtons < 3:
+            customAgentButtons['okLabel'].append(localization.GetByLabel('UI/Common/Buttons/Close'))
+            customAgentButtons['okFunc'].append(agentDialogueWindow.CloseByUser)
+            customAgentButtons['args'].append('self')
         if numButtons:
             agentDialogueWindow.DefineButtons('Agent Interaction Buttons', **customAgentButtons)
             for each in disabledButtons:
@@ -787,6 +855,87 @@ class Agents(service.Service):
         if agentID not in self.agentSolarSystems:
             self.agentSolarSystems[agentID] = sm.RemoteSvc('agentMgr').GetSolarSystemOfAgent(agentID)
         return self.agentSolarSystems[agentID]
+
+
+
+    def ProcessAgentInfoKeyVal(self, data):
+        infoFunc = {'research': self._ProcessResearchServiceInfo,
+         'locate': self._ProcessLocateServiceInfo,
+         'mission': self._ProcessMissionServiceInfo}.get(data.agentServiceType, None)
+        if infoFunc:
+            return infoFunc(data)
+        else:
+            return []
+
+
+
+    def _ProcessResearchServiceInfo(self, data):
+        header = localization.GetByLabel('UI/Agents/Research/ResearchServices', session.languageID)
+        skillList = []
+        for (skillTypeID, skillLevel,) in data.skills:
+            skillList.append(localization.GetByLabel('UI/Agents/Research/SkillListing', session.languageID, skillID=skillTypeID, skillLevel=skillLevel))
+
+        if not skillList:
+            skills = localization.GetByLabel('UI/Agents/Research/ErrorNoRelevantResearchSkills', session.languageID)
+        else:
+            skillList = localizationUtil.Sort(skillList)
+            skills = localizationUtil.FormatGenericList(skillList)
+        details = [(localization.GetByLabel('UI/Agents/Research/RelevantSkills', session.languageID), skills)]
+        status = []
+        if data.researchData:
+            researchData = data.researchData
+            researchStuff = [(localization.GetByLabel('UI/Agents/Research/ResearchField', session.languageID), cfg.invtypes.Get(researchData['skillTypeID']).name), (localization.GetByLabel('UI/Agents/Research/CurrentStatus', session.languageID), localization.GetByLabel('UI/Agents/Research/CurrentStatusRP', session.languageID, rpAmount=researchData['points'])), (localization.GetByLabel('UI/Agents/Research/ResearchRate', session.languageID), localization.GetByLabel('UI/Agents/Research/ResearchRateRPDay', session.languageID, rpAmount=researchData['pointsPerDay']))]
+            rpMultiplier = researchData['rpMultiplier']
+            if rpMultiplier > 1:
+                researchStuff.append((localization.GetByLabel('UI/Agents/Research/ResearchFieldBonus', session.languageID), localization.GetByLabel('UI/Agents/Research/ResearchFieldBonusRPMultiplier', session.languageID, rpMultiplier=rpMultiplier)))
+            status = [(localization.GetByLabel('UI/Agents/Research/YourResearch', session.languageID), researchStuff)]
+        research = []
+        for (skillTypeID, pattentIDs,) in data.researchSummary:
+            predictablePatentNames = []
+            for blueprintTypeID in pattentIDs:
+                predictablePatentNames.append(cfg.invtypes.Get(blueprintTypeID).name)
+
+            if predictablePatentNames:
+                predictablePatentNames = localizationUtil.Sort(predictablePatentNames)
+                predictablePatents = localizationUtil.FormatGenericList(predictablePatentNames)
+            else:
+                predictablePatents = localization.GetByLabel('UI/Agents/Research/NoPredictablePatents', session.languageID)
+            research.append((localization.GetByLabel('UI/Agents/Research/ResearchSummary', session.languageID, skillTypeID=skillTypeID), [(localization.GetByLabel('UI/Agents/Research/PredictablePatents', session.languageID), predictablePatents)]))
+
+        return [(header, details)] + status + research
+
+
+
+    def _ProcessLocateServiceInfo(self, data):
+        header = localization.GetByLabel('UI/Agents/Locator/LocationServices', session.languageID)
+        if data.frequency:
+            details = [(localization.GetByLabel('UI/Agents/Locator/MaxFrequency', session.languageID), localization.GetByLabel('UI/Agents/Locator/EveryInterval', session.languageID, interval=data.frequency))]
+        else:
+            details = [(localization.GetByLabel('UI/Agents/Locator/MaxFrequency', session.languageID), localization.GetByLabel('UI/Generic/NotAvailableShort', session.languageID))]
+        for (delayRange, delay, cost,) in data.delays:
+            rangeText = [localization.GetByLabel('UI/Agents/Locator/SameSolarSystem', session.languageID),
+             localization.GetByLabel('UI/Agents/Locator/SameConstellation', session.languageID),
+             localization.GetByLabel('UI/Agents/Locator/SameRegion', session.languageID),
+             localization.GetByLabel('UI/Agents/Locator/DifferentRegion', session.languageID)][delayRange]
+            if not delay:
+                delay = localization.GetByLabel('UI/Agents/Locator/ResultsInstantaneous', session.languageID)
+            else:
+                delay = util.FmtTimeInterval(delay * SEC)
+            details.append((rangeText, localizationUtil.FormatGenericList((util.FmtISK(cost), delay))))
+
+        if data.callbackID:
+            details.append((localization.GetByLabel('UI/Agents/Locator/Availability', session.languageID), localization.GetByLabel('UI/Agents/Locator/NotAvailableInProgress', session.languageID)))
+        elif data.lastUsed and blue.os.GetWallclockTime() - data.lastUsed < data.frequency:
+            details.append((localization.GetByLabel('UI/Agents/Locator/AvailableAgain', session.languageID), util.FmtDate(data.lastUsed + data.frequency)))
+        return [(header, details)]
+
+
+
+    def _ProcessMissionServiceInfo(self, data):
+        if data.available:
+            return [(localization.GetByLabel('UI/Agents/MissionServices', session.languageID), [(localization.GetByLabel('UI/Agents/MissionAvailability', session.languageID), localization.GetByLabel('UI/Agents/MissionAvailabilityStandard', session.languageID))])]
+        else:
+            return [(localization.GetByLabel('UI/Agents/MissionServices', session.languageID), [(localization.GetByLabel('UI/Agents/MissionAvailability', session.languageID), localization.GetByLabel('UI/Agents/MissionAvailabilityNone', session.languageID))])]
 
 
 

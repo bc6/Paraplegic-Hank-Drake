@@ -115,7 +115,7 @@ class VivoxService(service.Service):
 
     def _Init(self):
         self.echoChannelURI = 'sip:confctl-2@' + self.vivoxServer + '.vivox.com'
-        self.connector.InitializeEx(self.vivoxServer, self.secureLogging, os.path.normpath(os.path.join(blue.os.cachepath, 'vivox')), 'vivoxlog', '.txt', self.logLevel)
+        self.connector.InitializeEx(self.vivoxServer, self.secureLogging, os.path.normpath(os.path.join(blue.os.ResolvePathForWriting(u'cache:/vivox/'))), 'vivoxlog', '.txt', self.logLevel)
         self.LogInfo('Vivox intializing (', self.AppGetServerName(), self.vivoxServer, self.logLevel, ')')
 
 
@@ -377,7 +377,7 @@ class VivoxService(service.Service):
 
     def GetParticipants(self, vivoxChannelName):
         self.LogInfo('GetParticipants channel:', vivoxChannelName)
-        blue.pyos.synchro.Sleep(5000)
+        blue.pyos.synchro.SleepWallclock(5000)
         p = self.connector.GetParticipants(vivoxChannelName)
         participants = []
         for each in p:
@@ -522,7 +522,7 @@ class VivoxService(service.Service):
 
 
     def DelayedStartAudioTest(self):
-        blue.pyos.synchro.Sleep(1000)
+        blue.pyos.synchro.SleepWallclock(1000)
         if len(self.members) == 0:
             self.connector.StartAudioTest()
 
@@ -641,7 +641,7 @@ class VivoxService(service.Service):
 
 
     def FailedJoinChannel(self, errorCode, errorMessage, channelName):
-        if errorCode in (vivoxConstants.VX_NOTONACL, vivoxConstants.VX_ACCESSDENIED):
+        if errorCode in (vivoxConstants.VX_NOTONACL, vivoxConstants.VX_ACCESSDENIED, vivoxConstants.VX_NOTFOUND):
             if channelName not in self.addToAclQueue:
                 self.addToAclQueue.append(channelName)
                 uthread.pool('Vivox::FailedJoinChannel', self.AppAddToACL, channelName)

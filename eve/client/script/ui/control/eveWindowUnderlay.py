@@ -55,10 +55,12 @@ class BumpedUnderlay(uicls.Frame):
     default_texturePath = 'res:/UI/Texture/Shared/underlayBumped.png'
     default_cornerSize = 6
     default_state = uiconst.UI_DISABLED
+    default_alphaDiff = None
     inLiteMode = False
 
     def ApplyAttributes(self, attributes):
         uicls.Frame.ApplyAttributes(self, attributes)
+        self.alphaDiff = attributes.Get('alphaDiff', self.default_alphaDiff)
         self.OnUIColorsChanged()
         sm.RegisterNotify(self)
 
@@ -69,6 +71,8 @@ class BumpedUnderlay(uicls.Frame):
         (r, g, b, a,) = bgColor
         if self.inLiteMode:
             a = max(0.3, a * 0.3)
+        if self.alphaDiff:
+            a += self.alphaDiff
         self.SetRGB(r, g, b, a)
 
 

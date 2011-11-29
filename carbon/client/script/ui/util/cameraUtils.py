@@ -4,16 +4,32 @@ import math
 import util
 
 def GetEntityYaw(entity):
-    playerRot = entity.GetComponent('position').rotation
-    (playerYaw, pitch, roll,) = geo2.QuaternionRotationGetYawPitchRoll(playerRot)
-    playerYaw = playerYaw + math.pi / 2
-    return playerYaw
+    entityRot = entity.GetComponent('position').rotation
+    (yaw, pitch, roll,) = geo2.QuaternionRotationGetYawPitchRoll(entityRot)
+    yaw += math.pi / 2
+    if yaw > 2.0 * math.pi:
+        yaw = yaw - 2.0 * math.pi
+    elif yaw < 0.0:
+        yaw = yaw + 2.0 * math.pi
+    if yaw <= math.pi:
+        return math.pi - yaw
+    else:
+        return -(yaw - math.pi)
+
+
+
+def ReverseCameraYaw(yaw):
+    if yaw <= 0:
+        yaw = math.pi - abs(yaw)
+    else:
+        yaw = -(math.pi - yaw)
+    return yaw
 
 
 
 def GetAngleFromEntityToCamera(entity, overrideYaw = None, offset = None):
     activeCamera = sm.GetService('cameraClient').GetActiveCamera()
-    cameraYaw = -activeCamera.GetYaw()
+    cameraYaw = -activeCamera.yaw
     if overrideYaw:
         cameraYaw = overrideYaw
     if offset:
@@ -30,7 +46,7 @@ def GetAngleFromEntityToCamera(entity, overrideYaw = None, offset = None):
 def CalcDesiredPlayerHeading(heading):
     headingYaw = mathCommon.GetYawAngleFromDirectionVector(heading)
     activeCamera = sm.GetService('cameraClient').GetActiveCamera()
-    cameraYaw = -activeCamera.GetYaw()
+    cameraYaw = -activeCamera.yaw
     desiredYaw = cameraYaw + headingYaw
     return desiredYaw
 

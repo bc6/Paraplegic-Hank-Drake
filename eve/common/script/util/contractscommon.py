@@ -1,5 +1,6 @@
 import util
 import blue
+import localization
 CONTYPE_AUCTIONANDITEMECHANGE = 10
 CREATECONTRACT_CONFIRM_CHARGESTOHANGAR = 1
 const_conSalesTax = 0.01
@@ -97,25 +98,25 @@ def CalcContractFees(price, reward, type, time, skillLevels):
 
 
 def GetContractTypeText(id):
-    typesTxt = {const.conTypeItemExchange: mls.UI_CONTRACTS_ITEMEXCHANGE,
-     const.conTypeAuction: mls.UI_CONTRACTS_AUCTION,
-     const.conTypeCourier: mls.UI_CONTRACTS_COURIER,
-     const.conTypeLoan: mls.UI_CONTRACTS_LOAN}
-    return typesTxt.get(id, mls.UI_GENERIC_UNKNOWN)
+    typesTxt = {const.conTypeItemExchange: localization.GetByLabel('UI/Contracts/ContractsWindow/ItemExchange'),
+     const.conTypeAuction: localization.GetByLabel('UI/Contracts/ContractsWindow/Auction'),
+     const.conTypeCourier: localization.GetByLabel('UI/Contracts/ContractsWindow/Courier'),
+     const.conTypeLoan: localization.GetByLabel('UI/Contracts/ContractsWindow/Loan')}
+    return typesTxt.get(id, localization.GetByLabel('UI/Common/Unknown'))
 
 
 
 def GetContractStatusText(id, typ = None):
-    statusTxt = {const.conStatusOutstanding: mls.UI_CONTRACTS_OUTSTANDING,
-     const.conStatusInProgress: mls.UI_CONTRACTS_INPROGRESS,
-     const.conStatusFinishedIssuer: mls.UI_CONTRACTS_FINISHEDISSUER,
-     const.conStatusFinishedContractor: mls.UI_CONTRACTS_FINISHEDCONTRACTOR,
-     const.conStatusFinished: mls.UI_CONTRACTS_FINISHED,
-     const.conStatusRejected: mls.UI_CONTRACTS_REJECTED,
-     const.conStatusFailed: mls.UI_CONTRACTS_FAILED,
-     const.conStatusDeleted: mls.UI_CONTRACTS_DELETED,
-     const.conStatusReversed: mls.UI_CONTRACTS_REVERSED}
-    return statusTxt.get(id, '?')
+    statusTxt = {const.conStatusOutstanding: localization.GetByLabel('UI/Contracts/ContractsWindow/Outstanding'),
+     const.conStatusInProgress: localization.GetByLabel('UI/Contracts/ContractsWindow/InProgress'),
+     const.conStatusFinishedIssuer: localization.GetByLabel('UI/Contracts/ContractsWindow/ItemsNotYetClaimed'),
+     const.conStatusFinishedContractor: localization.GetByLabel('UI/Contracts/ContractsWindow/UnclaimedBySeller'),
+     const.conStatusFinished: localization.GetByLabel('UI/Contracts/ContractsWindow/Finished'),
+     const.conStatusRejected: localization.GetByLabel('UI/Contracts/ContractsWindow/Rejected'),
+     const.conStatusFailed: localization.GetByLabel('UI/Contracts/ContractsWindow/Failed'),
+     const.conStatusDeleted: localization.GetByLabel('UI/Contracts/ContractsWindow/Deleted'),
+     const.conStatusReversed: localization.GetByLabel('UI/Contracts/ContractsWindow/Reversal')}
+    return statusTxt.get(id, localization.GetByLabel('UI/Contracts/ContractsWindow/QuestionMark'))
 
 
 
@@ -123,32 +124,30 @@ def GetContractTitle(r, items):
     MAX_COL_LENGTH = 60
     MAX_TITLE_LEN = 100
     txt = ''
-    title = ''
     if (r.type == const.conTypeItemExchange or r.type == const.conTypeAuction) and len(items) > 0:
         l = len([ e for e in items if e.inCrate ])
         lgive = len(items) - l
         if r.type == const.conTypeItemExchange and lgive > 0 and l > 0:
-            txt = mls.UI_CONTRACTS_WANTTOTRADE
+            txt = localization.GetByLabel('UI/Contracts/ContractsWindow/WantToTrade')
         elif l > 1:
-            txt = mls.UI_CONTRACTS_MULTIPLEITEMS
+            txt = localization.GetByLabel('UI/Contracts/ContractsWindow/MultipleItems')
         elif l == 1:
-            txt = '%s' % cfg.invtypes.Get(items[0].itemTypeID).typeName
             if items[0].quantity > 1:
-                txt += ' x %s' % items[0].quantity
+                txt = localization.GetByLabel('UI/Contracts/ContractsWindow/TypeNameWithQuantity', typeID=items[0].itemTypeID, quantity=items[0].quantity)
+            else:
+                txt = localization.GetByLabel('UI/Contracts/ContractsWindow/TypeName', typeID=items[0].itemTypeID)
         elif r.type == const.conTypeItemExchange:
             if r.reward == 0:
-                txt = mls.UI_CONTRACTS_WANTAGIFT
+                txt = localization.GetByLabel('UI/Contracts/ContractsWindow/WantAGift')
             else:
-                txt = mls.UI_CONTRACTS_WANTTOBUY
+                txt = localization.GetByLabel('UI/Contracts/ContractEntry/WantToBuy')
     elif r.type == const.conTypeCourier:
-        title = '%s &gt;&gt; %s (%s m\xb3)' % (cfg.evelocations.Get(r.startSolarSystemID).name, cfg.evelocations.Get(r.endSolarSystemID).name, util.FmtAmt(r.volume, showFraction=0))
-        txt = title
+        txt = localization.GetByLabel('UI/Contracts/ContractsWindow/CourierContractTitleWIthVolume', startSolarSystem=r.startSolarSystemID, endSolarSystem=r.endSolarSystemID, volume=r.volume)
     else:
         txt = r.title
-    if len(txt) > MAX_COL_LENGTH:
-        txt = txt[:MAX_COL_LENGTH] + '...'
-    if txt == '':
-        txt = mls.UI_GENERIC_UNKNOWN
+    txt = util.TruncateStringTo(txt, MAX_COL_LENGTH, addTrail=localization.GetByLabel('UI/Common/MoreTrail'))
+    if len(txt) == 0:
+        txt = localization.GetByLabel('UI/Common/Unknown')
     return txt
 
 

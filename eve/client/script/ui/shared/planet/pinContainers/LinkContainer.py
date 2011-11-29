@@ -7,6 +7,8 @@ import planet
 import const
 import uiutil
 import listentry
+import localization
+import localizationUtil
 
 class LinkContainer(planet.ui.BasePinContainer):
     __guid__ = 'planet.ui.LinkContainer'
@@ -24,10 +26,10 @@ class LinkContainer(planet.ui.BasePinContainer):
 
 
     def _GetActionButtons(self):
-        btns = [util.KeyVal(name=mls.UI_PI_UPGRADELINK, panelCallback=self.PanelUpgrade, icon='ui_44_32_1'),
-         util.KeyVal(name=mls.UI_PI_STATS, panelCallback=self.PanelShowStats, icon='ui_44_32_5'),
-         util.KeyVal(name=mls.UI_PI_ROUTES, panelCallback=self.PanelShowRoutes, icon='ui_44_32_2'),
-         util.KeyVal(name=mls.UI_PI_DECOMMISSION, panelCallback=self.PanelDecommissionLink, icon='ui_44_32_2')]
+        btns = [util.KeyVal(id=planetCommon.PANEL_UPGRADELINK, panelCallback=self.PanelUpgrade),
+         util.KeyVal(id=planetCommon.PANEL_STATS, panelCallback=self.PanelShowStats),
+         util.KeyVal(id=planetCommon.PANEL_ROUTES, panelCallback=self.PanelShowRoutes),
+         util.KeyVal(id=planetCommon.PANEL_DECOMMISSION, panelCallback=self.PanelDecommissionLink)]
         return btns
 
 
@@ -35,9 +37,7 @@ class LinkContainer(planet.ui.BasePinContainer):
     def PanelUpgrade(self):
         cont = uicls.Container(parent=self.actionCont, pos=(0, 0, 0, 0), align=uiconst.TOTOP, state=uiconst.UI_HIDDEN)
         link = self.pin.link
-        infoSvc = sm.GetService('info')
         nextLevel = link.level + 1
-        infoSvc = sm.GetService('info')
         currentCpu = link.GetCpuUsage()
         currentPower = link.GetPowerUsage()
         nextLvlCpu = planetCommon.GetCpuUsageForLink(link.typeID, link.GetDistance(), nextLevel)
@@ -52,7 +52,7 @@ class LinkContainer(planet.ui.BasePinContainer):
         colonyPowerUsage = colony.colonyData.GetColonyPowerUsage()
         colonyPowerSupply = colony.colonyData.GetColonyPowerSupply()
         if addlPower + colonyPowerUsage > colonyPowerSupply or addlCpu + colonyCpuUsage > colonyCpuSupply:
-            text = mls.UI_PI_LINK_INSUFFICIENTCAPACITY % {'typeName': cfg.invtypes.Get(link.typeID).name}
+            text = localization.GetByLabel('UI/PI/Common/LinkCannotUpgradePowerCPU', linkTypeName=cfg.invtypes.Get(link.typeID).name)
             editBox = self._DrawEditBox(cont, text)
             self.upgradeStatsScroll = scroll = uicls.Scroll(parent=cont, name='upgradeStatsScroll', align=uiconst.TOTOP, height=58)
             self.upgradeStatsScroll.sr.id = 'planetLinkUpgradeStats'
@@ -60,45 +60,43 @@ class LinkContainer(planet.ui.BasePinContainer):
             uicls.Frame(parent=scroll, color=(1.0, 1.0, 1.0, 0.2))
             scrolllist = []
             link = self.pin.link
-            attr = cfg.dgmattribs.GetIfExists(const.attributeCpuLoad)
-            strCurrentCpu = infoSvc.GetFormatAndValue(attr, currentCpu)
-            strNextCpu = infoSvc.GetFormatAndValue(attr, nextLvlCpu)
+            strCurrentCpu = localization.GetByLabel('UI/PI/Common/TeraFlopsAmount', amount=currentCpu)
+            strNextCpu = localization.GetByLabel('UI/PI/Common/TeraFlopsAmount', amount=nextLvlCpu)
             cpuDeficit = nextLvlCpu - (colonyCpuSupply - colonyCpuUsage)
-            strCpuDeficit = infoSvc.GetFormatAndValue(attr, max(0, cpuDeficit))
-            attr = cfg.dgmattribs.GetIfExists(const.attributeCpuLoad)
-            strCurrentPower = infoSvc.GetFormatAndValue(attr, currentPower)
-            strNextPower = infoSvc.GetFormatAndValue(attr, nextLvlPower)
-            powerDeficit = nextLvlPower - (colonyPowerSupply - colonyPowerUsage)
-            strPowerDeficit = infoSvc.GetFormatAndValue(attr, max(0, powerDeficit))
             if cpuDeficit > 0:
-                strCpuDeficit = '<font color=red>' + strCpuDeficit + '</font>'
+                cerberusLabel = 'UI/PI/Common/TeraFlopsAmountRed'
             else:
-                strCpuDeficit = '<font color=green>' + strCpuDeficit + '</font>'
+                cerberusLabel = 'UI/PI/Common/TeraFlopsAmountGreen'
+            strCpuDeficit = localization.GetByLabel(cerberusLabel, amount=max(0, cpuDeficit))
+            strCurrentPower = localization.GetByLabel('UI/PI/Common/MegaWattsAmount', amount=currentPower)
+            strNextPower = localization.GetByLabel('UI/PI/Common/MegaWattsAmount', amount=nextLvlPower)
+            powerDeficit = nextLvlPower - (colonyPowerSupply - colonyPowerUsage)
             if powerDeficit > 0:
-                strPowerDeficit = '<font color=red>' + strPowerDeficit + '</font>'
+                cerberusLabel = 'UI/PI/Common/MegaWattsAmountRed'
             else:
-                strPowerDeficit = '<font color=green>' + strPowerDeficit + '</font>'
-            data = util.KeyVal(label='%s<t>%s<t>%s<t>%s' % (mls.UI_PI_CPUUSAGE,
+                cerberusLabel = 'UI/PI/Common/MegaWattsAmountGreen'
+            strPowerDeficit = localization.GetByLabel(cerberusLabel, amount=max(0, powerDeficit))
+            data = util.KeyVal(label='%s<t>%s<t>%s<t>%s' % (localization.GetByLabel('UI/PI/Common/CpuUsage'),
              strCurrentCpu,
              strNextCpu,
              strCpuDeficit))
             scrolllist.append(listentry.Get('Generic', data=data))
-            data = util.KeyVal(label='%s<t>%s<t>%s<t>%s' % (mls.UI_PI_POWERUSAGE,
+            data = util.KeyVal(label='%s<t>%s<t>%s<t>%s' % (localization.GetByLabel('UI/PI/Common/PowerUsage'),
              strCurrentPower,
              strNextPower,
              strPowerDeficit))
             scrolllist.append(listentry.Get('Generic', data=data))
             scroll.Load(contentList=scrolllist, headers=['',
-             mls.UI_GENERIC_CURRENT,
-             mls.UI_PI_UPGRADE,
-             mls.UI_GENERIC_DEFICIT])
+             localization.GetByLabel('UI/Common/Current'),
+             localization.GetByLabel('UI/PI/Common/UpgradeNoun'),
+             localization.GetByLabel('UI/PI/Common/PowerOrCPUDeficit')])
             cont.height = editBox.height + 58
         elif nextLevel > planetCommon.LINK_MAX_UPGRADE:
-            text = mls.UI_PI_LINK_MAXIMUMUPGRADE % {'typeName': cfg.invtypes.Get(link.typeID).name}
+            text = localization.GetByLabel('UI/PI/Common/LinkMaxUpgradeReached', linkTypeName=cfg.invtypes.Get(link.typeID).name)
             editBox = self._DrawEditBox(cont, text)
             cont.height = editBox.height
         else:
-            text = mls.UI_PI_LINKUPGRADE2 % {'level': nextLevel}
+            text = localization.GetByLabel('UI/PI/Common/LinkUpgradePrompt', level=nextLevel)
             self.upgradeStatsScroll = scroll = uicls.Scroll(parent=cont, name='UpgradeStatsScroll', align=uiconst.TOTOP, height=96)
             self.upgradeStatsScroll.sr.id = 'planetLinkUpgradeStats'
             scroll.HideUnderLay()
@@ -107,46 +105,43 @@ class LinkContainer(planet.ui.BasePinContainer):
             link = self.pin.link
             totalBandwidth = link.GetTotalBandwidth()
             nextLvlBandwidth = link.GetBandwidthForLevel(nextLevel)
-            attr = cfg.dgmattribs.GetIfExists(const.attributeLogisticalCapacity)
             strCurrentBandwidth = totalBandwidth
             strNextLvlBandwidth = nextLvlBandwidth
             strBandwidthDelta = max(0, nextLvlBandwidth - totalBandwidth)
             strBandwidthUsage = link.GetBandwidthUsage()
-            attr = cfg.dgmattribs.GetIfExists(const.attributeCpuLoad)
-            strCurrentCpu = infoSvc.GetFormatAndValue(attr, currentCpu)
-            strNextCpu = infoSvc.GetFormatAndValue(attr, nextLvlCpu)
-            strCpuDelta = infoSvc.GetFormatAndValue(attr, max(0, nextLvlCpu - currentCpu))
-            strCpuUsage = infoSvc.GetFormatAndValue(attr, colonyCpuUsage)
-            attr = cfg.dgmattribs.GetIfExists(const.attributePowerLoad)
-            strCurrentPower = infoSvc.GetFormatAndValue(attr, currentPower)
-            strNextPower = infoSvc.GetFormatAndValue(attr, nextLvlPower)
-            strPowerDelta = infoSvc.GetFormatAndValue(attr, max(0, nextLvlPower - currentPower))
-            strPowerUsage = infoSvc.GetFormatAndValue(attr, colonyPowerUsage)
-            data = util.KeyVal(label='%s<t>%s<t>%s<t>%s' % (mls.UI_GENERIC_CURRENT,
-             strCurrentBandwidth,
+            strCurrentCpu = localization.GetByLabel('UI/PI/Common/TeraFlopsAmount', amount=currentCpu)
+            strNextCpu = localization.GetByLabel('UI/PI/Common/TeraFlopsAmount', amount=nextLvlCpu)
+            strCpuDelta = localization.GetByLabel('UI/PI/Common/TeraFlopsAmount', amount=max(0, nextLvlCpu - currentCpu))
+            strCpuUsage = localization.GetByLabel('UI/PI/Common/TeraFlopsAmount', amount=int(colonyCpuUsage))
+            strCurrentPower = localization.GetByLabel('UI/PI/Common/MegaWattsAmount', amount=currentPower)
+            strNextPower = localization.GetByLabel('UI/PI/Common/MegaWattsAmount', amount=nextLvlPower)
+            strPowerDelta = localization.GetByLabel('UI/PI/Common/MegaWattsAmount', amount=max(0, nextLvlPower - currentPower))
+            strPowerUsage = localization.GetByLabel('UI/PI/Common/MegaWattsAmount', amount=int(colonyPowerUsage))
+            data = util.KeyVal(label='%s<t>%s<t>%s<t>%s' % (localization.GetByLabel('UI/Common/Current'),
+             localizationUtil.FormatNumeric(strCurrentBandwidth, decimalPlaces=1),
              strCurrentCpu,
              strCurrentPower))
             scrolllist.append(listentry.Get('Generic', data=data))
-            data = util.KeyVal(label='%s<t>%s<t>%s<t>%s' % (mls.UI_PI_UPGRADE,
-             strNextLvlBandwidth,
+            data = util.KeyVal(label='%s<t>%s<t>%s<t>%s' % (localization.GetByLabel('UI/PI/Common/UpgradeNoun'),
+             localizationUtil.FormatNumeric(strNextLvlBandwidth, decimalPlaces=1),
              strNextCpu,
              strNextPower))
             scrolllist.append(listentry.Get('Generic', data=data))
-            data = util.KeyVal(label='%s<t>%s<t>%s<t>%s' % (mls.UI_GENERIC_CHANGE,
-             strBandwidthDelta,
+            data = util.KeyVal(label='%s<t>%s<t>%s<t>%s' % (localization.GetByLabel('UI/PI/Common/ChangeNoun'),
+             localizationUtil.FormatNumeric(strBandwidthDelta, decimalPlaces=1),
              strCpuDelta,
              strPowerDelta))
             scrolllist.append(listentry.Get('Generic', data=data))
-            data = util.KeyVal(label='%s<t>%s<t>%s<t>%s' % (mls.UI_GENERIC_USAGE,
-             strBandwidthUsage,
+            data = util.KeyVal(label='%s<t>%s<t>%s<t>%s' % (localization.GetByLabel('UI/Common/Usage'),
+             localizationUtil.FormatNumeric(strBandwidthUsage, decimalPlaces=1),
              strCpuUsage,
              strPowerUsage))
             scrolllist.append(listentry.Get('Generic', data=data))
             scroll.Load(contentList=scrolllist, headers=['',
-             mls.UI_GENERIC_CAPACITY,
-             mls.UI_GENERIC_CPU,
-             mls.UI_GENERIC_POWER])
-            btns = [[mls.UI_PI_UPGRADE, self._UpgradeSelf, (link.endpoint1.id, link.endpoint2.id, nextLevel)]]
+             localization.GetByLabel('UI/PI/Common/Capacity'),
+             localization.GetByLabel('UI/Common/Cpu'),
+             localization.GetByLabel('UI/Common/Power')])
+            btns = [[localization.GetByLabel('UI/PI/Common/Upgrade'), self._UpgradeSelf, (link.endpoint1.id, link.endpoint2.id, nextLevel)]]
             uicls.ButtonGroup(btns=btns, parent=cont, line=False, alwaysLite=True)
             editBox = self._DrawEditBox(cont, text)
             cont.height = editBox.height + 115
@@ -156,10 +151,10 @@ class LinkContainer(planet.ui.BasePinContainer):
 
     def PanelDecommissionLink(self):
         cont = uicls.Container(parent=self.actionCont, pos=(0, 0, 0, 0), align=uiconst.TOTOP, state=uiconst.UI_HIDDEN)
-        text = mls.UI_PI_LINK_DECOMMISSION_PROMPT % {'typeName': cfg.invtypes.Get(self.pin.link.typeID).name}
+        text = localization.GetByLabel('UI/PI/Common/DecommissionLink', typeName=cfg.invtypes.Get(self.pin.link.typeID).name)
         editBox = self._DrawEditBox(cont, text)
         cont.height = editBox.height + 25
-        btns = [[mls.UI_GENERIC_PROCEED, self._DecommissionSelf, None]]
+        btns = [[localization.GetByLabel('UI/PI/Common/Proceed'), self._DecommissionSelf, None]]
         uicls.ButtonGroup(btns=btns, parent=cont, line=False, alwaysLite=True)
         return cont
 
@@ -170,7 +165,6 @@ class LinkContainer(planet.ui.BasePinContainer):
             return 
         link = self.pin.link
         scrolllist = []
-        infoSvc = sm.GetService('info')
         bandwidthAttr = cfg.dgmattribs.Get(const.attributeLogisticalCapacity)
         colony = sm.GetService('planetUI').GetCurrentPlanet().GetColony(link.endpoint1.ownerID)
         for routeID in link.routesTransiting:
@@ -178,13 +172,13 @@ class LinkContainer(planet.ui.BasePinContainer):
             typeID = route.GetType()
             qty = route.GetQuantity()
             typeName = cfg.invtypes.Get(typeID).typeName
-            data = util.KeyVal(label='<t>%s<t>%s<t>%s' % (typeName, qty, infoSvc.GetFormatAndValue(bandwidthAttr, route.GetBandwidthUsage())), typeID=typeID, itemID=None, getIcon=True, OnMouseEnter=self.OnRouteEntryHover, OnMouseExit=self.OnRouteEntryExit, routeID=route.routeID, OnClick=self.OnRouteEntryClick)
+            data = util.KeyVal(label='<t>%s<t>%s<t>%s' % (typeName, qty, localization.GetByLabel('UI/PI/Common/CapacityAmount', amount=route.GetBandwidthUsage())), typeID=typeID, itemID=None, getIcon=True, OnMouseEnter=self.OnRouteEntryHover, OnMouseExit=self.OnRouteEntryExit, routeID=route.routeID, OnClick=self.OnRouteEntryClick)
             scrolllist.append(listentry.Get('Item', data=data))
 
-        self.routeScroll.Load(contentList=scrolllist, noContentHint=mls.UI_PI_NOROUTES, headers=['',
-         mls.UI_GENERIC_COMMODITY,
-         mls.UI_GENERIC_QUANTITY,
-         mls.UI_GENERIC_LOAD])
+        self.routeScroll.Load(contentList=scrolllist, noContentHint=localization.GetByLabel('UI/PI/Common/NoRoutesThroughLink'), headers=['',
+         localization.GetByLabel('UI/Common/Commodity'),
+         localization.GetByLabel('UI/Common/Quantity'),
+         localization.GetByLabel('UI/PI/Common/CapacityUsed')])
 
 
 
@@ -226,11 +220,9 @@ class LinkContainer(planet.ui.BasePinContainer):
         self.routeInfoDest.SetSubtext(planetCommon.GetGenericPinName(destPin.typeID, destPin.id))
         routeTypeID = selectedRoute.GetType()
         routeQty = selectedRoute.GetQuantity()
-        self.routeInfoType.SetSubtext(mls.UI_PI_UNITSOFTYPE % {'typeName': cfg.invtypes.Get(routeTypeID).name,
-         'quantity': routeQty})
+        self.routeInfoType.SetSubtext(localization.GetByLabel('UI/PI/Common/ItemAmount', itemName=cfg.invtypes.Get(routeTypeID).name, amount=int(routeQty)))
         bandwidthAttr = cfg.dgmattribs.Get(const.attributeLogisticalCapacity)
-        infoSvc = sm.GetService('info')
-        self.routeInfoBandwidth.SetSubtext(infoSvc.GetFormatAndValue(bandwidthAttr, selectedRoute.GetBandwidthUsage()))
+        self.routeInfoBandwidth.SetSubtext(localization.GetByLabel('UI/PI/Common/CapacityAmount', amount=selectedRoute.GetBandwidthUsage()))
         self.routeInfo.opacity = 0.0
         self.routeInfo.state = uiconst.UI_PICKCHILDREN
         self.showRoutesCont.height = 168 + self.routeInfo.height
@@ -241,42 +233,40 @@ class LinkContainer(planet.ui.BasePinContainer):
 
     def GetCaptionForUpgradeLevel(self, level):
         if level >= planetCommon.LINK_MAX_UPGRADE:
-            return mls.UI_PI_GENERIC_EXPERIMENTAL
+            return localization.GetByLabel('UI/PI/Common/LinkUpgradeLevel10')
         else:
             if level == 9:
-                return mls.UI_PI_GENERIC_STATEOFTHEART
+                return localization.GetByLabel('UI/PI/Common/LinkUpgradeLevel9')
             if level == 8:
-                return mls.UI_GENERIC_ADVANCED
+                return localization.GetByLabel('UI/PI/Common/LinkUpgradeLevel8')
             if level == 7:
-                return mls.UI_PI_GENERIC_EXPRESS
+                return localization.GetByLabel('UI/PI/Common/LinkUpgradeLevel7')
             if level == 6:
-                return mls.UI_PI_GENERIC_EXPEDITED
+                return localization.GetByLabel('UI/PI/Common/LinkUpgradeLevel6')
             if level == 5:
-                return mls.UI_GENERIC_FAST
+                return localization.GetByLabel('UI/PI/Common/LinkUpgradeLevel5')
             if level == 4:
-                return mls.UI_SHARED_CERTGRADE3
+                return localization.GetByLabel('UI/PI/Common/LinkUpgradeLevel4')
             if level == 3:
-                return mls.UI_GENERIC_STANDARD
+                return localization.GetByLabel('UI/PI/Common/LinkUpgradeLevel3')
             if level == 2:
-                return mls.UI_GENERIC_BASIC
+                return localization.GetByLabel('UI/PI/Common/LinkUpgradeLevel2')
             if level == 1:
-                return mls.UI_GENERIC_LOCAL
-            return mls.UI_GENERIC_NONE
+                return localization.GetByLabel('UI/PI/Common/LinkUpgradeLevel1')
+            return localization.GetByLabel('UI/PI/Common/LinkUpgradeLevel0')
 
 
 
     def _DecommissionSelf(self, *args):
         sm.GetService('audio').SendUIEvent('wise:/msg_pi_build_decommission_play')
-        print 'LinkContainer::DecommissionSelf',
-        print self.pin.GetIDTuple()
         self.planetUISvc.myPinManager.RemoveLink(self.pin.GetIDTuple())
-        self.CloseX()
+        self.CloseByUser()
 
 
 
     def _UpgradeSelf(self, *args):
         self.planetUISvc.myPinManager.UpgradeLink(*args)
-        self.CloseX()
+        self.CloseByUser()
 
 
 
@@ -287,16 +277,14 @@ class LinkContainer(planet.ui.BasePinContainer):
          p,
          p))
         link = self.pin.link
-        infoSvc = sm.GetService('info')
-        attr = cfg.dgmattribs.GetIfExists(const.attributeLogisticalCapacity)
-        totalBandwidth = infoSvc.GetFormatAndValue(attr, link.GetTotalBandwidth())
-        bandwidthUsed = infoSvc.GetFormatAndValue(attr, link.GetBandwidthUsage())
-        self.totalBandwidth = planet.ui.CaptionAndSubtext(parent=infoCont, caption=mls.UI_PI_LOGISTICALCAPACITY, subtext=totalBandwidth)
-        self.bandwidthUsed = planet.ui.CaptionAndSubtext(parent=infoCont, caption=mls.UI_PI_CAPACITYUSED, subtext=bandwidthUsed, top=30)
-        levelStr = '%s - %s' % (uiutil.IntToRoman(link.level), self.GetCaptionForUpgradeLevel(link.level)) if link.level > 0 else self.GetCaptionForUpgradeLevel(link.level)
+        totalBandwidth = localization.GetByLabel('UI/PI/Common/CapacityAmount', amount=link.GetTotalBandwidth())
+        bandwidthUsed = localization.GetByLabel('UI/PI/Common/CapacityAmount', amount=link.GetBandwidthUsage())
+        self.totalBandwidth = planet.ui.CaptionAndSubtext(parent=infoCont, caption=localization.GetByLabel('UI/PI/Common/LinkMaxCapacity'), subtext=totalBandwidth)
+        self.bandwidthUsed = planet.ui.CaptionAndSubtext(parent=infoCont, caption=localization.GetByLabel('UI/PI/Common/CapacityUsed'), subtext=bandwidthUsed, top=30)
         left = self.infoContRightColAt
-        self.bandwidthGauge = uicls.Gauge(parent=infoCont, value=link.GetBandwidthUsage() / link.GetTotalBandwidth(), color=planetCommon.PLANET_COLOR_BANDWIDTH, label=mls.UI_PI_CAPACITYUSED, left=left)
-        self.upgradeLevel = planet.ui.CaptionAndSubtext(parent=infoCont, caption=mls.STATION_UPGRADE_LEVEL, subtext=levelStr, top=30, left=left)
+        self.bandwidthGauge = uicls.Gauge(parent=infoCont, value=link.GetBandwidthUsage() / link.GetTotalBandwidth(), color=planetCommon.PLANET_COLOR_BANDWIDTH, label=localization.GetByLabel('UI/PI/Common/CapacityUsed'), left=left)
+        levelStr = localization.GetByLabel('UI/PI/Common/LinkUpgradeLevelAndName', upgradeLevel=uiutil.IntToRoman(link.level), upgradeLevelName=self.GetCaptionForUpgradeLevel(link.level))
+        self.upgradeLevel = planet.ui.CaptionAndSubtext(parent=infoCont, caption=localization.GetByLabel('UI/PI/Common/UpgradeLevel'), subtext=levelStr, top=30, left=left)
         return infoCont
 
 
@@ -305,13 +293,11 @@ class LinkContainer(planet.ui.BasePinContainer):
         if not self or self.destroyed:
             return 
         link = self.pin.link
-        infoSvc = sm.GetService('info')
-        attr = cfg.dgmattribs.GetIfExists(const.attributeLogisticalCapacity)
-        totalBandwidth = infoSvc.GetFormatAndValue(attr, link.GetTotalBandwidth())
-        bandwidthUsed = infoSvc.GetFormatAndValue(attr, link.GetBandwidthUsage())
+        totalBandwidth = localization.GetByLabel('UI/PI/Common/CapacityAmount', amount=link.GetTotalBandwidth())
+        bandwidthUsed = localization.GetByLabel('UI/PI/Common/CapacityAmount', amount=link.GetBandwidthUsage())
         self.totalBandwidth.SetSubtext(totalBandwidth)
         self.bandwidthUsed.SetSubtext(bandwidthUsed)
-        levelStr = '%s - %s' % (uiutil.IntToRoman(link.level), self.GetCaptionForUpgradeLevel(link.level)) if link.level > 0 else self.GetCaptionForUpgradeLevel(link.level)
+        levelStr = localization.GetByLabel('UI/PI/Common/LinkUpgradeLevelAndName', upgradeLevel=uiutil.IntToRoman(link.level), upgradeLevelName=self.GetCaptionForUpgradeLevel(link.level))
         self.upgradeLevel.SetSubtext(levelStr)
         self.bandwidthGauge.SetValue(link.GetBandwidthUsage() / link.GetTotalBandwidth())
 
@@ -324,11 +310,13 @@ class LinkContainer(planet.ui.BasePinContainer):
         uicls.Frame(parent=scroll, color=(1.0, 1.0, 1.0, 0.2))
         scrolllist = []
         link = self.pin.link
-        data = util.KeyVal(label='%s<t>%s %s' % (mls.UI_PI_CPUUSAGE, link.GetCpuUsage(), mls.UI_GENERIC_TERAFLOPSSHORT))
+        strCpuUsage = localization.GetByLabel('UI/PI/Common/TeraFlopsAmount', amount=int(link.GetCpuUsage()))
+        data = util.KeyVal(label='%s<t>%s' % (localization.GetByLabel('UI/PI/Common/CpuUsage'), strCpuUsage))
         scrolllist.append(listentry.Get('Generic', data=data))
-        data = util.KeyVal(label='%s<t>%s %s' % (mls.UI_PI_POWERUSAGE, link.GetPowerUsage(), mls.UI_GENERIC_MEGAWATTSHORT))
+        strPowerUsage = localization.GetByLabel('UI/PI/Common/MegaWattsAmount', amount=int(link.GetPowerUsage()))
+        data = util.KeyVal(label='%s<t>%s' % (localization.GetByLabel('UI/PI/Common/PowerUsage'), strPowerUsage))
         scrolllist.append(listentry.Get('Generic', data=data))
-        scroll.Load(contentList=scrolllist, headers=[mls.UI_CHARCREA_ATTRIBUTE, mls.UI_GENERIC_VALUE])
+        scroll.Load(contentList=scrolllist, headers=[localization.GetByLabel('UI/PI/Common/Attribute'), localization.GetByLabel('UI/Common/Value')])
         return cont
 
 

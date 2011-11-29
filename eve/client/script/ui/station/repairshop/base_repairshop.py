@@ -1,25 +1,20 @@
-import base
-import blue
 import const
-import draw
-import form
 import listentry
-import log
 import math
 import service
-import sys
 import uix
 import uiutil
 import uthread
 import util
-import xtriui
 import uicls
 import uiconst
+import localization
 
 class RepairShopWindow(uicls.Window):
     __guid__ = 'form.RepairShopWindow'
     default_width = 400
     default_height = 300
+    default_windowID = 'repairshop'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -27,36 +22,36 @@ class RepairShopWindow(uicls.Window):
         self.invReady = 0
         self.optionsByItemType = {}
         self.itemToRepairDescription = ''
-        self.repairSvc = util.Moniker('repairSvc', eve.session.stationid)
+        self.repairSvc = util.Moniker('repairSvc', session.stationid2)
         self.invCache = sm.GetService('invCache')
-        self.SetCaption(mls.UI_STATION_REPAIRSHOP)
+        self.SetCaption(localization.GetByLabel('UI/Station/Repair/RepairShopHeader'))
         self.SetMinSize([350, 270])
         self.SetWndIcon('ui_18_128_4', mainTop=-8)
-        uicls.WndCaptionLabel(text=mls.UI_SHARED_MAPOPS47, parent=self.sr.topParent, align=uiconst.RELATIVE)
+        uicls.WndCaptionLabel(text=localization.GetByLabel('UI/Station/Repair/RepairFacilities'), parent=self.sr.topParent, align=uiconst.RELATIVE)
         self.scope = 'station'
-        btns = uicls.ButtonGroup(btns=[(mls.UI_CMD_PICKNEWITEM,
+        btns = uicls.ButtonGroup(btns=[(localization.GetByLabel('UI/Commands/PickNewItem'),
           self.DisplayItems,
           (),
-          84), (mls.UI_CMD_REPAIRITEM,
+          84), (localization.GetByLabel('UI/Commands/RepairItem'),
           self.QuoteItems,
           (),
-          84), (mls.UI_CMD_REPAIRALL,
+          84), (localization.GetByLabel('UI/Commands/RepairAll'),
           self.DoNothing,
           (),
           84)], line=1)
         self.sr.main.children.append(btns)
         self.sr.pickSelect = btns
-        self.sr.pickBtn = self.sr.pickSelect.GetBtnByLabel(mls.UI_CMD_PICKNEWITEM)
-        self.sr.selBtn = self.sr.pickSelect.GetBtnByLabel(mls.UI_CMD_REPAIRITEM)
-        self.sr.repairAllBtn = self.sr.pickSelect.GetBtnByLabel(mls.UI_CMD_REPAIRALL)
+        self.sr.pickBtn = self.sr.pickSelect.GetBtnByLabel(localization.GetByLabel('UI/Commands/PickNewItem'))
+        self.sr.selBtn = self.sr.pickSelect.GetBtnByLabel(localization.GetByLabel('UI/Commands/RepairItem'))
+        self.sr.repairAllBtn = self.sr.pickSelect.GetBtnByLabel(localization.GetByLabel('UI/Commands/RepairAll'))
         cont = uicls.Container(name='scroll', align=uiconst.TORIGHT, parent=self.sr.topParent, left=const.defaultPadding, top=const.defaultPadding, width=200)
         self.sr.scroll = uicls.Scroll(parent=self.sr.main, padding=(const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding))
-        self.sr.scroll.sr.minColumnWidth = {mls.UI_GENERIC_TYPE: 30}
-        self.sr.avgDamage = uicls.Label(text='', parent=cont, name='avgDamage', left=8, top=0, state=uiconst.UI_NORMAL, fontsize=10, letterspace=1, uppercase=1, align=uiconst.BOTTOMRIGHT)
-        self.sr.totalCost = uicls.Label(text='', parent=cont, name='totalCost', left=8, top=12, state=uiconst.UI_NORMAL, fontsize=10, letterspace=1, uppercase=1, align=uiconst.BOTTOMRIGHT)
+        self.sr.scroll.sr.minColumnWidth = {localization.GetByLabel('UI/Common/Type'): 30}
+        self.sr.avgDamage = uicls.EveLabelSmall(text='', parent=cont, name='avgDamage', left=8, top=0, state=uiconst.UI_NORMAL, align=uiconst.BOTTOMRIGHT)
+        self.sr.totalCost = uicls.EveLabelSmall(text='', parent=cont, name='totalCost', left=8, top=12, state=uiconst.UI_NORMAL, align=uiconst.BOTTOMRIGHT)
         self.Register()
         uthread.new(self.DisplayItems)
 
@@ -78,7 +73,7 @@ class RepairShopWindow(uicls.Window):
         self.sr.avgDamage.text = ''
         self.sr.totalCost.text = ''
         try:
-            hangarInv = eve.GetInventory(const.containerHangar)
+            hangarInv = sm.GetService('invCache').GetInventory(const.containerHangar)
             items = hangarInv.List()
             tmplst = []
             for item in items:
@@ -89,7 +84,7 @@ class RepairShopWindow(uicls.Window):
                         tmplst.append((cfg.invtypes.Get(item.typeID).name, item))
 
             if len(tmplst) == 0:
-                self.SetHint(mls.UI_STATION_TEXT40)
+                self.SetHint(localization.GetByLabel('UI/Station/Repair/NothingToRepair', repairShop=localization.GetByLabel('UI/Station/Repair/RepairFacilities')))
             else:
                 scrolllist = []
                 currIndex = 1
@@ -107,7 +102,7 @@ class RepairShopWindow(uicls.Window):
                 self.sr.scroll.sr.id = None
                 self.sr.scroll.sr.ignoreTabTrimming = 1
                 self.state = uiconst.UI_NORMAL
-                self.sr.scroll.Load(contentList=scrolllist, headers=[mls.UI_GENERIC_TYPE])
+                self.sr.scroll.Load(contentList=scrolllist, headers=[localization.GetByLabel('UI/Common/Type')])
 
         finally:
             self.state = uiconst.UI_NORMAL
@@ -148,7 +143,7 @@ class RepairShopWindow(uicls.Window):
         if item not in items:
             items.append(item)
         m = sm.GetService('menu').GetMenuFormItemIDTypeID(item.itemID, item.typeID)
-        m += [(mls.UI_CMD_GETREPAIRQUOTE, self.DisplayRepairQuote, (items,))]
+        m += [(localization.GetByLabel('UI/Inventory/ItemActions/GetRepairQuote'), self.DisplayRepairQuote, (items,))]
         return m
 
 
@@ -165,9 +160,9 @@ class RepairShopWindow(uicls.Window):
         if info not in items:
             items.append(info)
         if info.damage > 0.0:
-            m += [(mls.UI_CMD_REPAIR, self.Repair, (items,))]
+            m += [(localization.GetByLabel('UI/Commands/Repair'), self.Repair, (items,))]
         if eve.session.role & service.ROLE_WORLDMOD:
-            m += [(mls.UI_CMD_DAMAGE, self.Damage, (items,))]
+            m += [(localization.GetByLabel('UI/Commands/Damage'), self.Damage, (items,))]
         return m
 
 
@@ -211,15 +206,12 @@ class RepairShopWindow(uicls.Window):
                 if each.itemID in [ entryData['itemID'] for entryData in listEntryData ]:
                     continue
                 damage = math.ceil(each.damage)
-                dmg = '%s/%s(%s) - %.1f%%' % (max(0, int(each.maxHealth - damage)),
-                 each.maxHealth,
-                 mls.UI_GENERIC_FITTING_HP,
-                 damage / float(each.maxHealth or 1) * 100.0)
-                cst = '%s' % util.FmtISK(int(math.ceil(damage * each.costToRepairOneUnitOfDamage)))
+                dmg = localization.GetByLabel('UI/Station/Repair/CurrentDamage', curHealth=max(0, int(each.maxHealth - damage)), maxHealth=each.maxHealth, percentHealth=damage / float(each.maxHealth or 1) * 100.0)
+                cst = localization.GetByLabel('UI/Station/Repair/RepairCostNumberOnly', isk=int(math.ceil(damage * each.costToRepairOneUnitOfDamage)))
                 totalitems = totalitems + 1
                 totaldamage = totaldamage + damage / float(each.maxHealth or 1) * 100.0
                 totalcost = totalcost + damage * each.costToRepairOneUnitOfDamage
-                label = '%s<t>%s<t>%s' % (cfg.invtypes.Get(each.typeID).name, dmg, cst)
+                label = cfg.invtypes.Get(each.typeID).name + '<t>' + dmg + '<t>' + cst
                 listEntryData.append({'info': each,
                  'itemID': each.itemID,
                  'typeID': each.typeID,
@@ -236,18 +228,18 @@ class RepairShopWindow(uicls.Window):
             scrolllist.append(listentry.Get('Item', entryData))
 
         if not totaldamage:
-            activeShip = sm.GetService('station').GetActiveShip()
+            activeShip = util.GetActiveShip()
             if activeShip is not None and activeShip in [ item.itemID for item in items ]:
                 btnSetup[self.sr.repairAllBtn] = uiconst.UI_HIDDEN
         else:
             self.sr.repairAllBtn.OnClick = self.RepairAll
-            self.sr.repairAllBtn.SetLabel(mls.UI_CMD_REPAIRALL)
+            self.sr.repairAllBtn.SetLabel(localization.GetByLabel('UI/Commands/RepairAll'))
             btnSetup[self.sr.repairAllBtn] = uiconst.UI_NORMAL
         self.sr.scroll.sr.id = 'repair3'
         self.sr.scroll.sr.ignoreTabTrimming = 0
-        self.sr.scroll.Load(fixedEntryHeight=35, contentList=scrolllist, headers=[mls.UI_GENERIC_TYPE, mls.UI_GENERIC_DAMAGE, mls.UI_GENERIC_COST])
-        self.sr.avgDamage.text = mls.UI_STATION_AVERAGEDAMAGE % {'damage': totaldamage / (totalitems or 1)}
-        self.sr.totalCost.text = '%s: <b>%s</b>' % (mls.UI_STATION_REPAIRCOST, util.FmtISK(int(math.ceil(totalcost))))
+        self.sr.scroll.Load(fixedEntryHeight=35, contentList=scrolllist, headers=[localization.GetByLabel('UI/Common/Type'), localization.GetByLabel('UI/Common/Damage'), localization.GetByLabel('UI/Common/Cost')])
+        self.sr.avgDamage.text = localization.GetByLabel('UI/Station/Repair/AverageDamage', damage=totaldamage / (totalitems or 1))
+        self.sr.totalCost.text = localization.GetByLabel('UI/Station/Repair/RepairCost', isk=int(math.ceil(totalcost)))
         self.state = uiconst.UI_NORMAL
         btnSetup[self.sr.pickBtn] = uiconst.UI_NORMAL
         self.DisplayButtons(btnSetup)
@@ -281,7 +273,7 @@ class RepairShopWindow(uicls.Window):
             else:
                 amount = {'qty': totalcost}
         else:
-            amount = uix.QtyPopup(totalcost, 0, totalcost, hint=mls.UI_STATION_TEXT42 % {'isk': '<b>%s</b>' % util.FmtISK(totalcost)}, label=mls.UI_STATION_REPAIRCOST, digits=2)
+            amount = uix.QtyPopup(totalcost, 0, totalcost, hint=localization.GetByLabel('UI/Station/Repair/FullRepair', isk=totalcost), label=localization.GetByLabel('UI/Station/Repair/RepairCostLabel'), digits=2)
         if amount is not None:
             itemIDs = []
             try:
@@ -310,7 +302,7 @@ class RepairShopWindow(uicls.Window):
     def Damage(self, items, *args):
         btnSetup = {self.sr.selBtn: uiconst.UI_HIDDEN,
          self.sr.pickBtn: uiconst.UI_DISABLED}
-        temp = uix.QtyPopup(100, 1, 50, hint=mls.UI_STATION_TEXT41)
+        temp = uix.QtyPopup(100, 1, 50, hint=localization.GetByLabel('UI/Station/Repair/ApplyDamage'))
         percentage = temp and temp['qty']
         if percentage == 0 or percentage is None:
             self.sr.pickBtn.state = uiconst.UI_NORMAL

@@ -181,9 +181,9 @@ class SkinLightmapRenderer:
                 self.oxWorldPosMap = self.CreateRenderTarget(self.bbWidth, self.bbHeight, trinity.TRIFMT_A32B32G32R32F, useRT=True)
                 self.oxWorldNormalMap = self.CreateRenderTarget(self.bbWidth, self.bbHeight, trinity.TRIFMT_A32B32G32R32F, useRT=True)
             self.oxDiffuseLight = self.CreateRenderTarget(self.oxWidth, self.oxHeight, trinity.TRIFMT_A8R8G8B8, useRT=True)
-            self.oxDiffuseTexture = trinity.device.CreateTexture(self.oxWidth, self.oxHeight, 1, 0, trinity.TRIFMT_A8R8G8B8, trinity.TRIPOOL_MANAGED)
+            self.oxDiffuseTexture = trinity.device.CreateTexture(self.oxWidth, self.oxHeight, 1, trinity.TRIUSAGE_DYNAMIC if trinity.device.UsingEXDevice() else 0, trinity.TRIFMT_A8R8G8B8, trinity.TRIPOOL_DEFAULT if trinity.device.UsingEXDevice() else trinity.TRIPOOL_MANAGED)
             self.oxSpecularLight = self.CreateRenderTarget(self.bbWidth, self.bbHeight, trinity.TRIFMT_A8R8G8B8, useRT=True)
-            self.oxSpecularTexture = trinity.device.CreateTexture(self.bbWidth, self.bbHeight, 1, 0, trinity.TRIFMT_A8R8G8B8, trinity.TRIPOOL_MANAGED)
+            self.oxSpecularTexture = trinity.device.CreateTexture(self.bbWidth, self.bbHeight, 1, trinity.TRIUSAGE_DYNAMIC if trinity.device.UsingEXDevice() else 0, trinity.TRIFMT_A8R8G8B8, trinity.TRIPOOL_DEFAULT if trinity.device.UsingEXDevice() else trinity.TRIPOOL_MANAGED)
         self.paramLightmap = self.AddTex2D(self.lightmapScatterEffect, 'Lightmap')
         self.paramStretchmap = self.AddTex2D(self.lightmapScatterEffect, 'Stretchmap')
         self.paramNoisemap = self.AddTex2D(self.lightmapScatterEffect, 'Noisemap', 'res:/Texture/Global/noise.png')
@@ -267,7 +267,7 @@ class SkinLightmapRenderer:
         effect = trinity.Tr2Effect()
         effect.effectFilePath = path
         while effect.effectResource.isLoading:
-            blue.synchro.Yield()
+            PD.Yield()
 
         effect.RebuildCachedData()
         return effect
@@ -495,7 +495,7 @@ class SkinLightmapRenderer:
             self.meshes = {}
             self.oxMeshes = {}
         self.refreshMeshes = False
-        if skinnedObject is None:
+        if skinnedObject is None or skinnedObject.visualModel is None:
             return 
         haveNewMeshes = False
         for mesh in skinnedObject.visualModel.meshes:
@@ -631,9 +631,7 @@ class SkinLightmapRenderer:
         if SkinLightmapRenderer.Scene() is None:
             return 
         dynamics = SkinLightmapRenderer.Scene().dynamics
-        while any(map(lambda x: not x.visible, dynamics)):
-            blue.synchro.Yield()
-
+        PD.WaitForAll(dynamics, lambda x: hasattr(x, 'visible') and not x.visible)
         rj = self.CreateRJ(self.stretchmap, 'Stretchmap precalc', depthClear=None, setDepthStencil=False)
         rj.PushDepthStencil(None)
         self.AddCallback(SkinLightmapRenderer.OnBeforeUnwrap, 'onBeforeUnwrap', rj)
@@ -645,8 +643,8 @@ class SkinLightmapRenderer:
         rj.PopDepthStencil()
         rj.PopRenderTarget()
         rj.ScheduleOnce()
-        rj.WaitForFinish()
         if False:
+            rj.WaitForFinish()
             self.SaveTarget(self.stretchmap, 'c:/depot/smz.dds')
             self.DebugPrint('stretchmap saved to c:/depot/smz.dds')
 

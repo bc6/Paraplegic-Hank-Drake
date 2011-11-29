@@ -11,19 +11,8 @@ import const
 import uiutil
 import listentry
 import base
-ACTIONBUTTONICONS = {mls.UI_PI_STATS: 'ui_44_32_24',
- mls.UI_PI_LINKS: 'ui_77_32_31',
- mls.UI_PI_DECOMMISSION: 'ui_77_32_22',
- mls.UI_PI_STORAGE: 'ui_77_32_18',
- mls.UI_PI_INCOMING: 'ui_77_32_21',
- mls.UI_PI_OUTGOING: 'ui_77_32_20',
- mls.UI_PI_LAUNCH: 'ui_77_32_19',
- mls.UI_GENERIC_PRODUCTS: 'ui_77_32_24',
- mls.UI_PI_SURVEYFORDEPOSITS: 'ui_77_32_23',
- mls.UI_PI_SCHEMATICS: 'ui_77_32_17',
- mls.UI_PI_UPGRADELINK: 'ui_77_32_36',
- mls.UI_PI_UPGRADE: 'ui_77_32_37',
- mls.UI_PI_ROUTES: 'ui_77_32_32'}
+import localization
+import fontConst
 
 class BasePinContainer(uicls.Container):
     __guid__ = 'planet.ui.BasePinContainer'
@@ -57,7 +46,7 @@ class BasePinContainer(uicls.Container):
         self.buttonTextValue = ''
         self.header = self._DrawAlignTopCont(18, 'headerCont')
         self.closeBtn = uicls.Icon(name='close', icon='ui_38_16_220', parent=self.header, pos=(0, 0, 16, 16), align=uiconst.TOPRIGHT)
-        self.closeBtn.OnClick = self.CloseX
+        self.closeBtn.OnClick = self.CloseByUser
         self.infoicon = uicls.InfoIcon(typeID=self.pin.typeID, size=16, parent=self.header, align=uiconst.CENTERLEFT, top=-1)
         self._DrawHorizLine()
         self.infoContRightColAt = 160
@@ -68,10 +57,10 @@ class BasePinContainer(uicls.Container):
         self.buttonCont = self._DrawAlignTopCont(40, 'buttonCont')
         self._DrawHorizLine()
         self.buttonTextCont = self._DrawAlignTopCont(22, 'buttonTextCont')
-        self.buttonText = uicls.Label(parent=self.buttonTextCont, autowidth=1, fontsize=10, height=12, letterspace=1, align=uiconst.CENTER, color=(1.0, 1.0, 1.0, 1.0), state=uiconst.UI_NORMAL, autoheight=False)
+        self.buttonText = uicls.EveLabelSmall(parent=self.buttonTextCont, height=12, align=uiconst.CENTER, color=(1.0, 1.0, 1.0, 1.0), state=uiconst.UI_NORMAL)
         self.actionCont = self._DrawAlignTopCont(0, 'actionCont', padding=(3, 0, 3, 3))
-        captionTxt = self._GetPinName().upper()
-        caption = uicls.Label(parent=self.header, text=captionTxt, autowidth=1, autoheight=1, fontsize=10, letterspace=1, state=uiconst.UI_DISABLED)
+        captionTxt = self._GetPinName()
+        caption = uicls.EveLabelSmall(parent=self.header, text=captionTxt, state=uiconst.UI_DISABLED)
         caption.left = 20
         caption.top = 2
         dw = uicore.desktop.width
@@ -118,10 +107,10 @@ class BasePinContainer(uicls.Container):
 
 
     def _GetActionButtons(self):
-        btns = [util.KeyVal(name=mls.UI_PI_STATS, panelCallback=self.PanelShowStats, icon='ui_44_32_5'),
-         util.KeyVal(name=mls.UI_PI_LINKS, panelCallback=self.PanelShowLinks, icon='ui_44_32_1'),
-         util.KeyVal(name=mls.UI_PI_ROUTES, panelCallback=self.PanelShowRoutes, icon='ui_44_32_2'),
-         util.KeyVal(name=mls.UI_PI_DECOMMISSION, panelCallback=self.PanelDecommissionPin, icon='ui_44_32_4')]
+        btns = [util.KeyVal(id=planetCommon.PANEL_STATS, panelCallback=self.PanelShowStats),
+         util.KeyVal(id=planetCommon.PANEL_LINKS, panelCallback=self.PanelShowLinks),
+         util.KeyVal(id=planetCommon.PANEL_ROUTES, panelCallback=self.PanelShowRoutes),
+         util.KeyVal(id=planetCommon.PANEL_DECOMMISSION, panelCallback=self.PanelDecommissionPin)]
         return btns
 
 
@@ -184,7 +173,6 @@ class BasePinContainer(uicls.Container):
 
     def OnIconButtonMouseEnter(self, iconButton, *args):
         IconButton.OnMouseEnter(iconButton, *args)
-        self.buttonTextValue = self.buttonText.text
         self.buttonText.text = iconButton.name
 
 
@@ -204,17 +192,19 @@ class BasePinContainer(uicls.Container):
         w -= 2 * pad
         space = (w - n * iconWidth) / n
         for (i, b,) in enumerate(buttons):
+            (iconPath, cerberusPath,) = planetCommon.PANELDATA[b.id]
+            panelName = localization.GetByLabel(cerberusPath)
             if i == 0:
                 self.defaultPanel = b.panelCallback
-                self.defaultPanelName = b.name
+                self.defaultPanelName = panelName
             x = pad + space / 2.0 + i * (space + iconWidth)
-            ib = planet.ui.IconButton(icon=ACTIONBUTTONICONS[b.name], size=32, parent=self.buttonCont, align=uiconst.TOPLEFT, pos=(int(x),
+            ib = planet.ui.IconButton(icon=iconPath, size=32, parent=self.buttonCont, align=uiconst.TOPLEFT, pos=(int(x),
              4,
              iconWidth,
-             iconWidth), name=b.name, hint=b.Get('hint', ''))
+             iconWidth), name=panelName, hint=b.Get('hint', ''))
             ib.OnMouseEnter = (self.OnIconButtonMouseEnter, ib)
             ib.OnMouseExit = (self.OnIconButtonMouseExit, ib)
-            ib.OnClick = (self._OnIconButtonClicked, b.panelCallback, b.name)
+            ib.OnClick = (self._OnIconButtonClicked, b.panelCallback, panelName)
 
 
 
@@ -224,7 +214,7 @@ class BasePinContainer(uicls.Container):
 
 
 
-    def CloseX(self, *args):
+    def CloseByUser(self, *args):
         sm.UnregisterNotify(self)
         self.planetUISvc.CloseCurrentlyOpenContainer()
 
@@ -237,7 +227,7 @@ class BasePinContainer(uicls.Container):
         self.LoadLinkScroll()
         scroll.HideUnderLay()
         uicls.Frame(parent=scroll, color=(1.0, 1.0, 1.0, 0.2))
-        btns = [[mls.UI_CMD_CREATENEW, self._CreateNewLink, None], [mls.UI_PI_DELETELINK, self._DeleteLink, None]]
+        btns = [[localization.GetByLabel('UI/PI/Common/CreateNew'), self._CreateNewLink, None], [localization.GetByLabel('UI/PI/Common/DeleteLink'), self._DeleteLink, None]]
         uicls.ButtonGroup(btns=btns, parent=cont, line=False, alwaysLite=True)
         return cont
 
@@ -253,8 +243,9 @@ class BasePinContainer(uicls.Container):
             linkedPin = colony.GetPin(linkedPinID)
             distance = link.GetDistance()
             bandwidthUsed = link.GetBandwidthUsage()
+            percentageUsed = 100 * (bandwidthUsed / link.GetTotalBandwidth())
             data = util.KeyVal()
-            data.label = '%s<t>%s<t>%.2f%%' % (planetCommon.GetGenericPinName(linkedPin.typeID, linkedPin.id), util.FmtDist(distance), 100 * (bandwidthUsed / link.GetTotalBandwidth()))
+            data.label = '%s<t>%s<t>%s' % (planetCommon.GetGenericPinName(linkedPin.typeID, linkedPin.id), util.FmtDist(distance), localization.GetByLabel('UI/Common/Percentage', percentage=percentageUsed))
             data.hint = ''
             data.OnMouseEnter = self.OnLinkEntryHover
             data.OnMouseExit = self.OnLinkEntryExit
@@ -264,7 +255,7 @@ class BasePinContainer(uicls.Container):
             scrolllist.append((sortBy, listentry.Get('Generic', data=data)))
 
         scrolllist = uiutil.SortListOfTuples(scrolllist)
-        self.linkScroll.Load(contentList=scrolllist, noContentHint=mls.UI_PI_NOLINKSPRESENT, headers=[mls.UI_GENERIC_DESTINATION, mls.UI_GENERIC_DISTANCE, mls.UI_PI_CAPACITYUSED])
+        self.linkScroll.Load(contentList=scrolllist, noContentHint=localization.GetByLabel('UI/PI/Common/NoLinksPresent'), headers=[localization.GetByLabel('UI/PI/Common/Destination'), localization.GetByLabel('UI/Common/Distance'), localization.GetByLabel('UI/PI/Common/CapacityUsed')])
 
 
 
@@ -292,7 +283,7 @@ class BasePinContainer(uicls.Container):
 
     def _CreateNewLink(self, *args):
         self.planetUISvc.myPinManager.SetLinkParent(self.pin.id)
-        self.CloseX()
+        self.CloseByUser()
 
 
 
@@ -305,7 +296,7 @@ class BasePinContainer(uicls.Container):
 
 
     def _DrawEditBox(self, parent, text):
-        textHeight = uix.GetTextHeight(text, width=self.width - 30, fontsize=12)
+        textHeight = uix.GetTextHeight(text, width=self.width - 30, fontsize=fontConst.EVE_MEDIUM_FONTSIZE)
         edit = uicls.Edit(setvalue=text, parent=parent, align=uiconst.TOTOP, height=textHeight + 12, top=-6, hideBackground=1, readonly=True)
         edit.scrollEnabled = False
         return edit
@@ -332,7 +323,7 @@ class BasePinContainer(uicls.Container):
         uicls.Frame(parent=scroll, color=(1.0, 1.0, 1.0, 0.2))
         self.LoadStorageContentScroll()
         self.buttonContainer = uicls.Container(parent=self.actionCont, pos=(0, 0, 0, 30), align=uiconst.TOBOTTOM, state=uiconst.UI_PICKCHILDREN)
-        btns = [[mls.UI_PI_CREATEROUTE, self._CreateRoute, 'storageContentScroll'], [mls.UI_PI_TRANSFERRESOURCES, self._CreateTransfer, None]]
+        btns = [[localization.GetByLabel('UI/PI/Common/CreateRoute'), self._CreateRoute, 'storageContentScroll'], [localization.GetByLabel('UI/PI/Common/ExpeditedTransfer'), self._CreateTransfer, None]]
         self.createRouteButton = uicls.ButtonGroup(btns=btns, parent=cont, line=False, alwaysLite=True)
         return cont
 
@@ -353,10 +344,10 @@ class BasePinContainer(uicls.Container):
             scrolllist.append((sortBy, listentry.Get('Item', data=data)))
 
         scrolllist = uiutil.SortListOfTuples(scrolllist)
-        self.storageContentScroll.Load(contentList=scrolllist, noContentHint=mls.UI_PI_NOCONTENTSPRESENT, headers=['',
-         mls.UI_GENERIC_TYPE,
-         mls.UI_GENERIC_AMOUNT,
-         mls.UI_GENERIC_VOLUME])
+        self.storageContentScroll.Load(contentList=scrolllist, noContentHint=localization.GetByLabel('UI/PI/Common/NoContentsPresent'), headers=['',
+         localization.GetByLabel('UI/PI/Common/Type'),
+         localization.GetByLabel('UI/Common/Amount'),
+         localization.GetByLabel('UI/Common/Volume')])
 
 
 
@@ -372,9 +363,9 @@ class BasePinContainer(uicls.Container):
         self.LoadProductScroll()
         uicls.Frame(parent=scroll, color=(1.0, 1.0, 1.0, 0.2))
         self.buttonContainer = uicls.Container(parent=self.actionCont, pos=(0, 0, 0, 30), align=uiconst.TOBOTTOM, state=uiconst.UI_PICKCHILDREN)
-        btns = [[mls.UI_PI_CREATEROUTE, self._CreateRoute, 'productScroll']]
+        btns = [[localization.GetByLabel('UI/PI/Common/CreateRoute'), self._CreateRoute, 'productScroll']]
         self.createRouteButton = uicls.ButtonGroup(btns=btns, parent=cont, line=False, alwaysLite=True)
-        btns = [[mls.UI_PI_DELETEROUTE, self._DeleteRoute, ()]]
+        btns = [[localization.GetByLabel('UI/PI/Common/DeleteRoute'), self._DeleteRoute, ()]]
         self.deleteRouteButton = uicls.ButtonGroup(btns=btns, parent=cont, line=False, alwaysLite=True)
         self.createRouteButton.state = uiconst.UI_HIDDEN
         self.deleteRouteButton.state = uiconst.UI_HIDDEN
@@ -400,12 +391,12 @@ class BasePinContainer(uicls.Container):
             for route in routesByTypeID.get(typeID, []):
                 qty = route.GetQuantity()
                 amount -= qty
-                data = util.KeyVal(label='%s<t>%s<t>%s' % (qty, typeName, mls.UI_PI_ROUTED), typeID=typeID, itemID=None, getIcon=True, routeID=route.routeID, OnMouseEnter=self.OnRouteEntryHover, OnMouseExit=self.OnRouteEntryExit, OnClick=self.OnProductEntryClicked, OnDblClick=self.OnProductEntryDblClicked)
+                data = util.KeyVal(label='%s<t>%s<t>%s' % (qty, typeName, localization.GetByLabel('UI/PI/Common/Routed')), typeID=typeID, itemID=None, getIcon=True, routeID=route.routeID, OnMouseEnter=self.OnRouteEntryHover, OnMouseExit=self.OnRouteEntryExit, OnClick=self.OnProductEntryClicked, OnDblClick=self.OnProductEntryDblClicked)
                 scrolllist.append(listentry.Get('Item', data=data))
 
             if amount > 0:
                 data = util.KeyVal()
-                data.label = '%s<t>%s<t>%s' % (amount, cfg.invtypes.Get(typeID).name, '<color=red>%s</color>' % mls.UI_PI_NOTROUTED)
+                data.label = '%s<t>%s<t>%s' % (amount, cfg.invtypes.Get(typeID).name, localization.GetByLabel('UI/PI/Common/NotRouted'))
                 data.typeID = typeID
                 data.amount = amount
                 data.itemID = None
@@ -414,7 +405,7 @@ class BasePinContainer(uicls.Container):
                 data.OnDblClick = self.OnProductEntryDblClicked
                 scrolllist.append(listentry.Get('Item', data=data))
 
-        self.productScroll.Load(contentList=scrolllist, noContentHint=mls.UI_PI_NOPRODUCTSPRESENT, headers=[mls.UI_GENERIC_AMOUNT, mls.UI_PI_TYPE, ''])
+        self.productScroll.Load(contentList=scrolllist, noContentHint=localization.GetByLabel('UI/PI/Common/NoProductsPresent'), headers=[localization.GetByLabel('UI/Common/Amount'), localization.GetByLabel('UI/PI/Common/Type'), ''])
 
 
 
@@ -441,7 +432,7 @@ class BasePinContainer(uicls.Container):
         if len(selected) > 0:
             entry = selected[0]
             self.planetUISvc.myPinManager.EnterRouteMode(self.pin.id, entry.typeID)
-            self.ShowPanel(self.PanelCreateRoute, mls.UI_PI_CREATEROUTE, entry.typeID, entry.amount)
+            self.ShowPanel(self.PanelCreateRoute, localization.GetByLabel('UI/PI/Common/CreateRoute'), entry.typeID, entry.amount)
 
 
 
@@ -486,21 +477,23 @@ class BasePinContainer(uicls.Container):
 
 
     def _CreateTransfer(self, *args):
+        if sm.GetService('planetUI').GetCurrentPlanet().IsInEditMode():
+            raise UserError('CannotTransferInEditMode')
         self.planetUISvc.myPinManager.EnterRouteMode(self.pin.id, None, oneoff=True)
-        self.ShowPanel(self.PanelSelectTransferDest, mls.UI_PI_SELECTTRANSDEST)
+        self.ShowPanel(self.PanelSelectTransferDest, localization.GetByLabel('UI/PI/Common/SelectTransferDestination'))
 
 
 
     def PanelDecommissionPin(self):
         typeInfo = cfg.invtypes.Get(self.pin.typeID)
         if typeInfo.groupID == const.groupCommandPins:
-            text = mls.UI_PI_ABANDON_COLONY % {'typeName': typeInfo.name}
+            text = localization.GetByLabel('UI/PI/Common/DecommissionCommandPin', typeName=typeInfo.name)
         else:
-            text = mls.UI_PI_LINK_DECOMMISSION_PROMPT % {'typeName': typeInfo.name}
+            text = localization.GetByLabel('UI/PI/Common/DecommissionLink', typeName=typeInfo.name)
         cont = uicls.Container(parent=self.actionCont, pos=(0, 0, 0, 0), align=uiconst.TOTOP, state=uiconst.UI_HIDDEN)
         editBox = self._DrawEditBox(cont, text)
         cont.height = editBox.height + 25
-        btns = [[mls.UI_GENERIC_PROCEED, self._DecommissionSelf, None]]
+        btns = [[localization.GetByLabel('UI/PI/Common/Proceed'), self._DecommissionSelf, None]]
         uicls.ButtonGroup(btns=btns, parent=cont, line=False, alwaysLite=True)
         return cont
 
@@ -509,7 +502,7 @@ class BasePinContainer(uicls.Container):
     def _DecommissionSelf(self, *args):
         sm.GetService('audio').SendUIEvent('wise:/msg_pi_build_decommission_play')
         self.planetUISvc.myPinManager.RemovePin(self.pin.id)
-        self.CloseX()
+        self.CloseByUser()
 
 
 
@@ -534,7 +527,7 @@ class BasePinContainer(uicls.Container):
 
 
     def OnRefreshPins(self, pinIDs):
-        if hasattr(self, 'lastCalled') and self.lastCalled == mls.UI_PI_STORAGE:
+        if hasattr(self, 'lastCalled') and self.lastCalled == localization.GetByLabel('UI/PI/Common/Storage'):
             self.LoadStorageContentScroll()
 
 
@@ -553,7 +546,7 @@ class BasePinContainer(uicls.Container):
         uicls.Frame(parent=scroll, color=(1.0, 1.0, 1.0, 0.2))
         scrolllist = []
         scrolllist = self.GetStatsEntries()
-        scroll.Load(contentList=scrolllist, headers=[mls.UI_CHARCREA_ATTRIBUTE, mls.UI_GENERIC_VALUE])
+        scroll.Load(contentList=scrolllist, headers=[localization.GetByLabel('UI/PI/Common/Attribute'), localization.GetByLabel('UI/Common/Value')])
         return cont
 
 
@@ -561,16 +554,16 @@ class BasePinContainer(uicls.Container):
     def GetStatsEntries(self):
         scrolllist = []
         if self.pin.GetCpuUsage() > 0:
-            data = util.KeyVal(label='%s<t>%s %s' % (mls.UI_PI_CPUUSAGE, self.pin.GetCpuUsage(), mls.UI_GENERIC_TERAFLOPSSHORT))
+            data = util.KeyVal(label='%s<t>%s' % (localization.GetByLabel('UI/PI/Common/CpuUsage'), localization.GetByLabel('UI/PI/Common/TeraFlopsAmount', amount=self.pin.GetCpuUsage())))
             scrolllist.append(listentry.Get('Generic', data=data))
         if self.pin.GetCpuOutput() > 0:
-            data = util.KeyVal(label='%s<t>%s %s' % (mls.UI_PI_CPUOUTPUT, self.pin.GetCpuOutput(), mls.UI_GENERIC_TERAFLOPSSHORT))
+            data = util.KeyVal(label='%s<t>%s' % (localization.GetByLabel('UI/PI/Common/CpuOutput'), localization.GetByLabel('UI/PI/Common/TeraFlopsAmount', amount=self.pin.GetCpuOutput())))
             scrolllist.append(listentry.Get('Generic', data=data))
         if self.pin.GetPowerUsage() > 0:
-            data = util.KeyVal(label='%s<t>%s %s' % (mls.UI_PI_POWERUSAGE, self.pin.GetPowerUsage(), mls.UI_GENERIC_MEGAWATTSHORT))
+            data = util.KeyVal(label='%s<t>%s' % (localization.GetByLabel('UI/PI/Common/PowerUsage'), localization.GetByLabel('UI/PI/Common/MegaWattsAmount', amount=self.pin.GetPowerUsage())))
             scrolllist.append(listentry.Get('Generic', data=data))
         if self.pin.GetPowerOutput() > 0:
-            data = util.KeyVal(label='%s<t>%s %s' % (mls.UI_PI_POWEROUTPUT, self.pin.GetPowerOutput(), mls.UI_GENERIC_MEGAWATTSHORT))
+            data = util.KeyVal(label='%s<t>%s' % (localization.GetByLabel('UI/PI/Common/PowerOutput'), localization.GetByLabel('UI/PI/Common/MegaWattsAmount', amount=self.pin.GetPowerOutput())))
             scrolllist.append(listentry.Get('Generic', data=data))
         return scrolllist
 
@@ -591,13 +584,13 @@ class BasePinContainer(uicls.Container):
         self.commodityToRoute = typeID
         self.commoditySourceMaxAmount = amount
         self.currRouteCycleTime = self.pin.GetCycleTime()
-        resourceTxt = '%s (%s %s)' % (cfg.invtypes.Get(typeID).name, self.routeMaxAmount, mls.UI_GENERIC_UNITS)
-        CaptionAndSubtext(parent=cont, caption=mls.UI_PI_COMMODITYTOROUTE, subtext=resourceTxt, iconTypeID=typeID, top=0, width=w)
-        CaptionAndSubtext(parent=cont, caption=mls.UI_GENERIC_AMOUNT, width=w, top=30, state=uiconst.UI_DISABLED)
+        resourceTxt = localization.GetByLabel('UI/PI/Common/ItemAmount', itemName=cfg.invtypes.Get(typeID).name, amount=int(self.routeMaxAmount))
+        CaptionAndSubtext(parent=cont, caption=localization.GetByLabel('UI/PI/Common/CommodityToRoute'), subtext=resourceTxt, iconTypeID=typeID, top=0, width=w)
+        CaptionAndSubtext(parent=cont, caption=localization.GetByLabel('UI/PI/Common/QtyAmount'), width=w, top=30, state=uiconst.UI_DISABLED)
         self.routeAmountEdit = uicls.SinglelineEdit(name='routeAmountEdit', parent=cont, setvalue=self.routeMaxAmount, height=14, width=45, align=uiconst.TOPLEFT, top=44, ints=(0, self.routeMaxAmount), OnChange=self.OnRouteAmountEditChanged)
-        self.routeAmountText = uicls.Label(text='/%s %s' % (self.routeMaxAmount, mls.UI_GENERIC_UNITS), parent=cont, letterspace=1, fontsize=10, left=47, top=46, state=uiconst.UI_NORMAL)
-        self.routeDestText = CaptionAndSubtext(parent=cont, caption=mls.UI_GENERIC_DESTINATION, top=70, width=w)
-        btns = [[mls.UI_PI_CREATEROUTE, self.SubmitRoute, ()]]
+        self.routeAmountText = uicls.EveLabelSmall(parent=cont, left=47, top=46, state=uiconst.UI_NORMAL)
+        self.routeDestText = CaptionAndSubtext(parent=cont, caption=localization.GetByLabel('UI/Common/Destination'), top=70, width=w)
+        btns = [[localization.GetByLabel('UI/PI/Common/CreateRoute'), self.SubmitRoute, ()]]
         self.createRouteButton = uicls.ButtonGroup(btns=btns, parent=cont, line=False, alwaysLite=True)
         self.UpdatePanelCreateRoute()
         return cont
@@ -626,7 +619,7 @@ class BasePinContainer(uicls.Container):
 
     def UpdatePanelCreateRoute(self):
         if not self.currentRoute or len(self.currentRoute) < 2:
-            destName = '<color=red>%s<color>' % mls.UI_PI_NODESTINATIONSELECTED
+            destName = localization.GetByLabel('UI/PI/Common/NoDestinationSelected')
             self.routeMaxAmount = self.sourceMaxAmount
             self.currRouteCycleTime = self.pin.GetCycleTime()
         else:
@@ -634,7 +627,7 @@ class BasePinContainer(uicls.Container):
             (isValid, invalidTxt, self.currRouteCycleTime,) = planetCommon.GetRouteValidationInfo(self.pin, self.routeDestPin, self.commodityToRoute)
             destName = planetCommon.GetGenericPinName(self.routeDestPin.typeID, self.routeDestPin.id)
             if not isValid:
-                destName = '<color=red>%s (%s: %s)</color>' % (destName, mls.UI_GENERIC_INVALID, invalidTxt)
+                destName = localization.GetByLabel('UI/PI/Common/InvalidDestination', destName=destName, reason=invalidTxt)
             if not isValid:
                 self.routeMaxAmount = 0
             elif self.routeDestPin.IsProcessor() and self.commodityToRoute in self.routeDestPin.GetConsumables():
@@ -647,7 +640,7 @@ class BasePinContainer(uicls.Container):
                 self.routeMaxAmount = self.commoditySourceMaxAmount
         self.routeAmountEdit.SetText(self.routeMaxAmount)
         self.routeAmountEdit.IntMode(0, self.routeMaxAmount)
-        self.routeAmountText.text = '/%s' % self.routeMaxAmount
+        self.routeAmountText.text = localization.GetByLabel('UI/PI/Common/RoutedPortion', maxAmount=self.routeMaxAmount)
         self.OnRouteAmountEditChanged(self.routeMaxAmount)
         self.routeDestText.SetSubtext(destName)
 
@@ -656,7 +649,7 @@ class BasePinContainer(uicls.Container):
     def PanelSelectTransferDest(self, *args):
         cont = uicls.Container(parent=self.actionCont, pos=(0, 0, 0, 15), align=uiconst.TOTOP, state=uiconst.UI_HIDDEN)
         cont._OnClose = self.OnPanelSelectTransferDestClosed
-        editBox = self._DrawEditBox(cont, mls.UI_PI_SELECTTRANSFERDESTINATION)
+        editBox = self._DrawEditBox(cont, localization.GetByLabel('UI/PI/Common/SelectTransferDestination'))
         cont.height = editBox.height
         return cont
 
@@ -679,14 +672,14 @@ class BasePinContainer(uicls.Container):
         self.routeScroll.sr.id = 'planetBaseShowRoutesScroll'
         self.routeInfo = uicls.Container(parent=cont, pos=(0, 4, 0, 100), align=uiconst.TOTOP, state=uiconst.UI_HIDDEN)
         w = self.width / 2 - 10
-        self.routeInfoSource = CaptionAndSubtext(parent=self.routeInfo, caption=mls.UI_PI_ORIGIN, width=w)
-        self.routeInfoDest = CaptionAndSubtext(parent=self.routeInfo, caption=mls.UI_GENERIC_DESTINATION, width=w, top=38)
-        self.routeInfoType = CaptionAndSubtext(parent=self.routeInfo, caption=mls.UI_GENERIC_COMMODITY, width=w, left=w)
-        self.routeInfoBandwidth = CaptionAndSubtext(parent=self.routeInfo, caption=mls.UI_GENERIC_LOAD, width=w, left=w, top=38)
+        self.routeInfoSource = CaptionAndSubtext(parent=self.routeInfo, caption=localization.GetByLabel('UI/PI/Common/Origin'), width=w)
+        self.routeInfoDest = CaptionAndSubtext(parent=self.routeInfo, caption=localization.GetByLabel('UI/PI/Common/Destination'), width=w, top=38)
+        self.routeInfoType = CaptionAndSubtext(parent=self.routeInfo, caption=localization.GetByLabel('UI/Common/Commodity'), width=w, left=w)
+        self.routeInfoBandwidth = CaptionAndSubtext(parent=self.routeInfo, caption=localization.GetByLabel('UI/PI/Common/CapacityUsed'), width=w, left=w, top=38)
         btns = []
         if self.pin.IsStorage() and hasattr(self, '_CreateRoute'):
-            btns.append([mls.UI_PI_CREATEROUTE, self._CreateRoute, 'routeScroll'])
-        btns.append([mls.UI_PI_DELETEROUTE, self._DeleteRouteFromEntry, ()])
+            btns.append([localization.GetByLabel('UI/PI/Common/CreateRoute'), self._CreateRoute, 'routeScroll'])
+        btns.append([localization.GetByLabel('UI/PI/Common/DeleteRoute'), self._DeleteRouteFromEntry, ()])
         self.routeInfoBtns = uicls.ButtonGroup(btns=btns, parent=self.routeInfo, line=False, alwaysLite=True)
         self.LoadRouteScroll()
         self.routeScroll.HideUnderLay()
@@ -697,13 +690,13 @@ class BasePinContainer(uicls.Container):
 
     def GetRouteTypeLabel(self, route, pin):
         if not route or not pin:
-            return mls.UI_GENERIC_UNKNOWN
+            return localization.GetByLabel('UI/Common/Unknown')
         else:
             if route.GetSourcePinID() == pin.id:
-                return mls.UI_PI_OUTGOING
+                return localization.GetByLabel('UI/PI/Common/Outgoing')
             if route.GetDestinationPinID() == pin.id:
-                return mls.UI_PI_INCOMING
-            return mls.UI_PI_TRANSITING
+                return localization.GetByLabel('UI/PI/Common/Incoming')
+            return localization.GetByLabel('UI/PI/Common/Transiting')
 
 
 
@@ -728,10 +721,10 @@ class BasePinContainer(uicls.Container):
                 routesShown.append(route.routeID)
 
 
-        self.routeScroll.Load(contentList=scrolllist, noContentHint=mls.UI_PI_NOINOUTGOINGROUTES, headers=['',
-         mls.UI_GENERIC_COMMODITY,
-         mls.UI_GENERIC_QUANTITY,
-         mls.UI_GENERIC_TYPE])
+        self.routeScroll.Load(contentList=scrolllist, noContentHint=localization.GetByLabel('UI/PI/Common/NoIncomingOrOutgoingRoutes'), headers=['',
+         localization.GetByLabel('UI/Common/Commodity'),
+         localization.GetByLabel('UI/Common/Quantity'),
+         localization.GetByLabel('UI/PI/Common/Type')])
 
 
 
@@ -759,23 +752,22 @@ class BasePinContainer(uicls.Container):
         if selectedRoute is None or selectedRoute.GetType() not in cfg.invtypes:
             return 
         if selectedRoute.GetSourcePinID() == self.pin.id:
-            self.routeInfoSource.SetSubtext(mls.UI_PI_CURRENTSTRUCTURE)
+            self.routeInfoSource.SetSubtext(localization.GetByLabel('UI/PI/Common/ThisStructure'))
         else:
             sourcePin = sm.GetService('planetUI').planet.GetPin(selectedRoute.GetSourcePinID())
             self.routeInfoSource.SetSubtext(planetCommon.GetGenericPinName(sourcePin.typeID, sourcePin.id))
         if selectedRoute.GetDestinationPinID() == self.pin.id:
-            self.routeInfoDest.SetSubtext(mls.UI_PI_CURRENTSTRUCTURE)
+            self.routeInfoDest.SetSubtext(localization.GetByLabel('UI/PI/Common/ThisStructure'))
         else:
             destPin = sm.GetService('planetUI').planet.GetPin(selectedRoute.GetDestinationPinID())
             self.routeInfoDest.SetSubtext(planetCommon.GetGenericPinName(destPin.typeID, destPin.id))
         routeTypeID = route.GetType()
         routeQty = route.GetQuantity()
-        self.routeInfoType.SetSubtext(mls.UI_PI_UNITSOFTYPE % {'typeName': cfg.invtypes.Get(routeTypeID).name,
-         'quantity': routeQty})
+        self.routeInfoType.SetSubtext(localization.GetByLabel('UI/PI/Common/ItemAmount', itemName=cfg.invtypes.Get(routeTypeID).name, amount=int(routeQty)))
         bandwidthAttr = cfg.dgmattribs.Get(const.attributeLogisticalCapacity)
         infoSvc = sm.GetService('info')
         self.routeInfoBandwidth.SetSubtext(infoSvc.GetFormatAndValue(bandwidthAttr, selectedRoute.GetBandwidthUsage()))
-        createRouteBtn = self.routeInfoBtns.GetBtnByLabel(mls.UI_PI_CREATEROUTE)
+        createRouteBtn = self.routeInfoBtns.GetBtnByLabel(localization.GetByLabel('UI/PI/Common/CreateRoute'))
         if createRouteBtn:
             if selectedRoute.GetDestinationPinID() == self.pin.id:
                 createRouteBtn.state = uiconst.UI_NORMAL
@@ -885,7 +877,7 @@ class CaptionAndSubtext(uicls.Container):
         self.subtext = SubTextLabel(parent=self, text=self.subtextTxt, pos=(left,
          12,
          width,
-         0), autowidth=False)
+         0))
         if self.iconTypeID:
             self.icon = uicls.Icon(parent=self, pos=(-5,
              0,
@@ -901,7 +893,7 @@ class CaptionAndSubtext(uicls.Container):
 
 
     def SetCaption(self, caption):
-        self.captionTxt = caption.upper()
+        self.captionTxt = caption
         self.caption.text = self.captionTxt
 
 
@@ -918,9 +910,9 @@ class CaptionAndSubtext(uicls.Container):
     def GetMenu(self):
         if not self.iconTypeID:
             return None
-        ret = [(mls.UI_CMD_SHOWINFO, sm.GetService('info').ShowInfo, [self.iconTypeID])]
+        ret = [(localization.GetByLabel('UI/Commands/ShowInfo'), sm.GetService('info').ShowInfo, [self.iconTypeID])]
         if session.role & ROLE_GML == ROLE_GML:
-            ret.append((mls.UI_CMD_GMEXTRAS, self.GetGMMenu()))
+            ret.append(('GM / WM Extras', self.GetGMMenu()))
         return ret
 
 
@@ -934,11 +926,8 @@ class CaptionAndSubtext(uicls.Container):
 
 
 
-class CaptionLabel(uicls.Label):
+class CaptionLabel(uicls.EveHeaderSmall):
     __guid__ = 'planet.ui.CaptionLabel'
-    default_fontsize = 10
-    default_letterspace = 1
-    default_uppercase = True
     default_state = uiconst.UI_DISABLED
     default_color = (1.0, 1.0, 1.0, 0.95)
 

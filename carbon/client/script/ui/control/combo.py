@@ -1,10 +1,12 @@
-import uthread
-import _weakref
-import log
 import uiconst
 import uiutil
 import uicls
+import uthread
+import _weakref
+import localization
+import log
 import fontConst
+import blue
 
 class ComboCore(uicls.Container):
     __guid__ = 'uicls.ComboCore'
@@ -12,8 +14,10 @@ class ComboCore(uicls.Container):
     default_align = uiconst.TOTOP
     default_label = ''
     default_state = uiconst.UI_NORMAL
-    default_font = fontConst.DEFAULT_FONT
     default_fontsize = fontConst.DEFAULT_FONTSIZE
+    default_fontStyle = None
+    default_fontFamily = None
+    default_fontPath = None
     default_shadow = [(1, -1, -1090519040)]
     default_prefskey = None
     default_options = []
@@ -22,6 +26,7 @@ class ComboCore(uicls.Container):
     default_adjustWidth = False
     default_width = 100
     default_height = 20
+    default_cursor = uiconst.UICURSOR_SELECT
 
     def ApplyAttributes(self, attributes):
         uicls.Container.ApplyAttributes(self, attributes)
@@ -33,14 +38,12 @@ class ComboCore(uicls.Container):
         self._comboDropDown = None
         self.adjustWidth = attributes.get('adjustWidth', self.default_adjustWidth)
         self.prefskey = attributes.get('prefskey', self.default_prefskey)
-        self.font = attributes.get('font', self.default_font)
+        self.fontStyle = attributes.get('fontStyle', self.default_fontStyle)
+        self.fontFamily = attributes.get('fontFamily', self.default_fontFamily)
+        self.fontPath = attributes.get('fontPath', self.default_fontPath)
         self.fontsize = attributes.get('fontsize', self.default_fontsize)
         self.shadow = attributes.get('shadow', self.default_shadow)
         self.Prepare_()
-        if self.sr.selected:
-            self.sr.selected.font = self.font
-            self.sr.selected.fontsize = self.fontsize
-            self.sr.selected.shadow = self.shadow
         self.OnChange = attributes.get('callback', self.default_callback)
         self.SetLabel_(attributes.get('label', self.default_label))
         self.LoadOptions(attributes.get('options', self.default_options), attributes.get('select', self.default_select))
@@ -68,7 +71,7 @@ class ComboCore(uicls.Container):
 
 
     def Prepare_SelectedText_(self):
-        self.sr.selected = uicls.Label(text='', fontsize=self.fontsize, parent=self.sr.textclipper, name='value', align=uiconst.CENTERLEFT, pos=(6, 0, 0, 0), state=uiconst.UI_DISABLED)
+        self.sr.selected = uicls.Label(text='', fontStyle=self.fontStyle, fontFamily=self.fontFamily, fontPath=self.fontPath, fontsize=self.fontsize, parent=self.sr.textclipper, name='value', align=uiconst.CENTERLEFT, left=6, state=uiconst.UI_DISABLED)
 
 
 
@@ -119,7 +122,6 @@ class ComboCore(uicls.Container):
             self.Expand()
         if self._Expanded():
             self._comboDropDown().sr.scroll.BrowseNodes(1)
-        self.ShiftVal(-1)
 
 
 
@@ -128,7 +130,6 @@ class ComboCore(uicls.Container):
             self.Expand()
         if self._Expanded():
             self._comboDropDown().sr.scroll.BrowseNodes(0)
-        self.ShiftVal(1)
 
 
 
@@ -142,20 +143,12 @@ class ComboCore(uicls.Container):
 
 
 
-    def ShiftVal(self, shift, callback = 0):
-        currentIdx = self.GetIndex()
-        newIdx = max(0, min(len(self.entries) - 1, shift + currentIdx))
-        self.SelectItemByIndex(newIdx)
-        if callback and self.OnChange:
-            (key, val,) = self.entries[newIdx]
-            self.OnChange(self, key, val)
-
-
-
     def OnSetFocus(self, *args):
         if self and not self.destroyed and self.parent and self.parent.name == 'inlines':
-            if self.parent.parent and getattr(self.parent.parent.sr, 'node', None):
-                self.parent.parent.sr.node.scroll.ShowNodeIdx(self.parent.parent.sr.node.idx)
+            if self.parent.parent and self.parent.parent.sr.node:
+                browser = uiutil.GetBrowser(self)
+                if browser:
+                    uthread.new(browser.ShowObject, self)
         if self.sr.activeframe:
             self.sr.activeframe.state = uiconst.UI_DISABLED
 
@@ -167,16 +160,21 @@ class ComboCore(uicls.Container):
 
 
 
-    def LoadOptions(self, entries, select = None):
-        entries = entries or [(mls.UI_GENERIC_NOCHOICES, None)]
+    def LoadOptions(self, entries, select = None, hints = None):
+        screwed = [ each for each in entries if not isinstance(each[0], basestring) ]
+        if screwed:
+            raise RuntimeError('NonStringKeys', repr(screwed))
+        entries = entries or [(localization.GetByLabel('/Carbon/UI/Controls/Combo/NoChoices'), None, None)]
         self.entries = entries
+        self.hints = hints
         if select == '__random__':
             import random
-            ri = random.randint(0, len(self.entries) - 1)
-            select = [ each[1] for each in entries ][ri]
+            select = random.choice(entries)[1]
         elif select is None:
             select = self.entries[0][1]
-        self.SelectItemByValue(select)
+        success = self.SelectItemByValue(select)
+        if not success:
+            self.SelectItemByValue(self.entries[0][1])
         self.AutoAdjustWidth_()
 
 
@@ -185,7 +183,7 @@ class ComboCore(uicls.Container):
         currentAlign = self.GetAlign()
         if self.adjustWidth and self.entries and currentAlign not in (uiconst.TOTOP, uiconst.TOBOTTOM, uiconst.TOALL):
             arrowContainerWidth = 25
-            self.width = max([ uicore.font.GetTextWidth(name, font=self.font, fontsize=self.fontsize) + arrowContainerWidth for (name, val,) in self.entries ] + [self.default_width])
+            self.width = max([ uicore.font.GetTextWidth(each[0], fontFamily=self.fontFamily, fontStyle=self.fontStyle, fontPath=self.fontPath, fontsize=self.fontsize) + arrowContainerWidth for each in self.entries ] + [self.default_width])
 
 
 
@@ -260,14 +258,14 @@ class ComboCore(uicls.Container):
 
 
 
-    def OnClick(self, *args):
+    def OnMouseDown(self, *args):
         if not self._Expanded():
-            self.Expand()
+            uthread.new(self.Expand)
 
 
 
     def Prepare_OptionMenu_(self):
-        uiutil.Flush(uicore.layer.menu)
+        uicore.layer.menu.Flush()
         menu = uicls.Container(parent=uicore.layer.menu, pos=(0, 0, 200, 200), align=uiconst.RELATIVE)
         menu.sr.scroll = uicls.Scroll(parent=menu)
         uicls.Fill(parent=menu, color=(0.0, 0.0, 0.0, 1.0))
@@ -289,31 +287,40 @@ class ComboCore(uicls.Container):
         for each in self.entries:
             label = each[0]
             returnValue = each[1]
+            if len(each) > 2:
+                hint = each[2]
+            elif self.hints:
+                hint = self.hints.get(label, '')
+            else:
+                hint = ''
             data = {}
             data['OnClick'] = self.OnEntryClick
             data['data'] = (label, returnValue)
             data['label'] = unicode(label)
-            data['font'] = self.font
+            data['fontStyle'] = self.fontStyle
+            data['fontFamily'] = self.fontFamily
+            data['fontPath'] = self.fontPath
             data['fontsize'] = self.fontsize
             data['shadow'] = (self.shadow,)
             data['decoClass'] = entryClass
-            if len(each) > 2:
-                data['hint'] = each[2]
+            data['hint'] = hint
             if returnValue == self.selectedValue:
                 data['selected'] = True
                 selIdx = i
             scrolllist.append(uicls.ScrollEntryNode(**data))
-            maxw = max(maxw, uicore.font.GetTextWidth(data['label'], data['fontsize'], 0, 0, data['font']))
+            maxw = max(maxw, uicore.font.GetTextWidth(data['label'], fontsize=self.fontsize, fontFamily=self.fontFamily, fontStyle=self.fontStyle, fontPath=self.fontPath))
             i += 1
 
         (l, t, w, h,) = self.GetAbsolute()
         menu.width = max(maxw + 24, w)
         scroll.LoadContent(contentList=scrolllist)
         totalHeight = sum([ each.height for each in scroll.sr.nodes[:6] ])
-        menu.height = totalHeight
+        menu.height = totalHeight + 2 + scroll.padTop + scroll.padBottom
         menu.left = l
         menu.top = min(t + h + 1, uicore.desktop.height - menu.height - 8)
-        scroll.ShowNodeIdx(selIdx)
+        scroll.SetSelected(selIdx)
+        scroll.OnKillFocus = self.OnScrollFocusLost
+        scroll.OnSelectionChange = self.OnScrollSelectionChange
         scroll.Confirm = self.Confirm
         scroll.OnUp = self.OnUp
         scroll.OnDown = self.OnDown
@@ -321,7 +328,22 @@ class ComboCore(uicls.Container):
         scroll.OnLeft = self.Confirm
         self._comboDropDown = _weakref.ref(menu)
         self._expanding = False
+        uthread.new(self.ShowSelected, selIdx)
+
+
+
+    def GetExpanderIconWidth(self):
+        if self.sr.expanderParent:
+            return self.sr.expanderParent.width + self.sr.expanderParent.padLeft + self.sr.expanderParent.padRight
+        return 0
+
+
+
+    def ShowSelected(self, selectedIndex, *args):
+        blue.pyos.synchro.Yield()
+        scroll = self._comboDropDown().sr.scroll
         uicore.registry.SetFocus(scroll)
+        scroll.ShowNodeIdx(selectedIndex)
 
 
 
@@ -343,9 +365,29 @@ class ComboCore(uicls.Container):
 
     def Cleanup(self, setfocus = 1):
         self._comboDropDown = None
-        uthread.new(uiutil.Flush, uicore.layer.menu)
+        uicore.layer.menu.Flush()
         if setfocus:
             uicore.registry.SetFocus(self)
+
+
+
+    def OnScrollFocusLost(self, *args):
+        uthread.new(self.Confirm)
+
+
+
+    def OnScrollSelectionChange(self, selected):
+        if selected:
+            self.SelectItemByLabel(selected[0].label)
+
+
+
+    def OnChar(self, enteredChar, *args):
+        if enteredChar < 32 and enteredChar != uiconst.VK_RETURN:
+            return False
+        if not self._Expanded():
+            self.Expand()
+        return True
 
 
 

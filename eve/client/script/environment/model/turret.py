@@ -5,7 +5,6 @@ import nodemanager
 import __builtin__
 import random
 import base
-rot = blue.os.CreateInstance('blue.Rot')
 turretpath = 'res:/Model/Turret/'
 ammodir = 'res:/Model/Turret/Ammo/'
 turretlight = 'res:/Model/Turret/turret_light.blue'
@@ -25,7 +24,7 @@ class TurretPair():
 
     def Initialize(self, graphicID):
         self.shooting = 0
-        turrStart = blue.os.GetTime(1)
+        turrStart = blue.os.GetWallclockTimeNow()
         if type(graphicID) == type(''):
             gfxString = graphicID
         else:
@@ -54,7 +53,7 @@ class TurretPair():
         turret2.InitWithTriTurret(tempTriTurret)
         self.turrets.append(turret1)
         self.turrets.append(turret2)
-        turrEnd = blue.os.GetTime(1)
+        turrEnd = blue.os.GetWallclockTimeNow()
         self.target = None
 
 
@@ -97,8 +96,8 @@ class TurretPair():
 
 
     def StartShooting(self, ammoGFXid = None):
-        blue.pyos.synchro.Sleep(1)
-        blue.pyos.synchro.Sleep(random.randint(0, 100))
+        blue.pyos.synchro.SleepSim(1)
+        blue.pyos.synchro.SleepSim(random.randint(0, 100))
         self.shooting = 1
         fireNow = self.lastFiredID
         if len(self.turrets) > fireNow:
@@ -117,9 +116,9 @@ class TurretPair():
             return 
         elapsedTime = 0.0
         aimTime = self.turrets[0].triTurret.aimTime
-        startTime = blue.os.GetTime(1)
+        startTime = blue.os.GetSimTime()
         while elapsedTime < aimTime + 0.1:
-            elapsedTime = float(blue.os.GetTime(1) - startTime) / 10000000.0
+            elapsedTime = float(blue.os.GetSimTime() - startTime) / 10000000.0
             for turret in self.turrets:
                 if turret.triTurret.canShoot:
                     turret.Shoot()
@@ -131,7 +130,7 @@ class TurretPair():
                     self.shooting = 0
                     return 
 
-            blue.pyos.synchro.Sleep(20)
+            blue.pyos.synchro.SleepSim(20)
 
         sm.GetService('FxSequencer').LogInfo('No turret in scope. No turret made hit')
 
@@ -163,7 +162,7 @@ class MiningTurretPair(TurretPair):
 
     def Initialize(self, graphicID, shootDelay):
         self.shootDelay = shootDelay
-        self.now = blue.os.GetTime()
+        self.now = blue.os.GetSimTime()
         self.shootTimer = None
         self.weaponType = None
         TurretPair.Initialize(self, graphicID)
@@ -228,7 +227,7 @@ class MiningTurretPair(TurretPair):
         if not turret.triTurret.canShoot:
             fireNow = not fireNow
             turret = self.turrets[fireNow]
-        blue.pyos.synchro.Sleep(random.randint(0, 100))
+        blue.pyos.synchro.SleepSim(random.randint(0, 100))
         if not turret.triTurret:
             return 
         if turret.triTurret.canShoot:
@@ -240,9 +239,9 @@ class MiningTurretPair(TurretPair):
             return 
         elapsedTime = 0.0
         aimTime = self.turrets[0].triTurret.aimTime
-        startTime = blue.os.GetTime(1)
+        startTime = blue.os.GetSimTime()
         while elapsedTime < aimTime + 0.1:
-            elapsedTime = float(blue.os.GetTime(1) - startTime) / 10000000.0
+            elapsedTime = float(blue.os.GetSimTime() - startTime) / 10000000.0
             for turret in self.turrets:
                 if turret.triTurret.canShoot:
                     turret.Shoot()
@@ -254,7 +253,7 @@ class MiningTurretPair(TurretPair):
                     self.shooting = 0
                     return 
 
-            blue.pyos.synchro.Sleep(20)
+            blue.pyos.synchro.SleepSim(20)
 
         sm.GetService('FxSequencer').LogInfo('No turret in scope. No turret made hit')
 
@@ -296,7 +295,7 @@ class EntityTurrets(TurretPair):
 
 
     def StartShooting(self, ammoGFXid = None):
-        blue.pyos.synchro.Sleep(random.randint(0, 500))
+        blue.pyos.synchro.SleepSim(random.randint(0, 500))
         self.shooting = 1
         turretLen = len(self.turrets)
         if not turretLen:
@@ -307,7 +306,7 @@ class EntityTurrets(TurretPair):
             offset = (offset + turretID) % turretLen
             turret = self.turrets[offset]
             if turret.triTurret.canShoot:
-                blue.pyos.synchro.Sleep(random.randint(0, 100))
+                blue.pyos.synchro.SleepSim(random.randint(0, 100))
                 turret.Shoot()
                 for otherTurret in self.turrets:
                     if otherTurret != turret:
@@ -324,9 +323,9 @@ class EntityTurrets(TurretPair):
 
         elapsedTime = 0.0
         aimTime = self.turrets[0].triTurret.aimTime
-        startTime = blue.os.GetTime(1)
+        startTime = blue.os.GetSimTime()
         while elapsedTime < aimTime + 0.1:
-            elapsedTime = float(blue.os.GetTime(1) - startTime) / 10000000.0
+            elapsedTime = float(blue.os.GetSimTime() - startTime) / 10000000.0
             for turret in self.turrets:
                 if turret.triTurret.canShoot:
                     turret.Shoot()
@@ -339,7 +338,7 @@ class EntityTurrets(TurretPair):
                     self.shooting = 0
                     return 
 
-            blue.pyos.synchro.Sleep(20)
+            blue.pyos.synchro.SleepSim(20)
 
         sm.GetService('FxSequencer').LogInfo('No turret in scope. No turret made hit')
 
@@ -454,7 +453,7 @@ class Turret():
     def Shoot(self):
         if self.targetOwner is None:
             return 
-        now = blue.os.GetTime()
+        now = blue.os.GetSimTime()
         for curve in self.timecurves:
             curve.start = now
 
@@ -519,7 +518,7 @@ class Turret():
 
 
     def TargetFX(self):
-        blue.pyos.synchro.Sleep(100)
+        blue.pyos.synchro.SleepSim(100)
         if self.triTurret.target:
             if not self.targetOwner:
                 return 

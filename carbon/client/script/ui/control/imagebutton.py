@@ -64,11 +64,11 @@ class ImageButtonCore(uicls.Sprite):
 
 
     def _WhileHandleMouseDownFunc(self):
-        lastTime = blue.os.GetTime()
+        lastTime = blue.os.GetWallclockTime()
         while True:
             if self.destroyed:
                 return 
-            curTime = blue.os.GetTime()
+            curTime = blue.os.GetWallclockTime()
             dt = float(curTime - lastTime) / const.SEC
             lastTime = curTime
             self.WhileMouseDownFunc(dt)

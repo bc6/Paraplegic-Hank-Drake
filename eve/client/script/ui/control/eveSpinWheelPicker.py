@@ -199,7 +199,7 @@ class SpinWheelPicker(uicls.Container):
 
     def MouseWheelThread(self, delta):
         self._wheeling = True
-        blue.pyos.synchro.Sleep(100)
+        blue.pyos.synchro.SleepWallclock(100)
         if self._wheelbuffer:
             delta += self._wheelbuffer
             self._wheelbuffer = 0
@@ -276,7 +276,7 @@ class SpinWheelPicker(uicls.Container):
                 iExp = math.exp(i / 10.0)
                 _delta = distance - distance * (iExp / maxExp)
                 self.sr.mainTransform.Rotate(_delta)
-                blue.pyos.synchro.Sleep(10)
+                blue.pyos.synchro.SleepWallclock(10)
                 if self.destroyed or self._spinning:
                     return 
 

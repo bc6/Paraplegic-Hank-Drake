@@ -3,48 +3,47 @@ import blue
 import service
 import collections
 
-class AimingComponent:
-    __guid__ = 'AI.AimingComponent'
-
-    def __init__(self, state):
-        self.state = state
-
-
-
-
-class AimingEntityData(object):
-    __guid__ = 'AI.AimingEntityData'
-    entID = 0
-
-
 class aimingCommon(service.Service):
     __guid__ = 'AI.aimingCommon'
     sceneManagers = {}
     __componentTypes__ = ['aiming']
 
     def CreateComponent(self, name, state):
-        return AimingComponent(state)
+        component = GameWorld.AimingComponent()
+        component.entityTypeString = state[const.aiming.AIMING_COMPONENT_ENTITY_TYPE]
+        return component
+
+
+
+    def PrepareComponent(self, sceneID, entityID, component):
+        if sceneID not in self.sceneManagers:
+            self.LogError('SceneID in prepare aiming component has no previous manager ', sceneID, entityID)
+            return 
+        component.entityID = entityID
+        component.entityTypeID = const.aiming.AIMING_ENTITY_TYPE_TO_ID.get(component.entityTypeString)
+        if component.entityTypeID == -1:
+            self.LogError('entity in prepare aimingperception component has missing type', entityID)
+            return 
 
 
 
     def SetupComponent(self, entity, component):
-        pass
+        if entity.scene.sceneID not in self.sceneManagers:
+            self.LogError('Trying to register a aiming component thats doesnt have a valid scene', entity.entityID, entity.scene.sceneID)
+            return 
+        aimingManager = self.sceneManagers[entity.scene.sceneID]
+        aimingManager.AddEntity(component)
 
 
 
     def RegisterComponent(self, entity, component):
-        if entity.scene.sceneID not in self.sceneManagers:
-            self.LogError('Trying to register a aiming component thats doesnt have a valid scene', entity.entityID)
-            return 
-        positionComponent = entity.GetComponent('position')
-        aimingManager = self.sceneManagers[entity.scene.sceneID]
-        aimingManager.AddEntity(component.entData.entID, positionComponent)
+        pass
 
 
 
     def UnRegisterComponent(self, entity, component):
         if entity.scene.sceneID not in self.sceneManagers:
-            self.LogError("Trying to remove a aiming entity who's scene doesn't have a manager", entity.entityID)
+            self.LogError("Trying to remove a aiming entity who's scene doesn't have a manager", entity.entityID, entity.scene.sceneID)
             return 
         aimingManager = self.sceneManagers[entity.scene.sceneID]
         aimingManager.RemoveEntity(entity.entityID)
@@ -56,20 +55,9 @@ class aimingCommon(service.Service):
 
 
 
-    def PackUpForSceneTransfer(self, component, destinationSceneID):
-        return component.state
-
-
-
-    def UnPackFromSceneTransfer(self, component, entity, state):
-        component.state = state
-        return component
-
-
-
     def ReportState(self, component, entity):
         report = collections.OrderedDict()
-        report['Entity Type'] = component.state['entityType']
+        report['Entity Type'] = component.entityTypeString
         return report
 
 
@@ -93,8 +81,8 @@ class aimingCommon(service.Service):
         self.sceneManagers[sceneID] = aimingManager
         aimingManager.SetStaticSettings((self.GetValidTargets(),))
         gw = self.gameWorldService.GetGameWorld(sceneID)
-        gw.aimingManager = aimingManager
         aimingManager.SetGameWorld(gw)
+        GameWorld.GetSceneManagerSingleton().AddComponentManager(sceneID, aimingManager)
         self.LogInfo('Done Creating a new aiming system for scene ', sceneID)
 
 
@@ -102,7 +90,6 @@ class aimingCommon(service.Service):
     def OnUnloadEntityScene(self, sceneID):
         self.LogInfo('Unloading aiming system for scene ', sceneID)
         gw = self.gameWorldService.GetGameWorld(sceneID)
-        gw.aimingManager = None
         if sceneID in self.sceneManagers:
             del self.sceneManagers[sceneID]
         else:

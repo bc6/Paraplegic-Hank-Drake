@@ -13,6 +13,7 @@ import util
 
 class TabGroup(uicls.TabGroupCore):
     __guid__ = 'uicls.TabGroup'
+    __notifyevents__ = ['OnUIScalingChange']
     default_name = 'tabgroup'
     default_align = uiconst.TOTOP
     default_height = 32
@@ -31,6 +32,7 @@ class TabGroup(uicls.TabGroupCore):
         silently = attributes.get('silently', False)
         if tabs:
             self.Startup(tabs, groupID=groupID, autoselecttab=autoselecttab, UIIDPrefix=UIIDPrefix, silently=silently)
+        sm.RegisterNotify(self)
 
 
 
@@ -64,6 +66,12 @@ class TabGroup(uicls.TabGroupCore):
 
 
 
+    def OnUIScalingChange(self, *args):
+        if not self.destroyed:
+            self.UpdateSizes()
+
+
+
 
 class Tab(uicls.TabCore):
     __guid__ = 'uicls.Tab'
@@ -71,6 +79,9 @@ class Tab(uicls.TabCore):
 
     def ApplyAttributes(self, attributes):
         super(uicls.Tab, self).ApplyAttributes(attributes)
+        if self.sr.label:
+            self.sr.label.Close()
+        self.sr.label = uicls.EveLabelSmall(parent=self.sr.clipper, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT, name='tabLabel')
         self.isTabStop = False
 
 

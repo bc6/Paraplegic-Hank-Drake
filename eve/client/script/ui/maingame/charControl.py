@@ -1,11 +1,8 @@
+import geo2
+import util
 import uicls
 import uiconst
 import GameWorld
-import util
-import uthread
-import uiutil
-import geo2
-import blue
 
 class EveCharControl(uicls.CharControlCore):
     __guid__ = 'uicls.CharControl'
@@ -19,10 +16,8 @@ class EveCharControl(uicls.CharControlCore):
         self.gameWorldClient = sm.GetService('gameWorldClient')
         self.navigation = sm.GetService('navigation')
         self.entityClient = sm.GetService('entityClient')
+        self.menuSvc = sm.GetService('menu')
         self.entityClient.RegisterForSceneLifeCycle(self)
-        self.loadingBackground = uicls.Container(name='loadingBackground', parent=self, bgColor=util.Color.BLACK, state=uiconst.UI_HIDDEN)
-        self.bracketContainer = uicls.Container(name='bracketContainer', parent=self)
-        self.bracketContainer.GetMenu = self.GetMenu
 
 
 
@@ -35,9 +30,6 @@ class EveCharControl(uicls.CharControlCore):
         uicls.CharControlCore.OnOpenView(self)
         self.state = uiconst.UI_PICKCHILDREN
         sm.GetService('bracketClient').ReloadBrackets()
-        self.ShowLoadingBackground()
-        self.cameraClient.ResetLayerInfo()
-        self.cameraClient.Enable()
         self.navigation.Reset()
         player = self.entityClient.GetPlayerEntity()
         if player is not None:
@@ -45,69 +37,66 @@ class EveCharControl(uicls.CharControlCore):
 
 
 
-    def ShowLoadingBackground(self):
-        blue.statistics.SetTimelineSectionName('loading')
-        isLoadingScreen = prefs.GetValue('loadstationenv', 1)
-        height = uicore.desktop.height
-        width = 1.6 * height
-        if isLoadingScreen:
-            self.loadingText = uicls.Label(parent=self.loadingBackground, text=uiutil.UpperCase(mls.UI_GENERIC_LOADING), fontsize=50, align=uiconst.CENTER, top=100, color=util.Color.WHITE, glowFactor=1.0, glowColor=(1.0, 1.0, 1.0, 0.1))
-            uicore.animations.FadeIn(self.loadingText)
-            uicls.Sprite(name='aura', parent=self.loadingBackground, texturePath='res:/UI/Texture/Classes/CQLoadingScreen/loadingScreen.png', align=uiconst.CENTER, width=width, height=height)
-        else:
-            uicls.Sprite(name='aura', parent=self.loadingBackground, texturePath='res:/UI/Texture/Classes/CQLoadingScreen/IncarnaDisabled.png', align=uiconst.CENTER, width=width, height=height)
-        uicore.animations.FadeIn(self.loadingBackground)
-        self.loadingBackground.Show()
-        self.loadingBackground.opacity = 1.0
-        if isLoadingScreen:
-            uthread.new(self.WaitForSceneToLoad)
-
-
-
-    def WaitForSceneToLoad(self):
-        uicore.animations.MorphScalar(self.loadingText, 'glowExpand', startVal=0.0, endVal=2.0, duration=3.0, curveType=uiconst.ANIM_WAVE, loops=uiconst.ANIM_REPEAT)
-        uicore.animations.MorphScalar(self.loadingText, 'opacity', startVal=0.0, endVal=1.0, duration=3.0, curveType=uiconst.ANIM_WAVE, loops=uiconst.ANIM_REPEAT)
-        playerEntity = sm.GetService('entityClient').GetPlayerEntity(canBlock=True)
-        paperdoll = playerEntity.GetComponent('paperdoll')
-        while paperdoll.doll.doll.busyUpdating:
-            blue.synchro.Yield()
-
-        sceneRj = sm.GetService('sceneManager').GetIncarnaRenderJob()
-        if sm.GetService('sceneManager').secondarySceneContext is None:
-            sceneRj.Enable()
-        self.loadingText.StopAnimations()
-        uicore.animations.BlinkOut(self.loadingText, sleep=True)
-        uicore.animations.FadeOut(self.loadingBackground, duration=0.6, sleep=True)
-        self.loadingBackground.Hide()
-        self.loadingBackground.Flush()
-        blue.statistics.SetTimelineSectionName('done loading')
-
-
-
     def OnCloseView(self):
         uicls.CharControlCore.OnCloseView(self)
-        self.cameraClient.ResetLayerInfo()
-        self.cameraClient.Disable()
 
 
 
     def OnMouseDown(self, button, *args):
-        self.entityID = self._PickObject(uicore.uilib.x, uicore.uilib.y)
+        self.entityID = self._PickObject(uicore.ScaleDpi(uicore.uilib.x), uicore.ScaleDpi(uicore.uilib.y))
         self.mouseInputHandler.OnMouseDown(button, uicore.uilib.x, uicore.uilib.y, self.entityID)
 
 
 
     def OnMouseUp(self, button, *args):
-        self.entityID = self._PickObject(uicore.uilib.x, uicore.uilib.y)
+        self.entityID = self._PickObject(uicore.ScaleDpi(uicore.uilib.x), uicore.ScaleDpi(uicore.uilib.y))
         self.mouseInputHandler.OnMouseUp(button, uicore.uilib.x, uicore.uilib.y, self.entityID)
 
 
 
     def GetMenu(self):
+        x = uicore.ScaleDpi(uicore.uilib.x)
+        y = uicore.ScaleDpi(uicore.uilib.y)
         self.contextMenuClient = sm.GetService('contextMenuClient')
-        entityID = self._PickObject(uicore.uilib.x, uicore.uilib.y)
+        entityID = self._PickObject(x, y)
         if entityID:
             return self.contextMenuClient.GetMenuForEntityID(entityID)
+        altPickObject = self._PickHangarScene(x, y)
+        if altPickObject and hasattr(altPickObject, 'name') and altPickObject.name == str(util.GetActiveShip()):
+            return self.GetShipMenu()
+
+
+
+    def GetShipMenu(self):
+        if util.GetActiveShip():
+            hangarInv = sm.GetService('invCache').GetInventory(const.containerHangar)
+            hangarItems = hangarInv.List()
+            for each in hangarItems:
+                if each.itemID == util.GetActiveShip():
+                    return self.menuSvc.InvItemMenu(each)
+
+        return []
+
+
+
+    def OnDropData(self, dragObj, nodes):
+        sm.GetService('loading').StopCycle()
+        if len(nodes) == 1:
+            node = nodes[0]
+            if getattr(node, '__guid__', None) not in ('xtriui.InvItem', 'listentry.InvItem'):
+                return 
+            if session.shipid == node.item.itemID:
+                eve.Message('CantMoveActiveShip', {})
+                return 
+            if node.item.categoryID == const.categoryShip and node.item.singleton:
+                if not node.item.ownerID == eve.session.charid:
+                    eve.Message('CantDoThatWithSomeoneElsesStuff')
+                    return 
+                sm.GetService('station').TryActivateShip(node.item)
+        selsvc = sm.GetService('station').GetSvc()
+        if selsvc is not None:
+            if util.LocalSvcHasAttr(selsvc, 'OnStuffDropOnMainArea'):
+                uthread.new(selsvc.OnStuffDropOnMainArea, nodes)
 
 
 
@@ -127,16 +116,21 @@ class EveCharControl(uicls.CharControlCore):
 
 
     def OnDblClick(self, *args):
+        if self.entityID is None:
+            x = uicore.ScaleDpi(uicore.uilib.x)
+            y = uicore.ScaleDpi(uicore.uilib.y)
+            altPickObject = self._PickHangarScene(x, y)
+            if altPickObject and hasattr(altPickObject, 'name') and altPickObject.name == str(util.GetActiveShip()):
+                sm.GetService('cmd').OpenCargoHoldOfActiveShip()
+                return 
         self.mouseInputHandler.OnDoubleClick(self.entityID)
 
 
 
     def _PickObject(self, x, y):
-        if not isinstance(self.parent, uicls.CharControl):
+        if not self.gameWorldClient.HasGameWorld(session.worldspaceid):
             return 
         else:
-            if not self.gameWorldClient.HasGameWorld(session.worldspaceid):
-                return 
             gameWorld = self.gameWorldClient.GetGameWorld(session.worldspaceid)
             if gameWorld is None:
                 return 
@@ -149,20 +143,31 @@ class EveCharControl(uicls.CharControlCore):
 
 
 
+    def _PickHangarScene(self, x, y):
+        activeCam = self.cameraClient.GetActiveCamera()
+        if hasattr(activeCam, 'PickHangarScene'):
+            return activeCam.PickHangarScene(x, y)
+
+
+
     def OverridePick(self, x, y):
         overrideObject = None
         entityID = self._PickObject(x, y)
         if entityID:
             entity = sm.GetService('entityClient').FindEntityByID(entityID)
-            if entity.HasComponent('UIDesktopComponent') and entity.HasComponent('uvPicking'):
-                (startPoint, endPoint,) = self.cameraClient.GetActiveCamera().GetRay(x, y)
+            if entity:
+                camera = self.cameraClient.GetActiveCamera()
+                (startPoint, endPoint,) = camera.GetRay(x, y)
                 direction = geo2.Subtract(endPoint, startPoint)
-                uv = sm.GetService('uvPickingClient').Pick(entity, startPoint, direction)
-                if uv:
+                uvSvc = sm.GetService('uvPickingClient')
+                if entity.HasComponent('UIDesktopComponent') and entity.HasComponent('uvPicking'):
+                    uv = uvSvc.PickEntity(entity, startPoint, direction)
+                    if not uv:
+                        return 
                     desktopComponent = entity.GetComponent('UIDesktopComponent')
                     desktop = desktopComponent.uiDesktop
-                    u = int(uv[0] * desktop.width)
-                    v = int(uv[1] * desktop.height)
+                    u = int(uv[1][0] * desktop.width)
+                    v = int(uv[1][1] * desktop.height)
                     triobj = desktopComponent.uiDesktop.renderObject.PickObject(u, v, None, None, None)
                     if triobj:
                         overrideObject = uicore.uilib.GetPyObjectFromRenderObject(triobj)

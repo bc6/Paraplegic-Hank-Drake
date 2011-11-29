@@ -12,6 +12,7 @@ import log
 import uiconst
 import uicls
 import uiutil
+import localization
 from corputil import *
 
 class CorpTitles(uicls.Container):
@@ -51,7 +52,7 @@ class CorpTitles(uicls.Container):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         self.OnTabDeselect()
 
 
@@ -107,18 +108,18 @@ class CorpTitles(uicls.Container):
     def CreateWindow(self):
         toppar = uicls.Container(name='options', parent=self, align=uiconst.TOTOP, height=36)
         uicls.Container(name='push', parent=toppar, align=uiconst.TOTOP, height=6)
-        viewOptionsList1 = [[mls.UI_CORP_ROLES, VIEW_ROLES], [mls.UI_CORP_GRANTABLEROLES, VIEW_GRANTABLE_ROLES]]
+        viewOptionsList1 = [[localization.GetByLabel('UI/Corporations/Common/Roles'), VIEW_ROLES], [localization.GetByLabel('UI/Corporations/Common/GrantableRoles'), VIEW_GRANTABLE_ROLES]]
         viewOptionsList2 = []
         for roleGrouping in self.sr.roleGroupings.itervalues():
-            viewOptionsList2.append([Tr(roleGrouping.roleGroupName, 'dbo.crpRoleGroups.roleGroupName', roleGrouping.roleGroupID), roleGrouping.roleGroupID])
+            viewOptionsList2.append([localization.GetByMessageID(roleGrouping.roleGroupNameID), roleGrouping.roleGroupID])
 
         i = 0
         for (optlist, label, config, defval, width,) in [(viewOptionsList1,
-          mls.UI_GENERIC_VIEW,
+          localization.GetByLabel('UI/Common/View'),
           'viewtype',
           1000,
           146), (viewOptionsList2,
-          mls.UI_GENERIC_TYPE,
+          localization.GetByLabel('UI/Common/Type'),
           'rolegroup',
           None,
           146)]:
@@ -135,7 +136,7 @@ class CorpTitles(uicls.Container):
          const.defaultPadding,
          const.defaultPadding))
         self.sr.scroll.OnColumnChanged = self.OnColumnChanged
-        btns = uicls.ButtonGroup(btns=[[mls.UI_CMD_SAVECHANGES,
+        btns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Common/Buttons/SaveChanges'),
           self.SaveChanges,
           (),
           81]])
@@ -147,9 +148,9 @@ class CorpTitles(uicls.Container):
         if not self.sr.Get('inited', 0):
             self.sr.inited = 1
             self.CreateWindow()
-        sm.GetService('corpui').LoadTop('ui_7_64_11', mls.UI_CORP_TITLES)
+        sm.GetService('corpui').LoadTop('ui_7_64_11', localization.GetByLabel('UI/Corporations/Common/Titles'))
         if not const.corpRoleDirector & eve.session.corprole == const.corpRoleDirector:
-            self.SetHint(mls.UI_CORP_ACCESSDENIED8)
+            self.SetHint(localization.GetByLabel('UI/Corporations/CorporationWindow/Members/AccessDeniedDirectorRoleRequired'))
             sm.GetService('corpui').HideLoad()
             return 
         self.PopulateView()
@@ -169,7 +170,7 @@ class CorpTitles(uicls.Container):
             nFrom = 0
             nTo = len(sm.GetService('corp').GetTitles()) - 1
             nCount = 1 + nTo - nFrom
-            sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_LOADING, '', nIndex, nCount)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/Loading'), '', nIndex, nCount)
             blue.pyos.synchro.Yield()
             scrolllist = []
             strings = []
@@ -180,7 +181,7 @@ class CorpTitles(uicls.Container):
                 nIndex += 1
                 rec = title
                 text = '%s' % rec.titleName
-                sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_LOADING, text, nIndex, nCount)
+                sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/Loading'), text, nIndex, nCount)
                 blue.pyos.synchro.Yield()
                 roles = getattr(rec, roleGroup.appliesTo)
                 grantableRoles = getattr(rec, roleGroup.appliesToGrantable)
@@ -189,17 +190,19 @@ class CorpTitles(uicls.Container):
                  'viewtype': self.sr.viewType,
                  'rolegroup': self.sr.viewRoleGroupingID,
                  'parent': self,
-                 'sort_%s' % headers[0]: uiutil.UpperCase(text)}
+                 'sort_%s' % headers[0]: text}
                 for column in roleGroup.columns:
                     (columnName, subColumns,) = column
                     newtext = '<t>'
                     sortmask = ''
-                    for subColumn in subColumns:
-                        for (subColumnName, role,) in subColumns:
-                            isChecked = [roles, grantableRoles][self.sr.viewType] & role.roleID == role.roleID
-                            newtext += ' [%s] %s' % ([' ', 'X'][(not not isChecked)], subColumnName)
-                            sortmask += [' ', 'X'][(not not isChecked)]
-
+                    for (subColumnName, role,) in subColumns:
+                        isChecked = [roles, grantableRoles][self.sr.viewType] & role.roleID == role.roleID
+                        if isChecked:
+                            checkedText = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/TitleHasRole', corpRole=subColumnName)
+                        else:
+                            checkedText = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/TitleDoesNotHaveRole', corpRole=subColumnName)
+                        newtext += checkedText
+                        sortmask += [' ', 'X'][(not not isChecked)]
 
                     params['sort_%s' % columnName] = sortmask
                     text += newtext
@@ -224,7 +227,7 @@ class CorpTitles(uicls.Container):
             self.sr.ignoreDirtyFlag = False
 
         finally:
-            sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_LOADING, '', nCount, nCount)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/Loading'), '', nCount, nCount)
             blue.pyos.synchro.Yield()
 
 
@@ -272,19 +275,21 @@ class CorpTitles(uicls.Container):
                 rec = entry.rec
                 if not rec:
                     continue
-                text = '%s' % rec.titleName
+                text = rec.titleName
                 titleID = rec.titleID
-                sortvalues[titleID] = {mls.UI_GENERIC_NAME: uiutil.UpperCase(text)}
+                sortvalues[titleID] = {localization.GetByLabel('UI/Corporations/CorporationWindow/Members/CorpMemberName'): text}
                 roles = getattr(rec, roleGroup.appliesTo)
                 grantableRoles = getattr(rec, roleGroup.appliesToGrantable)
                 for column in roleGroup.columns:
                     (columnName, subColumns,) = column
                     newtext = '<t>'
-                    for subColumn in subColumns:
-                        for (subColumnName, role,) in subColumns:
-                            isChecked = [roles, grantableRoles][self.sr.viewType] & role.roleID == role.roleID
-                            newtext += ' [%s] %s' % ([' ', 'X'][(not not isChecked)], subColumnName)
-
+                    for (subColumnName, role,) in subColumns:
+                        isChecked = [roles, grantableRoles][self.sr.viewType] & role.roleID == role.roleID
+                        if isChecked:
+                            checkedText = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/TitleHasRole', corpRole=subColumnName)
+                        else:
+                            checkedText = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/TitleDoesNotHaveRole', corpRole=subColumnName)
+                        newtext += checkedText
 
                     text += newtext
 
@@ -324,13 +329,13 @@ class CorpTitles(uicls.Container):
 
     def GetHeaderValues(self, roleGroupingID):
         roleGroup = self.sr.roleGroupings[roleGroupingID]
-        header = [mls.UI_GENERIC_NAME]
+        headers = [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/CorpMemberName')]
         for column in roleGroup.columns:
             (columnName, subColumns,) = column
-            header.append(columnName)
+            colName = uiutil.ReplaceStringWithTags(columnName)
+            headers.append(colName)
 
-        header = [ header.replace(' ', '<br>').replace('PERSONNEL', 'PERS.') for header in header ]
-        return header
+        return headers
 
 
 
@@ -411,16 +416,16 @@ class CorpTitles(uicls.Container):
         if nCount == 0:
             if self.sr.debug:
                 self.LogWarn('Nothing to save')
-            sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_PLEASEWAIT, '', 0, 1)
-            blue.pyos.synchro.Sleep(500)
-            sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_PLEASEWAIT, '', 1, 1)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/PleaseWait'), '', 0, 1)
+            blue.pyos.synchro.SleepWallclock(500)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/PleaseWait'), '', 1, 1)
             blue.pyos.synchro.Yield()
             return 
         self.sr.progressCurrent = 0
         self.sr.progressTotal = nCount
         nIndex = 0
         try:
-            sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_UPDATING, '', nIndex, nCount)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/Updating'), '', nIndex, nCount)
             blue.pyos.synchro.Yield()
             rows = None
             for node in nodesToUpdate:
@@ -471,9 +476,9 @@ class CorpTitles(uicls.Container):
 
         finally:
             if nCount:
-                sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_UPDATED, '', nCount - 1, nCount)
-                blue.pyos.synchro.Sleep(500)
-                sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_UPDATED, '', nCount, nCount)
+                sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/Updated'), '', nCount - 1, nCount)
+                blue.pyos.synchro.SleepWallclock(500)
+                sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/Updated'), '', nCount, nCount)
                 blue.pyos.synchro.Yield()
 
 
@@ -580,12 +585,12 @@ class CorpTitleEntry(listentry.Generic):
     def Load(self, node):
         try:
             self.Lock()
-            s = blue.os.GetTime(1)
+            s = blue.os.GetWallclockTimeNow()
             listentry.Generic.Load(self, node)
             loadingTitleID = node.srcRec.titleID
             self.sr.loadingTitleID.append(loadingTitleID)
             self.state = uiconst.UI_DISABLED
-            self.LogInfo('Load 0 took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetTime(1)))
+            self.LogInfo('Load 0 took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetWallclockTimeNow()))
 
         finally:
             self.Unlock()
@@ -594,7 +599,7 @@ class CorpTitleEntry(listentry.Generic):
             try:
                 try:
                     self.Lock()
-                    s = blue.os.GetTime(1)
+                    s = blue.os.GetWallclockTimeNow()
                     if self.sr.node is None:
                         return 
                     if self.sr.node.rec is None or self.sr.node.rec.titleID != node.srcRec.titleID:
@@ -604,12 +609,12 @@ class CorpTitleEntry(listentry.Generic):
                         return 
 
                 finally:
-                    self.LogInfo('Load 1 took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetTime(1)))
+                    self.LogInfo('Load 1 took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetWallclockTimeNow()))
                     self.Unlock()
 
                 try:
                     self.Lock()
-                    s = blue.os.GetTime(1)
+                    s = blue.os.GetWallclockTimeNow()
                     if self.sr.node is None:
                         return 
                     self.LoadColumns(loadingTitleID)
@@ -617,18 +622,18 @@ class CorpTitleEntry(listentry.Generic):
                         return 
 
                 finally:
-                    self.LogInfo('Load 2 took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetTime(1)))
+                    self.LogInfo('Load 2 took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetWallclockTimeNow()))
                     self.Unlock()
 
                 try:
                     self.Lock()
-                    s = blue.os.GetTime(1)
+                    s = blue.os.GetWallclockTimeNow()
                     if self.sr.node is None:
                         return 
                     self.UpdateLabelText()
 
                 finally:
-                    self.LogInfo('Load 3 took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetTime(1)))
+                    self.LogInfo('Load 3 took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetWallclockTimeNow()))
                     self.Unlock()
 
             except:
@@ -683,7 +688,10 @@ class CorpTitleEntry(listentry.Generic):
                     continue
                 control = self.sr.columns[i][controlNumber]
                 value = self.GetRelevantRoles() & roleID == roleID
-                text = '[%s]' % ['[N]', '[Y]'][value]
+                if value:
+                    text = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/TitleHasRoleYShort')
+                else:
+                    text = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/TitleDoesNotHaveRoleNShort')
                 if isinstance(column, uicls.Checkbox):
                     checked = column.GetValue()
                     if checked == value:
@@ -756,7 +764,6 @@ class CorpTitleEntry(listentry.Generic):
     def LoadColumns(self, loadingTitleID):
         if len(self.sr.loadingTitleID) and loadingTitleID != self.sr.loadingTitleID[-1]:
             return 
-        fontsize = 9
         data = self.sr.node
         tabstops = data.parent.tabstops
         rec = self.GetRec()
@@ -805,7 +812,10 @@ class CorpTitleEntry(listentry.Generic):
                         (subColumnName, role,) = subColumn
                         roleID = role.roleID
                         value = relevantRoles & roleID == roleID
-                        text = '[%s] %s' % (['N', 'Y'][value], subColumnName)
+                        if value:
+                            text = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/TitleHasRoleY', corpRole=subColumnName)
+                        else:
+                            text = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/TitleDoesNotHaveRoleN', corpRole=subColumnName)
                         canEditRole = self.GetCanEditRole(roleID)
                         canRecycle = 0
                         checkBoxes = []
@@ -830,9 +840,9 @@ class CorpTitleEntry(listentry.Generic):
                                 column = self.AddCheckBox(['%s' % i,
                                  roleID,
                                  subColumnName,
-                                 value], self, align, controlWidth, height, left, None, fontsize)
+                                 value], self, align, controlWidth, height, left, None)
                             else:
-                                column = uicls.Label(text=text, parent=self, width=controlWidth, height=height, left=left, fontsize=fontsize, state=uiconst.UI_NORMAL)
+                                column = uicls.EveLabelSmall(text=text, parent=self, width=controlWidth, height=height, left=left, state=uiconst.UI_NORMAL)
                             columnContents.append(column)
                             left += controlWidth
                         else:
@@ -875,27 +885,37 @@ class CorpTitleEntry(listentry.Generic):
         roleGroup = self.sr.roleGroupings[viewRoleGroupingID]
         relevantRoles = self.GetRelevantRoles()
         rec = self.GetRec()
-        label = ''
-        label += rec.titleName
+        label = rec.titleName
         headers = self.sr.node.parent.GetHeaderValues(self.GetViewRoleGroupingID())
-        self.sr.node.Set('sort_%s' % headers[0], uiutil.UpperCase(rec.titleName))
+        self.sr.node.Set('sort_%s' % headers[0], rec.titleName)
+        hintList = [rec.titleName]
         for column in roleGroup.columns:
             (columnName, subColumns,) = column
             newtext = '<t>'
             sortmask = ''
             roles = getattr(rec, roleGroup.appliesTo)
             grantableRoles = getattr(rec, roleGroup.appliesToGrantable)
-            for subColumn in subColumns:
-                for (subColumnName, role,) in subColumns:
-                    isChecked = [roles, grantableRoles][self.sr.node.viewtype] & role.roleID == role.roleID
-                    newtext += ' [%s] %s' % ([' ', 'X'][(not not isChecked)], subColumnName)
-                    sortmask += [' ', 'X'][(not not isChecked)]
-
+            for (subColumnName, role,) in subColumns:
+                if subColumnName:
+                    hintRole = '%s - %s' % (subColumnName, columnName)
+                else:
+                    hintRole = columnName
+                isChecked = [roles, grantableRoles][self.sr.node.viewtype] & role.roleID == role.roleID
+                if isChecked:
+                    checkedText = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/TitleHasRole', corpRole=subColumnName)
+                    hintText = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/TitleHasRoleHint', corpRole=hintRole)
+                else:
+                    checkedText = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/TitleDoesNotHaveRole', corpRole=subColumnName)
+                    hintText = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/TitleDoesNotHaveRoleHint', corpRole=hintRole)
+                newtext += checkedText
+                sortmask += [' ', 'X'][(not not isChecked)]
+                hintList.append(hintText)
 
             self.sr.node.Set('sort_%s' % columnName, '%s' % sortmask)
             label += newtext
 
-        self.hint = label.replace('<t>', '<br>')
+        hint = '<br>'.join(hintList)
+        self.hint = hint
         self.sr.node.label = label
 
 
@@ -930,19 +950,17 @@ class CorpTitleEntry(listentry.Generic):
 
 
 
-    def AddCheckBox(self, config, where, align, width, height, left, group, fontsize):
+    def AddCheckBox(self, config, where, align, width, height, left, group):
         (cfgname, retval, desc, default,) = config
-        cbox = uicls.Checkbox(align=align, pos=(left,
+        cbox = uicls.Checkbox(text=desc, align=align, pos=(left,
          0,
          width,
-         height), callback=self.CheckBoxChange)
+         height), checked=default, callback=self.CheckBoxChange)
         cbox.data = {'key': cfgname,
          'retval': retval}
-        cbox.SetChecked(default)
         if group is not None:
             cbox.SetGroup(group)
         where.children.append(cbox)
-        cbox.SetLabelText(desc)
         return cbox
 
 

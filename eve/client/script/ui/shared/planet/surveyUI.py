@@ -5,7 +5,6 @@ import planetCommon
 import math
 import uicls
 import planet
-import draw
 import blue
 import uthread
 import const
@@ -14,12 +13,15 @@ import listentry
 import geo2
 from PlanetResources import builder
 import random
+import localization
+import fontConst
 
 class SurveyWindow(uicls.Window):
     __guid__ = 'form.PlanetSurvey'
     __notifyevents__ = ['OnPlanetViewChanged', 'OnEditModeChanged', 'OnEditModeBuiltOrDestroyed']
     default_fixedWidth = 700
     default_fixedHeight = 256
+    default_windowID = 'PlanetSurvey'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -52,7 +54,7 @@ class SurveyWindow(uicls.Window):
             self.pinData = self.pin.Serialize()
         self.SetTopparentHeight(10)
         self.MakeUnResizeable()
-        captionTxt = mls.UI_PI_SURVEYINGPROGRAM % {'pinName': planetCommon.GetGenericPinName(self.pin.typeID, self.pin.id)}
+        captionTxt = localization.GetByLabel('UI/PI/Common/SurveyingProgram', pinName=planetCommon.GetGenericPinName(self.pin.typeID, self.pin.id))
         self.SetCaption(captionTxt)
         self.bottomCont = uicls.Container(name='bottomCont', parent=self.sr.main, align=uiconst.TOBOTTOM, height=30)
         self.leftCont = uicls.Container(name='leftCont', parent=self.sr.main, align=uiconst.TOLEFT, width=130, padding=(6, 0, 3, 0))
@@ -67,7 +69,7 @@ class SurveyWindow(uicls.Window):
 
     def _ConstructLeftContainer(self):
         textCont = uicls.Container(parent=self.leftCont, height=15, align=uiconst.TOTOP)
-        planet.ui.CaptionLabel(parent=textCont, text=mls.UI_PI_EXTRACTORHEADUNITS, align=uiconst.TOTOP)
+        planet.ui.CaptionLabel(parent=textCont, text=localization.GetByLabel('UI/PI/Common/ExtractorHeadUnits'), align=uiconst.TOTOP)
         self.headButtons = []
         headEntryCont = uicls.Container(parent=self.leftCont, name='headEntryCont', align=uiconst.TOTOP, height=200)
         headEntryContLeft = uicls.Container(parent=headEntryCont, name='headEntryContLeft', align=uiconst.TOLEFT, width=self.leftCont.width / 2)
@@ -88,17 +90,17 @@ class SurveyWindow(uicls.Window):
 
         self.currentRadius = max(min(self.pin.headRadius, planetCommon.RADIUS_DRILLAREAMAX), planetCommon.RADIUS_DRILLAREAMIN)
         sliderCont = uicls.Container(parent=self.leftCont, name='sliderCont', align=uiconst.TOBOTTOM, height=16)
-        planet.ui.CaptionLabel(parent=self.leftCont, text=mls.UI_PI_EXTRACTIONAREASIZE, align=uiconst.TOBOTTOM, padBottom=2)
+        planet.ui.CaptionLabel(parent=self.leftCont, text=localization.GetByLabel('UI/PI/Common/ExtractionAreaSize'), align=uiconst.TOBOTTOM, padBottom=2)
         BTNSIZE = 20
         BTNFONTSIZE = 8
         sliderValue = math.sqrt((self.currentRadius - planetCommon.RADIUS_DRILLAREAMIN) / planetCommon.RADIUS_DRILLAREADIFF)
-        self.areaSlider = AreaSlider(parent=sliderCont, name='areaSlider', align=uiconst.TOPLEFT, minValue=0.0, maxValue=1.0, startVal=sliderValue, hint=mls.UI_PI_EXTRACTIONAREASIZE, endsliderfunc=self.OnAreaSliderReleased, pos=(BTNSIZE - 4,
+        self.areaSlider = AreaSlider(parent=sliderCont, name='areaSlider', align=uiconst.TOPLEFT, minValue=0.0, maxValue=1.0, startVal=sliderValue, hint=localization.GetByLabel('UI/PI/Common/ExtractionAreaSize'), endsliderfunc=self.OnAreaSliderReleased, pos=(BTNSIZE - 4,
          0,
          95,
          13))
-        subtrBtn = uicls.Button(parent=sliderCont, name='subtractBtn', align=uiconst.TOPLEFT, label='-', func=self.DecreaseDrillAreaSize, alwaysLite=True, fixedwidth=BTNSIZE, fontsize=BTNFONTSIZE, left=-4, top=-3)
+        subtrBtn = uicls.Button(parent=sliderCont, name='subtractBtn', align=uiconst.TOPLEFT, label=localization.GetByLabel('UI/PI/Common/SurveyMinusSign'), func=self.DecreaseDrillAreaSize, alwaysLite=True, fixedwidth=BTNSIZE, fontsize=BTNFONTSIZE, left=-4, top=-3)
         subtrBtn.sr.label.left += 1
-        addBtn = uicls.Button(parent=sliderCont, name='addBtn', align=uiconst.TOPRIGHT, label='+', func=self.IncreaseDrillAreaSize, alwaysLite=True, fixedwidth=BTNSIZE, fontsize=BTNFONTSIZE, top=-3)
+        addBtn = uicls.Button(parent=sliderCont, name='addBtn', align=uiconst.TOPRIGHT, label=localization.GetByLabel('UI/PI/Common/SurveyPlusSign'), func=self.IncreaseDrillAreaSize, alwaysLite=True, fixedwidth=BTNSIZE, fontsize=BTNFONTSIZE, top=-3)
         addBtn.sr.label.left += 1
         self.areaSlider.OnSetValue = self.OnAreaSliderMoved
         if not self.editsEnabled:
@@ -174,7 +176,7 @@ class SurveyWindow(uicls.Window):
         AreaSlider.OnSetValue(slider, slider)
         (cycleTime, numCycles,) = self._GetCycleTimeAndNumCyclesFromSliderVal(slider.value)
         cycleTime = int(cycleTime * HOUR)
-        self.barGraph.SetXLabels((mls.UI_PI_SURVEYPROGRAMSTART, util.FmtDate(cycleTime * numCycles)))
+        self.barGraph.SetXLabels((localization.GetByLabel('UI/PI/Common/SurveyProgramStart'), util.FmtDate(cycleTime * numCycles)))
 
 
 
@@ -188,17 +190,7 @@ class SurveyWindow(uicls.Window):
         accOutput = sum(self.outputVals[:numBar])
         accTime = self.currCycleTime * numBar
         accPerHour = HOUR * accOutput / accTime
-        total = sum(self.outputVals)
-        return '%s %s<br>%s %s<br><color=gray>%s:<br>%s %s<br>%s<br>%s %s' % (mls.CYCLE,
-         numBar,
-         value,
-         mls.UI_GENERIC_UNITS,
-         mls.UI_GENERIC_ACCUMULATED,
-         accOutput,
-         mls.UI_GENERIC_UNITS,
-         util.FmtDate(accTime),
-         accPerHour,
-         mls.UI_PI_PERHOUR)
+        return localization.GetByLabel('UI/PI/Common/SurveyBarHint', numBar=numBar, value=value, accOutput=accOutput, accTime=accTime, accPerHour=accPerHour)
 
 
 
@@ -221,7 +213,7 @@ class SurveyWindow(uicls.Window):
         else:
             (maxValue, cycleTime, numCycles,) = self.pin.GetProgramParameters()
         self.currCycleTime = cycleTime
-        xLabels = (mls.UI_PI_SURVEYPROGRAMSTART, util.FmtDate(cycleTime * numCycles))
+        xLabels = (localization.GetByLabel('UI/PI/Common/SurveyProgramStart'), util.FmtDate(cycleTime * numCycles))
         self.UpdateBarGraph(maxValue, cycleTime, numCycles, xLabels)
 
 
@@ -242,8 +234,8 @@ class SurveyWindow(uicls.Window):
             currOutput = currOutput[0]
         else:
             currOutput = 0
-        self.outputPerHourTxt.SetText('<t>%s: <t><b>%s</b> %s' % (mls.UI_PI_PERHOUR, util.FmtAmt(perHourOutput), mls.UI_GENERIC_UNITS))
-        self.outputTotalTxt.SetText('<t>%s: <t><b>%s</b> %s' % (mls.UI_GENERIC_TOTAL, util.FmtAmt(totalOutput), mls.UI_GENERIC_UNITS))
+        self.outputPerHourTxt.SetText(localization.GetByLabel('UI/PI/Common/SurveyPerHourOutput', perHourOutput=perHourOutput))
+        self.outputTotalTxt.SetText(localization.GetByLabel('UI/PI/Common/SurveyTotalOutput', totalOutput=totalOutput))
         self.barGraph.SetValues(self.outputVals)
         self.barGraph.SetXLabels(xLabels)
         self.UpdateBarTimeIndicator()
@@ -265,10 +257,10 @@ class SurveyWindow(uicls.Window):
 
     def _UpdateBarTimeIndicator(self):
         while self and not self.destroyed:
-            indicatorValue = float(blue.os.GetTime() - self.pin.installTime) / (self.pin.expiryTime - self.pin.installTime)
+            indicatorValue = float(blue.os.GetWallclockTime() - self.pin.installTime) / (self.pin.expiryTime - self.pin.installTime)
             if indicatorValue > 0.0 and indicatorValue < 1.0:
                 self.barGraph.ShowTimeIndicator(indicatorValue)
-            blue.pyos.synchro.Sleep(10000)
+            blue.pyos.synchro.SleepWallclock(10000)
 
 
 
@@ -290,7 +282,7 @@ class SurveyWindow(uicls.Window):
         PAD = 4
         stateParent = uicls.Container(parent=self.rightCont, align=uiconst.TOTOP, height=20, padBottom=6)
         self._SetStateInfo()
-        self.stateTxt = uicls.Label(parent=stateParent, text='<center>' + self.stateInfoText, align=uiconst.TOALL, autowidth=True, autoheight=True, fontsize=10, top=4, color=util.Color.WHITE, state=uiconst.UI_NORMAL)
+        self.stateTxt = uicls.EveLabelSmall(parent=stateParent, text='<center>' + self.stateInfoText, align=uiconst.TOALL, top=4, color=util.Color.WHITE, state=uiconst.UI_NORMAL)
         uicls.Frame(parent=stateParent, color=util.Color.GetGrayRGBA(1.0, 0.2))
         self.stateColorFill = uicls.Fill(parent=stateParent, color=self.stateColor)
         if self.editsEnabled:
@@ -318,12 +310,12 @@ class SurveyWindow(uicls.Window):
 
         self.selectedResourceTxt = planet.ui.SubTextLabel(parent=self.rightCont, text='', align=uiconst.TOTOP)
         self.SetCurrentResourceText(self.currResourceTypeID)
-        self.currCycleGauge = uicls.Gauge(parent=self.rightCont, align=uiconst.TOTOP, value=0.0, color=planetCommon.PLANET_COLOR_CYCLE, label=mls.UI_PI_CURRENTCYCLE, padTop=18)
+        self.currCycleGauge = uicls.Gauge(parent=self.rightCont, align=uiconst.TOTOP, value=0.0, color=planetCommon.PLANET_COLOR_CYCLE, label=localization.GetByLabel('UI/PI/Common/CurrentCycle'), padTop=18)
         uthread.new(self._UpdateCurrCycleGauge)
         outputTxtCont = uicls.Container(parent=self.rightCont, align=uiconst.TOBOTTOM, height=40)
-        planet.ui.CaptionLabel(parent=outputTxtCont, text=mls.UI_PI_OUTPUT, align=uiconst.TOTOP)
-        tabs = [-6, 70]
-        self.outputPerHourTxt = planet.ui.SubTextLabel(parent=outputTxtCont, text=mls.UI_GENERIC_NONE, align=uiconst.TOTOP, tabs=tabs)
+        planet.ui.CaptionLabel(parent=outputTxtCont, text=localization.GetByLabel('UI/PI/Common/Output'), align=uiconst.TOTOP)
+        tabs = [-6, 60]
+        self.outputPerHourTxt = planet.ui.SubTextLabel(parent=outputTxtCont, text=localization.GetByLabel('UI/Common/None'), align=uiconst.TOTOP, tabs=tabs)
         self.outputTotalTxt = planet.ui.SubTextLabel(parent=outputTxtCont, align=uiconst.TOTOP, tabs=tabs)
 
 
@@ -333,7 +325,7 @@ class SurveyWindow(uicls.Window):
             (txt, cycleProportion,) = planetCommon.GetPinCycleInfo(self.pin, self.programCycleTime)
             self.currCycleGauge.SetValueInstantly(cycleProportion)
             self.currCycleGauge.SetSubText(txt)
-            blue.pyos.synchro.Sleep(1000)
+            blue.pyos.synchro.SleepWallclock(1000)
 
 
 
@@ -341,15 +333,15 @@ class SurveyWindow(uicls.Window):
     def _SetStateInfo(self):
         if self.pin.IsInEditMode():
             self.stateColor = util.Color.WHITE
-            self.stateInfoText = mls.UI_PI_EDITSPENDING.upper()
+            self.stateInfoText = localization.GetByLabel('UI/PI/Common/EditsPending')
             flash = True
         elif self.pin.IsActive():
             self.stateColor = util.Color('GREEN').SetAlpha(0.4).GetRGBA()
-            self.stateInfoText = mls.UI_PI_SURVEYPROGRAMRUNNING.upper()
+            self.stateInfoText = localization.GetByLabel('UI/PI/Common/SurveyProgramRunning')
             flash = False
         else:
             self.stateColor = util.Color.WHITE
-            self.stateInfoText = mls.UI_INFLIGHT_IDLE.upper()
+            self.stateInfoText = localization.GetByLabel('UI/Common/Idle')
             flash = True
         self.FlashStateColor(flash)
 
@@ -379,12 +371,12 @@ class SurveyWindow(uicls.Window):
 
     def _ConstructBottomContainer(self):
         if self.editsEnabled:
-            btnName = mls.UI_PI_INSTALLPROGRAM
+            btnName = localization.GetByLabel('UI/PI/Common/SurveyInstallProgram')
             btns = [(btnName, self._ApplyProgram, None)]
         else:
-            btnName = mls.UI_PI_SURVEYSTOPPROGRAM
+            btnName = localization.GetByLabel('UI/PI/Common/SurveyStopProgram')
             btns = [(btnName, self._StopProgram, None)]
-        btns.append((mls.UI_CMD_CLOSE, self._Cancel, None))
+        btns.append((localization.GetByLabel('UI/Common/Close'), self._Cancel, None))
         btnGroup = uicls.ButtonGroup(btns=btns, parent=self.bottomCont, line=True)
         self.submitButton = btnGroup.GetBtnByLabel(btnName)
         self.SetCurrentResource(self.currResourceTypeID)
@@ -394,7 +386,7 @@ class SurveyWindow(uicls.Window):
 
     def _SetSubmitButtonState(self):
         nextEditTime = self.pin.GetNextEditTime()
-        if nextEditTime is not None and nextEditTime > blue.os.GetTime() and not self.pin.IsInEditMode():
+        if nextEditTime is not None and nextEditTime > blue.os.GetWallclockTime() and not self.pin.IsInEditMode():
             self.submitButton.Disable()
             uthread.new(self._UnlockStopButtonThread).context = '_SetSubmitButtonState'
         elif self.currentResource is None:
@@ -408,9 +400,9 @@ class SurveyWindow(uicls.Window):
 
     def _UnlockStopButtonThread(self):
         nextEditTime = self.pin.GetNextEditTime()
-        while nextEditTime > blue.os.GetTime():
-            self.submitButton.SetHint(mls.UI_PI_NEXTEDITAVAILABLE % {'time': util.FmtDate(nextEditTime - blue.os.GetTime())})
-            blue.pyos.synchro.Sleep(200)
+        while nextEditTime > blue.os.GetWallclockTime():
+            self.submitButton.SetHint(localization.GetByLabel('UI/PI/Common/SurveyEditsAvailableIn', time=nextEditTime - blue.os.GetWallclockTime()))
+            blue.pyos.synchro.SleepWallclock(200)
             if not self or self.destroyed:
                 return 
 
@@ -459,7 +451,7 @@ class SurveyWindow(uicls.Window):
         while not self.destroyed:
             if self.currentResource is not None:
                 self.UpdateProgram(replaceHeadID=headID, point=surfacePoint)
-            blue.pyos.synchro.Sleep(200)
+            blue.pyos.synchro.SleepWallclock(200)
 
 
 
@@ -530,13 +522,13 @@ class SurveyWindow(uicls.Window):
         if self.currResourceTypeID is not None:
             self.planet.InstallProgram(self.pin.id, self.currResourceTypeID, self.currentRadius)
         self.planetUISvc.myPinManager.ReRenderPin(self.pin)
-        self.SelfDestruct()
+        self.Close()
 
 
 
     def _Cancel(self, *args):
         self.planetUISvc.CancelInstallProgram(self.pin.id, self.pinData)
-        self.SelfDestruct()
+        self.Close()
 
 
 
@@ -597,13 +589,13 @@ class SurveyWindow(uicls.Window):
         if typeID:
             text = cfg.invtypes.Get(typeID).name
         else:
-            text = mls.UI_PI_NORESOURCESELECTED
+            text = localization.GetByLabel('UI/PI/Common/NoResourceSelected')
         self.selectedResourceTxt.text = text
 
 
 
     def OnPlanetViewChanged(self, newPlanet, oldPlanet):
-        self.SelfDestruct()
+        self.Close()
 
 
 
@@ -611,7 +603,7 @@ class SurveyWindow(uicls.Window):
         if not self or self.destroyed:
             return 
         if self.planet.GetPin(self.pin.id) is None:
-            self.SelfDestruct()
+            self.Close()
 
 
 
@@ -619,17 +611,17 @@ class SurveyWindow(uicls.Window):
         if not self or self.destroyed:
             return 
         if not isEdit:
-            self.SelfDestruct()
+            self.Close()
 
 
 
-    def _CloseClick(self, *args):
+    def CloseByUser(self, *args):
         self.planetUISvc.CancelInstallProgram(self.pin.id, self.pinData)
-        uicls.Window._CloseClick(self, *args)
+        uicls.Window.CloseByUser(self, *args)
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         if hasattr(self, 'revertToResource'):
             self.planetUISvc.ShowResource(self.revertToResource)
         self.planetUISvc.ExitSurveyMode()
@@ -659,7 +651,7 @@ class ExtractionHeadEntry(uicls.Container):
         self.overlapValue = None
         self.fill = uicls.Fill(parent=self, align=uiconst.TOTOP, height=self.default_height, color=util.Color(*util.Color.WHITE).SetAlpha(0.1).GetRGBA(), state=uiconst.UI_HIDDEN, idx=0)
         self.icon = uicls.Icon(parent=self, icon='ui_77_32_38', size=self.default_height, ignoreSize=True, state=uiconst.UI_DISABLED, left=-2)
-        self.label = planet.ui.SubTextLabel(parent=self, text='', left=self.default_height, top=4, fontsize=10)
+        self.label = planet.ui.SubTextLabel(parent=self, text='', left=self.default_height, top=4)
         self.SetValue(self.value)
 
 
@@ -668,12 +660,12 @@ class ExtractionHeadEntry(uicls.Container):
         self.value = value
         self.overlapValue = overlapValue
         if value is None:
-            txt = '-'
+            txt = localization.GetByLabel('UI/PI/Common/SurveyDashSign')
             self.opacity = 0.5
         elif overlapValue:
-            txt = '%.2f<br><fontsize=9><color=red>(-%.1f%%)' % (value, 100 * overlapValue)
+            txt = localization.GetByLabel('UI/PI/Common/SurveyHeadValueDisturbed', value=value, percentage=100 * overlapValue)
         else:
-            txt = '%.2f' % value
+            txt = localization.GetByLabel('UI/PI/Common/SurveyHeadValue', value=value)
         self.opacity = 1.0
         self.label.text = txt
 
@@ -681,17 +673,12 @@ class ExtractionHeadEntry(uicls.Container):
 
     def GetHint(self, *args):
         if self.value is None:
-            return '%s<br><color=gray>%s: +%s %s<br>%s: +%s %s' % (mls.UI_PI_INSTALLNEWEXTRACTORHEAD,
-             mls.UI_GENERIC_POWER,
-             self.pin.GetExtractorHeadPowerUsage(),
-             mls.UI_GENERIC_MEGAWATTSHORT,
-             mls.UI_GENERIC_CPU,
-             self.pin.GetExtractorHeadCpuUsage(),
-             mls.UI_GENERIC_TERAFLOPSSHORT)
-        hint = mls.UI_PI_EXTRACTORHEADQUALITYINDEX % {'headID': self.headID + 1,
-         'value': self.value}
+            return localization.GetByLabel('UI/PI/Common/SurveyInstallHeadHint', power=self.pin.GetExtractorHeadPowerUsage(), cpu=self.pin.GetExtractorHeadCpuUsage())
         if self.overlapValue:
-            hint += '<br><br>' + mls.UI_PI_SURVEYDISTURBANCEHINT % {'disturbanceVal': 100 * self.overlapValue}
+            disturbanceText = localization.GetByLabel('UI/PI/Common/SurveyExtractorHeadDisturbanceHint', disturbanceVal=100 * self.overlapValue)
+        else:
+            disturbanceText = ''
+        hint = localization.GetByLabel('UI/PI/Common/SurveyExtractorHeadHint', headID=self.headID + 1, value=self.value, disturbanceText=disturbanceText)
         return hint
 
 
@@ -706,7 +693,7 @@ class ExtractionHeadEntry(uicls.Container):
             return 
         self.ShowFill()
         if self.value is None:
-            self.label.text = mls.UI_CMD_INSTALL.upper()
+            self.label.text = localization.GetByLabel('UI/PI/Common/SurveyInstall')
             self.opacity = 1.0
         sm.GetService('planetUI').myPinManager.OnExtractionHeadMouseEnter(self.ecuID, self.headID)
 
@@ -717,7 +704,7 @@ class ExtractionHeadEntry(uicls.Container):
             return 
         self.HideFill()
         if self.value is None:
-            self.label.text = '-'
+            self.label.text = localization.GetByLabel('UI/PI/Common/SurveyDashSign')
             self.opacity = 0.5
         sm.GetService('planetUI').myPinManager.OnExtractionHeadMouseExit(self.ecuID, self.headID)
 

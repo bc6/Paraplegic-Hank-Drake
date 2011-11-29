@@ -1,22 +1,17 @@
+import turret
 import sys
-import audio2
 import service
 import uix
 import uiutil
 import uthread
 import blue
 import form
-import turret
 import log
 import trinity
 import util
 import uicls
 import uiconst
-import geo2
-import types
-from sceneManager import SCENE_TYPE_INTERIOR, SCENE_TYPE_SPACE
-from util import ReadYamlFile
-from math import pi, pow
+import localization
 
 class StationSvc(service.Service):
     __guid__ = 'svc.station'
@@ -24,20 +19,18 @@ class StationSvc(service.Service):
     __update_on_reload__ = 0
     __exportedcalls__ = {'GetGuests': [],
      'IsGuest': [],
-     'GetActiveShip': [],
      'Setup': [],
      'Exit': [],
      'GetSvc': [],
      'LoadSvc': [],
      'GiveHint': [],
      'ClearHint': [],
-     'GetLobby': [],
      'GetStationServiceInfo': [],
      'StopAllStationServices': [],
      'CleanUp': [],
      'SelectShipDlg': [],
      'GetServiceState': []}
-    __dependencies__ = ['journal', 'insurance', 'sceneManager']
+    __dependencies__ = ['journal', 'insurance', 't3ShipSvc']
     __notifyevents__ = ['OnCharNowInStation',
      'OnCharNoLongerInStation',
      'OnStationOwnerChanged',
@@ -46,13 +39,20 @@ class StationSvc(service.Service):
      'ProcessSessionChange',
      'OnCharacterHandler',
      'OnDogmaAttributeChanged',
-     'ProcessActiveShipChanged']
+     'OnSessionChanged',
+     'OnActiveShipModelChange']
 
     def Run(self, memStream = None):
         self.LogInfo('Starting Station Service')
         self.CleanUp()
-        self.hangarScene = None
-        self.showShipSemaphore = uthread.Semaphore()
+
+
+
+    def OnSessionChanged(self, isRemote, session, change):
+        if 'locationid' in change:
+            (oldLocation, newLocation,) = change['locationid']
+            if util.IsStation(oldLocation):
+                self.CleanUp()
 
 
 
@@ -93,7 +93,7 @@ class StationSvc(service.Service):
 
 
     def OnStationOwnerChanged(self, *args):
-        uthread.pool('StationSvc::OnStationOwnerChanged --> LoadLobby', self.LoadLobby)
+        uthread.pool('StationSvc::OnStationOwnerChanged --> LoadLobby', self.ReloadLobby)
 
 
 
@@ -114,16 +114,18 @@ class StationSvc(service.Service):
 
 
     def GetGuests(self):
-        guests = sm.RemoteSvc('station').GetGuests()
-        self.guests = {}
-        for (charID, corpID, allianceID, warFactionID,) in guests:
-            self.guests[charID] = (corpID, allianceID, warFactionID)
+        if len(self.guests) == 0:
+            guests = sm.RemoteSvc('station').GetGuests()
+            for (charID, corpID, allianceID, warFactionID,) in guests:
+                self.guests[charID] = (corpID, allianceID, warFactionID)
 
         return self.guests
 
 
 
     def IsGuest(self, whoID):
+        if len(self.guests) == 0:
+            self.GetGuests()
         return whoID in self.guests
 
 
@@ -135,15 +137,13 @@ class StationSvc(service.Service):
 
 
     def CheckSession(self, change):
-        activeShip = util.GetActiveShip()
-        if self.activeShip != activeShip:
-            if activeShip:
-                hangarInv = eve.GetInventory(const.containerHangar)
+        if self.activeShip != eve.session.shipid:
+            if eve.session.shipid:
+                hangarInv = sm.GetService('invCache').GetInventory(const.containerHangar)
                 hangarItems = hangarInv.List()
                 for each in hangarItems:
-                    if each.itemID == activeShip:
+                    if each.itemID == eve.session.shipid:
                         self.activeShipItem = each
-                        uthread.new(self.ShowActiveShip)
                         break
 
 
@@ -159,15 +159,10 @@ class StationSvc(service.Service):
             self.GetStation()
         services = []
         for (service, info,) in self.GetStationServices().iteritems():
-            sortby = info[0]
+            sortItem = info.index
             if sortBy == 'name':
-                sortby = info[2]
-            services.append((sortby, (service,
-              info[1],
-              info[2],
-              info[3],
-              info[4],
-              info[5])))
+                sortItem = info.label
+            services.append(((sortItem, service), info))
 
         services = uiutil.SortListOfTuples(services)
         return services
@@ -177,93 +172,28 @@ class StationSvc(service.Service):
     def GetServiceDisplayName(self, service):
         s = self.GetStationServices(service)
         if s:
-            return s[2]
-        return mls.UI_GENERIC_UNKNOWN
+            return s.label
+        return localization.GetByLabel('UI/Common/Unknown')
 
 
 
     def GetStationServices(self, service = None):
-        mapping = [['vstore',
-          'OpenStore',
-          mls.UI_VGSTORE_VGSTORE,
-          '65_3',
-          True,
-          (-1,)],
-         ['charcustomization',
-          'OpenCharacterCustomization',
-          mls.UI_CHARCREA_RECUSTOMIZATION,
-          '66_3',
-          True,
-          (-1,)],
-         ['medical',
-          'OpenMedical',
-          mls.UI_STATION_MEDICAL,
-          'ui_18_128_3',
-          True,
-          (const.stationServiceCloning, const.stationServiceSurgery, const.stationServiceDNATherapy)],
-         ['repairshop',
-          'OpenRepairshop',
-          mls.UI_STATION_REPAIRSHOP,
-          'ui_18_128_4',
-          True,
-          (const.stationServiceRepairFacilities,)],
-         ['reprocessingPlant',
-          'OpenReprocessingPlant',
-          mls.UI_STATION_REPROCESSINGPLANT,
-          'ui_17_128_1',
-          True,
-          (const.stationServiceReprocessingPlant,)],
-         ['market',
-          'OpenMarket',
-          mls.UI_MARKET_MARKET,
-          'ui_18_128_1',
-          False,
-          (const.stationServiceMarket,)],
-         ['fitting',
-          'OpenFitting',
-          mls.UI_STATION_FITTING,
-          'ui_17_128_4',
-          False,
-          (const.stationServiceFitting,)],
-         ['factories',
-          'OpenFactories',
-          mls.UI_RMR_SCIENCEANDINDUSTRY,
-          '57_9',
-          False,
-          (const.stationServiceFactory, const.stationServiceLaboratory)],
-         ['missions',
-          'OpenMissions',
-          mls.UI_STATION_BOUNTY,
-          '61_2',
-          True,
-          (const.stationServiceBountyMissions, const.stationServiceAssassinationMissions)],
-         ['navyoffices',
-          'OpenMilitia',
-          mls.UI_STATION_MILITIAOFFICE,
-          '61_3',
-          False,
-          (const.stationServiceNavyOffices,)],
-         ['insurance',
-          'OpenInsurance',
-          mls.UI_STATION_INSURANCE,
-          '33_4',
-          True,
-          (const.stationServiceInsurance,)],
-         ['lpstore',
-          'OpenLpstore',
-          mls.UI_LPSTORE_LPSTORE,
-          '70_11',
-          True,
-          (const.stationServiceLoyaltyPointStore,)]]
+        mapping = [util.KeyVal(name='vstore', command='OpenStore', label=localization.GetByLabel('UI/Station/VirtualGoodsStore'), iconID='65_3', scope=const.neocomButtonScopeStation, serviceIDs=(-1,)),
+         util.KeyVal(name='charcustomization', command='OpenCharacterCustomization', label=localization.GetByLabel('UI/Station/CharacterRecustomization'), iconID='66_3', scope=const.neocomButtonScopeStation, serviceIDs=(-1,)),
+         util.KeyVal(name='medical', command='OpenMedical', label=localization.GetByLabel('UI/Medical/Medical'), iconID='ui_18_128_3', scope=const.neocomButtonScopeStation, serviceIDs=(const.stationServiceCloning, const.stationServiceSurgery, const.stationServiceDNATherapy)),
+         util.KeyVal(name='repairshop', command='OpenRepairshop', label=localization.GetByLabel('UI/Station/Repairshop'), iconID='ui_18_128_4', scope=const.neocomButtonScopeStation, serviceIDs=(const.stationServiceRepairFacilities,)),
+         util.KeyVal(name='reprocessingPlant', command='OpenReprocessingPlant', label=localization.GetByLabel('UI/Station/ReprocessingPlant'), iconID='ui_17_128_1', scope=const.neocomButtonScopeStation, serviceIDs=(const.stationServiceReprocessingPlant,)),
+         util.KeyVal(name='market', command='OpenMarket', label=localization.GetByLabel('UI/Station/Market'), iconID='ui_18_128_1', scope=const.neocomButtonScopeStationOrWorldspace, serviceIDs=(const.stationServiceMarket,)),
+         util.KeyVal(name='fitting', command='OpenFitting', label=localization.GetByLabel('UI/Station/Fitting'), iconID='ui_17_128_4', scope=const.neocomButtonScopeStationOrWorldspace, serviceIDs=(const.stationServiceFitting,)),
+         util.KeyVal(name='factories', command='OpenScienceAndIndustry', label=localization.GetByLabel('UI/Station/ScienceAndIndustry'), iconID='57_9', scope=const.neocomButtonScopeStation, serviceIDs=(const.stationServiceFactory, const.stationServiceLaboratory)),
+         util.KeyVal(name='missions', command='OpenMissions', label=localization.GetByLabel('UI/Station/BountyOffice/BountyOffice'), iconID='61_2', scope=const.neocomButtonScopeStationOrWorldspace, serviceIDs=(const.stationServiceBountyMissions, const.stationServiceAssassinationMissions)),
+         util.KeyVal(name='navyoffices', command='OpenMilitia', label=localization.GetByLabel('UI/Station/MilitiaOffice'), iconID='61_3', scope=const.neocomButtonScopeStationOrWorldspace, serviceIDs=(const.stationServiceNavyOffices,)),
+         util.KeyVal(name='insurance', command='OpenInsurance', label=localization.GetByLabel('UI/Station/Insurance'), iconID='33_4', scope=const.neocomButtonScopeStationOrWorldspace, serviceIDs=(const.stationServiceInsurance,)),
+         util.KeyVal(name='lpstore', command='OpenLpstore', label=localization.GetByLabel('UI/Station/LPStore'), iconID='ui_70_128_11', scope=const.neocomButtonScopeStationOrWorldspace, serviceIDs=(const.stationServiceLoyaltyPointStore,))]
         newmapping = {}
-        for (i, servicemap,) in enumerate(mapping):
-            (lbl, cmdstr, label, icon, stationonly, servicemasks,) = servicemap
-            newmapping[lbl] = (i,
-             cmdstr,
-             label,
-             icon,
-             stationonly,
-             servicemasks)
+        for (i, info,) in enumerate(mapping):
+            info.index = i
+            newmapping[info.name] = info
 
         if service:
             return newmapping.get(service, None)
@@ -279,7 +209,7 @@ class StationSvc(service.Service):
     def CleanUp(self, storeCamera = 1):
         try:
             if getattr(self, 'underlay', None):
-                sm.GetService('window').UnregisterWindow(self.underlay)
+                uicore.registry.UnregisterWindow(self.underlay)
                 self.underlay.OnClick = None
                 self.underlay.Minimize = None
                 self.underlay.Maximize = None
@@ -297,10 +227,10 @@ class StationSvc(service.Service):
         self.selected_service = None
         self.loading = None
         self.active_service = None
+        self.refreshingfitting = False
         self.activeShip = None
         self.activeShipItem = None
         self.activeshipmodel = None
-        self.refreshingfitting = 0
         self.loadingSvc = 0
         self.dockaborted = 0
         self.exitingstation = 0
@@ -315,17 +245,14 @@ class StationSvc(service.Service):
         self.previewColorIDs = {'MAIN': 0,
          'MARKINGS': 0,
          'LIGHTS': 0}
-        layer = uicore.layer.station
-        if layer:
-            uix.Flush(layer)
 
 
 
     def StopAllStationServices(self):
         services = self.GetStationServiceInfo()
         for service in services:
-            if sm.IsServiceRunning(service[0]):
-                sm.services[service[0]].Stop()
+            if sm.IsServiceRunning(service.name):
+                sm.services[service.name].Stop()
 
 
 
@@ -335,17 +262,13 @@ class StationSvc(service.Service):
         self.loading = 1
         if not reloading:
             eve.Message('OnEnterStation')
-        if not (eve.rookieState and eve.rookieState < 5):
-            self.LoadLobby()
         if self.station is None and eve.session.stationid:
             self.station = sm.GetService('ui').GetStation(eve.session.stationid)
         sm.GetService('autoPilot').SetOff('toggled by Station Entry')
-        mapSvc = sm.StartService('map')
-        if mapSvc.IsOpen():
-            mapSvc.MinimizeWindows()
-        planetUISvc = sm.GetService('planetUI')
-        if planetUISvc.IsOpen():
-            planetUISvc.MinimizeWindows()
+        if sm.GetService('viewState').IsViewActive('starmap', 'systemmap'):
+            sm.StartService('map').MinimizeWindows()
+        if sm.GetService('viewState').IsViewActive('planet'):
+            sm.GetService('planetUI').MinimizeWindows()
         self.loading = 0
         self.sprite = None
         if not reloading:
@@ -353,154 +276,6 @@ class StationSvc(service.Service):
                 sm.GetService('tutorial').OpenTutorialSequence_Check(uix.cloningWhenPoddedTutorial)
             if sm.GetService('skills').GetSkillPoints() >= 1500000:
                 sm.GetService('tutorial').OpenTutorialSequence_Check(uix.cloningTutorial)
-
-
-
-    def LoadSceneData(self):
-        stationTypeID = eve.stationItem.stationTypeID
-        stationType = cfg.invtypes.Get(stationTypeID)
-        stationRace = stationType['raceID']
-        if stationRace == const.raceAmarr:
-            scenePath = 'res:/dx9/scene/hangar/amarr.red'
-            shipPositionData = ReadYamlFile('res:/dx9/scene/hangar/shipPlacementAmarr.yaml')
-            positioning = ReadYamlFile('res:/dx9/scene/hangar/amarrbalconyplacement.yaml')
-            sceneTranslation = positioning['position']
-            sceneRotation = geo2.QuaternionRotationSetYawPitchRoll(positioning['orientation'], 0.0, 0.0)
-        elif stationRace == const.raceCaldari:
-            scenePath = 'res:/dx9/scene/hangar/caldari.red'
-            shipPositionData = ReadYamlFile('res:/dx9/scene/hangar/shipPlacementCaldari.yaml')
-            positioning = ReadYamlFile('res:/dx9/scene/hangar/caldaribalconyplacement.yaml')
-            sceneTranslation = positioning['position']
-            sceneRotation = geo2.QuaternionRotationSetYawPitchRoll(positioning['orientation'], 0.0, 0.0)
-        elif stationRace == const.raceGallente:
-            scenePath = 'res:/dx9/scene/hangar/gallente.red'
-            shipPositionData = ReadYamlFile('res:/dx9/scene/hangar/shipPlacementGallente.yaml')
-            positioning = ReadYamlFile('res:/dx9/scene/hangar/gallentebalconyplacement.yaml')
-            sceneTranslation = positioning['position']
-            sceneRotation = geo2.QuaternionRotationSetYawPitchRoll(positioning['orientation'], 0.0, 0.0)
-        elif stationRace == const.raceMinmatar:
-            scenePath = 'res:/dx9/scene/hangar/minmatar.red'
-            shipPositionData = ReadYamlFile('res:/dx9/scene/hangar/shipPlacementMinmatar.yaml')
-            positioning = ReadYamlFile('res:/dx9/scene/hangar/minmatarbalconyplacement.yaml')
-            sceneTranslation = positioning['position']
-            sceneRotation = geo2.QuaternionRotationSetYawPitchRoll(positioning['orientation'], 0.0, 0.0)
-        else:
-            scenePath = 'res:/dx9/scene/hangar/gallente.red'
-            shipPositionData = ReadYamlFile('res:/dx9/scene/hangar/shipPlacementGallente.yaml')
-            positioning = ReadYamlFile('res:/dx9/scene/hangar/gallentebalconyplacement.yaml')
-            sceneTranslation = positioning['position']
-            sceneRotation = geo2.QuaternionRotationSetYawPitchRoll(positioning['orientation'], 0.0, 0.0)
-        self.shipPositionMinDistance = shipPositionData['minDistance']
-        self.shipPositionMaxDistance = shipPositionData['maxDistance']
-        self.shipPositionMaxSize = shipPositionData['shipMaxSize']
-        self.shipPositionMinSize = shipPositionData['shipMinSize']
-        self.shipPositionTargetHeightMin = shipPositionData['shipTargetHeightMin']
-        self.shipPositionTargetHeightMax = shipPositionData['shipTargetHeightMax']
-        self.shipPositionCurveRoot = shipPositionData['curveRoot']
-        self.shipPositionRotation = shipPositionData['rotation']
-        self.sceneTranslation = sceneTranslation
-        return (scenePath, sceneTranslation, sceneRotation)
-
-
-
-    def SetupHangarScene(self):
-        sm.GetService('sceneManager').UnregisterScene('default')
-        sm.GetService('sceneManager').UnregisterScene2('default')
-        sm.GetService('sceneManager').UnregisterCamera('default')
-        (hangarScene, sceneTranslation, sceneRotation,) = self.LoadSceneData()
-        sm.GetService('sceneManager').SetSceneType(SCENE_TYPE_SPACE)
-        sm.GetService('sceneManager').LoadScene(hangarScene, registerKey='default')
-        self.hangarScene = sm.GetService('sceneManager').GetRegisteredScene2('default')
-        self.maxZoom = 750.0
-        self.minZoom = 150.0
-        self.lastShipzoomTo = 0.0
-        camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
-        for each in camera.zoomCurve.keys:
-            each.value = 1.0
-
-        camera.fieldOfView = 1.2
-        camera.frontClip = 10.0
-        camera.minPitch = -1.4
-        camera.maxPitch = 0.0
-        if util.GetActiveShip() is not None:
-            self.ShowShip(util.GetActiveShip())
-            camera.OrbitParent(8.0, 4.0)
-        stationModel = self.hangarScene.objects[0]
-        stationModel.enableShadow = False
-        addedSound = sm.GetService('incursion').GetSoundUrlByKey('hangar')
-        if addedSound is not None:
-            triObserver = trinity.TriObserverLocal()
-            generalAudioEntity = audio2.AudEmitter('Story_general')
-            triObserver.observer = generalAudioEntity
-            stationModel.observers.append(triObserver)
-            generalAudioEntity.SendEvent(unicode(addedSound[6:]))
-        sceneScaling = 2.0
-        model = self.activeshipmodel
-        if model is not None:
-            if model.boundingSphereRadius > 1500.0:
-                sceneScaling *= self.activeshipmodel.boundingSphereRadius / 1500.0
-            localBB = model.GetLocalBoundingBox()
-            boundingCenter = model.boundingSphereCenter[1]
-            radius = model.boundingSphereRadius - self.shipPositionMinSize
-            val = radius / (self.shipPositionMaxSize - self.shipPositionMinSize)
-            if val > 1.0:
-                val = 1.0
-            if val < 0:
-                val = 0
-            val = pow(val, 1.0 / self.shipPositionCurveRoot)
-            distancePosition = geo2.Lerp((self.shipPositionMinDistance, self.shipPositionTargetHeightMin), (self.shipPositionMaxDistance, self.shipPositionTargetHeightMax), val)
-            y = distancePosition[1] - boundingCenter
-            y = y + self.sceneTranslation[1]
-            if y < -localBB[0].y + 180:
-                y = -localBB[0].y + 180
-            boundingBoxZCenter = localBB[0].z + localBB[1].z
-            boundingBoxZCenter *= 0.5
-            model.rotationCurve = trinity.TriRotationCurve()
-            model.rotationCurve.value.YawPitchRoll(self.shipPositionRotation * pi / 180, 0, 0)
-            model.modelTranslationCurve = blue.os.LoadObject('res:/dx9/scene/hangar/ship_modelTranslationCurve.red')
-            model.modelTranslationCurve.ZCurve.offset -= boundingBoxZCenter
-            scaleMultiplier = 1
-            capitalShips = [const.groupDreadnought,
-             const.groupSupercarrier,
-             const.groupTitan,
-             const.groupFreighter,
-             const.groupJumpFreighter,
-             const.groupCarrier,
-             const.groupCapitalIndustrialShip,
-             const.groupIndustrialCommandShip]
-            dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
-            if getattr(dogmaLocation.GetDogmaItem(self.GetActiveShip()), 'groupID', None) in capitalShips:
-                scaleMultiplier = 0.35 + 0.25 * (1 - val)
-                model.modelRotationCurve = blue.os.LoadObject('res:/dx9/scene/hangar/ship_modelRotationCurve.red')
-                model.modelRotationCurve.PitchCurve.speed *= scaleMultiplier
-                model.modelRotationCurve.RollCurve.speed *= scaleMultiplier
-                model.modelRotationCurve.YawCurve.speed *= scaleMultiplier
-            elif val > 0.6:
-                val = 0.6
-            scaleMultiplier = 0.35 + 0.65 * (1 - val / 0.6)
-            model.modelRotationCurve = blue.os.LoadObject('res:/dx9/scene/hangar/ship_modelRotationCurveSpinning.red')
-            model.modelRotationCurve.PitchCurve.speed *= scaleMultiplier
-            model.modelRotationCurve.RollCurve.speed *= scaleMultiplier
-            model.modelRotationCurve.YawCurve.start = blue.os.GetTime()
-            model.modelRotationCurve.YawCurve.ScaleTime(6 * val + 1)
-        stationModel.modelScale = sceneScaling
-        self.hangarScene.fogEnd *= sceneScaling
-        self.hangarScene.fogStart *= sceneScaling
-
-
-
-    def SetupCaptainsQuartersScene(self):
-        sm.GetService('sceneManager').UnregisterScene('default')
-        sm.GetService('sceneManager').UnregisterScene2('default')
-        sm.GetService('sceneManager').UnregisterCamera('default')
-        (hangarScene, sceneTranslation, sceneRotation,) = self.LoadSceneData()
-        self.hangarScene = blue.os.LoadObject(hangarScene)
-        sm.GetService('sceneManager').SetupIncarnaBackground(self.hangarScene, sceneTranslation, sceneRotation)
-        if self.hangarScene is not None:
-            stationModel = self.hangarScene.objects[0]
-            stationModel.enableShadow = False
-        if util.GetActiveShip() is not None:
-            self.ShowShip(util.GetActiveShip())
 
 
 
@@ -521,43 +296,16 @@ class StationSvc(service.Service):
 
 
 
-    def StopAllBlinkButtons(self):
-        lobby = self.GetLobby()
-        if not lobby:
-            return 
-        for each in uiutil.GetChild(lobby, 'btnparent').children:
-            if hasattr(each, 'Blink'):
-                each.Blink(0)
-
-
-
-
     def BlinkButton(self, what):
-        lobby = self.GetLobby()
-        if not lobby:
-            return 
-        for each in uiutil.GetChild(lobby, 'btnparent').children:
-            if each.name.lower() == what.lower():
-                each.Blink(blinks=40)
-
-
-
-
-    def LoadLobby(self):
-        if not eve.session.stationid:
-            return 
-        self.GetLobby(1, 1)
+        lobby = form.Lobby.GetIfOpen()
+        if lobby:
+            lobby.BlinkButton(what)
 
 
 
     def DoPOSWarning(self):
         if sm.GetService('godma').GetType(eve.stationItem.stationTypeID).isPlayerOwnable == 1:
             eve.Message('POStationWarning')
-
-
-
-    def GetActiveShip(self):
-        return util.GetActiveShip()
 
 
 
@@ -568,7 +316,7 @@ class StationSvc(service.Service):
         if self.activatingShip:
             return 
         dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
-        dogmaLocation.CheckSkillRequirementsForType(invitem.typeID, 'SkillHasPrerequisites')
+        dogmaLocation.CheckSkillRequirementsForType(invitem.typeID, 'ShipHasSkillPrerequisites')
         techLevel = sm.StartService('godma').GetTypeAttribute(invitem.typeID, const.attributeTechLevel)
         if techLevel is not None and int(techLevel) == 3:
             if eve.Message('AskActivateTech3Ship', {}, uiconst.YESNO, suppress=uiconst.ID_YES) != uiconst.ID_YES:
@@ -607,23 +355,6 @@ class StationSvc(service.Service):
 
 
 
-    def ShowShip(self, shipID):
-        self.WaitForShip(shipID)
-        hangarInv = sm.GetService('invCache').GetInventory(const.containerHangar)
-        hangarItems = hangarInv.List()
-        for each in hangarItems:
-            if each.itemID == shipID:
-                self.activeShipItem = each
-                try:
-                    uthread.new(self.ShowActiveShip)
-                except Exception as e:
-                    log.LogException('Failed to show ship')
-                    sys.exc_clear()
-                break
-
-
-
-
     def GetTech3ShipFromSlimItem(self, slimItem):
         subSystemIds = {}
         for module in slimItem.modules:
@@ -631,149 +362,14 @@ class StationSvc(service.Service):
                 subSystemIds[module.groupID] = module.typeID
 
         if len(subSystemIds) < const.visibleSubSystems:
-            sm.services['window'].GetWindow('AssembleShip', create=1, decoClass=form.AssembleShip, ship=slimItem, groupIDs=subSystemIds.keys())
+            form.AssembleShip.Open(windowID='AssembleShip', ship=slimItem, groupIDs=subSystemIds.keys())
             return 
-        return sm.StartService('t3ShipSvc').GetTech3ShipFromDict(slimItem.typeID, subSystemIds)
-
-
-
-    def ShowActiveShip(self):
-        self.showShipSemaphore.acquire()
-        try:
-            invitem = self.activeShipItem
-            modelToRemove = None
-            scene2 = getattr(self, 'hangarScene', None)
-            if scene2 is None:
-                return 
-            for each in scene2.objects:
-                if each == self.activeshipmodel:
-                    modelToRemove = each
-
-            dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
-            dogmaItem = dogmaLocation.dogmaItems[self.activeShipItem.itemID]
-            try:
-                techLevel = sm.GetService('godma').GetTypeAttribute(invitem.typeID, const.attributeTechLevel)
-                if techLevel == 3.0:
-                    try:
-                        newModel = self.MakeModularShipFromShipItem(dogmaItem)
-                    except:
-                        log.LogException('failed bulding modular ship')
-                        sys.exc_clear()
-                        return 
-                else:
-                    modelPath = cfg.invtypes.Get(invitem.typeID).GraphicFile()
-                    newFilename = modelPath.lower().replace(':/model', ':/dx9/model')
-                    newFilename = newFilename.replace('.blue', '.red')
-                    newModel = trinity.Load(newFilename)
-                self.generalAudioEntity = None
-                if newModel is not None and hasattr(newModel, 'observers'):
-                    triObserver = trinity.TriObserverLocal()
-                    self.generalAudioEntity = audio2.AudEmitter('spaceObject_' + str(invitem.itemID) + '_general')
-                    triObserver.observer = self.generalAudioEntity
-                    newModel.observers.append(triObserver)
-            except Exception as e:
-                log.LogException(str(e))
-                sys.exc_clear()
-                return 
-            newModel.FreezeHighDetailMesh()
-            if util.GetCurrentView() == 'station':
-                self.PositionShipModel(newModel)
-                if modelToRemove is not None:
-                    scene2.objects.remove(modelToRemove)
-                if getattr(dogmaItem, 'groupID', None) != const.groupCapsule:
-                    scene2.objects.append(newModel)
-            else:
-                zoomTo = self.GetZoomValues(newModel, 0)
-                if hasattr(newModel, 'ChainAnimationEx'):
-                    newModel.ChainAnimationEx('NormalLoop', 0, 0, 1.0)
-                newModel.name = str(invitem.itemID)
-                newModel.display = 1
-                if modelToRemove is not None:
-                    scene2.objects.remove(modelToRemove)
-                scene2.objects.append(newModel)
-                self.generalAudioEntity.SendEvent(unicode('hangar_spin_switch_ship_play'))
-                self.lastShipzoomTo = zoomTo
-                self.Zoom(zoomTo)
-            self.activeShip = invitem.itemID
-            self.activeshipmodel = newModel
-            self.FitHardpoints()
-            sm.ScatterEvent('OnActiveShipModelChange', newModel)
-
-        finally:
-            self.showShipSemaphore.release()
-
-
-
-
-    def GetActiveShipModel(self):
-        return self.activeshipmodel
-
-
-
-    def PositionShipModel(self, model):
-        trinity.WaitForResourceLoads()
-        localBB = model.GetLocalBoundingBox()
-        if localBB[0] is None or localBB[1] is None:
-            log.LogError("Failed to get bounding info for ship. Odds are the ship wasn't loaded properly.")
-            localBB = (trinity.TriVector(0, 0, 0), trinity.TriVector(0, 0, 0))
-        boundingCenter = model.boundingSphereCenter[1]
-        radius = model.boundingSphereRadius - self.shipPositionMinSize
-        val = radius / (self.shipPositionMaxSize - self.shipPositionMinSize)
-        if val > 1.0:
-            val = 1.0
-        if val < 0:
-            val = 0
-        val = pow(val, 1.0 / self.shipPositionCurveRoot)
-        shipDirection = (self.sceneTranslation[0], 0, self.sceneTranslation[2])
-        shipDirection = geo2.Vec3Normalize(shipDirection)
-        distancePosition = geo2.Lerp((self.shipPositionMinDistance, self.shipPositionTargetHeightMin), (self.shipPositionMaxDistance, self.shipPositionTargetHeightMax), val)
-        y = distancePosition[1] - boundingCenter
-        y = y + self.sceneTranslation[1]
-        if y < -localBB[0].y + 180:
-            y = -localBB[0].y + 180
-        boundingBoxZCenter = localBB[0].z + localBB[1].z
-        boundingBoxZCenter *= 0.5
-        shipPos = geo2.Vec3Scale(shipDirection, -distancePosition[0])
-        shipPos = geo2.Vec3Add(shipPos, self.sceneTranslation)
-        shipPosition = (shipPos[0], y, shipPos[2])
-        model.translationCurve = trinity.TriVectorCurve()
-        model.translationCurve.value.x = shipPosition[0]
-        model.translationCurve.value.y = shipPosition[1]
-        model.translationCurve.value.z = shipPosition[2]
-        model.rotationCurve = trinity.TriRotationCurve()
-        model.rotationCurve.value.YawPitchRoll(self.shipPositionRotation * pi / 180, 0, 0)
-        model.modelTranslationCurve = blue.os.LoadObject('res:/dx9/scene/hangar/ship_modelTranslationCurve.red')
-        model.modelTranslationCurve.ZCurve.offset -= boundingBoxZCenter
-        scaleMultiplier = 0.35 + 0.65 * (1 - val)
-        capitalShips = [const.groupDreadnought,
-         const.groupSupercarrier,
-         const.groupTitan,
-         const.groupFreighter,
-         const.groupJumpFreighter,
-         const.groupCarrier,
-         const.groupCapitalIndustrialShip,
-         const.groupIndustrialCommandShip]
-        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
-        if getattr(dogmaLocation.GetDogmaItem(self.GetActiveShip()), 'groupID', None) in capitalShips:
-            scaleMultiplier = 0.35 + 0.25 * (1 - val)
-            model.modelRotationCurve = blue.os.LoadObject('res:/dx9/scene/hangar/ship_modelRotationCurve.red')
-            model.modelRotationCurve.PitchCurve.speed *= scaleMultiplier
-            model.modelRotationCurve.RollCurve.speed *= scaleMultiplier
-            model.modelRotationCurve.YawCurve.speed *= scaleMultiplier
-        elif val > 0.6:
-            val = 0.6
-        scaleMultiplier = 0.35 + 0.65 * (1 - val / 0.6)
-        model.modelRotationCurve = blue.os.LoadObject('res:/dx9/scene/hangar/ship_modelRotationCurveSpinning.red')
-        model.modelRotationCurve.PitchCurve.speed *= scaleMultiplier
-        model.modelRotationCurve.RollCurve.speed *= scaleMultiplier
-        model.modelRotationCurve.YawCurve.start = blue.os.GetTime()
-        model.modelRotationCurve.YawCurve.ScaleTime(6 * val + 1)
-        model.display = 1
+        return self.t3ShipSvc.GetTech3ShipFromDict(slimItem.typeID, subSystemIds)
 
 
 
     def FindHierarchicalBoundingBox(self, transform, printout, indent = '', minx = 1e+100, maxx = -1e+100, miny = 1e+100, maxy = -1e+100, minz = 1e+100, maxz = -1e+100):
-        transform.Update(blue.os.GetTime())
+        transform.Update(blue.os.GetSimTime())
         if printout:
             print indent,
             print transform.name
@@ -824,11 +420,23 @@ class StationSvc(service.Service):
             return 
         if item.groupID in const.turretModuleGroups:
             self.FitHardpoints()
-        if item.locationID == change.get(const.ixLocationID, None) and item.flagID == change.get(const.ixFlag):
+
+
+
+    def OnActiveShipModelChange(self, model, shipID):
+        self.activeShip = shipID
+        self.activeshipmodel = model
+        self.FitHardpoints()
+
+
+
+    def FitHardpoints(self):
+        if not self.activeshipmodel or self.refreshingfitting:
             return 
-        activeShipID = util.GetActiveShip()
-        if item.locationID == activeShipID and cfg.IsShipFittingFlag(item.flagID) and item.categoryID == const.categorySubSystem:
-            self.ShowShip(activeShipID)
+        self.refreshingfitting = True
+        activeShip = util.GetActiveShip()
+        turret.TurretSet.FitTurrets(activeShip, self.activeshipmodel)
+        self.refreshingfitting = False
 
 
 
@@ -842,20 +450,11 @@ class StationSvc(service.Service):
 
 
 
-    def FitHardpoints(self, checkScene = 1):
-        if not self.activeshipmodel or self.refreshingfitting:
-            return 
-        self.refreshingfitting = 1
-        turret.TurretSet.FitTurrets(util.GetActiveShip(), self.activeshipmodel)
-        self.refreshingfitting = 0
-
-
-
     def GetUnderlay(self):
         if self.underlay is None:
             for each in uicore.layer.main.children[:]:
                 if each is not None and not each.destroyed and each.name == 'services':
-                    sm.GetService('window').UnregisterWindow(each)
+                    uicore.registry.UnregisterWindow(each)
                     each.OnClick = None
                     each.Minimize = None
                     each.Maximize = None
@@ -872,7 +471,7 @@ class StationSvc(service.Service):
             sub = uicls.Container(name='subparent', parent=main, align=uiconst.TOALL, pos=(0, 0, 0, 0))
             captionparent = uicls.Container(name='captionparent', parent=main, align=uiconst.TOPLEFT, left=128, top=36, idx=0)
             caption = uicls.CaptionLabel(text='', parent=captionparent)
-            self.closeBtn = uicls.ButtonGroup(btns=[[mls.UI_CMD_CLOSE,
+            self.closeBtn = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Commands/CmdClose'),
               self.CloseSvc,
               None,
               81]], parent=sub)
@@ -882,7 +481,7 @@ class StationSvc(service.Service):
             self.underlay.sr.main = main
             self.underlay.sr.svcparent = svcparent
             self.underlay.sr.caption = caption
-            sm.GetService('window').RegisterWindow(self.underlay)
+            uicore.registry.RegisterWindow(self.underlay)
         return self.underlay
 
 
@@ -909,14 +508,13 @@ class StationSvc(service.Service):
     def LoadSvc(self, service, close = 1):
         serviceInfo = self.GetStationServices(service)
         if service is not None and serviceInfo is not None:
-            (pos, cmdstr, label, icon, stationonly, servicemasks,) = serviceInfo
-            self.ExecuteCommand(cmdstr)
+            self.ExecuteCommand(serviceInfo.command)
             return 
         if getattr(self, 'loadingSvc', 0):
             return 
         self.loadingSvc = 1
         while self.loading:
-            blue.pyos.synchro.Sleep(500)
+            blue.pyos.synchro.SleepWallclock(500)
 
         if self.selected_service is None:
             if service:
@@ -947,15 +545,9 @@ class StationSvc(service.Service):
 
 
 
-    def GetLobby(self, create = 0, doReload = 0):
-        wnd = sm.GetService('window').GetWindow('lobby')
-        if wnd and not wnd.destroyed:
-            if doReload:
-                wnd.SelfDestruct()
-            else:
-                return wnd
-        wnd = sm.GetService('window').GetWindow('lobby', create=create, decoClass=form.Lobby)
-        return wnd
+    def ReloadLobby(self):
+        form.Lobby.CloseIfOpen()
+        form.Lobby.Open()
 
 
 
@@ -981,12 +573,11 @@ class StationSvc(service.Service):
             snd = self.selected_service
         if snd is not None:
             eve.Message('LoadSvc_%s%s' % (snd, ['Out', 'In'][inout]))
-        blue.pyos.synchro.Sleep([750, 1250][inout])
+        blue.pyos.synchro.SleepWallclock([750, 1250][inout])
         if inout == 0:
             sm.GetService('neocom').SetLocationInfoState(1)
         if newsvc is not None:
             if svctype == 'form':
-                print 'Start service'
                 newsvc.Startup(self)
             elif settings.user.ui.Get('nottry', 0):
                 newsvc.Initialize(wnd.sr.svcparent)
@@ -1069,11 +660,10 @@ class StationSvc(service.Service):
 
 
     def AbortUndock(self, *args):
-        sm.GetService('loading').ProgressWnd(mls.UI_STATION_ABORTUNDOCK, '', 1, 1)
+        sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Station/AbortUndock'), '', 1, 1)
         self.dockaborted = 1
         self.exitingstation = 0
-        self.LoadLobby()
-        sm.GetService('loading').FadeFromBlack()
+        self.ReloadLobby()
         sm.GetService('tutorial').UnhideTutorialWindow()
 
 
@@ -1111,25 +701,21 @@ class StationSvc(service.Service):
         self.exitingstation = 1
         self.dockaborted = 0
         uthread.new(self.LoadSvc, None)
-        lobby = self.GetLobby()
-        if lobby is not None and not lobby.destroyed:
-            lobby.SelfDestruct()
         sm.GetService('uipointerSvc').ClearPointers()
-        msg = [(mls.UI_STATION_PREPARETOUNDOCK, mls.UI_STATION_REQUESTINGUNDOCK),
-         (mls.UI_STATION_PREPARETOUNDOCK, mls.UI_STATION_WAITINGFORCONFIRM),
-         (mls.UI_STATION_PREPARETOUNDOCK, mls.UI_STATION_UNDOCKCONFIRMED),
-         (mls.UI_STATION_ENTERINGSPACE, mls.UI_STATION_PREPARINGSHIP),
-         (mls.UI_STATION_ENTERINGSPACE, mls.UI_STATION_SHIPREADY)]
-        minSleepTime = max(len(msg) * 1000, ((eve.session.nextSessionChange or 0.0) - blue.os.GetTime()) / (SEC / 1000)) / len(msg)
-        uthread.new(sm.GetService('loading').FadeToBlack, 4000)
+        msg = [(localization.GetByLabel('UI/Station/PrepareToUndock'), localization.GetByLabel('UI/Station/RequestingUndockPermission')),
+         (localization.GetByLabel('UI/Station/PrepareToUndock'), localization.GetByLabel('UI/Station/WaitingForConfirmation')),
+         (localization.GetByLabel('UI/Station/PrepareToUndock'), localization.GetByLabel('UI/Station/UndockingConfirmed')),
+         (localization.GetByLabel('UI/Station/EnteringSpace'), localization.GetByLabel('UI/Station/PreparingShip')),
+         (localization.GetByLabel('UI/Station/EnteringSpace'), localization.GetByLabel('UI/Station/ShipReady'))]
+        minSleepTime = max(len(msg) * 1000, ((eve.session.nextSessionChange or 0.0) - blue.os.GetSimTime()) / (SEC / 1000)) / len(msg)
         for i in xrange(len(msg)):
             if self.dockaborted:
                 self.exitingstation = 0
                 break
             sm.GetService('loading').ProgressWnd(msg[i][0], msg[i][1], i + 1, len(msg) + 1, abortFunc=self.AbortUndock)
-            blue.pyos.synchro.Sleep(minSleepTime)
+            blue.pyos.synchro.SleepSim(minSleepTime)
 
-        blue.pyos.synchro.Sleep(1000)
+        blue.pyos.synchro.SleepSim(1000)
         if self.dockaborted:
             self.dockaborted = 0
             return 
@@ -1153,11 +739,10 @@ class StationSvc(service.Service):
 
 
     def DoUndockAttempt(self, ignoreContraband, observedSuppressed, shipID):
-        stationID = session.stationid
         try:
             shipsvc = sm.GetService('gameui').GetShipAccess()
-            sm.GetService('logger').AddText(mls.UI_STATION_UNDOCKINGFROMTO % {'from': cfg.evelocations.Get(eve.session.stationid2).name,
-             'to': cfg.evelocations.Get(eve.session.solarsystemid2).name})
+            undockingLogLabel = localization.GetByLabel('UI/Station/UndockingFromStationToSystem', fromStation=eve.session.stationid2, toSystem=eve.session.solarsystemid2)
+            sm.GetService('logger').AddText(undockingLogLabel)
             if observedSuppressed:
                 ignoreContraband = settings.user.suppress.Get('suppress.ShipContrabandWarningUndock', None) == uiconst.ID_OK
             onlineModules = sm.GetService('clientDogmaIM').GetDogmaLocation().GetOnlineModules(shipID)
@@ -1169,44 +754,41 @@ class StationSvc(service.Service):
                     dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
                     if capsuleID is not None:
                         dogmaLocation.MakeShipActive(capsuleID)
-                raise 
+                    raise 
+                elif e.msg == 'ShipContrabandWarningUndock':
+                    if eve.Message(e.msg, e.dict, uiconst.OKCANCEL) == uiconst.ID_OK:
+                        sys.exc_clear()
+                        self.DoUndockAttempt(True, False, shipID)
+                        return 
+                    else:
+                        settings.user.suppress.Set('suppress.ShipContrabandWarningUndock', None)
+                        self.AbortUndock()
+                        return 
+                else:
+                    raise 
             self.CloseFitting()
         except Exception as e:
-            doRaise = True
-            if isinstance(e, UserError) and e.msg == 'ShipContrabandWarningUndock':
-                if eve.Message(e.msg, e.dict, uiconst.OKCANCEL) == uiconst.ID_OK:
-                    self.DoUndockAttempt(True, False, shipID)
-                    sys.exc_clear()
-                    return 
-                settings.user.suppress.Set('suppress.ShipContrabandWarningUndock', None)
-                doRaise = False
-            self.exitingstation = 0
             self.AbortUndock()
-            if doRaise:
-                raise 
-            sys.exc_clear()
+            raise 
         self.exitingstation = 0
-        sm.GetService('worldSpaceClient').TearDownWorldSpaceRendering()
-        sm.GetService('worldSpaceClient').UnloadWorldSpaceInstance(stationID)
+        self.hangarScene = None
 
 
 
     def CloseFitting(self):
-        wnd = sm.GetService('window').GetWindow('fitting')
-        if wnd:
-            wnd.CloseX()
+        form.FittingWindow.CloseIfOpen()
 
 
 
     def ShipPicker(self):
-        hangarInv = eve.GetInventory(const.containerHangar)
+        hangarInv = sm.GetService('invCache').GetInventory(const.containerHangar)
         items = hangarInv.List()
         tmplst = []
         for item in items:
             if item[const.ixCategoryID] == const.categoryShip and item[const.ixSingleton]:
                 tmplst.append((cfg.invtypes.Get(item[const.ixTypeID]).name, item[const.ixItemID], item[const.ixTypeID]))
 
-        ret = uix.ListWnd(tmplst, 'item', mls.UI_STATION_SELECTSHIP, None, 1)
+        ret = uix.ListWnd(tmplst, 'item', localization.GetByLabel('UI/Station/SelectShip'), None, 1)
         if ret is None:
             return 
         return ret[1]
@@ -1214,7 +796,7 @@ class StationSvc(service.Service):
 
 
     def SelectShipDlg(self):
-        hangarInv = eve.GetInventory(const.containerHangar)
+        hangarInv = sm.GetService('invCache').GetInventory(const.containerHangar)
         items = hangarInv.List()
         tmplst = []
         activeShipID = util.GetActiveShip()
@@ -1226,7 +808,7 @@ class StationSvc(service.Service):
             self.exitingstation = 0
             eve.Message('NeedShipToUndock')
             return 
-        ret = uix.ListWnd(tmplst, 'item', mls.UI_STATION_SELECTSHIP, None, 1)
+        ret = uix.ListWnd(tmplst, 'item', localization.GetByLabel('UI/Station/SelectShip'), None, 1)
         if ret is None or ret[1].itemID == activeShipID:
             self.exitingstation = 0
             return 
@@ -1239,30 +821,16 @@ class StationSvc(service.Service):
 
 
 
-    def WaitForShip(self, shipID):
-        maximumWait = 10000
-        sleepUnit = 100
-        iterations = maximumWait / sleepUnit
-        while util.GetActiveShip() != shipID and iterations:
-            iterations -= 1
-            blue.pyos.synchro.Sleep(sleepUnit)
-
-        if util.GetActiveShip() != shipID:
-            raise RuntimeError('Ship never came :(')
-        self.LogInfo('Waited for ship for %d iterations.' % (maximumWait / sleepUnit - iterations))
-
-
-
     def ChangeColorOfActiveShip(self, typeName, colorID, typeID):
         self.previewColorIDs[typeName] = colorID
-        sm.services['t3ShipSvc'].ChangeColor(self.activeshipmodel, self.previewColorIDs, typeID)
+        self.t3ShipSvc.ChangeColor(self.activeshipmodel, self.previewColorIDs, typeID)
 
 
 
     def ConfirmChangeColor(self):
         if self.previewColorIDs is None:
             return 
-        eve.GetInventoryFromId(self.activeShip).ChangeColor(self.previewColorIDs)
+        sm.GetService('invCache').GetInventoryFromId(self.activeShip).ChangeColor(self.previewColorIDs)
         eve.Message('ColorOfShipHasBeenChanged')
 
 
@@ -1284,192 +852,6 @@ class StationSvc(service.Service):
                             turretSet.EnterStateDeactive()
 
 
-
-
-
-    def ProcessActiveShipChanged(self, shipID, oldShipID):
-        if oldShipID:
-            sm.GetService('gameui').KillCargoView(oldShipID, ['form.InflightCargoView'])
-        if session.stationid is not None:
-            self.ShowShip(shipID)
-
-
-
-    def MakeModularShipFromShipItem(self, ship):
-        subSystemIds = {}
-        for fittedItem in ship.GetFittedItems().itervalues():
-            if fittedItem.categoryID == const.categorySubSystem:
-                subSystemIds[fittedItem.groupID] = fittedItem.typeID
-
-        if len(subSystemIds) < const.visibleSubSystems:
-            sm.GetService('window').GetWindow('AssembleShip', create=1, decoClass=form.AssembleShip, ship=ship, groupIDs=subSystemIds.keys())
-            return 
-        return sm.GetService('t3ShipSvc').GetTech3ShipFromDict(ship.typeID, subSystemIds)
-
-
-
-    def CheckScene(self):
-        scene = sm.GetService('sceneManager').GetRegisteredScene2('default')
-        if not settings.user.ui.Get('loadstationenv', 1):
-            self.RenderStaticEnvironment()
-            scene.display = False
-        else:
-            scene.display = True
-            self.RemoveFullScreenSprite()
-
-
-
-    def RemoveFullScreenSprite(self):
-        for each in uicore.uilib.desktop.children:
-            if each.name == 'fullScreenSprite':
-                uicore.uilib.desktop.children.fremove(each)
-
-
-
-
-    def RenderStaticEnvironment(self):
-        if settings.user.ui.Get('loadstationenv', 1):
-            return 
-        trinity.WaitForResourceLoads()
-        dev = trinity.GetDevice()
-        camera = self.sceneManager.GetRegisteredCamera('default')
-        s1 = self.sceneManager.GetRegisteredScene('default')
-        s2 = self.sceneManager.GetRegisteredScene2('default')
-        s2.display = True
-        clientWidth = trinity.GetDevice().width
-        clientHeight = trinity.GetDevice().height
-        target = trinity.TriSurfaceManaged(dev.CreateRenderTarget, clientWidth, clientHeight, trinity.TRIFMT_X8R8G8B8, trinity.TRIMULTISAMPLE_NONE, 0, 1)
-        stencil = trinity.TriSurfaceManaged(dev.CreateDepthStencilSurface, clientWidth, clientHeight, trinity.TRIFMT_D24S8, trinity.TRIMULTISAMPLE_NONE, 0, 1)
-        rgbSource = trinity.TriSurfaceManaged(dev.CreateOffscreenPlainSurface, clientWidth, clientHeight, trinity.TRIFMT_X8R8G8B8, trinity.TRIPOOL_SYSTEMMEM)
-        updateJob = trinity.CreateRenderJob('UpdateScene')
-        updateJob.Update(s1)
-        updateJob.Update(s2)
-        updateJob.ScheduleOnce()
-        updateJob.WaitForFinish()
-        eye = camera.pos
-        at = camera.intr
-        view = trinity.TriView()
-        view.SetLookAtPosition((eye.x, eye.y, eye.z), (at.x, at.y, at.z), (0.0, 1.0, 0.0))
-        projection = trinity.TriProjection()
-        fov = camera.fieldOfView
-        aspectRatio = float(clientWidth) / clientHeight
-        projection.PerspectiveFov(fov, aspectRatio, 1.0, 350000.0)
-        renderJob = trinity.CreateRenderJob('StaticScene')
-        renderJob.SetRenderTarget(target)
-        renderJob.SetProjection(projection)
-        renderJob.SetView(view)
-        renderJob.SetDepthStencil(stencil)
-        renderJob.Clear((0.0, 0.0, 0.0, 0.0), 1.0)
-        renderJob.RenderScene(s2)
-        renderJob.ScheduleOnce()
-        renderJob.WaitForFinish()
-        dev.GetRenderTargetData(target, rgbSource)
-        self.RemoveFullScreenSprite()
-        self.sprite = uicls.Sprite(parent=uicore.uilib.desktop, width=trinity.GetDevice().width, height=trinity.GetDevice().height, left=0, top=0)
-        self.sprite.name = 'fullScreenSprite'
-        self.sprite.texture.AttachSurface(rgbSource)
-        self.sprite.Invalidate()
-
-
-
-    def GetZoomValues(self, model, thread):
-        rad = 300
-        camera = self.sceneManager.GetRegisteredCamera('default')
-        trinity.WaitForResourceLoads()
-        rad = model.GetBoundingSphereRadius()
-        center = model.boundingSphereCenter
-        localBB = model.GetLocalBoundingBox()
-        if localBB[0] is None or localBB[1] is None:
-            log.LogError("Failed to get bounding info for ship. Odds are the ship wasn't loaded properly.")
-            localBB = (trinity.TriVector(0, 0, 0), trinity.TriVector(0, 0, 0))
-        model.translationCurve = trinity.TriVectorCurve()
-        if type(center) == types.TupleType:
-            negativeCenter = (-center[0], -center[1], -center[2])
-            model.translationCurve.value = trinity.TriVector(*negativeCenter)
-        else:
-            negativeCenter = -center
-            model.translationCurve.value = negativeCenter
-        model.translationCurve.value.y = -localBB[0].y + 180.0
-        capitalShips = [const.groupDreadnought,
-         const.groupSupercarrier,
-         const.groupTitan,
-         const.groupFreighter,
-         const.groupJumpFreighter,
-         const.groupCarrier,
-         const.groupCapitalIndustrialShip,
-         const.groupIndustrialCommandShip]
-        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
-        if getattr(dogmaLocation.GetDogmaItem(util.GetActiveShip()), 'groupID', None) not in capitalShips:
-            model.modelRotationCurve = blue.os.LoadObject('res:/dx9/scene/hangar/ship_modelRotationCurve.red')
-        cameraparent = self.GetCameraParent()
-        if cameraparent.translationCurve is not None:
-            currentY = cameraparent.translationCurve.value.y
-            cameraparent.translationCurve.keys[0].value.y = currentY
-            cameraparent.translationCurve.keys[1].value.y = -localBB[0].y + 180.0
-            cameraparent.translationCurve.start = blue.os.GetTime()
-        zoomMultiplier = 1.0
-        aspectRatio = trinity.GetAspectRatio()
-        if aspectRatio > 1.6:
-            zoomMultiplier = aspectRatio / 1.6
-        self.minZoom = (rad + camera.frontClip + 50) * zoomMultiplier
-        self.maxZoom = 2050.0
-        return (rad + camera.frontClip) * 2
-
-
-
-    def GetCameraParent(self):
-        scene = self.sceneManager.GetRegisteredScene('default')
-        for each in scene.models:
-            if each.name == 'cameraparent':
-                return each
-
-        cp = trinity.TriTransform()
-        cp.name = 'cameraparent'
-        c = trinity.TriVectorCurve()
-        c.extrapolation = trinity.TRIEXT_CONSTANT
-        for t in (0.0, 0.5):
-            k = trinity.TriVectorKey()
-            k.time = t
-            k.interpolation = trinity.TRIINT_HERMITE
-            c.keys.append(k)
-
-        c.Sort()
-        cp.translationCurve = c
-        cp.useCurves = 1
-        scene.models.append(cp)
-        return cp
-
-
-
-    def AnimateZoom(self, startVal, endVal, duration):
-        camera = self.sceneManager.GetRegisteredCamera('default')
-        startTime = blue.os.GetTime()
-        for t in range(101):
-            elapsed = blue.os.GetTime() - startTime
-            elapsedSec = elapsed / 10000000.0
-            perc = elapsedSec / duration
-            if perc > 1.0:
-                camera.translationFromParent.z = endVal
-                break
-            camera.translationFromParent.z = startVal * (1.0 - perc) + endVal * perc
-            blue.pyos.synchro.Sleep(2)
-
-        camera.translationFromParent.z = endVal
-
-
-
-    def Zoom(self, zoomto = None):
-        scene = self.sceneManager.GetRegisteredScene('default')
-        camera = self.sceneManager.GetRegisteredCamera('default')
-        camera.parent = self.GetCameraParent()
-        scene.update = 1
-        scene.display = 1
-        uthread.new(self.AnimateZoom, camera.translationFromParent.z, min(self.maxZoom, max(zoomto, self.minZoom)), 0.5)
-
-
-
-    def CheckCameraTranslation(self, trans):
-        return min(self.maxZoom, max(trans, self.minZoom))
 
 
 

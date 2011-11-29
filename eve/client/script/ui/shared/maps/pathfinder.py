@@ -390,15 +390,18 @@ class PathfinderSvc(service.Service):
         fromID = waypoints[0]
         path = []
         for toID in waypoints[1:]:
+            if util.IsStation(fromID):
+                path.append(cfg.stations.Get(fromID).solarSystemID)
+                path.append(fromID)
             segment = self.GetPathBetween(fromID, toID)
             if segment is None:
-                path = []
-                break
+                return []
             path += segment[:-1]
             fromID = toID
 
-        if len(path) > 0:
-            path.append(toID)
+        if util.IsStation(toID):
+            path.append(cfg.stations.Get(toID).solarSystemID)
+        path.append(toID)
         return path
 
 
@@ -407,6 +410,10 @@ class PathfinderSvc(service.Service):
         uthread.ReentrantLock(self)
         try:
             self.PrepareCache()
+            if util.IsStation(fromID):
+                fromID = cfg.stations.Get(fromID).solarSystemID
+            if util.IsStation(toID):
+                toID = cfg.stations.Get(toID).solarSystemID
             self.LogInfo('Getting path between', fromID, 'and', toID)
             self.Refresh(fromID, toID)
             vertex = self.cache[self.routeType][toID]

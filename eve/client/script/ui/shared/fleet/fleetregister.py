@@ -7,18 +7,20 @@ import uthread
 import uiconst
 import uicls
 import blue
+import localization
 from fleetcommon import *
 WINDOW_WIDTH = 300
 WINDOW_HEIGHT = 440
 
 class RegisterFleetWindow(uicls.Window):
     __guid__ = 'form.RegisterFleetWindow'
+    default_windowID = 'RegisterFleetWindow'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         fleetInfo = attributes.fleetInfo
         self.SetTopparentHeight(0)
-        self.SetCaption(mls.UI_FLEET_REGISTERFLEET)
+        self.SetCaption(localization.GetByLabel('UI/Fleet/CreateAdvert'))
         self.SetWndIcon(None)
         self.windowHeight = WINDOW_HEIGHT
         if session.warfactionid is not None or session.allianceid is not None:
@@ -79,7 +81,7 @@ class RegisterFleetWindow(uicls.Window):
 
 
     def SetupStuff(self, fleetInfo = None):
-        fleetName = mls.UI_FLEET_DEFAULTFLEETNAME % {'name': cfg.eveowners.Get(session.charid).name}
+        fleetName = localization.GetByLabel('UI/Fleet/DefaultFleetName', char=session.charid)
         inviteScope = INVITE_CORP
         description = ''
         needsApproval = False
@@ -117,50 +119,50 @@ class RegisterFleetWindow(uicls.Window):
                 localIsGood = True
             elif localMinStanding == const.contactHighStanding:
                 localIsHigh = True
-        self.sr.fleetName = uicls.SinglelineEdit(name='fleetName', parent=self.sr.fleetNameParent, align=uiconst.TOALL, pos=(1, 13, 0, 0), maxLength=FLEETNAME_MAXLENGTH, label=mls.UI_FLEET_NAMEOFFLEET, setvalue=fleetName)
-        uicls.Label(text=mls.UI_GENERIC_DESCRIPTION, parent=self.sr.detailsParent, top=6, fontsize=10, letterspace=1, linespace=9, uppercase=1)
+        self.sr.fleetName = uicls.SinglelineEdit(name='fleetName', parent=self.sr.fleetNameParent, align=uiconst.TOALL, pos=(1, 13, 0, 0), maxLength=FLEETNAME_MAXLENGTH, label=localization.GetByLabel('UI/Fleet/NameOfFleet'), setvalue=fleetName)
+        uicls.EveLabelSmall(text=localization.GetByLabel('UI/Fleet/Description'), parent=self.sr.detailsParent, top=6)
         self.sr.description = uicls.EditPlainText(setvalue=description, parent=self.sr.detailsParent, align=uiconst.TOALL, maxLength=FLEETDESC_MAXLENGTH, top=22)
-        openFleetText = uicls.Label(text=mls.UI_FLEET_OPENTO, parent=self.sr.scopeParent, align=uiconst.TOTOP, uppercase=1, fontsize=9, letterspace=2, state=uiconst.UI_NORMAL)
+        openFleetText = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Fleet/FleetRegistry/OpenFleetTo'), parent=self.sr.scopeParent, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         openFleetText.padLeft = 3
-        self.sr.myCorpButton = uicls.Checkbox(text=mls.UI_GENERIC_MYCORPORATION, parent=self.sr.scopeParent, configName='corp', retval='1', checked=myCorp)
-        self.sr.myCorpButton.hint = mls.UI_FLEET_CORPONLY_HINT
+        self.sr.myCorpButton = uicls.Checkbox(text=localization.GetByLabel('UI/Fleet/FleetRegistry/MyCorporation'), parent=self.sr.scopeParent, configName='corp', retval='1', checked=myCorp)
+        self.sr.myCorpButton.hint = localization.GetByLabel('UI/Fleet/FleetRegistry/CorpOnlyHint')
         if session.allianceid is not None:
-            self.sr.myAllianceButton = uicls.Checkbox(text=mls.UI_CONTRACTS_MYALLIANCE, parent=self.sr.scopeParent, configName='alliance', retval='1', checked=myAlliance)
-            self.sr.myAllianceButton.hint = mls.UI_FLEET_ALLIANCEONLY_HINT
+            self.sr.myAllianceButton = uicls.Checkbox(text=localization.GetByLabel('UI/Fleet/FleetRegistry/MyAlliance'), parent=self.sr.scopeParent, configName='alliance', retval='1', checked=myAlliance)
+            self.sr.myAllianceButton.hint = localization.GetByLabel('UI/Fleet/FleetRegistry/AllianceOnlyHint')
             self.sr.scopeParent.height += 16
         if session.warfactionid is not None:
-            self.sr.myMilitiaButton = uicls.Checkbox(text=mls.UI_FLEET_MYMILITIA, parent=self.sr.scopeParent, configName='militia', retval='1', checked=myMilitia)
-            self.sr.myMilitiaButton.hint = mls.UI_FLEET_MILITIAONLY_HINT
+            self.sr.myMilitiaButton = uicls.Checkbox(text=localization.GetByLabel('UI/Fleet/FleetRegistry/MyMilitia'), parent=self.sr.scopeParent, configName='militia', retval='1', checked=myMilitia)
+            self.sr.myMilitiaButton.hint = localization.GetByLabel('UI/Fleet/FleetRegistry/MyMilitiahint')
             self.sr.scopeParent.height += 16
-        self.sr.requireLocalStandingButton = uicls.Checkbox(text='%s:' % mls.UI_FLEET_REQUIRESTANDING, parent=self.sr.filterStanding, configName='requireLocalStanding', retval='1', checked=bool(localMinStanding))
-        self.sr.requireLocalStandingButton.hint = mls.UI_FLEET_REQUIRESTANDING_HINT
-        self.sr.localGoodStandingCB = uicls.Checkbox(text=mls.UI_CONTACTS_GOODSTANDING, parent=self.sr.filterStandingRB, configName='localgood', reval=const.contactGoodStanding, checked=localIsGood, groupname='localStanding')
-        self.sr.localHighStandingCB = uicls.Checkbox(text=mls.UI_CONTACTS_HIGHSTANDING, parent=self.sr.filterStandingRB, configName='localhigh', reval=const.contactHighStanding, checked=localIsHigh, groupname='localStanding')
-        self.sr.requireLocalSecurityButton = uicls.Checkbox(text='%s:' % mls.UI_FLEET_REQUIRESECURITY, parent=self.sr.filterSecurity, configName='requireLocalSecurity', retval='1', checked=localMinSecurity is not None)
-        self.sr.requireLocalSecurityButton.hint = mls.UI_FLEET_REQUIRESECURITY_HINT
+        self.sr.requireLocalStandingButton = uicls.Checkbox(text=localization.GetByLabel('UI/Fleet/FleetRegistry/RequireStanding'), parent=self.sr.filterStanding, configName='requireLocalStanding', retval='1', checked=bool(localMinStanding))
+        self.sr.requireLocalStandingButton.hint = localization.GetByLabel('UI/Fleet/FleetRegistry/RequireStandingHint')
+        self.sr.localGoodStandingCB = uicls.Checkbox(text=localization.GetByLabel('UI/Standings/Good'), parent=self.sr.filterStandingRB, configName='localgood', reval=const.contactGoodStanding, checked=localIsGood, groupname='localStanding')
+        self.sr.localHighStandingCB = uicls.Checkbox(text=localization.GetByLabel('UI/Standings/Excellent'), parent=self.sr.filterStandingRB, configName='localhigh', reval=const.contactHighStanding, checked=localIsHigh, groupname='localStanding')
         startVal = 0.5
         if localMinSecurity is not None:
             startVal = localMinSecurity / 20.0 + 0.5
+        self.sr.requireLocalSecurityButton = uicls.Checkbox(text=localization.GetByLabel('UI/Fleet/FleetRegistry/RequireSecurity', securityLevel=startVal), parent=self.sr.filterSecurity, configName='requireLocalSecurity', retval='1', checked=localMinSecurity is not None)
+        self.sr.requireLocalSecurityButton.hint = localization.GetByLabel('UI/Fleet/FleetRegistry/RequireSecurityHint')
         self.sr.localSecuritySlider = self.AddSlider(self.sr.filterSecurity, 'localSecurity', -10, 10.0, '', startVal=startVal)
         self.sr.localSecuritySlider.SetValue(startVal)
-        self.sr.publicButton = uicls.Checkbox(text=mls.UI_FLEET_STANDINGONLY, parent=self.sr.publicParent, configName='public', retval='1', checked=isPublic)
-        self.sr.publicButton.hint = mls.UI_FLEET_ADDPILOTS
-        standingText = uicls.Label(text='%s:' % mls.UI_FLEET_REQUIRESTANDING, parent=self.sr.publicFilterStanding, align=uiconst.TOTOP, uppercase=1, fontsize=9, letterspace=2, state=uiconst.UI_NORMAL)
+        self.sr.publicButton = uicls.Checkbox(text=localization.GetByLabel('UI/Fleet/FleetRegistry/BasedOnStandings'), parent=self.sr.publicParent, configName='public', retval='1', checked=isPublic)
+        self.sr.publicButton.hint = localization.GetByLabel('UI/Fleet/FleetRegistry/AddPilots')
+        standingText = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Fleet/FleetRegistry/RequireStanding'), parent=self.sr.publicFilterStanding, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         standingText.padLeft = 3
-        self.sr.publicGoodStandingCB = uicls.Checkbox(text=mls.UI_CONTACTS_GOODSTANDING, parent=self.sr.publicFilterStandingRB, configName='publicgood', reval=const.contactGoodStanding, checked=publicIsGood, groupname='publicStanding')
-        self.sr.publicHighStandingCB = uicls.Checkbox(text=mls.UI_CONTACTS_HIGHSTANDING, parent=self.sr.publicFilterStandingRB, configName='publichigh', reval=const.contactHighStanding, checked=publicIsHigh, groupname='publicStanding')
-        self.sr.requirePublicSecurityButton = uicls.Checkbox(text='%s:' % mls.UI_FLEET_REQUIRESECURITY, parent=self.sr.publicFilterSecurity, configName='requirePublicSecurity', retval='1', checked=publicMinSecurity is not None)
-        self.sr.requirePublicSecurityButton.hint = mls.UI_FLEET_REQUIRESECURITY_HINT
+        self.sr.publicGoodStandingCB = uicls.Checkbox(text=localization.GetByLabel('UI/Standings/Good'), parent=self.sr.publicFilterStandingRB, configName='publicgood', reval=const.contactGoodStanding, checked=publicIsGood, groupname='publicStanding')
+        self.sr.publicHighStandingCB = uicls.Checkbox(text=localization.GetByLabel('UI/Standings/Excellent'), parent=self.sr.publicFilterStandingRB, configName='publichigh', reval=const.contactHighStanding, checked=publicIsHigh, groupname='publicStanding')
         startVal = 0.5
         if publicMinSecurity is not None:
             startVal = publicMinSecurity / 20.0 + 0.5
+        self.sr.requirePublicSecurityButton = uicls.Checkbox(text=localization.GetByLabel('UI/Fleet/FleetRegistry/RequireSecurity', securityLevel=startVal), parent=self.sr.publicFilterSecurity, configName='requirePublicSecurity', retval='1', checked=publicMinSecurity is not None)
+        self.sr.requirePublicSecurityButton.hint = localization.GetByLabel('UI/Fleet/FleetRegistry/RequireSecurityHint')
         self.sr.publicSecuritySlider = self.AddSlider(self.sr.publicFilterSecurity, 'publicSecurity', -10, 10.0, '', startVal=startVal)
         self.sr.publicSecuritySlider.SetValue(startVal)
-        self.sr.needsApprovalButton = uicls.Checkbox(text=mls.UI_FLEET_REQUIRESAPPROVAL, parent=self.sr.optionsParent, configName='needsApproval', retval='1', checked=needsApproval)
-        self.sr.needsApprovalButton.hint = mls.UI_FLEET_REQUIRESAPPROVAL_HINT
-        self.sr.hideInfoButton = uicls.Checkbox(text=mls.UI_FLEET_HIDEINFO, parent=self.sr.optionsParent, configName='hideInfo', retval='1', checked=hideInfo)
-        self.sr.hideInfoButton.hint = mls.UI_FLEET_HIDEINFO_HINT
-        self.sr.submitButtons = uicls.ButtonGroup(btns=[[mls.UI_CMD_SUBMIT, self.Submit, ()], [mls.UI_CMD_CANCEL, self.CloseX, ()]], parent=self.sr.bottom, idx=0)
+        self.sr.needsApprovalButton = uicls.Checkbox(text=localization.GetByLabel('UI/Fleet/FleetRegistry/RequireApproval'), parent=self.sr.optionsParent, configName='needsApproval', retval='1', checked=needsApproval)
+        self.sr.needsApprovalButton.hint = localization.GetByLabel('UI/Fleet/FleetRegistry/RequireApprovalHint')
+        self.sr.hideInfoButton = uicls.Checkbox(text=localization.GetByLabel('UI/Fleet/FleetRegistry/HideInfo'), parent=self.sr.optionsParent, configName='hideInfo', retval='1', checked=hideInfo)
+        self.sr.hideInfoButton.hint = localization.GetByLabel('UI/Fleet/FleetRegistry/HideInfoHint')
+        self.sr.submitButtons = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Common/Buttons/Submit'), self.Submit, ()], [localization.GetByLabel('UI/Common/Buttons/Cancel'), self.CloseByUser, ()]], parent=self.sr.bottom, idx=0)
         uthread.new(self.PostStartup)
 
 
@@ -180,7 +182,7 @@ class RegisterFleetWindow(uicls.Window):
         _par = uicls.Container(name=config + '_slider', parent=where, align=uiconst.TOTOP, pos=(0, 0, 180, 10), padding=(0, 0, 0, 0))
         par = uicls.Container(name=config + '_slider_sub', parent=_par, align=uiconst.TOPLEFT, pos=(18, 0, 180, 10), padding=(0, 0, 0, 0))
         slider = xtriui.Slider(parent=par)
-        lbl = uicls.Label(text='bla', parent=par, width=200, left=-34, top=0, fontsize=9, letterspace=2, autowidth=False, state=uiconst.UI_NORMAL)
+        lbl = uicls.EveLabelSmall(text='bla', parent=par, width=200, left=-34, top=0, state=uiconst.UI_NORMAL)
         setattr(self.sr, '%sLabel' % config, lbl)
         lbl.name = 'label'
         slider.SetSliderLabel = getattr(self, 'SetSliderLabel_%s' % config)
@@ -207,12 +209,12 @@ class RegisterFleetWindow(uicls.Window):
 
 
     def OnSetValue_localSecurity(self, *args):
-        self.sr.requireLocalSecurityButton.SetLabelText('%s: %.1f' % (mls.UI_FLEET_REQUIRESECURITY, float(self.sr.localSecurityLabel.text)))
+        self.sr.requireLocalSecurityButton.SetLabelText(localization.GetByLabel('UI/Fleet/FleetRegistry/RequireSecurity', securityLevel=float(self.sr.localSecurityLabel.text)))
 
 
 
     def OnSetValue_publicSecurity(self, *args):
-        self.sr.requirePublicSecurityButton.SetLabelText('%s: %.1f' % (mls.UI_FLEET_REQUIRESECURITY, float(self.sr.publicSecurityLabel.text)))
+        self.sr.requirePublicSecurityButton.SetLabelText(localization.GetByLabel('UI/Fleet/FleetRegistry/RequireSecurity', securityLevel=float(self.sr.publicSecurityLabel.text)))
 
 
 
@@ -276,7 +278,7 @@ class RegisterFleetWindow(uicls.Window):
         info.joinNeedsApproval = not not self.sr.needsApprovalButton.checked
         info.hideInfo = not not self.sr.hideInfoButton.checked
         fleetSvc.RegisterFleet(info)
-        self.CloseX()
+        self.CloseByUser()
 
 
 

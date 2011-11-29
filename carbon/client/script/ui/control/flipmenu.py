@@ -516,7 +516,7 @@ class FlipMenuCore(uicls.Container):
             iExp = math.exp(i / 10.0)
             self.Browse(-(distance - int(distance * (iExp / maxExp))))
             tot += abs(-(distance - int(distance * (iExp / maxExp))))
-            blue.pyos.synchro.Sleep(10)
+            blue.pyos.synchro.SleepWallclock(10)
             if self.destroyed:
                 return 
             if self._initMouseDown:

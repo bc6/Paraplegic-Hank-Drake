@@ -89,7 +89,7 @@ class Environment:
     def OnStart(self, effect, t):
         if self.currentStartTime is None:
             if effect.rangeChance or effect.electronicChance or effect.propulsionChance:
-                self.random = random.WichmannHill(blue.os.GetTime(1))
+                self.random = random.WichmannHill(blue.os.GetWallclockTimeNow())
                 self.registrations = []
         self.currentStartTime = t
         if self.random is not None:

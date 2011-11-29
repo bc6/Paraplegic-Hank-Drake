@@ -108,6 +108,7 @@ class DollRandomizer(object):
             gender = self.GetGender()
             catPath = ''
             for category in self.dollCategories:
+                PD.BeFrameNice()
                 if self.filterCategoriesForRandomization:
                     continueOut = True
                     if category in (PD.DOLL_PARTS.ACCESSORIES,
@@ -165,6 +166,7 @@ class DollRandomizer(object):
             self._DollRandomizer__blendshapeOptions = {}
             categories = PD.BLENDSHAPE_CATEGORIES - (PD.BLENDSHAPE_CATEGORIES.UTILITYSHAPES, PD.BLENDSHAPE_CATEGORIES.ARCHETYPES)
             for category in categories:
+                PD.BeFrameNice()
                 options = [ option for option in self.ListOptions(category) ]
                 options = AbstractRandomizer.SelectManyFromCollection(options, minElems=8)
                 pairToElem = {}
@@ -231,6 +233,7 @@ class DollRandomizer(object):
 
     def AddRandomizedResourcesToDoll(self, doll, randomizedResources):
         for category in randomizedResources:
+            PD.BeFrameNice()
             for (resType, res,) in randomizedResources[category]:
                 if not res:
                     continue

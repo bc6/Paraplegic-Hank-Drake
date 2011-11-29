@@ -8,6 +8,7 @@ import mathUtil
 import form
 import types
 import base
+import localization
 
 class Window(uicls.WindowCore):
     __guid__ = 'uicls.Window'
@@ -15,19 +16,25 @@ class Window(uicls.WindowCore):
     default_pinned = False
     default_iconNum = 'ui_9_64_9'
     default_topParentHeight = 52
+    default_width = 256
+    default_height = 128
 
     def ApplyAttributes(self, attributes):
         self.default_parent = uicore.layer.main
-        self.default_windowID = attributes.get('name', None)
         self._pinned = False
         self._pinable = True
         self.showhelp = False
         self.showforward = False
         self.showback = False
-        self.defaultPrefsID = 'generic'
         self.isBlinking = False
         self.iconNum = attributes.get('iconNum', self.default_iconNum)
+        self.topParentHeight = attributes.get('topParentHeight', self.default_topParentHeight)
         uicls.WindowCore.ApplyAttributes(self, attributes)
+
+
+
+    def GetMainArea(self):
+        return self.sr.main
 
 
 
@@ -42,22 +49,20 @@ class Window(uicls.WindowCore):
 
     def Prepare_Layout(self):
         self.sr.headerParent = uicls.Container(parent=self.sr.maincontainer, name='headerParent', align=uiconst.TOTOP, pos=(0, 0, 0, 16))
-        self.sr.topParent = uicls.Container(parent=self.sr.maincontainer, name='topParent', align=uiconst.TOTOP, pos=(0,
-         0,
-         0,
-         self.default_topParentHeight), clipChildren=True)
+        self.sr.topParent = uicls.Container(parent=self.sr.maincontainer, name='topParent', align=uiconst.TOTOP, clipChildren=True)
         self.sr.mainIcon = uicls.Icon(parent=self.sr.topParent, name='mainicon', pos=(0, 0, 64, 64), state=uiconst.UI_HIDDEN)
         self.sr.main = uicls.Container(parent=self.sr.maincontainer, name='main', align=uiconst.TOALL)
         self.sr.iconClipper = uicls.Container(parent=self.sr.maincontainer, name='iconclipper', align=uiconst.TOALL, state=uiconst.UI_DISABLED, top=-53, clipChildren=True)
         self.sr.clippedIcon = uicls.Icon(parent=self.sr.iconClipper, name='clippedicon', pos=(-22, -36, 128, 128), state=uiconst.UI_HIDDEN)
         self.sr.clippedIcon.color.a = 0.1
+        self.SetTopparentHeight(self.topParentHeight)
 
 
 
     def Prepare_Header_(self):
         top = uicls.Container(parent=self.sr.headerParent, name='top', align=uiconst.TOALL)
         self.sr.captionParent = uicls.Container(parent=top, name='captionParent', align=uiconst.TOALL, clipChildren=True)
-        self.sr.caption = uicls.Label(text='', parent=self.sr.captionParent, left=8, top=2, state=uiconst.UI_DISABLED, fontsize=10, letterspace=1, uppercase=1)
+        self.sr.caption = uicls.EveLabelSmall(text='', parent=self.sr.captionParent, left=8, top=2, state=uiconst.UI_DISABLED)
         self.sr.headerLine = uicls.Line(parent=self.sr.headerParent, align=uiconst.TOBOTTOM, idx=0)
 
 
@@ -71,23 +76,20 @@ class Window(uicls.WindowCore):
     def Prepare_HeaderButtons_(self):
         self.sr.headerButtons = uicls.Container(name='headerButtons', state=uiconst.UI_PICKCHILDREN, align=uiconst.TOPRIGHT, parent=self.sr.maincontainer, pos=(5, 0, 0, 30), idx=0)
         if self.sr.stack:
-            closeHint = mls.UI_GENERIC_CLOSEWINDOWSTACK
-            minimizeHint = mls.UI_CMD_MINIMIZEWINDOWSTACK
+            closeHint = localization.GetByLabel('UI/Control/EveWindow/CloseStack')
+            minimizeHint = localization.GetByLabel('UI/Control/EveWindow/MinimizeStack')
         else:
-            closeHint = mls.UI_GENERIC_CLOSE
-            minimizeHint = mls.UI_CMD_MINIMIZE
-        if self._pinned:
-            pinFunc = self.Unpin
-            pinhint = mls.UI_GENERIC_UNPINWINDOW
-        else:
-            pinFunc = self.Pin
-            pinhint = mls.UI_GENERIC_PINWINDOW
+            closeHint = localization.GetByLabel('UI/Common/Buttons/Close')
+            minimizeHint = localization.GetByLabel('UI/Control/EveWindow/Minimize')
+        pinFunc = self.TogglePinState
+        pinhint = localization.GetByLabel('UI/Control/EveWindow/ToggleWindowStyle')
+        helpHint = localization.GetByLabel('UI/Control/EveWindow/Help')
         w = 0
         for (icon, name, hint, showflag, clickfunc, menufunc,) in [('ui_38_16_220',
           'close',
           closeHint,
           self._killable,
-          self._CloseClick,
+          self.CloseByUser,
           None),
          ('ui_38_16_221',
           'minimize',
@@ -103,7 +105,7 @@ class Window(uicls.WindowCore):
           None),
          ('ui_38_16_219',
           'contextHelp',
-          mls.UI_SHARED_HELP,
+          helpHint,
           self.showhelp,
           None,
           self.Help)]:
@@ -118,10 +120,6 @@ class Window(uicls.WindowCore):
         self.sr.headerButtons.width = w
         if self.sr.captionParent:
             self.sr.captionParent.padRight = w + 6
-        self.sr.GoBackBtn = uicls.Icon(parent=self.sr.headerButtons, align=uiconst.TOPRIGHT, state=uiconst.UI_HIDDEN, icon='ui_38_16_223', pos=(12, 15, 16, 16), hint=self.GetGoBackHint())
-        self.sr.GoBackBtn.OnClick = self.GoBack
-        self.sr.GoForwardBtn = uicls.Icon(parent=self.sr.headerButtons, align=uiconst.TOPRIGHT, state=uiconst.UI_HIDDEN, icon='ui_38_16_224', pos=(-2, 15, 16, 16), hint=self.GetGoForwardHint())
-        self.sr.GoForwardBtn.OnClick = self.GoForward
 
 
 
@@ -178,18 +176,18 @@ class Window(uicls.WindowCore):
 
     def Help(self, *args):
         m = []
-        (kbContent, msg, suppressed,) = self.CheckForContextHelp()
+        (kbContent, overlayPage, suppressed,) = self.CheckForContextHelp()
         if kbContent is not None:
             sub = []
             for each in kbContent:
                 sub.append((each.description.strip(), self.ClickHelp, (each.url.strip(),)))
 
             if sub:
-                m.append((mls.UI_SHARED_KNOWLEDGEBASEARTICLES, sub))
+                m.append((localization.GetByLabel('UI/Control/EveWindow/KnowledgeBaseArticles'), sub))
                 m.append(None)
-        if msg:
+        if overlayPage:
             m.append(None)
-            m.append((mls.UI_CMD_SHOWWELCOMEPAGE, self.ShowWelcomePage, (None,)))
+            m.append((localization.GetByLabel('UI/Control/EveWindow/ShowWindowOverlay'), self.ShowWindowOverlayPage, (None,)))
         return m
 
 
@@ -199,17 +197,12 @@ class Window(uicls.WindowCore):
         caption = self.GetCaption(0)
         if not caption or getattr(self, '__guid__', None) in disallowedWnds:
             return (None, None, None)
-        ret = sm.GetService('tutorial').GetMappedContextHelp([caption])
-        (msg, suppressed,) = self.GetWelcomePageMessage()
-        if self and not self.destroyed and (ret or msg):
-            self.ShowHelp()
-        return (ret, msg, suppressed)
-
-
-
-    def GetWelcomePageMessage(self):
-        msgkey = 'Welcome_%s' % self.windowID.capitalize()
-        return (cfg.GetMessage(msgkey, onNotFound='pass'), settings.user.suppress.Get('suppress.' + msgkey, None))
+        suppressed = None
+        if self.windowID:
+            key = 'suppress.WindowOverlay_%s' % str(self.windowID).capitalize()
+            suppressed = settings.user.suppress.Get(key, None)
+        overlayPage = None
+        return (None, overlayPage, suppressed)
 
 
 
@@ -281,19 +274,19 @@ class Window(uicls.WindowCore):
 
 
 
-    def ShowWelcomePage(self, *args):
-        self.LoadWelcomePage(1)
+    def ShowWindowOverlayPage(self, *args):
+        self.LoadWindowOverlayPage(1)
 
 
 
-    def LoadWelcomePage(self, force = 0):
+    def LoadWindowOverlayPage(self, force = 0):
         mainpar = uiutil.FindChild(self, 'startpage_mainpar')
         if mainpar and not mainpar.destroyed:
             return 
         if not self or self.destroyed:
             return 
-        (kbContent, msg, suppressed,) = self.CheckForContextHelp()
-        if msg is None or suppressed and not force:
+        (kbContent, overlayPage, suppressed,) = self.CheckForContextHelp()
+        if overlayPage is None or suppressed and not force:
             return 
         if getattr(self, 'isToggling', 0):
             return 
@@ -303,7 +296,7 @@ class Window(uicls.WindowCore):
             headerHeight = self.GetCollapsedHeight()
             top = headerHeight
         if not force:
-            tutorialWnd = sm.GetService('window').GetWindow('aura9', decoClass=form.VirtualBrowser, create=0)
+            tutorialWnd = form.TutorialWindow.GetIfOpen()
             if tutorialWnd:
                 return 
         m = 2
@@ -316,15 +309,17 @@ class Window(uicls.WindowCore):
         contentpar = uicls.Container(name='contentpar', parent=par, idx=0)
         topPar = uicls.Container(name='topPar', parent=contentpar, align=uiconst.TOTOP, height=64)
         icon = uicls.Icon(icon='ui_74_64_13', parent=contentpar)
-        caption = uicls.CaptionLabel(text=msg.title, parent=topPar, align=uiconst.CENTERLEFT, left=70)
+        caption = uicls.CaptionLabel(text=overlayPage.title, parent=topPar, align=uiconst.CENTERLEFT, left=70)
         topPar.height = max(topPar.height, caption.textheight)
         bottomPar = uicls.Container(name='bottomPar', parent=contentpar, align=uiconst.TOBOTTOM)
         uicls.Line(parent=bottomPar, align=uiconst.TOTOP)
-        btn = uicls.Button(parent=bottomPar, label=mls.UI_CMD_CLOSEWELCOMEPAGE, func=self.CloseWelcomePage, idx=0, left=6, align=uiconst.CENTERRIGHT, alwaysLite=True)
+        btn = uicls.Button(parent=bottomPar, label=localization.GetByLabel('UI/Control/EveWindow/CloseWindowOverlay'), func=self.CloseWindowOverlay, idx=0, left=6, align=uiconst.CENTERRIGHT, alwaysLite=True)
         self.sr.wpCloseBtn = btn
-        self.sr.wpSuppress = uicls.Checkbox(text=mls.UI_SHARED_SHOWTHISWELCOMEPAGE, parent=bottomPar, configName='suppress', retval=0, checked=suppressed, groupname=None, align=uiconst.TOPLEFT, pos=(6, 0, 200, 0), callback=self.DoSupress)
-        allSuppressed = not settings.char.ui.Get('showWelcomPages', 0)
-        self.sr.wpSuppressAll = uicls.Checkbox(text=mls.UI_SHARED_DISABLEWELCOMEPAGES, parent=bottomPar, configName='suppressAll', retval=0, checked=allSuppressed, groupname=None, align=uiconst.TOPLEFT, pos=(6, 0, 200, 0), callback=self.DoSuppressAll)
+        checkboxLabel = localization.GetByLabel('UI/Control/EveWindow/DisableThisWindowOverlay')
+        self.sr.wpSuppress = uicls.Checkbox(text=checkboxLabel, parent=bottomPar, configName='suppress', retval=0, checked=suppressed, groupname=None, align=uiconst.TOPLEFT, pos=(6, 0, 200, 0), callback=self.DoSupress)
+        allSuppressed = not settings.char.ui.Get('showWindowOverlays', 0)
+        checkboxLabel = localization.GetByLabel('UI/Control/EveWindow/DisableAllWindowOverlays')
+        self.sr.wpSuppressAll = uicls.Checkbox(text=checkboxLabel, parent=bottomPar, configName='suppressAll', retval=0, checked=allSuppressed, groupname=None, align=uiconst.TOPLEFT, pos=(6, 0, 200, 0), callback=self.DoSuppressAll)
         self.sr.wpSuppress.top = self.sr.wpSuppressAll.height
         bottomPar.height = max(self.sr.wpSuppress.height + 2 + self.sr.wpSuppressAll.height, btn.height + 6)
         if kbContent:
@@ -332,13 +327,13 @@ class Window(uicls.WindowCore):
             mainBottomPar = uicls.Container(name='mainBottomPar', parent=contentpar, align=uiconst.TOBOTTOM, height=32)
             kbPar = uicls.Container(name='kbPar', parent=mainBottomPar, align=uiconst.TOLEFT, width=128, left=16)
             uicls.Line(parent=kbPar, align=uiconst.TORIGHT)
-            t = uicls.Label(text='<b>%s</b>' % mls.UI_GENERIC_KNOWLEDGEBASE, parent=kbPar, align=uiconst.TOTOP, autowidth=False, state=uiconst.UI_NORMAL)
+            t = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Control/EveWindow/KnowledgeBase'), parent=kbPar, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
             maxWidth = t.textwidth
             for each in kbContent:
                 if not each.url:
                     continue
                 entryPar = uicls.Container(name='entryPar', parent=kbPar, align=uiconst.TOTOP)
-                l = uicls.Label(text='<url=%s>%s</url>' % (each.url, each.description or each.url), parent=entryPar, uppercase=1, fontsize=9, letterspace=1, top=1, align=uiconst.CENTERLEFT, state=uiconst.UI_NORMAL)
+                l = uicls.EveHeaderSmall(text='<url=%s>%s</url>' % (each.url, each.description or each.url), parent=entryPar, top=1, align=uiconst.CENTERLEFT, state=uiconst.UI_NORMAL)
                 entryPar.height = max(14, l.textheight)
                 maxWidth = max(maxWidth, l.textwidth + 18)
                 icon = uicls.Icon(icon='ui_38_16_125', parent=entryPar, align=uiconst.CENTERRIGHT, idx=0, state=uiconst.UI_NORMAL)
@@ -350,7 +345,7 @@ class Window(uicls.WindowCore):
             validTutorials = sm.GetService('tutorial').GetValidTutorials()
             tutorialsPar = uicls.Container(name='tutorialsPar', parent=mainBottomPar, align=uiconst.TOLEFT, width=128, left=16)
             uicls.Line(parent=tutorialsPar, align=uiconst.TORIGHT)
-            t = uicls.Label(text='<b>%s</b>' % mls.UI_CMD_TUTORIALS, parent=tutorialsPar, align=uiconst.TOTOP, autowidth=False, state=uiconst.UI_NORMAL)
+            t = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Control/EveWindow/Tutorials'), parent=tutorialsPar, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
             maxWidth = t.textwidth
             for each in kbContent:
                 if each.tutorialID is None:
@@ -358,7 +353,8 @@ class Window(uicls.WindowCore):
                 tutorialData = tutorials.get(each.tutorialID, None)
                 if tutorialData and each.tutorialID in validTutorials:
                     entryPar = uicls.Container(name='entryPar', parent=tutorialsPar, align=uiconst.TOTOP)
-                    l = uicls.Label(text='<url=localsvc:service=tutorial&method=OpenTutorialSequence_Check&tutorialID=%s&force=1&click=1>%s</url>' % (each.tutorialID, tutorialData.tutorialName), parent=entryPar, align=uiconst.CENTERLEFT, uppercase=1, fontsize=9, letterspace=1, top=1, state=uiconst.UI_NORMAL)
+                    tutorialName = localization.GetByMessageID(tutorialData.tutorialNameID)
+                    l = uicls.EveHeaderSmall(text='<url=localsvc:service=tutorial&method=OpenTutorialSequence_Check&tutorialID=%s&force=1&click=1>%s</url>' % (each.tutorialID, tutorialName), parent=entryPar, align=uiconst.CENTERLEFT, top=1, state=uiconst.UI_NORMAL)
                     entryPar.height = max(14, l.textheight)
                     maxWidth = max(maxWidth, l.textwidth + 18)
                     icon = uicls.Icon(icon='ui_38_16_125', parent=entryPar, align=uiconst.CENTERRIGHT, idx=0, state=uiconst.UI_NORMAL)
@@ -369,24 +365,22 @@ class Window(uicls.WindowCore):
             tutorialsPar.width = maxWidth
             tutorialsHeight = sum([ each.height for each in tutorialsPar.children ])
             mainBottomPar.height = max(64, kbHeight, tutorialsHeight)
-        browser = uicls.Edit(parent=uicls.Container(name='scroll', parent=contentpar, left=const.defaultPadding, width=const.defaultPadding), readonly=1, hideBackground=1)
-        message = '\n            <html>\n            < head >\n            <link rel="stylesheet" type="text/css"HREF="res:/ui/css/dungeontm.css">\n            </head>\n            <body>\n            %s\n            </body>\n            </html>\n        ' % msg.text
-        if not self or self.destroyed:
-            return 
-        browser.LoadHTML(message)
-        uthread.new(self.ToggleWelcomePage, 1)
+        browser = uicls.EditPlainText(parent=contentpar, padLeft=const.defaultPadding, padRight=const.defaultPadding, readonly=1, setvalue=overlayPage.text)
+        browser.HideBackground()
+        browser.RemoveActiveFrame()
+        uthread.new(self.ToggleWindowOverlay, 1)
 
 
 
-    def CloseWelcomePage(self, *args):
+    def CloseWindowOverlay(self, *args):
         startpage = uiutil.FindChild(self, 'startpage')
         if startpage:
-            self.ToggleWelcomePage(0)
+            self.ToggleWindowOverlay(0)
             startpage.Close()
 
 
 
-    def ToggleWelcomePage(self, show):
+    def ToggleWindowOverlay(self, show):
         if getattr(self, 'isToggling', 0):
             return 
         prestate = self.state
@@ -401,10 +395,10 @@ class Window(uicls.WindowCore):
                 return 
             mainpar.state = uiconst.UI_PICKCHILDREN
             (l, t, w, h,) = mainpar.parent.GetAbsolute()
-            (start, ndt,) = (blue.os.GetTime(), 0.0)
+            (start, ndt,) = (blue.os.GetWallclockTime(), 0.0)
             time = 750.0
             while ndt != 1.0:
-                ndt = max(ndt, min(blue.os.TimeDiffInMs(start) / time, 1.0))
+                ndt = max(ndt, min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / time, 1.0))
                 if show:
                     mainpar.top = int(mathUtil.Lerp(-h, 0, ndt))
                     mainpar.opacity = ndt
@@ -430,7 +424,7 @@ class Window(uicls.WindowCore):
 
     def DoSupress(self, *args):
         suppress = self.sr.wpSuppress.GetValue()
-        key = 'suppress.' + 'Welcome_%s' % self.name.capitalize()
+        key = 'suppress.WindowOverlay_%s' % str(self.windowID).capitalize()
         if suppress:
             settings.user.suppress.Set(key, suppress)
         else:
@@ -443,53 +437,55 @@ class Window(uicls.WindowCore):
 
     def DoSuppressAll(self, *args):
         suppress = not self.sr.wpSuppressAll.GetValue()
-        settings.char.ui.Set('showWelcomPages', suppress)
+        settings.char.ui.Set('showWindowOverlays', suppress)
 
 
 
-    def Pin(self, delegate = 1, *args):
-        if settings.user.windows.Get('lockwhenpinned', 0):
-            self.Lock()
+    def TogglePinState(self, *args):
+        if self.IsPinned():
+            self.Unpin()
+        else:
+            self.Pin()
+
+
+
+    def Pin(self, delegate = 1, initing = False, *args):
         self._SetPinned(True)
         if delegate:
             shift = uicore.uilib.Key(uiconst.VK_SHIFT)
             ctrl = uicore.uilib.Key(uiconst.VK_CONTROL)
             if shift or ctrl:
                 if shift:
-                    alignedWindows = self.FindConnectingWindows(self)
+                    alignedWindows = self.FindConnectingWindows()
                 else:
-                    alignedWindows = self.FindConnectingWindows(self, 'bottom')
+                    alignedWindows = self.FindConnectingWindows('bottom')
                 for each in alignedWindows:
                     if each == self:
                         continue
                     each.Pin(0)
 
-        self.ShowHeaderButtons(refresh=True)
-        sm.GetService('window').ToggleLiteWindowAppearance(self)
-        self.OnPin_(self)
+        if not initing:
+            self.ShowHeaderButtons(refresh=True)
 
 
 
-    def Unpin(self, delegate = 1, *args):
-        if self.IsLocked():
-            self.Unlock()
+    def Unpin(self, delegate = 1, initing = False, *args):
         self._SetPinned(False)
         if delegate:
             shift = uicore.uilib.Key(uiconst.VK_SHIFT)
             ctrl = uicore.uilib.Key(uiconst.VK_CONTROL)
             if shift or ctrl:
                 if shift:
-                    alignedWindows = self.FindConnectingWindows(self)
+                    alignedWindows = self.FindConnectingWindows()
                 else:
-                    alignedWindows = self.FindConnectingWindows(self, 'bottom')
+                    alignedWindows = self.FindConnectingWindows('bottom')
                 for each in alignedWindows:
                     if each == self:
                         continue
                     each.Unpin(0)
 
-        self.ShowHeaderButtons(refresh=True)
-        sm.GetService('window').ToggleLiteWindowAppearance(self)
-        self.OnUnpin_(self)
+        if not initing:
+            self.ShowHeaderButtons(refresh=True)
 
 
 
@@ -502,16 +498,6 @@ class Window(uicls.WindowCore):
     def MakeUnpinable(self):
         self._pinable = False
         self.ShowHeaderButtons(refresh=True)
-
-
-
-    def OnPin_(self, wnd):
-        pass
-
-
-
-    def OnUnpin_(self, wnd):
-        pass
 
 
 
@@ -542,6 +528,7 @@ class Window(uicls.WindowCore):
 
     def _SetPinned(self, isPinned):
         self._pinned = isPinned
+        sm.GetService('window').ToggleLiteWindowAppearance(self)
         self.RegisterState('_pinned')
 
 
@@ -553,9 +540,9 @@ class Window(uicls.WindowCore):
 
     def DefineButtons(self, buttons, okLabel = None, okFunc = 'default', args = 'self', cancelLabel = None, cancelFunc = 'default', okModalResult = 'default', default = None):
         if okLabel is None:
-            okLabel = mls.UI_CMD_OK
+            okLabel = localization.GetByLabel('UI/Common/Buttons/OK')
         if cancelLabel is None:
-            cancelLabel = mls.UI_CMD_CANCEL
+            cancelLabel = localization.GetByLabel('UI/Common/Buttons/Cancel')
         if getattr(self.sr, 'bottom', None) is None:
             self.sr.bottom = uiutil.FindChild(self, 'bottom')
             if not self.sr.bottom:
@@ -596,27 +583,30 @@ class Window(uicls.WindowCore):
               0,
               1]]
         elif buttons == uiconst.OKCLOSE:
+            closeLabel = localization.GetByLabel('UI/Common/Buttons/Close')
             btns = [[okLabel,
               okFunc,
               args,
               None,
               okModalResult,
               1,
-              0], [mls.UI_CMD_CLOSE,
-              self.CloseX,
+              0], [closeLabel,
+              self.CloseByUser,
               args,
               None,
               uiconst.ID_CLOSE,
               0,
               1]]
         elif buttons == uiconst.YESNO:
-            btns = [[mls.UI_CMD_YES,
+            yesLabel = localization.GetByLabel('UI/Common/Buttons/Yes')
+            noLabel = localization.GetByLabel('UI/Common/Buttons/No')
+            btns = [[yesLabel,
               self.ButtonResult,
               args,
               None,
               uiconst.ID_YES,
               1,
-              0], [mls.UI_CMD_NO,
+              0], [noLabel,
               self.ButtonResult,
               args,
               None,
@@ -624,13 +614,15 @@ class Window(uicls.WindowCore):
               0,
               0]]
         elif buttons == uiconst.YESNOCANCEL:
-            btns = [[mls.UI_CMD_YES,
+            yesLabel = localization.GetByLabel('UI/Common/Buttons/Yes')
+            noLabel = localization.GetByLabel('UI/Common/Buttons/No')
+            btns = [[yesLabel,
               self.ButtonResult,
               args,
               None,
               uiconst.ID_YES,
               1,
-              0], [mls.UI_CMD_NO,
+              0], [noLabel,
               self.ButtonResult,
               args,
               None,
@@ -644,8 +636,9 @@ class Window(uicls.WindowCore):
               0,
               1]]
         elif buttons == uiconst.CLOSE:
-            btns = [[mls.UI_CMD_CLOSE,
-              self.CloseX,
+            closeLabel = localization.GetByLabel('UI/Common/Buttons/Close')
+            btns = [[closeLabel,
+              self.CloseByUser,
               args,
               None,
               uiconst.ID_CANCEL,
@@ -690,6 +683,7 @@ class Window(uicls.WindowCore):
         self.sr.bottom.state = uiconst.UI_PICKCHILDREN
 
 
+    SetButtons = DefineButtons
 
     def NoSeeThrough(self):
         solidBackground = uicls.Fill(name='solidBackground', color=(0.0, 0.0, 0.0, 1.0), padding=(2, 2, 2, 2))
@@ -708,20 +702,10 @@ class Window(uicls.WindowCore):
 
 
 
-    def CloseX(self, *args):
+    def CloseByUser(self, *args):
         if not self._killable:
             return 
-        uicls.WindowCore._CloseClick(self)
-
-
-
-    def _CloseClick(self, *args):
-        self.CloseX()
-
-
-
-    def SelfDestruct(self, checkStack = 1, checkOthers = 0, checkOutmost = 0, *args):
-        uicls.WindowCore.SelfDestruct(self, checkStack, checkOthers, checkOutmost, *args)
+        uicls.WindowCore.CloseByUser(self)
 
 
 
@@ -786,12 +770,9 @@ class Window(uicls.WindowCore):
     def ShowHeaderButtons(self, refresh = False, *args):
         if getattr(self, '_hideHeaderButtons', False):
             return 
-        if refresh:
-            if self.sr.headerButtons:
-                self.sr.headerButtons.Close()
-                self.sr.headerButtons = None
-            else:
-                return 
+        if refresh and self.sr.headerButtons:
+            self.sr.headerButtons.Close()
+            self.sr.headerButtons = None
         if self.sr.stack or self.GetAlign() != uiconst.RELATIVE or uicore.uilib.leftbtn or getattr(self, 'isImplanted', False):
             return 
         if not self.sr.headerButtons:
@@ -802,67 +783,27 @@ class Window(uicls.WindowCore):
                 self.sr.captionParent.padRight = w + 6
             if self.sr.loadingIndicator:
                 self.sr.loadingIndicator.left = w + self.sr.headerButtons.left
-        if not self.IsCollapsed():
-            if self.showforward or self.showback:
-                if not self.showforward:
-                    self.sr.GoForwardBtn.state = uiconst.UI_DISABLED
-                    self.sr.GoForwardBtn.color.a = 0.25
-                else:
-                    self.sr.GoForwardBtn.state = uiconst.UI_NORMAL
-                    self.sr.GoForwardBtn.color.a = 1.0
-                if not self.showback:
-                    self.sr.GoBackBtn.state = uiconst.UI_DISABLED
-                    self.sr.GoBackBtn.color.a = 0.25
-                else:
-                    self.sr.GoBackBtn.state = uiconst.UI_NORMAL
-                self.sr.GoBackBtn.color.a = 1.0
-        self.sr.headerButtonsTimer = base.AutoTimer(1000, self.CloseHeaderButtons)
+            self.sr.headerButtons.Show()
+            self.sr.headerButtonsTimer = base.AutoTimer(1000, self.CloseHeaderButtons)
 
 
 
     def IndicateStackable(self, wnd = None):
         if wnd is None:
-            if self.sr.Get('snapIndicator', None):
+            if self.sr.snapIndicator:
                 self.sr.snapIndicator.Close()
                 self.sr.snapIndicator = None
             return 
         if not wnd._stackable or not self._stackable:
             return 
-        if self.sr.Get('snapIndicator', None) is None:
-            self.sr.snapIndicator = uicls.Fill(parent=None, align=uiconst.RELATIVE)
+        if self.sr.snapIndicator is None:
+            self.sr.snapIndicator = uicls.Fill(parent=None, align=uiconst.TOTOP_NOPUSH, height=19)
         si = self.sr.snapIndicator
-        idx = wnd.parent.children.index(wnd)
-        (wl, wt, ww, wh,) = wnd.GetAbsolute()
-        si.left = wl
-        si.top = wt
-        si.width = ww
-        si.height = wh
         si.state = uiconst.UI_DISABLED
-        if si.parent != wnd.parent:
-            uiutil.Transplant(si, wnd.parent, idx=idx)
-        sidx = si.parent.children.index(si)
-        if sidx != idx - 1:
-            uiutil.SetOrder(si, idx)
-
-
-
-    def _Minimize(self, wnd):
-        if not wnd or wnd.destroyed or wnd.IsMinimized() or wnd.sr.minimizedBtn:
-            return 
-        wnd.OnStartMinimize_(wnd)
-        wnd._changing = True
-        sm.GetService('window').MinimizeWindow(wnd)
-        if wnd.destroyed:
-            return 
-        wnd._SetMinimized(True)
-        wnd.state = uiconst.UI_HIDDEN
-        wnd.OnEndMinimize_(wnd)
-        wnd._changing = False
-
-
-
-    def Maximize(self, silent = 0, expandIfCollapsed = True):
-        sm.GetService('window').MaximizeWindow(self, silent, expandIfCollapsed=expandIfCollapsed)
+        if si.parent != wnd:
+            uiutil.Transplant(si, wnd, idx=0)
+        else:
+            uiutil.SetOrder(si, 0)
 
 
 
@@ -870,94 +811,49 @@ class Window(uicls.WindowCore):
         menu = uicls.WindowCore.GetMenu(self)
         helpMenu = self.Help()
         if helpMenu:
-            menu.append((mls.UI_SHARED_HELP, helpMenu))
+            menu.append((localization.GetByLabel('UI/Control/EveWindow/Help'), helpMenu))
         return menu
 
 
 
-    def InitializeStatesAndPosition(self, expandIfCollapsed = False, skipCornerAligmentCheck = False, skipWelcomePage = False, skipState = False):
+    def InitializeStatesAndPosition(self, *args, **kwds):
+        uicls.WindowCore.InitializeStatesAndPosition(self, *args, **kwds)
         self.startingup = 1
-        wndSvc = sm.GetService('window')
-        if not self.sr.stack:
-            collapsed = self.GetRegisteredState('collapsed')
-            if not expandIfCollapsed and collapsed:
-                uthread.new(self.Collapse, True)
-            elif expandIfCollapsed:
-                uthread.new(self.Expand, True)
-                focus = uicore.registry.GetFocus()
-                if not (focus and getattr(focus, '__guid__', None) in ('uicls.Edit', 'uicls.SingleLineEdit', 'uicls.EditPlainText')):
-                    uthread.new(uicore.registry.SetFocus, self)
-            if settings.user.ui.Get('skipWindowGrouping', 0) or skipCornerAligmentCheck or not wndSvc.TryAlignToCornerGroup(self):
-                d = uicore.desktop
-                (left, top, width, height, dw, dh,) = self.GetRegisteredPositionAndSize()
-                self.left = max(0, min(d.width - self.width, left))
-                self.top = max(0, min(d.height - self.height, top))
-                (leftpush, rightpush,) = sm.GetService('neocom').GetSideOffset()
-                if self.left in (0, 16):
-                    self.left += leftpush
-                elif self.left + self.width in (d.width, d.width - 16):
-                    self.left -= rightpush
-                self.CheckWndPos()
-            if not skipState:
-                self.state = uiconst.UI_NORMAL
-            locked = self.GetRegisteredState('locked')
-            if locked:
-                self.Lock()
-            else:
-                self.Unlock()
         pinned = self.GetRegisteredState('pinned')
         if pinned:
-            self.Pin(0)
+            self.Pin(0, initing=True)
         else:
-            self.Unpin(0)
-        if self.sr.stack:
-            self.sr.stack.Check()
-        if settings.char.ui.Get('showWelcomPages', 0) and not skipWelcomePage:
-            uthread.new(self.LoadWelcomePage)
+            self.Unpin(0, initing=True)
+        if settings.char.ui.Get('showWindowOverlays', 0):
+            uthread.new(self.LoadWindowOverlayPage)
         self.startingup = 0
-        self._SetOpen(True)
 
 
 
-    def CreateSnapGrid(self, shiftGroup = None, ctrlGroup = None):
-        (neoleft, neoright,) = sm.GetService('neocom').GetSideOffset()
-        allWnds = self.GetOtherWindows()
-        desk = uicore.desktop
-        hAxes = [0,
-         desk.height,
-         16,
-         desk.height - 16]
-        vAxes = [0,
-         neoleft,
-         neoleft + 16,
-         desk.width - neoright,
-         desk.width - 16 - neoright]
-        hAxesWithOutMe = hAxes[:]
-        vAxesWithOutMe = vAxes[:]
-        hAxesWithOutShiftGroup = hAxes[:]
-        vAxesWithOutShiftGroup = vAxes[:]
-        hAxesWithOutCtrlGroup = hAxes[:]
-        vAxesWithOutCtrlGroup = vAxes[:]
-        hLists = [hAxes,
-         hAxesWithOutMe,
-         hAxesWithOutShiftGroup,
-         hAxesWithOutCtrlGroup]
-        vLists = [vAxes,
-         vAxesWithOutMe,
-         vAxesWithOutShiftGroup,
-         vAxesWithOutCtrlGroup]
-        for wnd in allWnds:
-            (l, t, w, h,) = wnd.GetAbsolute()
-            self.AddtoAxeList(wnd, vLists, l, shiftGroup, ctrlGroup)
-            self.AddtoAxeList(wnd, vLists, l + w, shiftGroup, ctrlGroup)
-            self.AddtoAxeList(wnd, hLists, t, shiftGroup, ctrlGroup)
-            self.AddtoAxeList(wnd, hLists, t + h, shiftGroup, ctrlGroup)
+    def GetSideOffset(self):
+        if 'neocom' in sm.services:
+            return sm.StartService('neocom').GetSideOffset()
+        return (0, 0)
 
-        self.snapGrid = [(hAxes, vAxes),
-         (hAxesWithOutMe, vAxesWithOutMe),
-         (hAxesWithOutShiftGroup, vAxesWithOutShiftGroup),
-         (hAxesWithOutCtrlGroup, vAxesWithOutCtrlGroup)]
-        return self.snapGrid
+
+
+    @classmethod
+    def GetCornerAlignmentSettings(cls, *args):
+        current = settings.user.windows.Get('windowCornerGroups_1', 'notset')
+        if current == 'notset':
+            current = {'topright': [form.ActiveItem.default_windowID,
+                          form.OverView.default_windowID,
+                          form.DroneView.default_windowID,
+                          form.WatchListPanel.default_windowID,
+                          form.Lobby.default_windowID],
+             'bottomleft': [form.ShipHangar.default_windowID,
+                            form.ItemHangar.default_windowID,
+                            form.VirtualInvWindow.default_stackID,
+                            'chatchannel_constellationid',
+                            'chatchannel_solarsystemid2',
+                            'chatchannel_corpid',
+                            form.LSCChannel.default_stackID]}
+        return current
 
 
 
@@ -1034,46 +930,6 @@ class Window(uicls.WindowCore):
 
 
 
-    def ShowGoBack(self):
-        self.showback = True
-
-
-
-    def ShowGoForward(self):
-        self.showforward = True
-
-
-
-    def HideGoBack(self):
-        self.showback = False
-
-
-
-    def HideGoForward(self):
-        self.showforward = False
-
-
-
-    def GetGoBackHint(self, *args):
-        return mls.UI_CMD_PREVIOUS
-
-
-
-    def GetGoForwardHint(self, *args):
-        return mls.UI_CMD_NEXT
-
-
-
-    def GoBack(self, *args):
-        pass
-
-
-
-    def GoForward(self, *args):
-        pass
-
-
-
     def HideBackground(self):
         self.HideUnderlay()
         for each in self.children[:]:
@@ -1090,8 +946,8 @@ class Window(uicls.WindowCore):
 
 
 
-    def SetCaption(self, caption, delete = 1):
-        uicls.WindowCore.SetCaption(self, caption, delete)
+    def SetCaption(self, caption, *args, **kwds):
+        uicls.WindowCore.SetCaption(self, caption)
         self.CheckForContextHelp()
 
 
@@ -1103,117 +959,55 @@ class Window(uicls.WindowCore):
 
 
 
-    def GetDefaultLeftOffset(self, width, align = None, left = 0):
+    @classmethod
+    def GetDefaultLeftOffset(cls, width, align = None, left = 0):
         return sm.GetService('window').GetCameraLeftOffset(width, align, left)
 
 
 
-    def AttachWindow(self, wnd, side, *args):
-        if side not in ('top', 'bottom') or wnd == self:
-            return 
-        alignedWindows = self.FindConnectingWindows(self, side)
-        removeFrom = None
-        if wnd in alignedWindows:
-            removeFrom = alignedWindows
+    @classmethod
+    def ToggleOpenClose(cls, *args, **kwds):
+        wnd = cls.GetIfOpen(windowID=kwds.get('windowID', None))
+        if wnd:
+            if wnd.sr.stack:
+                if wnd.sr.stack.GetActiveWindow() != wnd:
+                    wnd.Maximize()
+                    return wnd
+                obscured = wnd.sr.stack.ObscuredByOtherWindows()
+            else:
+                obscured = wnd.ObscuredByOtherWindows()
+            if wnd.IsMinimized():
+                wnd.Maximize()
+                return wnd
+            if wnd.IsCollapsed():
+                wnd.Expand()
+                return wnd
+            if obscured:
+                uicore.registry.SetFocus(wnd)
+                return wnd
+            wnd.Close(setClosed=True)
         else:
-            removeFrom = self.FindConnectingWindows(self, 'top') + self.FindConnectingWindows(self, 'bottom')
-
-            def FilterWnds(wnds, side):
-                valid = []
-                done = []
-                for w in wnds:
-                    if w not in done:
-                        valid.append((w.top, w))
-                        done.append(w)
-
-                return uiutil.SortListOfTuples(valid)
+            return cls.Open(*args, **kwds)
 
 
-            removeFrom = FilterWnds(removeFrom, side)
-        (pgl, pgt, pgw, pgh,) = self.GetGroupAbsolute(removeFrom)
-        if removeFrom and wnd in removeFrom:
-            idx = removeFrom.index(wnd)
-            for awnd in removeFrom[(idx + 1):]:
-                awnd.top -= wnd.height
 
-            wnd.state = uiconst.UI_HIDDEN
-            alignedWindows = self.FindConnectingWindows(self, side)
-        wnd.state = uiconst.UI_NORMAL
-        if alignedWindows[0] != self:
-            return 
-        desk = uicore.desktop
-        myCurrentGroup = self.FindConnectingWindows(self, 'top') + self.FindConnectingWindows(self, 'bottom')
-        (cgl, cgt, cgw, cgh,) = self.GetGroupAbsolute(myCurrentGroup)
-        wasOnTop = bool(cgt == 0)
-        wasOnTop16 = bool(cgt == 16)
-        wasOnBottom = bool(cgt + cgh == desk.height)
-        wasOnBottom16 = bool(cgt + cgh == desk.height - 16)
-        wnd.left = self.left
-        wnd.width = self.width
-        if side == 'bottom':
-            wnd.top = self.top + self.height
-        elif side == 'top':
-            wnd.top = self.top - wnd.height
-        for awnd in alignedWindows[1:]:
-            if awnd == wnd:
+    def ObscuredByOtherWindows(self):
+        intersecting = self.GetIntersectingWindows()
+        for wnd in intersecting:
+            if self not in uicore.layer.main.children:
+                return False
+            if wnd not in uicore.layer.main.children:
                 continue
-            if side == 'bottom':
-                awnd.top += wnd.height
-            elif side == 'top':
-                awnd.top -= wnd.height
+            if uicore.layer.main.children.index(self) > uicore.layer.main.children.index(wnd):
+                return True
 
-        myNewGroup = self.FindConnectingWindows(self, 'top')[1:] + self.FindConnectingWindows(self, 'bottom')
-        (ngl, ngt, ngw, ngh,) = self.GetGroupAbsolute(myNewGroup)
-        if wasOnTop or wasOnTop16:
-            margin = wasOnTop16 * 16
-            if ngt != margin:
-                diff = -ngt + margin
-                for each in myNewGroup:
-                    each.top += diff
-
-        elif wasOnBottom or wasOnBottom16:
-            margin = wasOnBottom16 * 16
-            if desk.height - (ngt + ngh) != margin:
-                diff = desk.height - (ngt + ngh) - margin
-                for each in myNewGroup:
-                    each.top += diff
-
-        (gl, gt, gw, gh,) = self.GetGroupAbsolute(myNewGroup)
-        if max(0, gt) + gh > desk.height:
-            self.FitWndGroup(myNewGroup, (gl,
-             gt,
-             gw,
-             gh))
+        return False
 
 
 
-    def FitWndGroup(self, wnds, groupAbs):
-        wnds = uiutil.SortListOfTuples([ (wnd.top, wnd) for wnd in wnds ])
-        (gl, gt, gw, gh,) = groupAbs
-        d = uicore.desktop
-        totalHeight = max(0, gt) + gh
-        overShot = d.height - totalHeight
-        while overShot < 0:
-            scaleAble = [ each for each in wnds if each.GetMinHeight() < each.height ]
-            if not scaleAble:
-                break
-            totalHeightScaleAble = sum([ each.height for each in scaleAble ])
-            scaleValue = 1.0 - float(abs(overShot)) / totalHeightScaleAble
-            for wnd in scaleAble:
-                h = int(wnd.height * scaleValue)
-                minH = wnd.GetMinHeight()
-                wnd.height = max(h, minH)
-
-            totalHeight = sum([ each.height for each in wnds ])
-            overShot = d.height - (gt + totalHeight)
-
-        t = max(0, gt)
-        for each in wnds:
-            if uiutil.GetAttrs(each, 'sr', 'stack') is not None:
-                continue
-            each.top = t
-            t += each.height
-
+    @classmethod
+    def GetSettingsVersion(cls):
+        return 1
 
 
 

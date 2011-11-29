@@ -6,6 +6,7 @@ import uix
 
 class DepletionManager(uicls.Window):
     __guid__ = 'form.DepletionManager'
+    default_windowID = 'depletionManager'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -15,7 +16,7 @@ class DepletionManager(uicls.Window):
         self.SetMinSize([280, 500])
         headerContainer = uicls.Container(name='headerParent', parent=self.sr.main, align=uiconst.TOTOP, height=100, padding=(2, 2, 2, 2))
         text = "This gives you a list of depletion\npoints that you've placed on the planet.\nYou can edit some aspects of these points\n    * amount - is the base extraction amount\n    * duration - is the in minutes and tells how many times the program will be resubmitted\n    * headRadius - tells the size of the head\n        "
-        uicls.Label(parent=headerContainer, text=text, align=uiconst.TOALL)
+        uicls.EveLabelMedium(parent=headerContainer, text=text, align=uiconst.TOALL)
         timeContainer = uicls.Container(name='timeParent', parent=self.sr.main, align=uiconst.TOBOTTOM, height=40)
         editContainer = uicls.Container(name='editParent', parent=self.sr.main, align=uiconst.TOBOTTOM, top=20, height=50, padTop=12)
         scrollContainer = uicls.Container(name='scrollParent', parent=self.sr.main, align=uiconst.TOALL)
@@ -137,7 +138,7 @@ class DepletionManager(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         for depletionPoint in self.pinManager.depletionPoints:
             depletionPoint.drillArea.pinColor = util.Color.YELLOW
 

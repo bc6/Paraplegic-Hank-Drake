@@ -7,9 +7,12 @@ import sys
 import uicls
 import uiconst
 import log
+import localization
+import localizationUtil
 
 class StationManagementDialog(uicls.Window):
     __guid__ = 'form.StationManagementDialog'
+    default_windowID = 'StationManagement'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -26,77 +29,63 @@ class StationManagementDialog(uicls.Window):
         self.modifiedRentableItems = None
         self.ddxFunction = None
         self.ddxArguments = {}
-        sm.GetService('loading').ProgressWnd(mls.UI_STATION_STATIONDETAILS, mls.UI_SHARED_MAPGETTINGDATA, 1, 4)
+        sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Station/StationManagment/StationDetails'), localization.GetByLabel('UI/Common/GettingData'), 1, 4)
         self.SetScope('station')
-        self.SetCaption(mls.UI_STATION_STATIONMANAGEMENT)
+        self.SetCaption(localization.GetByLabel('UI/Station/StationManagment/StationManagment'))
         self.SetMinSize([400, 300])
         self.SetTopparentHeight(70)
-        self.sr.scroll = uicls.Scroll(parent=self.sr.main, padding=(const.defaultPadding,
+        defaultPadding = (const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding,
-         const.defaultPadding))
-        self.sr.scroll2 = uicls.Scroll(parent=self.sr.main, padding=(const.defaultPadding,
-         const.defaultPadding,
-         const.defaultPadding,
-         const.defaultPadding))
+         const.defaultPadding)
+        self.sr.scroll = uicls.Scroll(parent=self.sr.main, padding=defaultPadding)
+        self.sr.scroll2 = uicls.Scroll(parent=self.sr.main, padding=defaultPadding)
         self.sr.scroll2.sr.id = 'station_management_scroll2'
-        self.sr.standardBtns = uicls.ButtonGroup(btns=[[mls.UI_CMD_OK,
+        self.sr.standardBtns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Common/Buttons/OK'),
           self.OnOK,
           (),
-          81], [mls.UI_CMD_CANCEL,
+          81], [localization.GetByLabel('UI/Common/Buttons/Cancel'),
           self.OnCancel,
           (),
           81]])
         self.sr.main.children.insert(0, self.sr.standardBtns)
         self.sr.hint = None
-        cap = uicls.CaptionLabel(text=cfg.evelocations.Get(eve.session.stationid).name, parent=self.sr.topParent, align=uiconst.CENTERLEFT, left=74, width=320, autowidth=0)
+        cap = uicls.CaptionLabel(text=cfg.evelocations.Get(eve.session.stationid).name, parent=self.sr.topParent, align=uiconst.CENTERLEFT, left=74, width=320)
         self.DisplayLogo()
         self.ShowLoad()
-        sm.GetService('loading').ProgressWnd(mls.UI_STATION_STSERVICES, mls.UI_SHARED_MAPGETTINGDATA, 2, 4)
+        sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Station/StationServices'), localization.GetByLabel('UI/Common/GettingData'), 2, 4)
         self.LoadServices()
         self.LoadData()
         self.HideLoad()
         if not self or not self or self.destroyed:
             return 
-        maintabs = uicls.TabGroup(name='tabparent', parent=self.sr.main, idx=0)
-        maintabs.Startup([[mls.UI_STATION_STATIONDETAILS,
-          self.sr.scroll,
-          self,
-          'station_details',
-          self.sr.scroll], [mls.UI_STATION_SVCACCESSCONTROL,
-          self.sr.scroll,
-          self,
-          'station_service_access_control',
-          self.sr.scroll]], 'stationmanagementpanel', autoselecttab=0)
-        tabs = [[mls.UI_STATION_COSTMODIFIERS,
-          self.sr.scroll,
-          self,
-          'cost_modifiers',
-          self.sr.scroll], [mls.UI_STATION_CLONECONTRACTS,
-          self.sr.scroll,
-          self,
-          'clone_contracts',
-          self.sr.scroll]]
+
+        def CreateTab(label, arg, useScroll2 = False):
+            scroll = self.sr.scroll
+            if useScroll2:
+                scroll = self.sr.scroll2
+            return [localization.GetByLabel(label),
+             scroll,
+             self,
+             arg,
+             scroll]
+
+
+        maintabs = uicls.TabGroup(name='tabparent', parent=self.sr.main, idx=0, groupID='stationmanagementpanel')
+        maintabs.Startup([CreateTab('UI/Station/StationManagment/StationDetails', 'station_details'), CreateTab('UI/Station/StationManagment/ServiceAccessControl', 'station_service_access_control')], groupID='stationmanagementpanel')
+        tabs = [CreateTab('UI/Station/StationManagment/CostModifiers', 'cost_modifiers'), CreateTab('UI/Station/StationManagment/CloneContracts', 'clone_contracts')]
         serviceMask = self.GetStationServiceMask()
         if const.stationServiceOfficeRental == const.stationServiceOfficeRental & serviceMask:
-            tabs.append([mls.UI_CORP_OFFICES,
-             self.sr.scroll2,
-             self,
-             'offices',
-             self.sr.scroll2])
+            tabs.append(CreateTab('UI/Corporations/Common/Offices', 'offices', useScroll2=True))
         if self.ShouldDisplayImprovements():
-            tabs.append([mls.UI_STATION_IMPROVEMENTS,
-             self.sr.scroll,
-             self,
-             'improvements',
-             self.sr.scroll])
-        subtabs = uicls.TabGroup(name='tabparent', parent=self.sr.main, idx=1)
-        subtabs.Startup(tabs, 'stationmanagementpanel', autoselecttab=0)
+            tabs.append(CreateTab('UI/Station/StationManagment/StationImprovements', 'improvements'))
+        subtabs = uicls.TabGroup(name='tabparent', parent=self.sr.main, idx=1, groupID='stationmanagementpanel')
+        subtabs.Startup(tabs, groupID='stationmanagementpanel', autoselecttab=0)
         self.sr.maintabs = maintabs
         self.sr.subtabs = subtabs
         self.sr.maintabs.AddRow(subtabs)
         self.sr.maintabs.AutoSelect()
-        sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_DONE, mls.UI_SHARED_MAPGETTINGDATA, 4, 4)
+        sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Commands/ProgressDone'), localization.GetByLabel('UI/Common/GettingData'), 4, 4)
 
 
 
@@ -111,7 +100,7 @@ class StationManagementDialog(uicls.Window):
 
 
     def GetServiceName(self, service):
-        return Tr(service.serviceName, 'dbo.staServices.serviceName', service.serviceID)
+        return localization.GetByMessageID(service.serviceNameID)
 
 
 
@@ -139,6 +128,11 @@ class StationManagementDialog(uicls.Window):
 
         self.serviceCostModifiers = self.corpStationMgr.GetStationManagementServiceCostModifiers(eve.session.stationid)
         self.station = self.corpStationMgr.GetStationDetails(eve.session.stationid)
+        orbitName = cfg.evelocations.Get(self.station.orbitID).name
+        if self.station.stationName.startswith(orbitName):
+            orbitNameStripped = uiutil.StripTags(orbitName)
+            orbitNameStripped += ' - '
+            self.station.stationName = uiutil.ReplaceStringWithTags(self.station.stationName, old=orbitNameStripped, new='')
         if self.station.description is None:
             self.station.description = ''
         log.LogInfo('GetStationDetails:', self.station)
@@ -217,31 +211,31 @@ class StationManagementDialog(uicls.Window):
 
     def OnTabStationDetails(self):
         scrolllist = []
-        scrolllist.append(listentry.Get('Header', {'label': mls.UI_STATION_STATIONDETAILS}))
+        scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Station/StationManagment/StationDetails')}))
         orbitName = cfg.evelocations.Get(self.station.orbitID).name
         if self.station.stationName.startswith(orbitName):
             editName = self.station.stationName[(len(orbitName) + 3):]
         else:
             editName = self.station.stationName
-        scrolllist.append(listentry.Get('Edit', {'label': mls.UI_GENERIC_NAME,
+        scrolllist.append(listentry.Get('Edit', {'label': localization.GetByLabel('UI/Station/StationManagment/Name'),
          'setValue': editName[:32],
          'name': 'details_name',
          'lines': 1,
          'maxLength': 32}))
-        scrolllist.append(listentry.Get('TextEdit', {'label': mls.UI_GENERIC_DESCRIPTION,
+        scrolllist.append(listentry.Get('TextEdit', {'label': localization.GetByLabel('UI/Common/Description'),
          'setValue': self.station.description,
          'name': 'details_description',
          'lines': 5,
          'maxLength': 5000,
          'killFocus': True}))
         scrolllist.append(listentry.Get('LabelTextTop', {'line': 1,
-         'label': mls.UI_GENERIC_SECURITY,
+         'label': localization.GetByLabel('UI/Common/Security'),
          'text': self.station.security}))
-        scrolllist.append(listentry.Get('Edit', {'label': mls.UI_STATION_DOCKINGCOSTPERVOL,
+        scrolllist.append(listentry.Get('Edit', {'label': localization.GetByLabel('UI/Station/StationManagment/DockingCostPerVolume'),
          'setValue': self.station.dockingCostPerVolume,
          'name': 'details_dockingCostPerVolume',
          'floatmode': (0.0, 1000.0)}))
-        scrolllist.append(listentry.Get('Edit', {'label': mls.UI_STATION_RENTALOFFICECOST,
+        scrolllist.append(listentry.Get('Edit', {'label': localization.GetByLabel('UI/Station/StationManagment/OfficeRentalCost'),
          'setValue': self.station.officeRentalCost,
          'name': 'details_officeRentalCost',
          'intmode': (0, sys.maxint)}))
@@ -249,24 +243,24 @@ class StationManagementDialog(uicls.Window):
         if exitTime is None:
             exitTime = 1200
         scrolllist.append(listentry.Get('Combo', {'options': self.GetHours(),
-         'label': mls.UI_STATION_REINFORCEMENT_EXIT_TIME,
+         'label': localization.GetByLabel('UI/Station/StationManagment/ReinforcedModeExitTime'),
          'cfgName': 'StationReinforcmentExitTimeCFG',
          'setValue': exitTime / 100,
          'OnChange': self.OnComboChange,
          'name': 'details_exitTime'}))
-        maxshipvoldockable = '%s %s' % (util.FmtAmt(self.station.maxShipVolumeDockable), sm.GetService('info').FormatUnit(cfg.dgmattribs.Get(const.attributeVolume).unitID))
+        maxshipvoldockable = localization.GetByLabel('UI/Station/StationManagment/MaxShipVolumeDockableAmount', maxshipvolume=util.FmtAmt(self.station.maxShipVolumeDockable), squaremeters=sm.GetService('info').FormatUnit(cfg.dgmattribs.Get(const.attributeVolume).unitID))
         scrolllist.append(listentry.Get('LabelTextTop', {'line': 1,
-         'label': mls.UI_STATION_MAXASHIPVOLDOCKABLE,
+         'label': localization.GetByLabel('UI/Station/StationManagment/MaxShipVolumeDockable'),
          'text': maxshipvoldockable}))
         if self.IsServiceAvailable(const.stationServiceReprocessingPlant):
             scrolllist.append(listentry.Get('Edit', {'OnReturn': None,
-             'label': mls.UI_STATION_REPROCESSINGSTATIONSTAKE,
+             'label': localization.GetByLabel('UI/Station/StationManagment/ReprocessingStationsTake'),
              'setValue': self.station.reprocessingStationsTake * 100,
              'name': 'details_reprocessingStationsTake',
              'floatmode': (0.0, 100.0)}))
             options = self.GetAvailableHangars()
             if len(options) == 0:
-                scrolllist.append(listentry.Get('Header', {'label': mls.UI_STATION_TEXT47}))
+                scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Station/StationManagment/NoDivisionHangarsWarning')}))
             else:
                 default = None
                 if self.station.reprocessingHangarFlag is not None:
@@ -276,7 +270,7 @@ class StationManagementDialog(uicls.Window):
                             break
 
                 data = {'options': options,
-                 'label': mls.UI_STATION_TEXT48,
+                 'label': localization.GetByLabel('UI/Station/StationManagment/ReprocessingOutput'),
                  'cfgName': 'reprocessingHangarFlag',
                  'setValue': default,
                  'OnChange': self.OnComboChange,
@@ -287,7 +281,7 @@ class StationManagementDialog(uicls.Window):
         if eve.session.allianceid:
             scrolllist.append(listentry.Get('Divider'))
             scrolllist.append(listentry.Get('Button', {'label': '',
-             'caption': mls.UI_STATION_TRANSFER_OWNERSHIP,
+             'caption': localization.GetByLabel('UI/Inflight/POS/TransferSovStructureOwnership'),
              'OnClick': self.TransferStation}))
         self.ddxFunction = self.DDXTabStationDetails
         self.sr.scroll.Load(fixedEntryHeight=24, contentList=scrolllist)
@@ -319,12 +313,13 @@ class StationManagementDialog(uicls.Window):
             cfg.eveowners.Prime(owners)
         tmplist = []
         for member in members.itervalues():
-            tmplist.append((cfg.eveowners.Get(member.corporationID).ownerName, member.corporationID))
+            if self.station.ownerID != member.corporationID:
+                tmplist.append((cfg.eveowners.Get(member.corporationID).ownerName, member.corporationID))
 
-        ret = uix.ListWnd(tmplist, 'generic', mls.UI_CORP_SELECT_CORPORATION, None, 1)
+        ret = uix.ListWnd(tmplist, 'generic', localization.GetByLabel('UI/Corporations/Common/SelectCorporation'), None, 1)
         if ret is not None and len(ret):
             self.corpStationMgr.UpdateStationOwner(ret[1])
-            self.CloseX()
+            self.CloseByUser()
 
 
 
@@ -380,38 +375,39 @@ class StationManagementDialog(uicls.Window):
         scrolllist = []
         if session.allianceid is not None:
             data = util.KeyVal()
-            data.label = mls.UI_GENERIC_USEALLIANCESTANDINGS
+            data.label = localization.GetByLabel('UI/Station/StationManagment/UseAllianceStandings')
             data.cfgname = 'useAllianceStandings'
             data.checked = session.allianceid is not None and session.allianceid == self.station.standingOwnerID
             data.retval = None
             data.OnChange = self.StandingOwnerCheckBoxChange
             scrolllist.append(listentry.Get('Checkbox', data=data))
         for (serviceID, service,) in self.servicesByID.iteritems():
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_STATION_ACCESSCONTROLFORSVC % {'service': self.GetServiceName(service)}}))
+            serviceAccess = localization.GetByLabel('UI/Station/StationManagment/AccessControlForService', servicename=self.GetServiceName(service))
+            scrolllist.append(listentry.Get('Header', {'label': serviceAccess}))
             rule = self.serviceAccessRulesByServiceID[serviceID]
             log.LogInfo(service.serviceName, rule)
             scrolllist.append(listentry.Get('Edit', {'OnReturn': None,
-             'label': mls.UI_RMR_MINSTANDING,
+             'label': localization.GetByLabel('UI/Station/StationManagment/MinimumStanding'),
              'setValue': rule.minimumStanding,
              'name': '%smods_minimumStanding' % serviceID,
              'floatmode': (-10.0, 10.0)}))
             scrolllist.append(listentry.Get('Edit', {'OnReturn': None,
-             'label': mls.UI_RMR_MINCHARACTERSECURITY,
+             'label': localization.GetByLabel('UI/Station/StationManagment/MinimumCharacterSecurity'),
              'setValue': rule.minimumCharSecurity,
              'name': '%smods_minimumCharSecurity' % serviceID,
              'floatmode': (-10.0, 10.0)}))
             scrolllist.append(listentry.Get('Edit', {'OnReturn': None,
-             'label': mls.UI_RMR_MAXCHARACTERSECURITY,
+             'label': localization.GetByLabel('UI/Station/StationManagment/MaximumCharacterSecurity'),
              'setValue': rule.maximumCharSecurity,
              'name': '%smods_maximumCharSecurity' % serviceID,
              'floatmode': (-10.0, 10.0)}))
             scrolllist.append(listentry.Get('Edit', {'OnReturn': None,
-             'label': mls.UI_RMR_MINCORPORATIONSECURITY,
+             'label': localization.GetByLabel('UI/Station/StationManagment/MinimumCorporationSecurity'),
              'setValue': rule.minimumCorpSecurity,
              'name': '%smods_minimumCorpSecurity' % serviceID,
              'floatmode': (-10.0, 10.0)}))
             scrolllist.append(listentry.Get('Edit', {'OnReturn': None,
-             'label': mls.UI_RMR_MAXCORPORATIONSECURITY,
+             'label': localization.GetByLabel('UI/Station/StationManagment/MaximumCorporationSecurity'),
              'setValue': rule.maximumCorpSecurity,
              'name': '%smods_maximumCorpSecurity' % serviceID,
              'floatmode': (-10.0, 10.0)}))
@@ -488,8 +484,8 @@ class StationManagementDialog(uicls.Window):
 
     def OnTabCostModifiers(self):
         scrolllist = []
-        scrolllist.append(listentry.Get('Header', {'label': mls.UI_STATION_COSTMODIFIERS}))
-        scrolllist.append(listentry.Get('Text', {'text': mls.UI_STATION_COSTMODIFIER_LABEL}))
+        scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Station/StationManagment/CostModifiers')}))
+        scrolllist.append(listentry.Get('Text', {'text': localization.GetByLabel('UI/Station/StationManagment/CostModifiersHint')}))
         for row in self.serviceCostModifiers:
             if not self.IsServiceAvailable(row.serviceID):
                 continue
@@ -499,12 +495,12 @@ class StationManagementDialog(uicls.Window):
             scrolllist.append(listentry.Get('Divider'))
             scrolllist.append(listentry.Get('Subheader', {'label': taskname}))
             scrolllist.append(listentry.Get('Edit', {'OnReturn': None,
-             'label': mls.UI_RMR_GOODSTANDINGDISCOUNT,
+             'label': localization.GetByLabel('UI/Station/StationManagment/GoodStandingDiscount'),
              'setValue': row.discountPerGoodStandingPoint,
              'name': 'cost_%s_discountPerGoodStandingPoint' % taskname,
              'floatmode': (0.0, 10.0)}))
             scrolllist.append(listentry.Get('Edit', {'OnReturn': None,
-             'label': mls.UI_RMR_BADSTANDINGSURCHARGE,
+             'label': localization.GetByLabel('UI/Station/StationManagment/BadStandingSurcharge'),
              'setValue': row.surchargePerBadStandingPoint,
              'name': 'cost_%s_surchargePerBadStandingPoint' % taskname,
              'floatmode': (0.0, 10.0)}))
@@ -549,29 +545,29 @@ class StationManagementDialog(uicls.Window):
 
     def OnTabOffices(self):
         scrolllist = []
-        scrollHeaders = [mls.UI_CORP_OFFICES,
-         mls.UI_GENERIC_OFFICENUMBER,
-         mls.UI_GENERIC_RENTEDBY,
-         mls.UI_CORP_STARTDATE,
-         mls.UI_CORP_RENTPERIOD,
-         mls.UI_CORP_PERIODCOST,
-         mls.UI_GENERIC_BALANCEDUE]
+        scrollHeaders = [localization.GetByLabel('UI/Corporations/Common/Offices'),
+         localization.GetByLabel('UI/Station/OfficeNumber'),
+         localization.GetByLabel('UI/Station/StationManagment/OfficeRentedBy'),
+         localization.GetByLabel('UI/Station/StationManagment/RentStartDate'),
+         localization.GetByLabel('UI/Station/StationManagment/RentPeriod'),
+         localization.GetByLabel('UI/Station/StationManagment/RentPeriodCost'),
+         localization.GetByLabel('UI/Station/StationManagment/RentBalanceDue')]
         for each in self.rentableItems:
             if each.typeID == const.typeOfficeFolder:
                 pass
             else:
                 log.LogError('Unknown typeID on Corporation Folder %s (typeID) %s (CorpID)' % each.typeID, eve.session.corpid)
                 continue
-            rname = ' '
+            rname = ''
             if each.rentedToID is not None:
-                rname = cfg.eveowners.Get(each.rentedToID).name
-            dataLabel = '%s<t>%s<t>%s<t>%s<t>%s<t>%s<t>%s' % (mls.UI_GENERIC_PUBLICLYAVAILABLE,
-             each.number,
-             rname or u'',
-             util.FmtDate(each.startDate, 'ln') or u'',
-             each.rentPeriodInDays or u'',
-             each.periodCost or u'',
-             util.FmtDate(each.balanceDueDate, 'ln') or u'')
+                rname = localization.GetByLabel('UI/Station/StationManagment/OfficesTableRentedBy', rentername=cfg.eveowners.Get(each.rentedToID).name)
+            dataLabel = '<t>'.join([localization.GetByLabel('UI/Station/StationManagment/OfficesTablePubliclyAvailable'),
+             util.FmtAmt(each.number),
+             rname,
+             util.FmtDate(each.startDate, 'ln') if each.startDate else u'',
+             util.FmtAmt(each.rentPeriodInDays) if each.rentPeriodInDays else u'',
+             util.FmtISK(each.periodCost) if each.periodCost else u'',
+             util.FmtDate(each.balanceDueDate, 'ln') if each.balanceDueDate else u''])
             data = {'label': dataLabel,
              'checked': each.publiclyAvailable,
              'cfgname': 'offices',
@@ -620,32 +616,32 @@ class StationManagementDialog(uicls.Window):
         scrolllist = []
         cloneContracts = [ cloneContract for cloneContract in self.corpStationMgr.GetOwnerIDsOfClonesAtStation(corpID) ]
         if corpID == -1:
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_STATION_CLONECONTRACTSBYCORP}))
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Station/StationManagment/CloneContractsByCorporation')}))
             cloneContracts.sort(lambda a, b: cmp(cfg.eveowners.Get(a.corporationID).ownerName, cfg.eveowners.Get(b.corporationID).ownerName))
             for cloneContract in cloneContracts:
                 scrolllist.append(listentry.Get('Divider'))
                 scrolllist.append(listentry.Get('Subheader', {'label': cfg.eveowners.Get(cloneContract.corporationID).ownerName}))
-                scrolllist.append(listentry.Get('Button', {'label': mls.UI_STATION_TEXT49,
-                 'caption': mls.UI_CMD_REVOKE,
+                scrolllist.append(listentry.Get('Button', {'label': localization.GetByLabel('UI/Station/StationManagment/RevokeCloneContractsHint'),
+                 'caption': localization.GetByLabel('UI/Station/StationManagment/RevokeCloneContractsButton'),
                  'OnClick': self.RevokeCloneContractsAtStation,
                  'args': (corpID, cloneContract.corporationID, -1)}))
-                scrolllist.append(listentry.Get('Button', {'label': mls.UI_STATION_TEXT50,
-                 'caption': mls.UI_CMD_EXPAND,
+                scrolllist.append(listentry.Get('Button', {'label': localization.GetByLabel('UI/Station/StationManagment/ExpandCloneContractsHint'),
+                 'caption': localization.GetByLabel('UI/Station/StationManagment/ExpandCloneContractsButton'),
                  'OnClick': self.OnTabCloneContracts,
                  'args': (cloneContract.corporationID,)}))
 
         else:
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_STATION_TEXT51 % {'name': cfg.eveowners.Get(corpID).ownerName}}))
-            scrolllist.append(listentry.Get('Button', {'label': mls.UI_STATION_TEXT52,
-             'caption': mls.UI_CMD_BACK,
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Station/StationManagment/CloneContractsForCorporation', corporationname=cfg.eveowners.Get(corpID).ownerName)}))
+            scrolllist.append(listentry.Get('Button', {'label': localization.GetByLabel('UI/Station/StationManagment/ReturnToPreviousCloneContracts'),
+             'caption': localization.GetByLabel('UI/Commands/Back'),
              'OnClick': self.OnTabCloneContracts,
              'args': (-1,)}))
             cloneContracts.sort(lambda a, b: cmp(cfg.eveowners.Get(a.characterID).ownerName, cfg.eveowners.Get(b.characterID).ownerName))
             for cloneContract in cloneContracts:
                 scrolllist.append(listentry.Get('Divider'))
                 scrolllist.append(listentry.Get('Subheader', {'label': cfg.eveowners.Get(cloneContract.characterID).ownerName}))
-                scrolllist.append(listentry.Get('Button', {'label': mls.UI_STATION_TEXT53,
-                 'caption': 'Revoke',
+                scrolllist.append(listentry.Get('Button', {'label': localization.GetByLabel('UI/Station/StationManagment/RevokeCloneContractsHint'),
+                 'caption': localization.GetByLabel('UI/Station/StationManagment/RevokeCloneContractsButton'),
                  'OnClick': self.RevokeCloneContractsAtStation,
                  'args': (corpID, corpID, cloneContract.characterID)}))
 
@@ -748,13 +744,12 @@ class StationManagementDialog(uicls.Window):
             for improvement in filter(None, tier.improvements):
                 improvement.installed = improvement.typeID in installed
                 if improvement.installed:
-                    statusHint = mls.UI_STATION_IMPROVEMENTINSTALLED
+                    statusHint = localization.GetByLabel('UI/Station/StationManagment/ImprovementInstalled')
                 else:
-                    statusHint = mls.UI_STATION_IMPROVEMENTNOTINSTALLED
-                improvement.hint = '<br>'.join(['<b>%s</b>' % util.ImprovementTypeResolver.GetImprovementTypeName(improvement.typeID),
-                 '(%s)' % statusHint,
-                 '',
-                 util.ImprovementTypeResolver.GetImprovementTypeDescription(improvement.typeID)])
+                    statusHint = localization.GetByLabel('UI/Station/StationManagment/ImprovementNotInstalled')
+                improvementType = util.ImprovementTypeResolver.GetImprovementTypeName(improvement.typeID)
+                description = util.ImprovementTypeResolver.GetImprovementTypeDescription(improvement.typeID)
+                improvement.hint = localization.GetByLabel('UI/Station/StationManagment/ImprovementHint', type=improvementType, statusHint=statusHint, description=description)
 
 
         outpostData = self.GetOutpostData()
@@ -790,12 +785,12 @@ class StationManagementDialog(uicls.Window):
             eve.Message('OfficeRentalCostMustBePositive')
         else:
             self.UpdateData()
-            self.CloseX()
+            self.CloseByUser()
 
 
 
     def OnCancel(self, *args):
-        self.CloseX()
+        self.CloseByUser()
 
 
 
@@ -818,9 +813,12 @@ class StationManagementDialog(uicls.Window):
 
 class StationManagement():
     __guid__ = 'form.StationManagement'
-    __nonpersistvars__ = []
 
     def Startup(self):
+        wnd = form.StationManagementDialog.GetIfOpen()
+        if wnd:
+            wnd.Maximize()
+            return 
         if not const.corpRoleStationManager & eve.session.corprole == const.corpRoleStationManager:
             eve.Message('StationMgtStartupInfo1')
             return 
@@ -831,7 +829,7 @@ class StationManagement():
         if not sm.GetService('corp').DoesCharactersCorpOwnThisStation():
             eve.Message('StationMgtStartupInfo3')
             return 
-        sm.GetService('window').GetWindow('StationManagement', create=1, decoClass=form.StationManagementDialog)
+        form.StationManagementDialog.Open()
 
 
 
@@ -869,10 +867,10 @@ class ImprovementsHeaderEntry(uicls.SE_BaseClassCore):
     __guid__ = 'listentry.OutpostImprovementsHeader'
 
     def Startup(self, *etc):
-        self.sr.infoIcon = uicls.Icon(hint=mls.UI_CMD_SHOWINFO, parent=self, name='infoIcon', icon='ui_38_16_208', size=16)
+        self.sr.infoIcon = uicls.Icon(hint=localization.GetByLabel('UI/Common/ShowInfo'), parent=self, name='infoIcon', icon='ui_38_16_208', size=16)
         self.sr.icon = uicls.Icon(parent=self, name='icon', size=96, top=40)
-        self.sr.upgradeLevelHeader = uicls.Label(parent=self, name='upgradeLevelHeader', state=uiconst.UI_DISABLED, text='<b>' + mls.UI_STATION_OUTPOSTUPGRADELEVEL, fontsize=15, left=20, top=10)
-        self.sr.upgradeLevelLabel = uicls.Label(parent=self, name='upgradeLevelLabel', state=uiconst.UI_DISABLED, text='<b>' + mls.UI_STATION_OUTPOSTUPGRADELEVEL, fontsize=60, top=25)
+        self.sr.upgradeLevelHeader = uicls.EveHeaderLarge(parent=self, name='upgradeLevelHeader', state=uiconst.UI_DISABLED, text=localization.GetByLabel('UI/Station/StationManagment/OutpostUpgradeLevel'), bold=True, left=20, top=10)
+        self.sr.upgradeLevelLabel = uicls.Label(parent=self, name='upgradeLevelLabel', state=uiconst.UI_DISABLED, text=localization.GetByLabel('UI/Station/StationManagment/OutpostUpgradeLevel'), bold=True, fontsize=60, top=25)
         self.sr.trunk = uicls.Fill(parent=self, align=uiconst.RELATIVE, name='trunk')
         self.sr.trunk.width = util.ImprovementsMetrics.trunkThickness
         self.sr.trunk.color.a = util.ImprovementsMetrics.lineAlpha
@@ -886,8 +884,7 @@ class ImprovementsHeaderEntry(uicls.SE_BaseClassCore):
         icon = self.sr.icon
         info = self.sr.infoIcon
         trunk = self.sr.trunk
-        header.text = uiutil.UpperCase(header.text)
-        label.text = str(data.upgradeLevel)
+        label.text = localizationUtil.FormatNumeric(data.upgradeLevel, decimalPlaces=0)
         label.left = header.left + (header.width - label.width) // 2
         icon.left = im.center - icon.width // 2
         icon.LoadIconByTypeID(data.typeID, ignoreSize=True)
@@ -1001,7 +998,7 @@ class ImprovementTierIconsEntry(uicls.SE_BaseClassCore):
             uicls.Container(parent=self, align=uiconst.TOLEFT, width=im.iconMargin, name='blank', state=uiconst.UI_DISABLED)
             icon = uicls.Container(parent=self, name='iconParent', align=uiconst.TOLEFT, width=im.iconSize)
             icon.sr.tier = uicls.Icon(parent=icon, name='tier', icon='ui_38_16_161', size=16, align=uiconst.TOPRIGHT, left=2, top=-2)
-            icon.sr.icon = uicls.Icon(parent=icon, name='icon', align=uiconst.TOALL, hint=mls.UI_CMD_SHOWINFO, state=uiconst.UI_NORMAL)
+            icon.sr.icon = uicls.Icon(parent=icon, name='icon', align=uiconst.TOALL, hint=localization.GetByLabel('UI/Common/ShowInfo'), state=uiconst.UI_NORMAL)
             self.sr.icons.append(icon)
 
         self.children[0].width = im.LeftMargin(len(self.sr.icons))

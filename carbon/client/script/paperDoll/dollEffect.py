@@ -159,7 +159,7 @@ class AuraEffect(AvatarEffect):
         self.effect = trinity.Tr2Effect()
         self.effect.effectFilePath = AURA_EFFECT_RES_PATH
         while self.effect.effectResource.isLoading:
-            blue.synchro.Yield()
+            PD.Yield()
 
         self.effect.PopulateParameters()
         blurMask = blue.resMan.GetResource('res:/Graphics/Decals/caustics4.dds')

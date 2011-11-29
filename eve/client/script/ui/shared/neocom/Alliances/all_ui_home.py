@@ -11,6 +11,8 @@ import uiutil
 import log
 import uicls
 import uiconst
+import localization
+ALLIANCETEXT = 'Alliance'
 
 class FormAlliancesHome(uicls.Container):
     __guid__ = 'form.AlliancesHome'
@@ -27,16 +29,19 @@ class FormAlliancesHome(uicls.Container):
         if eve.session.allianceid is None:
             corporation = sm.GetService('corp').GetCorporation(eve.session.corpid)
             if corporation.ceoID == eve.session.charid:
-                btns.append([mls.UI_CORP_CREATEALLIANCE,
+                createAllianceLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/CreateAlliance')
+                btns.append([createAllianceLabel,
                  self.CreateAllianceForm,
                  None,
                  None])
         elif eve.session.corprole & const.corpRoleDirector == const.corpRoleDirector:
-            btns.append([mls.UI_CMD_EDITALLIANCE,
+            editAllianceLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/EditAlliance')
+            declareWarLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/DeclareWar')
+            btns.append([editAllianceLabel,
              self.EditAllianceForm,
              None,
              None])
-            btns.append([mls.UI_CMD_DECLAREWAR,
+            btns.append([declareWarLabel,
              self.DeclareWarForm,
              None,
              None])
@@ -48,7 +53,8 @@ class FormAlliancesHome(uicls.Container):
          const.defaultPadding,
          const.defaultPadding))
         if eve.session.allianceid is None:
-            self.sr.scroll.Load(fixedEntryHeight=19, contentList=[], noContentHint=mls.UI_CORP_OWNERNOTINANYALLIANCE % {'owner': cfg.eveowners.Get(eve.session.corpid).ownerName})
+            corpNotInAllianceLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/CorporationNotInAlliance', corpName=cfg.eveowners.Get(eve.session.corpid).ownerName)
+            self.sr.scroll.Load(fixedEntryHeight=19, contentList=[], noContentHint=corpNotInAllianceLabel)
             return 
         self.LoadScroll()
 
@@ -80,7 +86,7 @@ class FormAlliancesHome(uicls.Container):
         sm.GetService('corpui').ShowLoad()
         try:
             data = {'GetSubContent': self.ShowDetails,
-             'label': mls.UI_GENERIC_DETAILS,
+             'label': localization.GetByLabel('UI/Common/Details'),
              'groupItems': None,
              'id': ('alliance', 'details'),
              'tabs': [],
@@ -99,7 +105,7 @@ class FormAlliancesHome(uicls.Container):
         sm.GetService('corpui').ShowLoad()
         try:
             data = {'GetSubContent': self.GetSubContentMyAllianceSystems,
-             'label': mls.UI_INFOWND_SETTLEDSYSTEMS,
+             'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/SettledSystems'),
              'groupItems': None,
              'id': ('alliance', 'systems'),
              'tabs': [],
@@ -137,7 +143,8 @@ class FormAlliancesHome(uicls.Container):
                  'GetMenu': self.GetAllianceSystemMenu}))
 
         if len(subcontent) == 0:
-            subcontent.append(listentry.Get('Generic', {'label': mls.UI_SHARED_ALLIANCEHASNOSYSTEM}))
+            noSettledSystemsLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/NoSettledSystems')
+            subcontent.append(listentry.Get('Generic', {'label': noSettledSystemsLabel}))
         else:
             subcontent.sort(key=lambda x: x.label)
         return subcontent
@@ -163,17 +170,18 @@ class FormAlliancesHome(uicls.Container):
             if eve.session.allianceid is None:
                 corporation = sm.GetService('corp').GetCorporation(eve.session.corpid)
                 if corporation.ceoID != eve.session.charid:
-                    eHint = mls.UI_CORP_HINT7
+                    eHint = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/CEODeclareWarOnlyHint')
             if not eve.session.corprole & const.corpRoleDirector == const.corpRoleDirector:
-                eHint = mls.UI_CORP_HINT8
-            sm.GetService('corpui').LoadTop('ui_7_64_6', mls.UI_GENERIC_ALLIANCES, eHint)
+                eHint = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/DirectorsCanEdit')
+            alliancesLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Alliances')
+            sm.GetService('corpui').LoadTop('ui_7_64_6', alliancesLabel, eHint)
             scrolllist = []
-            hint = mls.UI_CORP_NODETAILSFOUND
+            hint = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/NoDetailsFound')
             if self is None or self.destroyed:
                 log.LogInfo('ShowMembers Destroyed or None')
                 hint = '\xfe\xfa s\xe1st mig ekki.'
             elif eve.session.allianceid is None:
-                hint = mls.UI_CORP_OWNERNOTINANYALLIANCEATM % {'owner': cfg.eveowners.Get(eve.session.corpid).ownerName}
+                hint = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/CorporationNotInAllianceATM', corpName=cfg.eveowners.Get(eve.session.corpid).ownerName)
             else:
                 rec = sm.GetService('alliance').GetAlliance()
                 owners = [rec.allianceID, rec.creatorCorpID, rec.creatorCharID]
@@ -181,7 +189,7 @@ class FormAlliancesHome(uicls.Container):
                     owners.append(rec.executorCorpID)
                 if len(owners):
                     cfg.eveowners.Prime(owners)
-                label = mls.UI_CORP_ALLIANCENAME
+                label = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/AllianceName')
                 text = cfg.eveowners.Get(rec.allianceID).ownerName
                 params = {'line': 1,
                  'label': label,
@@ -192,7 +200,7 @@ class FormAlliancesHome(uicls.Container):
                 for columnName in rec.header:
                     value = getattr(rec, columnName)
                     if columnName == 'executorCorpID':
-                        label = mls.UI_CORP_EXECUTOR
+                        label = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/Executor')
                         executor = cfg.eveowners.GetIfExists(value)
                         if executor is not None:
                             text = executor.ownerName
@@ -207,13 +215,13 @@ class FormAlliancesHome(uicls.Container):
                          'label': label,
                          'text': text}
                     elif columnName == 'shortName':
-                        label = mls.UI_CORP_SHORTNAME
+                        label = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/ShortName')
                         text = value
                         params = {'line': 1,
                          'label': label,
                          'text': text}
                     elif columnName == 'url' and value:
-                        label = mls.UI_GENERIC_URL
+                        label = localization.GetByLabel('UI/Common/URL')
                         text = value
                         if text:
                             text = util.FormatUrl(text)
@@ -221,13 +229,13 @@ class FormAlliancesHome(uicls.Container):
                          'label': label,
                          'text': '<url=%s>%s</url>' % (text, text)}
                     elif columnName == 'description' and value:
-                        label = mls.UI_GENERIC_DESCRIPTION
+                        label = localization.GetByLabel('UI/Common/Description')
                         text = value
                         params = {'line': 1,
                          'label': label,
                          'text': text}
                     elif columnName == 'creatorCorpID':
-                        label = mls.UI_CORP_CREATEDBYCORP
+                        label = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/CreatedByCorporation')
                         text = cfg.eveowners.Get(value).ownerName
                         params = {'line': 1,
                          'label': label,
@@ -235,7 +243,7 @@ class FormAlliancesHome(uicls.Container):
                          'typeID': const.typeCorporation,
                          'itemID': value}
                     elif columnName == 'creatorCharID':
-                        label = mls.UI_CORP_CREATEDBY
+                        label = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/CreatedBy')
                         text = cfg.eveowners.Get(value).ownerName
                         params = {'line': 1,
                          'label': label,
@@ -243,8 +251,10 @@ class FormAlliancesHome(uicls.Container):
                          'typeID': const.typeCharacterAmarr,
                          'itemID': value}
                     elif columnName == 'dictatorial':
-                        label = mls.UI_CORP_DICTATORIAL
-                        text = [mls.UI_GENERIC_NO, mls.UI_GENERIC_YES][value]
+                        label = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/Dictatorial')
+                        yesLabel = localization.GetByLabel('UI/Common/Buttons/Yes')
+                        noLabel = localization.GetByLabel('UI/Common/Buttons/No')
+                        text = [noLabel, yesLabel][value]
                         params = {'line': 1,
                          'label': label,
                          'text': text}
@@ -286,9 +296,9 @@ class FormAlliancesHome(uicls.Container):
         format.append({'type': 'push',
          'frame': 1})
         format.append({'type': 'edit',
-         'setvalue': mls.UI_CORP_NAMEALLIANCE % {'name': cfg.eveowners.Get(eve.session.corpid).ownerName},
+         'setvalue': '%s %s ' % (cfg.eveowners.Get(eve.session.corpid).ownerName, ALLIANCETEXT),
          'key': 'allianceName',
-         'label': mls.UI_GENERIC_NAME,
+         'label': localization.GetByLabel('UI/Common/Name'),
          'required': 1,
          'frame': 1,
          'maxlength': 100})
@@ -300,13 +310,13 @@ class FormAlliancesHome(uicls.Container):
         format.append({'type': 'edit',
          'setvalue': '',
          'key': 'shortName',
-         'label': mls.UI_CORP_SHORTNAME,
+         'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/ShortName'),
          'required': 1,
          'frame': 1,
          'maxlength': 5})
         format.append({'type': 'btnonly',
          'frame': 1,
-         'buttons': [{'caption': mls.UI_CMD_SUGGEST,
+         'buttons': [{'caption': localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/SuggestCommand'),
                       'align': 'right',
                       'btn_default': 1,
                       'function': self.GetSuggestedTickerNames}]})
@@ -317,7 +327,7 @@ class FormAlliancesHome(uicls.Container):
          'frame': 1})
         format.append({'type': 'edit',
          'key': 'url',
-         'label': mls.UI_GENERIC_URL,
+         'label': localization.GetByLabel('UI/Common/URL'),
          'frame': 1,
          'maxLength': 2048})
         format.append({'type': 'push',
@@ -327,13 +337,14 @@ class FormAlliancesHome(uicls.Container):
          'frame': 1})
         format.append({'type': 'textedit',
          'key': 'description',
-         'label': mls.UI_GENERIC_DESCRIPTION,
+         'label': localization.GetByLabel('UI/Common/Description'),
          'frame': 1,
          'maxLength': 5000})
         format.append({'type': 'push',
          'frame': 1})
         format.append({'type': 'btline'})
-        retval = uix.HybridWnd(format, mls.UI_CORP_CREATEALLIANCE, 1, None, uiconst.OKCANCEL, [left, top], 500, unresizeAble=1, ignoreCurrent=0)
+        createAllianceLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/CreateAlliance')
+        retval = uix.HybridWnd(format, createAllianceLabel, 1, None, uiconst.OKCANCEL, [left, top], 500, unresizeAble=1, ignoreCurrent=0)
         if retval is None:
             return 
         allianceName = retval['allianceName']
@@ -356,7 +367,7 @@ class FormAlliancesHome(uicls.Container):
         format = []
         stati = {}
         format.append({'type': 'header',
-         'text': mls.UI_CORP_SELECTSHORTNAME,
+         'text': localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/SelectShortName'),
          'frame': 1})
         format.append({'type': 'push'})
         format.append({'type': 'btline'})
@@ -377,7 +388,8 @@ class FormAlliancesHome(uicls.Container):
         format.append({'type': 'btline'})
         left = uicore.desktop.width / 2 - 500 / 2
         top = uicore.desktop.height / 2 - 400 / 2
-        retval = uix.HybridWnd(format, mls.UI_CORP_SUGGESTSHORTNAME, 1, None, uiconst.OKCANCEL, [left, top], 300, unresizeAble=1)
+        suggestedShortNameLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/SuggestedShortName')
+        retval = uix.HybridWnd(format, suggestedShortNameLabel, 1, None, uiconst.OKCANCEL, [left, top], 300, unresizeAble=1)
         if retval is not None:
             window.sr.shortName.SetValue(retval['shortNames'])
 
@@ -398,7 +410,7 @@ class FormAlliancesHome(uicls.Container):
             format.append({'type': 'edit',
              'key': 'url',
              'setvalue': alliance.url,
-             'label': mls.UI_GENERIC_URL,
+             'label': localization.GetByLabel('UI/Common/URL'),
              'frame': 1,
              'maxLength': 2048})
             format.append({'type': 'push',
@@ -409,14 +421,15 @@ class FormAlliancesHome(uicls.Container):
             format.append({'type': 'textedit',
              'key': 'description',
              'setvalue': alliance.description,
-             'label': mls.UI_GENERIC_DESCRIPTION,
+             'label': localization.GetByLabel('UI/Common/Description'),
              'frame': 1,
              'maxLength': 5000,
              'height': 130})
             format.append({'type': 'push',
              'frame': 1})
             format.append({'type': 'bbline'})
-            retval = uix.HybridWnd(format, mls.UI_CORP_UPDATEALLIANCE, 1, None, uiconst.OKCANCEL, [left, top], 500, 150, unresizeAble=1)
+            updateAllianceLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/UpdateAlliance')
+            retval = uix.HybridWnd(format, updateAllianceLabel, 1, None, uiconst.OKCANCEL, [left, top], 500, 150, unresizeAble=1)
             if retval is None:
                 return 
             url = retval['url']
@@ -430,13 +443,14 @@ class FormAlliancesHome(uicls.Container):
 
 
     def DeclareWarForm(self, *args):
-        dlg = sm.GetService('window').GetWindow('CorporationOrAlliancePickerDailog', create=1, ignoreCurrent=1, warableEntitysOnly=True)
+        dlg = form.CorporationOrAlliancePickerDailog.Open(warableEntitysOnly=True)
         dlg.ShowModal()
         againstID = dlg.ownerID
         if not againstID:
             return 
         cost = sm.GetService('war').GetCostOfWarAgainst(againstID)
-        if eve.Message('WarDeclareConfirm', {'corporalliance': mls.UI_GENERIC_ALLIANCE,
+        allianceLabel = localization.GetByLabel('UI/Common/Alliance')
+        if eve.Message('WarDeclareConfirm', {'corporalliance': allianceLabel,
          'against': cfg.eveowners.Get(againstID).ownerName,
          'price': util.FmtISK(cost, showFractionsAlways=0)}, uiconst.YESNO) == uiconst.ID_YES:
             sm.GetService('alliance').DeclareWarAgainst(againstID)
@@ -454,23 +468,25 @@ class FormAlliancesBulletins(uicls.Container):
         if eve.session.allianceid is None:
             corporation = sm.GetService('corp').GetCorporation(eve.session.corpid)
             if corporation.ceoID == eve.session.charid:
-                btns.append([mls.UI_CORP_CREATEALLIANCE,
+                createAllianceLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/CreateAlliance')
+                btns.append([createAllianceLabel,
                  self.CreateAllianceForm,
                  None,
                  None])
         elif const.corpRoleChatManager & eve.session.corprole == const.corpRoleChatManager:
-            btns.append([mls.UI_CORP_ADDBULLETIN,
+            addBulletinLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home/AddBulletin')
+            btns.append([addBulletinLabel,
              self.AddBulletin,
              None,
              None])
         if len(btns):
             buttons = uicls.ButtonGroup(btns=btns, parent=self.toolbarContainer)
         self.toolbarContainer.height = 20 if not len(btns) else buttons.height
-        import draw
         bulletinParent = uicls.Container(name='bulletinParent', parent=self, align=uiconst.TOALL, pos=(0, 0, 0, 0))
         uicls.Container(name='push', parent=bulletinParent, align=uiconst.TOLEFT, width=const.defaultPadding)
-        self.messageArea = uicls.Edit(parent=bulletinParent, readonly=1, hideBackground=1)
-        self.messageArea.AllowResizeUpdates(1)
+        self.messageArea = uicls.Scroll(parent=bulletinParent)
+        self.messageArea.HideBackground()
+        self.messageArea.RemoveActiveFrame()
         if session.allianceid is not None:
             self.LoadBulletins()
 
@@ -482,8 +498,8 @@ class FormAlliancesBulletins(uicls.Container):
 
 
     def LoadBulletins(self):
-        txt = sm.GetService('corp').GetFormattedBulletins(isAlliance=True)
-        self.messageArea.LoadHTML(txt)
+        scrollEntries = sm.GetService('corp').GetBulletinEntries(isAlliance=True)
+        self.messageArea.LoadContent(contentList=scrollEntries, noContentHint=localization.GetByLabel('UI/Corporations/BaseCorporationUI/NoBulletins'))
 
 
 

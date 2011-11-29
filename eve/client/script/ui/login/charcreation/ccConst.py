@@ -1,5 +1,6 @@
 import uiconst
 import uiutil
+import localization
 CHARACTER_CREATION_NETWORK = 'res:/Animation/MorphemeIncarna/Export/CharCreation_runtimeBinary/CharacterCreation.mor'
 GENDERID_FEMALE = 0
 GENDERID_MALE = 1
@@ -38,6 +39,7 @@ ICON_TOGGLECLOTHES = 'ui_105_32_8'
 ICON_HELP = 'ui_105_32_32'
 POSERANGE = 6
 TEXTURE_RESOLUTIONS = [(4096, 2048), (2048, 1024), (512, 256)]
+DOLL_VIEWER_TEXTURE_RESOLUTIONS = [(2048, 1024), (1024, 512), (512, 256)]
 ZONEMAP = {-1: uiconst.UICURSOR_DEFAULT,
  0: uiconst.UICURSOR_CCALLDIRECTIONS,
  1: uiconst.UICURSOR_CCALLDIRECTIONS,
@@ -137,64 +139,7 @@ s_head = 'scars/head'
 t_head = 'tattoo/head'
 BASEBEARD = 'beard/stubble'
 MASTER_COLORS = [hair, eyes]
-invisibleModifiers = ['feet_nude']
-maleModifierDisplayNames = {eyes: mls.UI_CHARCREA_EYES,
- eyeshadow: mls.UI_CHARCREA_EYEDETAILS,
- eyeliner: mls.UI_CHARCREA_LASHTHICKNESS,
- lipstick: mls.UI_CHARCREA_LIPTONE,
- blush: mls.UI_CHARCREA_CHEEKCOLOR,
- hair: mls.UI_CHARCREA_HAIRSTYLE,
- eyebrows: mls.UI_CHARCREA_EYEBROWS,
- beard: mls.UI_CHARCREA_FACIALHAIR,
- skintone: mls.UI_CHARCREA_SKINTONE,
- skinaging: mls.UI_CHARCREA_AGING,
- scarring: mls.UI_CHARCREA_SCARRING,
- freckles: mls.UI_CHARCREA_FRECKLES,
- glasses: mls.UI_CHARCREA_GLASSES,
- muscle: mls.UI_CHARCREA_MUSCULARITY,
- weight: mls.UI_CHARCREA_WEIGHT,
- topmiddle: mls.UI_CHARCREA_TOP,
- topouter: mls.UI_CHARCREA_TOPOUTER,
- bottomouter: mls.UI_CHARCREA_BOTTOM,
- outer: mls.UI_CHARCREA_OUTER,
- feet: mls.UI_CHARCREA_FEET,
- p_earslow: mls.UI_CHARCREA_P_EARSLOW,
- p_earshigh: mls.UI_CHARCREA_P_EARSHIGH,
- p_nose: mls.UI_CHARCREA_P_NOSE,
- p_nostril: mls.UI_CHARCREA_P_NOSTRIL,
- p_brow: mls.UI_CHARCREA_P_BROW,
- p_lips: mls.UI_CHARCREA_P_LIPS,
- p_chin: mls.UI_CHARCREA_P_CHIN,
- t_head: mls.UI_CHARCREA_T_HEAD,
- s_head: mls.UI_CHARCREA_S_HEAD}
-femaleModifierDisplayNames = {eyes: mls.UI_CHARCREA_EYES,
- eyeshadow: mls.UI_CHARCREA_EYESHADOW,
- eyeliner: mls.UI_CHARCREA_EYELINER,
- lipstick: mls.UI_CHARCREA_LIPSTICK,
- blush: mls.UI_CHARCREA_BLUSH,
- hair: mls.UI_CHARCREA_HAIRSTYLE,
- eyebrows: mls.UI_CHARCREA_EYEBROWS,
- skintone: mls.UI_CHARCREA_SKINTONE,
- skinaging: mls.UI_CHARCREA_AGING,
- scarring: mls.UI_CHARCREA_SCARRING,
- freckles: mls.UI_CHARCREA_FRECKLES,
- glasses: mls.UI_CHARCREA_GLASSES,
- muscle: mls.UI_CHARCREA_MUSCULARITY,
- weight: mls.UI_CHARCREA_WEIGHT,
- topmiddle: mls.UI_CHARCREA_TOP,
- topouter: mls.UI_CHARCREA_TOPOUTER,
- bottomouter: mls.UI_CHARCREA_BOTTOM,
- outer: mls.UI_CHARCREA_OUTER,
- feet: mls.UI_CHARCREA_FEET,
- p_earslow: mls.UI_CHARCREA_P_EARSLOW,
- p_earshigh: mls.UI_CHARCREA_P_EARSHIGH,
- p_nose: mls.UI_CHARCREA_P_NOSE,
- p_nostril: mls.UI_CHARCREA_P_NOSTRIL,
- p_brow: mls.UI_CHARCREA_P_BROW,
- p_lips: mls.UI_CHARCREA_P_LIPS,
- p_chin: mls.UI_CHARCREA_P_CHIN,
- t_head: mls.UI_CHARCREA_T_HEAD,
- s_head: mls.UI_CHARCREA_S_HEAD}
+invisibleModifiers = ['feet_nude', 'blank']
 maleRandomizeItems = {eyes: EYESGROUP,
  eyeshadow: SKINDETAILSGROUP,
  eyeliner: SKINDETAILSGROUP,
@@ -327,33 +272,19 @@ TUCKCATEGORIES = ['dependants/drape',
  'dependants/hood',
  'dependants/boottucking',
  'dependants/waisttucking']
-HELPTEXTS = {BODYGROUP: mls.UI_CHARCREA_SCULPTINGHELP,
- SKINGROUP: mls.UI_CHARCREA_SKINHELP,
- HAIRGROUP: mls.UI_CHARCREA_HAIRHELP,
- EYESGROUP: mls.UI_CHARCREA_EYESHELP,
- MAKEUPGROUP: mls.UI_CHARCREA_MAKEUPHELP,
- SKINDETAILSGROUP: mls.UI_CHARCREA_SKINDETAILSHELP,
- CLOTHESGROUP: mls.UI_CHARCREA_CLOTHESHELP,
- BACKGROUNDGROUP: mls.UI_CHARCREA_BACKGROUNDSHELP,
- POSESGROUP: mls.UI_CHARCREA_POSESHELP,
- LIGHTSGROUP: mls.UI_CHARCREA_LIGHTSHELP,
- PIERCINGGROUP: mls.UI_CHARCREA_PIERCINGSHELP,
- TATTOOGROUP: mls.UI_CHARCREA_TATTOOSHELP,
- SCARSGROUP: mls.UI_CHARCREA_SCARSHELP}
-GROUPNAMES = {SKINGROUP: mls.UI_CHARCREA_SKIN,
- HAIRGROUP: mls.UI_CHARCREA_HAIR,
- EYESGROUP: mls.UI_CHARCREA_EYES,
- MAKEUPGROUP: mls.UI_CHARCREA_MAKEUP,
- SKINDETAILSGROUP: mls.UI_CHARCREA_SKINDETAILS,
- CLOTHESGROUP: mls.UI_CHARCREA_CLOTHES,
- BODYGROUP: mls.UI_CHARCREA_SHAPE,
- BACKGROUNDGROUP: mls.UI_CHARCREA_BACKGROUNDS,
- POSESGROUP: mls.UI_CHARCREA_POSES,
- LIGHTSGROUP: mls.UI_CHARCREA_LIGHTS,
- LIGHTSGROUP: mls.UI_CHARCREA_LIGHTS,
- PIERCINGGROUP: mls.UI_CHARCREA_PIERCINGS,
- TATTOOGROUP: mls.UI_CHARCREA_TATTOOS,
- SCARSGROUP: mls.UI_CHARCREA_SCARS}
+HELPTEXTS = {BODYGROUP: 'UI/CharacterCreation/HelpTexts/BodyShape',
+ SKINGROUP: 'UI/CharacterCreation/HelpTexts/Skin',
+ HAIRGROUP: 'UI/CharacterCreation/HelpTexts/Hair',
+ EYESGROUP: 'UI/CharacterCreation/HelpTexts/Eyes',
+ MAKEUPGROUP: 'UI/CharacterCreation/HelpTexts/Makeup',
+ SKINDETAILSGROUP: 'UI/CharacterCreation/HelpTexts/SkinDetails',
+ CLOTHESGROUP: 'UI/CharacterCreation/HelpTexts/Clothes',
+ BACKGROUNDGROUP: 'UI/CharacterCreation/HelpTexts/Backgrounds',
+ POSESGROUP: 'UI/CharacterCreation/HelpTexts/Poses',
+ LIGHTSGROUP: 'UI/CharacterCreation/HelpTexts/Light',
+ PIERCINGGROUP: 'UI/CharacterCreation/HelpTexts/Piercings',
+ TATTOOGROUP: 'UI/CharacterCreation/HelpTexts/Tattoo',
+ SCARSGROUP: 'UI/CharacterCreation/HelpTexts/Scars'}
 PICKMAPPING = {('sculpt', 12): eyes,
  ('hair', 0): hair,
  ('hair', 1): eyebrows,
@@ -493,18 +424,18 @@ backgroundOptions = ['res:/UI/Texture/CharacterCreation/backdrops/Background_1.d
  'res:/UI/Texture/CharacterCreation/backdrops/Background_79.dds',
  'res:/UI/Texture/CharacterCreation/backdrops/Background_80.dds',
  'res:/UI/Texture/CharacterCreation/backdrops/Background_81.dds']
-BASE_HAIR_COLOR_FEMALE = 'res:/Graphics/Character/Modular/Female/hair/Colors/BaseColor.base'
-BASE_HAIR_COLOR_MALE = 'res:/Graphics/Character/Modular/Male/hair/Colors/BaseColor.base'
-HAIRCOLOR_RESTRICTION_FEMALE = 'res:/Graphics/Character/Modular/Female/hair/Colors/restrictions'
-HAIRCOLOR_RESTRICTION_MALE = 'res:/Graphics/Character/Modular/Male/hair/Colors/restrictions'
-HAIRCOLORS = ['res:/Graphics/Character/Modular/Female/hair/Colors/', 'res:/Graphics/Character/Modular/Male/hair/Colors/']
-BASE_HAIR_TYPE_FEMALE = 'res:/Graphics/Character/Modular/Female/hair/Hair_Stubble_01/Types/Hair_Stubble_01.type'
-BASE_HAIR_TYPE_MALE = 'res:/Graphics/Character/Modular/Male/hair/Hair_Stubble_02/Types/Hair_Stubble_02.type'
-EYESHADOWCOLOR_RESTRICTION_FEMALE = 'res:/Graphics/Character/Modular/Female/Makeup/EyeShadow/Colors/restrictions'
-EYESHADOWCOLORS = ['res:/Graphics/Character/Modular/Female/Makeup/EyeShadow/Colors/', 'res:/Graphics/Character/Modular/Male/Makeup/EyeShadow/Colors/']
-HEADTATTOOCOLOR_RESTRICTION_FEMALE = 'res:/Graphics/Character/Modular/Female/Tattoo/Head/Colors/restrictions'
-HEADTATTOOCOLOR_RESTRICTION_MALE = 'res:/Graphics/Character/Modular/Male/Tattoo/Head/Colors/restrictions'
-HEADTATTOOCOLORS = ['res:/Graphics/Character/Modular/Female/Tattoo/Head/Colors/', 'res:/Graphics/Character/Modular/Male/Tattoo/Head/Colors/']
+BASE_HAIR_COLOR_FEMALE = 'res:/Graphics/Character/Female/Paperdoll/hair/Colors/BaseColor.base'
+BASE_HAIR_COLOR_MALE = 'res:/Graphics/Character/Male/Paperdoll/hair/Colors/BaseColor.base'
+HAIRCOLOR_RESTRICTION_FEMALE = 'res:/Graphics/Character/Female/Paperdoll/hair/Colors/restrictions'
+HAIRCOLOR_RESTRICTION_MALE = 'res:/Graphics/Character/Male/Paperdoll/hair/Colors/restrictions'
+HAIRCOLORS = ['res:/Graphics/Character/Female/Paperdoll/hair/Colors/', 'res:/Graphics/Character/Male/Paperdoll/hair/Colors/']
+BASE_HAIR_TYPE_FEMALE = 'res:/Graphics/Character/Female/Paperdoll/hair/Hair_Stubble_01/Types/Hair_Stubble_01.type'
+BASE_HAIR_TYPE_MALE = 'res:/Graphics/Character/Male/Paperdoll/hair/Hair_Stubble_02/Types/Hair_Stubble_02.type'
+EYESHADOWCOLOR_RESTRICTION_FEMALE = 'res:/Graphics/Character/Female/Paperdoll/Makeup/EyeShadow/Colors/restrictions'
+EYESHADOWCOLORS = ['res:/Graphics/Character/Female/Paperdoll/Makeup/EyeShadow/Colors/', 'res:/Graphics/Character/Male/Paperdoll/Makeup/EyeShadow/Colors/']
+HEADTATTOOCOLOR_RESTRICTION_FEMALE = 'res:/Graphics/Character/Female/Paperdoll/Tattoo/Head/Colors/restrictions'
+HEADTATTOOCOLOR_RESTRICTION_MALE = 'res:/Graphics/Character/Male/Paperdoll/Tattoo/Head/Colors/restrictions'
+HEADTATTOOCOLORS = ['res:/Graphics/Character/Female/Paperdoll/Tattoo/Head/Colors/', 'res:/Graphics/Character/Male/Paperdoll/Tattoo/Head/Colors/']
 weightLimits = {t_head: {'default': [0.62, 0.91],
           ('white_A', None): [0.44, 0.73]}}
 defaultIntensity = {t_head: 1.0}

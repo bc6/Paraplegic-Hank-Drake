@@ -12,6 +12,16 @@ import xtriui
 import uiutil
 import uiconst
 import uicls
+import localization
+import localizationUtil
+import fontConst
+import bluepy
+
+@util.Memoized
+def GetCacheByLabel(key):
+    return localization.GetByLabel(key)
+
+
 
 class OverView(form.ActionPanel):
     __guid__ = 'form.OverView'
@@ -22,19 +32,22 @@ class OverView(form.ActionPanel):
      'OnStateSetupChance',
      'OnSessionChanged']
     default_pinned = True
-    default_top = 108
+    default_windowID = 'overview'
     default_height = 300
+    default_open = True
+    default_left = 0
+    default_top = 0
 
+    def __init__(self, **kw):
+        self.cachedColumnNames = {}
+        form.ActionPanel.__init__(self, **kw)
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
     def ApplyAttributes(self, attributes):
         form.ActionPanel.ApplyAttributes(self, attributes)
         self.cursor = uiconst.UICURSOR_HASMENU
-
-
-
-    def default_left(self):
-        dw = uicore.desktop.width
-        (leftpush, rightpush,) = sm.GetService('neocom').GetSideOffset()
-        return dw - 256 - 16 - rightpush
 
 
 
@@ -79,14 +92,20 @@ class OverView(form.ActionPanel):
 
     def OnDestinationSet(self, *etc):
         if self and not self.destroyed:
-            path = sm.GetService('starmap').GetDestinationPath()
             for entry in self.sr.scroll.GetNodes():
-                if entry.panel is None or entry.slimItem is None or entry.slimItem() is None or entry.slimItem().groupID != const.groupStargate:
+                if entry.panel is None or entry.slimItem is None or entry.slimItem() is None:
                     continue
-                if entry.slimItem().jumps[0].locationID in path:
-                    color = (1.0, 1.0, 0.0)
-                else:
-                    color = (1.0, 1.0, 1.0)
+                groupID = entry.slimItem().groupID
+                if groupID not in (const.groupStargate, const.groupStation):
+                    continue
+                color = const.OVERVIEW_NORMAL_COLOR
+                if groupID == const.groupStargate:
+                    path = sm.GetService('starmap').GetDestinationPath()
+                    if entry.slimItem().jumps[0].locationID in path:
+                        color = const.OVERVIEW_AUTO_PILOT_DESTINATION_COLOR
+                elif groupID == const.groupStation:
+                    if entry.slimItem().itemID in sm.GetService('starmap').GetWaypoints():
+                        color = const.OVERVIEW_AUTO_PILOT_DESTINATION_COLOR
                 entry.panel.sr.icon.color.SetRGB(*color)
 
 
@@ -108,18 +127,18 @@ class OverView(form.ActionPanel):
             overviewPreset = settings.user.overview.Get('activeOverviewPreset', None)
             if not overviewPreset:
                 overviewPreset = 'default'
-            tabs.append([mls.UI_GENERIC_DEFAULT,
+            tabs.append([localization.GetByLabel('UI/Generic/Default'),
              self.sr.scroll,
              self,
              (overviewPreset,
               None,
-              mls.UI_GENERIC_DEFAULT,
+              localization.GetByLabel('UI/Generic/Default'),
               0),
              self.sr.scroll])
             if not tabsettings:
                 settings.user.overview.Set('tabsettings', {0: {'overview': overviewPreset,
                      'bracket': None,
-                     'name': mls.UI_GENERIC_DEFAULT}})
+                     'name': localization.GetByLabel('UI/Generic/Default')}})
         else:
             for key in tabsettings.keys():
                 bracketSettings = tabsettings[key].get('bracket', None)
@@ -156,12 +175,12 @@ class OverView(form.ActionPanel):
         isSelected = tab.IsSelected()
         tabName = tab.sr.args[2]
         tabKey = tab.sr.args[3]
-        bracketm.append(('', (mls.UI_CMD_SHOWALLBRACKETS, self.ChangeBracketInTab, (None, isSelected, tabKey))))
+        bracketm.append(('', (localization.GetByLabel('UI/Overview/ShowAllBrackets'), self.ChangeBracketInTab, (None, isSelected, tabKey))))
         for key in presets:
             label = key
             if key == 'ccp_notsaved':
-                overviewm.append(('', (mls.UI_GENERIC_NOTSAVED, self.ChangeOverviewInTab, (key, isSelected, tabKey))))
-                bracketm.append((' ', (mls.UI_GENERIC_NOTSAVED, self.ChangeBracketInTab, (key, isSelected, tabKey))))
+                overviewm.append(('', (localization.GetByLabel('UI/Overview/NotSaved'), self.ChangeOverviewInTab, (key, isSelected, tabKey))))
+                bracketm.append((' ', (localization.GetByLabel('UI/Overview/NotSaved'), self.ChangeBracketInTab, (key, isSelected, tabKey))))
             else:
                 overviewName = sm.GetService('overviewPresetSvc').GetDefaultOverviewName(label)
                 lowerLabel = label.lower()
@@ -172,20 +191,20 @@ class OverView(form.ActionPanel):
                     overviewm.append((lowerLabel, (label, self.ChangeOverviewInTab, (key, isSelected, tabKey))))
                     bracketm.append((lowerLabel, (label, self.ChangeBracketInTab, (key, isSelected, tabKey))))
 
-        overviewm = uiutil.SortListOfTuples(overviewm)
-        bracketm = uiutil.SortListOfTuples(bracketm)
+        overviewm = [ x[1] for x in localizationUtil.Sort(overviewm, key=lambda x: x[0]) ]
+        bracketm = [ x[1] for x in localizationUtil.Sort(bracketm, key=lambda x: x[0]) ]
         ret = []
-        ret.append((mls.UI_CMD_CHANGELABEL, self.ChangeTabName, (tabName, tabKey)))
-        ret.append((mls.UI_CMD_LOAD_OVERVIEW_PROFILE, overviewm))
-        ret.append((mls.UI_CMD_LOAD_BRACKET_PROFILE, bracketm))
-        ret.append((mls.UI_CMD_DELETE_TAB, self.DeleteTab, (tabKey, isSelected)))
-        ret.append((mls.UI_CMD_ADD_TAB, self.AddTab))
+        ret.append((localization.GetByLabel('/Carbon/UI/Controls/ScrollEntries/ChangeLabel'), self.ChangeTabName, (tabName, tabKey)))
+        ret.append((localization.GetByLabel('UI/Overview/LoadOverviewProfile'), overviewm))
+        ret.append((localization.GetByLabel('UI/Overview/LoadBracketProfile'), bracketm))
+        ret.append((localization.GetByLabel('UI/Overview/DeleteTab'), self.DeleteTab, (tabKey, isSelected)))
+        ret.append((localization.GetByLabel('UI/Overview/AddTab'), self.AddTab))
         return ret
 
 
 
     def ChangeTabName(self, tabName, tabKey):
-        ret = uix.NamePopup(mls.UI_CMD_CHANGELABEL, mls.UI_INFLIGHT_TYPELABEL, tabName, maxLength=30)
+        ret = uix.NamePopup(localization.GetByLabel('/Carbon/UI/Controls/ScrollEntries/ChangeLabel'), localization.GetByLabel('UI/Overview/TypeInLabel'), tabName, maxLength=30)
         if not ret:
             return 
         tabsettings = settings.user.overview.Get('tabsettings', {})
@@ -236,7 +255,7 @@ class OverView(form.ActionPanel):
 
 
     def AddTab(self):
-        ret = uix.NamePopup(mls.UI_CMD_ADD_TAB, mls.UI_INFLIGHT_TYPELABEL, maxLength=15)
+        ret = uix.NamePopup(localization.GetByLabel('UI/Overview/AddTab'), localization.GetByLabel('UI/Overview/TypeInLabel'), maxLength=15)
         if not ret:
             return 
         numTabs = 5
@@ -266,16 +285,16 @@ class OverView(form.ActionPanel):
         hicon = self.sr.headerIcon
         hicon.GetMenu = self.GetPresetsMenu
         hicon.expandOnLeft = 1
-        hicon.hint = mls.UI_INFLIGHT_OVERVIEWTYPEPRESETS
+        hicon.hint = localization.GetByLabel('UI/Overview/OverviewTypePresets')
         hicon.name = 'overviewHeaderIcon'
         self.sr.presetMenu = hicon
-        scroll = uicls.Scroll(name='overviewscroll2', align=uiconst.TOALL, parent=self.sr.main, subSortBy=mls.UI_GENERIC_DISTANCE)
+        scroll = uicls.Scroll(name='overviewscroll2', align=uiconst.TOALL, parent=self.sr.main, subSortBy=localization.GetByLabel('UI/Common/Distance'))
         scroll.bumpHeaders = 0
         scroll.slimHeaders = 1
         scroll.ignoreHeaderWidths = 1
         scroll.sr.id = 'overviewscroll2'
         scroll.multiSelect = 0
-        scroll.sr.fixedColumns = {mls.UI_GENERIC_ICON: 24}
+        scroll.sr.fixedColumns = {localization.GetByLabel('UI/Generic/Icon'): 24}
         scroll.OnColumnChanged = self.OnColumnChanged
         scroll.OnSelectionChange = self.OnScrollSelectionChange
         scroll.debug = 0
@@ -363,6 +382,7 @@ class OverView(form.ActionPanel):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateAll(self, flush = 0, sleep = 1):
         if not self or self.destroyed:
             return 
@@ -400,7 +420,7 @@ class OverView(form.ActionPanel):
 
         ignoreSort = sm.StartService('ui').GetOverviewFreezeMode()
         sm.GetService('tactical').LogInfo('Overview - about to load scroll, num entries:', len(scrolllist))
-        self.sr.scroll.Load(contentList=scrolllist, headers=displayColumns, scrollTo=getattr(self, 'cachedScrollPos', 0.0), ignoreSort=ignoreSort, noContentHint=mls.UI_GENERIC_NOTHINGFOUND)
+        self.sr.scroll.Load(contentList=scrolllist, headers=displayColumns, scrollTo=getattr(self, 'cachedScrollPos', 0.0), ignoreSort=ignoreSort, noContentHint=localization.GetByLabel('UI/Common/NothingFound'))
         self.OnStateSetupChance()
         uthread.new(self.UpdateOverview)
 
@@ -474,10 +494,12 @@ class OverView(form.ActionPanel):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateOverview(self, *args):
         self.updateoverview = 1
         if getattr(self, 'updatingOverview', 0):
             return 
+        nothingFound = localization.GetByLabel('UI/Common/NothingFound')
         escapedSortUpdate = 0
         self.updatingOverview = 1
         while not self.destroyed and self.updateoverview:
@@ -488,7 +510,7 @@ class OverView(form.ActionPanel):
             insider = uiutil.IsUnder(uicore.uilib.mouseOver, self)
             if self.destroyed:
                 return 
-            s = blue.os.GetTime(1)
+            s = blue.os.GetWallclockTimeNow()
             if self.sr and uiutil.IsVisible(self.sr.main) and not self.IsCollapsed() and not self.IsMinimized():
                 tactical = sm.GetService('tactical')
                 rm = []
@@ -521,16 +543,16 @@ class OverView(form.ActionPanel):
                             blue.pyos.synchro.Yield()
 
                     if not self.sr.scroll.GetNodes():
-                        uix.TakeTime('tactical::UpdateOverview --> ShowHint 1', self.sr.scroll.ShowHint, mls.UI_GENERIC_NOTHINGFOUND)
+                        uix.TakeTime('tactical::UpdateOverview --> ShowHint 1', self.sr.scroll.ShowHint, nothingFound)
                     else:
                         uix.TakeTime('tactical::UpdateOverview --> ShowHint 2', self.sr.scroll.ShowHint)
                 elif escapedSortUpdate:
                     if not freezeOverview:
                         uix.TakeTime('tactical::UpdateOverview --> RefreshSort', self.sr.scroll.RefreshSort)
                         escapedSortUpdate = False
-            diff = blue.os.TimeDiffInMs(s, blue.os.GetTime(1))
+            diff = blue.os.TimeDiffInMs(s, blue.os.GetWallclockTimeNow())
             sleep = max(500, 2500 - diff)
-            blue.pyos.synchro.Sleep(sleep)
+            blue.pyos.synchro.SleepWallclock(sleep)
             if self.destroyed:
                 return 
 
@@ -538,6 +560,17 @@ class OverView(form.ActionPanel):
 
 
 
+    def GetColumnName(self, name):
+        try:
+            return self.cachedColumnNames[name]
+        except KeyError:
+            columnName = sm.GetService('tactical').GetColumnLabel(name)
+            self.cachedColumnNames[name] = columnName
+            return columnName
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateSortData(self, data, columns):
         refreshSort = 0
         ball = data.ball()
@@ -545,21 +578,20 @@ class OverView(form.ActionPanel):
             return 
         else:
             data.columns = columns
-            ball.GetVectorAt(blue.os.GetTime())
+            ball.GetVectorAt(blue.os.GetSimTime())
             surfaceDist = ball.surfaceDist
             if 'DISTANCE' in columns:
-                mlsDist = mls.UI_GENERIC_DISTANCE
-                currentDist = data.Get('sort_' + mlsDist)
-                currentFmtDist = data.Get('fmt_' + mlsDist, None)
+                localizedDist = self.GetColumnName('DISTANCE')
+                currentFmtDist = data.Get('fmt_' + localizedDist, None)
                 if currentFmtDist:
                     newFmtDist = util.FmtDist(surfaceDist, maxdemicals=1)
                     if currentFmtDist != newFmtDist:
-                        data.Set('sort_' + mlsDist, surfaceDist)
-                        data.Set('fmt_' + mlsDist, newFmtDist)
+                        data.Set('sort_' + localizedDist, surfaceDist)
+                        data.Set('fmt_' + localizedDist, newFmtDist)
                         refreshSort = 1
-                elif surfaceDist != data.Get('sort_' + mlsDist):
-                    data.Set('sort_' + mlsDist, surfaceDist)
-                    data.Set('fmt_' + mlsDist, None)
+                elif surfaceDist != data.Get('sort_' + localizedDist):
+                    data.Set('sort_' + localizedDist, surfaceDist)
+                    data.Set('fmt_' + localizedDist, None)
                     refreshSort = 1
             if data.updateItem and ball.isFree:
                 Memo = util.Memoized
@@ -585,7 +617,7 @@ class OverView(form.ActionPanel):
 
 
                 def _Vel():
-                    return ball.GetVectorDotAt(blue.os.GetTime()).Length()
+                    return ball.GetVectorDotAt(blue.os.GetSimTime()).Length()
 
 
                 Vel = Memo(_Vel)
@@ -613,10 +645,10 @@ class OverView(form.ActionPanel):
                  ('TRANSVERSALVELOCITY', TransVel)]:
                     if name not in columns:
                         continue
-                    mlsStr = getattr(mls, 'UI_GENERIC_' + name)
-                    if func() != data.Get('sort_' + mlsStr):
-                        data.Set('sort_' + mlsStr, func())
-                        data.Set('fmt_' + mlsStr, None)
+                    localizedStr = self.GetColumnName(name)
+                    if func() != data.Get('sort_' + localizedStr):
+                        data.Set('sort_' + localizedStr, func())
+                        data.Set('fmt_' + localizedStr, None)
                         refreshSort = 1
 
             if hasattr(self, 'jammers') and self.jammers.has_key(data.itemID):
@@ -647,6 +679,7 @@ class OverView(form.ActionPanel):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def IncrementEntriesAdded(self, entries):
         entriesAdded = getattr(self, 'entriesAdded', 0)
         entriesToRemove = sm.StartService('tactical').GetOverviewEntriesToRemove()
@@ -693,6 +726,8 @@ class OverView(form.ActionPanel):
     def OnSessionChanged(self, isRemote, session, change):
         if 'solarsystemid' in change and self and not self.dead:
             self.solarsystemHasChanged = True
+        if 'languageID' in change:
+            self.cachedColumnNames = {}
 
 
 
@@ -700,8 +735,14 @@ class OverView(form.ActionPanel):
 class TacticalItem(xtriui.UpdateEntry, listentry.Generic):
     __guid__ = 'listentry.TacticalItem'
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def Startup(self, *args):
-        self.sr.label = uicls.Label(text='', parent=self, left=8, top=0, state=uiconst.UI_DISABLED, color=None, singleline=1, align=uiconst.CENTERLEFT)
+        useSmallText = settings.user.overview.Get('useSmallText', 0)
+        if useSmallText:
+            labelClass = uicls.EveLabelSmall
+        else:
+            labelClass = uicls.EveLabelMedium
+        self.sr.label = labelClass(text='', parent=self, left=8, top=0, state=uiconst.UI_DISABLED, color=None, singleline=1, align=uiconst.CENTERLEFT)
         self.sr.label.cached = 1
         uicls.Line(parent=self, align=uiconst.TOBOTTOM)
         self.sr.icon = uicls.Icon(parent=self, idx=0, name='typeicon', state=uiconst.UI_DISABLED, align=uiconst.RELATIVE, top=1)
@@ -718,45 +759,51 @@ class TacticalItem(xtriui.UpdateEntry, listentry.Generic):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateLabel(self):
-        newLabel = ''
+        newLabel = []
         for column in self.sr.node.columns:
             if column == 'DISTANCE':
-                if not self.sr.node.Get('fmt_' + mls.UI_GENERIC_DISTANCE):
-                    self.sr.node.Set('fmt_' + mls.UI_GENERIC_DISTANCE, util.FmtDist(self.sr.node.Get('sort_' + mls.UI_GENERIC_DISTANCE), maxdemicals=1))
-                newLabel += '<right>' + self.sr.node.Get('fmt_' + mls.UI_GENERIC_DISTANCE) + '<t>'
+                formatLabel = 'fmt_' + GetCacheByLabel('UI/Common/Distance')
+                if not self.sr.node.Get(formatLabel):
+                    formattedDist = util.FmtDist(self.sr.node.Get('sort_' + GetCacheByLabel('UI/Common/Distance')), maxdemicals=1)
+                    self.sr.node.Set(formatLabel, formattedDist)
+                newLabel.append('<right>' + self.sr.node.Get(formatLabel))
             elif column == 'ANGULARVELOCITY':
-                tr = getattr(mls, 'UI_GENERIC_' + column)
+                tr = GetCacheByLabel('UI/Generic/AngularVelocity')
                 if not self.sr.node.Get('fmt_' + tr):
                     d = self.sr.node.Get('sort_' + tr)
                     if d:
-                        fmtd = '%.7f %s' % (d, cfg.dgmunits.Get(112).displayName)
-                        if fmtd:
-                            self.sr.node.Set('fmt_' + tr, fmtd)
-                newLabel += (self.sr.node.Get('fmt_' + tr) or '') + '<t>'
+                        fmtd = localization.GetByLabel('UI/Overview/AngularVelocityValue', value=d)
+                        self.sr.node.Set('fmt_' + tr, fmtd)
+                newLabel.append(self.sr.node.Get('fmt_' + tr) or '')
             elif column in ('VELOCITY', 'RADIALVELOCITY', 'TRANSVERSALVELOCITY'):
-                tr = getattr(mls, 'UI_GENERIC_' + column)
+                columnMap = {'VELOCITY': GetCacheByLabel('UI/Overview/Velocity'),
+                 'RADIALVELOCITY': GetCacheByLabel('UI/Overview/RadialVelocity'),
+                 'TRANSVERSALVELOCITY': GetCacheByLabel('UI/Overview/TraversalVelocity')}
+                tr = columnMap[column]
                 if not self.sr.node.Get('fmt_' + tr):
                     d = self.sr.node.Get('sort_' + tr)
                     if d:
-                        fmtd = '%s %s' % (util.FmtAmt(d), mls.UI_GENERIC_MPERS)
-                        if fmtd:
-                            self.sr.node.Set('fmt_' + tr, fmtd)
-                newLabel += (self.sr.node.Get('fmt_' + tr) or '') + '<t>'
+                        fmtd = localization.GetByLabel('UI/Overview/GeneralVelocityValue', velocity=util.FmtAmt(d))
+                        self.sr.node.Set('fmt_' + tr, fmtd)
+                newLabel.append(self.sr.node.Get('fmt_' + tr) or '')
             else:
-                newLabel += (self.sr.node.Get(column) or '') + '<t>'
+                newLabel.append(self.sr.node.Get(column) or '')
 
-        self.SetLabel(newLabel[:-3])
+        self.SetLabel('<t>'.join(newLabel))
         uthread.new(self.UpdateHint_thread)
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateHint_thread(self):
         if util.GetAttrs(self, 'sr', 'node') is not None and not self.destroyed:
             self.hint = sm.GetService('bracket').GetBracketName(self.sr.node.itemID)
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateEwar(self):
         ewarState = self.sr.node.Get('ewar', {})
         left = 0
@@ -782,6 +829,7 @@ class TacticalItem(xtriui.UpdateEntry, listentry.Generic):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def SetLabel(self, label):
         if self.sr.label.text != label or self.sr.node.label != label:
             self.sr.node.label = label
@@ -789,6 +837,7 @@ class TacticalItem(xtriui.UpdateEntry, listentry.Generic):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def Load(self, node, updateLoad = 0):
         self.hint = sm.GetService('bracket').GetBracketName(self.sr.node.itemID)
         self.itemID = self.sr.node.itemID
@@ -805,17 +854,24 @@ class TacticalItem(xtriui.UpdateEntry, listentry.Generic):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def GetHeight(_self, *args):
         (node, width,) = args
-        node.height = uix.GetTextHeight('Aj', autoWidth=1, singleLine=1) + 4
+        useSmallText = settings.user.overview.Get('useSmallText', 0)
+        if useSmallText:
+            fontsize = fontConst.EVE_SMALL_FONTSIZE
+        else:
+            fontsize = fontConst.EVE_SMALL_FONTSIZE
+        node.height = uix.GetTextHeight('Aj', singleLine=1, fontsize=fontsize) + 6
         return node.height
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def GetIconLeft(self, target = 0):
         offset = 2
-        if mls.UI_GENERIC_ICON in self.sr.node.scroll.sr.widthToHeaders:
-            ret = max(3, self.sr.node.scroll.sr.widthToHeaders[mls.UI_GENERIC_ICON] + offset)
+        if localization.GetByLabel('UI/Generic/Icon') in self.sr.node.scroll.sr.widthToHeaders:
+            ret = max(3, self.sr.node.scroll.sr.widthToHeaders[localization.GetByLabel('UI/Generic/Icon')] + offset)
         else:
             ret = 5
         if not target:
@@ -824,6 +880,7 @@ class TacticalItem(xtriui.UpdateEntry, listentry.Generic):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateIcon(self):
         if 'ICON' in self.sr.node.columns:
             self.sr.icon.left = self.GetIconLeft()
@@ -839,6 +896,7 @@ class TacticalItem(xtriui.UpdateEntry, listentry.Generic):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def Targeting(self, state):
         self.ClearTargetStates()
         if state and self.sr.icon.state != uiconst.UI_HIDDEN:
@@ -869,7 +927,7 @@ class TacticalItem(xtriui.UpdateEntry, listentry.Generic):
             p = par.children[0]
             for i in xrange(5):
                 p.left = p.top = p.width = p.height = i
-                blue.pyos.synchro.Sleep(50)
+                blue.pyos.synchro.SleepSim(50)
 
 
 
@@ -980,6 +1038,7 @@ class BaseTacticalEntry(listentry.Generic):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def Load(self, node):
         data = node
         (selected,) = sm.GetService('state').GetStates(data.itemID, [state.selected])
@@ -1134,7 +1193,7 @@ class BaseTacticalEntry(listentry.Generic):
         for each in ('SHIELD', 'ARMOR', 'STRUCT'):
             g = uicls.Container(name=each, align=uiconst.TOTOP, width=64, height=9, left=-2)
             uicls.Container(name='push', parent=g, align=uiconst.TOBOTTOM, height=2)
-            uicls.Label(text=each[:2], parent=g, left=68, top=-1, width=64, height=12, state=uiconst.UI_DISABLED, fontsize=9, letterspace=1, autoheight=False, autowidth=False)
+            uicls.EveLabelSmall(text=each[:2], parent=g, left=68, top=-1, width=64, height=12, state=uiconst.UI_DISABLED)
             g.name = 'gauge_%s' % each.lower()
             uicls.Line(parent=g, align=uiconst.TOTOP)
             uicls.Line(parent=g, align=uiconst.TOBOTTOM)
@@ -1157,13 +1216,14 @@ class BaseTacticalEntry(listentry.Generic):
 class OverviewSettings(uicls.Window):
     __guid__ = 'form.OverviewSettings'
     __notifyevents__ = ['OnTacticalPresetChange', 'OnOverviewPresetSaved']
+    default_windowID = 'overviewsettings'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.currentKey = None
         self.specialGroups = util.GetNPCGroups()
         self.scope = 'inflight'
-        self.SetCaption(mls.UI_INFLIGHT_OVERVIEWSETTINGS)
+        self.SetCaption(localization.GetByLabel('UI/Overview/OverviewSettings'))
         self.minWidth = 300
         self.minHeight = 250
         self.SetWndIcon()
@@ -1175,19 +1235,20 @@ class OverviewSettings(uicls.Window):
         settingsIcon.hint = ''
         self.SetTopparentHeight(0)
         self.sr.main = uiutil.GetChild(self, 'main')
-        statetop = uicls.Container(name='statetop', parent=self.sr.main, align=uiconst.TOTOP, height=100)
-        cb = uicls.Checkbox(text=mls.UI_INFLIGHT_APPLYTOSHIPS, parent=statetop, configName='applyOnlyToShips', retval=None, checked=settings.user.overview.Get('applyOnlyToShips', 1), groupname=None, callback=self.CheckBoxChange, prefstype=('user', 'overview'), align=uiconst.TOPLEFT, pos=(9, 50, 260, 16))
+        statetop = uicls.Container(name='statetop', parent=self.sr.main, align=uiconst.TOTOP, height=120)
+        cb = uicls.Checkbox(text=localization.GetByLabel('UI/Overview/ApplyToShipsAndDronesOnly'), parent=statetop, configName='applyOnlyToShips', retval=None, checked=settings.user.overview.Get('applyOnlyToShips', 1), groupname=None, callback=self.CheckBoxChange, prefstype=('user', 'overview'), align=uiconst.TOPLEFT, pos=(9, 50, 260, 16))
         self.sr.applyOnlyToShips = cb
-        cb = uicls.Checkbox(text=mls.UI_INFLIGHT_USESMALLCOLORTAGS, parent=statetop, configName='useSmallColorTags', retval=None, checked=settings.user.overview.Get('useSmallColorTags', 0), groupname=None, callback=self.CheckBoxChange, prefstype=('user', 'overview'), align=uiconst.TOPLEFT, pos=(9, 66, 260, 16))
+        cb = uicls.Checkbox(text=localization.GetByLabel('UI/Overview/UseSmallColortags'), parent=statetop, configName='useSmallColorTags', retval=None, checked=settings.user.overview.Get('useSmallColorTags', 0), groupname=None, callback=self.CheckBoxChange, prefstype=('user', 'overview'), align=uiconst.TOPLEFT, pos=(9, 66, 260, 16))
         self.sr.useSmallColorTags = cb
-        uicls.Label(text=mls.UI_INFLIGHT_OVERVIEWHINT1, parent=statetop, align=uiconst.TOTOP, padding=(10, 7, 10, 12), state=uiconst.UI_NORMAL)
-        statebtns = uicls.ButtonGroup(btns=[[mls.UI_GENERIC_RESETALL,
+        self.sr.useSmallText = uicls.Checkbox(text=localization.GetByLabel('UI/Overview/UseSmallFont'), parent=statetop, configName='useSmallText', retval=None, checked=settings.user.overview.Get('useSmallText', 0), callback=self.CheckBoxChange, prefstype=('user', 'overview'), align=uiconst.TOPLEFT, pos=(9, 82, 260, 16))
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/Overview/HintToggleDisplayState'), parent=statetop, align=uiconst.TOTOP, padding=(10, 3, 10, 12), state=uiconst.UI_NORMAL)
+        statebtns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Commands/ResetAll'),
           self.ResetStateSettings,
           (),
           None]], parent=self.sr.main, idx=0)
-        coltop = uicls.Container(name='coltop', parent=self.sr.main, align=uiconst.TOTOP, height=40)
-        uicls.Label(text=mls.UI_INFLIGHT_OVERVIEWHINT2, parent=coltop, align=uiconst.TOTOP, padding=(10, 7, 10, 12), state=uiconst.UI_NORMAL)
-        colbtns = uicls.ButtonGroup(btns=[[mls.UI_INFLIGHT_RESETCOLUMNS,
+        coltop = uicls.Container(name='coltop', parent=self.sr.main, align=uiconst.TOTOP, height=52)
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/Overview/HintToggleDisplayStateAndOrder'), parent=coltop, align=uiconst.TOTOP, padding=(10, 3, 10, 12), state=uiconst.UI_NORMAL)
+        colbtns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Overview/ResetColumns'),
           self.ResetColumns,
           (),
           None]], parent=self.sr.main, idx=0)
@@ -1200,19 +1261,19 @@ class OverviewSettings(uicls.Window):
         presetMenu.top = 10
         presetMenu.hint = ''
         shiptop.children.append(presetMenu)
-        cb = uicls.Checkbox(text=mls.UI_INFLIGHT_OVERVIEWHINT3, parent=shiptop, configName='hideCorpTicker', retval=None, checked=settings.user.overview.Get('hideCorpTicker', 0), groupname=None, callback=self.CheckBoxChange, prefstype=('user', 'overview'), align=uiconst.TOTOP, pos=(0, 30, 0, 16))
+        cb = uicls.Checkbox(text=localization.GetByLabel('UI/Overview/HideTickerIfInAlliance'), parent=shiptop, configName='hideCorpTicker', retval=None, checked=settings.user.overview.Get('hideCorpTicker', 0), groupname=None, callback=self.CheckBoxChange, prefstype=('user', 'overview'), align=uiconst.TOTOP, pos=(0, 30, 0, 16))
         cb.padLeft = 8
         self.sr.applyOnlyToShips = cb
-        overviewtabbtns = uicls.ButtonGroup(btns=[[mls.UI_CMD_APPLY,
+        overviewtabbtns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Commands/Apply'),
           self.UpdateOverviewTab,
           (),
           None]], parent=self.sr.main, idx=0)
         misctop = uicls.Container(name='misctop', parent=self.sr.main, align=uiconst.TOALL, left=const.defaultPadding, width=const.defaultPadding, top=const.defaultPadding)
-        overviewBroadcastsToTop = uicls.Checkbox(text=mls.UI_INFLIGHT_OVERVIEW_BROADCASTS_TO_TOP, parent=misctop, configName='overviewBroadcastsToTop', retval=None, checked=settings.user.overview.Get('overviewBroadcastsToTop', 0), groupname=None, prefstype=('user', 'overview'), align=uiconst.TOPLEFT, pos=(const.defaultPadding,
+        overviewBroadcastsToTop = uicls.Checkbox(text=localization.GetByLabel('UI/Overview/MoveBroadcastersToTop'), parent=misctop, configName='overviewBroadcastsToTop', retval=None, checked=settings.user.overview.Get('overviewBroadcastsToTop', 0), groupname=None, prefstype=('user', 'overview'), align=uiconst.TOPLEFT, pos=(const.defaultPadding,
          0,
          260,
          0))
-        uicls.Button(parent=misctop, label=mls.UI_INFLIGHT_RESETOVERVIEW, func=self.ResetAllOverviewSettings, pos=(const.defaultPadding,
+        uicls.Button(parent=misctop, label=localization.GetByLabel('UI/Overview/ResetOverview'), func=self.ResetAllOverviewSettings, pos=(const.defaultPadding,
          overviewBroadcastsToTop.height + const.defaultPadding,
          0,
          0))
@@ -1221,12 +1282,12 @@ class OverviewSettings(uicls.Window):
         comboOptions = []
         comboOptions.append([' ', None])
         overviewOptions = [(' ', [' ', None])]
-        bracketOptions = [('  ', [mls.UI_CMD_SHOWALLBRACKETS, None])]
+        bracketOptions = [('  ', [localization.GetByLabel('UI/Overview/ShowAllBrackets'), None])]
         presets = settings.user.overview.Get('overviewPresets', {})
         for label in presets.keys():
             if label == 'ccp_notsaved':
-                overviewOptions.append(('  ', [mls.UI_GENERIC_NOTSAVED, label]))
-                bracketOptions.append(('   ', [mls.UI_GENERIC_NOTSAVED, label]))
+                overviewOptions.append(('  ', [localization.GetByLabel('UI/Overview/NotSaved'), label]))
+                bracketOptions.append(('   ', [localization.GetByLabel('UI/Overview/NotSaved'), label]))
             else:
                 overviewName = sm.GetService('overviewPresetSvc').GetDefaultOverviewName(label)
                 lowerLabel = label.lower()
@@ -1237,13 +1298,13 @@ class OverviewSettings(uicls.Window):
                     overviewOptions.append((lowerLabel, [label, label]))
                     bracketOptions.append((lowerLabel, [label, label]))
 
-        overviewOptions = uiutil.SortListOfTuples(overviewOptions)
-        bracketOptions = uiutil.SortListOfTuples(bracketOptions)
-        top = 30
+        overviewOptions = [ x[1] for x in localizationUtil.Sort(overviewOptions, key=lambda x: x[0]) ]
+        bracketOptions = [ x[1] for x in localizationUtil.Sort(bracketOptions, key=lambda x: x[0]) ]
+        top = 18
         offset = 6
         topOffset = 6
-        widthOverview = uix.GetTextWidth(mls.UI_INFLIGHT_OVERVIEWPROFILE, 11, uppercase=1, hspace=1)
-        widthBracket = uix.GetTextWidth(mls.UI_INFLIGHT_BRACKETPROFILE, 11, uppercase=1, hspace=1)
+        widthOverview = uix.GetTextWidth(localization.GetByLabel('UI/Overview/OverviewProfile'), 11, uppercase=1, hspace=1)
+        widthBracket = uix.GetTextWidth(localization.GetByLabel('UI/Overview/BracketProfile'), 11, uppercase=1, hspace=1)
         widthText = 150
         self.tabedit = {}
         self.comboTabOverview = {}
@@ -1278,29 +1339,29 @@ class OverviewSettings(uicls.Window):
             top += topOffset + tabedit.height
 
         left = 6
-        top = 10
-        uicls.Label(text=mls.UI_INFLIGHT_TAB_NAME, parent=overviewtabtop, left=left, top=top, fontsize=12, state=uiconst.UI_DISABLED, color=None, singleline=1, uppercase=1)
+        top = 4
+        uicls.EveLabelSmall(text=localization.GetByLabel('UI/Overview/TabName'), parent=overviewtabtop, left=left, top=top, state=uiconst.UI_DISABLED, color=None, singleline=1)
         left += tabedit.width + offset
-        uicls.Label(text=mls.UI_INFLIGHT_OVERVIEWPROFILE, parent=overviewtabtop, left=left, top=top, fontsize=12, state=uiconst.UI_DISABLED, color=None, singleline=1, uppercase=1)
+        uicls.EveLabelSmall(text=localization.GetByLabel('UI/Overview/OverviewProfile'), parent=overviewtabtop, left=left, top=top, state=uiconst.UI_DISABLED, color=None, singleline=1)
         left += comboTabOverview.width + offset
-        uicls.Label(text=mls.UI_INFLIGHT_BRACKETPROFILE, parent=overviewtabtop, left=left, top=top, fontsize=12, state=uiconst.UI_DISABLED, color=None, singleline=1, uppercase=1)
+        uicls.EveLabelSmall(text=localization.GetByLabel('UI/Overview/BracketProfile'), parent=overviewtabtop, left=left, top=top, state=uiconst.UI_DISABLED, color=None, singleline=1)
         left = 6
         top = 30
-        btns = uicls.ButtonGroup(btns=[[mls.UI_CMD_SELECTALL,
+        btns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Common/SelectAll'),
           self.SelectAll,
           (),
-          None], [mls.UI_CMD_DESELECTALL,
+          None], [localization.GetByLabel('UI/Common/DeselectAll'),
           self.DeselectAll,
           (),
           None]], parent=self.sr.main, idx=0)
-        uicls.Label(text=mls.UI_INFLIGHT_PRESETS, parent=filtertop, width=200, left=14, top=6, fontsize=9, letterspace=2, uppercase=1)
+        uicls.EveLabelSmall(text=localization.GetByLabel('UI/Overview/Presets'), parent=filtertop, width=200, left=14, top=6)
         acs = settings.user.overview.Get('activeOverviewPreset', 'default')
         overviewName = sm.GetService('overviewPresetSvc').GetDefaultOverviewName(acs)
         if overviewName is not None:
             acs = overviewName
         if acs == 'ccp_notsaved':
-            acs = mls.UI_GENERIC_NOTSAVED
-        self.sr.presetText = uicls.Label(text=acs, parent=filtertop, width=200, left=14, top=21, fontsize=9, letterspace=2, uppercase=1)
+            acs = localization.GetByLabel('UI/Overview/NotSaved')
+        self.sr.presetText = uicls.EveLabelSmall(text=acs, parent=filtertop, width=200, left=14, top=21)
         self.sr.scroll = uicls.Scroll(name='scroll', parent=self.sr.main, padding=(const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding,
@@ -1310,53 +1371,56 @@ class OverviewSettings(uicls.Window):
         self.sr.scroll.sr.content.OnDropData = self.MoveStuff
         self.Maximize()
         self.state = uiconst.UI_NORMAL
-        self.sr.statetabs = uicls.TabGroup(name='overviewstatesTab', height=18, align=uiconst.TOBOTTOM, parent=statetop, idx=0, tabs=[[mls.UI_GENERIC_COLORTAG,
+        stateTabs = [[localization.GetByLabel('UI/Overview/Colortag'),
           statebtns,
           self,
-          'flag'], [mls.UI_GENERIC_BACKGROUND,
+          'flag'], [localization.GetByLabel('UI/Overview/Background'),
           statebtns,
           self,
-          'background'], [mls.UI_GENERIC_EWAR,
+          'background'], [localization.GetByLabel('UI/Overview/EWAR'),
           None,
           self,
-          'smartFilters']], groupID='overviewstatesTab', autoselecttab=0)
-        self.sr.filtertabs = uicls.TabGroup(name='overviewstatesTab', height=18, align=uiconst.TOBOTTOM, parent=filtertop, tabs=[[mls.UI_GENERIC_TYPES,
+          'smartFilters']]
+        self.sr.statetabs = uicls.TabGroup(name='overviewstatesTab', height=18, align=uiconst.TOBOTTOM, parent=statetop, idx=0, tabs=stateTabs, groupID='overviewstatesTab', autoselecttab=0)
+        filterTabs = [[localization.GetByLabel('UI/Generic/Types'),
           btns,
           self,
-          'filtertypes'], [mls.UI_GENERIC_STATES,
+          'filtertypes'], [localization.GetByLabel('UI/Generic/States'),
           None,
           self,
-          'filterstates']], groupID='overviewfilterTab', autoselecttab=0)
-        self.sr.tabs = uicls.TabGroup(name='overviewsettingsTab', height=18, align=uiconst.TOTOP, parent=self.sr.main, idx=0, tabs=[[mls.UI_GENERIC_FILTERS,
+          'filterstates']]
+        self.sr.filtertabs = uicls.TabGroup(name='overviewstatesTab', height=18, align=uiconst.TOBOTTOM, parent=filtertop, tabs=filterTabs, groupID='overviewfilterTab', autoselecttab=0)
+        settingsTabs = [[localization.GetByLabel('UI/Generic/Filters'),
           btns,
           self,
           'filters',
           filtertop],
-         [mls.UI_GENERIC_APPEARANCE,
+         [localization.GetByLabel('UI/Generic/Appearance'),
           statebtns,
           self,
           'appearance',
           statetop],
-         [mls.UI_GENERIC_COLUMNS,
+         [localization.GetByLabel('UI/Generic/Columns'),
           colbtns,
           self,
           'columns',
           coltop],
-         [mls.UI_GENERIC_SHIPS,
+         [localization.GetByLabel('UI/Common/ItemTypes/Ships'),
           [],
           self,
           'ships',
           shiptop],
-         [mls.UI_GENERIC_MISC,
+         [localization.GetByLabel('UI/Generic/Misc'),
           [],
           self,
           'misc',
           misctop],
-         [mls.UI_GENERIC_OVERVIEW_TABS,
+         [localization.GetByLabel('UI/Overview/OverviewTabs'),
           overviewtabbtns,
           self,
           'overviewTabs',
-          overviewtabtop]], groupID='overviewsettingsTab', UIIDPrefix='overviewSettingsTab')
+          overviewtabtop]]
+        self.sr.tabs = uicls.TabGroup(name='overviewsettingsTab', height=18, align=uiconst.TOTOP, parent=self.sr.main, idx=0, tabs=settingsTabs, groupID='overviewsettingsTab', UIIDPrefix='overviewSettingsTab')
         self.sr.statetabs.align = uiconst.TOBOTTOM
         self.ResetMinSize()
 
@@ -1379,7 +1443,7 @@ class OverviewSettings(uicls.Window):
         if overviewName is not None:
             label = overviewName
         if label == 'ccp_notsaved':
-            label = mls.UI_GENERIC_NOTSAVED
+            label = localization.GetByLabel('UI/Overview/NotSaved')
         self.sr.presetText.text = label
         if uiutil.IsVisible(self.sr.filtertabs) and self.sr.filtertabs.GetSelectedArgs() in ('filtertypes', 'filterstates'):
             self.sr.filtertabs.ReloadVisible()
@@ -1388,13 +1452,13 @@ class OverviewSettings(uicls.Window):
 
     def OnOverviewPresetSaved(self):
         overviewOptions = [(' ', [' ', None])]
-        bracketOptions = [(' ', [' ', ' '], [mls.UI_CMD_SHOWALLBRACKETS, None])]
+        bracketOptions = [(' ', [' ', ' '], [localization.GetByLabel('UI/Overview/ShowAllBrackets'), None])]
         tabsettings = settings.user.overview.Get('tabsettings', {})
         presets = settings.user.overview.Get('overviewPresets', {})
         for label in presets.keys():
             if label == 'ccp_notsaved':
-                overviewOptions.append(('  ', [mls.UI_GENERIC_NOTSAVED, label]))
-                bracketOptions.append(('  ', [mls.UI_GENERIC_NOTSAVED, label]))
+                overviewOptions.append(('  ', [localization.GetByLabel('UI/Overview/NotSaved'), label]))
+                bracketOptions.append(('  ', [localization.GetByLabel('UI/Overview/NotSaved'), label]))
             else:
                 overviewName = sm.GetService('overviewPresetSvc').GetDefaultOverviewName(label)
                 lowerLabel = label.lower()
@@ -1405,8 +1469,8 @@ class OverviewSettings(uicls.Window):
                     overviewOptions.append((lowerLabel, [label, label]))
                     bracketOptions.append((lowerLabel, [label, label]))
 
-        overviewOptions = uiutil.SortListOfTuples(overviewOptions)
-        bracketOptions = uiutil.SortListOfTuples(bracketOptions)
+        overviewOptions = [ x[1] for x in localizationUtil.Sort(overviewOptions, key=lambda x: x[0]) ]
+        bracketOptions = [ x[1] for x in localizationUtil.Sort(bracketOptions, key=lambda x: x[0]) ]
         for i in range(5):
             comboTabOverviewVal = None
             comboTabBracketVal = None
@@ -1433,7 +1497,7 @@ class OverviewSettings(uicls.Window):
                 settings.user.overview.Delete(key)
 
             sm.StartService('tactical').PrimePreset()
-            overviewWindow = sm.StartService('window').GetWindow('overview')
+            overviewWindow = form.OverView.GetIfOpen()
             if overviewWindow:
                 newTabs = settings.user.overview.Get('tabsettings', {})
                 overviewWindow.OnOverviewTabChanged(newTabs, oldTabs)
@@ -1442,7 +1506,7 @@ class OverviewSettings(uicls.Window):
             stateSvc.ResetColors()
             default = sm.GetService('overviewPresetSvc').GetDefaultOverviewGroups('default')
             settings.user.overview.Set('overviewPresets', {'default': default})
-            self.CloseX()
+            self.CloseByUser()
 
 
 
@@ -1499,7 +1563,7 @@ class OverviewSettings(uicls.Window):
 
 
     def GetShipLabelMenu(self):
-        return [('%s [CC]' % mls.UI_GENERIC_PILOT, self.SetDefaultShipLabel, ('default',)), ('%s [CC,AA]' % mls.UI_GENERIC_PILOT, self.SetDefaultShipLabel, ('ally',)), ('[CC] %s &lt;AA&gt;' % mls.UI_GENERIC_PILOT, self.SetDefaultShipLabel, ('corpally',))]
+        return [(localization.GetByLabel('UI/Overview/ShipLabelFormatPilotCC'), self.SetDefaultShipLabel, ('default',)), (localization.GetByLabel('UI/Overview/ShipLabelFormatPilotCCAA'), self.SetDefaultShipLabel, ('ally',)), (localization.GetByLabel('UI/Overview/ShipLabelFormatCCPilotAA'), self.SetDefaultShipLabel, ('corpally',))]
 
 
 
@@ -1551,9 +1615,9 @@ class OverviewSettings(uicls.Window):
             data.flag = flag
             data.hint = props[3]
             data.OnChange = self.CheckBoxChange
-            scrolllist.append((props[0].lower(), listentry.Get('FlagEntry', data=data)))
+            scrolllist.append(listentry.Get('FlagEntry', data=data))
 
-        scrolllist = uiutil.SortListOfTuples(scrolllist)
+        scrolllist = localizationUtil.Sort(scrolllist, key=lambda x: x.label)
         self.sr.scroll.Load(contentList=scrolllist, scrollTo=getattr(self, 'cachedScrollPos', 0.0))
 
 
@@ -1610,14 +1674,14 @@ class OverviewSettings(uicls.Window):
         allLabels = sm.GetService('state').GetAllShipLabels()
         self.sr.applyOnlyToShips.SetChecked(sm.GetService('state').GetHideCorpTicker())
         hints = {None: '',
-         'corporation': mls.UI_CORP_CORPTICKER,
-         'alliance': mls.UI_SHARED_ALLIANCE_TICKER,
-         'pilot name': mls.UI_SHARED_PILOTNAME,
-         'ship name': mls.UI_SHARED_SHIPNAME,
-         'ship type': mls.UI_SHARED_SHIPTYPE}
-        comments = {None: mls.UI_INFLIGHT_STATETXT25,
-         'corporation': mls.UI_INFLIGHT_STATETXT26,
-         'alliance': mls.UI_INFLIGHT_STATETXT27}
+         'corporation': localization.GetByLabel('UI/Common/CorpTicker'),
+         'alliance': localization.GetByLabel('UI/Shared/AllianceTicker'),
+         'pilot name': localization.GetByLabel('UI/Common/PilotName'),
+         'ship name': localization.GetByLabel('UI/Common/ShipName'),
+         'ship type': localization.GetByLabel('UI/Common/ShipType')}
+        comments = {None: localization.GetByLabel('UI/Overview/AdditionalTextForCorpTicker'),
+         'corporation': localization.GetByLabel('UI/Overview/OnlyShownForPlayerCorps'),
+         'alliance': localization.GetByLabel('UI/Overview/OnlyShownWhenAvailable')}
         newlabels = [ label for label in allLabels if label['type'] not in [ alabel['type'] for alabel in shipLabels ] ]
         shipLabels += newlabels
         scrolllist = []
@@ -1636,6 +1700,16 @@ class OverviewSettings(uicls.Window):
             scrolllist.append(listentry.Get('ShipEntry', data=data))
 
         self.sr.scroll.Load(contentList=scrolllist, scrollTo=getattr(self, 'cachedScrollPos', 0.0))
+        maxLeft = 140
+        for shipEntry in self.sr.scroll.GetNodes():
+            if shipEntry.panel:
+                postLeft = shipEntry.panel.sr.label.left + shipEntry.panel.sr.label.textwidth + 4
+                maxLeft = max(maxLeft, postLeft)
+
+        for shipEntry in self.sr.scroll.GetNodes():
+            if shipEntry.panel:
+                shipEntry.panel.postCont.left = maxLeft
+
 
 
 
@@ -1694,7 +1768,7 @@ class OverviewSettings(uicls.Window):
         scrolllist = []
         for label in userSetOrder:
             data = util.KeyVal()
-            data.label = getattr(mls, 'UI_GENERIC_' + label, label)
+            data.label = sm.GetService('tactical').GetColumnLabel(label)
             data.checked = label in userSet
             data.cfgname = 'columns'
             data.retval = label
@@ -1749,7 +1823,7 @@ class OverviewSettings(uicls.Window):
 
 
     def GetSubFolderMenu(self, node):
-        m = [None, (mls.UI_CMD_SELECTALL, self.SelectGroup, (node, True)), (mls.UI_CMD_DESELECTALL, self.SelectGroup, (node, False))]
+        m = [None, (localization.GetByLabel('UI/Common/SelectAll'), self.SelectGroup, (node, True)), (localization.GetByLabel('UI/Common/DeselectAll'), self.SelectGroup, (node, False))]
         return m
 
 
@@ -1835,6 +1909,12 @@ class OverviewSettings(uicls.Window):
             elif config == 'hideCorpTicker':
                 sm.GetService('bracket').UpdateLabels()
             elif config == 'useSmallColorTags':
+                sm.GetService('state').NotifyOnStateSetupChance('filter')
+            elif config == 'useSmallText':
+                if checkbox.checked:
+                    settings.user.overview.Set('useSmallText', 1)
+                else:
+                    settings.user.overview.Set('useSmallText', 0)
                 sm.GetService('state').NotifyOnStateSetupChance('filter')
         if checkbox.data.has_key('key'):
             key = checkbox.data['key']
@@ -2010,13 +2090,12 @@ class FlagEntry(DraggableOverviewEntry):
     def GetMenu(self):
         colors = sm.GetService('state').GetStateColors()
         m = []
-        for (colorName, color,) in colors.iteritems():
-            colorName = mls.GetLabelIfExists('UI_GENERIC_COLOR%s' % colorName.upper()) or colorName
-            m.append((colorName, self.ChangeColor, (color,)))
+        for (color, localizedName,) in colors.itervalues():
+            m.append((localization.GetByLabel(localizedName), self.ChangeColor, (color,)))
 
         if self.sr.node.cfgname in ('flag', 'background'):
             m.append(None)
-            m.append((mls.UI_SHARED_TOGGLEBLINK, self.ToggleBlink))
+            m.append((localization.GetByLabel('UI/Overview/ToggleBlink'), self.ToggleBlink))
         return m
 
 
@@ -2046,9 +2125,10 @@ class ShipEntry(DraggableOverviewEntry):
         diode.OnClick = self.ClickDiode
         self.sr.preEdit = uicls.SinglelineEdit(name='edit', parent=self, align=uiconst.TOPLEFT, pos=(32, 0, 20, 0))
         self.sr.preEdit.OnChange = self.OnPreChange
-        self.sr.postEdit = uicls.SinglelineEdit(name='edit', parent=self, align=uiconst.TOPLEFT, pos=(132, 0, 20, 0))
+        self.postCont = uicls.Container(parent=self, align=uiconst.TOALL, pos=(140, 0, 20, 0))
+        self.sr.postEdit = uicls.SinglelineEdit(name='edit', parent=self.postCont, align=uiconst.TOPLEFT, pos=(0, 0, 20, 0))
         self.sr.postEdit.OnChange = self.OnPostChange
-        self.sr.comment = uicls.Label(text='', parent=self, left=160, top=2, state=uiconst.UI_DISABLED)
+        self.sr.comment = uicls.EveLabelMedium(text='', parent=self.postCont, left=28, top=2, state=uiconst.UI_DISABLED)
 
 
 

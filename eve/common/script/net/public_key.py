@@ -3,7 +3,7 @@ if boot.GetValue('cryptoPack', 'Placebo') == 'CryptoAPI':
     import blue
     import blue.crypto
     import macho
-    public = blue.marshal.Load(binascii.a2b_hex('7e0000000013540602000000a40000525341310002000001000100cb53052617d2ef7fadc4682af3f7a37f0beb06ecacbba646101addb2402330a628a4aa5bfa9e1b8a26b68559f134f8be530598b58fbf82a7e2280c0ed69404d8'))
+    public = blue.marshal.Load(binascii.a2b_hex('7e0000000013540602000000a40000525341310002000001000100654d236038223e245f8d01269b5c9e6636333756f7977ce4a7f06f344d52ca840fba60bb76cf77d1ec5dfd3dbec37b5f3a4c8c7f87a8b7433b6c69f9d45afec5'))
     key = blue.crypto.CryptImportKey(macho.GetCryptoContext(), public, None, 0)
     version = macho.CryptoHash(public)
     exports = {'macho.publicKey': key,

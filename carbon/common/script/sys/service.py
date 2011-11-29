@@ -355,7 +355,10 @@ class CallWrapper():
                  eorr,
                  result]
             try:
-                logChannel.Log(''.join(map(strx, logwhat)), log.LGINFO, 1)
+                s = ''.join(map(strx, logwhat))
+                if len(s) > 2500:
+                    s = s[:2500]
+                logChannel.Log(s, log.LGINFO, 1)
             except TypeError:
                 logChannel.Log('[X]'.join(map(strx, logwhat)).replace('\x00', '\\0'), log.LGINFO, 1)
                 sys.exc_clear()
@@ -376,6 +379,8 @@ class CallWrapper():
                 group = mykeywords['lock.group']
             except KeyError:
                 group = (self.__logname__, method)
+                if scope == 'instance':
+                    group = self.__logname__
             if useargs:
                 k = ('PreCall_Lock', group, args)
             else:
@@ -387,7 +392,7 @@ class CallWrapper():
             elif scope == 'instance':
                 k = (k, 'instance', self.__parent__.GetInstanceID())
             elif scope == 'service':
-                if isinstance(self.__callable__, Service):
+                if isinstance(self.__callable__, CoreService):
                     k = (k, 'service', self.__parent__.GetInstanceID())
                 else:
                     srv = sm.StartService(self.__parent__.__serviceName__)
@@ -513,7 +518,7 @@ class ServiceCallWrapper(CallWrapper):
         while self.__callable__.state != SERVICE_RUNNING:
             if self.__callable__.state == SERVICE_STOPPED:
                 raise RuntimeError('ServiceStopped', self.__callable__)
-            blue.pyos.synchro.Sleep(100)
+            blue.pyos.synchro.SleepWallclock(100)
             if i % 600 == 0 and i > 0:
                 self.__callable__.LogWarn('PreCallHandler:  ', method, args, keywords, ' has been sleeping for a long time waiting for ', self.__logname__, ' to either get to running state, or to stopped state')
 
@@ -589,7 +594,7 @@ class CoreService():
     def __init__(self):
         self.boundObjects = {}
         self.serviceLocks = {}
-        self.startedWhen = blue.os.GetTime(1)
+        self.startedWhen = blue.os.GetWallclockTimeNow()
         self.__servicename__ = getattr(self, '__replaceservice__', self.__guid__.split('.')[1])
         self.__logname__ = self.__servicename__
         self.logChannel = log.GetChannel(self.__guid__)
@@ -666,7 +671,7 @@ class CoreService():
         if lockID not in self.serviceLocks or self.serviceLocks[lockID].IsCool():
             return 0
         else:
-            return max(1, (blue.os.GetTime() - self.serviceLocks[lockID].lockedWhen) / const.SEC)
+            return max(1, (blue.os.GetWallclockTime() - self.serviceLocks[lockID].lockedWhen) / const.SEC)
 
 
 
@@ -758,8 +763,6 @@ class CoreService():
 
 
     def __getattr__(self, key):
-        if key in self.__dict__:
-            return self.__dict__[key]
         if key in self.__configvalues__:
             daKey = '%s.%s' % (self.__logname__, key)
             return prefs.GetValue(daKey, boot.GetValue(daKey, self.__configvalues__[key]))
@@ -774,6 +777,7 @@ class CoreService():
 
     def __setattr__(self, key, value):
         if key in self.__configvalues__:
+            value = self.OnSetConfigValue(key, value)
             prefs.SetValue('%s.%s' % (self.__logname__, key), value)
             return 
         self.__dict__[key] = value
@@ -826,9 +830,7 @@ class CoreService():
                     s = strx(args[0])
                 else:
                     s = ' '.join(map(strx, args))
-                for x in util.LineWrap(s, 4):
-                    self.logChannel.Log(x, 1, 1, force=True)
-
+                self.logChannel.Log(s, 1, 1, force=True)
             except TypeError:
                 self.logChannel.Log('[X]'.join(map(strx, args)).replace('\x00', '\\0'), 1, 1, force=True)
                 sys.exc_clear()
@@ -845,9 +847,9 @@ class CoreService():
                     s = strx(args[0])
                 else:
                     s = ' '.join(map(strx, args))
+                if self.logChannel.IsOpen(2):
+                    self.logChannel.Log(s, 2, 1, force=True)
                 for x in util.LineWrap(s, 10):
-                    if self.logChannel.IsOpen(2):
-                        self.logChannel.Log(x, 2, 1, force=True)
                     if charsession and not boot.role == 'client':
                         charsession.LogSessionHistory(x, None, 1)
 
@@ -875,9 +877,9 @@ class CoreService():
                     s = strx(args[0])
                 else:
                     s = ' '.join(map(strx, args))
+                if self.logChannel.IsOpen(4):
+                    self.logChannel.Log(s, 4, 1)
                 for x in util.LineWrap(s, 40):
-                    if self.logChannel.IsOpen(4):
-                        self.logChannel.Log(x, 4, 1)
                     if charsession:
                         charsession.LogSessionHistory(x, None, 1)
 
@@ -905,9 +907,7 @@ class CoreService():
                     s = strx(args[0])
                 else:
                     s = ' '.join(map(strx, args))
-                for x in util.LineWrap(s, 4):
-                    self.logChannel.Log(x, log.LGNOTICE, 1, force=True)
-
+                self.logChannel.Log(s, log.LGNOTICE, 1, force=True)
             except TypeError:
                 self.logChannel.Log('[X]'.join(map(strx, args)).replace('\x00', '\\0'), log.LGNOTICE, 1, force=True)
                 sys.exc_clear()
@@ -1040,7 +1040,8 @@ class CoreService():
                  info])
 
             li.sort(lambda a, b: -(a[0].upper() < b[0].upper()))
-            writer.Write(htmlwriter.WebPart('Service Config Values', wr.GetTable(hd, li, useFilter=True), 'wpServiceConfigValues'))
+            edit = '<a href="/admin/services.py?action=EditConfigValues&svcname=%s">Click to edit</a>' % (self.__servicename__,)
+            writer.Write(htmlwriter.WebPart('Service Config Values - ' + edit, wr.GetTable(hd, li, useFilter=True), 'wpServiceConfigValues'))
         if len(self.__counters__):
             hd = ['Key',
              'Pretty Name',
@@ -1348,6 +1349,30 @@ class CoreService():
         li = [ each for each in li if each[1] ]
         wr = htmlwriter.HtmlWriter()
         return htmlwriter.WebPart(title, wr.GetTable(hd, li, useFilter=True), page)
+
+
+
+    def OnSetConfigValue(self, key, value):
+        return value
+
+
+
+    def GetSPConfigValues(self):
+        r = []
+        for a in sorted(self.__configvalues__.keys()):
+            v = getattr(self, a)
+            t = type(getattr(self, a))
+            r.append((a, v, t))
+
+        return r
+
+
+
+    def SetSPConfigValues(self, values):
+        for a in self.__configvalues__.keys():
+            if a in values:
+                setattr(self, a, values[a])
+
 
 
 

@@ -17,7 +17,7 @@ class WreckService(service.Service):
         self.viewedWrecks = {}
         for (itemID, time,) in settings.char.ui.Get('viewedWrecks', {}).iteritems():
             try:
-                if blue.os.TimeDiffInMs(time) < expire_ms:
+                if blue.os.TimeDiffInMs(time, blue.os.GetWallclockTime()) < expire_ms:
                     self.viewedWrecks[itemID] = time
             except blue.error:
                 sys.exc_clear()
@@ -49,7 +49,7 @@ class WreckService(service.Service):
 
     def _SetViewed(self, itemID, true):
         if true and itemID not in self.viewedWrecks:
-            self.viewedWrecks[itemID] = blue.os.GetTime()
+            self.viewedWrecks[itemID] = blue.os.GetWallclockTime()
         elif not true and itemID in self.viewedWrecks:
             del self.viewedWrecks[itemID]
 

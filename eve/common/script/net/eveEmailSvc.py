@@ -12,7 +12,7 @@ class EveEmailSvc(svc.emailSvc):
             server = '10.200.70.21;10.200.70.22'
             self.LogInfo('Email service using internal TQ mailserver', server, self.domain)
         elif self.domain == 'CCP':
-            server = 'exchis.ccp.ad.local'
+            server = 'rkv-it-exch.ccp.ad.local'
             self.LogInfo('Email service using internal mailserver', server, self.domain)
         else:
             server = '10.200.70.21;10.200.70.22'

@@ -28,6 +28,7 @@ class EveMachoNetService(svc.machoNet):
      'NarrowcastBySolarSystemID2s',
      'NarrowcastBySolarSystemIDs',
      'NarrowcastByStationIDs',
+     'NarrowcastByStationID2s',
      'NarrowcastByUserIDs',
      'NarrowcastToClientAndObservers',
      'NarrowcastToObservers',
@@ -61,6 +62,7 @@ class EveMachoNetService(svc.machoNet):
      'SinglecastBySolarSystemID',
      'SinglecastBySolarSystemID2',
      'SinglecastByStationID',
+     'SinglecastByStationID2',
      'SinglecastByUserID',
      'SinglecastByWorldSpaceID']
     __server_scattercast_session_variables__ = ('userid',
@@ -387,6 +389,10 @@ class EveMachoNetService(svc.machoNet):
 
 
     def OnClientConfigValsChanged(self, config):
+        if 'oldShutdown' in config:
+            val = int(config['oldShutdown'])
+            self.LogNotice('Setting oldShutdown to', val)
+            prefs.SetValue('oldShutdown', val)
         settings = {}
         if 'stacklessioVersion' in config:
             settings['version'] = int(config['stacklessioVersion'])

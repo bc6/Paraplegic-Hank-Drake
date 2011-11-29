@@ -283,6 +283,7 @@ class Base(object):
                 idx = -1
             parent.children.insert(idx, self)
             parent.FlagAlignmentDirty()
+            self.FlagAlignmentDirty()
             self.FlagNextObjectsDirty(lvl=0)
 
 
@@ -515,6 +516,14 @@ class Base(object):
             self._alignFunc = self.UpdateToTopAlignment
         elif align == uiconst.TOBOTTOM:
             self._alignFunc = self.UpdateToBottomAlignment
+        elif align == uiconst.TOLEFT_NOPUSH:
+            self._alignFunc = self.UpdateToLeftAlignment_NoPush
+        elif align == uiconst.TORIGHT_NOPUSH:
+            self._alignFunc = self.UpdateToRightAlignment_NoPush
+        elif align == uiconst.TOTOP_NOPUSH:
+            self._alignFunc = self.UpdateToTopAlignment_NoPush
+        elif align == uiconst.TOBOTTOM_NOPUSH:
+            self._alignFunc = self.UpdateToBottomAlignment_NoPush
         elif align == uiconst.TOLEFT_PROP:
             self._alignFunc = self.UpdateToLeftProportionalAlignment
         elif align == uiconst.TORIGHT_PROP:
@@ -529,6 +538,8 @@ class Base(object):
             self._alignFunc = self.UpdateAbsoluteAlignment
         elif align == uiconst.TOPLEFT:
             self._alignFunc = self.UpdateTopLeftAlignment
+        elif align == uiconst.TOPLEFT_PROP:
+            self._alignFunc = self.UpdateTopLeftProportionalAlignment
         elif align == uiconst.TOPRIGHT:
             self._alignFunc = self.UpdateTopRightAlignment
         elif align == uiconst.BOTTOMRIGHT:
@@ -615,11 +626,15 @@ class Base(object):
 
 
         def fset(self, value):
-            (self._displayX, self._displayY, self._displayWidth, self._displayHeight,) = value
-            self._displayX = int(round(self._displayX))
-            self._displayY = int(round(self._displayY))
-            self._displayWidth = int(round(self._displayWidth))
-            self._displayHeight = int(round(self._displayHeight))
+            (displayX, displayY, displayWidth, displayHeight,) = value
+            self._displayX = int(round(displayX))
+            self._displayY = int(round(displayY))
+            self._displayWidth = int(round(displayX + displayWidth)) - self._displayX
+            self._displayHeight = int(round(displayY + displayHeight)) - self._displayY
+            if self._displayWidth == 0 and round(displayWidth) > 0:
+                self._displayWidth = 1
+            if self._displayHeight == 0 and round(displayHeight) > 0:
+                self._displayHeight = 1
             ro = self.renderObject
             if ro:
                 ro.displayX = self._displayX
@@ -877,7 +892,17 @@ class Base(object):
 
                         parent = parent or prevParent
                         parent.UpdateAlignmentAsRoot()
-                return (self.displayWidth, self.displayHeight)
+                return (uicore.ReverseScaleDpi(self.displayWidth), uicore.ReverseScaleDpi(self.displayHeight))
+            return (self.width, self.height)
+
+
+
+    def GetCurrentAbsoluteSize(self):
+        if self.destroyed or not self.display:
+            return (0, 0)
+        else:
+            if self.align in AFFECTEDBYPUSHALIGNMENTS:
+                return (uicore.ReverseScaleDpi(self.displayWidth), uicore.ReverseScaleDpi(self.displayHeight))
             return (self.width, self.height)
 
 
@@ -897,20 +922,20 @@ class Base(object):
                 parent = parent or prevParent
                 parent.UpdateAlignmentAsRoot()
         if self.renderObject:
-            (l, t,) = (int(self.renderObject.displayX), int(self.renderObject.displayY))
+            (l, t,) = (self.renderObject.displayX, self.renderObject.displayY)
         else:
             (l, t,) = (self.displayX, self.displayY)
         if self.align in (uiconst.ABSOLUTE, uiconst.NOALIGN):
-            return (l, t)
+            return (uicore.ReverseScaleDpi(l), uicore.ReverseScaleDpi(t))
         parent = self.GetParent()
         while parent and not parent.destroyed:
-            l += int(parent.renderObject.displayX)
-            t += int(parent.renderObject.displayY)
+            l += parent.renderObject.displayX
+            t += parent.renderObject.displayY
             if parent.align in (uiconst.ABSOLUTE, uiconst.NOALIGN):
                 break
             parent = parent.GetParent()
 
-        return (l, t)
+        return (uicore.ReverseScaleDpi(l), uicore.ReverseScaleDpi(t))
 
 
 
@@ -1066,28 +1091,28 @@ class Base(object):
                 if self._width < 1.0:
                     width = int(float(orgBudget[2]) * self._width)
                 else:
-                    width = self._width
-                budgetLeft = budgetLeft + self._padLeft + width + self._left + self._padRight
-                budgetWidth = budgetWidth - self._padLeft - width - self._left - self._padRight
+                    width = uicore.ScaleDpiF(self._width)
+                budgetLeft = budgetLeft + uicore.ScaleDpiF(self._padLeft) + width + uicore.ScaleDpiF(self._left) + uicore.ScaleDpiF(self._padRight)
+                budgetWidth = budgetWidth - uicore.ScaleDpiF(self._padLeft) - width - uicore.ScaleDpiF(self._left) - uicore.ScaleDpiF(self._padRight)
             elif align == uiconst.TORIGHT:
                 if self._width < 1.0:
                     width = int(float(orgBudget[2]) * self._width)
                 else:
-                    width = self._width
-                budgetWidth = budgetWidth - self._padLeft - width - self._padRight - self._left
+                    width = uicore.ScaleDpiF(self._width)
+                budgetWidth = budgetWidth - uicore.ScaleDpiF(self._padLeft) - width - uicore.ScaleDpiF(self._padRight) - uicore.ScaleDpiF(self._left)
             elif align == uiconst.TOTOP:
                 if self._height < 1.0:
                     height = int(float(orgBudget[3]) * self._height)
                 else:
-                    height = self._height
-                budgetTop = budgetTop + self._padTop + height + self._top + self._padBottom
-                budgetHeight = budgetHeight - self._padTop - height - self._top - self._padBottom
+                    height = uicore.ScaleDpiF(self._height)
+                budgetTop = budgetTop + uicore.ScaleDpiF(self._padTop) + height + uicore.ScaleDpiF(self._top) + uicore.ScaleDpiF(self._padBottom)
+                budgetHeight = budgetHeight - uicore.ScaleDpiF(self._padTop) - height - uicore.ScaleDpiF(self._top) - uicore.ScaleDpiF(self._padBottom)
             elif align == uiconst.TOBOTTOM:
                 if self._height < 1.0:
                     height = int(float(orgBudget[3]) * self._height)
                 else:
-                    height = self._height
-                budgetHeight = budgetHeight - self._padTop - height - self._padBottom - self._top
+                    height = uicore.ScaleDpiF(self._height)
+                budgetHeight = budgetHeight - uicore.ScaleDpiF(self._padTop) - height - uicore.ScaleDpiF(self._padBottom) - uicore.ScaleDpiF(self._top)
             budget = (budgetLeft,
              budgetTop,
              budgetWidth,
@@ -1099,17 +1124,17 @@ class Base(object):
     @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateToLeftAlignment(self, budget, orgBudget):
         (budgetLeft, budgetTop, budgetWidth, budgetHeight,) = budget
-        displayX = budgetLeft + self._padLeft + self._left
-        displayY = budgetTop + self._padTop
-        displayHeight = budgetHeight - self._padTop - self._padBottom
-        displayWidth = self._width
+        displayX = budgetLeft + uicore.ScaleDpiF(self._padLeft) + uicore.ScaleDpiF(self._left)
+        displayY = budgetTop + uicore.ScaleDpiF(self._padTop)
+        displayHeight = budgetHeight - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
+        displayWidth = uicore.ScaleDpiF(self._width)
         self.displayRect = (displayX,
          displayY,
          displayWidth,
          displayHeight)
         if self.display:
-            budgetLeft = budgetLeft + self._padLeft + self._width + self._left + self._padRight
-            budgetWidth = budgetWidth - self._padLeft - self._width - self._left - self._padRight
+            budgetLeft = budgetLeft + uicore.ScaleDpiF(self._padLeft) + uicore.ScaleDpiF(self._width) + uicore.ScaleDpiF(self._left) + uicore.ScaleDpiF(self._padRight)
+            budgetWidth = budgetWidth - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._width) - uicore.ScaleDpiF(self._left) - uicore.ScaleDpiF(self._padRight)
             budget = (budgetLeft,
              budgetTop,
              budgetWidth,
@@ -1119,20 +1144,35 @@ class Base(object):
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
+    def UpdateToLeftAlignment_NoPush(self, budget, orgBudget):
+        (budgetLeft, budgetTop, budgetWidth, budgetHeight,) = budget
+        displayX = budgetLeft + uicore.ScaleDpiF(self._padLeft) + uicore.ScaleDpiF(self._left)
+        displayY = budgetTop + uicore.ScaleDpiF(self._padTop)
+        displayHeight = budgetHeight - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
+        displayWidth = uicore.ScaleDpiF(self._width)
+        self.displayRect = (displayX,
+         displayY,
+         displayWidth,
+         displayHeight)
+        return budget
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateToLeftProportionalAlignment(self, budget, orgBudget):
         (budgetLeft, budgetTop, budgetWidth, budgetHeight,) = budget
-        width = int(float(orgBudget[2]) * self._width)
-        displayX = budgetLeft + self._padLeft + self._left
-        displayY = budgetTop + self._padTop
-        displayHeight = budgetHeight - self._padTop - self._padBottom
+        width = int(float(orgBudget[2]) * self._width) - uicore.ScaleDpiF(self.padLeft) - uicore.ScaleDpiF(self.padRight)
+        displayX = budgetLeft + uicore.ScaleDpiF(self._padLeft) + uicore.ScaleDpiF(self._left)
+        displayY = budgetTop + uicore.ScaleDpiF(self._padTop)
+        displayHeight = budgetHeight - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
         displayWidth = width
         self.displayRect = (displayX,
          displayY,
          displayWidth,
          displayHeight)
         if self.display:
-            budgetLeft = budgetLeft + self._padLeft + width + self._left + self._padRight
-            budgetWidth = budgetWidth - self._padLeft - width - self._left - self._padRight
+            budgetLeft = budgetLeft + uicore.ScaleDpiF(self._padLeft) + width + uicore.ScaleDpiF(self._left) + uicore.ScaleDpiF(self._padRight)
+            budgetWidth = budgetWidth - uicore.ScaleDpiF(self._padLeft) - width - uicore.ScaleDpiF(self._left) - uicore.ScaleDpiF(self._padRight)
             budget = (budgetLeft,
              budgetTop,
              budgetWidth,
@@ -1144,16 +1184,16 @@ class Base(object):
     @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateToRightAlignment(self, budget, orgBudget):
         (budgetLeft, budgetTop, budgetWidth, budgetHeight,) = budget
-        displayX = budgetLeft + budgetWidth - self._width - self._padRight - self._left
-        displayY = budgetTop + self._padTop
-        displayHeight = budgetHeight - self._padTop - self._padBottom
-        displayWidth = self._width
+        displayX = budgetLeft + budgetWidth - uicore.ScaleDpiF(self._width) - uicore.ScaleDpiF(self._padRight) - uicore.ScaleDpiF(self._left)
+        displayY = budgetTop + uicore.ScaleDpiF(self._padTop)
+        displayHeight = budgetHeight - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
+        displayWidth = uicore.ScaleDpiF(self._width)
         self.displayRect = (displayX,
          displayY,
          displayWidth,
          displayHeight)
         if self.display:
-            budgetWidth = budgetWidth - self._padLeft - self._width - self._padRight - self._left
+            budgetWidth = budgetWidth - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._width) - uicore.ScaleDpiF(self._padRight) - uicore.ScaleDpiF(self._left)
             budget = (budgetLeft,
              budgetTop,
              budgetWidth,
@@ -1163,19 +1203,34 @@ class Base(object):
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
+    def UpdateToRightAlignment_NoPush(self, budget, orgBudget):
+        (budgetLeft, budgetTop, budgetWidth, budgetHeight,) = budget
+        displayX = budgetLeft + budgetWidth - uicore.ScaleDpiF(self._width) - uicore.ScaleDpiF(self._padRight) - uicore.ScaleDpiF(self._left)
+        displayY = budgetTop + uicore.ScaleDpiF(self._padTop)
+        displayHeight = budgetHeight - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
+        displayWidth = uicore.ScaleDpiF(self._width)
+        self.displayRect = (displayX,
+         displayY,
+         displayWidth,
+         displayHeight)
+        return budget
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateToRightProportionalAlignment(self, budget, orgBudget):
         (budgetLeft, budgetTop, budgetWidth, budgetHeight,) = budget
-        width = int(float(orgBudget[2]) * self._width)
-        displayX = budgetLeft + budgetWidth - width - self._padRight - self._left
-        displayY = budgetTop + self._padTop
-        displayHeight = budgetHeight - self._padTop - self._padBottom
+        width = int(float(orgBudget[2]) * self._width) - uicore.ScaleDpiF(self.padLeft) - uicore.ScaleDpiF(self.padRight)
+        displayX = budgetLeft + budgetWidth - width - uicore.ScaleDpiF(self._padRight) - uicore.ScaleDpiF(self._left)
+        displayY = budgetTop + uicore.ScaleDpiF(self._padTop)
+        displayHeight = budgetHeight - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
         displayWidth = width
         self.displayRect = (displayX,
          displayY,
          displayWidth,
          displayHeight)
         if self.display:
-            budgetWidth = budgetWidth - self._padLeft - width - self._padRight - self._left
+            budgetWidth = budgetWidth - uicore.ScaleDpiF(self._padLeft) - width - uicore.ScaleDpiF(self._padRight) - uicore.ScaleDpiF(self._left)
             budget = (budgetLeft,
              budgetTop,
              budgetWidth,
@@ -1187,17 +1242,17 @@ class Base(object):
     @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateToTopAlignment(self, budget, orgBudget):
         (budgetLeft, budgetTop, budgetWidth, budgetHeight,) = budget
-        displayX = budgetLeft + self._padLeft
-        displayY = budgetTop + self._padTop + self._top
-        displayWidth = budgetWidth - self._padLeft - self._padRight
-        displayHeight = self._height
+        displayX = budgetLeft + uicore.ScaleDpiF(self._padLeft)
+        displayY = budgetTop + uicore.ScaleDpiF(self._padTop) + uicore.ScaleDpiF(self._top)
+        displayWidth = budgetWidth - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight)
+        displayHeight = uicore.ScaleDpiF(self._height)
         self.displayRect = (displayX,
          displayY,
          displayWidth,
          displayHeight)
         if self.display:
-            budgetTop = budgetTop + self._padTop + self._height + self._top + self._padBottom
-            budgetHeight = budgetHeight - self._padTop - self._height - self._top - self._padBottom
+            budgetTop = budgetTop + uicore.ScaleDpiF(self._padTop) + uicore.ScaleDpiF(self._height) + uicore.ScaleDpiF(self._top) + uicore.ScaleDpiF(self._padBottom)
+            budgetHeight = budgetHeight - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._height) - uicore.ScaleDpiF(self._top) - uicore.ScaleDpiF(self._padBottom)
             budget = (budgetLeft,
              budgetTop,
              budgetWidth,
@@ -1207,20 +1262,35 @@ class Base(object):
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
+    def UpdateToTopAlignment_NoPush(self, budget, orgBudget):
+        (budgetLeft, budgetTop, budgetWidth, budgetHeight,) = budget
+        displayX = budgetLeft + uicore.ScaleDpiF(self._padLeft)
+        displayY = budgetTop + uicore.ScaleDpiF(self._padTop) + uicore.ScaleDpiF(self._top)
+        displayWidth = budgetWidth - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight)
+        displayHeight = uicore.ScaleDpiF(self._height)
+        self.displayRect = (displayX,
+         displayY,
+         displayWidth,
+         displayHeight)
+        return budget
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateToTopProportionalAlignment(self, budget, orgBudget):
         (budgetLeft, budgetTop, budgetWidth, budgetHeight,) = budget
-        height = int(float(orgBudget[3]) * self._height)
-        displayX = budgetLeft + self._padLeft
-        displayY = budgetTop + self._padTop + self._top
-        displayWidth = budgetWidth - self._padLeft - self._padRight
+        height = int(float(orgBudget[3]) * self._height) - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
+        displayX = budgetLeft + uicore.ScaleDpiF(self._padLeft)
+        displayY = budgetTop + uicore.ScaleDpiF(self._padTop) + uicore.ScaleDpiF(self._top)
+        displayWidth = budgetWidth - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight)
         displayHeight = height
         self.displayRect = (displayX,
          displayY,
          displayWidth,
          displayHeight)
         if self.display:
-            budgetTop = budgetTop + self._padTop + height + self._top + self._padBottom
-            budgetHeight = budgetHeight - self._padTop - height - self._top - self._padBottom
+            budgetTop = budgetTop + uicore.ScaleDpiF(self._padTop) + height + uicore.ScaleDpiF(self._top) + uicore.ScaleDpiF(self._padBottom)
+            budgetHeight = budgetHeight - uicore.ScaleDpiF(self._padTop) - height - uicore.ScaleDpiF(self._top) - uicore.ScaleDpiF(self._padBottom)
             budget = (budgetLeft,
              budgetTop,
              budgetWidth,
@@ -1232,16 +1302,16 @@ class Base(object):
     @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateToBottomAlignment(self, budget, orgBudget):
         (budgetLeft, budgetTop, budgetWidth, budgetHeight,) = budget
-        displayX = budgetLeft + self._padLeft
-        displayY = budgetTop + budgetHeight - self._height - self._padBottom - self._top
-        displayWidth = budgetWidth - self._padLeft - self._padRight
-        displayHeight = self._height
+        displayX = budgetLeft + uicore.ScaleDpiF(self._padLeft)
+        displayY = budgetTop + budgetHeight - uicore.ScaleDpiF(self._height) - uicore.ScaleDpiF(self._padBottom) - uicore.ScaleDpiF(self._top)
+        displayWidth = budgetWidth - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight)
+        displayHeight = uicore.ScaleDpiF(self._height)
         self.displayRect = (displayX,
          displayY,
          displayWidth,
          displayHeight)
         if self.display:
-            budgetHeight = budgetHeight - self._padTop - self._height - self._padBottom - self._top
+            budgetHeight = budgetHeight - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._height) - uicore.ScaleDpiF(self._padBottom) - uicore.ScaleDpiF(self._top)
             budget = (budgetLeft,
              budgetTop,
              budgetWidth,
@@ -1251,19 +1321,34 @@ class Base(object):
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
+    def UpdateToBottomAlignment_NoPush(self, budget, orgBudget):
+        (budgetLeft, budgetTop, budgetWidth, budgetHeight,) = budget
+        displayX = budgetLeft + uicore.ScaleDpiF(self._padLeft)
+        displayY = budgetTop + budgetHeight - uicore.ScaleDpiF(self._height) - uicore.ScaleDpiF(self._padBottom) - uicore.ScaleDpiF(self._top)
+        displayWidth = budgetWidth - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight)
+        displayHeight = uicore.ScaleDpiF(self._height)
+        self.displayRect = (displayX,
+         displayY,
+         displayWidth,
+         displayHeight)
+        return budget
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateToBottomProportionalAlignment(self, budget, orgBudget):
         (budgetLeft, budgetTop, budgetWidth, budgetHeight,) = budget
-        height = int(float(orgBudget[3]) * self._height)
-        displayX = budgetLeft + self._padLeft
-        displayY = budgetTop + budgetHeight - height - self._padBottom - self._top
-        displayWidth = budgetWidth - self._padLeft - self._padRight
+        height = int(float(orgBudget[3]) * self._height) - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self.padBottom)
+        displayX = budgetLeft + uicore.ScaleDpiF(self._padLeft)
+        displayY = budgetTop + budgetHeight - height - uicore.ScaleDpiF(self._padBottom) - uicore.ScaleDpiF(self._top)
+        displayWidth = budgetWidth - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight)
         displayHeight = height
         self.displayRect = (displayX,
          displayY,
          displayWidth,
          displayHeight)
         if self.display:
-            budgetHeight = budgetHeight - self._padTop - height - self._padBottom - self._top
+            budgetHeight = budgetHeight - uicore.ScaleDpiF(self._padTop) - height - uicore.ScaleDpiF(self._padBottom) - uicore.ScaleDpiF(self._top)
             budget = (budgetLeft,
              budgetTop,
              budgetWidth,
@@ -1275,10 +1360,10 @@ class Base(object):
     @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateToAllAlignment(self, budget, orgBudget):
         (budgetLeft, budgetTop, budgetWidth, budgetHeight,) = budget
-        displayX = budgetLeft + self._padLeft + self._left
-        displayY = budgetTop + self._padTop + self._top
-        displayWidth = budgetWidth - self._padLeft - self._padRight - self._left - self._width
-        displayHeight = budgetHeight - self._padTop - self._padBottom - self._top - self._height
+        displayX = budgetLeft + uicore.ScaleDpiF(self._padLeft) + uicore.ScaleDpiF(self._left)
+        displayY = budgetTop + uicore.ScaleDpiF(self._padTop) + uicore.ScaleDpiF(self._top)
+        displayWidth = budgetWidth - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight) - uicore.ScaleDpiF(self._left) - uicore.ScaleDpiF(self._width)
+        displayHeight = budgetHeight - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom) - uicore.ScaleDpiF(self._top) - uicore.ScaleDpiF(self._height)
         self.displayRect = (displayX,
          displayY,
          displayWidth,
@@ -1293,10 +1378,10 @@ class Base(object):
          self.top,
          self.width or 0,
          self.height or 0)
-        displayX = self._left
-        displayY = self._top
-        displayWidth = self._width
-        displayHeight = self._height
+        displayX = uicore.ScaleDpiF(self._left)
+        displayY = uicore.ScaleDpiF(self._top)
+        displayWidth = uicore.ScaleDpiF(self._width)
+        displayHeight = uicore.ScaleDpiF(self._height)
         self.displayRect = (displayX,
          displayY,
          displayWidth,
@@ -1309,10 +1394,38 @@ class Base(object):
     def UpdateTopLeftAlignment(self, budget, orgBudget):
         parent = self.GetParent()
         (budgetWidth, budgetHeight,) = (parent.displayWidth, parent.displayHeight)
-        displayX = self._left + self._padLeft
-        displayY = self._top + self._padTop
-        displayWidth = self._width - self._padLeft - self._padRight
-        displayHeight = self._height - self._padTop - self._padBottom
+        displayX = uicore.ScaleDpiF(self._left) + uicore.ScaleDpiF(self._padLeft)
+        displayY = uicore.ScaleDpiF(self._top) + uicore.ScaleDpiF(self._padTop)
+        displayWidth = uicore.ScaleDpiF(self._width) - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight)
+        displayHeight = uicore.ScaleDpiF(self._height) - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
+        self.displayRect = (displayX,
+         displayY,
+         displayWidth,
+         displayHeight)
+        return budget
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def UpdateTopLeftProportionalAlignment(self, budget, orgBudget):
+        parent = self.GetParent()
+        (budgetWidth, budgetHeight,) = (parent.displayWidth, parent.displayHeight)
+        if self._width <= 1.0:
+            displayWidth = self._width * budgetWidth - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight)
+        else:
+            displayWidth = uicore.ScaleDpiF(self._width) - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight)
+        if self._height <= 1.0:
+            displayHeight = self._height * budgetHeight - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
+        else:
+            displayHeight = uicore.ScaleDpiF(self._height) - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
+        if self._left <= 1.0:
+            displayX = (budgetWidth - displayWidth) * (self._left + self._padLeft)
+        else:
+            displayX = uicore.ScaleDpiF(self._left) + uicore.ScaleDpiF(self._padLeft)
+        if self._top <= 1.0:
+            displayY = (budgetHeight - displayHeight) * (self._top + self._padTop)
+        else:
+            displayY = uicore.ScaleDpiF(self._top) + uicore.ScaleDpiF(self._padTop)
         self.displayRect = (displayX,
          displayY,
          displayWidth,
@@ -1325,10 +1438,10 @@ class Base(object):
     def UpdateTopRightAlignment(self, budget, orgBudget):
         parent = self.GetParent()
         (budgetWidth, budgetHeight,) = (parent.displayWidth, parent.displayHeight)
-        displayX = budgetWidth - self._width - self._left + self._padLeft
-        displayY = self._top + self._padTop
-        displayWidth = self._width - self._padLeft - self._padRight
-        displayHeight = self._height - self._padTop - self._padBottom
+        displayX = budgetWidth - uicore.ScaleDpiF(self._width) - uicore.ScaleDpiF(self._left) + uicore.ScaleDpiF(self._padLeft)
+        displayY = uicore.ScaleDpiF(self._top) + uicore.ScaleDpiF(self._padTop)
+        displayWidth = uicore.ScaleDpiF(self._width) - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight)
+        displayHeight = uicore.ScaleDpiF(self._height) - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
         self.displayRect = (displayX,
          displayY,
          displayWidth,
@@ -1341,10 +1454,10 @@ class Base(object):
     def UpdateBottomRightAlignment(self, budget, orgBudget):
         parent = self.GetParent()
         (budgetWidth, budgetHeight,) = (parent.displayWidth, parent.displayHeight)
-        displayX = budgetWidth - self._width - self._left + self._padLeft
-        displayY = budgetHeight - self._height - self._top + self._padTop
-        displayWidth = self._width - self._padLeft - self._padRight
-        displayHeight = self._height - self._padTop - self._padBottom
+        displayX = budgetWidth - uicore.ScaleDpiF(self._width) - uicore.ScaleDpiF(self._left) + uicore.ScaleDpiF(self._padLeft)
+        displayY = budgetHeight - uicore.ScaleDpiF(self._height) - uicore.ScaleDpiF(self._top) + uicore.ScaleDpiF(self._padTop)
+        displayWidth = uicore.ScaleDpiF(self._width) - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight)
+        displayHeight = uicore.ScaleDpiF(self._height) - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
         self.displayRect = (displayX,
          displayY,
          displayWidth,
@@ -1357,10 +1470,10 @@ class Base(object):
     def UpdateBottomLeftAlignment(self, budget, orgBudget):
         parent = self.GetParent()
         (budgetWidth, budgetHeight,) = (parent.displayWidth, parent.displayHeight)
-        displayX = self._left + self._padLeft
-        displayY = budgetHeight - self._height - self._top + self._padTop
-        displayWidth = self._width - self._padLeft - self._padRight
-        displayHeight = self._height - self._padTop - self._padBottom
+        displayX = uicore.ScaleDpiF(self._left) + uicore.ScaleDpiF(self._padLeft)
+        displayY = budgetHeight - uicore.ScaleDpiF(self._height) - uicore.ScaleDpiF(self._top) + uicore.ScaleDpiF(self._padTop)
+        displayWidth = uicore.ScaleDpiF(self._width) - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight)
+        displayHeight = uicore.ScaleDpiF(self._height) - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
         self.displayRect = (displayX,
          displayY,
          displayWidth,
@@ -1373,10 +1486,10 @@ class Base(object):
     def UpdateCenterAlignment(self, budget, orgBudget):
         parent = self.GetParent()
         (budgetWidth, budgetHeight,) = (parent.displayWidth, parent.displayHeight)
-        displayX = int((budgetWidth - self._width) / 2 + self._left) + self._padLeft
-        displayY = int((budgetHeight - self._height) / 2 + self._top) + self._padTop
-        displayWidth = self._width - self._padLeft - self._padRight
-        displayHeight = self._height - self._padTop - self._padBottom
+        displayX = int((budgetWidth - uicore.ScaleDpiF(self._width)) / 2 + uicore.ScaleDpiF(self._left)) + uicore.ScaleDpiF(self._padLeft)
+        displayY = int((budgetHeight - uicore.ScaleDpiF(self._height)) / 2 + uicore.ScaleDpiF(self._top)) + uicore.ScaleDpiF(self._padTop)
+        displayWidth = uicore.ScaleDpiF(self._width) - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight)
+        displayHeight = uicore.ScaleDpiF(self._height) - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
         self.displayRect = (displayX,
          displayY,
          displayWidth,
@@ -1389,10 +1502,10 @@ class Base(object):
     def UpdateCenterBottomAlignment(self, budget, orgBudget):
         parent = self.GetParent()
         (budgetWidth, budgetHeight,) = (parent.displayWidth, parent.displayHeight)
-        displayX = int((budgetWidth - self._width) / 2 + self._left) + self._padLeft
-        displayY = budgetHeight - self._height - self._top + self._padTop
-        displayWidth = self._width - self._padLeft - self._padRight
-        displayHeight = self._height - self._padTop - self._padBottom
+        displayX = int((budgetWidth - uicore.ScaleDpiF(self._width)) / 2 + uicore.ScaleDpiF(self._left)) + uicore.ScaleDpiF(self._padLeft)
+        displayY = budgetHeight - uicore.ScaleDpiF(self._height) - uicore.ScaleDpiF(self._top) + uicore.ScaleDpiF(self._padTop)
+        displayWidth = uicore.ScaleDpiF(self._width) - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight)
+        displayHeight = uicore.ScaleDpiF(self._height) - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
         self.displayRect = (displayX,
          displayY,
          displayWidth,
@@ -1405,10 +1518,10 @@ class Base(object):
     def UpdateCenterTopAlignment(self, budget, orgBudget):
         parent = self.GetParent()
         (budgetWidth, budgetHeight,) = (parent.displayWidth, parent.displayHeight)
-        displayX = int((budgetWidth - self._width) / 2 + self._left) + self._padLeft
-        displayY = self._top + self._padTop
-        displayWidth = self._width - self._padLeft - self._padRight
-        displayHeight = self._height - self._padTop - self._padBottom
+        displayX = int((budgetWidth - uicore.ScaleDpiF(self._width)) / 2 + uicore.ScaleDpiF(self._left)) + uicore.ScaleDpiF(self._padLeft)
+        displayY = uicore.ScaleDpiF(self._top) + uicore.ScaleDpiF(self._padTop)
+        displayWidth = uicore.ScaleDpiF(self._width) - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight)
+        displayHeight = uicore.ScaleDpiF(self._height) - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
         self.displayRect = (displayX,
          displayY,
          displayWidth,
@@ -1421,10 +1534,10 @@ class Base(object):
     def UpdateCenterLeftAlignment(self, budget, orgBudget):
         parent = self.GetParent()
         (budgetWidth, budgetHeight,) = (parent.displayWidth, parent.displayHeight)
-        displayX = self._left + self._padLeft
-        displayY = int((budgetHeight - self._height) / 2 + self._top) + self._padTop
-        displayWidth = self._width - self._padLeft - self._padRight
-        displayHeight = self._height - self._padTop - self._padBottom
+        displayX = uicore.ScaleDpiF(self._left) + uicore.ScaleDpiF(self._padLeft)
+        displayY = int((budgetHeight - uicore.ScaleDpiF(self._height)) / 2 + uicore.ScaleDpiF(self._top)) + uicore.ScaleDpiF(self._padTop)
+        displayWidth = uicore.ScaleDpiF(self._width) - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight)
+        displayHeight = uicore.ScaleDpiF(self._height) - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
         self.displayRect = (displayX,
          displayY,
          displayWidth,
@@ -1437,10 +1550,10 @@ class Base(object):
     def UpdateCenterRightAlignment(self, budget, orgBudget):
         parent = self.GetParent()
         (budgetWidth, budgetHeight,) = (parent.displayWidth, parent.displayHeight)
-        displayX = budgetWidth - self._width - self._left + self._padLeft
-        displayY = int((budgetHeight - self._height) / 2 + self._top) + self._padTop
-        displayWidth = self._width - self._padLeft - self._padRight
-        displayHeight = self._height - self._padTop - self._padBottom
+        displayX = budgetWidth - uicore.ScaleDpiF(self._width) - uicore.ScaleDpiF(self._left) + uicore.ScaleDpiF(self._padLeft)
+        displayY = int((budgetHeight - uicore.ScaleDpiF(self._height)) / 2 + uicore.ScaleDpiF(self._top)) + uicore.ScaleDpiF(self._padTop)
+        displayWidth = uicore.ScaleDpiF(self._width) - uicore.ScaleDpiF(self._padLeft) - uicore.ScaleDpiF(self._padRight)
+        displayHeight = uicore.ScaleDpiF(self._height) - uicore.ScaleDpiF(self._padTop) - uicore.ScaleDpiF(self._padBottom)
         self.displayRect = (displayX,
          displayY,
          displayWidth,
@@ -1458,8 +1571,8 @@ class Base(object):
     @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateAlignmentAsRoot(self):
         self._alignmentDirty = False
-        self.displayWidth = self.width
-        self.displayHeight = self.height
+        self.displayWidth = uicore.ScaleDpiF(self.width)
+        self.displayHeight = uicore.ScaleDpiF(self.height)
         if hasattr(self, 'children'):
             budget = (0,
              0,
@@ -1508,7 +1621,7 @@ class Base(object):
             if self._OnResize.im_func != Base._OnResize.im_func:
                 self._OnResize()
         if sizeChange:
-            self._OnSizeChange_NoBlock(self.displayWidth, self.displayHeight)
+            self._OnSizeChange_NoBlock(uicore.ReverseScaleDpi(self.displayWidth), uicore.ReverseScaleDpi(self.displayHeight))
         self.UpdateAttachments()
         if sizeChange or self._displayDirty:
             children = getattr(self, 'children', None)
@@ -1572,6 +1685,16 @@ class Base(object):
                 (ox, oy,) = offset
                 self.left += ox
                 self.top += oy
+
+
+
+    def ScaleDpi(self, value):
+        return uicore.ScaleDpi(value)
+
+
+
+    def ReverseScaleDpi(self, value):
+        return uicore.ReverseScaleDpi(value)
 
 
 

@@ -12,6 +12,7 @@ import macho
 import service
 import bluepy
 import const
+import httpUtil
 globals().update(service.consts)
 from timerstuff import ClockThis
 import iocp
@@ -36,7 +37,6 @@ MACHONETERR_UNMACHODESTINATION = 0
 MACHONETERR_UNMACHOCHANNEL = 1
 MACHONETERR_WRAPPEDEXCEPTION = 2
 MACHONET_LOGMOVEMENT = 0
-useBlueNetHeader = iocp.UsingBlueNetHeader()
 if '/disablePacketCompression' in blue.pyos.GetArg():
     log.general.Log('Packet Compression: Disabled', log.LGINFO)
     MACHONET_COMPRESSION_DISABLED = True
@@ -144,6 +144,7 @@ class MachoTransport(log.LogMixin):
                 try:
                     if self.nodeID in self.machoNet.transportIDbyProxyNodeID:
                         del self.machoNet.transportIDbyProxyNodeID[self.nodeID]
+                        blue.net.DelProxyNode(self.nodeID)
                 except StandardError:
                     sys.exc_clear()
                     self.LogInfo('Exception during MachoTransport::Close ignored.')
@@ -266,8 +267,37 @@ class MachoTransport(log.LogMixin):
 
 
 
+    def _JitSessionToOtherSide(self, clientID):
+        clientTransportID = self.machoNet.transportIDbyClientID[clientID]
+        clientTransport = self.machoNet.transportsByID[clientTransportID]
+        remoteSessionVersion = clientTransport.dependants.get(self.transportID, 0)
+        sess = clientTransport.sessions[clientID][0]
+        if remoteSessionVersion != sess.version:
+            sessData = {}
+            if remoteSessionVersion == 0:
+                for v in sess.GetDistributedProps(0):
+                    sessData[v] = getattr(sess, v)
+
+                sessionprops = macho.SessionInitialStateNotification(source=macho.MachoAddress(clientID=clientID), destination=macho.MachoAddress(nodeID=self.nodeID), sid=sess.sid, initialstate=sessData)
+            else:
+                for v in sess.GetDistributedProps(1):
+                    sessData[v] = (None, getattr(sess, v))
+
+                sessionprops = macho.SessionChangeNotification(source=macho.MachoAddress(clientID=clientID), destination=macho.MachoAddress(nodeID=self.nodeID), sid=sess.sid, change=(1, sessData))
+            clientTransport.dependants[self.transportID] = sess.version
+            self.Write(sessionprops, jitSession=0)
+
+
+
     @bluepy.TimedFunction('machoNet::MachoTransport::Write')
-    def Write(self, message):
+    def Write(self, message, jitSession = 1):
+        if macho.mode == 'proxy' and jitSession:
+            if message.source.addressType == const.ADDRESS_TYPE_CLIENT:
+                self._JitSessionToOtherSide(message.source.clientID)
+            elif base.IsInClientContext() and session and hasattr(session, 'clientID'):
+                clientID = session.clientID
+                self._JitSessionToOtherSide(clientID)
+                message.contextKey = clientID
         if hasattr(self, 'userID'):
             message.userID = self.userID
         if message.source.addressType == const.ADDRESS_TYPE_ANY and not message.command % 2:
@@ -365,15 +395,13 @@ class MachoTransport(log.LogMixin):
             raise 
         except StandardError:
             if self.transportName == 'tcp:packet:client':
-                log.LogTraceback()
-                address = self.transport.address
-                self.transport.Close('An improperly formed or damaged packet was received from your client')
-                db = self.machoNet.session.ConnectToAnyService('DB2')
-                db.CallProc('zcluster.Attacks_Insert', getattr(self, 'userID', None), address.split(':')[0], int(address.split(':')[1]), strx(thePickle[:2000].replace('\\', '\\\\').replace('\x00', '\\0')))
+                self._LogPotentialAttackAndClose(thePickle)
             raise 
         message.SetPickle(thePickle)
         if self.transportName == 'tcp:packet:client':
             message.source = macho.MachoAddress(clientID=self.clientID, callID=message.source.callID)
+            if message.contextKey is not None:
+                self._LogPotentialAttackAndClose(thePickle)
         if hasattr(self, 'userID'):
             message.userID = self.userID
         if message.command != MACHONETMSG_TYPE__MOVEMENTNOTIFICATION or MACHONET_LOGMOVEMENT:
@@ -390,6 +418,15 @@ class MachoTransport(log.LogMixin):
 
 
 
+    def _LogPotentialAttackAndClose(self, thePickle):
+        log.LogTraceback()
+        address = self.transport.address
+        self.transport.Close('An improperly formed or damaged packet was received from your client')
+        db = self.machoNet.session.ConnectToAnyService('DB2')
+        db.CallProc('zcluster.Attacks_Insert', getattr(self, 'userID', None), address.split(':')[0], int(address.split(':')[1]), strx(thePickle[:2000].replace('\\', '\\\\').replace('\x00', '\\0')))
+
+
+
     def TagPacketSizes(self, req, rsp = None):
         ctk = GetLocalStorage().get('calltimer.key', None)
         if ctk is not None:
@@ -401,7 +438,10 @@ class MachoTransport(log.LogMixin):
                 s = session
             if s:
                 if not s.role & ROLE_SERVICE:
-                    ct = (ct[0], s.calltimes)
+                    if boot.role == 'client':
+                        ct = (ct[2], s.calltimes)
+                    else:
+                        ct = (ct[0], s.calltimes)
                 else:
                     ct = (ct[1], s.calltimes)
             else:
@@ -419,7 +459,7 @@ class MachoTransport(log.LogMixin):
     def SessionCall(self, packet):
         try:
             while macho.mode == 'client' and self.machoNet.authenticating:
-                blue.pyos.synchro.Sleep(250)
+                blue.pyos.synchro.SleepWallclock(250)
 
             (newsession, channel, theID,) = self._SessionAndChannelAndIDFromPacket(packet)
             with MachoCallOrNotification(self, newsession, packet) as currentcall:
@@ -445,7 +485,7 @@ class MachoTransport(log.LogMixin):
                     return ret
 
                 finally:
-                    if session.clientID != theID:
+                    if session.clientID not in (theID, packet.contextKey):
                         if session.clientID is not None:
                             self.machoNet.LogError('Cleaning session ', session.clientID, " because it's ID doesn't match ", theID)
                         self._CleanupSession(theID)
@@ -461,7 +501,7 @@ class MachoTransport(log.LogMixin):
 
     def SessionNotification(self, packet):
         while macho.mode == 'client' and self.machoNet.authenticating:
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
 
         (newsession, channel, theID,) = self._SessionAndChannelAndIDFromPacket(packet)
         with MachoCallOrNotification(self, newsession, packet) as currentcall:
@@ -479,7 +519,7 @@ class MachoTransport(log.LogMixin):
                 self.TagPacketSizes(packet)
 
             finally:
-                if sess.clientID != theID:
+                if sess.clientID not in (theID, packet.contextKey):
                     if sess.clientID is not None:
                         self.machoNet.LogError('Cleaning session ', sess.clientID, " because it's ID doesn't match ", theID)
                     self._CleanupSession(theID)
@@ -500,8 +540,12 @@ class MachoTransport(log.LogMixin):
 
 
     def _SessionAndChannelAndIDFromPacket(self, packet):
-        clientID = self._AssociateWithSession(packet)
-        rsess = self.sessions[clientID]
+        if macho.mode == 'server' and packet.contextKey:
+            clientID = packet.source.nodeID
+            rsess = self.sessions[packet.contextKey]
+        else:
+            clientID = self._AssociateWithSession(packet)
+            rsess = self.sessions[clientID]
         channel = None
         if packet is not None:
             channel = macho.packetTypeChannelMap.get(packet.command, None)
@@ -539,7 +583,7 @@ class MachoTransport(log.LogMixin):
                     else:
                         self.LogInfo(*logargs1)
                         self.LogInfo(*logargs2)
-                    blue.pyos.synchro.Sleep(500)
+                    blue.pyos.synchro.SleepWallclock(500)
                     i += 1
 
             self.machoNet.WaitForSequenceNumber(packrat.source, packrat.oob.get('sn', 0))
@@ -624,7 +668,7 @@ class MachoTransport(log.LogMixin):
             else:
                 uid = packet.userID
             self.sessions[clientID][0].LogSessionHistory('machoNet associated session with clientID %s and userID %s' % (clientID, uid))
-        self.sessions[clientID][0].lastRemoteCall = blue.os.GetTime()
+        self.sessions[clientID][0].lastRemoteCall = blue.os.GetWallclockTime()
         return clientID
 
 
@@ -665,6 +709,37 @@ class MachoCallOrNotification(object):
 
     def __repr__(self):
         return '<MachoCallOrNotification, packet=%r>' % (self.packet,)
+
+
+
+
+class StreamingHTTPMachoTransport(MachoTransport):
+    __guid__ = 'macho.StreamingHTTPMachoTransport'
+
+    def __init__(self, transportID, transport, transportName, machoNet):
+        MachoTransport.__init__(self, transportID, transport, transportName, machoNet)
+        self.reader = None
+
+
+
+    def SetReader(self, reader):
+        self.reader = reader
+
+
+
+    @bluepy.TimedFunction('machoNet::StreamingHTTPMachoTransport::Write')
+    def Close(self, reason, reasonCode = None, reasonArgs = {}, exception = None, noSend = False):
+        self.reader.close()
+        MachoTransport.Close(self, reason, reasonCode, reasonArgs, exception, noSend)
+
+
+
+    @bluepy.TimedFunction('machoNet::StreamingHTTPMachoTransport::Write')
+    def Write(self, message):
+        if self.reader is None:
+            raise IOError
+        else:
+            self.reader.write(httpUtil.ToJSON(message))
 
 
 

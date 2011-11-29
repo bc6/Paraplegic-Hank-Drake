@@ -11,38 +11,68 @@ import base
 import dbg
 import uicls
 import uiconst
+import log
+import localization
 
-class NotepadSvc(service.Service):
-    __exportedcalls__ = {'Show': [],
-     'ShowNote': [],
-     'NewFolder': [],
-     'RemoveFolder': [],
-     'GetNotes': [],
-     'AddNote': [],
-     'DeleteNote': [],
-     'RenameNote': [],
-     'GetSetting': [],
-     'SetSetting': [],
-     'WriteNote': [],
-     'GetNotesByType': [],
-     'GetFolders': [],
-     'GetNoteText': []}
-    __guid__ = 'svc.notepad'
+class NotepadWindow(uicls.Window):
+    __guid__ = 'form.Notepad'
     __notifyevents__ = []
-    __servicename__ = 'notepad'
-    __displayname__ = 'Notepad Client Service'
-    __dependencies__ = []
-    __update_on_reload__ = 0
+    default_width = 400
+    default_height = 300
+    default_windowID = 'notepad'
 
-    def Run(self, memStream = None):
+    def ApplyAttributes(self, attributes):
+        uicls.Window.ApplyAttributes(self, attributes)
+        self.SetCaption(localization.GetByLabel('UI/Notepad/Notepad'))
+        self.SetWndIcon('ui_49_64_2')
+        self.SetTopparentHeight(0)
+        self.SetMinSize((256, 128))
+        self.HideMainIcon()
+        self.sr.main.SetPadding(const.defaultPadding, const.defaultPadding, const.defaultPadding, const.defaultPadding)
+        self.sr.nav = uicls.Container(name='nav', align=uiconst.TOLEFT, width=settings.user.ui.Get('notepadscrollistwidth', 128), parent=self.sr.main, idx=0)
+        divider = xtriui.Divider(name='divider', align=uiconst.TOLEFT, idx=1, width=const.defaultPadding, parent=self.sr.main, state=uiconst.UI_NORMAL)
+        divider.Startup(self.sr.nav, 'width', 'x', 100, 256)
+        self.sr.navbuttons = uicls.Container(name='navbuttons', align=uiconst.TOBOTTOM, parent=self.sr.nav, height=38)
+        self.sr.newfolder = uicls.Button(parent=self.sr.navbuttons, label=localization.GetByLabel('UI/Notepad/NewFolder'), padTop=4, align=uiconst.TOTOP, func=self.NewFolderClick)
+        self.sr.newnote = uicls.Button(parent=self.sr.navbuttons, label=localization.GetByLabel('UI/Notepad/NewNote'), padTop=4, align=uiconst.TOTOP, func=self.NewNote, args=(0,))
+        self.sr.navbuttons.height = sum([ each.height + each.padTop + each.padBottom for each in self.sr.navbuttons.children ]) + 4
+        self.sr.senderlist = uicls.Scroll(name='senderlist', parent=self.sr.nav)
+        self.sr.senderlist.OnDelete = self.OnDelete
+        self.sr.senderlist.multiSelect = 0
+        self.sr.note = uicls.Container(name='notecontainer', align=uiconst.TOALL, parent=self.sr.main, pos=(0, 0, 0, 0))
+        self.sr.titlecont = uicls.Container(name='titlecontainer', align=uiconst.TOTOP, height=48, parent=self.sr.note)
+        uicls.Frame(parent=self.sr.titlecont, padBottom=const.defaultPadding)
+        uicls.Container(name='push', align=uiconst.TORIGHT, width=7, parent=self.sr.titlecont)
+        uicls.Container(name='push', align=uiconst.TOTOP, height=9, parent=self.sr.titlecont)
+        self.sr.icon = uicls.Icon(parent=self.sr.titlecont, pos=(7, 7, 32, 32))
+        self.sr.titletext = uicls.EveLabelMedium(text='', parent=self.sr.titlecont, align=uiconst.TOALL, padLeft=46)
+        self.sr.browser = uicls.EditPlainText(parent=self.sr.note, showattributepanel=1)
+        self.sr.browser.sr.window = self
+        self.sr.browser.allowPrivateDrops = 1
+        self.OnScale_ = self._OnResize
+        divider.OnSizeChanging = self.OnDividerMove
         self.starting = 1
-        self.LogInfo('Starting Notepad')
-        self.Reset()
+        import log
+        log.LogInfo('Starting Notepad')
+        self.bms = None
+        self.folders = {}
+        self.notes = {}
+        self.bookmarknotes = {}
+        self.charnotes = {}
+        self.settings = {}
+        self.settingStrs = {}
+        self.notedata = {}
+        self.lastid = 0
+        uthread.new(self.LoadNotesData)
+
+
+
+    def LoadNotesData(self):
         notes = sm.RemoteSvc('charMgr').GetOwnerNoteLabels()
         folders = []
         self.folderIDs = []
         badNotes = [ note for note in notes if note.label[0] not in ('I', 'B', 'N', 'S') ]
-        bms = sm.GetService('addressbook').GetBookmarks()
+        bms = sm.GetService('bookmarkSvc').GetBookmarks()
         for entry in notes:
             if entry.label[0] in ('I', 'B', 'N') and entry.label[1] == ':':
                 n = util.KeyVal()
@@ -76,9 +106,9 @@ class NotepadSvc(service.Service):
                 tmp = entry.split('::')
                 if len(tmp) != 4:
                     continue
-                (id, type, parentID, label,) = tmp
+                (id, _type, parentID, label,) = tmp
                 n = util.KeyVal()
-                n.type = type
+                n.type = _type
                 if parentID == 'None':
                     parentID = 0
                 n.parent = int(parentID)
@@ -90,98 +120,20 @@ class NotepadSvc(service.Service):
             n = util.KeyVal()
             n.type = 'F'
             n.parent = 0
-            n.data = mls.UI_GENERIC_MAIN
+            n.data = localization.GetByLabel('UI/Notepad/Main')
             self.folders[1] = n
             self.lastid = 1
         self.starting = 0
+        self.LoadNotes()
+        self.sr.autosaveTimer = base.AutoTimer(60000, self.SaveNote)
+        self.activeNode = None
+        self.ShowNote(settings.char.notepad.Get('activeNote', None))
 
 
 
-    def Stop(self, memStream = None):
-        wnd = self.GetWnd()
-        if wnd and not wnd.destroyed:
-            wnd.CloseX()
-        self.Reset()
-
-
-
-    def Reset(self):
-        self.bms = None
-        self.folders = {}
-        self.notes = {}
-        self.bookmarknotes = {}
-        self.charnotes = {}
-        self.settings = {}
-        self.settingStrs = {}
-        self.notedata = {}
-        self.lastid = 0
-
-
-
-    def Show(self):
-        wnd = self.GetWnd(1)
-        if wnd is not None and not wnd.destroyed:
-            wnd.Maximize()
-
-
-
-    def GetWnd(self, new = 0):
-        wnd = sm.GetService('window').GetWindow('notepad')
-        if not wnd and new:
-            wnd = sm.GetService('window').GetWindow('notepad', create=1, decoClass=form.Notepad)
-            wnd.OnClose_ = self.OnCloseWnd
-            wnd.SetCaption(mls.UI_SHARED_NOTEPAD)
-            wnd.SetWndIcon('ui_49_64_2')
-            wnd.SetTopparentHeight(0)
-            wnd.HideMainIcon()
-            wnd.sr.hint = None
-            wnd.sr.main.left = wnd.sr.main.top = wnd.sr.main.width = wnd.sr.main.height = const.defaultPadding
-            wnd.sr.nav = uicls.Container(name='nav', align=uiconst.TOLEFT, width=settings.user.ui.Get('notepadscrollistwidth', 128), parent=wnd.sr.main, idx=0)
-            divider = xtriui.Divider(name='divider', align=uiconst.TOLEFT, idx=1, width=const.defaultPadding, parent=wnd.sr.main, state=uiconst.UI_NORMAL)
-            divider.Startup(wnd.sr.nav, 'width', 'x', 100, 256)
-            wnd.sr.navbuttons = uicls.Container(name='navbuttons', align=uiconst.TOBOTTOM, parent=wnd.sr.nav, height=38)
-            wnd.sr.newfolder = uicls.Button(parent=wnd.sr.navbuttons, label=mls.UI_CMD_NEWFOLDER, padTop=4, align=uiconst.TOTOP, func=self.NewFolderClick)
-            wnd.sr.newnote = uicls.Button(parent=wnd.sr.navbuttons, label=mls.UI_CMD_NEWNOTE, padTop=4, align=uiconst.TOTOP, func=self.NewNote, args=(0,))
-            wnd.sr.navbuttons.height = sum([ each.height + each.padTop + each.padBottom for each in wnd.sr.navbuttons.children ]) + 4
-            wnd.sr.senderlist = uicls.Scroll(name='senderlist', parent=wnd.sr.nav)
-            wnd.sr.senderlist.OnDelete = self.OnDelete
-            wnd.sr.senderlist.multiSelect = 0
-            wnd.sr.note = uicls.Container(name='notecontainer', align=uiconst.TOALL, parent=wnd.sr.main, pos=(0, 0, 0, 0))
-            wnd.SetMinSize((256, 128))
-            wnd.sr.titlecont = uicls.Container(name='titlecontainer', align=uiconst.TOTOP, height=48, parent=wnd.sr.note)
-            uicls.Frame(parent=wnd.sr.titlecont, padBottom=const.defaultPadding)
-            uicls.Container(name='push', align=uiconst.TORIGHT, width=7, parent=wnd.sr.titlecont)
-            uicls.Container(name='push', align=uiconst.TOTOP, height=9, parent=wnd.sr.titlecont)
-            wnd.sr.icon = uicls.Icon(parent=wnd.sr.titlecont, pos=(7, 7, 32, 32))
-            wnd.sr.titletext = uicls.Label(text='', parent=wnd.sr.titlecont, align=uiconst.TOALL, left=46, autowidth=False, autoheight=False)
-            wnd.sr.browser = uicls.EditPlainText(parent=wnd.sr.note, showattributepanel=1)
-            wnd.sr.browser.sr.window = self
-            wnd.sr.browser.allowPrivateDrops = 1
-            wnd.OnScale_ = self._OnResize
-            divider.OnSizeChanging = self.OnDividerMove
-            wnd.CloseX = self.AskClose
-            self.LoadNotes()
-            wnd.sr.autosaveTimer = base.AutoTimer(60000, self.SaveNote)
-            self.activeNode = None
-            self.ShowNote(settings.char.notepad.Get('activeNote', None))
-        return wnd
-
-
-
-    def AskClose(self, *args):
-        notepadWnd = self.GetWnd(new=0)
-        uicls.WindowCore._CloseClick(notepadWnd)
-
-
-
-    def OnCloseWnd(self, wnd, *args):
+    def _OnClose(self, *args):
         self.SaveNote()
-        settings.user.ui.Set('notepadscrollistwidth', wnd.sr.nav.width)
-        wnd.OnClose_ = None
-        wnd.sr.main = None
-        wnd.sr.browser = None
-        wnd.sr.senderlist = None
-        wnd = None
+        settings.user.ui.Set('notepadscrollistwidth', self.sr.nav.width)
         folderstr = ''
         folderIDs = self.folderIDs[:]
         for (key, value,) in self.folders.items():
@@ -308,22 +260,13 @@ class NotepadSvc(service.Service):
 
 
     def OnDividerMove(self, *etc):
-        wnd = self.GetWnd()
-        if wnd and not wnd.destroyed:
-            (l, t, wndWidth, h,) = wnd.GetAbsolute()
-            wnd.sr.nav.width = max(100, min(wnd.sr.nav.width, wndWidth - 154))
+        if not self.destroyed:
+            self.sr.nav.width = max(100, min(self.sr.nav.width, self.displayWidth - 154))
 
 
 
     def GoTo(self, URL, data = None, args = {}, scrollTo = None):
         uicore.cmd.OpenBrowser(URL, data=data, args=args)
-
-
-
-    def LoadNotepad(self):
-        wnd = self.GetWnd()
-        if wnd and not wnd.destroyed:
-            wnd.ShowLoad()
 
 
 
@@ -357,7 +300,7 @@ class NotepadSvc(service.Service):
             scrolllist.append(listentry.Get('Group', data))
 
         data = {'GetSubContent': self.GetAllFolderContent,
-         'label': mls.UI_GENERIC_ALLNOTES,
+         'label': localization.GetByLabel('UI/Notepad/AllNotes'),
          'id': ('All Notes', 0),
          'groupItems': self.notes,
          'iconMargin': 18,
@@ -367,10 +310,9 @@ class NotepadSvc(service.Service):
          'showicon': '_22_45',
          'state': 'locked'}
         scrolllist.append(listentry.Get('Group', data))
-        wnd = self.GetWnd()
-        if wnd and not wnd.destroyed:
-            wnd.sr.senderlist.Load(fixedEntryHeight=17, contentList=scrolllist, scrollTo=wnd.sr.senderlist.GetScrollProportion())
-            wnd.sr.senderlist.hiliteSorted = 0
+        if not self.destroyed:
+            self.sr.senderlist.Load(fixedEntryHeight=17, contentList=scrolllist, scrollTo=self.sr.senderlist.GetScrollProportion())
+            self.sr.senderlist.hiliteSorted = 0
 
 
 
@@ -400,7 +342,7 @@ class NotepadSvc(service.Service):
 
     def GetGroupSubContent(self, nodedata, newitems = 0):
         scrolllist = []
-        notelist = sm.GetService('notepad').GetNotes(nodedata.id[1])
+        notelist = self.GetNotes(nodedata.id[1])
         if len(notelist):
             qi = 1
             NoteListLength = len(notelist)
@@ -418,8 +360,8 @@ class NotepadSvc(service.Service):
     def GroupMenu(self, node):
         m = []
         if node.sublevel < 5:
-            m.append((mls.UI_CMD_NEWFOLDER, self.NewFolder, (node.id[1], node)))
-        m.append((mls.UI_CMD_NEWNOTE, self.NewNote, (node.id[1], node)))
+            m.append((localization.GetByLabel('UI/Notepad/NewFolder'), self.NewFolder, (node.id[1], node)))
+        m.append((localization.GetByLabel('UI/Notepad/NewNote'), self.NewNote, (node.id[1], node)))
         return m
 
 
@@ -499,11 +441,12 @@ class NotepadSvc(service.Service):
              'noteID': 'I:' + str(note.data)}
             return listentry.Get('User', data)
         if note.type == 'B':
+            bookmarkSvc = sm.GetService('bookmarkSvc')
             if self.bms is None:
-                self.bms = sm.GetService('addressbook').GetBookmarks()
+                self.bms = bookmarkSvc.GetBookmarks()
             if int(note.data) in self.bms:
                 bookmark = self.bms[int(note.data)]
-                (hint, comment,) = sm.GetService('addressbook').UnzipMemo(bookmark.memo)
+                (hint, comment,) = bookmarkSvc.UnzipMemo(bookmark.memo)
                 text = '%s' % hint
                 data = {'itemID': bookmark.itemID,
                  'typeID': bookmark.typeID,
@@ -539,20 +482,19 @@ class NotepadSvc(service.Service):
 
 
     def GetBMMenu(self, node):
-        return [None] + [(mls.UI_CMD_REMOVEBOOKMARK, sm.GetService('notepad').RemoveFolder, (node.id[1],))]
+        return [None] + [(localization.GetByLabel('UI/Notepad/RemoveBookmark'), self.RemoveFolder, (node.id[1],))]
 
 
 
     def GetCharMenu(self, node):
-        m = [None] + [(mls.UI_CMD_REMOVECHAR, sm.GetService('notepad').RemoveFolder, (node.id[1],))]
+        m = [None] + [(localization.GetByLabel('UI/Notepad/RemoveCharacter'), self.RemoveFolder, (node.id[1],))]
         return m
 
 
 
     def OnDelete(self, *args):
-        wnd = self.GetWnd()
-        if wnd and not wnd.destroyed:
-            sel = wnd.sr.senderlist.GetSelected()
+        if not self.destroyed:
+            sel = self.sr.senderlist.GetSelected()
             for entry in sel[:]:
                 if not entry.noteID:
                     continue
@@ -568,20 +510,17 @@ class NotepadSvc(service.Service):
 
 
     def OnCharClick(self, entry):
-        sm.GetService('notepad').ShowNote(entry.sr.node.noteID)
+        self.ShowNote(entry.sr.node.noteID)
 
 
 
     def OnBookmarkClick(self, entry):
-        sm.GetService('notepad').ShowNote(entry.sr.node.noteID)
+        self.ShowNote(entry.sr.node.noteID)
 
 
 
     def ShowNote(self, id, force = 0):
-        wnd = self.GetWnd()
-        if not wnd:
-            return self.GetWnd(1)
-        while getattr(wnd.sr.browser, 'loading', 0):
+        while getattr(self.sr.browser, 'loading', 0):
             blue.pyos.synchro.Yield()
 
         if not force and hasattr(self, 'activeNode') and id is not None and self.activeNode == id:
@@ -589,14 +528,14 @@ class NotepadSvc(service.Service):
         if not force and not self.SaveNote():
             return False
         if id is None or not id.upper().startswith('I:') and str(id) not in self.bookmarknotes and str(id) not in self.notes:
-            wnd.sr.titletext.text = mls.UI_GENERIC_GENERALINFO
-            wnd.sr.icon.LoadIcon('ui_49_64_2')
-            wnd.sr.icon.width = wnd.sr.icon.height = 32
-            wnd.sr.browser.SetValue('<font size="20">%s</font><br><br>%s<br>' % (mls.UI_SHARED_NOTEPAD, mls.UI_SHARED_NOTEPADINTRO))
-            wnd.sr.browser.ReadOnly()
+            self.sr.titletext.text = (localization.GetByLabel('UI/Notepad/GeneralInformation'),)
+            self.sr.icon.LoadIcon('ui_49_64_2')
+            self.sr.icon.width = self.sr.icon.height = 32
+            self.sr.browser.SetValue(localization.GetByLabel('UI/Notepad/NotepadIntro'))
+            self.sr.browser.ReadOnly()
             self.activeNote = None
             return True
-        wnd.sr.browser.Editable()
+        self.sr.browser.Editable()
         noteID = id.split(':')
         if len(noteID) != 2:
             return True
@@ -607,9 +546,9 @@ class NotepadSvc(service.Service):
             charid = int(id)
             note = sm.RemoteSvc('charMgr').GetNote(charid)
             charinfo = cfg.eveowners.Get(charid)
-            sm.GetService('photo').GetPortrait(charid, 64, wnd.sr.icon)
-            wnd.sr.titletext.text = charinfo.name
-            wnd.sr.browser.SetValue(note)
+            sm.GetService('photo').GetPortrait(charid, 64, self.sr.icon)
+            self.sr.titletext.text = charinfo.name
+            self.sr.browser.SetValue(note)
         if t == 'N':
             if 'N:' + str(id) in self.notes:
                 noteID = int(id)
@@ -617,13 +556,13 @@ class NotepadSvc(service.Service):
                     note = sm.RemoteSvc('charMgr').GetOwnerNote(noteID)
                     self.notes[('N:' + str(id))].text = note[0].note.strip()
                     self.notes[('N:' + str(id))].label = note[0].label[2:]
-                wnd.sr.icon.LoadIcon('ui_49_64_3')
-                wnd.sr.icon.SetSize(32, 32)
-                wnd.sr.titletext.text = self.notes[('N:' + str(id))].label
-                wnd.sr.browser.SetValue(self.notes[('N:' + str(id))].text)
+                self.sr.icon.LoadIcon('ui_49_64_3')
+                self.sr.icon.SetSize(32, 32)
+                self.sr.titletext.text = self.notes[('N:' + str(id))].label
+                self.sr.browser.SetValue(self.notes[('N:' + str(id))].text)
         self.activeNode = t + ':' + str(id)
         settings.char.notepad.Set('activeNote', self.activeNode)
-        uicore.registry.SetFocus(wnd.sr.browser)
+        uicore.registry.SetFocus(self.sr.browser)
         return True
 
 
@@ -631,10 +570,7 @@ class NotepadSvc(service.Service):
     def SaveNote(self, *args):
         if getattr(self, 'activeNode', None) is not None:
             (t, id,) = self.activeNode.split(':')
-            wnd = self.GetWnd()
-            if not wnd:
-                return False
-            txt = wnd.sr.browser.GetValue()
+            txt = self.sr.browser.GetValue()
             if len(txt) >= 3900:
                 return not eve.Message('NoteTooLong', {'total': len(txt)}, uiconst.YESNO) == uiconst.ID_YES
             if t == 'I':
@@ -680,12 +616,12 @@ class NotepadSvc(service.Service):
 
     def RenameFolder(self, folderID = 0, entry = None, name = None, *args):
         if name is None:
-            ret = uix.NamePopup(mls.UI_GENERIC_FOLDERNAME, mls.UI_SHARED_TYPENEWFOLDERNAME, maxLength=20)
+            ret = uix.NamePopup(localization.GetByLabel('UI/Notepad/FolderName'), localization.GetByLabel('UI/Notepad/TypeNewFolderName'), maxLength=20)
             if ret is None:
                 return self.folders[folderID].data
             name = ret['name']
         if self.AlreadyExists('F', name):
-            eve.Message('CustomInfo', {'info': mls.UI_SHARED_FOLDEREXISTS})
+            eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Notepad/FolderAlreadyExists')})
             return 
         self.folders[folderID].data = name
         return name
@@ -693,11 +629,11 @@ class NotepadSvc(service.Service):
 
 
     def NewFolder(self, folderID = 0, node = None, *args):
-        ret = uix.NamePopup(mls.UI_GENERIC_FOLDERNAME, mls.UI_SHARED_TYPEFOLDERNAME, maxLength=20)
+        ret = uix.NamePopup(localization.GetByLabel('UI/Notepad/FolderName'), localization.GetByLabel('UI/Notepad/TypeNewFolderName'), maxLength=20)
         if ret is not None:
             name = ret['name']
             if self.AlreadyExists('F', name):
-                eve.Message('CustomInfo', {'info': mls.UI_SHARED_FOLDEREXISTS})
+                eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Notepad/FolderAlreadyExists')})
                 return 
             self.AddNote(folderID, 'F', name)
             data = {'label': name,
@@ -726,11 +662,11 @@ class NotepadSvc(service.Service):
 
 
     def NewNote(self, folderID = 0, node = None, *args):
-        ret = uix.NamePopup(mls.UI_GENERIC_NOTENAME, mls.UI_SHARED_ENTERNOTELABEL, maxLength=80)
+        ret = uix.NamePopup(localization.GetByLabel('UI/Notepad/NoteName'), localization.GetByLabel('UI/Notepad/TypeNewNoteLabel'), maxLength=80)
         if ret is not None:
             name = ret['name']
             if self.AlreadyExists('N', name):
-                eve.Message('CustomInfo', {'info': mls.UI_SHARED_NOTEEXISTS})
+                eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Notepad/NoteAlreadyExists')})
                 return 
             noteID = sm.RemoteSvc('charMgr').AddOwnerNote('N:' + name, '<br>')
             if folderID:
@@ -742,6 +678,24 @@ class NotepadSvc(service.Service):
             self.notes['N:' + str(noteID)] = n
             self.LoadNotes()
             self.ShowNote('N:' + str(noteID))
+
+
+
+    def RenameNote(self, noteID):
+        if noteID in self.folders:
+            noteID = self.folders[noteID].type + ':' + str(self.folders[noteID].data)
+        if noteID not in self.notes:
+            return 
+        ret = uix.NamePopup(localization.GetByLabel('UI/Notepad/NoteName'), localization.GetByLabel('UI/Notepad/TypeNewNoteLabel'), self.notes[noteID].label, maxLength=80)
+        if ret is not None:
+            if self.AlreadyExists('N', ret['name']):
+                eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Notepad/NoteAlreadyExists')})
+                return 
+            self.notes[noteID].label = ret['name']
+            sm.RemoteSvc('charMgr').EditOwnerNote(self.notes[noteID].noteID, 'N:' + ret['name'])
+            self.LoadNotes()
+            if getattr(self, 'activeNode', None) == noteID:
+                self.sr.titletext.text = ret['name']
 
 
 
@@ -793,26 +747,6 @@ class NotepadSvc(service.Service):
 
 
 
-    def RenameNote(self, noteID):
-        if noteID in self.folders:
-            noteID = self.folders[noteID].type + ':' + str(self.folders[noteID].data)
-        if noteID not in self.notes:
-            return 
-        ret = uix.NamePopup(mls.UI_GENERIC_NOTENAME, mls.UI_SHARED_ENTERNOTELABEL, self.notes[noteID].label, maxLength=80)
-        if ret is not None:
-            if self.AlreadyExists('N', ret['name']):
-                eve.Message('CustomInfo', {'info': mls.UI_SHARED_NOTEEXISTS})
-                return 
-            self.notes[noteID].label = ret['name']
-            sm.RemoteSvc('charMgr').EditOwnerNote(self.notes[noteID].noteID, 'N:' + ret['name'])
-            self.LoadNotes()
-            if getattr(self, 'activeNode', None) == noteID:
-                wnd = self.GetWnd()
-                if wnd:
-                    wnd.sr.titletext.text = ret['name']
-
-
-
 
 class NoteItem(listentry.Generic):
     __guid__ = 'listentry.NoteItem'
@@ -836,7 +770,8 @@ class NoteItem(listentry.Generic):
     def OnClick(self, *args):
         if self.sr.node:
             if not uicore.uilib.Key(uiconst.VK_CONTROL):
-                if not sm.GetService('notepad').ShowNote(self.sr.node.noteID):
+                noteWindow = form.Notepad.GetIfOpen()
+                if noteWindow and not noteWindow.ShowNote(self.sr.node.noteID):
                     return 
             self.sr.node.scroll.SelectNode(self.sr.node)
 
@@ -844,20 +779,19 @@ class NoteItem(listentry.Generic):
 
     def GetMenu(self):
         m = listentry.Generic.GetMenu(self)
+        noteWindow = form.Notepad.Open()
         if self.sr.node.type == 'N':
-            m += [(mls.UI_CMD_RENAMENOTE, sm.GetService('notepad').RenameNote, (self.sr.node.id[1],))]
-            m += [(mls.UI_CMD_REMOVENOTE, sm.GetService('notepad').RemoveFolder, (self.sr.node.id[1],))]
+            m += [(localization.GetByLabel('UI/Notepad/RenameNote'), noteWindow.RenameNote, (self.sr.node.id[1],))]
+            m += [(localization.GetByLabel('UI/Notepad/RemoveNote'), noteWindow.RemoveFolder, (self.sr.node.id[1],))]
         if self.sr.node.type == 'NA':
-            m += [(mls.UI_CMD_RENAMENOTE, sm.GetService('notepad').RenameNote, (self.sr.node.id[1],))]
-            m += [(mls.UI_CMD_DELETENOTE, sm.GetService('notepad').DeleteNote, (self.sr.node.id[1],))]
+            m += [(localization.GetByLabel('UI/Notepad/RenameNote'), noteWindow.RenameNote, (self.sr.node.id[1],))]
+            m += [(localization.GetByLabel('UI/Notepad/DeleteNote'), noteWindow.DeleteNote, (self.sr.node.id[1],))]
         return m
 
 
 
     def GetHeight(self, *args):
-        (node, width,) = args
-        node.height = 18
-        return node.height
+        return 18
 
 
 
@@ -866,11 +800,5 @@ class NoteItem(listentry.Generic):
         return nodes
 
 
-
-
-class NotepadWindow(uicls.Window):
-    __guid__ = 'form.Notepad'
-    default_width = 400
-    default_height = 300
 
 

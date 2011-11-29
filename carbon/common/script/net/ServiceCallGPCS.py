@@ -462,10 +462,7 @@ class CoreServiceCall():
 
                 if len(s) > 2500:
                     s = s[:2500]
-                while len(s) > 255:
-                    logChannel.Log(s[:253], log.LGINFO, 1)
-                    s = '- ' + s[253:]
-
+                logChannel.Log(s, log.LGINFO, 1)
 
             finally:
                 PopMark(timer)
@@ -514,7 +511,7 @@ class CoreServiceCall():
 
 
     def __BatchedUberMachoRemoteServiceCall(self, nodeGroup, sess, batchInterval):
-        blue.pyos.synchro.Sleep(batchInterval / const.MSEC)
+        blue.pyos.synchro.SleepWallclock(batchInterval / const.MSEC)
         queue = sess.GetSessionVariable(('batchedCallQueue', batchInterval))
         sess.SetSessionVariable(('batchedCallQueue', batchInterval), ({}, {}))
         scatteredRetvals = self._CoreServiceCall__UberMachoRemoteServiceCall(sess, 'sessionMgr', 'BatchedRemoteCall', self._CoreServiceCall__GetNodeGroup(nodeGroup), queue[0])
@@ -625,7 +622,7 @@ class UberDude():
 
     def __Timeout(self, timeoutInterval):
         try:
-            blue.pyos.synchro.Sleep(1000L * timeoutInterval)
+            blue.pyos.synchro.SleepWallclock(1000L * timeoutInterval)
             self.tasklet = None
             if self.channel:
                 self.ubercount = 0

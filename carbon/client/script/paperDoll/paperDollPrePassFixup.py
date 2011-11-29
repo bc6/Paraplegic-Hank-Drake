@@ -9,13 +9,16 @@ SHADOW_OPAQUE_EFFECT_PATH = 'res:/Graphics/Effect/Managed/Interior/Avatar/Shadow
 SHADOW_CLOTH_ALPHATEST_EFFECT_PATH = 'res:/Graphics/Effect/Managed/Interior/Avatar/ShadowClothAlphaTest.fx'
 SHADOW_CLOTH_OPAQUE_EFFECT_PATH = 'res:/Graphics/Effect/Managed/Interior/Avatar/ShadowCloth.fx'
 COLLAPSED_SHADOW_EFFECT_PATH = 'res:/Graphics/Effect/Managed/Interior/Avatar/ShadowCollapsed.fx'
+COLLAPSED_BASIC_EFFECT_PATH = 'res:/Graphics/Effect/Managed/Interior/Avatar/PortraitBasic.fx'
+LIGHT_CONTROL_MAP_MALE_PATH = 'res:/Graphics/Character/Global/FaceSetup/MaleLightControlMap.png'
+LIGHT_CONTROL_MAP_FEMALE_PATH = 'res:/Graphics/Character/Global/FaceSetup/FemaleLightControlMap.png'
 USE_DECAL_PLP_FOR_TRANSPARENT_AREAS = True
 MATERIAL_ID_CONVERSION = {(0, 50, 1): 64,
  (0, 20, 11): 66,
  (0, 400, 11): 68,
  (0, 800, 11): 70,
- (5, 20, 11): 72,
- (5, 21, 11): 72,
+ (5, 20, 11): 71,
+ (5, 21, 11): 71,
  (10, 50, 1): 74,
  (10, 100, 1): 76,
  (10, 20, 11): 78,
@@ -25,10 +28,30 @@ MATERIAL_ID_CONVERSION = {(0, 50, 1): 64,
  (10, 300, 11): 84,
  (13, 100, 1): 86}
 MATERIAL_ID_EXACT = {0: 72,
- 5: 72,
+ 5: 73,
  10: 74,
- 11: 74,
- 13: 70}
+ 11: 75,
+ 12: 76,
+ 13: 77,
+ 14: 78,
+ 15: 79,
+ 16: 80,
+ 17: 81,
+ 18: 82,
+ 19: 83,
+ 20: 84,
+ 21: 85,
+ 22: 86,
+ 23: 87,
+ 24: 88,
+ 25: 89,
+ 26: 90,
+ 27: 91,
+ 28: 92,
+ 29: 93,
+ 30: 94,
+ 31: 95,
+ 32: 96}
 MATERIAL_ID_TRANSPARENT_HACK_EXACT = {0: 74,
  5: 72,
  10: 74,
@@ -57,22 +80,6 @@ def FindMaterialID(materialID, specPower1, specPower2, materialLookupTable = MAT
                 bestError = error
 
     return best
-
-
-
-def FindResourceByName(effect, resourceName):
-    for res in effect.resources:
-        if res.name == resourceName:
-            return res
-
-
-
-
-def FindParameterByName(effect, parameterName):
-    for param in effect.parameters:
-        if hasattr(param, 'name') and param.name == parameterName:
-            return param
-
 
 
 
@@ -173,6 +180,7 @@ def CopyAreaForPrePassDepthNormal(area, sourceAreaType = SOURCE_AREA_TYPE_OPAQUE
     newArea.name = area.name
     newArea.index = area.index
     newArea.count = area.count
+    newArea.reversed = area.reversed
     newMaterial = trinity.Tr2ShaderMaterial()
     newMaterial.highLevelShaderName = 'NormalDepth'
     if sourceAreaType == SOURCE_AREA_TYPE_DECAL:
@@ -196,13 +204,19 @@ def CopyAreaForPrePassDepthNormal(area, sourceAreaType = SOURCE_AREA_TYPE_OPAQUE
     CopyParameters(area.effect, newMaterial, set({'TransformUV0',
      'MaterialDiffuseColor',
      'CutMaskInfluence',
-     'ArrayOfCutMaskInfluence'}))
-    MaterialLibraryID = FindParameterByName(area.effect, 'MaterialLibraryID')
+     'MaterialSpecularFactors',
+     'ArrayOfCutMaskInfluence',
+     'ArrayOfMaterialLibraryID',
+     'ArrayOfMaterial2LibraryID',
+     'ArrayOfMaterialSpecularFactors'}))
+    if 'MaterialSpecularFactors' in newMaterial.parameters:
+        newMaterial.parameters['MaterialSpecularFactors'].z = newMaterial.parameters['MaterialSpecularFactors'].z * 0.7
+    MaterialLibraryID = pd.FindParameterByName(area.effect, 'MaterialLibraryID')
     if MaterialLibraryID is None:
         MaterialLibraryID = 11
     else:
         MaterialLibraryID = MaterialLibraryID.x
-    MaterialSpecularCurve = FindParameterByName(area.effect, 'MaterialSpecularCurve')
+    MaterialSpecularCurve = pd.FindParameterByName(area.effect, 'MaterialSpecularCurve')
     if MaterialSpecularCurve is None:
         MaterialSpecularCurve = (0, 50, 0, 0)
     else:
@@ -214,7 +228,7 @@ def CopyAreaForPrePassDepthNormal(area, sourceAreaType = SOURCE_AREA_TYPE_OPAQUE
     param.name = 'MaterialLibraryID'
     param.value = FindMaterialID(MaterialLibraryID, 1 + MaterialSpecularCurve[3], MaterialSpecularCurve[1], materialLookupTable=materialLookupTable)
     newMaterial.parameters['MaterialLibraryID'] = param
-    MaterialLibraryID = FindParameterByName(area.effect, 'Material2LibraryID')
+    MaterialLibraryID = pd.FindParameterByName(area.effect, 'Material2LibraryID')
     if MaterialLibraryID is not None:
         param = trinity.Tr2FloatParameter()
         param.name = 'Material2LibraryID'
@@ -271,23 +285,46 @@ def CopyHairShader(fx):
 
 
 
+def CopyHairShaderDepthNormal(fx):
+    newMaterial = trinity.Tr2ShaderMaterial()
+    lowPath = fx.effectFilePath.lower()
+    newMaterial.highLevelShaderName = 'NormalDepth'
+    newMaterial.defaultSituation = 'AlphaCutout TwoSided'
+    if 'detailed' in lowPath:
+        newMaterial.defaultSituation = newMaterial.defaultSituation + ' Detailed'
+    if 'dxt5n' in lowPath:
+        newMaterial.defaultSituation = newMaterial.defaultSituation + ' OPT_USE_DXT5N'
+    CopyCommonAvatarMaterialParams(newMaterial, fx)
+    param = trinity.Tr2FloatParameter()
+    param.name = 'MaterialLibraryID'
+    param.value = 75
+    newMaterial.parameters['MaterialLibraryID'] = param
+    param = trinity.Tr2FloatParameter()
+    param.name = 'AlphaTestValue'
+    param.value = 0.0235
+    newMaterial.parameters['AlphaTestValue'] = param
+    return newMaterial
+
+
+
 def CopyAreaForPrePassHair(area):
-    newArea = CopyArea(area)
-    fx = newArea.effect
+    fx = area.effect
     if fx is not None and hasattr(fx, 'effectFilePath') and 'hair' in fx.effectFilePath.lower():
+        newArea = CopyArea(area)
         newMaterial = CopyHairShader(fx)
         newArea.effect = newMaterial
         newArea.useSHLighting = True
-    return newArea
+        return newArea
 
 
 
-def GetHighLevelShaderByName(name):
-    sm = trinity.GetShaderManager()
-    for shader in sm.shaderLibrary:
-        if shader.name == name:
-            return shader
-
+def CopyAreaForPrePassHairDepthNormal(area):
+    fx = area.effect
+    if fx is not None and hasattr(fx, 'effectFilePath') and 'hair' in fx.effectFilePath.lower():
+        newArea = CopyArea(area)
+        newMaterial = CopyHairShaderDepthNormal(fx)
+        newArea.effect = newMaterial
+        return newArea
 
 
 
@@ -320,10 +357,12 @@ def CopyCommonAvatarMaterialParams(mat, fx, meshName = None):
     if cmi and cmi.value >= 0.85:
         if meshName and 'drape' in meshName:
             cmi.value = 1.0
-        else:
+        elif cmi.value <= 1.0:
             cmi.value = 0.999
-        print meshName,
-        print cmi.value
+    if 'MaterialSpecularColor' in mat.parameters:
+        mat.parameters['MaterialSpecularColor'].x = mat.parameters['MaterialSpecularColor'].x * 1.2
+        mat.parameters['MaterialSpecularColor'].y = mat.parameters['MaterialSpecularColor'].y * 1.2
+        mat.parameters['MaterialSpecularColor'].z = mat.parameters['MaterialSpecularColor'].z * 1.2
     if 'MaterialDiffuseColor' not in mat.parameters:
         param = trinity.Tr2Vector4Parameter()
         param.name = 'MaterialDiffuseColor'
@@ -352,7 +391,7 @@ def ConvertEffectToTr2ShaderMaterial(fx, defaultSituation = None, meshName = Non
             if pd.IsSkin(fx):
                 newMaterial.defaultSituation = newMaterial.defaultSituation + ' Skin'
             return newMaterial
-        if 'skinnedavatarbrdf' in fxpath:
+        if 'eyeshader' in fxpath or 'skinnedavatarbrdf' in fxpath or 'portraitbasic' in fxpath:
             newMaterial.highLevelShaderName = 'SkinnedAvatarBrdf'
             CopyCommonAvatarMaterialParams(newMaterial, fx, meshName)
             if pd.IsSkin(fx):
@@ -381,10 +420,10 @@ def AddDepthNormalAreasToStandardMesh(mesh):
 
 
 
-def AddPrepassAreasToStandardMesh(mesh, processDepthAreas, processDepthNormalAreas):
+def AddPrepassAreasToStandardMesh(mesh, processDepthAreas, processDepthNormalAreas, avatar = None, doll = None, useLightControlMap = False):
     opaqueAreas = mesh.opaqueAreas
-    if processDepthAreas:
-        mesh.depthAreas.removeAt(-1)
+    if len(mesh.depthAreas) > 0:
+        processDepthAreas = False
     if processDepthNormalAreas:
         mesh.depthNormalAreas.removeAt(-1)
     mesh.decalPrepassAreas.removeAt(-1)
@@ -400,6 +439,8 @@ def AddPrepassAreasToStandardMesh(mesh, processDepthAreas, processDepthNormalAre
                 newArea.name = 'Prepass_' + newArea.name
                 mesh.transparentAreas.append(newArea)
             continue
+        if area.effect is not None and hasattr(area.effect, 'effectFilePath') and 'hair' in area.effect.effectFilePath.lower():
+            continue
         if processDepthNormalAreas:
             newArea = CopyAreaForPrePassDepthNormal(area, SOURCE_AREA_TYPE_OPAQUE)
             if newArea is not None:
@@ -410,30 +451,95 @@ def AddPrepassAreasToStandardMesh(mesh, processDepthAreas, processDepthNormalAre
                 mesh.depthAreas.append(newArea)
         newArea = CopyAreaOnly(area)
         if newArea is not None:
-            newArea.effect = ConvertEffectToTr2ShaderMaterial(area.effect, 'Prepass', mesh.name)
+            if mesh.name.startswith('head') and useLightControlMap:
+                newArea.effect = ConvertEffectToTr2ShaderMaterial(area.effect, 'Prepass SHLighting', mesh.name)
+                useLightControl = trinity.Tr2FloatParameter()
+                useLightControl.name = 'UseLightControl'
+                useLightControl.value = 0.5
+                newArea.effect.parameters[useLightControl.name] = useLightControl
+                lightControlMap = trinity.TriTexture2DParameter()
+                lightControlMap.name = 'LightControlMap'
+                lcmPath = LIGHT_CONTROL_MAP_FEMALE_PATH
+                if doll and doll.gender == pd.GENDER.MALE:
+                    lcmPath = LIGHT_CONTROL_MAP_MALE_PATH
+                lightControlMap.resourcePath = lcmPath
+                newArea.effect.parameters[lightControlMap.name] = lightControlMap
+                lightControlMatrix = trinity.Tr2Matrix4Parameter()
+                lightControlMatrix.name = 'LightControlMatrix'
+                newArea.effect.parameters[lightControlMatrix.name] = lightControlMatrix
+                newArea.useSHLighting = True
+                if avatar:
+                    headMatrixCurves = None
+                    boneMatrixCurve = None
+                    for cs in avatar.curveSets:
+                        if cs.name == 'HeadMatrixCurves':
+                            headMatrixCurves = cs
+                            for curve in headMatrixCurves.curves:
+                                if curve.bone == 'Head':
+                                    boneMatrixCurve = curve
+
+                            break
+
+                    if not headMatrixCurves:
+                        headMatrixCurves = trinity.TriCurveSet()
+                        headMatrixCurves.name = 'HeadMatrixCurves'
+                        avatar.curveSets.append(headMatrixCurves)
+                    if not boneMatrixCurve:
+                        boneMatrixCurve = trinity.Tr2BoneMatrixCurve()
+                        boneMatrixCurve.bone = 'Head'
+                        boneMatrixCurve.name = 'HeadMatrixCurve'
+                        boneMatrixCurve.skinnedObject = avatar
+                        headMatrixCurves.curves.append(boneMatrixCurve)
+                    if len(headMatrixCurves.bindings):
+                        bind = headMatrixCurves.bindings[0]
+                    else:
+                        bind = trinity.TriValueBinding()
+                        headMatrixCurves.bindings.append(bind)
+                    bind.sourceObject = boneMatrixCurve
+                    bind.destinationObject = lightControlMatrix
+                    bind.sourceAttribute = 'currentValue'
+                    bind.destinationAttribute = 'value'
+                    headMatrixCurves.Play()
+            else:
+                newArea.effect = ConvertEffectToTr2ShaderMaterial(area.effect, 'Prepass', mesh.name)
             mesh.opaquePrepassAreas.append(newArea)
 
     newAreas = []
 
-    def AddAreasForRegularPLP(area, materialLookupTable = None):
+    def FixCutMask(area):
+        if area.effect and 'CutMaskInfluence' in area.effect.parameters:
+            area.effect.parameters['CutMaskInfluence'].value = 1.0
+
+
+
+    def AddAreasForRegularPLP(area, materialLookupTable = None, isTransparent = False):
         if area.effect is not None and hasattr(area.effect, 'effectFilePath') and 'glass' in area.effect.effectFilePath.lower():
             newArea = CopyArea(area)
             if newArea is not None:
                 newArea.name = 'Prepass_' + newArea.name
                 newAreas.append(newArea)
             return 
+        if area.effect is not None and hasattr(area.effect, 'effectFilePath') and 'hair' in area.effect.effectFilePath.lower():
+            return 
         if processDepthNormalAreas:
             newArea = CopyAreaForPrePassDepthNormal(area, SOURCE_AREA_TYPE_DECAL, materialLookupTable=materialLookupTable)
             if newArea is not None:
+                if isTransparent:
+                    FixCutMask(newArea)
                 mesh.depthNormalAreas.append(newArea)
         if processDepthAreas:
             newArea = CopyAreaForPrePassShadows(area, SOURCE_AREA_TYPE_DECAL)
             if newArea is not None:
+                if isTransparent:
+                    FixCutMask(newArea)
                 mesh.depthAreas.append(newArea)
         newArea = CopyAreaOnly(area)
         if newArea is not None:
             newArea.effect = ConvertEffectToTr2ShaderMaterial(area.effect, 'Prepass Decal', mesh.name)
+            if isTransparent:
+                FixCutMask(newArea)
             mesh.decalPrepassAreas.append(newArea)
+        area.debugIsHidden = True
 
 
     for area in mesh.decalAreas:
@@ -453,10 +559,12 @@ def AddPrepassAreasToStandardMesh(mesh, processDepthAreas, processDepthNormalAre
         if hasattr(area.effect, 'effectFilePath') and 'glassshader.fx' in area.effect.effectFilePath.lower():
             area.effect.effectFilePath = area.effect.effectFilePath[:-3] + 'cellcube.fx'
             continue
+        if hasattr(area.effect, 'effectFilePath') and 'hair' in area.effect.effectFilePath.lower():
+            continue
         if hasattr(area.effect, 'effectFilePath') and 'glass' in area.effect.effectFilePath.lower():
             continue
         if USE_DECAL_PLP_FOR_TRANSPARENT_AREAS and not IsEyeRelated(area):
-            AddAreasForRegularPLP(area, materialLookupTable=MATERIAL_ID_TRANSPARENT_HACK_EXACT)
+            AddAreasForRegularPLP(area, materialLookupTable=MATERIAL_ID_TRANSPARENT_HACK_EXACT, isTransparent=True)
             area.effect = None
         else:
             newArea = CopyAreaOnly(area)
@@ -474,210 +582,109 @@ def AddPrepassAreasToStandardMesh(mesh, processDepthAreas, processDepthNormalAre
 
 
 
-def AddPrepassAreasToHair(mesh, processDepthAreas, processDepthNormalAreas):
-    if processDepthAreas:
-        mesh.depthAreas.removeAt(-1)
+def AddPrepassAreasToHair(mesh, processDepthAreas, processDepthNormalAreas, usePrepassAlphaTestHair):
+    if len(mesh.depthAreas) > 0:
+        processDepthAreas = False
     if processDepthNormalAreas:
         mesh.depthNormalAreas.removeAt(-1)
+    mesh.depthNormalAreas.removeAt(-1)
     mesh.decalPrepassAreas.removeAt(-1)
     mesh.opaquePrepassAreas.removeAt(-1)
-    if processDepthAreas:
-        for area in mesh.decalAreas:
-            newArea = CopyAreaForPrePassShadows(area, SOURCE_AREA_TYPE_DECAL)
-            if newArea is not None:
-                mesh.depthAreas.append(newArea)
-
     for area in mesh.transparentAreas:
         if area.name[0:6] == 'Decal_':
             mesh.transparentAreas.remove(area)
 
-    newAreas = []
-    for area in mesh.transparentAreas:
-        newArea = CopyAreaForPrePassHair(area)
-        newArea.name = 'Decal_' + newArea.name
-        if newArea is not None:
-            newAreas.append(newArea)
-        area.debugIsHidden = True
+    result = False
+    newDepthAreas = []
+    if processDepthAreas:
+        for area in mesh.decalAreas:
+            newArea = CopyAreaForPrePassShadows(area, SOURCE_AREA_TYPE_DECAL)
+            if newArea is not None:
+                newDepthAreas.append(newArea)
 
-    mesh.transparentAreas.extend(newAreas)
-    for area in mesh.decalAreas:
-        newArea = CopyAreaForPrePassHair(area)
-        newArea.name = 'Decal_' + newArea.name
-        if newArea is not None:
-            mesh.transparentAreas.append(newArea)
-        area.debugIsHidden = True
+        for area in mesh.transparentAreas:
+            newArea = CopyAreaForPrePassShadows(area, SOURCE_AREA_TYPE_DECAL)
+            if newArea is not None:
+                newDepthAreas.append(newArea)
+
+    if not usePrepassAlphaTestHair:
+        newAreas = []
+        for area in mesh.transparentAreas:
+            newArea = CopyAreaForPrePassHair(area)
+            if newArea is not None:
+                newArea.name = 'Decal_' + newArea.name
+                newAreas.append(newArea)
+                result = True
+            area.debugIsHidden = True
+
+        mesh.transparentAreas.extend(newAreas)
+        for area in mesh.decalAreas:
+            newArea = CopyAreaForPrePassHair(area)
+            if newArea is not None:
+                newArea.name = 'Decal_' + newArea.name
+                mesh.transparentAreas.append(newArea)
+                result = True
+            area.debugIsHidden = True
+
+    else:
+        for area in mesh.transparentAreas:
+            if not area.reversed:
+                newArea = CopyAreaForPrePassHair(area)
+                if newArea is not None:
+                    newArea.name = 'Decal_' + newArea.name
+                    mesh.decalPrepassAreas.append(newArea)
+                    result = True
+                newArea = CopyAreaForPrePassHairDepthNormal(area)
+                if newArea is not None:
+                    newArea.name = 'Decal_' + newArea.name
+                    mesh.depthNormalAreas.append(newArea)
+                    result = True
+            area.debugIsHidden = True
+
+        for area in mesh.decalAreas:
+            if not area.reversed:
+                newArea = CopyAreaForPrePassHair(area)
+                if newArea is not None:
+                    newArea.name = 'Decal_' + newArea.name
+                    mesh.decalPrepassAreas.append(newArea)
+                    result = True
+                newArea = CopyAreaForPrePassHairDepthNormal(area)
+                if newArea is not None:
+                    newArea.name = 'Decal_' + newArea.name
+                    mesh.depthNormalAreas.append(newArea)
+                    result = True
+            area.debugIsHidden = True
+
+    if result:
+        mesh.depthAreas.extend(newDepthAreas)
+    return result
 
 
 
-
-def AddPrepassAreasToAvatar(avatar, visualModel, doll, clothSimulationActive = True):
+def AddPrepassAreasToAvatar(avatar, visualModel, doll, clothSimulationActive = True, **kwargs):
     createShadows = doll.overrideLod <= pd.PerformanceOptions.shadowLod
-    collapseShadowMesh = pd.PerformanceOptions.collapseShadowMesh and doll.overrideLod >= 0 and createShadows
-    collapseMainMesh = pd.PerformanceOptions.collapseMainMesh and doll.overrideLod == 2
-    collapsePLPMesh = pd.PerformanceOptions.collapsePLPMesh and doll.overrideLod >= 0
-    if collapseMainMesh:
-        collapsePLPMesh = False
-    plpMeshes = []
-    if collapseShadowMesh or collapseMainMesh or collapsePLPMesh:
-
-        def FindSkinEffect(meshes):
-            for mesh in iter(meshes):
-                fx = pd.GetEffectsFromMesh(mesh)
-                for effect in iter(fx):
-                    if effect.name.lower().startswith('c_skin_'):
-                        return effect
-
-
-
-
-        sourceEffect = FindSkinEffect(visualModel.meshes)
-        shadowEffect = None
-        if sourceEffect:
-            shadowEffect = pd.SkinLightmapRenderer.DuplicateEffect(sourceEffect, COLLAPSED_SHADOW_EFFECT_PATH)
-        else:
-            createShadows = False
-        mods = doll.buildDataManager.GetSortedModifiers()
-        file = blue.ResFile()
-        UV = {}
-
-        def FindTransformUV(meshes):
-            for mesh in meshes:
-                for areas in (mesh.opaqueAreas, mesh.decalAreas, mesh.transparentAreas):
-                    for area in areas:
-                        for p in area.effect.parameters:
-                            if p.name == 'TransformUV0':
-                                return p.value
-
-
-
-
-            return (0, 0, 1, 1)
-
-
-        for mod in mods:
-            if mod.redfile is None or mod.redfile is '':
-                continue
-            UV[mod.redfile] = FindTransformUV(mod.meshes)
-
-        if collapseMainMesh:
-            del visualModel.meshes[:]
-        savedUV = {}
-        for param in sourceEffect.parameters:
-            if param.name == 'TransformUV0':
-                savedUV[param.name] = param.value
-                param.value = (0, 0, 1, 1)
-                break
-
-        if shadowEffect:
-            for param in shadowEffect.parameters:
-                if param.name == 'TransformUV0':
-                    param.value = (0, 0, 1, 1)
-                    break
-
-        builder = trinity.Tr2SkinnedModelBuilder()
-        builder.createGPUMesh = True
-        builder.removeReversed = True
-        builder.collapseToOpaque = True
-        builder.enableSubsetBuilding = True
-        builder.effectPath = COLLAPSED_SHADOW_EFFECT_PATH
-        builder.SetAdjustPathMethod(lambda path: doll.AdjustGr2PathForLod(path))
-        builder.enableVertexChopping = False
-        builder.enableVertexPadding = False
-        blends = {}
-        for mod in mods:
-            if mod.categorie in pd.BLENDSHAPE_CATEGORIES and mod.weight > 0:
-                blends[mod.name] = mod.weight
-            red = mod.redfile
-            if red is None or red is '':
-                continue
-            if 'ragdoll' in red.lower():
-                continue
-            peek = doll.AdjustRedFileForLod(red)
-            if file.FileExists(peek):
-                red = peek
-            source = trinity.Tr2SkinnedModelBuilderSource()
-            source.moduleResPath = red
-            uv = UV.get(mod.redfile, (0, 0, 1, 1))
-            source.upperLeftTexCoord = (uv[0], uv[1])
-            source.lowerRightTexCoord = (uv[2], uv[3])
-            builder.sourceMeshesInfo.append(source)
-
-        for (name, weight,) in blends.iteritems():
-            if weight > 0.0:
-                blend = trinity.Tr2SkinnedModelBuilderBlend()
-                blend.name = name
-                blend.power = weight
-                builder.blendshapeInfo.append(blend)
-
-        if not builder.PrepareForBuild():
-            collapseShadowMesh = False
-            collapseMainMesh = False
-            collapsePLPMesh = False
-        else:
-            buildCount = 0
-            while builder.Build():
-                buildCount += 1
-
-            if pd.PerformanceOptions.collapseVerbose:
-                if buildCount > 1 and doll.overrideLod == 2:
-                    log.LogWarn('PD Collapse: lod2 has ' + str(buildCount) + ' meshes after collapse (expected 1).')
-                if buildCount > 3 and doll.overrideLod == 0:
-                    log.LogWarn('PD Collapse: lod0 has ' + str(buildCount) + ' meshes after collapse (expected 3 at most).')
-            model = builder.GetSkinnedModel()
-
-            def TransferArrayOf(destEffect, sourceEffect):
-                for p in sourceEffect.parameters:
-                    if p.name.startswith('ArrayOf'):
-                        for q in destEffect.parameters:
-                            if p.name == q.name:
-                                destEffect.parameters.remove(q)
-                                break
-
-                        destEffect.parameters.append(p)
-
-
-
-            for (count, mesh,) in enumerate(model.meshes):
-                mesh.name = 'collapsed' + str(buildCount) + str(count)
-                if collapseMainMesh or collapsePLPMesh:
-                    for area in iter(mesh.opaqueAreas):
-                        if createShadows:
-                            newArea = trinity.Tr2MeshArea()
-                            newArea.index = area.index
-                            newArea.count = area.count
-                            newArea.effect = shadowEffect
-                            TransferArrayOf(shadowEffect, area.effect)
-                            mesh.depthAreas.append(newArea)
-                        TransferArrayOf(sourceEffect, area.effect)
-                        area.effect = sourceEffect
-
-                    if collapsePLPMesh:
-                        plpMeshes.append(mesh)
-                elif createShadows:
-                    pd.MoveAreas(mesh.opaqueAreas, mesh.depthAreas)
-                    for area in mesh.depthAreas:
-                        TransferArrayOf(shadowEffect, area.effect)
-                        area.effect = shadowEffect
-
-                visualModel.meshes.append(mesh)
-
-        if not collapseMainMesh:
-            for param in sourceEffect.parameters:
-                if param.name == 'TransformUV0':
-                    param.value = savedUV[param.name]
-
-        visualModel.ResetAnimationBindings()
+    useLightControlMap = doll.overrideLod < 1
+    collapseShadowMesh = kwargs.get('collapseShadowMesh', False)
+    collapsePLPMesh = kwargs.get('collapsePLPMesh', False)
+    collapseMainMesh = kwargs.get('collapseMainMesh', False)
     for mesh in visualModel.meshes:
-        if mesh in plpMeshes:
-            continue
         if mesh.name[0:4] == 'hair':
-            AddPrepassAreasToHair(mesh, processDepthAreas=createShadows and not collapseShadowMesh, processDepthNormalAreas=not collapsePLPMesh)
-        else:
-            AddPrepassAreasToStandardMesh(mesh, processDepthAreas=createShadows and not collapseShadowMesh, processDepthNormalAreas=not collapsePLPMesh)
+            if AddPrepassAreasToHair(mesh, processDepthAreas=createShadows and not collapseShadowMesh, processDepthNormalAreas=not collapsePLPMesh, usePrepassAlphaTestHair=doll.usePrepassAlphaTestHair):
+                continue
+        AddPrepassAreasToStandardMesh(mesh, processDepthAreas=createShadows and not collapseShadowMesh, processDepthNormalAreas=not collapsePLPMesh, doll=doll, avatar=avatar, useLightControlMap=useLightControlMap)
 
-    for mesh in plpMeshes:
-        AddDepthNormalAreasToStandardMesh(mesh)
-        mesh.opaqueAreas.removeAt(-1)
+    if doll.overrideLod >= pd.PerformanceOptions.singleBoneLod:
+        for mesh in visualModel.meshes:
+            for dn in mesh.depthNormalAreas:
+                dn.effect.defaultSituation = dn.effect.defaultSituation + ' SingleBone'
+
+            for dn in mesh.opaquePrepassAreas:
+                if hasattr(dn.effect, 'defaultSituation'):
+                    dn.effect.defaultSituation = dn.effect.defaultSituation + ' SingleBone'
+
+            for dn in mesh.decalPrepassAreas:
+                dn.effect.defaultSituation = dn.effect.defaultSituation + ' SingleBone'
+
 
     if doll.overrideLod == 2:
         for mesh in visualModel.meshes:
@@ -685,9 +692,9 @@ def AddPrepassAreasToAvatar(avatar, visualModel, doll, clothSimulationActive = T
                 dn.effect.defaultSituation = dn.effect.defaultSituation + ' OPT_USE_OBJECT_NORMAL'
 
 
-    if collapseMainMesh or collapsePLPMesh:
+    if collapseMainMesh:
         for mesh in visualModel.meshes:
-            for dn in mesh.depthNormalAreas:
+            for dn in mesh.opaquePrepassAreas:
                 dn.effect.defaultSituation = dn.effect.defaultSituation + ' OPT_COLLAPSED_PLP'
 
 
@@ -714,7 +721,7 @@ def AddPrepassAreasToAvatar(avatar, visualModel, doll, clothSimulationActive = T
                 isTr2Effect = hasattr(mesh.effect, 'effectFilePath')
                 effectIsHairEffect = False
                 if isTr2Effect:
-                    effectIsHairEffect = mesh.effect.effectFilePath.lower().find('hair') != -1
+                    effectIsHairEffect = 'hair' in mesh.effect.effectFilePath.lower()
                 if isTr2Effect and not effectIsHairEffect:
                     newEffect = trinity.Tr2ShaderMaterial()
                     newEffect.highLevelShaderName = 'NormalDepth'
@@ -735,25 +742,39 @@ def AddPrepassAreasToAvatar(avatar, visualModel, doll, clothSimulationActive = T
                     reversedIsTr2Effect = hasattr(mesh.effectReversed, 'effectFilePath')
                     reversedEffectIsHair = False
                     if reversedIsTr2Effect:
-                        reversedEffectIsHair = mesh.effectReversed.effectFilePath.lower().find('hair') != -1
+                        reversedEffectIsHair = 'hair' in mesh.effectReversed.effectFilePath.lower()
                     if effectIsHairEffect:
                         newMaterial = CopyHairShader(mesh.effect)
                         newMaterial.name = mesh.effect.name
-                        newMaterial.defaultSituation = newMaterial.defaultSituation + ' Cloth'
+                        newMaterial.defaultSituation += ' Cloth'
+                        newMaterial.defaultSituation += ' Detailed'
                         if doll.useDXT5N:
-                            newMaterial.defaultSituation = newMaterial.defaultSituation + ' OPT_USE_DXT5N'
-                        mesh.effect = newMaterial
-                        mesh.useTransparentBatches = True
-                        mesh.useSHLighting = True
-                        if reversedIsTr2Effect and reversedEffectIsHair:
-                            newMaterial = CopyHairShader(mesh.effectReversed)
-                            newMaterial.name = mesh.effectReversed.name
-                            newMaterial.defaultSituation = newMaterial.defaultSituation + ' Cloth'
-                            if doll.useDXT5N:
-                                newMaterial.defaultSituation = newMaterial.defaultSituation + ' OPT_USE_DXT5N'
-                            mesh.effectReversed = newMaterial
+                            newMaterial.defaultSituation += ' OPT_USE_DXT5N'
+                        if not doll.usePrepassAlphaTestHair:
                             mesh.useTransparentBatches = True
                             mesh.useSHLighting = True
+                            mesh.depthNormalEffect = None
+                            mesh.depthNormalEffectReversed = None
+                            if reversedIsTr2Effect and reversedEffectIsHair:
+                                newMaterial = CopyHairShader(mesh.effectReversed)
+                                newMaterial.name = mesh.effectReversed.name
+                                newMaterial.defaultSituation += ' Cloth'
+                                newMaterial.defaultSituation += ' Detailed'
+                                if doll.useDXT5N:
+                                    newMaterial.defaultSituation += ' OPT_USE_DXT5N'
+                                mesh.effectReversed = newMaterial
+                                mesh.useTransparentBatches = True
+                                mesh.useSHLighting = True
+                        else:
+                            mesh.useTransparentBatches = False
+                            mesh.useSHLighting = False
+                            mesh.effectReversed = None
+                            mesh.depthNormalEffectReversed = None
+                            depthNormalMaterial = CopyHairShaderDepthNormal(mesh.effect)
+                            depthNormalMaterial.name = mesh.effect.name
+                            depthNormalMaterial.defaultSituation += ' Cloth'
+                            mesh.depthNormalEffect = depthNormalMaterial
+                        mesh.effect = newMaterial
                     else:
                         situation = 'Prepass Cloth'
                         if doll.useDXT5N:
@@ -769,5 +790,9 @@ def AddPrepassAreasToAvatar(avatar, visualModel, doll, clothSimulationActive = T
     avatar.BindLowLevelShaders()
 
 
-exports = {'paperDoll.prePassFixup.AddPrepassAreasToAvatar': AddPrepassAreasToAvatar}
+exports = {'paperDoll.prePassFixup.AddPrepassAreasToAvatar': AddPrepassAreasToAvatar,
+ 'paperDoll.prePassFixup.AddDepthNormalAreasToStandardMesh': AddDepthNormalAreasToStandardMesh,
+ 'paperDoll.prePassFixup.MATERIAL_ID_EXACT': MATERIAL_ID_EXACT,
+ 'paperDoll.prePassFixup.MATERIAL_ID_TRANSPARENT_HACK_EXACT': MATERIAL_ID_TRANSPARENT_HACK_EXACT,
+ 'paperDoll.prePassFixup.FindMaterialID': FindMaterialID}
 

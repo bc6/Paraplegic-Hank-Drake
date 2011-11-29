@@ -91,7 +91,7 @@ class VirtualTable(uicls.SE_BaseClassCore):
 
     def Load_thread(self):
         while not getattr(self, 'tableloaded', None):
-            blue.pyos.synchro.Sleep(50)
+            blue.pyos.synchro.SleepWallclock(50)
 
         if self.destroyed:
             return 
@@ -189,13 +189,13 @@ class VirtualTable(uicls.SE_BaseClassCore):
         contentWidth = self.browser.GetContentWidth()
         singleWordMax = contentWidth - self.browser.xmargin * 2
         if w:
-            if type(w) in types.StringTypes and (w.endswith('%') or w.endswith('\x89')):
+            if isinstance(w, basestring) and (w.endswith('%') or w.endswith('\x89')):
                 w = self.GetInt(w)
                 w = int(float(w) / 100.0 * singleWordMax)
             else:
                 w = self.GetInt(w)
         h = self.data.attrs.Get('height', None)
-        if h and type(h) == types.StringType and (h.endswith('%') or h.endswith('\x89')):
+        if h and isinstance(h, basestring) and (h.endswith('%') or h.endswith('\x89')):
             h = self.GetInt(h)
             if self.browser.sr.clipper:
                 h = float(h) / 100.0 * self.browser.sr.clipperHeight
@@ -207,7 +207,7 @@ class VirtualTable(uicls.SE_BaseClassCore):
             if unicode(col).isdigit():
                 self.dcols.append(int(col))
                 self.fcols.append(int(col))
-            elif col and type(col) == types.StringType and (col.endswith('%') or col.endswith('\x89')):
+            elif col and isinstance(col, basestring) and (col.endswith('%') or col.endswith('\x89')):
                 col = self.GetInt(col)
                 col = float(col) / 100.0 * ((w or contentWidth - self.browser.xmargin * 2) - int(self.browser.attrStack[-1]['border-left-width']) - int(self.browser.attrStack[-1]['border-right-width']))
                 self.dcols.append(int(col))
@@ -229,7 +229,7 @@ class VirtualTable(uicls.SE_BaseClassCore):
 
                 cell = Cell(parent=self, name='tablecell', align=uiconst.RELATIVE)
                 wd = celldata.width
-                if wd and type(wd) == types.StringType and (wd.endswith('%') or wd.endswith('\x89')):
+                if wd and isinstance(wd, basestring) and (wd.endswith('%') or wd.endswith('\x89')):
                     wd = self.GetInt(wd)
                     if wd == 100:
                         wd = 0

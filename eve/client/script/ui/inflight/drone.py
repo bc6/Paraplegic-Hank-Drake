@@ -12,6 +12,8 @@ import form
 import dbg
 import uicls
 import uiconst
+import localization
+import localizationUtil
 
 class DroneEntry(listentry.BaseTacticalEntry):
     __guid__ = 'listentry.DroneEntry'
@@ -47,19 +49,21 @@ class DroneEntry(listentry.BaseTacticalEntry):
             (self.activity, self.activityID,) = droneActivity
         if droneState is None and droneRow is not None:
             droneState = droneRow.activityState
-        st = self.sr.node.label + ' '
-        st += '( ' + {const.entityIdle: '<color=0xFF00FF00>%s</color>' % mls.UI_INFLIGHT_IDLE,
-         const.entityCombat: '<color=0xFFFF0000>%s</color>' % mls.UI_INFLIGHT_FIGHTING,
-         const.entityMining: '<color=0xFFFF0000>%s</color>' % mls.UI_INFLIGHT_MINING,
-         const.entityApproaching: '<color=0xFFFFFF00>%s</color>' % mls.UI_INFLIGHT_APPROACHING,
-         const.entityDeparting: '<color=0xFFFFFF00>%s</color>' % mls.UI_INFLIGHT_RETURNINGTOSHIP,
-         const.entityDeparting2: '<color=0xFFFFFF00>%s</color>' % mls.UI_INFLIGHT_RETURNINGTOSHIP,
-         const.entityOperating: '<color=0xFFFF0000>%s</color>' % mls.UI_INFLIGHT_OPERATING,
-         const.entityPursuit: '<color=0xFFFFFF00>%s</color>' % mls.UI_INFLIGHT_FOLLOWING,
-         const.entityFleeing: '<color=0xFFFFFF00>%s</color>' % mls.UI_INFLIGHT_FLEEING,
-         const.entityEngage: '<color=0xFF00FF00>%s</color>' % mls.UI_INFLIGHT_REPAIR,
-         None: '-'}.get(droneState, mls.UI_INFLIGHT_INCAPACITATED)
-        st2 = st
+        droneStates = {const.entityIdle: 'UI/Inflight/Drone/Idle',
+         const.entityCombat: 'UI/Inflight/Drone/Fighting',
+         const.entityMining: 'UI/Inflight/Drone/Mining',
+         const.entityApproaching: 'UI/Inflight/Drone/Approaching',
+         const.entityDeparting: 'UI/Inflight/Drone/ReturningToShip',
+         const.entityDeparting2: 'UI/Inflight/Drone/ReturningToShip',
+         const.entityOperating: 'UI/Inflight/Drone/Operating',
+         const.entityPursuit: 'UI/Inflight/Drone/Following',
+         const.entityFleeing: 'UI/Inflight/Drone/Fleeing',
+         const.entityEngage: 'UI/Inflight/Drone/Repairing',
+         None: 'UI/Inflight/Drone/NoState'}
+        droneStateLabel = droneStates.get(droneState, 'UI/Inflight/Drone/Incapacitated')
+        stateText = localization.GetByLabel(droneStateLabel)
+        label = localization.GetByLabel('UI/Inflight/Drone/Label', droneType=self.sr.node.label, state=stateText)
+        target = ''
         if droneState in [const.entityCombat, const.entityEngage, const.entityMining]:
             targetID = droneRow.targetID
             targetTypeName = None
@@ -73,32 +77,31 @@ class DroneEntry(listentry.BaseTacticalEntry):
                             pilotName = cfg.eveowners.Get(pilotID).name
                     targetTypeName = uix.GetSlimItemName(targetSlim)
             if pilotName:
-                st2 += pilotName
+                target = pilotName
             elif targetTypeName:
-                st2 += targetTypeName
-            st2 += mls.UI_GENERIC_UNKNOWN
-        st += ' )'
-        st2 += ' )'
-        st3 = ''
+                target = targetTypeName
+            target = localization.GetByLabel('UI/Generic/Unknown')
+        tooltipExtra = ''
         if self.sr.node.ownerID != eve.session.charid:
-            st2 += '<br>' + mls.UI_GENERIC_OWNEDBY + ': ' + cfg.eveowners.Get(self.sr.node.ownerID).name
+            tooltipExtra = localization.GetByLabel('UI/Inflight/Drone/OwnershipText', owner=self.sr.node.ownerID)
         elif self.sr.node.controllerID != eve.session.shipid:
-            st3 += ' | ' + cfg.eveowners.Get(self.sr.node.controllerOwnerID).name
+            tooltipExtra = localization.GetByLabel('UI/Inflight/Drone/ControllerText', owner=self.sr.node.controllerOwnerID)
         elif self.activityID and self.activity:
+            activity = ''
             if self.activity == 'guard':
-                st3 += '  ' + mls.UI_INFLIGHT_GUARDING
+                activity = localization.GetByLabel('UI/Inflight/Drone/Guarding')
             elif self.activity == 'assist':
-                st3 += '  ' + mls.UI_INFLIGHT_ASSISTING
-            st3 += '  ' + cfg.eveowners.Get(self.activityID).name
-        st2 += st3
-        self.sr.label.text = st
-        self.hint = st2
+                activity = localization.GetByLabel('UI/Inflight/Drone/Assisting')
+            tooltipExtra = localization.GetByLabel('UI/Inflight/Drone/Activity', activity=activity, idInfo=cfg.eveowners.Get(self.activityID).name)
+        tooltip = localization.GetByLabel('UI/Inflight/Drone/Tooltip', droneType=self.sr.node.label, state=stateText, target=target, tooltipExtra=tooltipExtra)
+        self.sr.label.text = label
+        self.hint = tooltip
 
 
 
     def GetHeight(self, *args):
         (node, width,) = args
-        node.height = uix.GetTextHeight('Xg', autoWidth=1, singleLine=1) + 4
+        node.height = uix.GetTextHeight('Xg', singleLine=1) + 4
         return node.height
 
 
@@ -125,18 +128,15 @@ class DroneEntry(listentry.BaseTacticalEntry):
 
 
 
-    def Hover(self):
-        if self.sr.node.droneState == 'inlocalspace' and uicore.uilib.mouseOver == self:
-            sm.GetService('target').SetAsInterest(self.itemID)
-
-
-
     def OnClick(self, *args):
         if self.sr.node:
             self.sr.node.scroll.SelectNode(self.sr.node)
             eve.Message('ListEntryClick')
-            if not uicore.uilib.Key(uiconst.VK_CONTROL) and not uicore.uilib.Key(uiconst.VK_SHIFT):
-                sm.GetService('state').SetState(self.sr.node.itemID, state.selected, 1)
+            if not uicore.uilib.Key(uiconst.VK_CONTROL):
+                if not uicore.uilib.Key(uiconst.VK_SHIFT):
+                    sm.GetService('state').SetState(self.sr.node.itemID, state.selected, 1)
+            else:
+                sm.GetService('target').TryLockTarget(self.sr.node.itemID)
 
 
 
@@ -192,10 +192,11 @@ class DroneEntry(listentry.BaseTacticalEntry):
             for rec in selected:
                 args.append((rec, 0, 0))
 
-            m += sm.GetService('menu').InvItemMenu(args, filterFunc=[mls.UI_CMD_BUYTHISTYPE,
-             mls.UI_CMD_ADDTOMARKETQUICKBAR,
-             mls.UI_CMD_VIEWMARKETDETAILS,
-             mls.UI_CMD_FINDINCONTRACTS])
+            filterFunc = [localization.GetByLabel('UI/Inventory/ItemActions/BuyThisType'),
+             localization.GetByLabel('UI/Inventory/ItemActions/AddTypeToMarketQuickbar'),
+             localization.GetByLabel('UI/Inventory/ItemActions/ViewTypesMarketDetails'),
+             localization.GetByLabel('UI/Inventory/ItemActions/FindInContracts')]
+            m += sm.GetService('menu').InvItemMenu(args, filterFunc=filterFunc)
         return m
 
 
@@ -259,15 +260,10 @@ class DroneView(form.ActionPanel):
      'OnAttribute',
      'OnAttributes',
      'OnItemChange']
+    default_windowID = 'droneview'
     default_pinned = True
-    default_top = 408
-
-    def default_left(self):
-        dw = uicore.desktop.width
-        (leftpush, rightpush,) = sm.GetService('neocom').GetSideOffset()
-        return dw - 256 - 16 - rightpush
-
-
+    default_left = 0
+    default_top = 0
 
     def ApplyAttributes(self, attributes):
         self.fafDefVal = cfg.dgmattribs.Get(const.attributeFighterAttackAndFollow).defaultValue
@@ -346,14 +342,15 @@ class DroneView(form.ActionPanel):
         self.sr.droneMenu = hicon
         self.sr.scroll = uicls.Scroll(name='dronescroll', align=uiconst.TOALL, parent=self.sr.main)
         self.sr.scroll.multiSelect = 1
+        self.sr.scroll.OnChar = self.OnDronesScrollChar
         self.sr.inSpace = None
         self.sr.lastUpdate = None
         self.settingsName = 'droneBlah2'
         self.reloading = 0
         self.pending = None
-        uicore.registry.GetLockedGroup('dronegroups', 'inbay', mls.UI_INFLIGHT_DRONESINBAY)
-        uicore.registry.GetLockedGroup('dronegroups', 'inlocalspace', mls.UI_INFLIGHT_DRONESINLOCALSPACE)
-        uicore.registry.GetLockedGroup('dronegroups', 'indistantspace', mls.UI_INFLIGHT_DRONESINDISTANTSPACE)
+        uicore.registry.GetLockedGroup('dronegroups', 'inbay', localization.GetByLabel('UI/Inflight/Drone/DronesInBay'))
+        uicore.registry.GetLockedGroup('dronegroups', 'inlocalspace', localization.GetByLabel('UI/Inflight/Drone/DronesInLocalSpace'))
+        uicore.registry.GetLockedGroup('dronegroups', 'indistantspace', localization.GetByLabel('UI/Inflight/Drone/DronesInDistantSpace'))
         self.groups = self.SettifyGroups(settings.user.ui.Get(self.settingsName, {}))
         droneSettingChanges = {}
         droneSettingChanges[const.attributeDroneIsAggressive] = settings.char.ui.Get('droneAggression', self.droneAggressionDefVal)
@@ -365,13 +362,18 @@ class DroneView(form.ActionPanel):
 
 
 
+    def OnDronesScrollChar(self, *args):
+        return False
+
+
+
     def GetDroneMenu(self):
-        return [None, (mls.UI_INFLIGHT_DRONE_SETTINGS, self.DroneSettings)]
+        return [None, (localization.GetByLabel('UI/Inflight/Drone/Settings'), self.DroneSettings)]
 
 
 
     def DroneSettings(self):
-        sm.GetService('window').GetWindow('droneSettings', create=1, decoClass=form.DroneSettings, maximize=1)
+        form.DroneSettings.Open()
 
 
 
@@ -405,8 +407,7 @@ class DroneView(form.ActionPanel):
 
 
     def UpdateHeader(self, inBay, inSpace):
-        self.SetCaption(self.panelname + ' ' + mls.UI_INFLIGHT_DRONEPANELHEADER % {'inSpace': len(inSpace),
-         'maxTotal': sm.GetService('godma').GetItem(session.charid).maxActiveDrones or 0})
+        self.SetCaption(localization.GetByLabel('UI/Inflight/Drone/PanelHeader', panelName=self.panelname, inSpace=len(inSpace), maxTotal=sm.GetService('godma').GetItem(session.charid).maxActiveDrones or 0))
 
 
 
@@ -457,7 +458,7 @@ class DroneView(form.ActionPanel):
             self.sr.scroll.Load(contentList=scrolllist)
         self.UpdateHeader(inBayIDs, inLocalSpaceIDs + inDistantSpaceIDs)
         self.CheckHint()
-        blue.pyos.synchro.Sleep(500)
+        blue.pyos.synchro.SleepWallclock(500)
         if not self or self.destroyed:
             return 
         if 'pending' in self.pending:
@@ -472,8 +473,8 @@ class DroneView(form.ActionPanel):
 
 
     def CheckClose(self):
-        if not (self.GetDronesInBay() or sm.GetService('michelle').GetDrones()) and hasattr(self, 'SelfDestruct'):
-            self.SelfDestruct()
+        if not (self.GetDronesInBay() or sm.GetService('michelle').GetDrones()) and hasattr(self, 'Close'):
+            self.Close()
 
 
 
@@ -481,7 +482,7 @@ class DroneView(form.ActionPanel):
         m = [None]
         delMenu = [ (groupName, self.DeleteGroup, (groupName,)) for (groupName, groupInfo,) in self.groups.iteritems() ]
         if delMenu:
-            m += [(mls.UI_CMD_DELGROUP, delMenu), None]
+            m += [(localization.GetByLabel('UI/Commands/DeleteGroup'), delMenu), None]
         if node.droneState == 'inlocalspace':
             data = [ [drone.droneID, cfg.invtypes.Get(drone.typeID).groupID, drone.ownerID] for drone in self.GetDronesInLocalSpace() ]
             if data:
@@ -493,10 +494,11 @@ class DroneView(form.ActionPanel):
         else:
             inBay = [ (drone, 0, None) for drone in self.GetDronesInBay() ]
             if inBay:
-                m += sm.GetService('menu').InvItemMenu(inBay, filterFunc=[mls.UI_CMD_BUYTHISTYPE,
-                 mls.UI_CMD_ADDTOMARKETQUICKBAR,
-                 mls.UI_CMD_VIEWMARKETDETAILS,
-                 mls.UI_CMD_FINDINCONTRACTS])
+                filterFunc = [localization.GetByLabel('UI/Inventory/ItemActions/BuyThisType'),
+                 localization.GetByLabel('UI/Inventory/ItemActions/AddTypeToMarketQuickbar'),
+                 localization.GetByLabel('UI/Inventory/ItemActions/ViewTypesMarketDetails'),
+                 localization.GetByLabel('UI/Inventory/ItemActions/FindInContracts')]
+                m += sm.GetService('menu').InvItemMenu(inBay, filterFunc=filterFunc)
         return m
 
 
@@ -525,10 +527,11 @@ class DroneView(form.ActionPanel):
             else:
                 inBay = [ (drone, 0, None) for drone in self.GetDronesInBay() if drone.itemID in itemIDs ]
                 if len(inBay):
-                    m += sm.GetService('menu').InvItemMenu(inBay, filterFunc=[mls.UI_CMD_BUYTHISTYPE,
-                     mls.UI_CMD_ADDTOMARKETQUICKBAR,
-                     mls.UI_CMD_VIEWMARKETDETAILS,
-                     mls.UI_CMD_FINDINCONTRACTS])
+                    filterFunc = [localization.GetByLabel('UI/Inventory/ItemActions/BuyThisType'),
+                     localization.GetByLabel('UI/Inventory/ItemActions/AddTypeToMarketQuickbar'),
+                     localization.GetByLabel('UI/Inventory/ItemActions/ViewTypesMarketDetails'),
+                     localization.GetByLabel('UI/Inventory/ItemActions/FindInContracts')]
+                    m += sm.GetService('menu').InvItemMenu(inBay, filterFunc=filterFunc)
         return m
 
 
@@ -536,7 +539,7 @@ class DroneView(form.ActionPanel):
     def GroupMenu(self, droneNode):
         selected = self.GetSelected(droneNode)
         m = []
-        move = [(mls.UI_CMD_NEWGROUP, self.CreateSubGroup, (droneNode.itemID, cfg.invtypes.Get(droneNode.typeID).groupID, selected))]
+        move = [(localization.GetByLabel('UI/Commands/NewGroup'), self.CreateSubGroup, (droneNode.itemID, cfg.invtypes.Get(droneNode.typeID).groupID, selected))]
         inGroup = []
         for node in selected:
             group = self.GetDroneGroup(node.itemID)
@@ -544,14 +547,14 @@ class DroneView(form.ActionPanel):
                 inGroup.append(node)
 
         if inGroup:
-            move += [(mls.UI_CMD_OUTOFTHISGROUP, self.NoGroup, (inGroup,))]
+            move += [(localization.GetByLabel('UI/Commands/OutOfThisGroup'), self.NoGroup, (inGroup,))]
         groupNames = self.groups.keys()[:]
         groupNames.sort()
         move += [ (groupName, self.MoveToGroup, (groupName,
           droneNode.itemID,
           cfg.invtypes.Get(droneNode.typeID).groupID,
           selected)) for groupName in groupNames ]
-        m += [(mls.UI_CMD_MOVEDRONE, move)]
+        m += [(localization.GetByLabel('UI/Commands/MoveDrone'), move)]
         return m
 
 
@@ -638,7 +641,7 @@ class DroneView(form.ActionPanel):
 
 
     def CreateSubGroup(self, droneID, droneGroupID, nodes = None):
-        ret = uix.NamePopup(mls.UI_GENERIC_TYPEGROUPNAME, mls.UI_GENERIC_TYPENAMEFORGROUP)
+        ret = uix.NamePopup(localization.GetByLabel('UI/Generic/TypeGroupName'), localization.GetByLabel('UI/Generic/TypeNameForGroup'))
         if not ret:
             return 
         droneIDs = set()
@@ -657,7 +660,7 @@ class DroneView(form.ActionPanel):
         group = {}
         group['label'] = groupname
         group['droneIDs'] = droneIDs
-        group['id'] = (groupname, str(blue.os.GetTime()))
+        group['id'] = (groupname, str(blue.os.GetWallclockTime()))
         group['droneGroupID'] = droneGroupID
         self.groups[groupname] = group
         self.CheckDrones(1)
@@ -692,7 +695,7 @@ class DroneView(form.ActionPanel):
 
     def GetDronesInBay(self, *args):
         if eve.session.shipid:
-            return eve.GetInventoryFromId(eve.session.shipid).ListDroneBay()
+            return sm.GetService('invCache').GetInventoryFromId(eve.session.shipid).ListDroneBay()
         return []
 
 
@@ -734,9 +737,12 @@ class DroneView(form.ActionPanel):
 
         else:
             t = len(items)
+        states = {'INBAY': localization.GetByLabel('UI/Inflight/Drone/DronesInBay'),
+         'INLOCALSPACE': localization.GetByLabel('UI/Inflight/Drone/DronesInLocalSpace'),
+         'INDISTANTSPACE': localization.GetByLabel('UI/Inflight/Drone/DronesInDistantSpace')}
         data = {'GetSubContent': self.GetGroupContent,
          'MenuFunction': self.GetMainFolderMenu,
-         'label': getattr(mls, 'UI_INFLIGHT_DRONES' + state.upper()),
+         'label': localization.GetByLabel('UI/Inflight/Drone/DroneGroupWithCount', groupLabel=states[state.upper()], count=t),
          'id': group['id'],
          'groupItems': items,
          'iconMargin': 18,
@@ -745,7 +751,6 @@ class DroneView(form.ActionPanel):
          'droneState': state,
          'BlockOpenWindow': 1,
          'OnClick': self.OnMainGroupClick,
-         'posttext': ' (%s)' % t,
          'showlen': 0,
          'groupName': group['label'],
          'name': 'droneOverview%s' % group['label'].replace(' ', '').capitalize()}
@@ -767,7 +772,7 @@ class DroneView(form.ActionPanel):
             t = len(items)
         data = {'GetSubContent': self.GetGroupContent,
          'MenuFunction': self.GetSubFolderMenu,
-         'label': group['label'],
+         'label': localization.GetByLabel('UI/Inflight/Drone/DroneGroupWithCount', groupLabel=group['label'], count=t),
          'id': group['id'],
          'droneGroupID': group['droneGroupID'],
          'groupItems': None,
@@ -777,7 +782,6 @@ class DroneView(form.ActionPanel):
          'droneState': state,
          'BlockOpenWindow': 1,
          'OnClick': self.OnSubGroupClick,
-         'posttext': ' (%s)' % t,
          'showlen': 0,
          'groupName': group['label']}
         return listentry.Get('Group', data)
@@ -800,19 +804,14 @@ class DroneView(form.ActionPanel):
                     continue
                 if nodedata.droneState == 'inbay':
                     if dronebay.has_key(droneID):
-                        bayDronEntry = self.GetBayDroneEntry(dronebay[droneID], nodedata.sublevel, nodedata.droneState)
-                        label = '  %s' % bayDronEntry.label
-                        scrollList.append((label, bayDronEntry))
+                        scrollList.append(self.GetBayDroneEntry(dronebay[droneID], nodedata.sublevel, nodedata.droneState))
                 else:
-                    spaceDroneEntry = self.GetSpaceDroneEntry(self.GetSpaceDrone(droneID), nodedata.sublevel, nodedata.droneState)
-                    label = '  %s' % spaceDroneEntry.label
-                    scrollList.append((label, spaceDroneEntry))
+                    scrollList.append(self.GetSpaceDroneEntry(self.GetSpaceDrone(droneID), nodedata.sublevel, nodedata.droneState))
 
             for (groupName, droneIDs,) in subGroups.iteritems():
                 group = self.GetSubGroup(groupName)
                 if group:
-                    subGroupEntry = self.GetSubGroupListEntry(group, nodedata.droneState, droneIDs)
-                    scrollList.append((subGroupEntry.label, subGroupEntry))
+                    scrollList.append(self.GetSubGroupListEntry(group, nodedata.droneState, droneIDs))
 
         elif nodedata.sublevel == 1:
             subGroupInfo = self.GetSubGroup(nodedata.groupName)
@@ -820,28 +819,21 @@ class DroneView(form.ActionPanel):
                 drones = self.GetDronesInBay()
                 for drone in drones:
                     if drone.itemID in subGroupInfo['droneIDs']:
-                        bayDroneEntry = self.GetBayDroneEntry(drone, 1, nodedata.droneState)
-                        label = bayDroneEntry.label
-                        scrollList.append((label, bayDroneEntry))
+                        scrollList.append(self.GetBayDroneEntry(drone, 1, nodedata.droneState))
 
             elif nodedata.droneState == 'inlocalspace':
                 drones = self.GetDronesInLocalSpace()
                 for drone in drones:
                     if drone.droneID in subGroupInfo['droneIDs']:
-                        spaceDroneEntry = self.GetSpaceDroneEntry(drone, 1, nodedata.droneState)
-                        label = '  %s' % spaceDroneEntry.label
-                        scrollList.append((label, spaceDroneEntry))
+                        scrollList.append(self.GetSpaceDroneEntry(drone, 1, nodedata.droneState))
 
             else:
                 drones = self.GetDronesInDistantSpace()
                 for drone in drones:
                     if drone.droneID in subGroupInfo['droneIDs']:
-                        spaceDroneEntry = self.GetSpaceDroneEntry(drone, 1, nodedata.droneState)
-                        label = '  %s' % spaceDroneEntry.label
-                        scrollList.append((label, spaceDroneEntry))
+                        scrollList.append(self.GetSpaceDroneEntry(drone, 1, nodedata.droneState))
 
-        scrollList = uiutil.SortListOfTuples(scrollList)
-        return scrollList
+        return localizationUtil.Sort(scrollList, key=lambda x: x.label)
 
 
 
@@ -850,9 +842,11 @@ class DroneView(form.ActionPanel):
         data.itemID = drone.itemID
         data.typeID = drone.typeID
         data.invItem = drone
-        data.displayName = data.label = cfg.invtypes.Get(drone.typeID).name
+        data.displayName = cfg.invtypes.Get(drone.typeID).name
         if drone.stacksize > 1:
-            data.label += ' (%d)' % drone.stacksize
+            data.label = localization.GetByLabel('UI/Inflight/Drone/DroneBayEntryWithStacksize', drone=drone.typeID, stacksize=drone.stacksize)
+        else:
+            data.label = cfg.invtypes.Get(drone.typeID).name
         data.sublevel = level
         data.customMenu = self.GroupMenu
         data.droneState = droneState
@@ -877,7 +871,7 @@ class DroneView(form.ActionPanel):
 
     def CheckHint(self):
         if not self.sr.scroll.GetNodes():
-            self.sr.scroll.ShowHint(mls.UI_INFLIGHT_NODRONES)
+            self.sr.scroll.ShowHint(localization.GetByLabel('UI/Inflight/Drone/NoDrones'))
         else:
             self.sr.scroll.ShowHint()
 

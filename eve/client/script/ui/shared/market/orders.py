@@ -4,11 +4,12 @@ import form
 import uix
 import util
 import listentry
-import draw
 import base
 import uicls
 import uiconst
 import log
+import localization
+import uiutil
 MINSCROLLHEIGHT = 64
 LEFTSIDEWIDTH = 74
 
@@ -33,7 +34,7 @@ class MarketOrders(uicls.Container):
 
     def RefreshOrders(self):
         if self.lastUpdateTime and self.refreshOrdersTimer is None:
-            diff = blue.os.TimeDiffInMs(self.lastUpdateTime)
+            diff = blue.os.TimeDiffInMs(self.lastUpdateTime, blue.os.GetWallclockTime())
             if diff > 30000:
                 self._RefreshOrders()
             else:
@@ -49,7 +50,7 @@ class MarketOrders(uicls.Container):
                 self.Setup()
             self.ShowOrders(isCorp=self.isCorp, refreshing=1)
             self.refreshOrdersTimer = None
-            self.lastUpdateTime = blue.os.GetTime()
+            self.lastUpdateTime = blue.os.GetWallclockTime()
 
 
 
@@ -65,14 +66,14 @@ class MarketOrders(uicls.Container):
         self.where = where
         self.limits = sm.GetService('marketQuote').GetSkillLimits()
         par = uicls.Container(name='counter', parent=self, align=uiconst.TOBOTTOM, height=60, clipChildren=1)
-        self.sr.counter = uicls.Label(text='', parent=par, left=const.defaultPadding + LEFTSIDEWIDTH, top=const.defaultPadding, tabs=[175, 500], state=uiconst.UI_NORMAL)
-        self.sr.counter2 = uicls.Label(text='', parent=par, left=6, top=const.defaultPadding, state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
+        self.sr.counter = uicls.EveLabelMedium(text='', parent=par, left=const.defaultPadding + LEFTSIDEWIDTH, top=const.defaultPadding, tabs=[175, 500], state=uiconst.UI_NORMAL)
+        self.sr.counter2 = uicls.EveLabelMedium(text='', parent=par, left=6, top=const.defaultPadding, state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
         ratio = settings.user.ui.Get('orderScrollHeight', 0.5)
         self.scrollHeight = self.absoluteBottom - self.absoluteTop - self.sr.counter.height - 100
         h = int(ratio * self.scrollHeight)
         sellParent = uicls.Container(name='sellParent', parent=self, align=uiconst.TOTOP, height=h)
         sellLeft = uicls.Container(name='sellLeft', parent=sellParent, align=uiconst.TOLEFT, width=LEFTSIDEWIDTH)
-        sellingText = uicls.CaptionLabel(text=mls.UI_MARKET_SELLING, parent=sellLeft, align=uiconst.RELATIVE, fontsize=16, left=4, top=4, width=LEFTSIDEWIDTH)
+        sellingText = uicls.CaptionLabel(text=localization.GetByLabel('UI/Market/Orders/Selling'), parent=sellLeft, align=uiconst.RELATIVE, fontsize=16, left=4, top=4)
         scroll = uicls.Scroll(name='sellscroll', parent=sellParent)
         scroll.multiSelect = 0
         scroll.smartSort = 1
@@ -87,7 +88,7 @@ class MarketOrders(uicls.Container):
         self.sr.divider = divider
         buyParent = uicls.Container(name='buyParent', parent=self, align=uiconst.TOALL, pos=(0, 0, 0, 0))
         buyLeft = uicls.Container(name='buyLeft', parent=buyParent, align=uiconst.TOLEFT, width=LEFTSIDEWIDTH)
-        buyingText = uicls.CaptionLabel(text=mls.UI_MARKET_BUYING, parent=buyLeft, align=uiconst.RELATIVE, fontsize=16, left=4, top=4, width=LEFTSIDEWIDTH)
+        buyingText = uicls.CaptionLabel(text=localization.GetByLabel('UI/Market/Orders/Buying'), parent=buyLeft, align=uiconst.RELATIVE, fontsize=16, left=4, top=4)
         leftsidewidth = max(LEFTSIDEWIDTH, sellingText.width + 10, buyingText.width + 10)
         sellLeft.width = leftsidewidth
         buyLeft.width = leftsidewidth
@@ -99,7 +100,7 @@ class MarketOrders(uicls.Container):
         scroll.sr.id = 'ordersBuyScroll'
         scroll.OnColumnChanged = self.OnOrderBuyColumnChanged
         self.sr.buyScroll = scroll
-        uicls.Button(label=mls.UI_MARKET_EXPORT, align=uiconst.BOTTOMLEFT, parent=par, func=self.ExportToFile)
+        uicls.Button(label=localization.GetByLabel('UI/Market/Orders/Export'), align=uiconst.BOTTOMLEFT, parent=par, func=self.ExportToFile)
         sm.RegisterNotify(self)
         (w, h,) = self.GetAbsoluteSize()
         self._OnSizeChange_NoBlock(w, h)
@@ -127,13 +128,13 @@ class MarketOrders(uicls.Container):
         else:
             orders = sm.GetService('marketQuote').GetMyOrders()
         if len(orders) == 0:
-            eve.Message('CustomInfo', {'info': mls.UI_MARKET_EXPORTNODATA})
+            eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Market/MarketWindow/ExportNoData')})
             return 
-        date = util.FmtDate(blue.os.GetTime())
+        date = util.FmtDate(blue.os.GetWallclockTime())
         f = blue.os.CreateInstance('blue.ResFile')
         invalidChars = '\\/:*?"<>|'
         directory = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '\\EVE\\logs\\Marketlogs\\'
-        filename = '%s-%s.txt' % ([mls.UI_MARKET_MYORDERS, mls.UI_MARKET_CORPORDERS][self.isCorp], util.FmtDate(blue.os.GetTime(), 'ls').replace(':', ''))
+        filename = '%s-%s.txt' % ([localization.GetByLabel('UI/Market/Orders/MyOrders'), localization.GetByLabel('UI/Market/Orders/CorporationOrders')][self.isCorp], util.FmtDate(blue.os.GetWallclockTime(), 'ls').replace(':', ''))
         if not f.Open(directory + filename, 0):
             f.Create(directory + filename)
         first = 1
@@ -180,66 +181,32 @@ class MarketOrders(uicls.Container):
 
 
 
+    def GetLimitText(self, limit):
+        if limit == -1:
+            text = localization.GetByLabel('UI/Market/Orders/LimitedToStations')
+        elif limit == 0:
+            text = localization.GetByLabel('UI/Market/Orders/LimitedToSystem')
+        elif limit == 50:
+            text = localization.GetByLabel('UI/Market/Orders/LimitedToRegions')
+        else:
+            text = localization.GetByLabel('UI/Market/Orders/LimitedToJumps', jumps=limit)
+        return text
+
+
+
     def UpdateCounter(self, current = None):
         if current is None:
             current = 0
         maxCount = self.limits['cnt']
-        countertext = mls.UI_MARKET_TEXT1_2 % {'remaining': maxCount - current,
-         'maxCount': maxCount,
-         'order': uix.Plural(maxCount, 'UI_GENERIC_ORDER'),
-         'escrow': util.FmtISK(self.totalEscrow, showFractionsAlways=False),
-         'totalleft': util.FmtISK(self.totalLeft, showFractionsAlways=False),
-         'feelimit': round(self.limits['fee'] * 100, 2),
-         'acclimit': round(self.limits['acc'] * 100, 2),
-         'income': util.FmtISK(self.totalIncome, showFractionsAlways=False),
-         'expenses': util.FmtISK(self.totalExpenses, showFractionsAlways=False)}
-        self.sr.counter.text = countertext
+        self.sr.counter.text = localization.GetByLabel('UI/Market/Orders/OrdersRemaining', remaining=maxCount - current, maxCount=maxCount, escrow=util.FmtISK(self.totalEscrow, showFractionsAlways=False), totalLeft=util.FmtISK(self.totalLeft, showFractionsAlways=False), feeLimit=round(self.limits['fee'] * 100, 2), accLimit=round(self.limits['acc'] * 100, 2), income=util.FmtISK(self.totalIncome, showFractionsAlways=False), expenses=util.FmtISK(self.totalExpenses, showFractionsAlways=False))
         askLimit = self.limits['ask']
         bidLimit = self.limits['bid']
         modLimit = self.limits['mod']
         visLimit = self.limits['vis']
-        if askLimit == -1 and bidLimit == -1 and modLimit == -1:
-            self.sr.counter2.text = mls.UI_MARKET_TEXT2
-        elif askLimit == -1:
-            askText = mls.UI_MARKET_LIMITEDTOSTATIONS
-        elif askLimit == 0:
-            askText = mls.UI_MARKET_LIMITEDTOSOLARSYSTEMS
-        elif askLimit == 50:
-            askText = mls.UI_MARKET_LIMITEDTOREGIONS
+        if askLimit == -1 and bidLimit == -1 and modLimit == -1 and visLimit == -1:
+            self.sr.counter2.text = localization.GetByLabel('UI/Market/Orders/OrderRangesWithoutRemote')
         else:
-            askText = mls.UI_MARKET_LIMITEDTOJUMPS % {'jumps': askLimit,
-             'jump': uix.Plural(askLimit, 'UI_GENERIC_JUMP')}
-        if bidLimit == -1:
-            bidText = mls.UI_MARKET_LIMITEDTOSTATIONS
-        elif bidLimit == 0:
-            bidText = mls.UI_MARKET_LIMITEDTOSOLARSYSTEMS
-        elif bidLimit == 50:
-            bidText = mls.UI_MARKET_LIMITEDTOREGIONS
-        else:
-            bidText = mls.UI_MARKET_LIMITEDTOJUMPS % {'jumps': bidLimit,
-             'jump': uix.Plural(bidLimit, 'UI_GENERIC_JUMP')}
-        if modLimit == -1:
-            modText = mls.UI_MARKET_LIMITEDTOSTATIONS
-        elif modLimit == 0:
-            modText = mls.UI_MARKET_LIMITEDTOSOLARSYSTEMS
-        elif modLimit == 50:
-            modText = mls.UI_MARKET_LIMITEDTOREGIONS
-        else:
-            modText = mls.UI_MARKET_LIMITEDTOJUMPS % {'jumps': modLimit,
-             'jump': uix.Plural(modLimit, 'UI_GENERIC_JUMP')}
-        if visLimit == -1:
-            visText = mls.UI_MARKET_LIMITEDTOSTATIONS
-        elif visLimit == 0:
-            visText = mls.UI_MARKET_LIMITEDTOSOLARSYSTEMS
-        elif visLimit == 50:
-            visText = mls.UI_MARKET_LIMITEDTOREGIONS
-        else:
-            visText = mls.UI_MARKET_LIMITEDTOJUMPS % {'jumps': visLimit,
-             'jump': uix.Plural(visLimit, 'UI_GENERIC_JUMP')}
-        self.sr.counter2.text = mls.UI_MARKET_TEXT3 % {'askText': askText,
-         'bidText': bidText,
-         'modText': modText,
-         'visText': visText}
+            self.sr.counter2.text = localization.GetByLabel('UI/Market/Orders/OrderRanges', askLimit=self.GetLimitText(askLimit), bidLimit=self.GetLimitText(bidLimit), modLimit=self.GetLimitText(modLimit), visLimit=self.GetLimitText(visLimit))
         self.sr.counter.parent.height = max(60, self.sr.counter.textheight + const.defaultPadding, self.sr.counter2.textheight + const.defaultPadding)
 
 
@@ -273,26 +240,26 @@ class MarketOrders(uicls.Container):
         if self.isCorp is None:
             self.isCorp = isCorp
         sscrollList = []
-        sheaders = self.sr.sellScroll.sr.headers = [mls.UI_GENERIC_TYPE,
-         mls.UI_GENERIC_QUANTITY,
-         mls.UI_GENERIC_PRICE,
-         mls.UI_GENERIC_LOCATION,
-         mls.UI_GENERIC_EXPIRESIN]
+        sheaders = self.sr.sellScroll.sr.headers = [localization.GetByLabel('UI/Common/Type'),
+         localization.GetByLabel('UI/Common/Quantity'),
+         localization.GetByLabel('UI/Market/MarketQuote/headerPrice'),
+         localization.GetByLabel('UI/Common/Location'),
+         localization.GetByLabel('UI/Market/Marketbase/ExpiresIn')]
         if self.isCorp:
-            sheaders.append(mls.UI_GENERIC_ISSUEDBY)
-            sheaders.append(mls.UI_GENERIC_WALLETDIVISION)
+            sheaders.append(localization.GetByLabel('UI/Market/MarketQuote/headerIssuedBy'))
+            sheaders.append(localization.GetByLabel('UI/Market/MarketQuote/headerWalletDivision'))
         visibleSHeaders = self.sr.sellScroll.GetColumns()
         bscrollList = []
-        bheaders = self.sr.buyScroll.sr.headers = [mls.UI_GENERIC_TYPE,
-         mls.UI_GENERIC_QUANTITY,
-         mls.UI_GENERIC_PRICE,
-         mls.UI_GENERIC_LOCATION,
-         mls.UI_GENERIC_RANGE,
-         mls.UI_GENERIC_MINVOLUME,
-         mls.UI_GENERIC_EXPIRESIN]
+        bheaders = self.sr.buyScroll.sr.headers = [localization.GetByLabel('UI/Common/Type'),
+         localization.GetByLabel('UI/Common/Quantity'),
+         localization.GetByLabel('UI/Market/MarketQuote/headerPrice'),
+         localization.GetByLabel('UI/Common/Location'),
+         localization.GetByLabel('UI/Common/Range'),
+         localization.GetByLabel('UI/Market/MarketQuote/HeaderMinVolumn'),
+         localization.GetByLabel('UI/Market/Marketbase/ExpiresIn')]
         if self.isCorp:
-            bheaders.append(mls.UI_GENERIC_ISSUEDBY)
-            bheaders.append(mls.UI_GENERIC_WALLETDIVISION)
+            bheaders.append(localization.GetByLabel('UI/Market/MarketQuote/headerIssuedBy'))
+            bheaders.append(localization.GetByLabel('UI/Market/MarketQuote/headerWalletDivision'))
         visibleBHeaders = self.sr.buyScroll.GetColumns()
         marketUtil = sm.GetService('marketutils')
         if self.isCorp:
@@ -325,6 +292,7 @@ class MarketOrders(uicls.Container):
                 data.isSelected = 1
             visibleHeaders = [visibleSHeaders, visibleBHeaders][order.bid]
             for header in visibleHeaders:
+                header = uiutil.StripTags(header, stripOnly=['localized'])
                 funcName = funcs.get(header, None)
                 if funcName == 'GetQuantity':
                     funcName = 'GetQuantitySlashVolume'
@@ -345,8 +313,8 @@ class MarketOrders(uicls.Container):
         if refreshing:
             buyScrollTo = self.sr.buyScroll.GetScrollProportion()
             sellScrollTo = self.sr.sellScroll.GetScrollProportion()
-        self.sr.sellScroll.Load(contentList=sscrollList, headers=sheaders, scrollTo=sellScrollTo, noContentHint=mls.UI_MARKET_NOORDERSFOUND)
-        self.sr.buyScroll.Load(contentList=bscrollList, headers=bheaders, scrollTo=buyScrollTo, noContentHint=mls.UI_MARKET_NOORDERSFOUND)
+        self.sr.sellScroll.Load(contentList=sscrollList, headers=sheaders, scrollTo=sellScrollTo, noContentHint=localization.GetByLabel('UI/Market/Orders/NoOrdersFound'))
+        self.sr.buyScroll.Load(contentList=bscrollList, headers=bheaders, scrollTo=buyScrollTo, noContentHint=localization.GetByLabel('UI/Market/Orders/NoOrdersFound'))
         if not isCorp:
             self.UpdateCounter(len(orders))
 
@@ -361,13 +329,13 @@ class OrderEntry(listentry.Generic):
         self.OnClick()
         m = []
         if self.sr.node.order.charID == session.charid:
-            m.append((mls.UI_CMD_CANCELORDER, self.CancelOffer, (self.sr.node,)))
-            m.append((mls.UI_CMD_MODIFYORDER, self.ModifyPrice, (self.sr.node,)))
+            m.append((localization.GetByLabel('UI/Market/Orders/CancelOrder'), self.CancelOffer, (self.sr.node,)))
+            m.append((localization.GetByLabel('UI/Market/Orders/ModifyOrder'), self.ModifyPrice, (self.sr.node,)))
         m.append(None)
         m += sm.GetService('menu').GetMenuFormItemIDTypeID(None, self.sr.node.order.typeID, ignoreMarketDetails=0)
         m.append(None)
         stationInfo = sm.GetService('ui').GetStation(self.sr.node.order.stationID)
-        m += [(mls.UI_CMD_LOCATION, sm.GetService('menu').CelestialMenu(self.sr.node.order.stationID, typeID=stationInfo.stationTypeID, parentID=stationInfo.solarSystemID))]
+        m += [(localization.GetByLabel('UI/Common/Location'), sm.GetService('menu').CelestialMenu(self.sr.node.order.stationID, typeID=stationInfo.stationTypeID, parentID=stationInfo.solarSystemID))]
         return m
 
 

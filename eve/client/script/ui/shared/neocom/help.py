@@ -11,17 +11,20 @@ import listentry
 import uicls
 import uiconst
 import service
+import localization
+import login
 
 class HelpWindow(uicls.Window):
     __guid__ = 'form.HelpWindow'
     __notifyevents__ = ['ProcessSessionChange']
     default_width = 300
     default_height = 458
+    default_windowID = 'help'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.SetScope('station_inflight')
-        self.SetCaption(mls.UI_SHARED_EVEHELP)
+        self.SetCaption(localization.GetByLabel('UI/Help/EveHelp'))
         self.SetWndIcon('74_13')
         self.MakeUnResizeable()
         self.SetMinSize([300, 458], 1)
@@ -32,23 +35,23 @@ class HelpWindow(uicls.Window):
         self.tutorialsLoaded = False
         supportPar = uicls.Container(name='supportPar', parent=self.sr.main, left=const.defaultPadding, top=const.defaultPadding, width=const.defaultPadding, height=const.defaultPadding)
         tutorialsPar = uicls.Container(name='tutorialPar', parent=self.sr.main, pos=(0, 0, 0, 0))
-        t = [[mls.UI_LOGIN_SUPPORT,
+        t = [[localization.GetByLabel('UI/Help/Support'),
           supportPar,
           self,
-          ('support',)], [mls.UI_CMD_TUTORIALS,
+          ('support',)], [localization.GetByLabel('UI/Help/Tutorials'),
           tutorialsPar,
           self,
           ('tutorials',)]]
         tabs = uicls.TabGroup(name='tabparent', parent=self.sr.main, idx=0, tabs=t, autoselecttab=0)
-        tabs.ShowPanelByName(mls.UI_LOGIN_SUPPORT)
+        tabs.ShowPanelByName(attributes.showPanel or localization.GetByLabel('UI/Help/Support'))
         self.sr.mainTabs = tabs
-        x = uicls.CaptionLabel(text=mls.UI_SHARED_EVEHELP, parent=self.sr.topParent, align=uiconst.CENTERLEFT, left=70)
+        x = uicls.CaptionLabel(text=localization.GetByLabel('UI/Help/EveHelp'), parent=self.sr.topParent, align=uiconst.CENTERLEFT, left=70)
 
 
 
     def ProcessSessionChange(self, isremote, session, change):
         if session.charid is None:
-            self.SelfDestruct()
+            self.Close()
 
 
 
@@ -74,8 +77,8 @@ class HelpWindow(uicls.Window):
         for categoryID in byCategs.keys():
             if categoryID is not None:
                 categoryInfo = sm.GetService('tutorial').GetCategory(categoryID)
-                categoryName = Tr(categoryInfo.categoryName, 'tutorial.categories.categoryName', categoryInfo.dataID)
-                categoryDesc = Tr(categoryInfo.description, 'tutorial.categories.description', categoryInfo.dataID)
+                categoryName = localization.GetByMessageID(categoryInfo.categoryNameID)
+                categoryDesc = localization.GetByMessageID(categoryInfo.descriptionID)
                 categsNames.append((categoryName, (categoryID, categoryDesc)))
             else:
                 categsNames.append(('-- No category Set! --', (categoryID, '')))
@@ -97,14 +100,14 @@ class HelpWindow(uicls.Window):
             scrolllist.append(listentry.Get('Group', data))
 
         scroll.Load(contentList=scrolllist)
-        buttonList = [[mls.UI_CMD_OPEN, self.OpenSelectedTutorial, ()], [mls.UI_TUTORIAL_CMD_OPENCAREERFUNNEL, self.ShowTutorialAgents, ()]]
+        buttonList = [[localization.GetByLabel('UI/Help/OpenTutorial'), self.OpenSelectedTutorial, ()], [localization.GetByLabel('UI/Help/ShowCareerAgents'), self.ShowTutorialAgents, ()]]
         if session.role & service.ROLE_CONTENT:
             buttonList.append(['Clear Cache', self.CloseTutorialService, ()])
         btns = uicls.ButtonGroup(btns=buttonList, line=1, unisize=0)
         panel.children.insert(0, btns)
-        tutorialBtn = btns.sr.Get(mls.UI_TUTORIAL_CMD_OPENCAREERFUNNEL + 'Btn')
+        tutorialBtn = btns.sr.Get(localization.GetByLabel('UI/Help/ShowCareerAgents') + 'Btn')
         if tutorialBtn:
-            tutorialBtn.hint = mls.UI_TUTORIAL_OPENCAREERFUNNELEXPLANATION
+            tutorialBtn.hint = localization.GetByLabel('UI/Help/CareerAgentsExplanation')
         self.sr.tutorialBtns = btns
         self.sr.tutorialScroll = scroll
         self.tutorialsLoaded = True
@@ -113,7 +116,7 @@ class HelpWindow(uicls.Window):
 
     def CloseTutorialService(self):
         sm.StopService('tutorial')
-        self.CloseX()
+        self.CloseByUser()
 
 
 
@@ -122,7 +125,7 @@ class HelpWindow(uicls.Window):
             return []
         scrolllist = []
         for tutorialData in nodedata.groupItems:
-            scrolllist.append(listentry.Get('Generic', {'label': Tr(tutorialData.tutorialName, 'tutorial.tutorials.tutorialName', tutorialData.dataID),
+            scrolllist.append(listentry.Get('Generic', {'label': localization.GetByMessageID(tutorialData.tutorialNameID),
              'sublevel': 1,
              'OnDblClick': self.OpenTutorial,
              'tutorialData': tutorialData}))
@@ -132,7 +135,7 @@ class HelpWindow(uicls.Window):
 
 
     def OnScrollSelectionChange(self, selected, *args):
-        openBtn = self.sr.tutorialBtns.sr.Get(mls.UI_CMD_OPEN + 'Btn')
+        openBtn = self.sr.tutorialBtns.sr.Get(localization.GetByLabel('UI/Help/EveHelp') + 'Btn')
         if openBtn:
             if selected:
                 openBtn.state = uiconst.UI_NORMAL
@@ -148,22 +151,29 @@ class HelpWindow(uicls.Window):
 
 
 
+    def CreateBugReport(self, *args):
+        self.Close()
+        blue.pyos.synchro.SleepWallclock(10)
+        sm.GetService('bugReporting').StartCreateBugReport()
+
+
+
     def OpenSelectedTutorial(self, *args):
         sel = self.sr.tutorialScroll.GetSelected()
         if sel:
             tutorialData = getattr(sel[0], 'tutorialData', None)
             if tutorialData is None:
                 return 
-            sm.GetService('tutorial').OpenTutorialSequence_Check(tutorialData.tutorialID, 1, Tr(tutorialData.tutorialName, 'tutorial.tutorials.tutorialName', tutorialData.dataID))
+            sm.GetService('tutorial').OpenTutorialSequence_Check(tutorialData.tutorialID, 1, localization.GetByMessageID(tutorialData.tutorialNameID))
         else:
-            info = mls.UI_GENERIC_PICKERROR2_1CHOICE
+            info = localization.GetByLabel('UI/Help/MustSelectSomething')
             raise UserError('CustomInfo', {'info': info})
 
 
 
     def OpenTutorial(self, entry):
         tutorialData = entry.sr.node.tutorialData
-        sm.GetService('tutorial').OpenTutorialSequence_Check(tutorialData.tutorialID, 1, Tr(tutorialData.tutorialName, 'tutorial.tutorials.tutorialName', tutorialData.dataID))
+        sm.GetService('tutorial').OpenTutorialSequence_Check(tutorialData.tutorialID, 1, localization.GetByMessageID(tutorialData.tutorialNameID))
 
 
 
@@ -174,28 +184,27 @@ class HelpWindow(uicls.Window):
         helpchannelpar = uicls.Container(name='helpchannelpar', parent=subpar, align=uiconst.TOTOP)
         helpchannelpar.padTop = 4
         helpbtnparent = uicls.Container(name='helpbtnparent', parent=subpar, align=uiconst.TOTOP, height=32)
-        helpchannelbtn = uicls.Button(parent=helpbtnparent, label=mls.UI_CMD_JOINCHANNEL, func=self.JoinHelpChannel, btn_default=0, align=uiconst.TOPRIGHT)
+        helpchannelbtn = uicls.Button(parent=helpbtnparent, label=localization.GetByLabel('UI/Help/JoinChannel'), func=self.JoinHelpChannel, btn_default=0, align=uiconst.TOPRIGHT)
         helpchannelbtn.left = 6
-        helptext = uicls.Label(name='label', text=mls.UI_SHARED_TEXT3, parent=helpchannelpar, align=uiconst.TOPLEFT, pos=(8, 4, 280, 0), state=uiconst.UI_NORMAL)
+        helptext = uicls.EveLabelMedium(name='label', text=localization.GetByLabel('UI/Help/JoinChannelHint'), parent=helpchannelpar, align=uiconst.TOPLEFT, pos=(8, 4, 280, 0), state=uiconst.UI_NORMAL)
         helpchannelpar.height = helptext.textheight
         helpbtnparent.height = helpchannelbtn.height + 4
         uicls.Line(parent=subpar, align=uiconst.TOTOP)
         petpar = uicls.Container(name='petitionpar', parent=subpar, align=uiconst.TOTOP, height=60)
         petpar.padTop = 4
         petbtnparent = uicls.Container(name='petbtnparent', parent=subpar, align=uiconst.TOTOP, height=32)
-        petbtn = uicls.Button(parent=petbtnparent, label=mls.UI_CMD_FILEPETITION, func=self.FilePetition, btn_default=0, align=uiconst.TOPRIGHT)
+        petbtn = uicls.Button(parent=petbtnparent, label=localization.GetByLabel('UI/Help/FilePetition'), func=self.FilePetition, btn_default=0, align=uiconst.TOPRIGHT)
         petbtn.left = 6
-        pettext = '<br><url=localsvc:service=petition&method=Show>%s</url>' % mls.UI_CMD_OPENPETITIONS
-        pettext = uicls.Label(name='label', text=mls.UI_SHARED_TEXT4 + pettext, parent=petpar, align=uiconst.TOPLEFT, pos=(8, 4, 280, 0), state=uiconst.UI_NORMAL)
+        pettext = uicls.EveLabelMedium(name='label', text=localization.GetByLabel('UI/Help/OpenPetitions'), parent=petpar, align=uiconst.TOPLEFT, pos=(8, 4, 280, 0), state=uiconst.UI_NORMAL)
         petpar.height = pettext.textheight
         petbtnparent.height = petbtn.height + 4
         uicls.Line(parent=subpar, align=uiconst.TOTOP)
         kbpar = uicls.Container(name='kbpar', parent=subpar, align=uiconst.TOTOP, height=60)
         kbpar.padTop = 4
         kbbtnparent = uicls.Container(name='kbbtnparent', parent=subpar, align=uiconst.TOTOP, width=96)
-        kbt = '<b>%s</b><br>%s<br><url=http://support.eveonline.com>%s</url>' % (mls.UI_GENERIC_KNOWLEDGEBASE, mls.UI_SHARED_KBSEARCHHINT, mls.UI_CMD_OPENKNOWLEDGEBASE)
-        kbtext = uicls.Label(name='label', text=kbt, parent=kbpar, align=uiconst.TOPLEFT, pos=(8, 4, 280, 0), state=uiconst.UI_NORMAL)
-        kbbtn = uicls.Button(parent=kbbtnparent, label=mls.UI_CMD_SEARCH, func=self.SearchKB, pos=(6, 0, 0, 0), align=uiconst.TOPRIGHT, btn_default=1)
+        kbt = localization.GetByLabel('UI/Help/EvelopediaHintText')
+        kbtext = uicls.EveLabelMedium(name='label', text=kbt, parent=kbpar, align=uiconst.TOPLEFT, pos=(8, 4, 280, 0), state=uiconst.UI_NORMAL)
+        kbbtn = uicls.Button(parent=kbbtnparent, label=localization.GetByLabel('UI/Help/SearchEvelopedia'), func=self.SearchKB, pos=(6, 0, 0, 0), align=uiconst.TOPRIGHT, btn_default=1)
         self.sr.kbsearch = uicls.SinglelineEdit(name='kbsearch', parent=kbbtnparent, pos=(kbbtn.width + 14,
          0,
          195,
@@ -206,13 +215,26 @@ class HelpWindow(uicls.Window):
         funnelpar = uicls.Container(name='funnelpar', parent=subpar, align=uiconst.TOTOP, height=60)
         funnelpar.padTop = 4
         funnelbtnparent = uicls.Container(name='funnelbtnparent', parent=subpar, align=uiconst.TOTOP, width=96, height=32)
-        funnelbt = '<b>%s</b><br>%s' % (mls.UI_TUTORIAL_CAREERFUNNEL, mls.UI_TUTORIAL_OPENCAREERFUNNELEXPLANATION)
-        funneltext = uicls.Label(name='label', text=funnelbt, parent=funnelpar, align=uiconst.TOPLEFT, pos=(8, 4, 280, 0), state=uiconst.UI_NORMAL)
-        funnelbtn = uicls.Button(parent=funnelbtnparent, label=mls.UI_TUTORIAL_CMD_OPENCAREERFUNNEL, func=self.ShowTutorialAgents, pos=(6, 0, 0, 0), align=uiconst.TOPRIGHT)
+        funnelbt = localization.GetByLabel('UI/Help/CareerAdvancementFull')
+        funneltext = uicls.EveLabelMedium(name='label', text=funnelbt, parent=funnelpar, align=uiconst.TOPLEFT, pos=(8, 4, 280, 0), state=uiconst.UI_NORMAL)
+        funnelbtn = uicls.Button(parent=funnelbtnparent, label=localization.GetByLabel('UI/Help/ShowCareerAgents'), func=self.ShowTutorialAgents, pos=(6, 0, 0, 0), align=uiconst.TOPRIGHT)
         helpchannelpar.height = helptext.textheight + helptext.top * 2 + 6
         petpar.height = pettext.textheight + pettext.top * 2 + 6
         kbpar.height = kbtext.textheight + kbtext.top * 2 + 6
         funnelpar.height = funneltext.textheight + funneltext.top * 2 + 6
+        showReportBug = False
+        if not login.GetServerInfo().isLive and not sm.GetService('machoNet').GetClientConfigVals().get('bugReporting_HideButton'):
+            uicls.Line(parent=subpar, align=uiconst.TOTOP)
+            bugreportpar = uicls.Container(name='bugreportpar', parent=subpar, align=uiconst.TOTOP, height=60)
+            bugreportpar.padTop = 4
+            bugreportbtnparent = uicls.Container(name='bugreportbtnparent', parent=subpar, align=uiconst.TOTOP, width=96, height=32)
+            bugreportbt = localization.GetByLabel('UI/Help/ReportBugFull')
+            bugreporttext = uicls.EveLabelMedium(name='label', text=bugreportbt, parent=bugreportpar, align=uiconst.TOPLEFT, pos=(8, 4, 280, 0), state=uiconst.UI_NORMAL)
+            bugreportbtn = uicls.Button(parent=bugreportbtnparent, label=localization.GetByLabel('UI/Help/ReportBug'), func=self.CreateBugReport, pos=(6, -2, 0, 0), align=uiconst.TOPRIGHT)
+            helpchannelpar.height = helptext.textheight + helptext.top * 2 + 6
+            petpar.height = pettext.textheight + pettext.top * 2 + 6
+            kbpar.height = kbtext.textheight + kbtext.top * 2 + 6
+            bugreportpar.height = bugreporttext.textheight + bugreporttext.top * 2 + 6
         totalHeight = 0
         for container in subpar.children:
             if container.align == uiconst.TOTOP:
@@ -230,19 +252,8 @@ class HelpWindow(uicls.Window):
     def SearchKB(self, *args):
         search = self.sr.kbsearch.GetValue()
         if search:
-            url = 'http://search.eveonline.com/search'
-            data = [('q', search),
-             ('btnG', 'Search'),
-             ('site', 'Knowledgebase'),
-             ('getfields', 'page-topic'),
-             ('filter', '0'),
-             ('sort', 'date:D:L:d1'),
-             ('output', 'xml_no_dtd'),
-             ('oe', 'UTF-8'),
-             ('ie', 'UTF-8'),
-             ('client', 'igb'),
-             ('proxystylesheet', 'igb'),
-             ('lr', 'lang_en')]
+            url = 'http://wiki.eveonline.com/en/wiki/Special:Search'
+            data = [('search', search), ('go', 'Go')]
             uicore.cmd.OpenBrowser('%s?%s' % (url, urllib.urlencode(data)))
 
 
@@ -280,7 +291,7 @@ class HelpWindow(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         if getattr(self, 'sr', None) and self.sr.Get('form', None):
             self.sr.form.Close()
 

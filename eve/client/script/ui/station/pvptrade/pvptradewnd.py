@@ -1,4 +1,3 @@
-import xtriui
 import uthread
 import uix
 import uiutil
@@ -6,6 +5,7 @@ import form
 import util
 import uicls
 import uiconst
+import localization
 
 class PVPTrade(uicls.Window):
     __guid__ = 'form.PVPTrade'
@@ -19,14 +19,16 @@ class PVPTrade(uicls.Window):
         self.SetMinSize([300, 370])
         self.SetWndIcon()
         self.SetTopparentHeight(0)
-        self.DefineButtons(uiconst.OKCANCEL, okLabel=mls.UI_CMD_ACCEPT, okFunc=self.OnClickAccept, cancelFunc=self.Cancel)
+        self.DefineButtons(uiconst.OKCANCEL, okLabel=localization.GetByLabel('UI/PVPTrade/Accept'), okFunc=self.OnClickAccept, cancelFunc=self.Cancel)
         sessionData = tradeSession.List()
         herID = sessionData.traders[(not sessionData.traders.index(eve.session.charid))]
         myinfo = cfg.eveowners.Get(eve.session.charid)
         herinfo = cfg.eveowners.Get(herID)
-        my = sm.GetService('window').GetWindow("%s's offer_%s" % (myinfo.name, sessionData.tradeContainerID), create=1, decoClass=self.GetOfferViewClass(), id_=sessionData.tradeContainerID, ownerID=eve.session.charid, shell=tradeSession)
+        windowID = localization.GetByLabel('UI/PVPTrade/TradeOffer', player=eve.session.charid, tradeContainerID=sessionData.tradeContainerID)
+        my = self.GetOfferViewClass().Open(windowID=windowID, id_=sessionData.tradeContainerID, ownerID=eve.session.charid, shell=tradeSession)
         my.state = uiconst.UI_HIDDEN
-        her = sm.GetService('window').GetWindow("%s's offer_%s" % (herinfo.name, sessionData.tradeContainerID), create=1, decoClass=self.GetOfferViewClass(), id_=sessionData.tradeContainerID, ownerID=sessionData.traders[(not sessionData.traders.index(eve.session.charid))], shell=tradeSession)
+        windowID = localization.GetByLabel('UI/PVPTrade/TradeOffer', player=herID, tradeContainerID=sessionData.tradeContainerID)
+        her = self.GetOfferViewClass().Open(windowID=windowID, id_=sessionData.tradeContainerID, ownerID=sessionData.traders[(not sessionData.traders.index(eve.session.charid))], shell=tradeSession)
         her.state = uiconst.UI_HIDDEN
         her.SetWndIcon()
         my.SetWndIcon()
@@ -43,8 +45,8 @@ class PVPTrade(uicls.Window):
         myImgCont = uicls.Container(name='myImgCont', parent=my.sr.topParent, align=uiconst.TOPLEFT, width=64, height=64, padding=(2, 0, 0, 0))
         self.sr.myAccept = uicls.Icon(icon='ui_38_16_193', parent=my.sr.topParent, left=67, top=-1)
         uiutil.GetOwnerLogo(myImgCont, session.charid, size=64, noServerCall=True)
-        uicls.Label(text=myinfo.name, parent=my.sr.topParent, left=82, top=0, fontsize=12, state=uiconst.UI_DISABLED, bold=1)
-        self.sr.myMoney = uicls.Label(text=myinfo.name, parent=my.sr.topParent, left=const.defaultPadding + 2, top=-2, width=200, autowidth=False, fontsize=12, state=uiconst.UI_DISABLED, align=uiconst.BOTTOMRIGHT)
+        uicls.EveLabelMedium(text=myinfo.name, parent=my.sr.topParent, left=82, top=0, state=uiconst.UI_DISABLED, bold=1)
+        self.sr.myMoney = uicls.EveLabelMedium(text=myinfo.name, parent=my.sr.topParent, left=const.defaultPadding + 2, top=-2, width=200, state=uiconst.UI_DISABLED, align=uiconst.BOTTOMRIGHT)
         self.sr.line = uicls.Line(parent=self.sr.main, align=uiconst.TOTOP)
         uicls.Container(name='push', parent=self.sr.main, align=uiconst.TOTOP, height=4)
         uicls.Container(name='push', parent=self.sr.main, align=uiconst.TOBOTTOM, height=2)
@@ -52,12 +54,12 @@ class PVPTrade(uicls.Window):
         self.sr.herAccept = uicls.Icon(icon='ui_38_16_193', parent=her.sr.topParent, left=67, top=-1)
         herImgCont = uicls.Container(name='herImgCont', parent=her.sr.topParent, align=uiconst.TOPLEFT, width=64, height=64, padding=(2, 0, 0, 0))
         uiutil.GetOwnerLogo(herImgCont, herID, size=64, noServerCall=True)
-        uicls.Label(text=herinfo.name, parent=her.sr.topParent, left=82, top=0, fontsize=12, state=uiconst.UI_DISABLED, bold=1)
-        self.sr.herMoney = uicls.Label(text=herinfo.name, parent=her.sr.topParent, left=const.defaultPadding + 2, top=-2, width=200, autowidth=False, fontsize=12, state=uiconst.UI_DISABLED, align=uiconst.BOTTOMRIGHT)
+        uicls.EveLabelMedium(text=herinfo.name, parent=her.sr.topParent, left=82, state=uiconst.UI_DISABLED, bold=1)
+        self.sr.herMoney = uicls.EveLabelMedium(text=herinfo.name, parent=her.sr.topParent, left=const.defaultPadding + 2, top=-2, width=200, state=uiconst.UI_DISABLED, align=uiconst.BOTTOMRIGHT)
         self.sr.my = my
         self.sr.her = her
         self.sr.herinfo = herinfo
-        offerBtn = uicls.Button(parent=my.sr.topParent, label=mls.UI_CMD_OFFERMONEY, func=self.OnClickOfferMoney, args=None, idx=0, pos=(2, 2, 0, 0), align=uiconst.TOPRIGHT)
+        offerBtn = uicls.Button(parent=my.sr.topParent, label=localization.GetByLabel('UI/PVPTrade/OfferMoney'), func=self.OnClickOfferMoney, args=None, idx=0, pos=(2, 2, 0, 0), align=uiconst.TOPRIGHT)
         uiutil.Transplant(self.sr.my, self.sr.myParent)
         self.sr.my.left = self.sr.my.top = -1
         self.sr.my.width = self.sr.my.height = -1
@@ -91,12 +93,12 @@ class PVPTrade(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         if self and getattr(self, 'sr', None):
             if self.sr.my:
-                self.sr.my.SelfDestruct()
+                self.sr.my.Close()
             if self.sr.her:
-                self.sr.her.SelfDestruct()
+                self.sr.her.Close()
 
 
 
@@ -110,7 +112,7 @@ class PVPTrade(uicls.Window):
                 eve.Message('TradeNotCanceled')
 
 
-    CloseX = Cancel
+    CloseByUser = Cancel
 
     def OnClickAccept(self, *etc):
         currentState = [uiconst.UI_HIDDEN, uiconst.UI_DISABLED].index(self.sr.myAccept.state)
@@ -135,8 +137,8 @@ class PVPTrade(uicls.Window):
 
     def GetWindowCaptionText(self):
         if self.sr.session.IsCEOTrade():
-            return mls.UI_STATION_TEXT36 % {'name': self.sr.herinfo.name}
-        return mls.UI_STATION_TEXT37 % {'name': self.sr.herinfo.name}
+            return localization.GetByLabel('UI/PVPTrade/SurrenderTrade', otherParty=self.sr.herinfo.id)
+        return localization.GetByLabel('UI/PVPTrade/TradeWith', otherParty=self.sr.herinfo.id)
 
 
 
@@ -152,23 +154,23 @@ class PVPTrade(uicls.Window):
         if states[0] and states[1]:
             self.sr.my.invReady = 0
             self.sr.her.invReady = 0
-            self.SelfDestruct()
+            self.Close()
 
 
 
     def OnMoneyOffer(self, money):
         myMoney = util.FmtISK(money[self.sr.myIx])
         if money[self.sr.myIx] > 0:
-            myMoney = '<b><color=0xffff5555>%s</color></b>' % myMoney
+            myMoney = localization.GetByLabel('UI/PVPTrade/NegativeChangeInFunds', amount=myMoney)
         else:
-            myMoney = '<color=gray>%s</color>' % myMoney
+            myMoney = localization.GetByLabel('UI/PVPTrade/NoChangeInFunds', amount=myMoney)
         herMoney = util.FmtISK(money[self.sr.herIx])
         if money[self.sr.herIx] > 0:
-            herMoney = '<b><color=0xff55ff55>%s</color></b>' % herMoney
+            herMoney = localization.GetByLabel('UI/PVPTrade/PositiveChangeInFunds', amount=herMoney)
         else:
-            herMoney = '<color=gray>%s</color>' % herMoney
-        self.sr.myMoney.text = '<right>%s: %s' % (mls.UI_GENERIC_MONEY, myMoney)
-        self.sr.herMoney.text = '<right>%s: %s' % (mls.UI_GENERIC_MONEY, herMoney)
+            herMoney = localization.GetByLabel('UI/PVPTrade/NoChangeInFunds', amount=herMoney)
+        self.sr.myMoney.text = localization.GetByLabel('UI/PVPTrade/Money', formattedAmount=myMoney)
+        self.sr.herMoney.text = localization.GetByLabel('UI/PVPTrade/Money', formattedAmount=herMoney)
         self.OnStateToggle([0, 0])
 
 
@@ -188,7 +190,7 @@ class PVPTrade(uicls.Window):
         eve.Message('TradeComplete', {'name': self.sr.herinfo.name})
         self.sr.my.invReady = 0
         self.sr.her.invReady = 0
-        self.SelfDestruct()
+        self.Close()
 
 
 
@@ -196,13 +198,14 @@ class PVPTrade(uicls.Window):
         eve.Message('TradeCancel', {'name': self.sr.herinfo.name})
         self.sr.my.invReady = 0
         self.sr.her.invReady = 0
-        self.SelfDestruct()
+        self.Close()
 
 
 
 
 class PVPOfferView(form.VirtualInvWindow):
     __guid__ = 'form.PVPOfferView'
+    default_stackID = None
 
     def ApplyAttributes(self, attributes):
         form.VirtualInvWindow.ApplyAttributes(self, attributes)
@@ -255,7 +258,7 @@ class PVPOfferView(form.VirtualInvWindow):
             raise UserError('PeopleAboardShip')
         if cfg.invtypes.Get(rec.typeID).Group().Category().id == const.categoryShip:
             foundShip = 0
-            hangar = eve.GetInventory(const.containerHangar).List()
+            hangar = sm.GetService('invCache').GetInventory(const.containerHangar).List()
             for item in hangar:
                 if item.itemID != rec.itemID and cfg.invtypes.Get(rec.typeID).Group().Category().id == const.categoryShip:
                     foundShip = 1
@@ -303,8 +306,7 @@ class CEOVCEOTrade(PVPTrade):
         for station in stations:
             if station.itemID in self.shell.GetStationIDs():
                 continue
-            stationListing.append([mls.UI_STATION_STATIONINSOLARSYSTEM % {'stationname': cfg.evelocations.Get(station.itemID).name,
-              'solarsystemname': cfg.evelocations.Get(station.locationID).name}, station.itemID, station.typeID])
+            stationListing.append([localization.GetByLabel('UI/PVPTrade/StationInSolarsystem', station=station.itemID, solarsystem=station.locationID), station.itemID, station.typeID])
 
         ret = uix.ListWnd(stationListing, 'station')
         if ret:
@@ -318,7 +320,7 @@ class CEOVCEOTrade(PVPTrade):
 
 
     def GetWindowCaptionText(self):
-        return mls.UI_STATION_TEXT38 % {'name': cfg.eveowners.Get(self.her.id).name}
+        return localization.GetByLabel('UI/PVPTrade/NegotiatingSurrender', otherParty=self.her.id)
 
 
 

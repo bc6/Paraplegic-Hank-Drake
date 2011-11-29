@@ -37,7 +37,7 @@ def ReverseTimeCurves(curves):
 
 def ResetTimeCurves(curves):
     for curve in curves:
-        curve.start = blue.os.GetTime()
+        curve.start = blue.os.GetSimTime()
 
 
 
@@ -84,7 +84,7 @@ class PlayerOwnedStructure(spaceObject.LargeCollidableStructure):
 
     def DelayedRemove(self, model, delay):
         model.name = model.name + '_removing'
-        blue.pyos.synchro.Sleep(delay)
+        blue.pyos.synchro.SleepSim(delay)
         model.display = False
         self.RemoveAndClearModel(model)
 

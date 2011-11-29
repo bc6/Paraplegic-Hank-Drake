@@ -20,8 +20,13 @@ def PrepareDrag_Standard(dragContainer, dragSource, *args):
         icon.left = x * (iconSize + 10)
         icon.top = y * (iconSize + 10)
         if decoClass is not None and issubclass(decoClass, xtriui.InvItem) or node.__guid__ in ('xtriui.FittingSlot', 'xtriui.ModuleButton', 'xtriui.ShipUIModule', 'xtriui.CertSlot'):
+            isCopy = False
+            if getattr(node, 'invtype', None) is not None:
+                node.isBlueprint = node.invtype.Group().categoryID == const.categoryBlueprint
+                if node.isBlueprint:
+                    isCopy = node.rec.singleton == const.singletonBlueprintCopy
             typeID = node.rec.typeID
-            MakeTypeIcon(icon, dad, typeID, iconSize, isCopy=getattr(node, 'isCopy', False))
+            MakeTypeIcon(icon, dad, typeID, iconSize, isCopy=isCopy)
         if node.__guid__ in ('xtriui.TypeIcon', 'listentry.DraggableItem'):
             icon.LoadIconByTypeID(node.typeID)
         elif node.__guid__ in ('listentry.User', 'listentry.Sender', 'listentry.ChatUser', 'listentry.SearchedUser'):
@@ -63,6 +68,8 @@ def PrepareDrag_Standard(dragContainer, dragSource, *args):
             icon.LoadIcon('ui_7_64_10')
         elif node.__guid__ in ('neocom.BtnDataNode',):
             icon.LoadIcon(node.iconPath)
+        elif node.__guid__ in ('listentry.QuickbarGroup',):
+            icon.LoadIcon('ui_22_32_29')
         x += 1
         if x >= 3:
             x = 0

@@ -8,6 +8,7 @@ import log
 import uiconst
 import uicls
 import sys
+import localization
 from contractutils import DoParseItemType
 
 class CorpAccounts(uicls.Container):
@@ -16,8 +17,8 @@ class CorpAccounts(uicls.Container):
     __notifyevents__ = ['OnCorpAssetChange']
 
     def init(self):
-        self.sr.journalFromDate = blue.os.GetTime() - 24 * HOUR * 7 + HOUR
-        self.sr.journalToDate = blue.os.GetTime() + HOUR
+        self.sr.journalFromDate = blue.os.GetWallclockTime() - 24 * HOUR * 7 + HOUR
+        self.sr.journalToDate = blue.os.GetWallclockTime() + HOUR
         self.sr.viewMode = 'details'
         self.key = None
         self.sr.search_inited = 0
@@ -51,7 +52,7 @@ class CorpAccounts(uicls.Container):
 
 
     def Load(self, key):
-        toparea = sm.GetService('corpui').LoadTop('ui_7_64_13', mls.UI_CORP_CORPASSETS, mls.UI_CORP_DELAYED5MINUTES)
+        sm.GetService('corpui').LoadTop('ui_7_64_13', localization.GetByLabel('UI/Corporations/Assets/CorpAssets'), localization.GetByLabel('UI/Corporations/Common/UpdateDelay'))
         if not self.sr.Get('inited', 0):
             self.sr.inited = 1
             self.sr.scroll = uicls.Scroll(parent=self, padding=(const.defaultPadding,
@@ -60,30 +61,30 @@ class CorpAccounts(uicls.Container):
              const.defaultPadding))
             self.sr.scroll.adjustableColumns = 1
             self.sr.scroll.sr.id = 'CorporationAssets'
-            self.sr.scroll.sr.minColumnWidth = {mls.UI_GENERIC_NAME: 44}
+            self.sr.scroll.sr.minColumnWidth = {localization.GetByLabel('UI/Common/Name'): 44}
             self.sr.scroll.SetColumnsHiddenByDefault(uix.GetInvItemDefaultHiddenHeaders())
             self.sr.tabs = uicls.TabGroup(name='tabparent', parent=self, idx=0)
-            self.sr.tabs.Startup([[mls.UI_CORP_OFFICES,
+            self.sr.tabs.Startup([[localization.GetByLabel('UI/Corporations/Common/Offices'),
               self.sr.scroll,
               self,
               'offices'],
-             [mls.UI_CORP_IMPOUNDED,
+             [localization.GetByLabel('UI/Corporations/Assets/Impounded'),
               self.sr.scroll,
               self,
               'impounded'],
-             [mls.UI_CORP_INSPACE,
+             [localization.GetByLabel('UI/Corporations/Assets/InSpace'),
               self.sr.scroll,
               self,
               'property'],
-             [mls.UI_CORP_DELIVERIES,
+             [localization.GetByLabel('UI/Corporations/Assets/Deliveries'),
               self.sr.scroll,
               self,
               'deliveries'],
-             [mls.UI_CORP_LOCKDOWN,
+             [localization.GetByLabel('UI/Corporations/Assets/Lockdown'),
               self.sr.scroll,
               self,
               'lockdown'],
-             [mls.UI_CMD_SEARCH,
+             [localization.GetByLabel('UI/Common/Search'),
               self.sr.scroll,
               self,
               'search']], 'corpassetstab', autoselecttab=0)
@@ -100,10 +101,10 @@ class CorpAccounts(uicls.Container):
             if not getattr(self, 'filt_inited', False):
                 sortKey = settings.char.ui.Get('corpAssetsSortKey', None)
                 self.sr.filt_cont = uicls.Container(align=uiconst.TOTOP, height=37, parent=self, top=2, idx=1)
-                sortoptions = [(mls.UI_GENERIC_NAME, 0), (mls.UI_GENERIC_NUMJUMPS, 1)]
-                self.sr.sortcombo = uicls.Combo(label=mls.UI_CMD_SORTBY, parent=self.sr.filt_cont, options=sortoptions, name='sortcombo', select=sortKey, callback=self.Filter, width=100, pos=(5, 16, 0, 0))
+                sortoptions = [(localization.GetByLabel('UI/Common/Name'), 0), (localization.GetByLabel('UI/Common/NumberOfJumps'), 1)]
+                self.sr.sortcombo = uicls.Combo(label=localization.GetByLabel('UI/Common/SortBy'), parent=self.sr.filt_cont, options=sortoptions, name='sortcombo', select=sortKey, callback=self.Filter, width=100, pos=(5, 16, 0, 0))
                 l = self.sr.sortcombo.width + self.sr.sortcombo.left + const.defaultPadding
-                self.sr.filtcombo = uicls.Combo(label=mls.UI_GENERIC_VIEW, parent=self.sr.filt_cont, options=[], name='filtcombo', select=None, callback=self.Filter, width=100, pos=(l,
+                self.sr.filtcombo = uicls.Combo(label=localization.GetByLabel('UI/Common/View'), parent=self.sr.filt_cont, options=[], name='filtcombo', select=None, callback=self.Filter, width=100, pos=(l,
                  16,
                  0,
                  0))
@@ -161,7 +162,8 @@ class CorpAccounts(uicls.Container):
         try:
             self.sr.filtcombo.LoadOptions(options, None)
             if regionKey and regionKey not in (0, 1):
-                self.sr.filtcombo.SelectItemByLabel(cfg.evelocations.Get(regionKey).name)
+                label = localization.GetByLabel('UI/Common/LocationDynamic', location=regionKey)
+                self.sr.filtcombo.SelectItemByLabel(label)
             else:
                 self.sr.filtcombo.SelectItemByIndex(regionKey)
         except (Exception,) as e:
@@ -175,7 +177,7 @@ class CorpAccounts(uicls.Container):
 
 
         if (const.corpRoleAccountant | const.corpRoleJuniorAccountant) & eve.session.corprole == 0:
-            self.SetHint(mls.UI_CORP_ACCESSDENIED6)
+            self.SetHint(localization.GetByLabel('UI/Corporations/Assets/NeedAccountantOrJuniorRole'))
             sm.GetService('corpui').HideLoad()
             return 
         self.sr.scroll.allowFilterColumns = 1
@@ -196,18 +198,19 @@ class CorpAccounts(uicls.Container):
             uicore.registry.SetListGroupOpenState(('corpassets', row['locationID']), 0)
 
         scrolllist.sort(CmpFunc)
-        self.sr.scroll.Load(fixedEntryHeight=42, contentList=scrolllist, sortby='label', headers=uix.GetInvItemDefaultHeaders(), noContentHint=mls.UI_CORP_NOITEMSFOUND)
+        self.sr.scroll.Load(fixedEntryHeight=42, contentList=scrolllist, sortby='label', headers=uix.GetInvItemDefaultHeaders(), noContentHint=localization.GetByLabel('UI/Corporations/Assets/NoItemsFound'))
         sm.GetService('corpui').HideLoad()
 
 
 
     def GetFilterOptions(self, rows, flagName):
         filterOptions = self.GetRegions(rows, flagName)
-        options = [(mls.UI_GENERIC_CURRENTREGION, (flagName, 0)), (mls.UI_CONTRACTS_ALLREGIONS, (flagName, 1))]
+        options = [(localization.GetByLabel('UI/Corporations/Assets/CurrentRegion'), (flagName, 0)), (localization.GetByLabel('UI/Corporations/Assets/AllRegions'), (flagName, 1))]
         opts = {}
         for r in filterOptions:
             if util.IsRegion(r):
-                opts[cfg.evelocations.Get(r).name] = r
+                label = localization.GetByLabel('UI/Common/LocationDynamic', location=r)
+                opts[label] = r
 
         keys = opts.keys()
         keys.sort()
@@ -250,13 +253,13 @@ class CorpAccounts(uicls.Container):
         try:
             mapSvc = sm.GetService('map')
             jumps = sm.GetService('pathfinder').GetJumpCountFromCurrent(solarSystemID)
-            locationName = cfg.evelocations.Get(row.locationID).locationName
+            locationName = localization.GetByLabel('UI/Common/LocationDynamic', location=row.locationID)
             constellationID = mapSvc.GetParent(solarSystemID)
             regionID = mapSvc.GetParent(constellationID)
-            label = '%s - %s' % (locationName, uix.Plural(jumps, 'UI_SHARED_NUM_JUMP') % {'num': jumps})
+            label = localization.GetByLabel('UI/Corporations/Assets/LocationAndJumps', location=row.locationID, jumps=jumps)
         except:
             log.LogException()
-            label = '%s' % locationName
+            label = locationName
         data = {'GetSubContent': self.GetSubContent,
          'label': label,
          'jumps': jumps,
@@ -281,7 +284,7 @@ class CorpAccounts(uicls.Container):
             if node.flag == 72:
                 checkIsDirector = const.corpRoleDirector == eve.session.corprole & const.corpRoleDirector
                 if checkIsDirector:
-                    menu.append((mls.UI_CMD_TRASHITEMSATLOCATION, self.TrashJunkAtLocation, (node.locationID,)))
+                    menu.append((localization.GetByLabel('UI/Corporations/Assets/TrashItemsAtLocation'), self.TrashJunkAtLocation, (node.locationID,)))
             return menu
         if util.IsSolarSystem(node.locationID):
             return sm.GetService('menu').CelestialMenu(node.locationID)
@@ -303,9 +306,9 @@ class CorpAccounts(uicls.Container):
         items = sm.RemoteSvc('corpmgr').GetAssetInventoryForLocation(eve.session.corpid, nodedata.locationID, which)
         scrolllist = []
         if len(items) == 0:
-            label = mls.UI_GENERIC_NOITEM
+            label = localization.GetByLabel('/Carbon/UI/Controls/Common/NoItem')
             if nodedata.flag == 71:
-                label = mls.UI_CORP_UNUSED_CORP_OFFICE
+                label = localization.GetByLabel('UI/Corporations/Assets/UnusedCorpOffice')
             return [listentry.Get('Generic', {'label': label,
               'sublevel': nodedata.Get('sublevel', 0) + 1})]
         items.header.virtual = items.header.virtual + [('groupID', lambda row: cfg.invtypes.Get(row.typeID).groupID), ('categoryID', lambda row: cfg.invtypes.Get(row.typeID).categoryID)]
@@ -320,7 +323,7 @@ class CorpAccounts(uicls.Container):
              const.flagCorpSAG6: 6,
              const.flagCorpSAG7: 7}
             for (flag, divisionNumber,) in divisionIdFromHangarFlag.iteritems():
-                label = '    ' + divisionNames[divisionNumber]
+                label = divisionNames[divisionNumber]
                 data = {'GetSubContent': self.GetSubContentDivision,
                  'label': label,
                  'groupItems': None,
@@ -357,7 +360,7 @@ class CorpAccounts(uicls.Container):
         items = sm.RemoteSvc('corpmgr').GetAssetInventoryForLocation(eve.session.corpid, nodedata.locationID, 'offices')
         scrolllist = []
         if len(items) == 0:
-            label = mls.UI_CORP_UNUSED_CORP_OFFICE
+            label = localization.GetByLabel('UI/Corporations/Assets/UnusedCorpOffice')
             data = util.KeyVal()
             data.label = label
             data.sublevel = nodedata.Get('sublevel', 1) + 1
@@ -374,7 +377,6 @@ class CorpAccounts(uicls.Container):
             data.sublevel = nodedata.Get('sublevel', 1) + 1
             if each.categoryID == const.categoryBlueprint:
                 data.locked = sm.GetService('corp').IsItemLocked(each)
-            data.label = '%s<t>%s<t>%s' % (cfg.invtypes.Get(each.typeID).name, each.stacksize, cfg.invgroups.Get(each.groupID).name)
             scrolllist.append(listentry.Get('InvItemWithVolume', data=data))
 
         return scrolllist
@@ -392,16 +394,16 @@ class CorpAccounts(uicls.Container):
         else:
             return 
         if (const.corpRoleAccountant | const.corpRoleJuniorAccountant) & eve.session.corprole == 0:
-            self.SetHint(mls.UI_CORP_ACCESSDENIED6)
+            self.SetHint(localization.GetByLabel('UI/Corporations/Assets/NeedAccountantRole'))
             self.sr.scroll.Clear()
             sm.GetService('corpui').HideLoad()
             return 
         keymap = sm.GetService('account').GetKeyMap()
         scrolllist = []
         for row in keymap:
-            keyName = '%s (%s - %s)' % (row.keyName.capitalize(), util.FmtDate(self.sr.journalFromDate, 'ls'), util.FmtDate(self.sr.journalToDate, 'ls'))
+            label = '%s (%s - %s)' % (row.keyName.capitalize(), util.FmtDate(self.sr.journalFromDate, 'ls'), util.FmtDate(self.sr.journalToDate, 'ls'))
             data = {'GetSubContent': self.GetJournalSubContent,
-             'label': keyName,
+             'label': label,
              'groupItems': None,
              'id': ('corpaccounts', row.keyName),
              'tabs': [],
@@ -411,11 +413,11 @@ class CorpAccounts(uicls.Container):
              'fromDate': self.sr.journalFromDate}
             scrolllist.append(listentry.Get('Group', data))
 
-        self.sr.scroll.Load(fixedEntryHeight=19, contentList=scrolllist, headers=[mls.UI_GENERIC_DATE,
-         mls.UI_GENERIC_ID,
-         mls.UI_GENERIC_AMOUNT,
-         mls.UI_GENERIC_DESCRIPTION,
-         mls.UI_GENERIC_AMOUNT])
+        self.sr.scroll.Load(fixedEntryHeight=19, contentList=scrolllist, headers=[localization.GetByLabel('UI/Common/Date'),
+         localization.GetByLabel('UI/Common/ID'),
+         localization.GetByLabel('UI/Common/Amount'),
+         localization.GetByLabel('UI/Common/Description'),
+         localization.GetByLabel('UI/Common/Amount')])
         sm.GetService('corpui').HideLoad()
 
 
@@ -436,9 +438,9 @@ class CorpAccounts(uicls.Container):
              util.FmtCurrency(row.amount, currency=None, showFractionsAlways=0),
              util.FmtRef(row.entryTypeID, row.ownerID1, row.ownerID2, row.referenceID, amount=row.amount),
              actor)
-            data['sort_%s' % mls.UI_GENERIC_DATE] = row.transactionDate
-            data['sort_%s' % mls.UI_GENERIC_AMOUNT] = row.amount
-            data['sort_%s' % mls.UI_GENERIC_ID] = row.transactionID
+            data['sort_%s' % localization.GetByLabel('UI/Common/Date')] = row.transactionDate
+            data['sort_%s' % localization.GetByLabel('UI/Common/Amount')] = row.amount
+            data['sort_%s' % localization.GetByLabel('UI/Common/ID')] = row.transactionID
             scrolllist.append(listentry.Get('Generic', data))
 
         return scrolllist
@@ -466,7 +468,7 @@ class CorpAccounts(uicls.Container):
             regionKey = settings.char.ui.Get('corpAssetsKeyID_lockdown', None)
         settings.char.ui.Set('corpAssetsKeyID_lockdown', regionKey)
         if (const.corpRoleAccountant | const.corpRoleJuniorAccountant) & eve.session.corprole == 0:
-            self.SetHint(mls.UI_CORP_ACCESSDENIED7)
+            self.SetHint(localization.GetByLabel('UI/Corporations/Assets/NeedAccountantRole'))
             self.sr.scroll.Clear()
             sm.GetService('corpui').HideLoad()
             return 
@@ -498,13 +500,13 @@ class CorpAccounts(uicls.Container):
             try:
                 mapSvc = sm.GetService('map')
                 jumps = sm.GetService('pathfinder').GetJumpCountFromCurrent(solarSystemID)
-                locationName = cfg.evelocations.Get(locationID).locationName
+                locationName = localization.GetByLabel('UI/Common/LocationDynamic', location=locationID)
                 constellationID = mapSvc.GetParent(solarSystemID)
                 regionID = mapSvc.GetParent(constellationID)
-                label = '%s - %s' % (locationName, uix.Plural(jumps, 'UI_SHARED_NUM_JUMP') % {'num': jumps})
+                label = localization.GetByLabel('UI/Corporations/Assets/LocationAndJumps', location=locationID, jumps=jumps)
             except:
                 log.LogException()
-                label = '%s' % locationName
+                label = locationName
             data = {'label': label,
              'jumps': jumps,
              'GetSubContent': self.ShowLockdownSubcontent,
@@ -531,7 +533,7 @@ class CorpAccounts(uicls.Container):
             uicore.registry.SetListGroupOpenState(('corpassets', row['locationID']), 0)
 
         scrolllist.sort(CmpFunc)
-        self.sr.scroll.Load(fixedEntryHeight=19, contentList=scrolllist, headers=uix.GetInvItemDefaultHeaders(), noContentHint=mls.UI_CORP_NOITEMSFOUND)
+        self.sr.scroll.Load(fixedEntryHeight=19, contentList=scrolllist, headers=uix.GetInvItemDefaultHeaders(), noContentHint=localization.GetByLabel('UI/Corporations/Assets/NoItemsFound'))
         sm.GetService('corpui').HideLoad()
 
 
@@ -587,7 +589,7 @@ class CorpAccounts(uicls.Container):
         if not self.sr.search_inited:
             search_cont = uicls.Container(name='search_cont', parent=self, height=36, align=uiconst.TOTOP, idx=1)
             self.sr.search_cont = search_cont
-            catOptions = [(mls.UI_CONTRACTS_ALL, None)]
+            catOptions = [(localization.GetByLabel('UI/Common/All'), None)]
             categories = []
             for c in cfg.invcategories:
                 if c.categoryID > 0:
@@ -598,41 +600,41 @@ class CorpAccounts(uicls.Container):
                 if c[2]:
                     catOptions.append((c[0], c[1]))
 
-            typeOptions = [(mls.UI_CORP_OFFICES, 'offices'),
-             (mls.UI_CORP_IMPOUNDED, 'junk'),
-             (mls.UI_CORP_INSPACE, 'property'),
-             (mls.UI_CORP_DELIVERIES, 'deliveries')]
+            typeOptions = [(localization.GetByLabel('UI/Corporations/Common/Offices'), 'offices'),
+             (localization.GetByLabel('UI/Corporations/Assets/Impounded'), 'junk'),
+             (localization.GetByLabel('UI/Corporations/Assets/InSpace'), 'property'),
+             (localization.GetByLabel('UI/Corporations/Assets/Deliveries'), 'deliveries')]
             left = 5
             top = 17
-            self.sr.fltType = c = uicls.Combo(label=mls.UI_GENERIC_WHERE, parent=search_cont, options=typeOptions, name='flt_type', select=settings.user.ui.Get('corp_assets_filter_type', None), callback=self.ComboChange, width=90, pos=(left,
+            self.sr.fltType = c = uicls.Combo(label=localization.GetByLabel('UI/Common/Where'), parent=search_cont, options=typeOptions, name='flt_type', select=settings.user.ui.Get('corp_assets_filter_type', None), callback=self.ComboChange, width=90, pos=(left,
              top,
              0,
              0))
             left += c.width + 4
-            self.sr.fltCategories = c = uicls.Combo(label=mls.UI_CONTRACTS_CATEGORY, parent=search_cont, options=catOptions, name='flt_category', select=settings.user.ui.Get('corp_assets_filter_categories', None), callback=self.ComboChange, width=90, pos=(left,
+            self.sr.fltCategories = c = uicls.Combo(label=localization.GetByLabel('UI/Corporations/Assets/ItemCategory'), parent=search_cont, options=catOptions, name='flt_category', select=settings.user.ui.Get('corp_assets_filter_categories', None), callback=self.ComboChange, width=90, pos=(left,
              top,
              0,
              0))
             left += c.width + 4
-            grpOptions = [(mls.UI_CONTRACTS_ALL, None)]
-            self.sr.fltGroups = c = uicls.Combo(label=mls.UI_CONTRACTS_GROUP, parent=search_cont, options=grpOptions, name='flt_group', select=settings.user.ui.Get('corp_assets_filter_groups', None), callback=self.ComboChange, width=90, pos=(left,
+            grpOptions = [(localization.GetByLabel('UI/Common/All'), None)]
+            self.sr.fltGroups = c = uicls.Combo(label=localization.GetByLabel('UI/Corporations/Assets/ItemGroup'), parent=search_cont, options=grpOptions, name='flt_group', select=settings.user.ui.Get('corp_assets_filter_groups', None), callback=self.ComboChange, width=90, pos=(left,
              top,
              0,
              0))
             left += c.width + 4
-            self.sr.fltItemType = c = uicls.SinglelineEdit(name='flt_exacttype', parent=search_cont, label=mls.UI_CONTRACTS_EXACTITEMTYPE, setvalue=settings.user.ui.Get('corp_assets_filter_itemtype', ''), width=106, top=top, left=left)
+            self.sr.fltItemType = c = uicls.SinglelineEdit(name='flt_exacttype', parent=search_cont, label=localization.GetByLabel('UI/Corporations/Assets/ItemTypeExact'), setvalue=settings.user.ui.Get('corp_assets_filter_itemtype', ''), width=106, top=top, left=left)
             left += c.width + 4
             c.OnFocusLost = self.ParseItemType
-            self.sr.fltQuantity = c = uicls.SinglelineEdit(name='flt_quantity', parent=search_cont, label=mls.UI_SHARED_MINQUANTITY, setvalue=str(settings.user.ui.Get('corp_assets_filter_quantity', '')), width=60, top=top, left=left)
+            self.sr.fltQuantity = c = uicls.SinglelineEdit(name='flt_quantity', parent=search_cont, label=localization.GetByLabel('UI/Corporations/Assets/MinQuantity'), setvalue=str(settings.user.ui.Get('corp_assets_filter_quantity', '')), width=60, top=top, left=left)
             left += c.width + 4
-            c = self.sr.fltSearch = uicls.Button(parent=search_cont, label=mls.UI_CMD_SEARCH, func=self.Search, pos=(left,
+            c = self.sr.fltSearch = uicls.Button(parent=search_cont, label=localization.GetByLabel('UI/Common/Search'), func=self.Search, pos=(left,
              top,
              0,
              0), btn_default=1)
             self.PopulateGroupCombo(isSel=True)
             self.sr.search_inited = 1
         self.sr.search_cont.state = uiconst.UI_PICKCHILDREN
-        self.sr.scroll.Load(fixedEntryHeight=42, contentList=[], sortby='label', headers=uix.GetInvItemDefaultHeaders()[:], noContentHint=mls.UI_CORP_NOITEMSFOUND)
+        self.sr.scroll.Load(fixedEntryHeight=42, contentList=[], sortby='label', headers=uix.GetInvItemDefaultHeaders()[:], noContentHint=localization.GetByLabel('UI/Corporations/Assets/NoItemsFound'))
 
 
 
@@ -644,7 +646,7 @@ class CorpAccounts(uicls.Container):
 
     def PopulateGroupCombo(self, isSel = False):
         categoryID = self.sr.fltCategories.GetValue()
-        groups = [(mls.UI_CONTRACTS_ALL, None)]
+        groups = [(localization.GetByLabel('UI/Common/All'), None)]
         if categoryID:
             if categoryID in cfg.groupsByCategories:
                 groupsByCategory = cfg.groupsByCategories[categoryID].Copy()
@@ -677,7 +679,7 @@ class CorpAccounts(uicls.Container):
             return 
         sm.GetService('corpui').ShowLoad()
         self.sr.scroll.Load(fixedEntryHeight=42, contentList=[], sortby='label', headers=uix.GetInvItemDefaultHeaders()[:])
-        self.SetHint(mls.UI_CORP_SEARCHING)
+        self.SetHint(localization.GetByLabel('UI/Common/Searching'))
         scrolllist = []
         try:
             itemTypeID = None
@@ -726,10 +728,10 @@ class CorpAccounts(uicls.Container):
                 try:
                     jumps = sm.GetService('pathfinder').GetJumpCountFromCurrent(solarSystemID)
                     locationName = cfg.evelocations.Get(row.locationID).locationName
-                    label = '%s - %s' % (locationName, uix.Plural(jumps, 'UI_SHARED_NUM_JUMP') % {'num': jumps})
+                    label = localization.GetByLabel('UI/Corporations/Assets/LocationAndJumps', location=row.locationID, jumps=jumps)
                 except:
                     log.LogException()
-                    label = '%s' % locationName
+                    label = locationName
                 data = {'GetSubContent': self.GetSubContent,
                  'label': label,
                  'groupItems': None,
@@ -745,7 +747,7 @@ class CorpAccounts(uicls.Container):
                 scrolllist.append(listentry.Get('Group', data))
                 uicore.registry.SetListGroupOpenState(('corpassets', row.locationID), 0)
 
-            self.sr.scroll.Load(fixedEntryHeight=42, contentList=scrolllist, sortby='label', headers=uix.GetInvItemDefaultHeaders(), noContentHint=mls.UI_CORP_NOITEMSFOUND)
+            self.sr.scroll.Load(fixedEntryHeight=42, contentList=scrolllist, sortby='label', headers=uix.GetInvItemDefaultHeaders(), noContentHint=localization.GetByLabel('UI/Corporations/Assets/NoItemsFound'))
 
         finally:
             sm.GetService('corpui').HideLoad()

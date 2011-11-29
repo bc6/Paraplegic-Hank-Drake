@@ -1,4 +1,5 @@
 import blue
+import localization
 import uix
 import uiutil
 import xtriui
@@ -24,7 +25,6 @@ class SovereigntyTab(object):
     (SolarSystem, Constellation, Region, World, Changes,) = range(1, 6)
 
 LINK_COLOR = '<color=0xffddaa44>%s</color>'
-SHOW_INFO_URL = '<url=showinfo:%d//%d>%s</url>'
 
 class SovereigntyOverviewWnd(uicls.Window):
     __guid__ = 'form.SovereigntyOverviewWnd'
@@ -32,11 +32,12 @@ class SovereigntyOverviewWnd(uicls.Window):
      'OnSystemStatusChanged',
      'OnStateSetupChance',
      'OnSovereigntyChanged']
+    default_windowID = 'sovOverview'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.locationScope = settings.user.ui.Get('sovDashboardLocationScope', SovereigntyTab.SolarSystem)
-        self.SetCaption(mls.UI_SHARED_MAPSOVEREIGNTY)
+        self.SetCaption(localization.GetByLabel('UI/Sovereignty/Sovereignty'))
         self.SetMinSize([420, 400])
         self.SetWndIcon()
         self.SetTopparentHeight(0)
@@ -54,15 +55,15 @@ class SovereigntyOverviewWnd(uicls.Window):
         self.constellationID = constellationID
         self.regionID = regionID
         selectedTab = SovereigntyTab.World
-        self.pushButtons.DisableButton(mls.CONSTELLATION)
-        self.pushButtons.DisableButton(mls.SYSTEM)
+        self.pushButtons.DisableButton(localization.GetByLabel('UI/Common/LocationTypes/Constellation'))
+        self.pushButtons.DisableButton(localization.GetByLabel('UI/Common/LocationTypes/System'))
         if self.regionID is not None:
             selectedTab = SovereigntyTab.Region
         if self.constellationID is not None:
             selectedTab = SovereigntyTab.Constellation
-            self.pushButtons.EnableButton(mls.CONSTELLATION)
+            self.pushButtons.EnableButton(localization.GetByLabel('UI/Common/LocationTypes/Constellation'))
         if self.solarSystemID is not None:
-            self.pushButtons.EnableButton(mls.SYSTEM)
+            self.pushButtons.EnableButton(localization.GetByLabel('UI/Common/LocationTypes/System'))
             selectedTab = SovereigntyTab.SolarSystem
         if restoreTab and self.locationScope > selectedTab:
             selectedTab = self.locationScope
@@ -148,7 +149,7 @@ class SovereigntyOverviewWnd(uicls.Window):
         textContainer = uicls.Container(name='textContainer', parent=stationsoutposts, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(0, 0, 0, 0))
         leftContainer = uicls.Container(name='leftContainer', parent=textContainer, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(3, 0, 0, 0))
         rightContainer = uicls.Container(name='rightContainer', parent=textContainer, align=uiconst.TORIGHT, pos=(0, 0, 15, 0), padding=(0, 0, 3, 0))
-        t = uicls.Label(text='<b>%s</b>' % mls.UI_GENERIC_OVERVIEW, parent=leftContainer, state=uiconst.UI_DISABLED, left=3, align=uiconst.CENTERLEFT)
+        t = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Overview/Overview'), parent=leftContainer, state=uiconst.UI_DISABLED, left=3, align=uiconst.CENTERLEFT, bold=True)
         rightContainer.width = t.width
         stationsoutposts.height = max(20, t.textheight + 6)
         l = uicls.Line(parent=stationsoutposts, align=uiconst.TOTOP, color=(0.0, 0.0, 0.0, 0.25))
@@ -242,7 +243,7 @@ class SovereigntyOverviewWnd(uicls.Window):
         textContainer = uicls.Container(name='textContainer', parent=infrastructurehubs, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(0, 0, 0, 0))
         leftContainer = uicls.Container(name='leftContainer', parent=textContainer, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(3, 0, 0, 0))
         rightContainer = uicls.Container(name='rightContainer', parent=textContainer, align=uiconst.TORIGHT, pos=(0, 0, 15, 0), padding=(0, 0, 3, 0))
-        t = uicls.Label(text='<b>%s</b>' % mls.SOVEREIGNTY_DEVELOPMENTINDICES, parent=leftContainer, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT, left=3)
+        t = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Sovereignty/DevelopmentIndices'), parent=leftContainer, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT, left=3, bold=True)
         rightContainer.width = t.width
         infrastructurehubs.height = max(20, t.textheight + 6)
         l = uicls.Line(parent=infrastructurehubs, align=uiconst.TOTOP, color=(0.0, 0.0, 0.0, 0.25))
@@ -261,68 +262,64 @@ class SovereigntyOverviewWnd(uicls.Window):
     def CreateHeaderText(self):
         text = ''
         if self.locationScope == SovereigntyTab.World:
-            text = '<b>%s</b>' % mls.SOVEREIGNTY_WORLDSTATUS
+            text = localization.GetByLabel('UI/Sovereignty/WorldSovStatus')
             return text
         else:
             if self.locationScope == SovereigntyTab.Changes:
-                text = '<b>%s</b>' % mls.SOVEREIGNTY_RECENTCHANGES
+                text = localization.GetByLabel('UI/Sovereignty/RecentSovChanges')
                 return text
             mapSvc = sm.GetService('map')
             systemItem = mapSvc.GetItem(self.solarSystemID)
             constItem = mapSvc.GetItem(self.constellationID)
             regItem = mapSvc.GetItem(self.regionID)
+            showInfoTag = '<url=showinfo:%d//%d>'
+            endUrlTag = '</url>'
             text = ''
             if self.locationScope == SovereigntyTab.SolarSystem:
                 if util.IsWormholeRegion(self.regionID):
-                    text += regItem.itemName
-                    text += ' / '
-                    text += constItem.itemName
+                    text = '%s / %s / <url=showinfo:%s//%s>%s</url>' % (regItem.itemName,
+                     constItem.itemName,
+                     systemItem.typeID,
+                     self.solarSystemID,
+                     systemItem.itemName)
                 else:
-                    text += SHOW_INFO_URL % (regItem.typeID, self.regionID, regItem.itemName)
-                    text += ' / '
-                    text += SHOW_INFO_URL % (constItem.typeID, self.constellationID, constItem.itemName)
-                text += ' / '
-                text += SHOW_INFO_URL % (systemItem.typeID, self.solarSystemID, '<b>%s</b>' % systemItem.itemName)
+                    text = localization.GetByLabel('UI/Sovereignty/SystemLocation', regionName=regItem.itemName, constName=constItem.itemName, systemName=systemItem.itemName, startRegionUrlTag=showInfoTag % (regItem.typeID, self.regionID), startConstUrlTag=showInfoTag % (constItem.typeID, self.constellationID), startSystemUrlTag=showInfoTag % (systemItem.typeID, self.solarSystemID), endUrlTag=endUrlTag)
             elif self.locationScope == SovereigntyTab.Constellation:
                 if util.IsWormholeRegion(self.regionID):
-                    text += regItem.itemName
-                    text += ' / '
-                    text += constItem.itemName
+                    text = localization.GetByLabel('UI/Sovereignty/ConstLocationWH', regionName=regItem.itemName, constName=constItem.itemName)
                 else:
-                    text += SHOW_INFO_URL % (regItem.typeID, self.regionID, regItem.itemName)
-                    text += ' / '
-                    text += SHOW_INFO_URL % (constItem.typeID, self.constellationID, '<b>%s</b>' % constItem.itemName)
+                    text = localization.GetByLabel('UI/Sovereignty/ConstLocation', startRegionUrlTag=showInfoTag % (regItem.typeID, self.regionID), startConstUrlTag=showInfoTag % (constItem.typeID, self.constellationID), regionName=regItem.itemName, constName=constItem.itemName, endUrlTag=endUrlTag)
             elif self.locationScope == SovereigntyTab.Region:
                 if util.IsWormholeRegion(self.regionID):
-                    text += regItem.itemName
+                    text = localization.GetByLabel('UI/Sovereignty/RegionLocationWH', regionName=regItem.itemName)
                 else:
-                    text += SHOW_INFO_URL % (regItem.typeID, self.regionID, '<b>%s</b>' % regItem.itemName)
+                    text = localization.GetByLabel('UI/Sovereignty/RegionLocation', startRegionUrlTag=showInfoTag % (regItem.typeID, self.regionID), regionName=regItem.itemName, endUrlTag='</url>')
             return text
 
 
 
     def CreateMenu(self):
-        tabs = [[mls.SYSTEM,
+        tabs = [[localization.GetByLabel('UI/Common/LocationTypes/System'),
           self.sr.regionalOverview,
           self,
           None,
           SovereigntyTab.SolarSystem],
-         [mls.CONSTELLATION,
+         [localization.GetByLabel('UI/Common/LocationTypes/Constellation'),
           self.sr.regionalOverview,
           self,
           None,
           SovereigntyTab.Constellation],
-         [mls.REGION,
+         [localization.GetByLabel('UI/Common/LocationTypes/Region'),
           self.sr.regionalOverview,
           self,
           None,
           SovereigntyTab.Region],
-         [mls.WORLD,
+         [localization.GetByLabel('UI/Common/LocationTypes/World'),
           self.sr.regionalOverview,
           self,
           None,
           SovereigntyTab.World],
-         [mls.UI_SHARED_CHANGES,
+         [localization.GetByLabel('UI/Sovereignty/Changes'),
           self.sr.worldOverview,
           self,
           None,
@@ -338,7 +335,7 @@ class SovereigntyOverviewWnd(uicls.Window):
         btn = uix.GetBigButton(32, mapIconContainer)
         btn.SetAlign(uiconst.CENTERRIGHT)
         btn.OnClick = self.OpenMap
-        btn.hint = mls.UI_SHARED_MAP
+        btn.hint = localization.GetByLabel('UI/Map/Map')
         btn.sr.icon.LoadIcon('ui_7_64_4')
         locationMenu = uicls.MenuIcon(size=24, ignoreSize=True)
         locationMenu.GetMenu = self.GetLocationMenu
@@ -346,8 +343,8 @@ class SovereigntyOverviewWnd(uicls.Window):
         locationMenu.top = -3
         locationMenu.hint = ''
         self.sr.textContainer.children.append(locationMenu)
-        self.sr.breadCrumbs = uicls.Label(name='label', text='', parent=self.sr.textContainer, fontsize=16, align=uiconst.TOTOP, padding=(15, 0, 0, 0), autoheight=1, boldlinks=0, autowidth=False, state=uiconst.UI_NORMAL)
-        self.sr.dominatorText = uicls.Label(text='', parent=self.sr.textContainer, align=uiconst.TOTOP, height=16, fontsize=12, autoheight=False, state=uiconst.UI_NORMAL)
+        self.sr.breadCrumbs = uicls.Label(name='label', text='', parent=self.sr.textContainer, fontsize=16, align=uiconst.TOTOP, padding=(15, 0, 0, 0), boldlinks=0, state=uiconst.UI_NORMAL)
+        self.sr.dominatorText = uicls.EveLabelMedium(text='', parent=self.sr.textContainer, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
 
 
 
@@ -355,25 +352,33 @@ class SovereigntyOverviewWnd(uicls.Window):
         sovID = sm.GetService('sov').GetDominantAllianceID(self.locationScope, self.regionID, self.constellationID, self.solarSystemID)
         if sovID == 'none':
             self.sovID = None
-            return mls.NONE
+            return ('',
+             '',
+             localization.GetByLabel('UI/Common/None'),
+             '')
         else:
             if sovID == 'contested':
                 self.sovID = None
-                return mls.UI_INFLIGHT_CONTESTED
+                return ('',
+                 '',
+                 '',
+                 localization.GetByLabel('UI/Inflight/Brackets/SystemContested'))
             self.sovID = sovID
             typeID = const.typeAlliance
             if util.IsFaction(self.sovID):
                 typeID = const.typeFaction
             sovName = cfg.eveowners.Get(sovID).name
-            text = SHOW_INFO_URL % (typeID, sovID, sovName)
-            return text
+            return (typeID,
+             sovID,
+             sovName,
+             '')
 
 
 
     def UpdateLocationInfo(self):
         self.sr.breadCrumbs.text = self.CreateHeaderText()
         contestedState = ''
-        sovHolder = None
+        allianceName = None
         if self.locationScope == SovereigntyTab.SolarSystem:
             contestedState = sm.GetService('sov').GetContestedState(self.solarSystemID)
             if self.solarSystemID == session.solarsystemid2:
@@ -382,20 +387,24 @@ class SovereigntyOverviewWnd(uicls.Window):
                     typeID = const.typeAlliance
                     allianceID = sovInfo.allianceID
                     allianceName = cfg.eveowners.Get(sovInfo.allianceID).name
-                    sovHolder = SHOW_INFO_URL % (typeID, allianceID, allianceName)
-        if sovHolder is None:
-            sovHolder = self.GetDominantAllianceName()
-        self.sr.dominatorText.text = '%s: <b>%s</b>%s' % (mls.SOVEREIGNTY_DOMINANTALLIANCE, sovHolder, contestedState)
+        if allianceName is None:
+            (typeID, allianceID, allianceName, contestedState,) = self.GetDominantAllianceName()
+        if self.sovID is None:
+            text = localization.GetByLabel('UI/Sovereignty/DominantSovHolderNone', contestedState=contestedState)
+        else:
+            showInfoTag = '<url=showinfo:%d//%d>' % (typeID, allianceID)
+            text = localization.GetByLabel('UI/Sovereignty/DominantSovHolder', allianceName=allianceName, contestedState=contestedState, startUrlTag=showInfoTag, endUrlTag='</url>')
+        self.sr.dominatorText.text = text
 
 
 
     def CreateActiveKillInfo(self):
         leftContainer = uicls.Container(name='leftContainer', parent=self.sr.activekill, align=uiconst.TOALL, padding=(5, 0, 0, 0))
         rightContainer = uicls.Container(name='rightContainer', parent=self.sr.activekill, align=uiconst.TORIGHT, padding=(0, 0, 5, 0))
-        uicls.Label(text=mls.SOVEREIGNTY_KILLSLAST24H, parent=leftContainer, align=uiconst.TOPLEFT, fontsize=12)
-        uicls.Label(text='%s (%s / %s)' % (mls.SOVEREIGNTY_CYNOFIELDSACTIVE, mls.UI_INFLIGHT_STRUCTURES, mls.UI_GENERIC_MODULES), parent=leftContainer, align=uiconst.TOPLEFT, fontsize=12, top=14)
-        self.killsText = uicls.Label(text='0 / 0', parent=rightContainer, align=uiconst.TOPRIGHT, fontsize=12)
-        self.activeText = uicls.Label(text='0 / 0', parent=rightContainer, align=uiconst.TOPRIGHT, fontsize=12, top=14)
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/Sovereignty/KillsLast24H'), parent=leftContainer, align=uiconst.TOPLEFT)
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/Sovereignty/CynoFieldsActive'), parent=leftContainer, align=uiconst.TOPLEFT, top=14)
+        self.killsText = uicls.EveLabelMedium(text='0 / 0', parent=rightContainer, align=uiconst.TOPRIGHT)
+        self.activeText = uicls.EveLabelMedium(text='0 / 0', parent=rightContainer, align=uiconst.TOPRIGHT, top=14)
         maxwidth = max(self.killsText.width, self.activeText.width)
         rightContainer.width = maxwidth
         self.UpdateActiveKillInfo()
@@ -404,8 +413,8 @@ class SovereigntyOverviewWnd(uicls.Window):
 
     def UpdateActiveKillInfo(self):
         if util.IsWormholeRegion(self.regionID):
-            self.killsText.text = mls.UI_GENERIC_UNKNOWN
-            self.activeText.text = mls.UI_GENERIC_UNKNOWN
+            self.killsText.text = localization.GetByLabel('UI/Generic/Unknown')
+            self.activeText.text = localization.GetByLabel('UI/Generic/Unknown')
         else:
             (kills, pods,) = sm.GetService('sov').GetKillLast24H(self.GetLocationFromScope())
             self.killsText.text = '%d / %d' % (kills, pods)
@@ -424,8 +433,8 @@ class SovereigntyOverviewWnd(uicls.Window):
 
     def SetEndPointDates(self):
         uix.Flush(self.sr.dates)
-        uicls.Label(text=util.FmtDate(blue.os.GetTime()), parent=self.sr.dates, align=uiconst.TORIGHT, left=0, top=0, fontsize=12, autowidth=False, autoheight=False)
-        uicls.Label(text=util.FmtDate(blue.os.GetTime()), parent=self.sr.dates, align=uiconst.TOLEFT, left=0, top=0, fontsize=12, autowidth=False, autoheight=False)
+        uicls.EveLabelMedium(text=util.FmtDate(blue.os.GetWallclockTime()), parent=self.sr.dates, align=uiconst.TORIGHT)
+        uicls.EveLabelMedium(text=util.FmtDate(blue.os.GetWallclockTime()), parent=self.sr.dates, align=uiconst.TOLEFT)
 
 
 
@@ -440,7 +449,7 @@ class SovereigntyOverviewWnd(uicls.Window):
         (locationHeader, items,) = self.GetHeaderAndPrimedItems()
         self.sr.stationOutpostsScroll.sr.id = 'stationOutpostsScroll'
         scrolllist = []
-        headers = [mls.UI_SHARED_MAPSOVEREIGNTY, locationHeader, mls.UI_GENERIC_STATIONS]
+        headers = [localization.GetByLabel('UI/Sovereignty/Sovereignty'), locationHeader, localization.GetByLabel('UI/Common/LocationTypes/Stations')]
         cfg.eveowners.Prime([ item.allianceID for item in items if item.allianceID is not None ])
         stateSvc = sm.GetService('state')
         for item in items:
@@ -482,9 +491,9 @@ class SovereigntyOverviewWnd(uicls.Window):
 
         scrolllist = uiutil.SortListOfTuples(scrolllist)
         scrolllist.insert(0, listentry.Get('HeaderEntry', {'systemHeader': locationHeader,
-         'militaryHeader': mls.UI_TUTORIAL_MILITARY,
-         'industryHeader': mls.UI_TUTORIAL_INDUSTRY,
-         'claimTimeHeader': mls.SOVEREIGNTY_STRATEGIC}))
+         'militaryHeader': localization.GetByLabel('UI/Sovereignty/Military'),
+         'industryHeader': localization.GetByLabel('UI/Sovereignty/Industry'),
+         'claimTimeHeader': localization.GetByLabel('UI/Sovereignty/Strategic')}))
         self.sr.infrastructurehubsScroll.Load(contentList=scrolllist)
 
 
@@ -493,13 +502,13 @@ class SovereigntyOverviewWnd(uicls.Window):
         locationID = self.GetLocationFromScope()
         locationHeader = ''
         if self.locationScope == SovereigntyTab.SolarSystem:
-            locationHeader = mls.SYSTEM
+            locationHeader = localization.GetByLabel('UI/Common/LocationTypes/System')
         elif self.locationScope == SovereigntyTab.Constellation:
-            locationHeader = mls.SYSTEM
+            locationHeader = localization.GetByLabel('UI/Common/LocationTypes/System')
         elif self.locationScope == SovereigntyTab.Region:
-            locationHeader = mls.CONSTELLATION
+            locationHeader = localization.GetByLabel('UI/Common/LocationTypes/Constellation')
         elif self.locationScope == SovereigntyTab.World:
-            locationHeader = mls.REGION
+            locationHeader = localization.GetByLabel('UI/Common/LocationTypes/Region')
         items = sm.GetService('sov').GetCurrentData(locationID)
         cfg.evelocations.Prime([ item.locationID for item in items ])
         return (locationHeader, items)
@@ -510,11 +519,11 @@ class SovereigntyOverviewWnd(uicls.Window):
         self.sr.changesScroll.sr.id = 'changesScroll'
         scrolllist = []
         headers = []
-        headers = [mls.UI_GENERIC_OWNER,
-         mls.UI_GENERIC_REGION,
-         mls.UI_GENERIC_SYSTEM,
-         mls.UI_GENERIC_CHANGE,
-         mls.UI_GENERIC_DATE]
+        headers = [localization.GetByLabel('UI/Sovereignty/Owner'),
+         localization.GetByLabel('UI/Common/LocationTypes/Region'),
+         localization.GetByLabel('UI/Common/LocationTypes/System'),
+         localization.GetByLabel('UI/Sovereignty/Change'),
+         localization.GetByLabel('UI/Common/Date')]
         items = sm.GetService('sov').GetRecentActivity()
         solarSystemList = [ item.solarSystemID for item in items ]
         map = sm.GetService('map')
@@ -534,14 +543,14 @@ class SovereigntyOverviewWnd(uicls.Window):
             loss = False
             if item.stationID is None:
                 if item.oldOwnerID is None:
-                    ownerChanges.append(util.KeyVal(text=mls.SOVEREIGNTY_SOVGAIN, allianceID=ownerID, ownerID=ownerID, loss=False))
+                    ownerChanges.append(util.KeyVal(text=localization.GetByLabel('UI/Sovereignty/SovereigntyGain'), allianceID=ownerID, ownerID=ownerID, loss=False))
                 elif item.ownerID is None:
-                    ownerChanges.append(util.KeyVal(text=mls.SOVEREIGNTY_SOVLOSS, allianceID=oldOwnerID, ownerID=oldOwnerID, loss=True))
+                    ownerChanges.append(util.KeyVal(text=localization.GetByLabel('UI/Sovereignty/SovereigntyLoss'), allianceID=oldOwnerID, ownerID=oldOwnerID, loss=True))
             elif item.oldOwnerID is None:
-                ownerChanges.append(util.KeyVal(text=mls.SOVEREIGNTY_STATIONGAIN, corpID=ownerID, ownerID=ownerID, loss=False))
+                ownerChanges.append(util.KeyVal(text=localization.GetByLabel('UI/Sovereignty/StationGain'), corpID=ownerID, ownerID=ownerID, loss=False))
             elif item.ownerID is not None:
-                ownerChanges.append(util.KeyVal(text=mls.SOVEREIGNTY_STATIONLOSS, corpID=oldOwnerID, ownerID=oldOwnerID, loss=True))
-                ownerChanges.append(util.KeyVal(text=mls.SOVEREIGNTY_STATIONGAIN, corpID=ownerID, ownerID=ownerID, loss=False))
+                ownerChanges.append(util.KeyVal(text=localization.GetByLabel('UI/Sovereignty/StationLoss'), corpID=oldOwnerID, ownerID=oldOwnerID, loss=True))
+                ownerChanges.append(util.KeyVal(text=localization.GetByLabel('UI/Sovereignty/StationGain'), corpID=ownerID, ownerID=ownerID, loss=False))
             date = util.FmtDate(item.activityTime, 'ss')
             for kv in ownerChanges:
                 ownerName = cfg.eveowners.Get(kv.ownerID).name
@@ -569,6 +578,7 @@ class SovereigntyOverviewWnd(uicls.Window):
 
 
     def Refresh(self):
+        self.GetDominantAllianceName()
         self.UpdateLocationInfo()
         self.UpdateActiveKillInfo()
         if self.locationScope == SovereigntyTab.Changes:
@@ -602,41 +612,31 @@ class SovereigntyOverviewWnd(uicls.Window):
 
 
     def OpenMap(self, *args):
-        if sm.GetService('map').ViewingStarMap():
-            sm.GetService('map').Close()
+        viewSvc = sm.GetService('viewState')
+        if viewSvc.IsViewActive('starmap', 'systemmap'):
+            viewSvc.CloseSecondaryView()
         else:
-            sm.GetService('map').OpenStarMap()
-            sm.GetService('starmap').SetInterest(self.GetLocationFromScope() or const.locationUniverse)
+            viewSvc.ActivateView('starmap', interestID=self.GetLocationFromScope() or const.locationUniverse)
 
 
 
     def GetLocationMenu(self, *args):
         m = []
-        m.append(['%s %s' % (mls.UI_GENERIC_VIEW, mls.UI_SHARED_MAPCURRENTLOCTION), self.ResetLocation])
-        m.append((mls.SOVEREIGNTY_SOVEREIGNTY_SHOW_SOV_STARS_IN_MAP, self.ShowStarsInMap, ((STARMODE_FACTION, -1),)))
-        m.append((mls.SOVEREIGNTY_SHOW_SOV_TILES_IN_MAP, self.ShowSovTilesInMap))
-        m.append((mls.SOVEREIGNTY_SHOW_CHANGES_IN_MAP, self.ShowStarsInMap, (STARMODE_SOV_CHANGE,)))
+        m.append([localization.GetByLabel('UI/Map/ViewCurrentLocation'), self.ResetLocation])
+        m.append((localization.GetByLabel('UI/Sovereignty/ShowSovInMap'), self.ShowStarsInMap, ((STARMODE_FACTION, -1),)))
+        m.append((localization.GetByLabel('UI/Sovereignty/ShowSovTilesInMap'), self.ShowSovTilesInMap))
+        m.append((localization.GetByLabel('UI/Sovereignty/ShowSovChangesInMap'), self.ShowStarsInMap, (STARMODE_SOV_CHANGE,)))
         return m
 
 
 
     def ShowStarsInMap(self, starMode):
-        mapSvc = sm.GetService('map')
-        mapSvc.OpenStarMap()
-        if mapSvc.IsOpen():
-            starmap = sm.GetService('starmap')
-            starmap.SetStarColorMode(starMode)
-            starmap.SetInterest(self.GetLocationFromScope() or const.locationUniverse)
+        sm.GetService('viewState').ActivateView('starmap', interestID=self.GetLocationFromScope() or const.locationUniverse, starColorMode=starMode)
 
 
 
     def ShowSovTilesInMap(self):
-        mapSvc = sm.GetService('map')
-        mapSvc.OpenStarMap()
-        if mapSvc.IsOpen():
-            starmap = sm.GetService('starmap')
-            starmap.SetTileMode(STARMODE_SOV_CHANGE)
-            starmap.SetInterest(self.GetLocationFromScope() or const.locationUniverse)
+        sm.GetService('viewState').ActivateView('starmap', interestID=self.GetLocationFromScope() or const.locationUniverse, tileMode=STARMODE_SOV_CHANGE)
 
 
 

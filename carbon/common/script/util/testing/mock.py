@@ -63,9 +63,16 @@ class Mock(object):
                 InjectGlobalMock(globalReference['__oldglobals__'], mockName, '*oldReference2')
         if insertAsGlobal and mockName == 'blue':
             self.pyos.synchro.Sleep = _Sleep
+            self.pyos.synchro.SleepSim = _Sleep
+            self.pyos.synchro.SleepWallclock = _Sleep
             self.pyos.synchro.SleepUntil = SetTime
+            self.pyos.synchro.SleepUntilSim = SetTime
+            self.pyos.synchro.SleepUntilWallclock = SetTime
             self.pyos.synchro.Yield = _Yield
             self.os.GetTime = GetTime
+            self.os.GetSimTime = GetTime
+            self.os.GetWallclockTime = GetTime
+            self.os.GetWallclockTimeNow = GetTime
             SetTime(0)
             SetYieldDuration(1)
 
@@ -290,7 +297,11 @@ class Mock(object):
         if logSection == 'callLog':
             message += '('
             for arg in args:
-                message += repr(arg) + ', '
+                try:
+                    message += repr(arg) + ', '
+                except TypeError:
+                    import log
+                    log.LogException("Error 'repr'ing an object of type %r" % type(arg))
 
             for (key, value,) in kw.items():
                 message += str(key) + ' = ' + repr(value) + ', '

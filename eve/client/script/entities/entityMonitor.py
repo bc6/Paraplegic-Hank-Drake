@@ -21,4 +21,18 @@ class EveEntityBrowser(uicls.EntityBrowserCore):
 
 
 
+    def GetEntitySpawnID(self, entity):
+        if entity.HasComponent('info') and entity.info.spawnID:
+            return entity.info.spawnID
+        return 'UNKNOWN'
+
+
+
+    def GetEntityRecipeID(self, entity):
+        if entity.HasComponent('info') and entity.info.recipeID:
+            return entity.info.recipeID
+        return 'UNKNOWN'
+
+
+
 

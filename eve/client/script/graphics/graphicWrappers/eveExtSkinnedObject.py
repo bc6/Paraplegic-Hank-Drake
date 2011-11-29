@@ -33,7 +33,7 @@ class WodExtSkinnedObject(util.BlueClassNotifyWrap('trinity.WodExtSkinnedObject'
 
             def PlayAnimation():
                 while not (self.animationUpdater.grannyRes.isGood and self.animationUpdater.grannyRes.isPrepared):
-                    blue.synchro.Sleep(50)
+                    blue.synchro.SleepWallclock(50)
 
                 if self.animationUpdater.grannyRes.animationCount:
                     clipName = self.animationUpdater.grannyRes.GetAnimationName(0)

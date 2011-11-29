@@ -1,24 +1,48 @@
 import localization
 import util
+from collections import defaultdict
 MAX_GROUP_DEPTH = 500
 
 def SyncDataFromRegisteredTables(listOfRegistered = None, syncBatchSize = 1000):
-    import bsdWrappers
+    import bsd
     bsdTableService = sm.GetService('bsdTable')
-    regTable = bsdTableService.GetTable(localization.EXTERNAL_REGISTRATION_TABLE)
+    bsdService = sm.GetService('BSD')
+    db2service = sm.GetService('DB2')
     groupTable = bsdTableService.GetTable(localization.MESSAGE_GROUPS_TABLE)
     messagesTable = bsdTableService.GetTable(localization.MESSAGES_TABLE)
+    messageTextsTable = bsdTableService.GetTable(localization.MESSAGE_TEXTS_TABLE)
+    keyToMessageMappingsTable = bsdTableService.GetTable(localization.MESSAGE_MAPPING_TABLE)
+    localization.LogInfo('Loading BSD table information...')
+    messagesTable.WaitForColumnsAllLoaded()
+    messageTextsTable.WaitForColumnsAllLoaded()
+    keyToMessageMappingsTable.WaitForColumnsAllLoaded()
+    localization.LogInfo('BSD table information loaded.')
+    if not bsd.login.IsLoggedIn():
+        localization.LogError('localizationSyncUtil: Cannot sync because we are not logged into BSD.')
+        return 
     allRegistered = []
     if not listOfRegistered:
-        allRegistered = regTable.GetRows(_getDeleted=False)
+        getSubmittedOnly = 1
+        allRegistered = db2service.zlocalization.RegisteredResources_Select(getSubmittedOnly)
     else:
+        regTable = bsdTableService.GetTable(localization.EXTERNAL_REGISTRATION_TABLE)
         for aResourceID in listOfRegistered:
             resourceRow = regTable.GetRowByKey(keyId1=aResourceID, _getDeleted=False)
             if resourceRow:
                 allRegistered.append(resourceRow)
 
     updatedEntriesPerTable = {}
-    for aRow in allRegistered:
+    localization.LogInfo('Beginning sync operation. Processing %s registered tables...' % len(allRegistered))
+    bsdUserID = bsd.login.GetCurrentUserId()
+    contentServerName = localization.CONTENT_DATABASE_MAP.get(_GetCurrentDatabase(), 'localhost')
+    currentReleaseID = None
+    currentChangeID = 0
+    currentReleaseName = 'None'
+    changelistDescription = None
+    changeIDsInDescription = []
+    deletionChangeTextAdded = False
+    for (registeredRowIndex, aRow,) in enumerate(allRegistered):
+        localization.LogInfo('Processing table %s of %s...' % (registeredRowIndex + 1, len(allRegistered)))
         tableRegID = aRow.tableRegID
         textColumnName = aRow.columnRegName
         uniqueIDName = aRow.uniqueIDName
@@ -30,15 +54,11 @@ def SyncDataFromRegisteredTables(listOfRegistered = None, syncBatchSize = 1000):
         registeredTypeID = aRow.registeredTypeID
         tableSchema = aRow.schemaRegName
         tableName = aRow.tableRegName
-        syncResult = {}
-        syncResult[localization.KeyToMessageMapping.UNCHANGED_ENTRY] = 0
-        syncResult[localization.KeyToMessageMapping.ADDED_ENTRY] = 0
-        syncResult[localization.KeyToMessageMapping.UPDATED_ENTRY] = 0
-        syncResult[localization.KeyToMessageMapping.DELETED_ENTRY] = 0
+        fullLocationName = tableSchema + '.' + tableName + '.' + textColumnName
+        syncResult = defaultdict(int)
         updatedEntriesPerTable['.'.join((aRow.schemaRegName, aRow.tableRegName, aRow.columnRegName))] = syncResult
         allTableData = None
         if registeredTypeID == localization.REGISTERED_TYPE_DYNAMIC:
-            db2service = sm.GetService('DB2')
             try:
                 allTableData = db2service.zlocalization.RegisteredResources_SelectOnRegisteredResource(tableRegID)
             except SQLError:
@@ -52,50 +72,93 @@ def SyncDataFromRegisteredTables(listOfRegistered = None, syncBatchSize = 1000):
         else:
             localization.LogError("encountered unknown registered resource type : '%s' of type '%s'" % (tableSchema + '.' + tableName, registeredTypeID))
         if allTableData is not None:
+            sourceChangelists = {None: util.KeyVal(userID=None, userName='unknown (no userID)', releaseID=1, releaseName='Trinity')}
             cachedGroupPaths = {}
             possibleOrphanedGroups = set()
-            for aTableRow in allTableData:
-                keyIDValue = getattr(aTableRow, uniqueIDName, None)
-                if registeredTypeID == localization.REGISTERED_TYPE_DYNAMIC and groupPathName is not None:
-                    groupPathString = getattr(aTableRow, groupPathName, None)
-                    if groupPathString is not None and groupPathString != '':
-                        if groupPathString not in cachedGroupPaths:
-                            (groupID, isNewGroup,) = _ResolveDynamicPath(groupPathString, aRow.groupID, wordTypeID)
-                            cachedGroupPaths[groupPathString] = groupID
-                            if isNewGroup == True:
-                                mappingEntry = localization.KeyToMessageMapping.GetMapping(keyIDValue, tableRegID)
-                                if mappingEntry is not None:
-                                    messageEntry = localization.Message.GetMessageByID(mappingEntry.messageID)
-                                    if messageEntry is not None:
-                                        possibleOrphanedGroups.add(messageEntry.groupID)
-
             updatedMappedEntries = []
-            iterationNumber = 0
+            localization.LogInfo('Fetching group and changelist information...')
+            query = 'SELECT DISTINCT REV.changeID, C.userID, U.userName, C.releaseID, R.releaseName FROM zstatic.changes C\n  INNER JOIN zstatic.revisions REV on REV.changeID = C.changeID\n  INNER JOIN %s T on T.revisionID = REV.revisionID\n  INNER JOIN zstatic.users U ON C.userID = U.userID\n  LEFT JOIN zstatic.releases R on C.releaseID = R.releaseID' % (tableSchema + '.' + tableName)
+            try:
+                rs = db2service.SQL(query)
+                for row in rs:
+                    sourceChangelists[row.changeID] = row
+
+            except SQLError as e:
+                pass
             for aTableRow in allTableData:
-                englishText = getattr(aTableRow, textColumnName, None)
                 keyIDValue = getattr(aTableRow, uniqueIDName, None)
-                if iterationNumber == 0:
-                    bsdWrappers.TransactionStart()
-                    transactionBundle = localization.Message.CreateMessageDataBundle()
-                elif iterationNumber % syncBatchSize == 0:
-                    bsdWrappers.TransactionEnd()
-                    bsdWrappers.TransactionStart()
-                    transactionBundle = localization.Message.CreateMessageDataBundle()
                 if registeredTypeID == localization.REGISTERED_TYPE_DYNAMIC and groupPathName is not None:
                     groupPathString = getattr(aTableRow, groupPathName, None)
-                    if groupPathString is not None and groupPathString != '':
-                        groupID = cachedGroupPaths[groupPathString]
-                    else:
-                        groupID = aRow.groupID
-                updatedMappedEntries.append(keyIDValue)
-                mappingResult = localization.KeyToMessageMapping.AddOrUpdateEntry(keyID=keyIDValue, tableRegID=tableRegID, groupID=groupID, label=None, englishText=englishText, descriptionText=None, transactionBundle=transactionBundle)
-                syncResult[mappingResult] += 1
-                iterationNumber += 1
+                    if groupPathString and groupPathString not in cachedGroupPaths:
+                        (groupID, isNewGroup,) = _ResolveDynamicPath(groupPathString, aRow.groupID, wordTypeID)
+                        cachedGroupPaths[groupPathString] = groupID
+                        if isNewGroup == True:
+                            mappingEntry = localization.KeyToMessageMapping.GetMapping(keyIDValue, tableRegID)
+                            if mappingEntry is not None:
+                                messageEntry = localization.Message.GetMessageByID(mappingEntry.messageID)
+                                if messageEntry is not None:
+                                    possibleOrphanedGroups.add(messageEntry.groupID)
 
-            if iterationNumber > 0:
-                bsdWrappers.TransactionEnd()
+            localization.LogInfo("Processing %s rows from target '%s'..." % (len(allTableData), fullLocationName))
+            rowIndex = 0
+            while rowIndex < len(allTableData):
+                with bsd.BsdTransaction():
+                    transactionBundle = localization.Message.CreateMessageDataBundle()
+                    for aTableRow in allTableData[rowIndex:(rowIndex + syncBatchSize)]:
+                        if registeredTypeID == localization.REGISTERED_TYPE_DYNAMIC and groupPathName is not None:
+                            groupPathString = getattr(aTableRow, groupPathName, None)
+                            if groupPathString is not None and groupPathString != '':
+                                groupID = cachedGroupPaths[groupPathString]
+                            else:
+                                groupID = aRow.groupID
+                        englishText = getattr(aTableRow, textColumnName, None)
+                        keyIDValue = getattr(aTableRow, uniqueIDName, None)
+                        descriptionText = '%s.%s.%s: %s' % (tableSchema,
+                         tableName,
+                         textColumnName,
+                         str(keyIDValue))
+                        try:
+                            unicode(englishText)
+                        except UnicodeDecodeError as e:
+                            localization.LogError('Invalid text data in row, skipping entry:', aTableRow)
+                            syncResult[localization.KeyToMessageMapping.UNCHANGED_ENTRY] += 1
+                            rowIndex += 1
+                            continue
+                        updateAction = localization.KeyToMessageMapping.AddOrUpdateEntry(keyID=keyIDValue, tableRegID=tableRegID, groupID=groupID, label=None, englishText=englishText, descriptionText=descriptionText, transactionBundle=transactionBundle, returnOnly=True)
+                        if updateAction not in (localization.KeyToMessageMapping.UNCHANGED_ENTRY, localization.KeyToMessageMapping.SKIPPED_ENTRY):
+                            sourceReleaseID = sourceChangelists[aTableRow.changeID].releaseID
+                            if sourceReleaseID != currentReleaseID or not currentChangeID:
+                                localization.LogInfo("Row %s (of %s) was submitted under release '%s', but the current changelist is for release '%s'.  Creating a new changelist and starting a new batch from this point..." % (rowIndex + 1,
+                                 len(allTableData),
+                                 sourceChangelists[aTableRow.changeID].releaseName,
+                                 currentReleaseName))
+                                changelistDescription = "Migrating external localizable content from '%s' to localization system tables.  The original content was created or modified in release '%s' in the following BSD changelists:\n" % (fullLocationName, sourceChangelists[aTableRow.changeID].releaseName)
+                                changeIDsInDescription = []
+                                currentReleaseID = sourceReleaseID
+                                currentReleaseName = sourceChangelists[aTableRow.changeID].releaseName
+                                currentChangeID = bsdService.ChangeAdd(bsdUserID, changeText=changelistDescription, linkType=None, linkID=None, releaseID=currentReleaseID)
+                                deletionChangeTextAdded = False
+                            localization.KeyToMessageMapping.AddOrUpdateEntry(keyID=keyIDValue, tableRegID=tableRegID, groupID=groupID, label=None, englishText=englishText, descriptionText=descriptionText, transactionBundle=transactionBundle)
+                            if aTableRow.changeID not in changeIDsInDescription:
+                                if aTableRow.changeID:
+                                    changelistDescription += 'Change %s by %s (http://%s:50001/gd/bsd.py?action=Change&changeID=%s)\n' % (aTableRow.changeID,
+                                     sourceChangelists[aTableRow.changeID].userName,
+                                     contentServerName,
+                                     aTableRow.changeID)
+                                else:
+                                    changelistDescription += 'Unknown (table is not registered in BSD)\n'
+                                changeIDsInDescription.append(aTableRow.changeID)
+                                bsdService.ChangeEdit(bsdUserID, currentChangeID, changelistDescription, linkType=None, linkID=None, releaseID=currentReleaseID)
+                        syncResult[updateAction] += 1
+                        if updateAction != localization.KeyToMessageMapping.SKIPPED_ENTRY:
+                            updatedMappedEntries.append(keyIDValue)
+                        rowIndex += 1
+
+
+            localization.LogInfo('Finished processing %s rows. Results: %s' % (len(allTableData), dict(syncResult)))
             mappingsForResource = localization.KeyToMessageMapping.GetMappingsForRegisteredResource(tableRegID)
             if len(updatedMappedEntries) < len(mappingsForResource):
+                localization.LogInfo('Searching %s records for obsolete mappings and orphaned groups...' % len(mappingsForResource))
                 for aMappingEntry in mappingsForResource:
                     keyIDValue = aMappingEntry.keyID
                     if keyIDValue not in updatedMappedEntries:
@@ -104,21 +167,32 @@ def SyncDataFromRegisteredTables(listOfRegistered = None, syncBatchSize = 1000):
                             groupEntry = groupTable.GetRowByKey(keyId1=messageEntry.groupID)
                             if groupEntry.isReadOnly:
                                 possibleOrphanedGroups.add(groupEntry.groupID)
+                        if not currentChangeID:
+                            trinityReleaseID = 1
+                            changelistDescription = 'Automatic deletion of obsolete localization mapping entries and orphaned groups.\n'
+                            currentChangeID = bsdService.ChangeAdd(bsdUserID, changeText=changelistDescription, linkType=None, linkID=None, releaseID=trinityReleaseID)
+                            currentReleaseID = None
+                            deletionChangeTextAdded = True
+                        elif currentChangeID and not deletionChangeTextAdded:
+                            changelistDescription += 'Additionally, automatically deleting obsolete localization mapping entries and orphaned groups.\n'
+                            bsdService.ChangeEdit(bsdUserID, currentChangeID, changelistDescription, linkType=None, linkID=None, releaseID=currentReleaseID)
+                            currentReleaseID = None
+                            deletionChangeTextAdded = True
                         aMappingEntry.Delete()
                         syncResult[localization.KeyToMessageMapping.DELETED_ENTRY] += 1
 
-            bsdWrappers.TransactionStart()
-            i = 0
-            while i < MAX_GROUP_DEPTH:
-                possibleOrphanedGroups = _DeleteOrphanedGroupsFrom(possibleOrphanedGroups, cachedGroupPaths.values(), messagesTable, groupTable)
-                if len(possibleOrphanedGroups) == 0:
-                    break
-                elif len(possibleOrphanedGroups) == 1:
-                    if aRow.groupID in possibleOrphanedGroups:
+            localization.LogInfo('Finished searching for obsolete mappings and orphaned groups.  %s mapping entries were deleted.  %s potentially orphaned groups were detected.' % (syncResult[localization.KeyToMessageMapping.DELETED_ENTRY], len(possibleOrphanedGroups)))
+            with bsd.BsdTransaction():
+                i = 0
+                while i < MAX_GROUP_DEPTH:
+                    possibleOrphanedGroups = _DeleteOrphanedGroupsFrom(possibleOrphanedGroups, cachedGroupPaths.values(), messagesTable, groupTable)
+                    if len(possibleOrphanedGroups) == 0:
                         break
-                i = i + 1
+                    elif len(possibleOrphanedGroups) == 1:
+                        if aRow.groupID in possibleOrphanedGroups:
+                            break
+                    i = i + 1
 
-            bsdWrappers.TransactionEnd()
 
     return updatedEntriesPerTable
 
@@ -156,9 +230,22 @@ def _DeleteOrphanedGroupsFrom(setOfDynamicGroups, cachedGroups, messagesTable, g
         if len(messagesInGroup) == 0 and len(subGroups) == 0:
             groupRow = localization.MessageGroup.Get(aGroupID)
             setOfParentGroups.add(groupRow.parentID)
+            localization.LogInfo("Deleting orphaned group '%s'..." % groupRow.groupName)
             groupRow.Delete()
 
     return setOfParentGroups
+
+
+
+def _GetCurrentDatabase():
+    connectionString = sm.GetService('DB2').CreateConnectionString()
+    for kv in connectionString.split(';'):
+        if '=' in kv:
+            (key, value,) = kv.split('=')
+            key = key.strip().lower()
+            if key == 'database':
+                return value
+
 
 
 exports = util.AutoExports('localizationSyncUtil', locals())

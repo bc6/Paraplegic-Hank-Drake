@@ -178,4 +178,28 @@ class BroadcastStuff(gpcs.CoreBroadcastStuff):
 
 
 
+    def NarrowcastByStationID2s(self, stationid2s, method, *args):
+        if not stationid2s:
+            return 
+        callTimer = base.CallTimer('NarrowcastByStationID2s::%s (Broadcast\\Client)' % method)
+        try:
+            self.ForwardNotifyDown(macho.Notification(destination=macho.MachoAddress(broadcastID=method, idtype='stationid2', narrowcast=stationid2s), payload=(1, args)))
+
+        finally:
+            callTimer.Done()
+
+
+
+
+    def SinglecastByStationID2(self, stationid2, method, *args):
+        callTimer = base.CallTimer('SinglecastByStationID2::%s (Broadcast\\Client)' % method)
+        try:
+            self.ForwardNotifyDown(macho.Notification(destination=macho.MachoAddress(broadcastID=method, idtype='stationid2', narrowcast=[stationid2]), payload=(1, args)))
+
+        finally:
+            callTimer.Done()
+
+
+
+
 

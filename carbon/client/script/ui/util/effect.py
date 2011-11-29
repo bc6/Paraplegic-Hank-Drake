@@ -17,7 +17,7 @@ class UIEffects:
 
 
 
-    def BlinkSpriteA(self, sprite, a, time = 1000.0, maxCount = 10, passColor = 1, minA = 0.0):
+    def BlinkSpriteA(self, sprite, a, time = 1000.0, maxCount = 10, passColor = 1, minA = 0.0, timeFunc = blue.os.GetWallclockTime):
         if not hasattr(self, 'blinksA'):
             self.blinksA = {}
         key = id(sprite)
@@ -26,7 +26,8 @@ class UIEffects:
          minA,
          time,
          maxCount,
-         passColor)
+         passColor,
+         timeFunc)
         if key in getattr(self, 'remPending', []):
             self.remPending.remove(key)
         if not getattr(self, 'blink_running', False):
@@ -35,7 +36,7 @@ class UIEffects:
 
 
 
-    def BlinkSpriteRGB(self, sprite, r, g, b, time = 1000.0, maxCount = 10, passColor = 1):
+    def BlinkSpriteRGB(self, sprite, r, g, b, time = 1000.0, maxCount = 10, passColor = 1, timeFunc = blue.os.GetWallclockTime):
         if not hasattr(self, 'blinksRGB'):
             self.blinksRGB = {}
         key = id(sprite)
@@ -45,7 +46,8 @@ class UIEffects:
          b,
          time,
          maxCount,
-         passColor)
+         passColor,
+         timeFunc)
         if key in getattr(self, 'remPending', []):
             self.remPending.remove(key)
         if not getattr(self, 'blink_running', False):
@@ -55,7 +57,7 @@ class UIEffects:
 
 
     def _BlinkThread(self):
-        start = blue.os.GetTime()
+        startTimes = {}
         countsA = {}
         countsRGB = {}
         if not hasattr(self, 'blinksA'):
@@ -66,10 +68,10 @@ class UIEffects:
             while 1:
                 if not self:
                     return 
-                diff = blue.os.TimeDiffInMs(start)
+                diffTimes = {}
                 rem = []
                 for (key, each,) in self.blinksA.iteritems():
-                    (sprite, a, minA, time, maxCount, passColor,) = each
+                    (sprite, a, minA, time, maxCount, passColor, timeFunc,) = each
                     if not sprite or sprite.destroyed:
                         rem.append(key)
                         continue
@@ -81,6 +83,12 @@ class UIEffects:
                         rem.append(key)
                         color.a = minA or a
                         continue
+                    now = timeFunc()
+                    try:
+                        diff = blue.os.TimeDiffInMs(now, startTimes[timeFunc])
+                    except KeyError:
+                        startTimes[timeFunc] = now
+                        diff = 0
                     pos = diff % time
                     if pos < time / 2.0:
                         ndt = min(pos / (time / 2.0), 1.0)
@@ -89,8 +97,8 @@ class UIEffects:
                         ndt = min((pos - time / 2.0) / (time / 2.0), 1.0)
                         color.a = mathUtil.Lerp(minA, a, ndt)
                     if key not in countsA:
-                        countsA[key] = blue.os.GetTime()
-                    if maxCount and blue.os.TimeDiffInMs(countsA[key]) / time > maxCount:
+                        countsA[key] = now
+                    if maxCount and blue.os.TimeDiffInMs(countsA[key], now) / time > maxCount:
                         rem.append(key)
                         color.a = minA or a
                         if key in countsA:
@@ -102,7 +110,7 @@ class UIEffects:
 
                 rem = []
                 for (key, each,) in self.blinksRGB.iteritems():
-                    (sprite, r, g, b, time, maxCount, passColor,) = each
+                    (sprite, r, g, b, time, maxCount, passColor, timeFunc,) = each
                     if not sprite or sprite.destroyed:
                         rem.append(key)
                         continue
@@ -116,6 +124,12 @@ class UIEffects:
                         color.g = g
                         color.b = b
                         continue
+                    now = timeFunc()
+                    try:
+                        diff = blue.os.TimeDiffInMs(now, startTimes[timeFunc])
+                    except KeyError:
+                        startTimes[timeFunc] = now
+                        diff = 0
                     pos = diff % time
                     if pos < time / 2.0:
                         ndt = min(pos / (time / 2.0), 1.0)
@@ -128,8 +142,8 @@ class UIEffects:
                         color.g = mathUtil.Lerp(0.0, g, ndt)
                         color.b = mathUtil.Lerp(0.0, b, ndt)
                     if key not in countsRGB:
-                        countsRGB[key] = blue.os.GetTime()
-                    if maxCount and blue.os.TimeDiffInMs(countsRGB[key]) / time > maxCount:
+                        countsRGB[key] = now
+                    if maxCount and blue.os.TimeDiffInMs(countsRGB[key], now) / time > maxCount:
                         rem.append(key)
                         color.r = r
                         color.g = g
@@ -155,12 +169,12 @@ class UIEffects:
 
 
 
-    def Fade(self, fr, to, object, time = 500.0):
+    def Fade(self, fr, to, object, time = 500.0, timeFunc = blue.os.GetWallclockTime):
         affectOpacity = hasattr(object, 'opacity')
         ndt = 0.0
-        start = blue.os.GetTime(1)
+        start = timeFunc()
         while ndt != 1.0:
-            ndt = min(blue.os.TimeDiffInMs(start) / time, 1.0)
+            ndt = min(blue.os.TimeDiffInMs(start, timeFunc()) / time, 1.0)
             if affectOpacity:
                 object.opacity = mathUtil.Lerp(fr, to, ndt)
             else:
@@ -172,11 +186,11 @@ class UIEffects:
 
 
 
-    def FadeRGB(self, fr, to, sprite, time = 500.0):
+    def FadeRGB(self, fr, to, sprite, time = 500.0, timeFunc = blue.os.GetWallclockTime):
         ndt = 0.0
-        start = blue.os.GetTime(1)
+        start = timeFunc()
         while ndt != 1.0:
-            ndt = min(float(blue.os.TimeDiffInMs(start)) / float(time), 1.0)
+            ndt = min(float(blue.os.TimeDiffInMs(start, timeFunc())) / float(time), 1.0)
             sprite.SetRGB(mathUtil.Lerp(fr[0], to[0], ndt), mathUtil.Lerp(fr[1], to[1], ndt), mathUtil.Lerp(fr[2], to[2], ndt))
             blue.pyos.synchro.Yield()
             if not object or getattr(object, 'destroyed', False):
@@ -185,17 +199,17 @@ class UIEffects:
 
 
 
-    def Rotate(self, uitransform, time = 1.0, fromRot = 360.0, toRot = 0.0):
-        uthread.new(self._Rotate, uitransform, time, fromRot, toRot).context = 'UIObject::effect._Rotate'
+    def Rotate(self, uitransform, time = 1.0, fromRot = 360.0, toRot = 0.0, timeFunc = blue.os.GetWallclockTime):
+        uthread.new(self._Rotate, uitransform, time, fromRot, toRot, timeFunc).context = 'UIObject::effect._Rotate'
 
 
 
-    def _Rotate(self, uitransform, time, fromRot, toRot):
+    def _Rotate(self, uitransform, time, fromRot, toRot, timeFunc):
         time *= 1000
         i = 0
-        (start, ndt,) = (blue.os.GetTime(), 0.0)
+        (start, ndt,) = (timeFunc(), 0.0)
         while ndt != 1.0 and not uitransform.destroyed:
-            ndt = max(ndt, min(blue.os.TimeDiffInMs(start) / time, 1.0))
+            ndt = max(ndt, min(blue.os.TimeDiffInMs(start, timeFunc()) / time, 1.0))
             deg = mathUtil.Lerp(fromRot, toRot, ndt)
             rad = mathUtil.DegToRad(deg)
             uitransform.SetRotation(rad)
@@ -204,7 +218,7 @@ class UIEffects:
 
 
 
-    def CombineEffects(self, item, opacity = None, alpha = None, left = None, top = None, width = None, height = None, rgb = None, _11 = None, _12 = None, time = 250.0, closeWhenDone = False, abortFunction = None, callback = None, doneCallback = None):
+    def CombineEffects(self, item, opacity = None, alpha = None, left = None, top = None, width = None, height = None, rgb = None, _11 = None, _12 = None, time = 250.0, closeWhenDone = False, abortFunction = None, callback = None, doneCallback = None, timeFunc = blue.os.GetWallclockTime):
         sOpacity = None
         if opacity is not None and hasattr(item, 'opacity'):
             sOpacity = item.opacity
@@ -233,14 +247,14 @@ class UIEffects:
         if rgb is not None and hasattr(item, 'GetRGB'):
             (sR, sG, sB,) = item.GetRGB()
             (r, g, b,) = rgb
-        (start, ndt,) = (blue.os.GetTime(), 0.0)
+        (start, ndt,) = (timeFunc(), 0.0)
         while ndt != 1.0:
             if item.destroyed:
                 return 
             try:
-                ndt = max(ndt, min(blue.os.TimeDiffInMs(start) / time, 1.0))
+                ndt = max(ndt, min(blue.os.TimeDiffInMs(start, timeFunc()) / time, 1.0))
             except:
-                log.LogWarn('CombineEffects::Failed getting time diff. Diff should not exceed %s but is %s' % (time, start - blue.os.GetTime(1)))
+                log.LogWarn('CombineEffects::Failed getting time diff. Diff should not exceed %s but is %s' % (time, start - blue.os.GetWallclockTimeNow()))
                 ndt = 1.0
             if sOpacity is not None:
                 item.opacity = mathUtil.Lerp(sOpacity, opacity, ndt)
@@ -284,7 +298,7 @@ class UIEffects:
 
 
 
-    def MorphUI(self, item, attrname, tval, time = 500.0, newthread = 1, ifWidthConstrain = 1, maxSteps = 100, float = 0, endState = None):
+    def MorphUI(self, item, attrname, tval, time = 500.0, newthread = 1, ifWidthConstrain = 1, maxSteps = 100, float = 0, endState = None, timeFunc = blue.os.GetWallclockTime):
         cval = getattr(item, attrname, None)
         if cval is None:
             log.LogError('Attribute not found %s' % attrname)
@@ -293,7 +307,7 @@ class UIEffects:
             return 
         if newthread:
             return uthread.new(self.MorphUI, item, attrname, tval, time, 0, ifWidthConstrain, maxSteps, float, endState=None)
-        (start, ndt,) = (blue.os.GetTime(), 0.0)
+        (start, ndt,) = (timeFunc(), 0.0)
         steps = 0
         while ndt != 1.0:
             if steps > maxSteps:
@@ -303,9 +317,9 @@ class UIEffects:
                     setattr(item, 'height', tval)
                 break
             try:
-                ndt = max(ndt, min(blue.os.TimeDiffInMs(start) / time, 1.0))
+                ndt = max(ndt, min(blue.os.TimeDiffInMs(start, timeFunc()) / time, 1.0))
             except:
-                log.LogWarn('MorphUI::Failed getting time diff. Diff should not exceed %s but is %s' % (time, start - blue.os.GetTime(1)))
+                log.LogWarn('MorphUI::Failed getting time diff. Diff should not exceed %s but is %s' % (time, start - blue.os.GetWallclockTimeNow()))
                 ndt = 1.0
             if ndt < 0.0:
                 log.LogWarn('MorphUI::Got fubar TimeDiffInMs, propably because of the timesync... ignoring', start, time)
@@ -327,14 +341,14 @@ class UIEffects:
 
 
 
-    def Morph(self, func, time = 500.0, newthread = 1):
+    def Morph(self, func, time = 500.0, newthread = 1, timeFunc = blue.os.GetWallclockTime):
         if newthread:
-            uthread.new(self.Morph, func, time, newthread=0).context = 'UIObject::effect.Morph'
+            uthread.new(self.Morph, func, time, newthread=0, timeFunc=timeFunc).context = 'UIObject::effect.Morph'
             return 
-        (start, ndt,) = (blue.os.GetTime(), 0.0)
+        (start, ndt,) = (timeFunc(), 0.0)
         while ndt != 1.0:
             try:
-                ndt = max(ndt, min(blue.os.TimeDiffInMs(start) / time, 1.0))
+                ndt = max(ndt, min(blue.os.TimeDiffInMs(start, timeFunc()) / time, 1.0))
             except:
                 ndt = 1.0
             if ndt < 0.0:
@@ -346,19 +360,19 @@ class UIEffects:
 
 
 
-    def MorphUIMassSpringDamper(self, item, attrname = None, newVal = 1.0, newthread = 1, float = 1, minVal = -10000000000.0, maxVal = 10000000000.0, dampRatio = 0.11, frequency = 20.0, initSpeed = 0.0, maxTime = 1.0, callback = None, initVal = None):
+    def MorphUIMassSpringDamper(self, item, attrname = None, newVal = 1.0, newthread = 1, float = 1, minVal = -10000000000.0, maxVal = 10000000000.0, dampRatio = 0.11, frequency = 20.0, initSpeed = 0.0, maxTime = 1.0, callback = None, initVal = None, timeFunc = blue.os.GetWallclockTime):
         if newthread:
-            return uthread.new(self._MorphUIMassSpringDamper, item, attrname, newVal, newthread, float, minVal, maxVal, dampRatio, frequency, initSpeed, maxTime, callback, initVal)
-        self._MorphUIMassSpringDamper(item, attrname, newVal, newthread, float, minVal, maxVal, dampRatio, frequency, initSpeed, maxTime, callback, initVal)
+            return uthread.new(self._MorphUIMassSpringDamper, item, attrname, newVal, newthread, float, minVal, maxVal, dampRatio, frequency, initSpeed, maxTime, callback, initVal, timeFunc)
+        self._MorphUIMassSpringDamper(item, attrname, newVal, newthread, float, minVal, maxVal, dampRatio, frequency, initSpeed, maxTime, callback, initVal, timeFunc)
 
 
 
-    def _MorphUIMassSpringDamper(self, item, attrname, newVal, newthread, float, minVal, maxVal, dampRatio, frequency, initSpeed, maxTime, callback, initVal = None):
+    def _MorphUIMassSpringDamper(self, item, attrname, newVal, newthread, float, minVal, maxVal, dampRatio, frequency, initSpeed, maxTime, callback, initVal = None, timeFunc = blue.os.GetWallclockTime):
         if initVal is None and attrname is not None:
             initVal = getattr(item, attrname)
         if initVal == newVal:
             initVal += 1e-05
-        t0 = blue.os.GetTime()
+        t0 = timeFunc()
         xn = newVal - initVal
         x0 = -xn
         w0 = frequency
@@ -373,7 +387,7 @@ class UIEffects:
         val = 0.0
         stopCount = 0
         while t < maxTime:
-            t = blue.os.TimeDiffInMs(t0) / 1000.0
+            t = blue.os.TimeDiffInMs(t0, timeFunc()) / 1000.0
             C = -L * w0 * t
             val = math.exp(C) * (A * math.cos(wd * t) + B * math.sin(wd * t)) + xn
             val = max(minVal - initVal, min(val, maxVal - initVal))

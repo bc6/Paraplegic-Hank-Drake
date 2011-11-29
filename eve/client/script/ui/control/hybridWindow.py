@@ -7,33 +7,11 @@ import blue
 import util
 import types
 import sys
-import draw
 import uicls
 import uiconst
 
 class HybridWindow(uicls.Window):
     __guid__ = 'form.HybridWindow'
-    __nonpersistvars__ = ['isModal',
-     'scrolllist',
-     'listentry',
-     'result',
-     'listtype',
-     'fields',
-     'reqresult',
-     'retfields',
-     'tabpanels',
-     'tabs',
-     'tabparents',
-     'minh',
-     'minw',
-     'refreshHeight',
-     'checkingtabs',
-     'activetab',
-     'settingheight',
-     'wndID',
-     'panels',
-     'errorcheck',
-     'OnConfirm']
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -41,7 +19,6 @@ class HybridWindow(uicls.Window):
         format = attributes.format
         caption = attributes.caption
         modal = attributes.modal
-        wndID = attributes.wndID
         buttons = attributes.buttons
         location = attributes.location
         minw = attributes.get('minW', 320)
@@ -51,7 +28,6 @@ class HybridWindow(uicls.Window):
         self.name = caption
         self.result = {}
         self.isModal = modal
-        self.wndID = wndID
         self.blockconfirmonreturn = blockconfirm
         self.sr.topParent.align = uiconst.TOALL
         self.sr.topParent.height = 0
@@ -124,7 +100,7 @@ class HybridWindow(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         if self.sr.queue is not None:
             self.sr.queue.send(None)
         self.form.OnChange = None
@@ -138,8 +114,6 @@ class HybridWindow(uicls.Window):
         self.reqresult = None
         self.panels = None
         self.errorcheck = None
-        main = uiutil.GetChild(self, 'main')
-        uix.Flush(main)
         self.ResetSelf()
 
 
@@ -235,7 +209,7 @@ class HybridWindow(uicls.Window):
             if self.sr.queue is not None:
                 self.sr.queue.send(self.result)
             ret = self.result
-            self.SelfDestruct()
+            self.Close()
             return ret
 
 

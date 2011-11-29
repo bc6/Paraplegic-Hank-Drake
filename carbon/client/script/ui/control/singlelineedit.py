@@ -9,6 +9,8 @@ import fontConst
 import uiconst
 import uiutil
 import uicls
+import localization
+import trinity
 
 class SinglelineEditCore(uicls.Area):
     __guid__ = 'uicls.SinglelineEditCore'
@@ -29,6 +31,10 @@ class SinglelineEditCore(uicls.Area):
     default_OnReturn = None
     default_OnAnyChar = None
     default_OnInsert = None
+    default_fontsize = fontConst.DEFAULT_FONTSIZE
+    default_fontStyle = None
+    default_fontFamily = None
+    default_fontPath = None
     TEXTLEFTMARGIN = 6
     TEXTRIGHTMARGIN = 4
     DECIMAL = prefs.GetValue('decimal', '.')
@@ -58,13 +64,14 @@ class SinglelineEditCore(uicls.Area):
         self.OnFocusLost = None
         self.OnReturn = None
         self.OnInsert = None
+        self.fontStyle = attributes.get('fontStyle', self.default_fontStyle)
+        self.fontFamily = attributes.get('fontFamily', self.default_fontFamily)
+        self.fontPath = attributes.get('fontPath', self.default_fontPath)
+        self.fontsize = attributes.get('fontsize', self.default_fontsize)
+        self.capsWarning = None
         self.Prepare_()
         self.autoselect = attributes.get('autoselect', self.default_autoselect)
-        self.font = attributes.get('font', fontConst.DEFAULT_FONT)
-        self.fontsize = attributes.get('fontsize', fontConst.DEFAULT_FONTSIZE)
         self.adjustWidth = attributes.get('adjustWidth', self.default_adjustWidth)
-        self.sr.text.font = self.sr.hinttext.font = attributes.get('font', fontConst.DEFAULT_FONT)
-        self.sr.text.fontsize = self.sr.hinttext.fontsize = attributes.get('fontsize', fontConst.DEFAULT_FONTSIZE)
         self.sr.text.shadow = self.sr.hinttext.shadow = attributes.get('shadow', None)
         fontcolor = attributes.get('fontcolor', (1.0, 1.0, 1.0, 1.0))
         if fontcolor is not None:
@@ -86,13 +93,16 @@ class SinglelineEditCore(uicls.Area):
         OnAnyChar = attributes.get('OnAnyChar', self.default_OnAnyChar)
         if OnAnyChar:
             self.OnAnyChar = OnAnyChar
+        self.capsLockUpdateThread = uthread.new(self.UpdateCapsState)
 
 
 
     def Prepare_(self):
         self.Prepare_Background_()
-        self.sr.text = uicls.Label(text='', parent=self.sr.content, name='value', align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED, singleline=True, left=self.TEXTLEFTMARGIN)
-        self.sr.hinttext = uicls.Label(text='', parent=self.sr.content, name='hinttext', align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED, singleline=True, left=self.TEXTLEFTMARGIN)
+        self.sr.text = uicls.Label(text='', parent=self.sr.content, name='value', align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED, singleline=True, left=self.TEXTLEFTMARGIN, fontStyle=self.fontStyle, fontFamily=self.fontFamily, fontPath=self.fontPath, fontsize=self.fontsize)
+        self.sr.hinttext = uicls.Label(text='', parent=self.sr.content, name='hinttext', align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED, singleline=True, left=self.TEXTLEFTMARGIN, fontStyle=self.fontStyle, fontFamily=self.fontFamily, fontPath=self.fontPath, fontsize=self.fontsize)
+        self.capsWarning = uicls.Label(text=localization.GetByLabel('/Carbon/UI/Common/CapsLockWarning'), parent=self, name='capswarning', align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED, singleline=True, left=self.width + 2)
+        self.capsWarning.Hide()
         self.sr.content.clipChildren = 1
         self.sr.content.SetPadding(1, 1, 1, 1)
         self.Prepare_ActiveFrame_()
@@ -222,7 +232,7 @@ class SinglelineEditCore(uicls.Area):
             ep.OnMouseEnter = (self.HEMouseEnter, ep)
             ep.OnMouseDown = (self.HEMouseDown, ep)
             uicls.Line(parent=ep, align=uiconst.TOBOTTOM)
-            t = uicls.Label(text=h, parent=ep, pos=(6, 0, 0, 0), align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED)
+            t = uicls.Label(text=h, parent=ep, pos=(6, 0, 0, 0), align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED, userEditable=True)
             ep.height = t.textheight + 4
             ep.sr.hilite = uicls.Fill(parent=ep, color=(1.0, 1.0, 1.0, 0.25), pos=(1, 1, 1, 1), state=uiconst.UI_HIDDEN)
             ep.selected = 0
@@ -387,6 +397,8 @@ class SinglelineEditCore(uicls.Area):
 
     def SetValue(self, text, add = 0, keepSelection = 0, updateIndex = 1, docallback = 1):
         text = text or ''
+        if type(text) in types.StringTypes:
+            text = uiutil.StripTags(text, stripOnly=['localized'])
         if self.integermode or self.floatmode:
             text = self.CheckBounds(text, 0, 0)
             text = self.ConvertToComma(text)
@@ -625,6 +637,15 @@ class SinglelineEditCore(uicls.Area):
 
     def OnChar(self, char, flag):
         if self.OnAnyChar(char):
+            isLatinBased = uicore.font.IsLatinBased(char)
+            if isLatinBased:
+                keyboardLanguageID = uiconst.LANG_ENGLISH
+            else:
+                keyboardLanguageID = uicore.ime.GetKeyboardLanguageID()
+            fontFamily = uicore.font.GetFontFamilyBasedOnWindowsLanguageID(keyboardLanguageID)
+            if fontFamily != self.sr.text.fontFamily:
+                self.sr.text.fontFamily = fontFamily
+                self.sr.hinttext.fontFamily = fontFamily
             if char in [127, uiconst.VK_BACK]:
                 if self.GetSelectionBounds() != (None, None):
                     self.DeleteSelected()
@@ -689,6 +710,7 @@ class SinglelineEditCore(uicls.Area):
                 index = self.text.find(' ', index) + 1 or len(self.text)
             else:
                 index = index + 1
+            index = min(index, len(self.text))
         elif vkey == HOME:
             index = 0
         elif vkey == END:
@@ -746,7 +768,7 @@ class SinglelineEditCore(uicls.Area):
     def Insert(self, ins):
         if self.readonly:
             return None
-        if type(ins) not in types.StringTypes:
+        if not isinstance(ins, basestring):
             text = unichr(ins)
         else:
             text = ins
@@ -808,17 +830,17 @@ class SinglelineEditCore(uicls.Area):
             start = start[0]
         if end is not None:
             end = end[0]
-        m += [(mls.UI_CMD_COPY, self.Copy, (start, end))]
+        m += [(localization.GetByLabel('/Carbon/UI/Controls/Common/Copy'), self.Copy, (start, end))]
         if not self.readonly:
             sm.GetService('ime').GetMenuDelegate(self, None, m)
             paste = uiutil.GetClipboardData()
             if paste:
-                m += [(mls.UI_CMD_PASTE, self.Paste, (paste,
+                m += [(localization.GetByLabel('/Carbon/UI/Controls/Common/Paste'), self.Paste, (paste,
                    start,
                    end,
                    True))]
             if self.displayHistory and self.passwordchar is None:
-                m += [(mls.UI_GENERIC_CLEARHISTORY, self.ClearHistory, (None,))]
+                m += [(localization.GetByLabel('/Carbon/UI/Controls/Common/ClearHistory'), self.ClearHistory, (None,))]
         return m
 
 
@@ -934,7 +956,7 @@ class SinglelineEditCore(uicls.Area):
         if self.passwordchar is None:
             text = self.GetText()
         else:
-            text = '*' * len(self.GetText())
+            text = self.passwordchar * len(self.GetText())
         if selectStart is not None and selectEnd is not None:
             blue.pyos.SetClipboardData(text[selectStart:selectEnd])
         else:
@@ -974,7 +996,7 @@ class SinglelineEditCore(uicls.Area):
             return util.FmtAmt(long(float(otext)))
         if self.floatmode:
             otext = self.ConvertToPoint(otext)
-            return util.FmtAmt(float(otext), showFraction=self.floatmode[2], fillWithZero=True)
+            return util.FmtAmt(float(otext), showFraction=self.floatmode[2])
         if not isinstance(otext, basestring):
             otext = str(otext)
         return otext
@@ -999,6 +1021,7 @@ class SinglelineEditCore(uicls.Area):
             displayText = self.passwordchar * len(text.replace('<br>', ''))
         elif format:
             displayText = self.EncodeOutput(text) + self.suffix
+            displayText = uiutil.StripTags(displayText, stripOnly=['localized'])
         else:
             displayText = text
         self.sr.text.text = displayText.replace('<', '&lt;').replace('>', '&gt;')
@@ -1045,6 +1068,26 @@ class SinglelineEditCore(uicls.Area):
         if self.floatmode and self.DECIMAL == ',':
             ret = uiutil.ConvertDecimal(qty, '.', ',', numDecimals=self.floatmode[2])
         return ret
+
+
+
+    def UpdateCapsState(self):
+        while True:
+            if self.dead:
+                self.capsWarning.Hide()
+                return 
+            if self.passwordchar is not None and self.capsWarning:
+                if trinity.app.GetKeyState(uiconst.VK_CAPITAL) == True and self == uicore.registry.GetFocus():
+                    if hasattr(self.capsWarning, 'ShowHint'):
+                        self.capsWarning.ShowHint()
+                    else:
+                        self.capsWarning.Show()
+                elif hasattr(self.capsWarning, 'FadeOpacity'):
+                    self.capsWarning.FadeOpacity(0.0)
+                else:
+                    self.capsWarning.Hide()
+            blue.synchro.Yield()
+
 
 
 

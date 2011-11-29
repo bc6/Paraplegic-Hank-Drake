@@ -2,6 +2,7 @@ import blue
 import log
 import svc
 import uiutil
+import uicls
 
 class EveSettingsSvc(svc.settings):
     __guid__ = 'svc.eveSettings'
@@ -22,6 +23,7 @@ class EveSettingsSvc(svc.settings):
         except Exception:
             settings.char.ui.Set('listgroups', {})
             log.LogError('Something happened when fixing listgroups settings and they had to be deleted')
+        uicls.Window.ValidateSettings()
 
 
 

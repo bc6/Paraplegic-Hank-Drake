@@ -10,12 +10,12 @@ import util
 import base
 import sys
 import copy
-import dbg
-import math
 import types
 import log
 import uiconst
 import uicls
+import localization
+import localizationUtil
 LOCATION_BLUEPRINT = 9999
 
 class ManufacturingSvc(service.Service):
@@ -39,58 +39,46 @@ class ManufacturingSvc(service.Service):
     def Run(self, memStream = None):
         if session.userid:
             self.PopulateActivities()
-        states = [(None, mls.UI_RMR_ANYACTIVESTATE),
-         (const.ramJobStatusPending, mls.UI_RMR_PENDING),
-         (const.ramJobStatusInProgress, mls.UI_RMR_INPROGRESS),
-         (const.ramJobStatusReady, mls.UI_RMR_READY),
-         (const.ramJobStatusDelivered, mls.UI_RMR_DELIVERED)]
-        self.states = [ (stateID, text) for (stateID, text,) in states ]
-        self.statesIdx = dict(self.states)
         self.relevantskills = None
         self.relevantskillscachetime = None
 
 
 
     def Stop(self, memStream = None):
-        if not sm.IsServiceRunning('window'):
-            return 
-        wnd = sm.GetService('window').GetWindow('manufacturing')
-        if wnd is not None:
-            wnd.CloseX()
+        form.Manufacturing.CloseIfOpen()
         self.detailsByRegionByTypeFlag = {}
 
 
 
     def _FillActivities(self):
         self.detailsByRegionByTypeFlag = {}
-        activities = [[const.activityNone, mls.UI_RMR_ALLACTIVITIES],
-         [const.activityManufacturing, mls.UI_RMR_MANUFACTURING],
-         [const.activityResearchingMaterialProductivity, mls.UI_RMR_MATERIALRESEARCH],
-         [const.activityResearchingTimeProductivity, mls.UI_RMR_TIMEEFFICIENCYRESEARCH],
-         [const.activityCopying, mls.UI_RMR_COPYING],
-         [const.activityDuplicating, mls.UI_RMR_DUBLICATING],
-         [const.activityResearchingTechnology, mls.UI_RMR_TECHNOLOGY],
-         [const.activityInvention, mls.UI_RMR_INVENTION],
-         [const.activityReverseEngineering, mls.UI_RMR_REVERSEENGINEERING]]
-        self.activities = [ (activityID, text) for (activityID, text,) in activities if cfg.ramactivities.Get(activityID).published ]
-        self.activitiesIdx = dict(self.activities)
+        self.PopulateActivities(force=True)
 
 
 
-    def PopulateActivities(self):
-        if self.activities:
+    def PopulateActivities(self, force = False):
+        if not force and self.activities:
             return 
         self.LogInfo('Populating activities')
-        activities = [[const.activityNone, mls.UI_RMR_ALLACTIVITIES],
-         [const.activityManufacturing, mls.UI_RMR_MANUFACTURING],
-         [const.activityResearchingMaterialProductivity, mls.UI_RMR_MATERIALRESEARCH],
-         [const.activityResearchingTimeProductivity, mls.UI_RMR_TIMEEFFICIENCYRESEARCH],
-         [const.activityCopying, mls.UI_RMR_COPYING],
-         [const.activityDuplicating, mls.UI_RMR_DUBLICATING],
-         [const.activityResearchingTechnology, mls.UI_RMR_TECHNOLOGY],
-         [const.activityInvention, mls.UI_RMR_INVENTION],
-         [const.activityReverseEngineering, mls.UI_RMR_REVERSEENGINEERING]]
-        self.activities = [ (activityID, text) for (activityID, text,) in activities if cfg.ramactivities.Get(activityID).published ]
+        allActivitiesLabel = 'UI/ScienceAndIndustry/ScienceAndIndustryWindow/Filters/AllActivities'
+        manufacturingLabel = 'UI/ScienceAndIndustry/ScienceAndIndustryWindow/Filters/Manufacturing'
+        materialResearchLabel = 'UI/ScienceAndIndustry/ScienceAndIndustryWindow/Filters/MaterialResearch'
+        timeEffLabel = 'UI/ScienceAndIndustry/ScienceAndIndustryWindow/Filters/TimeEfficiencyResearch'
+        copyingLabel = 'UI/ScienceAndIndustry/ScienceAndIndustryWindow/Filters/Copying'
+        dublicatingLabel = 'UI/ScienceAndIndustry/ScienceAndIndustryWindow/Filters/Duplicating'
+        technologyLabel = 'UI/ScienceAndIndustry/ScienceAndIndustryWindow/Filters/Technology'
+        inventionLabel = 'UI/ScienceAndIndustry/ScienceAndIndustryWindow/Filters/Invention'
+        reversEngineeringLabel = 'UI/ScienceAndIndustry/ScienceAndIndustryWindow/Filters/ReverseEngineering'
+        activities = [[const.activityNone, allActivitiesLabel],
+         [const.activityManufacturing, manufacturingLabel],
+         [const.activityResearchingMaterialProductivity, materialResearchLabel],
+         [const.activityResearchingTimeProductivity, timeEffLabel],
+         [const.activityCopying, copyingLabel],
+         [const.activityDuplicating, dublicatingLabel],
+         [const.activityResearchingTechnology, technologyLabel],
+         [const.activityInvention, inventionLabel],
+         [const.activityReverseEngineering, reversEngineeringLabel]]
+        self.activities = [ (activityID, labelPath) for (activityID, labelPath,) in activities if cfg.ramactivities.Get(activityID).published ]
         self.activitiesIdx = dict(self.activities)
 
 
@@ -101,26 +89,30 @@ class ManufacturingSvc(service.Service):
 
 
 
-    def GetStates(self):
-        return self.states
-
-
-
     def GetRestrictionMasks(self):
-        m = [(mls.UI_RMR_ALLOWALLIANCEMEMBERUSAGE, 'ramRestrictByAlliance', const.ramRestrictByAlliance),
-         (mls.UI_RMR_ALLOWCORPMEMBERUSAGE, 'ramRestrictByCorp', const.ramRestrictByCorp),
-         (mls.UI_RMR_ALLOWBYSTANDINGRANGE, 'ramRestrictByStanding', const.ramRestrictByStanding),
-         (mls.UI_RMR_ALLOWSECURITYRANGE, 'ramRestrictBySecurity', const.ramRestrictBySecurity)]
+        allianceLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Settings/AllowAlliance')
+        corporationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Settings/AllowCorporation')
+        standingLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Settings/AllowByStanding')
+        securityLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Settings/AllowBySecurityStanding')
+        m = [(allianceLabel, 'ramRestrictByAlliance', const.ramRestrictByAlliance),
+         (corporationLabel, 'ramRestrictByCorp', const.ramRestrictByCorp),
+         (standingLabel, 'ramRestrictByStanding', const.ramRestrictByStanding),
+         (securityLabel, 'ramRestrictBySecurity', const.ramRestrictBySecurity)]
         return m
 
 
 
     def GetRanges(self, beyondCurrent = False):
-        ranges = [((eve.session.solarsystemid2, const.groupSolarSystem), mls.UI_GENERIC_CURRENTSOLARSYS), ((eve.session.constellationid, const.groupConstellation), mls.UI_GENERIC_CURRENTCONSTELLATION), ((eve.session.regionid, const.groupRegion), mls.UI_GENERIC_CURRENTREGION)]
+        systemLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Filters/CurrentSolarSystem')
+        constallationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Filters/CurrentConstellation')
+        regionLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Filters/CurrentRegion')
+        ranges = [((eve.session.solarsystemid2, const.groupSolarSystem), systemLabel), ((eve.session.constellationid, const.groupConstellation), constallationLabel), ((eve.session.regionid, const.groupRegion), regionLabel)]
         if beyondCurrent:
-            (ranges.append(((0, 0), mls.UI_GENERIC_CURRENTUNIVERSE)),)
+            universeLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Filters/CurrentUniverse')
+            (ranges.append(((0, 0), universeLabel)),)
         if eve.session.stationid:
-            ranges.insert(0, ((eve.session.stationid, const.groupStation), mls.UI_GENERIC_CURRENTSTATION))
+            stationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Filters/CurrentStation')
+            ranges.insert(0, ((eve.session.stationid, const.groupStation), stationLabel))
         self.ranges = [ (locationData, text) for (locationData, text,) in ranges ]
         self.rangesIdx = dict(self.ranges)
         return self.ranges
@@ -133,16 +125,9 @@ class ManufacturingSvc(service.Service):
         if 'regionid' in change or 'shipid' in change:
             self.detailsByRegionByTypeFlag = {}
         if 'stationid' in change or 'solarsystemid' in change or 'regionid' in change or 'constellationid' in change or 'shipid' in change:
-            wnd = sm.GetService('window').GetWindow('manufacturing')
+            wnd = form.Manufacturing.GetIfOpen()
             if wnd:
-                wnd.Reload()
-
-
-
-    def Show(self, minimized = False, panelName = None):
-        window = sm.GetService('window').GetWindow('manufacturing', decoClass=form.Manufacturing, maximize=1, create=1)
-        if panelName is not None:
-            uthread.new(window.sr.maintabs.ShowPanelByName, panelName)
+                wnd.ReloadTabs()
 
 
 
@@ -169,7 +154,7 @@ class ManufacturingSvc(service.Service):
             if oldFlag in corpHangarFlags and newFlag in corpHangarFlags:
                 if currentFlagBeingViewed is None or currentFlagBeingViewed not in (oldFlag, newFlag):
                     return 
-        wnd = sm.GetService('window').GetWindow('manufacturing')
+        wnd = form.Manufacturing.GetIfOpen()
         if wnd is not None and not wnd.destroyed:
             self.ReloadBlueprints()
 
@@ -214,14 +199,16 @@ class ManufacturingSvc(service.Service):
 
 
     def CreateJob(self, invItem = None, assemblyLine = None, activityID = None, installationDetails = None):
-        wnd = sm.GetService('window').GetWindow('ManufacturingInstallation')
+        wnd = form.ManufacturingInstallation.GetIfOpen()
         if wnd is not None and not wnd.destroyed:
             wnd.Show()
             return 
         if activityID is None:
             activityID = installationDetails.activityID
-        wnd = sm.GetService('window').GetWindow('ManufacturingInstallation', create=1, activityID=activityID)
-        wnd.Load(invItem, assemblyLine, activityID, installationDetails)
+        wnd = form.ManufacturingInstallation.Open(activityID=activityID, loadData=(invItem,
+         assemblyLine,
+         activityID,
+         installationDetails))
 
 
 
@@ -247,29 +234,34 @@ class ManufacturingSvc(service.Service):
             else:
                 log.LogInfo('its in a starbase')
                 installationLocationData = [[jobdata.installedInSolarSystemID, const.groupSolarSystem], [], [jobdata.containerID]]
-        title = {False: mls.UI_RMR_COMPLETINGJOBS,
-         True: mls.UI_RMR_CANCELLINGJOBS}[cancel]
-        text = {False: mls.UI_RMR_COMPLETINGJOBS,
-         True: mls.UI_RMR_CANCELLINGJOBS}[cancel]
+        completingJobsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/CompletingJobs')
+        cancellingJobsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/CancellingJobs')
+        title = {False: completingJobsLabel,
+         True: cancellingJobsLabel}[cancel]
+        text = {False: completingJobsLabel,
+         True: cancellingJobsLabel}[cancel]
         try:
             sm.GetService('loading').ProgressWnd(title, text, 1, 2)
             result = sm.ProxySvc('ramProxy').CompleteJob(installationLocationData, jobdata.jobID, cancel)
             if hasattr(result, 'messageLabel'):
+                inventionResultLabel = localization.GetByLabel(result.messageLabel)
                 if result.jobCompletedSuccessfully:
-                    eve.Message('RamInventionJobSucceeded', {'info': getattr(mls, result.messageLabel, ''),
+                    eve.Message('RamInventionJobSucceeded', {'info': inventionResultLabel,
                      'me': result.outputME,
                      'pe': result.outputPE,
                      'runs': result.outputRuns,
-                     'type': (TYPEID, result.outputTypeID),
-                     'typeid': result.outputTypeID,
-                     'itemid': result.outputItemID})
+                     'type': result.outputTypeID,
+                     'typeid': str(result.outputTypeID),
+                     'itemid': str(result.outputItemID)})
                 else:
-                    eve.Message('RamInventionJobFailed', {'info': getattr(mls, result.messageLabel, '')})
+                    eve.Message('RamInventionJobFailed', {'info': inventionResultLabel})
             if hasattr(result, 'message'):
                 eve.Message(result.message.msg, result.message.args)
-            sm.GetService('loading').ProgressWnd(title, mls.UI_GENERIC_DONE, 2, 2)
+            doneLabel = localization.GetByLabel('UI/Common/Done')
+            sm.GetService('loading').ProgressWnd(title, doneLabel, 2, 2)
         except UserError as what:
-            sm.GetService('loading').ProgressWnd(title, mls.UI_GENERIC_DONE, 1, 1)
+            doneLabel = localization.GetByLabel('UI/Common/Done')
+            sm.GetService('loading').ProgressWnd(title, doneLabel, 1, 1)
             raise 
 
 
@@ -310,7 +302,7 @@ class ManufacturingSvc(service.Service):
         self.ResetRelevantCharSkills()
         if not self.relevantskills:
             self.relevantskills = sm.ProxySvc('ramProxy').GetRelevantCharSkills()
-            self.relevantskillscachetime = blue.os.GetTime()
+            self.relevantskillscachetime = blue.os.GetWallclockTime()
         return self.relevantskills
 
 
@@ -318,7 +310,7 @@ class ManufacturingSvc(service.Service):
     def ResetRelevantCharSkills(self):
         if self.relevantskills is None:
             return 
-        t = blue.os.GetTime()
+        t = blue.os.GetWallclockTime()
         if t - self.relevantskillscachetime > MIN * 15:
             self.relevantskills = None
 
@@ -330,15 +322,34 @@ class ManufacturingSvc(service.Service):
 
 
     def IsRamInstallable(self, item):
-        if item.categoryID == const.categoryBlueprint:
+        if item.categoryID != const.categoryBlueprint:
+            return False
+        if util.IsStation(item.locationID):
+            return True
+        if util.GetActiveShip() == item.locationID:
+            return True
+        if item.ownerID != session.corpid:
+            return False
+        locationItem = sm.GetService('michelle').GetItem(item.locationID)
+        if locationItem and locationItem.groupID in (const.groupCorporateHangarArray, const.groupAssemblyArray, const.groupMobileLaboratory):
+            return True
+        if not locationItem and sm.GetService('invCache').GetStationIDOfItem(item) in (r.stationID for r in sm.GetService('corp').GetMyCorporationsOffices()):
             return True
         return False
 
 
 
     def IsReverseEngineering(self, item):
-        if item.categoryID == const.categoryAncientRelic:
+        if item.categoryID != const.categoryAncientRelic:
+            return False
+        locationItem = sm.GetService('michelle').GetItem(item.locationID)
+        if locationItem and locationItem.groupID == const.groupMobileLaboratory:
             return True
+        if not locationItem:
+            if util.IsStation(item.locationID):
+                return True
+            if sm.GetService('invCache').GetStationIDOfItem(item) in (r.stationID for r in sm.GetService('corp').GetMyCorporationsOffices()):
+                return True
         return False
 
 
@@ -463,7 +474,7 @@ class ManufacturingSvc(service.Service):
                                 officeID = office.officeID
 
                     if officeID is None:
-                        raise UserError('RamCorpBOMItemNoSuchOffice', {'location': cfg.evelocations.Get(quoteData.containerID).locationName})
+                        raise UserError('RamCorpBOMItemNoSuchOffice', {'location': quoteData.containerID})
                     invLocation = [quoteData.containerID, const.groupStation]
                     path = []
                     path.append([quoteData.containerID, const.ownerStation, 0])
@@ -490,8 +501,10 @@ class ManufacturingSvc(service.Service):
         installedItemLocationData = sm.GetService('manufacturing').GetPathToItem(quoteData.blueprint)
         installationLocationData = [invLocation, [], [quoteData.containerID]]
         installationLocationData[2].append(quoteData.assemblyLineID)
-        sm.GetService('loading').ProgressWnd(mls.UI_RMR_CALCULATINGQUOTE, mls.UI_RMR_GETTINGQUOTEFROMINSTALLATION, 1, 3)
-        blue.pyos.synchro.Sleep(0)
+        calculateQuoteLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/CalculatingQuote')
+        gettingQuoteLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/GettingQuoteFromInstallation')
+        sm.GetService('loading').ProgressWnd(calculateQuoteLabel, gettingQuoteLabel, 1, 3)
+        blue.pyos.synchro.SleepWallclock(0)
         quote = None
         try:
             job = sm.ProxySvc('ramProxy').InstallJob(installationLocationData, installedItemLocationData, bomLocationData, flagOutput, quoteData.buildRuns, quoteData.activityID, quoteData.licensedProductionRuns, not quoteData.ownerFlag, 'blah', quoteOnly=1, installedItem=quoteData.blueprint, maxJobStartTime=quoteData.assemblyLine.nextFreeTime + 1 * MIN, inventionItems=quoteData.inventionItems, inventionOutputItemID=quoteData.inventionItems.outputType)
@@ -500,17 +513,20 @@ class ManufacturingSvc(service.Service):
                 quoteData.blueprint.itemID = job.installedItemID
                 installedItemLocationData[2] = [job.installedItemID]
         except UserError as e:
-            sm.GetService('loading').ProgressWnd(mls.UI_RMR_CANCELLINGQUOTE, mls.UI_RMR_QUOTENOTACCEPTED, 1, 1)
+            cancelingQuoteLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/CancellingQuote')
+            quoteNotAcceptedLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/QuoteNotAccepted')
+            sm.GetService('loading').ProgressWnd(cancelingQuoteLabel, quoteNotAcceptedLabel, 1, 1)
             raise 
-        finishingText = mls.UI_GENERIC_DONE
+        installingJobLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/InstallingJob')
+        finishingText = localization.GetByLabel('UI/Common/Done')
         if quote is not None:
-            sm.GetService('loading').ProgressWnd(mls.UI_RMR_CALCULATINGQUOTE, mls.UI_RMR_GETTINGQUOTEFROMINSTALLATION, 3, 3)
-            wnd = sm.GetService('window').GetWindow('manufacturingquotewindow')
-            if wnd:
-                wnd.CloseX()
-            wnd = sm.GetService('window').GetWindow('manufacturingquotewindow', create=1, decoClass=form.ManufacturingQuoteWindow, quote=quote, quoteData=quoteData)
+            sm.GetService('loading').ProgressWnd(calculateQuoteLabel, gettingQuoteLabel, 3, 3)
+            form.ManufacturingQuoteWindow.CloseIfOpen()
+            cancellingInstallationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/CancellingInstallation')
+            wnd = form.ManufacturingQuoteWindow.Open(quote=quote, quoteData=quoteData)
             if wnd.ShowDialog() == uiconst.ID_OK:
-                sm.GetService('loading').ProgressWnd(mls.UI_RMR_INSTALLINGJOB, mls.UI_RMR_INSTALLINGJOBHINT, 2, 4)
+                installinginCurrontLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/InstallInCurrentInstallation')
+                sm.GetService('loading').ProgressWnd(installingJobLabel, installinginCurrontLabel, 2, 4)
                 try:
                     authorizedCost = quote.cost
                     sm.services['objectCaching'].InvalidateCachedMethodCall('ramProxy', 'AssemblyLinesGet', quoteData.containerID)
@@ -518,11 +534,9 @@ class ManufacturingSvc(service.Service):
                     sm.GetService('objectCaching').InvalidateCachedMethodCall('ramProxy', 'GetJobs2', ownerInput, 0)
                     sm.GetService('manufacturing').ReloadBlueprints()
                     sm.GetService('manufacturing').ReloadInstallations()
-                    sm.GetService('loading').ProgressWnd(mls.UI_RMR_INSTALLINGJOB, mls.UI_RMR_COMPLETINGINSTALLATION, 3, 4)
-                    wnd.CloseX()
-                    wnd = sm.GetService('window').GetWindow('ManufacturingInstallation')
-                    if wnd:
-                        wnd.CloseX()
+                    completingInstallationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/CompletingInstallation')
+                    sm.GetService('loading').ProgressWnd(installingJobLabel, completingInstallationLabel, 3, 4)
+                    form.ManufacturingInstallation.CloseIfOpen()
                 except UserError as what:
 
                     def f():
@@ -531,30 +545,31 @@ class ManufacturingSvc(service.Service):
 
                     uthread.new(f)
                     sys.exc_clear()
-                    finishingText = mls.UI_RMR_CANCELLINGINSTALLATION
-                    sm.GetService('loading').ProgressWnd(mls.UI_RMR_INSTALLINGJOB, mls.UI_RMR_CANCELLINGINSTALLATION, 3, 4)
+                    finishingText = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/CancellingInstallation')
+                    sm.GetService('loading').ProgressWnd(installingJobLabel, cancellingInstallationLabel, 3, 4)
             else:
-                finishingText = mls.UI_RMR_CANCELLINGINSTALLATION
-        sm.GetService('loading').ProgressWnd(mls.UI_RMR_INSTALLINGJOB, finishingText, 4, 4)
+                finishingText = cancellingInstallationLabel
+        sm.GetService('loading').ProgressWnd(installingJobLabel, finishingText, 4, 4)
 
 
 
-    def ReloadBlueprints(self, windowname = 'manufacturing', args = ('persBlueprints', 'sciAndIndustryCorpBlueprintsTab')):
-        now = blue.os.GetTime(1)
+    def ReloadBlueprints(self, windowClass = None, args = ('persBlueprints', 'sciAndIndustryCorpBlueprintsTab')):
+        windowClass = windowClass or form.Manufacturing
+        now = blue.os.GetWallclockTimeNow()
         self.lastReloadBlueprintsCallTime = now
-        blue.pyos.synchro.Sleep(1000)
+        blue.pyos.synchro.SleepWallclock(1000)
         if now != self.lastReloadBlueprintsCallTime:
             return 
-        wnd = sm.GetService('window').GetWindow(windowname)
+        wnd = windowClass.GetIfOpen()
         if wnd is None or wnd.destroyed:
             return 
         uthread.Lock(self, 'ReloadBlueprints')
         try:
             sm.GetService('invCache').InvalidateGlobal()
-            wnd = sm.GetService('window').GetWindow(windowname)
+            wnd = windowClass.GetIfOpen()
             if wnd and wnd.sr.maintabs.GetSelectedArgs() in args:
                 wnd.sr.maintabs.ReloadVisible()
-            wnd = sm.GetService('window').GetWindow('assets')
+            wnd = form.AssetsWindow.GetIfOpen()
             if wnd:
                 wnd.sr.maintabs.ReloadVisible()
 
@@ -565,7 +580,7 @@ class ManufacturingSvc(service.Service):
 
 
     def ReloadInstallations(self):
-        wnd = sm.GetService('window').GetWindow('manufacturing')
+        wnd = form.Manufacturing.GetIfOpen()
         if wnd and getattr(wnd.sr.installationsParent, 'inited', 0):
             selected = wnd.sr.installationsParent.sr.installationsScroll.GetSelected()
             if selected:
@@ -581,17 +596,10 @@ class ManufacturingSvc(service.Service):
     def GetActivityName(self, activityID):
         self.PopulateActivities()
         if activityID in self.activitiesIdx:
-            return self.activitiesIdx[activityID]
+            labelPath = self.activitiesIdx[activityID]
+            return localization.GetByLabel(labelPath)
         else:
-            return mls.UI_RMR_UNKNOWNACTIVITYID % {'id': activityID}
-
-
-
-    def GetStateName(self, stateID):
-        if stateID in self.statesIdx:
-            return self.statesIdx[stateID]
-        else:
-            return 'Unknown %s' % stateID
+            return localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/UnknownID', activityId=activityID)
 
 
 
@@ -665,7 +673,7 @@ class BlueprintData():
             uicore.registry.SetListGroupOpenState(('rmpickpblocations', location.locationID), 0)
             self.invalidateOpenState = 0
         jumps = int(sm.GetService('pathfinder').GetJumpCountFromCurrent(solarsystemID))
-        label = '%s - %s - %s' % (location.name, uix.Plural(station.blueprintCount, 'UI_RMR_NUM_BLUEPRINT') % {'num': station.blueprintCount}, uix.Plural(jumps, 'UI_SHARED_NUM_JUMP') % {'num': jumps})
+        label = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/LocationNumberOfBlueprintsNumberOfJumps', locationName=location.name, blueprints=station.blueprintCount, jumps=jumps)
         data = {'GetSubContent': self.GetSubContent,
          'DragEnterCallback': self.OnGroupDragEnter,
          'DeleteCallback': self.OnGroupDeleted,
@@ -693,8 +701,7 @@ class BlueprintData():
             uicore.registry.SetListGroupOpenState(('rmpickpblocations', location.locationID), 0)
             self.invalidateOpenState = 0
         jumps = sm.GetService('pathfinder').GetJumpCountFromCurrent(solarsystemID)
-        jumpText = mls.UI_SHARED_NUM_JUMP % {'num': 1} if int(jumps) == 1 else mls.UI_SHARED_NUM_JUMPS % {'num': int(jumps)}
-        label = '%s - %s' % (locationName, jumpText)
+        label = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/LocationNumberOfJumps', locationName=locationName, jumps=int(jumps))
         data = {'GetSubContent': self.GetSubContent,
          'DragEnterCallback': self.OnGroupDragEnter,
          'DeleteCallback': self.OnGroupDeleted,
@@ -722,9 +729,7 @@ class BlueprintData():
             uicore.registry.SetListGroupOpenState(('rmpickpblocations', eve.session.shipid), 0)
             self.invalidateOpenState = 0
         jumps = 0
-        itemText = mls.UI_SHARED_NUM_ITEMS % {'num': blueprintCount} if blueprintCount > 1 else mls.UI_SHARED_NUM_ITEM % {'num': blueprintCount}
-        jumpText = mls.UI_SHARED_NUM_JUMP % {'num': 1} if int(jumps) == 1 else mls.UI_SHARED_NUM_JUMPS % {'num': int(jumps)}
-        label = '%s - %s - %s' % (location.name, itemText, jumpText)
+        label = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/LocationNumberOfItemsNumberOfJumps', locationName=location.name, items=blueprintCount, jumps=int(jumps))
         data = {'GetSubContent': self.GetSubContent,
          'DragEnterCallback': self.OnGroupDragEnter,
          'DeleteCallback': self.OnGroupDeleted,
@@ -758,7 +763,7 @@ class BlueprintData():
         solarsystemID = data.solarsystemID
         stationID = data.location.locationID
         locationID = data.officeID or data.location.locationID
-        items = eve.GetInventory(const.containerGlobal).ListStationBlueprintItems(locationID, data.location.locationID, data.isCorp)
+        items = sm.GetService('invCache').GetInventory(const.containerGlobal).ListStationBlueprintItems(locationID, data.location.locationID, data.isCorp)
         isCorp = data.isCorp
         scrollID = data.scrollID
         if isCorp:
@@ -804,16 +809,22 @@ class BlueprintData():
             if isCorp:
                 data.locked = sm.GetService('corp').IsItemLocked(item)
             data.factionID = sm.GetService('faction').GetFactionOfSolarSystem(solarsystemID)
-            isCopy = [mls.UI_GENERIC_NO, mls.UI_GENERIC_YES][blueprint.copy]
+            noLabel = localization.GetByLabel('UI/Common/No')
+            yesLabel = localization.GetByLabel('UI/Common/Yes')
+            isCopy = [noLabel, yesLabel][blueprint.copy]
             ml = blueprint.materialLevel
             pl = blueprint.productivityLevel
             lprr = blueprint.licensedProductionRunsRemaining
             if lprr == -1:
                 lprr = ''
-            data.Set('sort_%s' % mls.UI_GENERIC_COPY, isCopy)
-            data.Set('sort_%s' % mls.UI_RMR_ML, ml)
-            data.Set('sort_%s' % mls.UI_RMR_PL, pl)
-            data.Set('sort_%s' % mls.UI_GENERIC_RUNS, lprr)
+            copyLabel = localization.GetByLabel('UI/Common/Copy')
+            mlLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ML')
+            plLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/PL')
+            runsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Runs')
+            data.Set('sort_%s' % copyLabel, isCopy)
+            data.Set('sort_%s' % mlLabel, ml)
+            data.Set('sort_%s' % plLabel, pl)
+            data.Set('sort_%s' % runsLabel, lprr)
             scrolllist.append(listentry.Get('InvBlueprintItem', data=data))
 
         return scrolllist
@@ -845,8 +856,7 @@ class ItemByGroupData():
             uicore.registry.SetListGroupOpenState(('rmpickpblocations', location.locationID), 0)
             self.invalidateOpenState = 0
         jumps = sm.GetService('pathfinder').GetJumpCountFromCurrent(solarsystemID)
-        jumpText = mls.UI_SHARED_NUM_JUMP % {'num': 1} if int(jumps) == 1 else mls.UI_SHARED_NUM_JUMPS % {'num': int(jumps)}
-        label = '%s - %s' % (location.name, jumpText)
+        label = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/LocationNumberOfJumps', locationName=location.name, jumps=int(jumps))
         data = {'GetSubContent': self.GetSubContent,
          'DragEnterCallback': self.OnGroupDragEnter,
          'DeleteCallback': self.OnGroupDeleted,
@@ -875,9 +885,7 @@ class ItemByGroupData():
             uicore.registry.SetListGroupOpenState(('rmpickpblocations', location.locationID), 0)
             self.invalidateOpenState = 0
         jumps = sm.GetService('pathfinder').GetJumpCountFromCurrent(solarsystemID)
-        itemText = mls.UI_SHARED_NUM_ITEMS % {'num': station.blueprintCount} if blueprintCount > 1 else mls.UI_SHARED_NUM_ITEM % {'num': station.blueprintCount}
-        jumpText = mls.UI_SHARED_NUM_JUMP % {'num': 1} if int(jumps) == 1 else mls.UI_SHARED_NUM_JUMPS % {'num': int(jumps)}
-        label = '%s - %s - %s' % (location.name, itemText, jumpText)
+        label = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/LocationNumberOfItemsNumberOfJumps', locationName=location.name, items=station.blueprintCount, jumps=int(jumps))
         data = {'GetSubContent': self.GetSubContent,
          'DragEnterCallback': self.OnGroupDragEnter,
          'DeleteCallback': self.OnGroupDeleted,
@@ -909,7 +917,7 @@ class ItemByGroupData():
         solarsystemID = data.solarsystemID
         stationID = data.location.locationID
         locationID = data.officeID or data.location.locationID
-        items = eve.GetInventory(const.containerGlobal).ListStationItems(locationID)
+        items = sm.GetService('invCache').GetInventory(const.containerGlobal).ListStationItems(locationID)
         isCorp = data.isCorp
         scrollID = data.scrollID
         if isCorp:
@@ -973,32 +981,47 @@ class Manufacturing(uicls.Window, BlueprintData):
     __guid__ = 'form.Manufacturing'
     default_width = 635
     default_height = 500
+    default_windowID = 'manufacturing'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
+        activeLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Filters/AnyActiveState')
+        pendingLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Pending')
+        inProgressLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/InProgress')
+        readyLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Ready')
+        deliveredLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Delivered')
+        states = [(None, activeLabel),
+         (const.ramJobStatusPending, pendingLabel),
+         (const.ramJobStatusInProgress, inProgressLabel),
+         (const.ramJobStatusReady, readyLabel),
+         (const.ramJobStatusDelivered, deliveredLabel)]
+        self.states = [ (stateID, text) for (stateID, text,) in states ]
         self.scope = 'all'
-        self.SetCaption(mls.UI_RMR_SCIENCEANDINDUSTRY)
+        sAndILabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ScienceAndIndustry')
+        self.SetCaption(sAndILabel)
         self.LoadTabs()
         self.SetWndIcon('ui_57_64_9', mainTop=-10)
         self.SetMinSize([635, 500])
-        capt = uicls.WndCaptionLabel(text=mls.UI_RMR_SCIENCEANDINDUSTRY, parent=self.sr.topParent, align=uiconst.TOPLEFT, left=70, top=10)
+        capt = uicls.WndCaptionLabel(text=sAndILabel, parent=self.sr.topParent, align=uiconst.TOPLEFT, left=70, top=10)
         self.sr.caption = capt
+        panelName = attributes.panelName
+        if panelName is not None:
+            uthread.new(self.sr.maintabs.ShowPanelByName, panelName)
 
 
 
-    def OnClose_(self, *args):
-        if not self.destroyed:
-            if getattr(self, 'jobsinited', 0):
-                settings.user.ui.Set('factory_statefilter', self.sr.stateFilter.GetValue())
-                settings.user.ui.Set('factory_ownerfilter', self.sr.ownerFilter.GetValue())
-                settings.user.ui.Set('factory_creatorfilter', self.sr.creatorFilter.GetValue())
-                settings.user.ui.Set('factory_locationfilter', self.sr.locationFilter.GetValue())
-                settings.user.ui.Set('factory_fromdatefilter', self.sr.jobsFromDate.GetValue())
-            if getattr(self, 'corpBlueprintsInited', 0):
-                settings.user.ui.Set('blueprint_divisionfilter', self.sr.blueprintDivisionFilter.GetValue())
-                settings.user.ui.Set('corp_blueprint_copyfilter', self.sr.corp_blueprintCopyFilter.GetValue())
-            if getattr(self, 'persBlueprintsInited', 0):
-                settings.user.ui.Set('pers_blueprint_copyfilter', self.sr.pers_blueprintCopyFilter.GetValue())
+    def _OnClose(self, *args):
+        if getattr(self, 'jobsinited', 0):
+            settings.user.ui.Set('factory_statefilter', self.sr.stateFilter.GetValue())
+            settings.user.ui.Set('factory_ownerfilter', self.sr.ownerFilter.GetValue())
+            settings.user.ui.Set('factory_creatorfilter', self.sr.creatorFilter.GetValue())
+            settings.user.ui.Set('factory_locationfilter', self.sr.locationFilter.GetValue())
+            settings.user.ui.Set('factory_fromdatefilter', self.sr.jobsFromDate.GetValue())
+        if getattr(self, 'corpBlueprintsInited', 0):
+            settings.user.ui.Set('blueprint_divisionfilter', self.sr.blueprintDivisionFilter.GetValue())
+            settings.user.ui.Set('corp_blueprint_copyfilter', self.sr.corp_blueprintCopyFilter.GetValue())
+        if getattr(self, 'persBlueprintsInited', 0):
+            settings.user.ui.Set('pers_blueprint_copyfilter', self.sr.pers_blueprintCopyFilter.GetValue())
 
 
 
@@ -1019,30 +1042,36 @@ class Manufacturing(uicls.Window, BlueprintData):
          const.defaultPadding,
          const.defaultPadding))
         self.sr.corpBlueprintsParent = uicls.Container(name='corpBlueprintsParent', parent=self.sr.main, align=uiconst.TOALL, pos=(0, 0, 0, 0), state=uiconst.UI_HIDDEN, idx=1)
+        planetsLabel = localization.GetByLabel('UI/Common/Planets')
+        jobsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Jobs')
+        blueprintsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Blueprints')
+        installationsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Installations')
+        settingsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Settings')
         tabs = uicls.TabGroup(name='factoryTabs', parent=self.sr.main, idx=0)
         tabContent = []
-        tabContent.append([mls.UI_RMR_JOBS,
+        tabContent.append([jobsLabel,
          self.sr.jobsParent,
          self,
          'jobs'])
-        tabContent.append([mls.UI_RMR_BLUEPRINTS,
+        tabContent.append([blueprintsLabel,
          self.sr.persBlueprintsParent,
          self,
          'persBlueprints'])
         if not util.IsNPC(eve.session.corpid) and self.CanSeeCorpBlueprints():
-            tabContent.append([mls.UI_RMR_CORPBLUEPRINTS,
+            corpBlueprintsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/CorporationBlueprints')
+            tabContent.append([corpBlueprintsLabel,
              self.sr.corpBlueprintsParent,
              self,
              'sciAndIndustryCorpBlueprintsTab'])
-        tabContent.append([mls.UI_RMR_INSTALLATIONS,
+        tabContent.append([installationsLabel,
          self.sr.installationsParent,
          self,
          'installations'])
-        tabContent.append([mls.UI_GENERIC_PLANETS,
+        tabContent.append([planetsLabel,
          self.sr.planetParent,
          self,
          'planets'])
-        tabContent.append([mls.UI_GENERIC_SETTINGS,
+        tabContent.append([settingsLabel,
          self.sr.settingsParent,
          self,
          'settings'])
@@ -1054,20 +1083,23 @@ class Manufacturing(uicls.Window, BlueprintData):
     def Load(self, key):
         self.sr.detailtimer = None
         self.sr.limits = self.GetSkillLimits()
+        delayLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Delayed5Minutes')
         if key == 'jobs':
             self.ShowJobs()
         elif key == 'persBlueprints':
             self.ShowBlueprints()
+            self.sr.caption.SetSubcaption(delayLabel)
         elif key == 'sciAndIndustryCorpBlueprintsTab':
+            self.sr.caption.SetSubcaption(delayLabel)
             self.ShowBlueprints(1)
         elif key == 'installations':
-            self.sr.caption.SetSubcaption(mls.UI_CORP_DELAYED5MINUTES)
+            self.sr.caption.SetSubcaption(delayLabel)
             self.ShowInstallations()
         elif key == 'planets':
             self.ShowPlanets()
         elif key == 'settings':
             self.ShowSettings()
-        if key != 'installations':
+        if key not in ('installations', 'persBlueprints', 'sciAndIndustryCorpBlueprintsTab'):
             self.sr.caption.SetSubcaption('')
 
 
@@ -1084,7 +1116,7 @@ class Manufacturing(uicls.Window, BlueprintData):
 
 
 
-    def Reload(self):
+    def ReloadTabs(self):
         self.settingsinited = 0
         self.jobsinited = 0
         self.persBlueprintsInited = 0
@@ -1098,22 +1130,24 @@ class Manufacturing(uicls.Window, BlueprintData):
         if not getattr(self, '%sBlueprintsInited' % key, 0):
             bpParent = self.sr.Get('%sBlueprintsParent' % key, None)
             filters = uicls.Container(name='filters', parent=bpParent, height=33, align=uiconst.TOTOP)
-            copies = [(mls.UI_RMR_ALL, None), (mls.UI_RMR_COPIES, 1), (mls.UI_RMR_ORIGINALS, 0)]
-            c = uicls.Combo(label=mls.UI_GENERIC_TYPE, parent=filters, options=copies, name='copies', select=settings.user.ui.Get('%s_blueprint_copyfilter' % key, None), callback=self.BlueprintComboChange, pos=(5, 0, 0, 0), align=uiconst.TOPLEFT)
+            allLabel = localization.GetByLabel('UI/Common/All')
+            copiesLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Copies')
+            originalsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Originals')
+            copies = [(allLabel, None), (copiesLabel, 1), (originalsLabel, 0)]
+            typeLabel = localization.GetByLabel('UI/Common/Type')
+            c = uicls.Combo(label=typeLabel, parent=filters, options=copies, name='copies', select=settings.user.ui.Get('%s_blueprint_copyfilter' % key, None), callback=self.BlueprintComboChange, pos=(5, 0, 0, 0), align=uiconst.TOPLEFT)
             c.top = top = -c.sr.label.top
             filters.height = c.top + c.height
             setattr(self.sr, '%s_blueprintCopyFilter' % key, c)
-            t = uicls.Label(text=mls.UI_CORP_DELAYED5MINUTES, parent=filters, align=uiconst.TOALL, left=c.width + 12, top=13, fontsize=11, letterspace=2, uppercase=0, autoheight=False, autowidth=False)
-            t.hint = mls.UI_RMR_TEXT1
             if isCorp:
                 divisions = sm.GetService('manufacturing').GetAvailableHangars(canView=0, canTake=0)
-                divisions.insert(0, (mls.UI_RMR_ALL, (None, None)))
-                c = uicls.Combo(label=mls.UI_RMR_DIVISION, parent=filters, options=divisions, name='divisions', select=settings.user.ui.Get('blueprint_divisionfilter', (None, None)), callback=self.BlueprintComboChange, pos=(self.sr.corp_blueprintCopyFilter.left + self.sr.corp_blueprintCopyFilter.width + 4,
+                divisions.insert(0, (allLabel, (None, None)))
+                divisionLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Division')
+                c = uicls.Combo(label=divisionLabel, parent=filters, options=divisions, name='divisions', select=settings.user.ui.Get('blueprint_divisionfilter', (None, None)), callback=self.BlueprintComboChange, pos=(self.sr.corp_blueprintCopyFilter.left + self.sr.corp_blueprintCopyFilter.width + 4,
                  top,
                  0,
                  0), align=uiconst.TOPLEFT)
                 self.sr.blueprintDivisionFilter = c
-                t.left += c.width + 4
             scroll = uicls.Scroll(parent=bpParent, padding=(const.defaultPadding,
              const.defaultPadding,
              const.defaultPadding,
@@ -1127,51 +1161,59 @@ class Manufacturing(uicls.Window, BlueprintData):
             maxManufacturingJobCount = int(attributeValues[const.attributeManufactureSlotLimit])
             maxResearchJobCount = int(attributeValues[const.attributeMaxLaborotorySlots])
             collection = []
+            maxManufacturingJobsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MaximumManufacturingJobs', value=maxManufacturingJobCount)
+            maxResearchJobsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MaximumResearchJobs', value=maxResearchJobCount)
             left = 3
-            t = uicls.Label(text='%s<t><right>%s<br>%s<t><right>%s' % (mls.UI_RMR_MAXMANUFACTURINGJOBS,
-             maxManufacturingJobCount,
-             mls.UI_RMR_MAXRESEARCHJOBS,
-             maxResearchJobCount), parent=par, left=left, top=0, tabs=[170, 220])
-            uicls.Line(parent=par, align=uiconst.RELATIVE, width=1, height=64, left=220)
+            t = uicls.EveLabelMedium(text=maxManufacturingJobsLabel + '<br>' + maxResearchJobsLabel, parent=par, left=left, top=0, tabs=[170, 220])
+            uicls.Line(parent=par, align=uiconst.RELATIVE, width=1, height=64, left=222)
             collection.append(t)
-            left = +220
+            left = +228
             remoteAbilityList = []
+            limitedToStationsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/LimitedToStations')
             rmjLimit = self.sr.limits['remoteManufacturingJob']
             rrjLimit = self.sr.limits['remoteResearchJob']
             if rmjLimit == -1 and rrjLimit == -1:
-                remoteAbilityList = [mls.UI_RMR_LIMITEDTOSTATIONS, mls.UI_RMR_LIMITEDTOSTATIONS]
-            elif rmjLimit == -1:
-                rmjText = mls.UI_RMR_LIMITEDTOSTATIONS
-            elif rmjLimit == 0:
-                rmjText = mls.UI_RMR_LIMITEDTOSOLARSYSTEMS
-            elif rmjLimit == 50:
-                rmjText = mls.UI_RMR_LIMITEDTOREGIONS
+                remoteAbilityList = [limitedToStationsLabel, limitedToStationsLabel]
             else:
-                rmjText = mls.UI_RMR_LIMITEDTOJUMPS % {'jumps': rmjLimit,
-                 'jump': uix.Plural(rmjLimit, 'UI_GENERIC_JUMP')}
-            if rrjLimit == -1:
-                rrjText = mls.UI_RMR_LIMITEDTOSTATIONS
-            elif rrjLimit == 0:
-                rrjText = mls.UI_RMR_LIMITEDTOSOLARSYSTEMS
-            elif rrjLimit == 50:
-                rrjText = mls.UI_RMR_LIMITEDTOREGIONS
-            else:
-                rrjText = mls.UI_RMR_LIMITEDTOJUMPS % {'jumps': rrjLimit,
-                 'jump': uix.Plural(rrjLimit, 'UI_GENERIC_JUMP')}
-            remoteAbilityList = [rmjText, rrjText]
-            t = uicls.Label(text='%s<t><right>%s<br>%s<t><right>%s' % (mls.UI_RMR_REMOTEMANUFACTURING,
+                limitedToSystemsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/LimitedToSolarSystems')
+                limitedToRegionsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/LimitedToRegions')
+                limitedToJumpsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/LimetedToJumps', jumps=rmjLimit)
+                if rmjLimit == -1:
+                    rmjText = limitedToStationsLabel
+                elif rmjLimit == 0:
+                    rmjText = limitedToSystemsLabel
+                elif rmjLimit == 50:
+                    rmjText = limitedToRegionsLabel
+                else:
+                    rmjText = limitedToJumpsLabel
+                if rrjLimit == -1:
+                    rrjText = limitedToStationsLabel
+                elif rrjLimit == 0:
+                    rrjText = limitedToSystemsLabel
+                elif rrjLimit == 50:
+                    rrjText = limitedToRegionsLabel
+                else:
+                    rrjText = limitedToJumpsLabel
+                remoteAbilityList = [rmjText, rrjText]
+            remoteManufacturingLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/RemoteManufacturing')
+            remoteResearchLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/RemoteResearch')
+            t = uicls.EveLabelMedium(text='%s<t><right>%s<br>%s<t><right>%s' % (remoteManufacturingLabel,
              remoteAbilityList[0],
-             mls.UI_RMR_REMOTERESEARCH,
+             remoteResearchLabel,
              remoteAbilityList[1]), parent=par, left=left, top=0, tabs=[160, 328])
             collection.append(t)
             par.height = max(par.height, max([ each.textheight for each in collection ]) + 6)
         else:
             scroll = self.sr.Get('%sBlueprintsScroll' % key, None)
         defaultHeaders = uix.GetInvItemDefaultHeaders()
-        headers = defaultHeaders[:4] + [mls.UI_GENERIC_COPY,
-         mls.UI_RMR_ML,
-         mls.UI_RMR_PL,
-         mls.UI_GENERIC_RUNS]
+        copyLabel = localization.GetByLabel('UI/Common/Copy')
+        mlLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ML')
+        plLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/PL')
+        runsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Runs')
+        headers = defaultHeaders[:4] + [copyLabel,
+         mlLabel,
+         plLabel,
+         runsLabel]
         scroll.SetColumnsHiddenByDefault(defaultHeaders[4:])
         scrolllist = []
         accessScrollHint = ''
@@ -1181,6 +1223,7 @@ class Manufacturing(uicls.Window, BlueprintData):
             dist = 0
             bp = sm.StartService('michelle').GetBallpark()
             if bp:
+                invCache = sm.GetService('invCache')
                 for ballID in bp.balls.iterkeys():
                     slimItem = bp.GetInvItem(ballID)
                     if slimItem is None or slimItem.groupID not in (const.groupAssemblyArray, const.groupMobileLaboratory):
@@ -1194,12 +1237,11 @@ class Manufacturing(uicls.Window, BlueprintData):
                     if dist is None:
                         dist = 2 * const.maxCargoContainerTransferDistance
                     if dist >= const.maxCargoContainerTransferDistance:
-                        text = mls.UI_RMR_MAXRANGE % {'location': locationName,
-                         'maxRange': util.FmtDist(const.maxCargoContainerTransferDistance)}
+                        text = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/LocationOutOfRangeMaxRange', locationName=locationName, maxRange=const.maxCargoContainerTransferDistance)
                         scrolllist.append(listentry.Get('Text', {'text': text}))
                     else:
                         blueprintCount = 0
-                        inv = eve.GetInventoryFromId(ballID)
+                        inv = invCache.GetInventoryFromId(ballID)
                         for invItem in inv.List():
                             if invItem.categoryID in (const.categoryBlueprint, const.categoryAncientRelic):
                                 blueprintCount += 1
@@ -1216,7 +1258,11 @@ class Manufacturing(uicls.Window, BlueprintData):
                 scrolllist.append(listentry.Get('Group', self.GetLocationData(solarsystemID, station, 'allitems', isCorp=isCorp, scrollID=scroll.sr.id)))
 
         if not len(scrolllist):
-            accessScrollHint = [mls.UI_RMR_TEXT3, mls.UI_RMR_TEXT2][bool(isCorp)] % {'location': cfg.evelocations.Get(eve.session.regionid).name}
+            regionName = cfg.evelocations.Get(eve.session.regionid).name
+            if bool(isCorp):
+                accessScrollHint = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/NoCorporationBlueprintInRegion', regionName=regionName)
+            else:
+                accessScrollHint = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/NoBlueprintInRegion', regionName=regionName)
         if scroll.destroyed:
             return 
         scroll.Load(contentList=scrolllist, headers=headers)
@@ -1266,22 +1312,26 @@ class Manufacturing(uicls.Window, BlueprintData):
     def ShowSettings(self):
         if not getattr(self, 'settingsinited', 0):
             parent = self.sr.settingsParent
+            settingsInOutLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/SettingsInputOutput')
+            settingsByBpLocationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/DefinedByBlueprintHangarLocation')
+            settingsByUserDefLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/DefinedByUser')
+            filteringOptionsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/FilteringOptions')
             details = uicls.Container(name='col2', align=uiconst.TOALL, parent=parent, pos=(const.defaultPadding,
              0,
              const.defaultPadding,
              0))
             uicls.Frame(parent=details, color=(1.0, 1.0, 1.0, 0.2), idx=0)
-            uix.GetContainerHeader(mls.UI_RMR_SETTINGS_INPUTOUTPUT, details, 0)
+            uix.GetContainerHeader(settingsInOutLabel, details, 0)
             uicls.Container(name='push', align=uiconst.TOLEFT, width=6, parent=details)
             uicls.Container(name='push', align=uiconst.TORIGHT, width=6, parent=details)
             uicls.Container(name='push', align=uiconst.TOTOP, height=6, parent=details)
             for (height, label, configname, retval, checked, groupname,) in [(12,
-              mls.UI_RMR_SETTINGSBYBLUEPRINTLOCATION,
+              settingsByBpLocationLabel,
               'manufacturingfiltersetting1',
               0,
               settings.user.ui.Get('manufacturingfiltersetting1', 0) == 0,
               'manufacturingfiltersetting1'), (12,
-              mls.UI_RMR_SETTINGSBYUSERDEFINITION,
+              settingsByUserDefLabel,
               'manufacturingfiltersetting1',
               1,
               settings.user.ui.Get('manufacturingfiltersetting1', 0) == 1,
@@ -1290,7 +1340,7 @@ class Manufacturing(uicls.Window, BlueprintData):
                 cb.hint = label
 
             uicls.Container(name='push', align=uiconst.TOTOP, height=8, parent=details)
-            uix.GetContainerHeader(mls.UI_GENERIC_FILTERINGOPTIONS, details, xmargin=-6)
+            uix.GetContainerHeader(filteringOptionsLabel, details, xmargin=-6)
             uicls.Container(name='push', align=uiconst.TOTOP, height=6, parent=details)
             masks = [ (12,
              maskName,
@@ -1325,69 +1375,79 @@ class Manufacturing(uicls.Window, BlueprintData):
             details = uicls.Container(name='details', parent=self.sr.jobsParent, height=70, align=uiconst.TOBOTTOM, idx=1)
             self.sr.details = details
             filters = uicls.Container(name='filters', parent=self.sr.jobsParent, height=48, align=uiconst.TOTOP)
-            uicls.Line(parent=filters, align=uiconst.TOTOP, top=15, color=(0.0, 0.0, 0.0, 0.25))
-            uicls.Line(parent=filters, align=uiconst.TOTOP)
             self.sr.filters = filters
-            uicls.Label(text=mls.UI_GENERIC_FILTERINGOPTIONS, parent=filters, left=8, top=3, fontsize=9, letterspace=2, uppercase=1)
-            a = uicls.Label(text='', parent=filters, left=18, top=3, fontsize=9, letterspace=2, uppercase=1, align=uiconst.TOPRIGHT, state=uiconst.UI_NORMAL)
+            filteringOptionsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/FilteringOptions')
+            uicls.EveLabelSmall(text=filteringOptionsLabel, parent=filters, left=8, top=3)
+            a = uicls.EveLabelSmall(text='', parent=filters, left=18, top=3, align=uiconst.TOPRIGHT, state=uiconst.UI_NORMAL)
             a.OnClick = self.ToggleAdvancedFilters
             a.GetMenu = None
             self.sr.ml = a
             expander = uicls.Sprite(parent=filters, pos=(6, 2, 11, 11), name='expandericon', state=uiconst.UI_NORMAL, texturePath='res:/UI/Texture/Shared/expanderUp.png', align=uiconst.TOPRIGHT)
             expander.OnClick = self.ToggleAdvancedFilters
             self.sr.jobsAdvanceExp = expander
-            self.sr.activities = [ (text, actID) for (actID, text,) in sm.GetService('manufacturing').GetActivities() ]
-            c = uicls.Combo(label=mls.UI_RMR_ACTIVITY, parent=filters, options=self.sr.activities, name='activity', select=settings.user.ui.Get('factory_activityfilter', None), callback=self.ComboChange, pos=(5, 1, 0, 0), width=114, align=uiconst.TOPLEFT)
+            self.sr.activities = [ (localization.GetByLabel(labelPath), actID) for (actID, labelPath,) in sm.GetService('manufacturing').GetActivities() ]
+            activityLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Activity')
+            c = uicls.Combo(label=activityLabel, parent=filters, options=self.sr.activities, name='activity', select=settings.user.ui.Get('factory_activityfilter', None), callback=self.ComboChange, pos=(5, 1, 0, 0), width=114, align=uiconst.TOPLEFT)
             self.sr.activityFilter = c
             c.top = top = -c.sr.label.top + 4 + 15
-            self.sr.states = [ (text, actID) for (actID, text,) in sm.GetService('manufacturing').GetStates() ]
-            c = uicls.Combo(label=mls.UI_GENERIC_STATE, parent=filters, options=self.sr.states, name='state', select=settings.user.ui.Get('factory_statefilter', None), callback=self.ComboChange, pos=(c.left + c.width + 4,
+            self.sr.states = [ (text, actID) for (actID, text,) in self.states ]
+            stateLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/State')
+            c = uicls.Combo(label=stateLabel, parent=filters, options=self.sr.states, name='state', select=settings.user.ui.Get('factory_statefilter', None), callback=self.ComboChange, pos=(c.left + c.width + 4,
              top,
              0,
              0), width=114, align=uiconst.TOPLEFT)
             self.sr.stateFilter = c
             self.sr.ranges = [ (text, locationData) for (locationData, text,) in sm.GetService('manufacturing').GetRanges(True) ]
-            c = uicls.Combo(label=mls.UI_GENERIC_RANGE, parent=filters, options=self.sr.ranges, name='location', select=settings.user.ui.Get('factory_locationfilter', (eve.session.regionid, const.groupRegion)), callback=self.ComboChange, pos=(c.left + c.width + 4,
+            rangeLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Range')
+            c = uicls.Combo(label=rangeLabel, parent=filters, options=self.sr.ranges, name='location', select=settings.user.ui.Get('factory_locationfilter', (eve.session.regionid, const.groupRegion)), callback=self.ComboChange, pos=(c.left + c.width + 4,
              top,
              0,
              0), width=114, align=uiconst.TOPLEFT)
             self.sr.locationFilter = c
-            opts = [(mls.UI_GENERIC_ME, eve.session.charid)]
+            meLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Me')
+            opts = [(meLabel, eve.session.charid)]
             if self.CanSeeCorpJobs():
-                opts.append((mls.UI_GENERIC_MYCORPORATION, eve.session.corpid))
+                myCorpLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MyCorporation')
+                opts.append((myCorpLabel, eve.session.corpid))
             self.sr.owners = opts
-            c = uicls.Combo(label=mls.UI_GENERIC_OWNER, parent=filters, options=self.sr.owners, name='owner', select=settings.user.ui.Get('factory_ownerfilter', None), callback=self.ComboChange, pos=(c.left + c.width + 4,
+            ownerLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Owner')
+            c = uicls.Combo(label=ownerLabel, parent=filters, options=self.sr.owners, name='owner', select=settings.user.ui.Get('factory_ownerfilter', None), callback=self.ComboChange, pos=(c.left + c.width + 4,
              top,
              0,
              0), width=114, align=uiconst.TOPLEFT)
             self.sr.ownerFilter = c
             self.inadvHeight = c.top + c.height
             rowTop = -c.sr.label.top + c.top + c.height + 6
-            self.sr.creators = [(mls.UI_GENERIC_ANY, None), (mls.UI_GENERIC_ME, eve.session.charid)]
-            c = uicls.Combo(label=mls.UI_GENERIC_CREATOR, parent=filters, options=self.sr.creators, name='creator', select=settings.user.ui.Get('factory_creatorfilter', None), callback=self.ComboChange, pos=(5,
+            anyLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Any')
+            self.sr.creators = [(anyLabel, None), (meLabel, eve.session.charid)]
+            c = uicls.Combo(label=localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Creator'), parent=filters, options=self.sr.creators, name='creator', select=settings.user.ui.Get('factory_creatorfilter', None), callback=self.ComboChange, pos=(5,
              rowTop,
              0,
              0), align=uiconst.TOPLEFT)
             self.sr.creatorFilter = c
-            fromDate = uicls.SinglelineEdit(name=mls.UI_GENERIC_FROMDATE, parent=filters, setvalue=settings.user.ui.Get('factory_fromdatefilter', self.GetOffsetTime(-DAY)), align=uiconst.TOPLEFT, pos=(c.left + c.width + 4,
+            fromDateLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/FromDate')
+            fromDate = uicls.SinglelineEdit(name=fromDateLabel, parent=filters, setvalue=settings.user.ui.Get('factory_fromdatefilter', self.GetOffsetTime(-DAY)), align=uiconst.TOPLEFT, pos=(c.left + c.width + 4,
              rowTop,
              86,
-             0), maxLength=16, label=mls.UI_GENERIC_FROMDATE)
+             0), maxLength=16, label=fromDateLabel)
             self.sr.jobsFromDate = fromDate
-            toDate = uicls.SinglelineEdit(name=mls.UI_GENERIC_TODATE, parent=filters, setvalue=self.GetNow(), align=uiconst.TOPLEFT, pos=(fromDate.left + fromDate.width + 4,
+            toDateLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ToDate')
+            toDate = uicls.SinglelineEdit(name=toDateLabel, parent=filters, setvalue=self.GetNow(), align=uiconst.TOPLEFT, pos=(fromDate.left + fromDate.width + 4,
              rowTop,
              86,
-             0), maxLength=16, label=mls.UI_GENERIC_TODATE)
+             0), maxLength=16, label=toDateLabel)
             self.sr.jobsToDate = toDate
             self.advHeight = toDate.top + toDate.height
-            submit = uicls.Button(parent=filters, label=mls.UI_CMD_GETJOBS, func=self.LoadJobs, pos=(6, 2, 0, 0), btn_default=1, align=uiconst.BOTTOMRIGHT)
+            getJobsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/GetJobsCommand')
+            submit = uicls.Button(parent=filters, label=getJobsLabel, func=self.LoadJobs, pos=(6, 2, 0, 0), btn_default=1, align=uiconst.BOTTOMRIGHT)
             self.sr.jobsScroll = uicls.Scroll(parent=self.sr.jobsParent, padding=(const.defaultPadding,
              const.defaultPadding,
              const.defaultPadding,
              const.defaultPadding))
             self.sr.jobsScroll.sr.id = 'jobsScroll'
             self.sr.jobsScroll.multiSelect = 1
-            self.sr.jobsScroll.ShowHint(mls.UI_RMR_TEXT4)
+            hintLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ClickGetJobsWithFilters')
+            self.sr.jobsScroll.ShowHint(hintLabel)
             self.jobsinited = 1
             advanced = not settings.user.ui.Get('advancedManuFilters', 0)
             settings.user.ui.Set('advancedManuFilters', advanced)
@@ -1419,14 +1479,17 @@ class Manufacturing(uicls.Window, BlueprintData):
         else:
             self.sr.jobsAdvanceExp.texturePath = 'res:/UI/Texture/Shared/expanderDown.png'
         self.sr.filters.height = [self.inadvHeight, self.advHeight][advanced]
-        self.sr.ml.text = [mls.UI_RMR_SHOWMOREOPTIONS, mls.UI_RMR_SHOWLESSOPTIONS][advanced]
+        showMoreOptionsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ShowMoreOptions')
+        showLessOptionsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ShowFewerOptions')
+        self.sr.ml.text = [showMoreOptionsLabel, showLessOptionsLabel][advanced]
         self.sr.creatorFilter.state = self.sr.jobsToDate.state = self.sr.jobsFromDate.state = [uiconst.UI_HIDDEN, uiconst.UI_NORMAL][advanced]
 
 
 
     def LoadJobs(self, *args):
         self.ShowLoad()
-        self.sr.jobsScroll.ShowHint(mls.UI_RMR_FETCHINGDATA)
+        hintLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/FetchingData')
+        self.sr.jobsScroll.ShowHint(hintLabel)
         self.sr.jobsScroll.Load(contentList=[])
         uix.Flush(self.sr.details)
         if self.sr.Get('activeDetails'):
@@ -1460,11 +1523,15 @@ class Manufacturing(uicls.Window, BlueprintData):
         try:
             jobs = sm.ProxySvc('ramProxy').GetJobs2(owner, completed)
         except:
-            self.sr.jobsScroll.ShowHint(mls.UI_RMR_FAILEDTOGETDATA)
+            hintLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/FailedGetData')
+            self.sr.jobsScroll.ShowHint(hintLabel)
             self.sr.jobsScroll.Load(contentList=[])
             self.HideLoad()
             return 
         scrolllist = []
+        jumpsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Jumps')
+        installDateLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/InstallDate')
+        endDateLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/EndDate')
         if jobs is not None:
             for j in jobs:
                 if state and state != self.GetStateTextOrID(j)[1]:
@@ -1502,10 +1569,10 @@ class Manufacturing(uicls.Window, BlueprintData):
                         endProductionTime = util.FmtDate(j.endProductionTime, 'ss')
                     jumps = sm.GetService('pathfinder').GetJumpCountFromCurrent(j.installedInSolarSystemID)
                     data = util.KeyVal()
-                    label = '%s<t>%s<t>%s<t>%d<t>%s<t>%s<t>%s<t>%s' % (sm.GetService('manufacturing').GetActivityName(j.activityID),
+                    label = '%s<t>%s<t>%s<t>%s<t>%s<t>%s<t>%s<t>%s' % (sm.GetService('manufacturing').GetActivityName(j.activityID),
                      cfg.invtypes.Get(j.installedItemTypeID).name,
                      self.GetJobLocationName(j.containerID, j.containerTypeID, j.containerLocationID),
-                     jumps,
+                     localizationUtil.FormatNumeric(jumps, decimalPlaces=0, useGrouping=True),
                      cfg.eveowners.Get(j.installerID).name,
                      cfg.eveowners.Get(j.installedItemOwnerID).name,
                      util.FmtDate(j.installTime, 'ss'),
@@ -1516,28 +1583,37 @@ class Manufacturing(uicls.Window, BlueprintData):
                     data.GetMenu = self.GetJobLineMenu
                     data.jobData = j
                     data.id = j.installedItemTypeID
-                    data.Set('sort_%s' % mls.UI_GENERIC_JUMPS, jumps)
-                    data.Set('sort_%s' % mls.UI_RMR_INSTALLDATE, j.installTime)
-                    data.Set('sort_%s' % mls.UI_RMR_ENDDATE, j.endProductionTime)
+                    data.Set('sort_%s' % jumpsLabel, jumps)
+                    data.Set('sort_%s' % installDateLabel, j.installTime)
+                    data.Set('sort_%s' % endDateLabel, j.endProductionTime)
                     scrolllist.append(listentry.Get('RMJobEntry', data=data))
 
         if not scrolllist:
             if activity or completed or owner or creator or location:
-                self.sr.jobsScroll.ShowHint(mls.UI_RMR_TEXT5)
+                hintLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/NoJobsWithFilters')
+                self.sr.jobsScroll.ShowHint(hintLabel)
             else:
-                self.sr.jobsScroll.ShowHint(mls.UI_RMR_TEXT6)
+                hintLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/NoJobsInstalled')
+                self.sr.jobsScroll.ShowHint(hintLabel)
         else:
             self.sr.jobsScroll.ShowHint()
             self.sr.jobsScroll.OnSelectionChange = self.SelectJob
-            self.sr.jobsScroll.Load(contentList=scrolllist, headers=[mls.UI_GENERIC_STATE,
-             mls.UI_RMR_ACTIVITY,
-             mls.UI_GENERIC_TYPE,
-             mls.UI_GENERIC_LOCATION,
-             mls.UI_GENERIC_JUMPS,
-             mls.UI_RMR_INSTALLER,
-             mls.UI_GENERIC_OWNER,
-             mls.UI_RMR_INSTALLDATE,
-             mls.UI_RMR_ENDDATE])
+            typeLabel = localization.GetByLabel('UI/Common/Type')
+            activityLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Activity')
+            stateLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/State')
+            ownerLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Owner')
+            locationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Location')
+            installerLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Installer')
+            headers = [stateLabel,
+             activityLabel,
+             typeLabel,
+             locationLabel,
+             jumpsLabel,
+             installerLabel,
+             ownerLabel,
+             installDateLabel,
+             endDateLabel]
+            self.sr.jobsScroll.Load(contentList=scrolllist, headers=headers)
         self.HideLoad()
 
 
@@ -1549,18 +1625,22 @@ class Manufacturing(uicls.Window, BlueprintData):
                 (itemID, typeID,) = (entry.sr.node.jobData.installedInSolarSystemID, entry.sr.node.jobData.containerTypeID)
             else:
                 (itemID, typeID,) = (entry.sr.node.jobData.containerID, entry.sr.node.jobData.containerTypeID)
-            m += [(mls.UI_CMD_SHOWINFO, self.ShowInfo, (entry.sr.node.id, None))]
+            locationCmdLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/LocationCommand')
+            m += [(localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo, (entry.sr.node.id, None))]
             m += [None]
-            m += [(mls.UI_CMD_LOCATION, sm.GetService('menu').CelestialMenu(itemID=itemID, mapItem=None, typeID=typeID))]
+            m += [(locationCmdLabel, sm.GetService('menu').CelestialMenu(itemID=itemID, mapItem=None, typeID=typeID))]
             m += [None]
             (itemID, typeID,) = (entry.sr.node.jobData.installedItemID, entry.sr.node.jobData.installedItemTypeID)
-            m += [(mls.UI_GENERIC_BLUEPRINT, sm.GetService('menu').GetMenuFormItemIDTypeID(itemID, typeID))]
+            blueprintLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Blueprint')
+            m += [(blueprintLabel, sm.GetService('menu').GetMenuFormItemIDTypeID(itemID, typeID))]
             m += [None]
             installerID = entry.sr.node.jobData.installerID
             ownerID = entry.sr.node.jobData.installedItemOwnerID
-            menuCharacters = [(installerID, cfg.eveowners.Get(installerID).name, mls.UI_RMR_INSTALLER), (ownerID, cfg.eveowners.Get(ownerID).name, mls.UI_GENERIC_OWNER)]
+            ownerLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Owner')
+            installerLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Installer')
+            menuCharacters = [(installerID, cfg.eveowners.Get(installerID).name, installerLabel), (ownerID, cfg.eveowners.Get(ownerID).name, ownerLabel)]
             for characterData in menuCharacters:
-                tmp = '%s (%s)' % (characterData[1], characterData[2])
+                tmp = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/JobLineMenuUser', char=characterData[0], role=characterData[2])
                 menufunc = None
                 if util.IsCharacter(characterData[0]):
                     m += [(tmp, sm.GetService('menu').CharacterMenu(characterData[0]))]
@@ -1592,7 +1672,7 @@ class Manufacturing(uicls.Window, BlueprintData):
 
 
     def GetStateTextOrID(self, jobdata):
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         self.sr.stateText = ''
         self.sr.stateID = None
         if now >= jobdata.endProductionTime:
@@ -1602,24 +1682,31 @@ class Manufacturing(uicls.Window, BlueprintData):
             if jobdata.completed == 0:
                 if jobdata.pauseProductionTime is not None:
                     if util.IsStation(jobdata.containerID):
-                        self.sr.stateText = '<color=0xffeb3700>%s<color=0xffffffff>' % mls.UI_GENERIC_INCAPACITATED
+                        incapacitatedLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Incapacitated')
+                        self.sr.stateText = '<color=0xffeb3700>%s<color=0xffffffff>' % incapacitatedLabel
                     else:
-                        self.sr.stateText = '<color=0xffeb3700>%s<color=0xffffffff>' % mls.UI_GENERIC_OFFLINE
+                        offlineLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Offline')
+                        self.sr.stateText = '<color=0xffeb3700>%s<color=0xffffffff>' % offlineLabel
                     self.sr.stateID = const.ramJobStatusPending
                 else:
-                    self.sr.stateText = '<color=0xff00FF00>%s<color=0xffffffff>' % mls.UI_RMR_READY
+                    readyLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Ready')
+                    self.sr.stateText = '<color=0xff00FF00>%s<color=0xffffffff>' % readyLabel
                     self.sr.stateID = const.ramJobStatusReady
         elif now < jobdata.beginProductionTime:
-            self.sr.stateText = '<color=0xffeb3700>%s<color=0xffffffff>' % mls.UI_RMR_PENDING
+            pendingLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Pending')
+            self.sr.stateText = '<color=0xffeb3700>%s<color=0xffffffff>' % pendingLabel
             self.sr.stateID = const.ramJobStatusPending
         if now >= jobdata.beginProductionTime and now < jobdata.endProductionTime:
-            self.sr.stateText = '<color=0xFFFFFF00>%s<color=0xffffffff>' % mls.UI_RMR_INPROGRESS
+            inProgressLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/InProgress')
+            self.sr.stateText = '<color=0xFFFFFF00>%s<color=0xffffffff>' % inProgressLabel
             self.sr.stateID = const.ramJobStatusInProgress
         if jobdata.pauseProductionTime is not None:
             if util.IsStation(jobdata.containerID):
-                self.sr.stateText = '<color=0xffeb3700>%s<color=0xffffffff>' % mls.UI_GENERIC_INCAPACITATED
+                incapacitatedLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Incapacitated')
+                self.sr.stateText = '<color=0xffeb3700>%s<color=0xffffffff>' % incapacitatedLabel
             else:
-                self.sr.stateText = '<color=0xffeb3700>%s<color=0xffffffff>' % mls.UI_GENERIC_OFFLINE
+                offlineLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Offline')
+                self.sr.stateText = '<color=0xffeb3700>%s<color=0xffffffff>' % offlineLabel
             self.sr.stateID = const.ramJobStatusPending
         return (self.sr.stateText, self.sr.stateID)
 
@@ -1644,47 +1731,54 @@ class Manufacturing(uicls.Window, BlueprintData):
         col1 = 100
         col2 = 415
         (stateText, stateID,) = self.GetStateTextOrID(self.sr.activeDetails)
-        t = uicls.Label(text='%s<t><right>%s' % (mls.UI_RMR_ACTIVITY, sm.GetService('manufacturing').GetActivityName(jobdata.activityID)), parent=self.sr.details, left=left, top=0, singleline=1, tabs=[col1, col2])
-        t = uicls.Label(text='%s<t><right>%s' % (mls.UI_GENERIC_STATE, stateText), parent=self.sr.details, left=left, top=12, singleline=0, tabs=[col1, col2])
-        t = uicls.Label(text='%s<t><right>%s' % (mls.UI_RMR_OUTPUTLOCATION, self.GetJobLocationName(jobdata.containerID, jobdata.containerTypeID, jobdata.containerLocationID)), parent=self.sr.details, left=left, top=36, singleline=1, tabs=[col1, col2])
+        activityLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Activity')
+        stateLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/State')
+        outputLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/OutputLocation')
+        t = uicls.EveLabelMedium(text='%s<t><right>%s' % (activityLabel, sm.GetService('manufacturing').GetActivityName(jobdata.activityID)), parent=self.sr.details, left=left, top=0, singleline=1, tabs=[col1, col2])
+        t = uicls.EveLabelMedium(text='%s<t><right>%s' % (stateLabel, stateText), parent=self.sr.details, left=left, top=12, singleline=0, tabs=[col1, col2])
+        t = uicls.EveLabelMedium(text='%s<t><right>%s' % (outputLabel, self.GetJobLocationName(jobdata.containerID, jobdata.containerTypeID, jobdata.containerLocationID)), parent=self.sr.details, left=left, top=36, singleline=1, tabs=[col1, col2])
         outputType = cfg.invtypes.Get(jobdata.outputTypeID)
         if jobdata.activityID != const.ramActivityReverseEngineering:
-            text = ''
             runs = 1
             if not outputType.categoryID == const.categoryBlueprint:
                 runs = jobdata.runs
             amount = runs * outputType.portionSize
-            if amount == 1:
-                text = mls.UI_RMR_UNITOFTYPE % {'type': outputType.name}
-            else:
-                text = mls.UI_RMR_UNITSOFTYPE % {'num': amount,
-                 'type': outputType.name}
-            t = uicls.Label(text='%s<t><right>%s' % (mls.UI_RMR_OUTPUTTYPE, text), parent=self.sr.details, left=left, top=48, singleline=1, tabs=[col1, col2])
+            text = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/UnitsOfType', items=amount, type=outputType)
+            outputTypeLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/OutputType')
+            t = uicls.EveLabelMedium(text='%s<t><right>%s' % (outputTypeLabel, text), parent=self.sr.details, left=left, top=48, singleline=1, tabs=[col1, col2])
             left = +col2
             col3 = 100
             col4 = 160
             if jobdata.activityID == const.ramActivityResearchingTimeProductivity:
-                t = uicls.Label(text='%s<t><right>%s' % (mls.UI_RMR_INSTALLPE, jobdata.installedItemProductivityLevel), parent=self.sr.details, left=left, top=0, singleline=1, tabs=[col3, col4])
-                t = uicls.Label(text='%s<t><right>%s' % (mls.UI_RMR_ENDPE, jobdata.installedItemProductivityLevel + jobdata.runs), parent=self.sr.details, left=left, top=12, singleline=1, tabs=[col3, col4])
+                installPELabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/InstallPE')
+                endPELabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/EndPE')
+                t = uicls.EveLabelMedium(text='%s<t><right>%s' % (installPELabel, jobdata.installedItemProductivityLevel), parent=self.sr.details, left=left, top=0, singleline=1, tabs=[col3, col4])
+                t = uicls.EveLabelMedium(text='%s<t><right>%s' % (endPELabel, jobdata.installedItemProductivityLevel + jobdata.runs), parent=self.sr.details, left=left, top=12, singleline=1, tabs=[col3, col4])
             if jobdata.activityID == const.ramActivityResearchingMaterialProductivity:
-                t = uicls.Label(text='%s<t><right>%s' % (mls.UI_RMR_INSTALLME, jobdata.installedItemMaterialLevel), parent=self.sr.details, left=left, top=0, singleline=1, tabs=[col3, col4])
-                t = uicls.Label(text='%s<t><right>%s' % (mls.UI_RMR_ENDME, jobdata.installedItemMaterialLevel + jobdata.runs), parent=self.sr.details, left=left, top=12, singleline=1, tabs=[col3, col4])
+                installMELabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/InstallME')
+                endMELabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/EndME')
+                t = uicls.EveLabelMedium(text='%s<t><right>%s' % (installMELabel, jobdata.installedItemMaterialLevel), parent=self.sr.details, left=left, top=0, singleline=1, tabs=[col3, col4])
+                t = uicls.EveLabelMedium(text='%s<t><right>%s' % (endMELabel, jobdata.installedItemMaterialLevel + jobdata.runs), parent=self.sr.details, left=left, top=12, singleline=1, tabs=[col3, col4])
             if jobdata.activityID == const.ramActivityCopying:
-                t = uicls.Label(text='%s<t><right>%s' % (mls.UI_RMR_COPIES, jobdata.runs), parent=self.sr.details, left=left, top=0, singleline=1, tabs=[col3, 160])
-                t = uicls.Label(text='%s<t><right>%s' % (mls.UI_RMR_PRODUCTIONRUNS, jobdata.licensedProductionRuns), parent=self.sr.details, left=left, top=12, singleline=1, tabs=[col3, col4])
-        self.sr.detailtext = uicls.Label(text='', parent=self.sr.details, left=3, top=24, singleline=1, tabs=[130, col2])
+                copiesLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Copies')
+                productionRunsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ProductionRuns')
+                t = uicls.EveLabelMedium(text='%s<t><right>%s' % (copiesLabel, jobdata.runs), parent=self.sr.details, left=left, top=0, singleline=1, tabs=[col3, 160])
+                t = uicls.EveLabelMedium(text='%s<t><right>%s' % (productionRunsLabel, jobdata.licensedProductionRuns), parent=self.sr.details, left=left, top=12, singleline=1, tabs=[col3, col4])
+        self.sr.detailtext = uicls.EveLabelMedium(text='', parent=self.sr.details, left=3, top=24, singleline=1, tabs=[130, col2])
         uicls.Line(parent=self.sr.details, align=uiconst.RELATIVE, width=1, height=64, left=col2)
         showDeliverButton = False
         sel = self.sr.jobsScroll.GetSelected()
         for entry in sel:
-            if blue.os.GetTime() > entry.jobData.endProductionTime and not entry.jobData.completed and not entry.jobData.pauseProductionTime:
+            if blue.os.GetWallclockTime() > entry.jobData.endProductionTime and not entry.jobData.completed and not entry.jobData.pauseProductionTime:
                 showDeliverButton = True
                 break
 
         if showDeliverButton:
-            submit = uicls.Button(parent=self.sr.details, label=mls.UI_RMR_DELIVER, func=self.Deliver, pos=(12, 10, 0, 0), align=uiconst.BOTTOMRIGHT)
+            deliverLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Deliver')
+            submit = uicls.Button(parent=self.sr.details, label=deliverLabel, func=self.Deliver, pos=(12, 10, 0, 0), align=uiconst.BOTTOMRIGHT)
         elif stateID != const.ramJobStatusDelivered:
-            submit = uicls.Button(parent=self.sr.details, label=mls.UI_CMD_CANCELJOB, func=self.CancelJob, pos=(12, 10, 0, 0), align=uiconst.BOTTOMRIGHT)
+            cancelJobLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/CancelJobCommand')
+            submit = uicls.Button(parent=self.sr.details, label=cancelJobLabel, func=self.CancelJob, pos=(12, 10, 0, 0), align=uiconst.BOTTOMRIGHT)
         self.UpdateDetails(0)
         if stateID in (const.ramJobStatusInProgress, const.ramJobStatusPending) and not jobdata.pauseProductionTime:
             self.sr.detailtimer = base.AutoTimer(1000, self.UpdateDetails)
@@ -1698,15 +1792,18 @@ class Manufacturing(uicls.Window, BlueprintData):
         self.sr.activeDetails = None
         try:
             sel = self.sr.jobsScroll.GetSelected()
-            sm.GetService('loading').ProgressWnd(mls.UI_RMR_COMPLETINGJOBS, mls.UI_RMR_COMPLETINGINSTALLATION, 1, 2)
-            blue.pyos.synchro.Sleep(1000)
+            completingJobsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/CompletingJobs')
+            completingInstallationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/CompletingInstallation')
+            sm.GetService('loading').ProgressWnd(completingJobsLabel, completingInstallationLabel, 1, 2)
+            blue.pyos.synchro.SleepWallclock(1000)
             for entry in sel:
                 if self.GetStateTextOrID(entry.jobData)[1] == const.ramJobStatusReady:
                     sm.GetService('manufacturing').CompleteJob(entry.jobData)
 
             if len(sel) > 0:
                 sm.GetService('objectCaching').InvalidateCachedMethodCall('ramProxy', 'GetJobs2', sel[0].jobData.installedItemOwnerID, 0)
-            sm.GetService('loading').ProgressWnd(mls.UI_RMR_COMPLETINGJOBS, mls.UI_GENERIC_DONE, 2, 2)
+            doneLabel = localization.GetByLabel('UI/Common/Done')
+            sm.GetService('loading').ProgressWnd(completingJobsLabel, doneLabel, 2, 2)
 
         finally:
             sm.GetService('manufacturing').ReloadBlueprints()
@@ -1726,11 +1823,11 @@ class Manufacturing(uicls.Window, BlueprintData):
         self.sr.activeDetails = None
         try:
             sel = self.sr.jobsScroll.GetSelected()
-            blue.pyos.synchro.Sleep(1000)
+            blue.pyos.synchro.SleepWallclock(1000)
             for entry in sel:
                 cancel = self.GetStateTextOrID(entry.jobData)[1] != const.ramJobStatusReady
                 if entry.jobData.pauseProductionTime is not None:
-                    eve.Message('CantUseOfflineStructure', {'structure': (TYPEID, entry.jobData.containerTypeID)})
+                    eve.Message('CantUseOfflineStructure', {'typeID': entry.jobData.containerTypeID})
                 else:
                     sm.GetService('manufacturing').CompleteJob(entry.jobData, cancel)
 
@@ -1751,27 +1848,31 @@ class Manufacturing(uicls.Window, BlueprintData):
             endTime = self.sr.activeDetails.endProductionTime
             pauseProductionTime = self.sr.activeDetails.pauseProductionTime
             if pauseProductionTime is None:
-                endTime -= blue.os.GetTime()
+                endTime -= blue.os.GetWallclockTime()
                 endTime = max(0, endTime)
             else:
                 endTime -= pauseProductionTime
                 endTime = max(0, endTime)
             detailtextvalue = ''
             if endTime <= 0:
-                detailtextvalue = '<color=0xff00FF00>%s' % mls.UI_RMR_READY
+                readyLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Ready')
+                detailtextvalue = '<color=0xff00FF00>%s' % readyLabel
                 if self.sr.activeDetails.completed == 1:
-                    detailtextvalue = mls.UI_RMR_DELIVERED
+                    deliveredLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Delivered')
+                    detailtextvalue = deliveredLabel
                 if timerUpdate:
                     self.ShowJobDetails(self.sr.activeDetails)
                 self.sr.detailtimer = None
             else:
-                detailtextvalue = '<color=0xFFFFFF00>%s' % util.FmtDate(endTime)
+                timeLeftLabel = localizationUtil.FormatTimeIntervalShortWritten(endTime)
+                detailtextvalue = '<color=0xFFFFFF00>%s</color>' % timeLeftLabel
             entry = self.GetJobEntry(self.sr.activeDetails.jobID)
             if entry:
-                entry.label = '%s<t><color=0xFFFFFFFF>%s<' % (self.GetStateTextOrID(self.sr.activeDetails)[0], entry.labelNoStatus)
+                entry.label = '%s<t><color=0xFFFFFFFF>%s</color>' % (self.GetStateTextOrID(self.sr.activeDetails)[0], entry.labelNoStatus)
                 if entry.panel:
                     entry.panel.Load(entry)
-            self.sr.detailtext.text = '%s<t><right>%s' % (mls.UI_RMR_TTC, detailtextvalue)
+            ttcLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/TTC')
+            self.sr.detailtext.text = '%s<t><right>%s' % (ttcLabel, detailtextvalue)
         else:
             self.sr.detailtext = None
             self.sr.detailtimer = None
@@ -1788,13 +1889,12 @@ class Manufacturing(uicls.Window, BlueprintData):
 
 
     def GetNow(self):
-        return util.FmtDate(blue.os.GetTime(), 'sn')
+        return util.FmtDate(blue.os.GetWallclockTime(), 'sn')
 
 
 
     def GetOffsetTime(self, shift):
-        (year, month, weekday, day, hour, minute, second, ms,) = blue.os.GetTimeParts(blue.os.GetTime() + shift)
-        return '%s.%.2d.%.2d' % (year, month, day)
+        return util.FmtDate(blue.os.GetWallclockTime() + shift, 'sn')
 
 
 
@@ -1813,7 +1913,7 @@ class InstallationPanel(uicls.Container):
 
     def ApplyAttributes(self, attributes):
         uicls.Container.ApplyAttributes(self, attributes)
-        self.submitHeader = mls.UI_CMD_INSTALLJOB
+        self.submitHeader = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/InstallJobCommand')
         self.inited = 0
         self.submitFunc = None
         self.selectedAssemblyLine = None
@@ -1841,23 +1941,30 @@ class InstallationPanel(uicls.Container):
     def Init(self, activityID = None, stationID = None):
         self.activityID = activityID
         self.sr.filters = uicls.Container(name='filters', parent=self, height=33, align=uiconst.TOTOP)
-        self.sr.activities = [ (text, actID) for (actID, text,) in sm.GetService('manufacturing').GetActivities() ]
+        self.sr.activities = [ (localization.GetByLabel(labelPath), actID) for (actID, labelPath,) in sm.GetService('manufacturing').GetActivities() ]
         if activityID is None:
             activityID = settings.user.ui.Get('factory_installationsactivityfilter', const.ramActivityManufacturing)
-        c = uicls.Combo(label=mls.UI_RMR_ACTIVITY, parent=self.sr.filters, options=self.sr.activities, name='activity', select=activityID, callback=self.InstallationsComboChange, pos=(1, 0, 0, 0), align=uiconst.TOPLEFT)
+        activityLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Activity')
+        c = uicls.Combo(label=activityLabel, parent=self.sr.filters, options=self.sr.activities, name='activity', select=activityID, callback=self.InstallationsComboChange, pos=(1, 0, 0, 0), align=uiconst.TOPLEFT)
         c.top = top = -c.sr.label.top - 4
         self.sr.filters.height = c.top + c.height + 5
         self.sr.installationsActivityFilter = c
-        locationtypes = [(mls.UI_GENERIC_STATIONS, (const.groupStation,)), (mls.UI_RMR_ASSEMBLYARRAYS, (const.groupAssemblyArray,)), (mls.UI_RMR_MOBILELABS, (const.groupMobileLaboratory,))]
+        stationsLabel = localization.GetByLabel('UI/Common/Stations')
+        assemblyArraysLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/AssemblyArrays')
+        mobileLabsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MobileLaboratories')
+        locationtypes = [(stationsLabel, (const.groupStation,)), (assemblyArraysLabel, (const.groupAssemblyArray,)), (mobileLabsLabel, (const.groupMobileLaboratory,))]
         if session.shipid:
-            locationtypes.insert(1, (mls.UI_GENERIC_MYSHIP, (const.groupCapitalIndustrialShip, const.groupFreighter)))
+            myShipLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MyShip')
+            locationtypes.insert(1, (myShipLabel, (const.groupCapitalIndustrialShip, const.groupFreighter)))
         locationtypes.sort()
-        locationtypes.insert(0, (mls.UI_GENERIC_ANY, None))
+        anyLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Any')
+        locationtypes.insert(0, (anyLabel, None))
         self.sr.locationtypes = locationtypes
-        loc = (mls.UI_GENERIC_ANY, None)
+        loc = (anyLabel, None)
         if not stationID:
             loc = settings.user.ui.Get('factory_installationslocationsfilter', (const.groupSolarSystem, eve.session.solarsystemid2))
-        c = uicls.Combo(label=mls.UI_GENERIC_LOCATION, parent=self.sr.filters, options=self.sr.locationtypes, name='location', select=loc, callback=self.InstallationsComboChange, pos=(self.sr.installationsActivityFilter.left + self.sr.installationsActivityFilter.width + 4,
+        locationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Location')
+        c = uicls.Combo(label=locationLabel, parent=self.sr.filters, options=self.sr.locationtypes, name=' location', select=loc, callback=self.InstallationsComboChange, pos=(self.sr.installationsActivityFilter.left + self.sr.installationsActivityFilter.width + 4,
          top,
          0,
          0), align=uiconst.TOPLEFT)
@@ -1865,21 +1972,28 @@ class InstallationPanel(uicls.Container):
         self.sr.ranges = [ (text, locationData) for (locationData, text,) in sm.GetService('manufacturing').GetRanges() ]
         self.blueprintLocationID = stationID
         if stationID:
-            self.sr.ranges.insert(0, (mls.UI_RMR_CURRBLUEPRINTLOCATION, (stationID, LOCATION_BLUEPRINT)))
+            bpLocationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/CurrentBlueprintLocation')
+            self.sr.ranges.insert(0, (bpLocationLabel, (stationID, LOCATION_BLUEPRINT)))
             rng = (stationID, LOCATION_BLUEPRINT)
         else:
             rng = settings.user.ui.Get('factory_installationsrangesfilter', (const.groupRegion, eve.session.regionid))
-        c = uicls.Combo(label=mls.UI_GENERIC_RANGE, parent=self.sr.filters, options=self.sr.ranges, name='range', select=rng, callback=self.InstallationsComboChange, pos=(self.sr.installationsLocationsFilter.left + self.sr.installationsLocationsFilter.width + 4,
+        rangeLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Range')
+        c = uicls.Combo(label=rangeLabel, parent=self.sr.filters, options=self.sr.ranges, name='range', select=rng, callback=self.InstallationsComboChange, pos=(self.sr.installationsLocationsFilter.left + self.sr.installationsLocationsFilter.width + 4,
          top,
          0,
          0), align=uiconst.TOPLEFT)
         self.sr.installationsRangesFilter = c
-        self.sr.assemblytypeflag = [(mls.UI_GENERIC_PUBLIC, (const.groupRegion, 'region', None)), (mls.UI_GENERIC_PERSONAL, (const.groupCharacter, 'char', eve.session.charid))]
+        publicLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Public')
+        personalLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Personal')
+        self.sr.assemblytypeflag = [(publicLabel, (const.groupRegion, 'region', None)), (personalLabel, (const.groupCharacter, 'char', eve.session.charid))]
         if not util.IsNPC(eve.session.corpid):
-            self.sr.assemblytypeflag += [(mls.UI_GENERIC_CORPORATION, (const.groupCorporation, 'corp', eve.session.corpid))]
+            corporationLabel = localization.GetByLabel('UI/Common/Corporation')
+            self.sr.assemblytypeflag += [(corporationLabel, (const.groupCorporation, 'corp', eve.session.corpid))]
         if eve.session.allianceid is not None:
-            self.sr.assemblytypeflag += [(mls.UI_GENERIC_ALLIANCE, (const.groupAlliance, 'alliance', eve.session.allianceid))]
-        c = uicls.Combo(label=mls.UI_GENERIC_TYPE, parent=self.sr.filters, options=self.sr.assemblytypeflag, name='typeflag', select=settings.user.ui.Get('factory_installationstypeflagfilter', (const.groupRegion, 'region', None)), callback=self.InstallationsComboChange, pos=(self.sr.installationsRangesFilter.left + self.sr.installationsRangesFilter.width + 4,
+            allianceLabel = localization.GetByLabel('UI/Common/Alliance')
+            self.sr.assemblytypeflag += [(allianceLabel, (const.groupAlliance, 'alliance', eve.session.allianceid))]
+        typeLabel = localization.GetByLabel('UI/Common/Type')
+        c = uicls.Combo(label=typeLabel, parent=self.sr.filters, options=self.sr.assemblytypeflag, name='typeflag', select=settings.user.ui.Get('factory_installationstypeflagfilter', (const.groupRegion, 'region', None)), callback=self.InstallationsComboChange, pos=(self.sr.installationsRangesFilter.left + self.sr.installationsRangesFilter.width + 4,
          top,
          0,
          0), align=uiconst.TOPLEFT)
@@ -1888,18 +2002,21 @@ class InstallationPanel(uicls.Container):
         catfilters = sm.GetService('marketutils').GetFilterops(None)
         if catdefault not in [ v for (k, v,) in catfilters ]:
             catdefault = None
-        self.sr.filterCategory = uicls.Combo(label=mls.UI_RMR_PRODCATEGORY, parent=self.sr.filters, options=sm.GetService('marketutils').GetFilterops(None), name='filterCateg', select=catdefault, callback=self.InstallationsComboChange, pos=(self.sr.installationsTypeFlagFilter.left + self.sr.installationsTypeFlagFilter.width + 4,
+        prodCategoryLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ProductionCategory')
+        self.sr.filterCategory = uicls.Combo(label=prodCategoryLabel, parent=self.sr.filters, options=sm.GetService('marketutils').GetFilterops(None), name='filterCateg', select=catdefault, callback=self.InstallationsComboChange, pos=(self.sr.installationsTypeFlagFilter.left + self.sr.installationsTypeFlagFilter.width + 4,
          top,
          0,
          0), align=uiconst.TOPLEFT)
         groupdefault = settings.user.ui.Get('factory_installationsgroupfilter', None)
         if catdefault is None:
-            ops = [(mls.UI_GENERIC_ALL, None)]
+            allLabel = localization.GetByLabel('UI/Common/All')
+            ops = [(allLabel, None)]
         else:
             ops = sm.GetService('marketutils').GetFilterops(catdefault)
         if groupdefault not in [ v for (k, v,) in ops ]:
             groupdefault = None
-        self.sr.filterGroup = uicls.Combo(label=mls.UI_RMR_PRODGROUP, parent=self.sr.filters, options=ops, name='filterGroup', select=groupdefault, callback=self.InstallationsComboChange, pos=(self.sr.filterCategory.left + self.sr.filterCategory.width + 4,
+        productionGroupLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ProductionGroup')
+        self.sr.filterGroup = uicls.Combo(label=productionGroupLabel, parent=self.sr.filters, options=ops, name='filterGroup', select=groupdefault, callback=self.InstallationsComboChange, pos=(self.sr.filterCategory.left + self.sr.filterCategory.width + 4,
          top,
          0,
          0), align=uiconst.TOPLEFT)
@@ -1922,7 +2039,8 @@ class InstallationPanel(uicls.Container):
          maskConst,
          settings.user.ui.Get('assemblyLineFilterCheckBox%s' % maskConst, maskConst) == maskConst,
          None) for (maskName, maskID, maskConst,) in sm.GetService('manufacturing').GetRestrictionMasks() ]
-        t = uicls.Label(text=mls.UI_GENERIC_FILTERINGOPTIONS, parent=filterCont, left=4, top=4, width=100, autowidth=False, align=uiconst.TOLEFT, idx=0)
+        filteringOptionsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/FilteringOptions')
+        t = uicls.EveLabelMedium(text=filteringOptionsLabel, parent=filterCont, padLeft=4, padTop=4, width=100, align=uiconst.TOLEFT, idx=0)
         for (height, label, configname, retval, checked, groupname,) in masks:
             cb = uicls.Checkbox(text=label, parent=filterCont, configName=configname, retval=retval, checked=checked, groupname=groupname, callback=self.OnCheckboxChange, align=uiconst.TOLEFT, pos=(0, 0, 120, 0))
             setattr(self.sr, '%s' % configname, cb)
@@ -1964,7 +2082,8 @@ class InstallationPanel(uicls.Container):
     def InstallationsComboChange(self, combo, label, value, *args):
         if combo and combo.name == 'filterCateg':
             if value is None:
-                ops = [(mls.UI_GENERIC_ALL, None)]
+                allLabel = localization.GetByLabel('UI/Common/All')
+                ops = [(allLabel, None)]
             else:
                 ops = sm.GetService('marketutils').GetFilterops(value)
             self.sr.filterGroup.LoadOptions(ops)
@@ -1986,7 +2105,7 @@ class InstallationPanel(uicls.Container):
         selected = args[0]
         for selection in selected:
             log.LogInfo('OnSelectionChangeInstallationsScroll')
-            now = blue.os.GetTime()
+            now = blue.os.GetWallclockTime()
             self.delaySelection = (now, selection)
             uthread.new(self.DelaySelection, now)
             break
@@ -1995,7 +2114,7 @@ class InstallationPanel(uicls.Container):
 
 
     def DelaySelection(self, issueTime):
-        blue.pyos.synchro.Sleep(250)
+        blue.pyos.synchro.SleepWallclock(250)
         if self.delaySelection is None:
             return 
         (issuedAt, selection,) = self.delaySelection
@@ -2017,7 +2136,8 @@ class InstallationPanel(uicls.Container):
         self.sr.assemblyLinesScroll.Load(contentList=[], headers=[])
         self.sr.assemblyLinesScroll.ShowHint()
         self.sr.installationsScroll.Load(contentList=[], headers=[])
-        self.sr.installationsScroll.ShowHint(mls.UI_RMR_FETCHINGINSTALLATIONS)
+        fetchingInstallationsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/FetchingInstallations')
+        self.sr.installationsScroll.ShowHint(fetchingInstallationsLabel)
         activityFilter = self.sr.installationsActivityFilter.GetValue()
         locationFilter = self.sr.installationsLocationsFilter.GetValue()
         rangesFilter = self.sr.installationsRangesFilter.GetValue()
@@ -2037,10 +2157,12 @@ class InstallationPanel(uicls.Container):
         if scrolllist:
             self.sr.installationsScroll.ShowHint()
         else:
-            self.sr.installationsScroll.ShowHint(mls.UI_RMR_TEXT7)
+            noInstallationsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/NoInstallationsFoundWithFilters')
+            self.sr.installationsScroll.ShowHint(noInstallationsLabel)
         if scrolllist:
             self.sr.assemblyLinesScroll.state = uiconst.UI_NORMAL
-            self.sr.assemblyLinesScroll.ShowHint(mls.UI_RMR_TEXT8)
+            pickInstallationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/PickInstallation')
+            self.sr.assemblyLinesScroll.ShowHint(pickInstallationLabel)
         if self.blueprintLocationID and rangesFilter == (self.blueprintLocationID, LOCATION_BLUEPRINT):
             self.sr.installationsScroll.SetSelected(0)
 
@@ -2083,10 +2205,13 @@ class InstallationPanel(uicls.Container):
                 uicore.effect.MorphUI(self.sr.assemblyLineFilters, 'height', toBecomeHeight)
             if not scrolllist:
                 self.sr.assemblyLinesScroll.Load()
-                self.sr.assemblyLinesScroll.ShowHint(mls.UI_RMR_TEXT10)
-        t = uicls.Label(text='%s' % ('<b>%s</b>' % mls.UI_RMR_SELECTASSEMBLYLINEABOVE), parent=self.sr.installationDetails, left=10, top=30, singleline=1, tabs=[128, 170])
+                noResultLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/FiltersReturnedNoResults')
+                self.sr.assemblyLinesScroll.ShowHint(noResultLabel)
+        selectAssemblyLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/SelectAssemblyLine')
+        t = uicls.EveLabelMedium(text=selectAssemblyLabel, parent=self.sr.installationDetails, left=10, top=30, singleline=1, tabs=[128, 170])
         if scrolllist:
-            self.sr.toggleLinesButt = uicls.Button(parent=self.sr.installationDetails, label=mls.UI_RMR_TOGGLEFULLLIST, func=self.ToggleFullAssemblyLinesList, pos=(0,
+            toggleFullListLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ToggleFullList')
+            self.sr.toggleLinesButt = uicls.Button(parent=self.sr.installationDetails, label=toggleFullListLabel, func=self.ToggleFullAssemblyLinesList, pos=(0,
              const.defaultPadding,
              0,
              0), align=uiconst.BOTTOMRIGHT)
@@ -2095,13 +2220,20 @@ class InstallationPanel(uicls.Container):
 
     def ShowAssemblyLineDetails(self, entry):
         uix.Flush(self.sr.installationDetails)
-        d = [(mls.UI_RMR_GOODSTANDINGDISCOUNT, 'discountPerGoodStandingPoint'),
-         (mls.UI_RMR_BADSTANDINGSURCHARGE, 'surchargePerBadStandingPoint'),
-         (mls.UI_RMR_MINSTANDING, 'minimumStanding'),
-         (mls.UI_RMR_MINCHARACTERSECURITY, 'minimumCharSecurity'),
-         (mls.UI_RMR_MAXCHARACTERSECURITY, 'maximumCharSecurity'),
-         (mls.UI_RMR_MINCORPORATIONSECURITY, 'minimumCorpSecurity'),
-         (mls.UI_RMR_MAXCORPORATIONSECURITY, 'maximumCorpSecurity')]
+        goodStandingDiscountLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/GoodStandingDiscount')
+        badStandingSurchargeLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/BadStandingSurcharge')
+        minStandingLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MinimumStanding')
+        minCharSecLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MinimumCharacterSecurity')
+        maxCharSecLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MaximumCharacterSecurity')
+        minCorpSecLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MinimumCorporationSecurity')
+        maxCorpSecLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MaximumCorporationSecurity')
+        d = [(goodStandingDiscountLabel, 'discountPerGoodStandingPoint'),
+         (badStandingSurchargeLabel, 'surchargePerBadStandingPoint'),
+         (minStandingLabel, 'minimumStanding'),
+         (minCharSecLabel, 'minimumCharSecurity'),
+         (maxCharSecLabel, 'maximumCharSecurity'),
+         (minCorpSecLabel, 'minimumCorpSecurity'),
+         (maxCorpSecLabel, 'maximumCorpSecurity')]
         i = 0
         left = 0
         top = 5
@@ -2111,12 +2243,13 @@ class InstallationPanel(uicls.Container):
             if key not in entry.sr.node.assemblyLine.header:
                 continue
             value = entry.sr.node.assemblyLine[key]
-            t = uicls.Label(text='%s<t><right>%s' % (header, value), parent=self.sr.installationDetails, left=left, top=top, singleline=1, tabs=[col1, col2])
+            value = localizationUtil.FormatNumeric(value)
+            t = uicls.EveLabelMedium(text='%s<t><right>%s' % (header, value), parent=self.sr.installationDetails, left=left, top=top, singleline=1, tabs=[col1, col2])
             t.hint = header
             i += 1
             if i == 4:
-                left += col2
-                uicls.Line(parent=self.sr.installationDetails, align=uiconst.RELATIVE, width=1, top=5, height=64, left=left)
+                left += col2 + 8
+                uicls.Line(parent=self.sr.installationDetails, align=uiconst.RELATIVE, width=1, top=5, height=64, left=left - 7)
                 i = 0
                 top = 5
             else:
@@ -2133,7 +2266,8 @@ class InstallationPanel(uicls.Container):
             buttonTop = submit.top + submit.height + 2
         self.selectedAssemblyLine = entry.sr.node.assemblyLine
         if self.CanManageAssemblyLines():
-            submit = uicls.Button(parent=self.sr.installationDetails, label=mls.UI_RMR_MANAGEASSEMBLYLINES, func=self.ManageAssemblyLines, pos=(0,
+            manageAssebmlyLinesLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ManageAssemblyLines')
+            submit = uicls.Button(parent=self.sr.installationDetails, label=manageAssebmlyLinesLabel, func=self.ManageAssemblyLines, pos=(0,
              buttonTop,
              0,
              0), align=uiconst.TOPRIGHT)
@@ -2170,7 +2304,8 @@ class InstallationPanel(uicls.Container):
         m = []
         if self.sr.assemblyLinesScroll.GetSelected():
             (selectedInstallationDetails, selectedAssemblyLineDetails,) = ([ entry.listvalue for entry in self.sr.installationsScroll.GetSelected() ][0], [ entry.listvalue for entry in self.sr.assemblyLinesScroll.GetSelected() ][0])
-            m += [(mls.UI_CMD_INSTALLJOB, sm.GetService('manufacturing').CreateJob, (None,
+            installJobLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/InstallJobCommand')
+            m += [(installJobLabel, sm.GetService('manufacturing').CreateJob, (None,
                selectedAssemblyLineDetails[0],
                None,
                selectedInstallationDetails[0]))]
@@ -2238,18 +2373,24 @@ class InstallationPanel(uicls.Container):
             containerLocationName = cfg.evelocations.Get(line.containerID).name
             if not containerLocationName:
                 containerLocationName = cfg.invtypes.Get(line.containerTypeID).name
-            headers = [mls.UI_RMR_ACTIVITY,
-             mls.UI_GENERIC_QTY,
-             mls.UI_GENERIC_LOCATION,
-             mls.UI_GENERIC_JUMPS,
-             mls.UI_RMR_INSTALLATIONTYPE,
-             mls.UI_GENERIC_OWNER]
+            activityLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Activity')
+            qtyLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/QTY')
+            locationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Location')
+            jumpsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Jumps')
+            installationTypeLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/InstallationType')
+            ownerLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Owner')
+            headers = [activityLabel,
+             qtyLabel,
+             locationLabel,
+             jumpsLabel,
+             installationTypeLabel,
+             ownerLabel]
             groupName = containerGroup.name
             data = util.KeyVal()
-            data.label = '%s<t><right>%s<t>%s<t><right>%d<t>%s<t>%s' % (sm.GetService('manufacturing').GetActivityName(lineType.activityID),
-             line.quantity,
+            data.label = '%s<t><right>%s<t>%s<t><right>%s<t>%s<t>%s' % (sm.GetService('manufacturing').GetActivityName(lineType.activityID),
+             localizationUtil.FormatNumeric(line.quantity, useGrouping=True),
              containerLocationName,
-             jumps,
+             localizationUtil.FormatNumeric(jumps, useGrouping=True),
              groupName,
              cfg.eveowners.Get(line.ownerID).name)
             data.confirmOnDblClick = 1
@@ -2261,8 +2402,8 @@ class InstallationPanel(uicls.Container):
             data.OnDblClick = ondblclick
             data.GetMenu = ongetmenu
             data.assemblyLine = line
-            data.Set('sort_%s' % mls.UI_GENERIC_QTY, line.quantity)
-            data.Set('sort_%s' % mls.UI_GENERIC_JUMPS, jumps)
+            data.Set('sort_%s' % qtyLabel, line.quantity)
+            data.Set('sort_%s' % jumpsLabel, jumps)
             data.hint = data.label.replace('<right>', '') + '<br>' + self.GetProducableString(lineType, lineGroup, lineCategory)
             scrolllist.append(listentry.Get('Generic', data=data))
 
@@ -2285,12 +2426,14 @@ class InstallationPanel(uicls.Container):
         validg.sort()
         v = ''
         if validc:
-            v = '<br><b>%s:</b><br>' % mls.UI_RMR_PRODUCABLECATEGS
-            v += ', '.join(validc)
+            v += localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ProducibleCategories')
+            v += '<br>'
+            v += localizationUtil.FormatGenericList(validc)
             v += '<br><br>'
         if validg:
-            v += '<b>%s:</b><br>' % mls.UI_RMR_PRODUCABLEGROUPS
-            v += ', '.join(validg)
+            v += localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ProducibleGroups')
+            v += '<br>'
+            v += localizationUtil.FormatGenericList(validg)
         self.producableStringCache[lineType.assemblyLineTypeID] = v
         return v
 
@@ -2300,28 +2443,34 @@ class InstallationPanel(uicls.Container):
         line = data.assemblyLine
         lineType = cfg.ramaltypes.Get(data.assemblyLine.assemblyLineTypeID)
         expirationTime = ''
-        nft = data.Get('sort_%s' % mls.UI_RMR_NEXTFREETIME, 0)
+        nextFreeTimeLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/NextFreeTime')
+        nft = data.Get('sort_%s' % nextFreeTimeLabel, 0)
         if nft <= 0:
-            expirationTime = '<color=0xff00FF00><t>%s<color=0xffffffff>' % mls.UI_GENERIC_NOW
+            nowLabel = localization.GetByLabel('UI/Common/Now')
+            expirationTime = '<color=0xff00FF00><t>%s<color=0xffffffff>' % nowLabel
         else:
             expirationTime = '<color=0xFFFFFF00><t>%s<color=0xffffffff>' % util.FmtDate(nft)
         m = sm.GetService('manufacturing').GetRestrictionMasks()
-        rmText = mls.UI_GENERIC_PUBLICLYAVAILABLE
+        rmText = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/PubliclyAvailable')
         if line.restrictionMask:
-            rmText = mls.RESTRICTED
-        data.label = '%s<t>%s%s<t><right>%s<t><right>%s<t><right>%s<t><right>%s<t>%s' % (data.numLines,
+            rmText = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Restricted')
+        data.label = '%s<t>%s%s<t><right>%s<t><right>%s<t><right>%s<t><right>%s<t>%s' % (localizationUtil.FormatNumeric(data.numLines, decimalPlaces=0),
          sm.GetService('manufacturing').GetActivityName(lineType.activityID),
          expirationTime,
          util.FmtISK(line.costInstall),
          util.FmtISK(line.costPerHour),
-         lineType.baseTimeMultiplier,
-         lineType.baseMaterialMultiplier,
+         localizationUtil.FormatNumeric(lineType.baseTimeMultiplier, decimalPlaces=1),
+         localizationUtil.FormatNumeric(lineType.baseMaterialMultiplier, decimalPlaces=1),
          rmText)
+        installCostLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/InstallCost')
+        costPerHourLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/CostPerHour')
+        timeMultiplierLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/TimeMultiplier')
+        materialMultiplierLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MaterialMultiplier')
         data.Set('sort_#', data.numLines)
-        data.Set('sort_%s' % mls.UI_RMR_INSTALLCOST, line.costInstall)
-        data.Set('sort_%s' % mls.UI_RMR_COSTPERHOUR, line.costPerHour)
-        data.Set('sort_%s' % mls.UI_RMR_TIMEMULTIPLIER, lineType.baseTimeMultiplier)
-        data.Set('sort_%s' % mls.UI_RMR_MATERIALMULTIPLIER, lineType.baseMaterialMultiplier)
+        data.Set('sort_%s' % installCostLabel, line.costInstall)
+        data.Set('sort_%s' % costPerHourLabel, line.costPerHour)
+        data.Set('sort_%s' % timeMultiplierLabel, lineType.baseTimeMultiplier)
+        data.Set('sort_%s' % materialMultiplierLabel, lineType.baseMaterialMultiplier)
         return data
 
 
@@ -2358,6 +2507,7 @@ class InstallationPanel(uicls.Container):
         lastLine = None
         numLines = 0
         rows = []
+        nextFreeTimeLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/NextFreeTime')
         for line in installation:
             thisRow = [line.assemblyLineTypeID,
              line.costInstall,
@@ -2374,11 +2524,11 @@ class InstallationPanel(uicls.Container):
             lineGroup = cfg.ramaltypesdetailpergroup.get(line.assemblyLineTypeID, [])
             lineCategory = cfg.ramaltypesdetailpercategory.get(line.assemblyLineTypeID, [])
             expirationTime = line.nextFreeTime
-            expirationTime -= blue.os.GetTime()
+            expirationTime -= blue.os.GetWallclockTime()
             expirationTimeSort = int(expirationTime / MIN) * MIN
             data = util.KeyVal()
             data.confirmOnDblClick = 1
-            data.Set('sort_%s' % mls.UI_RMR_NEXTFREETIME, expirationTimeSort)
+            data.Set('sort_%s' % nextFreeTimeLabel, expirationTimeSort)
             data.listvalue = (line,
              lineType,
              lineGroup,
@@ -2394,8 +2544,8 @@ class InstallationPanel(uicls.Container):
                 for i in range(len(rows)):
                     r = rows[i]
                     if r.assemblyLine.assemblyLineTypeID == thisRow[0] and r.assemblyLine.costInstall == thisRow[1] and r.assemblyLine.costPerHour == thisRow[2]:
-                        if expirationTimeSort < r.Get('sort_%s' % mls.UI_RMR_NEXTFREETIME, 0):
-                            r.Set('sort_%s' % mls.UI_RMR_NEXTFREETIME, expirationTimeSort)
+                        if expirationTimeSort < r.Get('sort_%s' % nextFreeTimeLabel, 0):
+                            r.Set('sort_%s' % nextFreeTimeLabel, expirationTimeSort)
                             r.assemblyLine = line
                             r.listvalue = (line,
                              lineType,
@@ -2412,17 +2562,25 @@ class InstallationPanel(uicls.Container):
             for data in rows:
                 scrolllist.append(listentry.Get('Generic', data=self.AssemblyLineRow(data)))
 
-        tmpHeaders = ['#',
-         mls.UI_RMR_ACTIVITY,
-         mls.UI_RMR_NEXTFREETIME,
-         mls.UI_RMR_INSTALLCOST,
-         mls.UI_RMR_COSTPERHOUR,
-         mls.UI_RMR_TIMEMULTIPLIER,
-         mls.UI_RMR_MATERIALMULTIPLIER,
-         mls.AGT_LOCATECHARACTER_GETINFOSVCDETAILS_AVAILABILITY]
+        numberHashLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/NumberHash')
+        activityLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Activity')
+        installCostLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/InstallCost')
+        costPerHour = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/CostPerHour')
+        timeMultiplierLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/TimeMultiplier')
+        materialMultiplierLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MaterialMultiplier')
+        availabilityLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Availability')
+        tmpHeaders = [numberHashLabel,
+         activityLabel,
+         nextFreeTimeLabel,
+         installCostLabel,
+         costPerHour,
+         timeMultiplierLabel,
+         materialMultiplierLabel,
+         availabilityLabel]
         headers = []
         for header in tmpHeaders:
-            headers.append(header.replace(' ', '<br>'))
+            h = uiutil.ReplaceStringWithTags(header)
+            headers.append(h)
 
         return (scrolllist, headers)
 
@@ -2450,54 +2608,64 @@ class InstallationPanel(uicls.Container):
         if not const.corpRoleStationManager & eve.session.corprole == const.corpRoleStationManager:
             eve.Message('MissingRoleStationMgt')
             return 
-        d = [(mls.UI_RMR_INSTALLCOST,
+        installCostLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/InstallCost')
+        costPrHourLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/CostPerHour')
+        goodStandingDiscountLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/GoodStandingDiscount')
+        badStandingSurchargeLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/BadStandingSurcharge')
+        minStandingLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MinimumStanding')
+        minCharSecLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MinimumCharacterSecurity')
+        maxCharSecLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MaximumCharacterSecurity')
+        minCorpSecLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MinimumCorporationSecurity')
+        maxCorpSecLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MaximumCorporationSecurity')
+        d = [(installCostLabel,
           'costInstall',
           0.0,
           None,
           entry.costInstall),
-         (mls.UI_RMR_COSTPERHOUR,
+         (costPrHourLabel,
           'costPerHour',
           0.0,
           None,
           entry.costPerHour),
-         (mls.UI_RMR_GOODSTANDINGDISCOUNT,
+         (goodStandingDiscountLabel,
           'discountPerGoodStandingPoint',
           0.0,
           10.0,
           entry.discountPerGoodStandingPoint),
-         (mls.UI_RMR_BADSTANDINGSURCHARGE,
+         (badStandingSurchargeLabel,
           'surchargePerBadStandingPoint',
           0.0,
           10.0,
           entry.surchargePerBadStandingPoint),
-         (mls.UI_RMR_MINSTANDING,
+         (minStandingLabel,
           'minimumStanding',
           -10.0,
           10.0,
           entry.minimumStanding),
-         (mls.UI_RMR_MINCHARACTERSECURITY,
+         (minCharSecLabel,
           'minimumCharSecurity',
           -10.0,
           10.0,
           entry.minimumCharSecurity),
-         (mls.UI_RMR_MAXCHARACTERSECURITY,
+         (maxCharSecLabel,
           'maximumCharSecurity',
           -10.0,
           10.0,
           entry.maximumCharSecurity),
-         (mls.UI_RMR_MINCORPORATIONSECURITY,
+         (minCorpSecLabel,
           'minimumCorpSecurity',
           -10.0,
           10.0,
           entry.minimumCorpSecurity),
-         (mls.UI_RMR_MAXCORPORATIONSECURITY,
+         (maxCorpSecLabel,
           'maximumCorpSecurity',
           -10.0,
           10.0,
           entry.maximumCorpSecurity)]
         format = []
+        parametersLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Parameters')
         format.append({'type': 'header',
-         'text': mls.UI_RMR_PARAMETERS,
+         'text': parametersLabel,
          'frame': 1})
         for (label, key, minvalue, maxvalue, setvalue,) in d:
             format.append({'type': 'edit',
@@ -2513,8 +2681,9 @@ class InstallationPanel(uicls.Container):
         format.append({'type': 'push',
          'frame': 1})
         m = sm.GetService('manufacturing').GetRestrictionMasks()
+        restrictionsMaskLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/RestrictionMasks')
         format.append({'type': 'header',
-         'text': mls.UI_RMR_RESTRICTIONMASKS,
+         'text': restrictionsMaskLabel,
          'frame': 1})
         for (label, key, constant,) in m:
             format.append({'type': 'checkbox',
@@ -2528,7 +2697,8 @@ class InstallationPanel(uicls.Container):
         format.append({'type': 'push',
          'frame': 1})
         format.append({'type': 'bbline'})
-        retval = uix.HybridWnd(format, mls.UI_RMR_UPDATEASSEMBLYLINESETTINGS, 1, buttons=uiconst.OKCANCEL, minW=340, minH=100, icon='ui_57_64_9', unresizeAble=1)
+        updateAssemblyLineSettingsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/UpdateAssemblyLineSettings')
+        retval = uix.HybridWnd(format, updateAssemblyLineSettingsLabel, 1, buttons=uiconst.OKCANCEL, minW=340, minH=100, icon='ui_57_64_9', unresizeAble=1)
         if retval:
             if util.IsStation(entry.containerID):
                 log.LogInfo('its in a station')
@@ -2586,22 +2756,27 @@ class InstallationPanel(uicls.Container):
 
 class InstallationWindow(uicls.Window):
     __guid__ = 'form.ManufacturingInstallation'
+    default_windowID = 'ManufacturingInstallation'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         activityID = attributes.activityID
+        loadData = attributes.loadData
         if activityID is None:
             self.sr.activityID = 0
         else:
             self.sr.activityID = activityID
         bottom = uicls.Container(name='bottom', parent=self.sr.maincontainer, align=uiconst.TOBOTTOM, height=24, idx=0)
         self.scope = 'all'
-        self.SetCaption(mls.UI_RMR_SCIENCEANDINDUSTRY)
+        sAndILabelLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ScienceAndIndustry')
+        self.SetCaption(sAndILabelLabel)
         self.SetMinSize([410, 240])
         self.NoSeeThrough()
-        self.DefineButtons(uiconst.OKCANCEL, cancelFunc=self.SelfDestruct, okFunc=self.Confirm)
+        self.DefineButtons(uiconst.OKCANCEL, cancelFunc=self.Close, okFunc=self.Confirm)
         self.MakeUnResizeable()
         self.SetInstallationWindowCaption(self.sr.activityID)
+        if loadData is not None:
+            self.Load(*loadData)
 
 
 
@@ -2627,7 +2802,7 @@ class InstallationWindow(uicls.Window):
     def Load(self, invItem = None, assemblyLine = None, activityID = None, installationDetails = None):
         uix.Flush(self.sr.main)
         if invItem and invItem.categoryID in (const.categoryBlueprint, const.categoryAncientRelic) and invItem.ownerID not in [eve.session.charid, eve.session.corpid]:
-            self.CloseX()
+            self.CloseByUser()
             raise UserError('RamCannotInstallItemForAnother')
         stationID = None
         if installationDetails:
@@ -2640,26 +2815,42 @@ class InstallationWindow(uicls.Window):
         inventionItemPar = self.sr.inventionItemPar = uicls.Container(name='inventionItemPar', parent=self.sr.main, align=uiconst.TOTOP, height=22, state=uiconst.UI_PICKCHILDREN)
         inventionDecryptorPar = self.sr.inventionDecryptorPar = uicls.Container(name='inventionDecryptorPar', parent=self.sr.main, align=uiconst.TOTOP, height=22, state=uiconst.UI_PICKCHILDREN)
         inventionOutputPar = self.sr.inventionOutputPar = uicls.Container(name='inventionOutputPar', parent=self.sr.main, align=uiconst.TOTOP, height=22, state=uiconst.UI_PICKCHILDREN)
-        installationText = uicls.Label(text=mls.UI_RMR_INSTALLATION, parent=instPar, left=8, top=1, uppercase=1, fontsize=9, letterspace=2, align=uiconst.CENTERLEFT)
+        stringLeft = 8
+        stringTop = 1
+        installationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Installation')
+        installationText = uicls.EveLabelSmall(text=installationLabel, parent=instPar, left=stringLeft, top=stringTop, align=uiconst.CENTERLEFT)
         if activityID is not None and activityID == const.ramActivityReverseEngineering:
-            blueprintText = uicls.Label(text=mls.UI_GENERIC_ANCIENTRELIC, parent=bpPar, left=8, top=1, uppercase=1, fontsize=9, letterspace=2, align=uiconst.CENTERLEFT)
+            ancientRelicLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/AncientRelic')
+            blueprintText = uicls.EveLabelSmall(text=ancientRelicLabel, parent=bpPar, left=stringLeft, top=stringTop, align=uiconst.CENTERLEFT)
         else:
-            blueprintText = uicls.Label(text=mls.UI_GENERIC_BLUEPRINT, parent=bpPar, left=8, top=1, uppercase=1, fontsize=9, letterspace=2, align=uiconst.CENTERLEFT)
-        inputOutputText = uicls.Label(text=mls.UI_RMR_INPUTOUTPUT, parent=inputPar, left=8, top=1, uppercase=1, fontsize=9, letterspace=2, align=uiconst.CENTERLEFT)
-        self.sr.runsText = uicls.Label(text='', parent=runsPar, left=8, top=1, uppercase=1, fontsize=9, letterspace=2, align=uiconst.CENTERLEFT)
-        licencedRunsText = uicls.Label(text=mls.UI_RMR_LICENCEDRUNS, parent=copyRunsPar, left=8, top=1, width=80, autowidth=False, uppercase=1, fontsize=9, letterspace=2, align=uiconst.CENTERLEFT)
-        baseItemText = uicls.Label(text=mls.UI_RMR_BASE_ITEM, parent=inventionItemPar, left=8, top=1, uppercase=1, fontsize=9, letterspace=2, align=uiconst.CENTERLEFT)
-        decryptorText = uicls.Label(text=mls.UI_RMR_DECRYPTOR, parent=inventionDecryptorPar, left=8, top=1, uppercase=1, fontsize=9, letterspace=2, align=uiconst.CENTERLEFT)
-        outputTypeText = uicls.Label(text=mls.UI_RMR_OUTPUTTYPE, parent=inventionOutputPar, left=8, top=1, uppercase=1, fontsize=9, letterspace=2, align=uiconst.CENTERLEFT)
+            blueprintLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Blueprint')
+            blueprintText = uicls.EveLabelSmall(text=blueprintLabel, parent=bpPar, left=stringLeft, top=stringTop, align=uiconst.CENTERLEFT)
+        inputOutputLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/InputOutput')
+        licencedRunsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/LicencedRuns')
+        baseItemLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/BaseItem')
+        decryptorLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Decryptor')
+        outputTypeLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/OutputType')
+        inputOutputText = uicls.EveLabelSmall(text=inputOutputLabel, parent=inputPar, left=stringLeft, top=stringTop, align=uiconst.CENTERLEFT)
+        self.sr.runsText = uicls.EveLabelSmall(text='', parent=runsPar, left=stringLeft, top=stringTop, align=uiconst.CENTERLEFT)
+        licencedRunsText = uicls.EveLabelSmall(text=licencedRunsLabel, parent=copyRunsPar, left=stringLeft, top=stringTop, width=80, align=uiconst.CENTERLEFT)
+        baseItemText = uicls.EveLabelSmall(text=baseItemLabel, parent=inventionItemPar, left=stringLeft, top=stringTop, align=uiconst.CENTERLEFT)
+        decryptorText = uicls.EveLabelSmall(text=decryptorLabel, parent=inventionDecryptorPar, left=stringLeft, top=stringTop, align=uiconst.CENTERLEFT)
+        outputTypeText = uicls.EveLabelSmall(text=outputTypeLabel, parent=inventionOutputPar, left=stringLeft, top=stringTop, align=uiconst.CENTERLEFT)
         left = max(installationText.textwidth, blueprintText.textwidth, inputOutputText.textwidth, self.sr.runsText.textwidth, licencedRunsText.textwidth, baseItemText.textwidth, decryptorText.textwidth, outputTypeText.textwidth) + 15
-        longestText = mls.UI_CMD_PICKINSTALLATION
+        pickInstallationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/PickInstallationCommand')
+        changeInstallationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ChangeInstallationCommand')
+        longestText = pickInstallationLabel
         if activityID == const.ramActivityReverseEngineering:
-            for each in [mls.UI_CMD_CHANGEINSTALLATION, mls.UI_CMD_PICKANCIENTRELIC, mls.UI_CMD_CHANGEANCIENTRELIC]:
+            pickAncientRelicLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/PickAncientRelicCommand')
+            changeAncientRelicLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ChangeAncientRelicCommand')
+            for each in [changeInstallationLabel, pickAncientRelicLabel, changeAncientRelicLabel]:
                 if len(longestText) < len(each):
                     longestText = each
 
         else:
-            for each in [mls.UI_CMD_CHANGEINSTALLATION, mls.UI_CMD_PICKBLUEPRINT, mls.UI_CMD_CHANGEBLUEPRINT]:
+            pickBlueprintLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/PickBlueprintCommand')
+            changeBlueprintLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ChangeBlueprintCommand')
+            for each in [changeInstallationLabel, pickBlueprintLabel, changeBlueprintLabel]:
                 if len(longestText) < len(each):
                     longestText = each
 
@@ -2670,21 +2861,24 @@ class InstallationWindow(uicls.Window):
          0))
         if activityID == const.ramActivityReverseEngineering:
             bpButtonPar = uicls.Container(name='bpButtonPar', parent=bpPar, align=uiconst.TORIGHT, height=22, state=uiconst.UI_PICKCHILDREN)
-            self.sr.pickBlueprintBtn = uicls.Button(parent=bpButtonPar, label=mls.UI_CMD_PICKANCIENTRELIC, func=self.PickAncientRelic, pos=(const.defaultPadding,
+            changeAncientRelicLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ChangeAncientRelicCommand')
+            self.sr.pickBlueprintBtn = uicls.Button(parent=bpButtonPar, label=pickAncientRelicLabel, func=self.PickAncientRelic, pos=(const.defaultPadding,
              2,
              0,
              0))
         else:
             bpButtonPar = uicls.Container(name='bpButtonPar', parent=bpPar, align=uiconst.TORIGHT, height=22, state=uiconst.UI_PICKCHILDREN)
-            self.sr.pickBlueprintBtn = uicls.Button(parent=bpButtonPar, label=mls.UI_CMD_PICKBLUEPRINT, func=self.PickBlueprint, pos=(const.defaultPadding,
+            pickBlueprintLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/PickBlueprintCommand')
+            self.sr.pickBlueprintBtn = uicls.Button(parent=bpButtonPar, label=pickBlueprintLabel, func=self.PickBlueprint, pos=(const.defaultPadding,
              2,
              0,
              0))
         self.sr.pickInstallationBtn.setWidth = self.sr.pickBlueprintBtn.setWidth = self.sr.pickInstallationBtn.width
         instButtonPar.width = bpButtonPar.width = self.sr.pickInstallationBtn.setWidth + 8
-        self.sr.pickInstallationBtn.SetLabel(mls.UI_CMD_PICKINSTALLATION)
+        self.sr.pickInstallationBtn.SetLabel(pickInstallationLabel)
         editWith = self.width - instButtonPar.width - left
-        self.sr.installationEdit = uicls.SinglelineEdit(name='installationEdit', parent=instPar, setvalue=mls.UI_GENERIC_PICKONE, align=uiconst.TOPLEFT, pos=(left,
+        pickOneLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/PickOne')
+        self.sr.installationEdit = uicls.SinglelineEdit(name='installationEdit', parent=instPar, setvalue=pickOneLabel, align=uiconst.TOPLEFT, pos=(left,
          2,
          editWith,
          0))
@@ -2699,7 +2893,8 @@ class InstallationWindow(uicls.Window):
                 installationName = cfg.invtypes.Get(installationDetails.containerTypeID).name
             self.sr.installationEdit.SetValue(installationName)
             self.sr.assemblyLine = assemblyLine
-            self.sr.pickInstallationBtn.SetLabel(mls.UI_CMD_CHANGEINSTALLATION)
+            changeInstallationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ChangeInstallationCommand')
+            self.sr.pickInstallationBtn.SetLabel(changeInstallationLabel)
         else:
             self.sr.assemblyLine = None
         self.isMine = 1
@@ -2707,7 +2902,7 @@ class InstallationWindow(uicls.Window):
         if invItem and invItem.categoryID in (const.categoryBlueprint, const.categoryAncientRelic):
             self.sr.bluePrint = copy.deepcopy(invItem)
             self.isMine = self.sr.bluePrint.ownerID != eve.session.corpid
-        self.sr.bpEdit = uicls.SinglelineEdit(name='bpEdit', parent=bpPar, setvalue=mls.UI_GENERIC_PICKONE, align=uiconst.TOPLEFT, pos=(left,
+        self.sr.bpEdit = uicls.SinglelineEdit(name='bpEdit', parent=bpPar, setvalue=pickOneLabel, align=uiconst.TOPLEFT, pos=(left,
          2,
          editWith,
          0))
@@ -2715,9 +2910,11 @@ class InstallationWindow(uicls.Window):
         if self.sr.bluePrint:
             self.sr.bpEdit.SetValue(cfg.invtypes.Get(self.sr.bluePrint.typeID).name)
             if activityID is not None and activityID == const.ramActivityReverseEngineering:
-                self.sr.pickBlueprintBtn.SetLabel(mls.UI_CMD_CHANGEANCIENTRELIC)
+                changeAncientRelicLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ChangeAncientRelicCommand')
+                self.sr.pickBlueprintBtn.SetLabel(changeAncientRelicLabel)
             else:
-                self.sr.pickBlueprintBtn.SetLabel(mls.UI_CMD_CHANGEBLUEPRINT)
+                changeBlueprintLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ChangeBlueprintCommand')
+                self.sr.pickBlueprintBtn.SetLabel(changeBlueprintLabel)
         self.sr.pickInstallationBtn.width = self.sr.pickBlueprintBtn.width = max(self.sr.pickBlueprintBtn.width, self.sr.pickInstallationBtn.width)
         inOutWidth = (editWith - 4) / 2
         ioLocationID = None
@@ -2750,12 +2947,14 @@ class InstallationWindow(uicls.Window):
          0))
         self.sr.copyRunsPar.state = uiconst.UI_HIDDEN
         self.sr.runsPar.state = uiconst.UI_HIDDEN
-        options = [(mls.UI_RMR_SELECTBASEITEM_NOTFOUND, 0)]
+        noBaseItemLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/NoBaseItemFound')
+        options = [(noBaseItemLabel, 0)]
         self.sr.inventionBaseItemCombo = uicls.Combo(label='', parent=inventionItemPar, options=options, name='rmInventionItemCombo', select=0, callback=self.OnComboChange, pos=(left,
          2,
          0,
          0), width=editWith, align=uiconst.TOPLEFT)
-        options = [(mls.UI_RMR_SELECTDECRYPTOR_NOTFOUND, 0)]
+        noDecryptorFoundLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/NoDecryptorsFound')
+        options = [(noDecryptorFoundLabel, 0)]
         self.sr.inventionDecryptorCombo = uicls.Combo(label='', parent=inventionDecryptorPar, options=options, name='rmInventionDecryptorCombo', select=0, callback=self.OnComboChange, pos=(left,
          2,
          0,
@@ -2780,12 +2979,14 @@ class InstallationWindow(uicls.Window):
         if isMine:
             if self.sr.assemblyLine and self.sr.assemblyLine.containerID == eve.session.shipid:
                 defaultFlag = (eve.session.charid, const.flagCargo)
-                containerIptOps = containerOptOps = [(mls.UI_GENERIC_MYCARGO, (eve.session.charid, const.flagCargo))]
+                myCargoLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MyCargo')
+                containerIptOps = containerOptOps = [(myCargoLabel, (eve.session.charid, const.flagCargo))]
                 for inputOption in sm.GetService('manufacturing').GetAvailableHangars(canView=0, locationID=locationID):
                     containerIptOps.append(inputOption)
 
             else:
-                containerIptOps = containerOptOps = [(mls.UI_GENERIC_MYHANGAR, (eve.session.charid, const.flagHangar))]
+                myHangarLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MyHangar')
+                containerIptOps = containerOptOps = [(myHangarLabel, (eve.session.charid, const.flagHangar))]
             inputSetvalue = settings.user.ui.Get('rmInputCombo', defaultFlag)
             outputSetvalue = settings.user.ui.Get('rmOutputCombo', defaultFlag)
         else:
@@ -2874,17 +3075,17 @@ class InstallationWindow(uicls.Window):
     def GetRunsTextAndState(self, activityID):
         self.sr.runsText.hint = ''
         if activityID == const.activityCopying:
-            self.sr.runsText.text = mls.UI_RMR_COPIES
+            self.sr.runsText.text = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Copies')
             self.sr.copyRunsPar.state = uiconst.UI_NORMAL
         else:
-            self.sr.runsText.text = mls.UI_GENERIC_RUNS
+            self.sr.runsText.text = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Runs')
             self.sr.copyRunsPar.state = uiconst.UI_HIDDEN
         if activityID == const.activityResearchingMaterialProductivity:
-            self.sr.runsText.text = mls.UI_RMR_MLLEVELS
-            self.sr.runsText.hint = mls.UI_INFOWND_MATERIALLEVEL
+            self.sr.runsText.text = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MLLevels')
+            self.sr.runsText.hint = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MaterialLevel')
         elif activityID == const.activityResearchingTimeProductivity:
-            self.sr.runsText.text = mls.UI_RMR_PLLEVELS
-            self.sr.runsText.hint = mls.UI_INFOWND_PRODUCTIVITYEVEL
+            self.sr.runsText.text = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/PLLevels')
+            self.sr.runsText.hint = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ProductivityLevel')
         if activityID == const.ramActivityInvention:
             self.sr.runsPar.state = uiconst.UI_HIDDEN
         elif activityID == const.ramActivityReverseEngineering:
@@ -2915,7 +3116,7 @@ class InstallationWindow(uicls.Window):
             stationID = None
             if self.sr.bluePrint:
                 (stationID, dummy, dummy,) = sm.GetService('invCache').GetStationIDOfficeFolderIDOfficeIDOfItem(self.sr.bluePrint)
-            wnd = sm.GetService('window').GetWindow('pickinstallation', create=1, decoClass=form.PickInstallationWindow, activityID=activityID, stationID=stationID)
+            wnd = form.PickInstallationWindow.Open(activityID=activityID, stationID=stationID)
             if wnd.ShowModal() == uiconst.ID_OK:
                 (installationDetails, assemblyLineDetails,) = wnd.result
                 (iline, ilineType, ilineGroup, ilineCategory,) = installationDetails
@@ -2927,7 +3128,8 @@ class InstallationWindow(uicls.Window):
                 self.sr.installationEdit.SetValue(installationName)
                 self.sr.assemblyLine = line
                 self.GetRunsTextAndState(self.sr.installationDetails.activityID)
-                self.sr.pickInstallationBtn.SetLabel(mls.UI_CMD_CHANGEINSTALLATION)
+                changeInstallationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ChangeInstallationCommand')
+                self.sr.pickInstallationBtn.SetLabel(changeInstallationLabel)
                 self.SetInstallationWindowCaption(self.sr.installationDetails.activityID)
                 self.CheckInputOutput()
                 self.CheckRuns(self.sr.installationDetails.activityID)
@@ -2948,7 +3150,7 @@ class InstallationWindow(uicls.Window):
             raise UserError('RamMustSelectInstallation')
         try:
             self.pickingBlueprint = True
-            wnd = sm.GetService('window').GetWindow('pickblueprint', create=1, decoClass=form.PickBlueprintWindow, assemblyLine=self.sr.assemblyLine, installationDetails=self.sr.installationDetails)
+            wnd = form.PickBlueprintWindow.Open(assemblyLine=self.sr.assemblyLine, installationDetails=self.sr.installationDetails)
             if wnd.ShowModal() == uiconst.ID_OK and wnd.result is not None:
                 invItem = wnd.result
                 self.sr.bpEdit.SetValue(cfg.invtypes.Get(invItem.typeID).name)
@@ -2956,7 +3158,8 @@ class InstallationWindow(uicls.Window):
                 self.isMine = self.sr.bluePrint.ownerID != eve.session.corpid
                 self.GetRunsTextAndState(self.sr.installationDetails.activityID)
                 self.blueprintMPLrange = (1, cfg.invbptypes.Get(self.sr.bluePrint.typeID).maxProductionLimit)
-                self.sr.pickBlueprintBtn.SetLabel(mls.UI_CMD_CHANGEBLUEPRINT)
+                changeBlueprintLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ChangeBlueprintCommand')
+                self.sr.pickBlueprintBtn.SetLabel(changeBlueprintLabel)
                 self.CheckInputOutput()
                 self.CheckRuns(self.sr.installationDetails.activityID)
                 self.CheckInventionItems()
@@ -2976,7 +3179,7 @@ class InstallationWindow(uicls.Window):
             raise UserError('RamMustSelectInstallation')
         try:
             self.pickingBlueprint = True
-            wnd = sm.GetService('window').GetWindow('pickblueprint', create=1, decoClass=form.PickBlueprintWindow, assemblyLine=self.sr.assemblyLine, installationDetails=self.sr.installationDetails)
+            wnd = form.PickBlueprintWindow.Open(assemblyLine=self.sr.assemblyLine, installationDetails=self.sr.installationDetails)
             if wnd.ShowModal() == uiconst.ID_OK and wnd.result is not None:
                 invItem = wnd.result
                 self.sr.bpEdit.SetValue(cfg.invtypes.Get(invItem.typeID).name)
@@ -2984,7 +3187,8 @@ class InstallationWindow(uicls.Window):
                 self.isMine = self.sr.bluePrint.ownerID != eve.session.corpid
                 self.GetRunsTextAndState(self.sr.installationDetails.activityID)
                 self.blueprintMPLrange = (1, cfg.invbptypes.Get(self.sr.bluePrint.typeID).maxProductionLimit)
-                self.sr.pickBlueprintBtn.SetLabel(mls.UI_CMD_CHANGEANCIENTRELIC)
+                changeAncientRelicLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ChangeAncientRelicCommand')
+                self.sr.pickBlueprintBtn.SetLabel(changeAncientRelicLabel)
                 self.CheckInputOutput()
                 self.CheckRuns(self.sr.installationDetails.activityID)
                 self.CheckInventionItems()
@@ -3088,18 +3292,19 @@ class InstallationWindow(uicls.Window):
         if isCorp:
             if eve.session.locationid == stationID:
                 officeID = sm.GetService('corp').GetOffice().itemID
-                items = eve.GetInventoryFromId(officeID).List()
+                items = sm.GetService('invCache').GetInventoryFromId(officeID).List()
             else:
                 which = {False: 'offices',
                  True: 'property'}[(not util.IsStation(stationID))]
                 items = sm.RemoteSvc('corpmgr').GetAssetInventoryForLocation(eve.session.corpid, stationID, which)
         else:
-            eve.GetInventory(const.containerGlobal).InvalidateStationItemsCache(stationID)
-            items = eve.GetInventory(const.containerGlobal).ListStationItems(stationID)
+            inv = sm.GetService('invCache').GetInventory(const.containerGlobal)
+            inv.InvalidateStationItemsCache(stationID)
+            items = inv.ListStationItems(stationID)
         compatibleItemTypes = []
         if activityID is not None and activityID == const.ramActivityReverseEngineering:
             races = {}
-            for r in sm.services['cc'].GetData('races'):
+            for r in cfg.races:
                 races[r.raceID] = r.raceName
 
             for item in items:
@@ -3107,6 +3312,7 @@ class InstallationWindow(uicls.Window):
                     type = cfg.invtypes.Get(item.typeID)
                     if type.raceID is not None:
                         name = type.typeName + ' (%s)' % races.get(type.raceID, 1)
+                        name = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/InventionListTypeText', item=item.typeID, race=races.get(type.raceID, 1))
                         if (name, item.typeID) not in compatibleItemTypes:
                             compatibleItemTypes.append((name, item.typeID))
 
@@ -3125,24 +3331,29 @@ class InstallationWindow(uicls.Window):
         details = self.sr.installationDetails
         if not details or details.activityID not in [const.ramActivityInvention, const.ramActivityReverseEngineering]:
             return 
-        itemOptions = [(mls.UI_RMR_SELECTBASEITEM, 0)]
+        selectBaseItemLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/SelectBaseItemOptional')
+        itemOptions = [(selectBaseItemLabel, 0)]
         outputTypes = []
         (ownerInput, flagInput,) = self.sr.inputCombo.GetValue()
         if details.activityID == const.ramActivityInvention:
             types = self.GetInventionBaseItemTypes(self.sr.bluePrint)
             itemOptions = self.GetCompatibleInventionListFromHangar(details.containerID, flagInput, types, not self.isMine)
             if len(itemOptions) == 0:
-                itemOptions.insert(0, (mls.UI_RMR_SELECTBASEITEM_NOTFOUND, 0))
+                noBaseItemLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/NoBaseItemFound')
+                itemOptions.insert(0, (noBaseItemLabel, 0))
             else:
-                itemOptions.insert(0, (mls.UI_RMR_SELECTBASEITEM, 0))
+                itemOptions.insert(0, (selectBaseItemLabel, 0))
         types = self.GetInventionDecryptorTypes(self.sr.bluePrint)
         decryptorOptions = self.GetCompatibleInventionListFromHangar(details.containerID, flagInput, types, not self.isMine, activityID=details.activityID)
         if len(decryptorOptions) == 0:
-            decryptorOptions.insert(0, (mls.UI_RMR_SELECTDECRYPTOR_NOTFOUND, 0))
+            noDecryptorFoundLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/NoDecryptorsFound')
+            decryptorOptions.insert(0, (noDecryptorFoundLabel, 0))
         elif details.activityID == const.ramActivityInvention:
-            decryptorOptions.insert(0, (mls.UI_RMR_SELECTDECRYPTOR, 0))
+            selectDecryptorLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/SelectDecryptorOptional')
+            decryptorOptions.insert(0, (selectDecryptorLabel, 0))
         elif details.activityID == const.ramActivityReverseEngineering:
-            decryptorOptions.insert(0, (mls.UI_RMR_SELECTDECRYPTORREQUIRED, 0))
+            selectDecryptorRequiredLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/SelectDecryptorRequired')
+            decryptorOptions.insert(0, (selectDecryptorRequiredLabel, 0))
         outputTypeIDs = self.GetInventionBaseItemTypes(self.sr.bluePrint, 5.0)
         self.sr.inventionDecryptorCombo.LoadOptions(decryptorOptions, 0)
         if outputTypeIDs:
@@ -3159,14 +3370,16 @@ class InstallationWindow(uicls.Window):
 class PickInstallationWindow(form.ListWindow):
     __guid__ = 'form.PickInstallationWindow'
     __nonpersistvars__ = []
+    default_windowID = 'pickinstallation'
 
     def ApplyAttributes(self, attributes):
         form.ListWindow.ApplyAttributes(self, attributes)
         activityID = attributes.activityID
         stationID = attributes.stationID
+        pickInstallationLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ScienceIndustryPickInstallation')
         self.scope = 'all'
         self.name = 'pickinstallation'
-        self.SetCaption(mls.UI_RMR_SCIENCEANDINDUSTRYPICKINST)
+        self.SetCaption(pickInstallationLabel)
         self.DefineButtons(uiconst.CLOSE)
         self.invalidateOpenState = 1
         self.scroll.state = uiconst.UI_HIDDEN
@@ -3178,7 +3391,7 @@ class PickInstallationWindow(form.ListWindow):
          const.defaultPadding,
          12))
         self.sr.installationPanel.Init(activityID, stationID)
-        self.sr.installationPanel.submitHeader = mls.UI_CMD_USEASSEMBLYLINE
+        self.sr.installationPanel.submitHeader = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/UseAssemblylineCommand')
         self.sr.installationPanel.submitFunc = self.SubmitInstallation
 
 
@@ -3188,9 +3401,9 @@ class PickInstallationWindow(form.ListWindow):
         if len(sel):
             line = [ entry.listvalue for entry in sel ][0]
             v = line[0].nextFreeTime
-            diff = v - blue.os.GetTime()
+            diff = v - blue.os.GetWallclockTime()
             if diff > 5 * MIN:
-                if eve.Message('RamLineInUseConfirm', {'time': util.FmtDate(diff)}, uiconst.YESNO) != uiconst.ID_YES:
+                if eve.Message('RamLineInUseConfirm', {'time': diff}, uiconst.YESNO) != uiconst.ID_YES:
                     return 
         self.Confirm()
 
@@ -3210,9 +3423,9 @@ class PickInstallationWindow(form.ListWindow):
     def GetError(self, checkNumber = 1):
         if self.sr.Get('installationPanel', None):
             if not self.sr.installationPanel.sr.installationsScroll.GetSelected():
-                return mls.UI_RMR_PICKONEINSTALLATION
+                return localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/PickOneInstallation')
             if not self.sr.installationPanel.sr.assemblyLinesScroll.GetSelected():
-                return mls.UI_RMR_PICKONEASSEMBLYLINE
+                return localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/PickOneAssemblyLine')
         return ''
 
 
@@ -3227,6 +3440,7 @@ class PickInstallationWindow(form.ListWindow):
 class PickBlueprintWindow(form.ListWindow, BlueprintData):
     __guid__ = 'form.PickBlueprintWindow'
     __nonpersistvars__ = []
+    default_windowID = 'pickblueprint'
 
     def ApplyAttributes(self, attributes):
         form.ListWindow.ApplyAttributes(self, attributes)
@@ -3235,7 +3449,8 @@ class PickBlueprintWindow(form.ListWindow, BlueprintData):
         self.assemblyLine = assemblyLine
         self.installationDetails = installationDetails
         self.scope = 'all'
-        self.SetCaption(mls.UI_RMR_SCIENCEANDINDUSTRYPICKBP)
+        pickBpLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ScienceIndustryPickBlueprint')
+        self.SetCaption(pickBpLabel)
         self.DefineButtons(uiconst.OKCANCEL)
         self.invalidateOpenState = 1
         self.scroll.state = uiconst.UI_HIDDEN
@@ -3246,13 +3461,15 @@ class PickBlueprintWindow(form.ListWindow, BlueprintData):
         self.ModalPosition()
         self.state = uiconst.UI_NORMAL
         tabs = uicls.TabGroup(name='factoryTabs', parent=main, idx=0)
+        myBpsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MyBlueprints')
         tabContent = []
-        tabContent.append([mls.UI_RMR_MYBLUEPRINTS,
+        tabContent.append([myBpsLabel,
          self.sr.persParent,
          self,
          'persPickBlueprints'])
         if not util.IsNPC(eve.session.corpid) and self.CanSeeCorpBlueprints():
-            tabContent.append([mls.UI_RMR_CORPBLUEPRINTS,
+            corpBlueprintsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/CorporationBlueprints')
+            tabContent.append([corpBlueprintsLabel,
              self.sr.corpParent,
              self,
              'corpPickBlueprints'])
@@ -3272,19 +3489,22 @@ class PickBlueprintWindow(form.ListWindow, BlueprintData):
         if not getattr(self, '%sInited' % key, None):
             parent = self.sr.Get('%sParent' % key, None)
             filters = uicls.Container(name='filters', parent=parent, height=33, align=uiconst.TOTOP)
-            copies = [(mls.UI_RMR_ALL, None), (mls.UI_RMR_COPIES, 1), (mls.UI_RMR_ORIGINALS, 0)]
-            c = uicls.Combo(label=mls.UI_GENERIC_TYPE, parent=filters, options=copies, name='copies', select=settings.user.ui.Get('blueprint_copyfilter', None), callback=self.BlueprintComboChange, pos=(7, 15, 0, 0), align=uiconst.TOPLEFT)
+            allLabel = localization.GetByLabel('UI/Common/All')
+            copiesLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Copies')
+            originalsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Originals')
+            copies = [(allLabel, None), (copiesLabel, 1), (originalsLabel, 0)]
+            typeLabel = localization.GetByLabel('UI/Common/Type')
+            c = uicls.Combo(label=typeLabel, parent=filters, options=copies, name='copies', select=settings.user.ui.Get('blueprint_copyfilter', None), callback=self.BlueprintComboChange, pos=(7, 15, 0, 0), align=uiconst.TOPLEFT)
             setattr(self.sr, '%s_blueprintCopyFilter' % key, c)
-            t = uicls.Label(text=mls.UI_CORP_DELAYED5MINUTES, parent=filters, left=c.width + c.left + 8, top=3, width=300, autowidth=False, fontsize=11, letterspace=2, uppercase=0)
             if isCorp:
                 divisions = sm.GetService('manufacturing').GetAvailableHangars(canView=1, canTake=1)
-                divisions.insert(0, (mls.UI_RMR_ALL, (None, None)))
-                c = uicls.Combo(label=mls.UI_RMR_DIVISION, parent=filters, options=divisions, name='divisions', select=settings.user.ui.Get('blueprint_divisionfilter', (None, None)), callback=self.BlueprintComboChange, pos=(self.sr.corp_blueprintCopyFilter.left + self.sr.corp_blueprintCopyFilter.width + 4,
+                divisions.insert(0, (allLabel, (None, None)))
+                divisionLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Division')
+                c = uicls.Combo(label=divisionLabel, parent=filters, options=divisions, name='divisions', select=settings.user.ui.Get('blueprint_divisionfilter', (None, None)), callback=self.BlueprintComboChange, pos=(self.sr.corp_blueprintCopyFilter.left + self.sr.corp_blueprintCopyFilter.width + 4,
                  15,
                  0,
                  0), align=uiconst.TOPLEFT)
                 self.sr.blueprintDivisionFilter = c
-                t.left += c.width + 4
             scroll = uicls.Scroll(parent=parent, padding=(const.defaultPadding,
              const.defaultPadding,
              const.defaultPadding,
@@ -3293,12 +3513,16 @@ class PickBlueprintWindow(form.ListWindow, BlueprintData):
             scroll.multiSelect = 0
             setattr(self.sr, '%sPickBlueprintsScroll' % key, scroll)
         scroll = self.sr.Get('%sPickBlueprintsScroll' % key, None)
-        accessScrollHint = mls.UI_RMR_TEXT9 % {'location': cfg.evelocations.Get(eve.session.regionid).name}
+        accessScrollHint = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/NoBlueprintsInRegion', regionName=cfg.evelocations.Get(eve.session.regionid).name)
         defaultHeaders = uix.GetInvItemDefaultHeaders()
-        headers = defaultHeaders[:4] + [mls.UI_GENERIC_COPY,
-         mls.UI_RMR_ML,
-         mls.UI_RMR_PL,
-         mls.UI_GENERIC_RUNS]
+        copyLabel = localization.GetByLabel('UI/Common/Copy')
+        mlLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ML')
+        plLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/PL')
+        runsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Runs')
+        headers = defaultHeaders[:4] + [copyLabel,
+         mlLabel,
+         plLabel,
+         runsLabel]
         scroll.SetColumnsHiddenByDefault(defaultHeaders[4:])
         scrolllist = []
         containerType = cfg.invtypes.Get(self.installationDetails.containerTypeID)
@@ -3317,13 +3541,12 @@ class PickBlueprintWindow(form.ListWindow, BlueprintData):
                     if dist is None:
                         dist = 2 * const.maxCargoContainerTransferDistance
                     if dist >= const.maxCargoContainerTransferDistance:
-                        text = mls.UI_RMR_MAXRANGE % {'location': locationName,
-                         'maxRange': util.FmtDist(const.maxCargoContainerTransferDistance)}
+                        text = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/LocationOutOfRangeMaxRange', locationName=locationName, maxRange=const.maxCargoContainerTransferDistance)
                         scrolllist.append(listentry.Get('Text', {'text': text}))
                     else:
                         blueprintCount = 0
                         installationID = self.installationDetails.containerID
-                        inv = eve.GetInventoryFromId(installationID)
+                        inv = sm.GetService('invCache').GetInventoryFromId(installationID)
                         for invItem in inv.List():
                             if invItem.categoryID in (const.categoryBlueprint, const.categoryAncientRelic):
                                 blueprintCount += 1
@@ -3337,10 +3560,10 @@ class PickBlueprintWindow(form.ListWindow, BlueprintData):
             setattr(self, '%sInited' % key, 1)
         if self.assemblyLine and self.assemblyLine.containerID == eve.session.shipid:
             if not isMine:
-                accessScrollHint = mls.UI_RMR_ASSEMBLY_LINE_IN_SHIP
+                accessScrollHint = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/AssemblyIsAShip')
             else:
                 blueprintCount = 0
-                inv = eve.GetInventoryFromId(eve.session.shipid)
+                inv = sm.GetService('invCache').GetInventoryFromId(eve.session.shipid)
                 for invItem in inv.List(const.flagCargo):
                     if invItem.categoryID in (const.categoryBlueprint, const.categoryAncientRelic):
                         blueprintCount += 1
@@ -3361,15 +3584,15 @@ class PickBlueprintWindow(form.ListWindow, BlueprintData):
 
 
     def BlueprintComboChange(self, *args):
-        sm.GetService('manufacturing').ReloadBlueprints('pickblueprint', ('persPickBlueprints', 'corpPickBlueprints'))
+        sm.GetService('manufacturing').ReloadBlueprints(form.PickBlueprintWindow, ('persPickBlueprints', 'corpPickBlueprints'))
 
 
 
     def ReloadBlueprints(self):
-        wnd = sm.GetService('window').GetWindow('pickblueprint')
+        wnd = form.PickBlueprintWindow.GetIfOpen()
         if wnd and wnd.sr.maintabs.GetSelectedArgs() in ('persPickBlueprints', 'corpPickBlueprints'):
             wnd.sr.maintabs.ReloadVisible()
-        wnd = sm.GetService('window').GetWindow('assets')
+        wnd = form.AssetsWindow.GetIfOpen()
         if wnd:
             wnd.sr.maintabs.ReloadVisible()
 
@@ -3402,6 +3625,7 @@ class PickBlueprintWindow(form.ListWindow, BlueprintData):
 class ManufacturingQuoteWindow(form.ListWindow):
     __guid__ = 'form.ManufacturingQuoteWindow'
     __nonpersistvars__ = []
+    default_windowID = 'manufacturingquotewindow'
     default_quote = None
     quote_doc = 'Quote'
 
@@ -3409,8 +3633,10 @@ class ManufacturingQuoteWindow(form.ListWindow):
         form.ListWindow.ApplyAttributes(self, attributes)
         quote = attributes.quote
         quoteData = attributes.quoteData
+        acceptQuoteLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/AcceptQuote')
+        acceptQuoteCmdLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/AcceptQuoteCommand')
         self.scope = 'all'
-        self.SetCaption(mls.UI_RMR_ACCEPTQUOTE)
+        self.SetCaption(acceptQuoteLabel)
         self.DefineButtons(uiconst.CLOSE)
         self.invalidateOpenState = 1
         self.scroll.state = uiconst.UI_HIDDEN
@@ -3421,7 +3647,7 @@ class ManufacturingQuoteWindow(form.ListWindow):
          const.defaultPadding,
          const.defaultPadding))
         self.sr.quotePanel.Init(quote, quoteData)
-        self.sr.quotePanel.submitHeader = mls.UI_CMD_ACCEPTQUOTE
+        self.sr.quotePanel.submitHeader = acceptQuoteCmdLabel
         self.sr.quotePanel.submitFunc = self.AcceptQuote
         scroll = uiutil.GetChild(self.sr.quotePanel, 'installationsScroll')
         details = uiutil.GetChild(self.sr.quotePanel, 'installationDetails')
@@ -3429,7 +3655,7 @@ class ManufacturingQuoteWindow(form.ListWindow):
         minScrollHeight = 128
         maxScrollHeight = 384
         scroll.height = minScrollHeight
-        blue.pyos.synchro.Sleep(0)
+        blue.pyos.synchro.SleepWallclock(0)
         scroll.height = min(maxScrollHeight, scroll.height + scroll.scrollingRange)
         self.height = scroll.height + details.height + 76
         self.SetMinSize([600, self.height])
@@ -3442,7 +3668,7 @@ class ManufacturingQuoteWindow(form.ListWindow):
 
 
     def Confirm(self, *etc):
-        self.SetModalResult(uiconst.ID_OK, close=False)
+        self.SetModalResult(uiconst.ID_OK)
 
 
 
@@ -3463,7 +3689,7 @@ class QuotePanel(uicls.Container):
 
     def ApplyAttributes(self, attributes):
         uicls.Container.ApplyAttributes(self, attributes)
-        self.submitHeader = mls.UI_CMD_ACCEPTQUOTE
+        self.submitHeader = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/AcceptQuoteCommand')
         self.inited = 0
         self.submitFunc = None
 
@@ -3508,8 +3734,7 @@ class QuotePanel(uicls.Container):
 
         if missingCount == 0:
             return ''
-        return ' - %s ' % uix.Plural(contentCount, 'UI_GENERIC_MISSINGAMOUNTOFUNIT') % {'first': missingCount,
-         'second': contentCount}
+        return localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MissingAmountOfUnit', missing=missingCount, content=contentCount)
 
 
 
@@ -3517,25 +3742,33 @@ class QuotePanel(uicls.Container):
         uix.Flush(self.sr.quoteDetails)
         self.sr.quoteScroll.Load(contentList=[], headers=[])
         self.sr.quoteScroll.ShowHint('Fetching quote...')
+        nameLabel = localization.GetByLabel('UI/Common/Name')
+        requiredLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Required')
+        missingLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Missing')
+        dmgJobLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/DamagePerJob')
+        wasteLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Waste')
         scrolllist = []
         bom = []
-        headers = [mls.UI_GENERIC_NAME,
-         mls.UI_GENERIC_REQUIRED,
-         mls.UI_GENERIC_MISSING,
-         mls.UI_RMR_DAMAGEPERJOB,
-         mls.UI_RMR_WASTE]
-        self.sr.quoteScroll.sr.fixedColumns = {mls.UI_GENERIC_NAME: 224,
-         mls.UI_GENERIC_REQUIRED: 70,
-         mls.UI_GENERIC_MISSING: 70,
-         mls.UI_RMR_DAMAGEPERJOB: 60,
-         mls.UI_RMR_WASTE: 60}
+        headers = [nameLabel,
+         requiredLabel,
+         missingLabel,
+         dmgJobLabel,
+         wasteLabel]
+        self.sr.quoteScroll.sr.fixedColumns = {nameLabel: 224,
+         requiredLabel: 70,
+         missingLabel: 70,
+         dmgJobLabel: 60,
+         wasteLabel: 60}
         if self.quote.bom:
             if len(self.quote.bom.rawMaterials):
-                bom.append((mls.UI_RMR_RAWMATERIAL, self.quote.bom.rawMaterials))
+                rawMaterialLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/RawMaterial')
+                bom.append((rawMaterialLabel, self.quote.bom.rawMaterials))
             if len(self.quote.bom.extras):
-                bom.append((mls.UI_RMR_EXTRAMATERIAL, self.quote.bom.extras))
+                extraMaterialLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ExtraMaterial')
+                bom.append((extraMaterialLabel, self.quote.bom.extras))
             if len(self.quote.bom.skills):
-                bom.append((mls.UI_GENERIC_SKILL, self.quote.bom.skills))
+                skillLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Skill')
+                bom.append((skillLabel, self.quote.bom.skills))
             for (label, content,) in bom:
                 id = ('BOM', label)
                 uicore.registry.SetListGroupOpenState(id, 1)
@@ -3560,18 +3793,29 @@ class QuotePanel(uicls.Container):
         if scrolllist:
             self.sr.quoteScroll.ShowHint()
         else:
-            self.sr.quoteScroll.ShowHint(mls.UI_RMR_NOQUOTEFOUND)
+            noMaterialsRequiredLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/NoMaterialsRequired')
+            self.sr.quoteScroll.ShowHint(noMaterialsRequiredLabel)
         uix.Flush(self.sr.quoteDetails)
-        d = [(mls.UI_RMR_PRODUCTIONSTARTTIME, 'maxJobStartTime'),
-         (mls.UI_RMR_PRODUCTIONTIME, 'productionTime'),
-         (mls.UI_RMR_TOTALCOST, 'cost'),
-         (mls.UI_RMR_INSTALLCOST, 'installCost'),
-         (mls.UI_RMR_USAGECOST, 'usageCost')]
-        d.append((mls.UI_CORP_WALLETDIVISION, 'accountKey'))
-        d.extend([(mls.UI_RMR_MATERIALMULTIPL1, 'materialMultiplier'),
-         (mls.UI_RMR_MATERIALMULTIPL2, 'charMaterialMultiplier'),
-         (mls.UI_RMR_TIMEMULTIPL1, 'timeMultiplier'),
-         (mls.UI_RMR_TIMEMULTIPL2, 'charTimeMultiplier')])
+        productionStartTimeLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ProductionStartTime')
+        productionTimeLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ProductionTime')
+        totalCostLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/TotalCost')
+        installCostLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/InstallCost')
+        usageCostLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/UsageCost')
+        walletDivisionLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/WalletDivision')
+        mtrlMultiAsmblyLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MaterialMultiplierAssemblyItem')
+        mtrlMultiSkillLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MaterialMultiplierSkill')
+        timeMultiAsmblyLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/TimeMultiplierAssemblyItem')
+        timeMultiSkillLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/TimeMultiplierSkill')
+        d = [(productionStartTimeLabel, 'maxJobStartTime'),
+         (productionTimeLabel, 'productionTime'),
+         (totalCostLabel, 'cost'),
+         (installCostLabel, 'installCost'),
+         (usageCostLabel, 'usageCost')]
+        d.append((walletDivisionLabel, 'accountKey'))
+        d.extend([(mtrlMultiAsmblyLabel, 'materialMultiplier'),
+         (mtrlMultiSkillLabel, 'charMaterialMultiplier'),
+         (timeMultiAsmblyLabel, 'timeMultiplier'),
+         (timeMultiSkillLabel, 'charTimeMultiplier')])
         i = 0
         j = -1
         left = 0
@@ -3594,13 +3838,14 @@ class QuotePanel(uicls.Container):
                 value = util.FmtDate(long(float(value) * 10000000L))
             if key == 'maxJobStartTime':
                 if value is not None:
-                    value = value - blue.os.GetTime()
+                    value = value - blue.os.GetWallclockTime()
                     if value < 0:
-                        value = '<color=0xff00FF00>%s<color=0xffffffff>' % mls.UI_GENERIC_NOW
+                        nowLabel = localization.GetByLabel('UI/Common/Now')
+                        value = '<color=0xff00FF00>%s<color=0xffffffff>' % nowLabel
                     else:
                         value = int(value / 600000000L) * 10000000L * 60
                     value = '<color=0xffFF0000>%s<color=0xffffffff>' % util.FmtDate(value)
-            t = uicls.Label(text='%s<t><right>%s' % (header, value), parent=self.sr.quoteDetails, left=left, top=top, singleline=0, tabs=tabs)
+            t = uicls.EveLabelMedium(text='%s<t><right>%s' % (header, value), parent=self.sr.quoteDetails, left=left, top=top, singleline=0, tabs=tabs)
             t.hint = header
             top = top + t.height
             maxHeight = max(top, maxHeight)
@@ -3614,12 +3859,14 @@ class QuotePanel(uicls.Container):
         uicls.Line(parent=self.sr.quoteDetails, align=uiconst.RELATIVE, top=4, width=1, height=maxHeight, left=300)
         top = maxHeight + 8
         if len(self.quote.missingMaterials) > 0:
-            t = uicls.Label(text='<color=0xffff0000>%s' % mls.UI_RMR_MISSINGMATERIALORSKILL, parent=self.sr.quoteDetails, left=6, top=top, singleline=0)
+            materialOrSkillMissingLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/MaterialOrSkillMissing')
+            t = uicls.EveLabelMedium(text='<color=0xffff0000>%s' % materialOrSkillMissingLabel, parent=self.sr.quoteDetails, left=6, top=top, singleline=0)
         submit = uicls.Button(parent=self.sr.quoteDetails, label=self.submitHeader, func=self.Submit, args=None, pos=(0,
          top,
          0,
          0), align=uiconst.TOPRIGHT)
-        refreshBtn = uicls.Button(parent=self.sr.quoteDetails, label=mls.UI_CMD_REFRESH, func=self.Refresh, args=None, pos=(submit.width + 4,
+        refreshLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/RefreshCommand')
+        refreshBtn = uicls.Button(parent=self.sr.quoteDetails, label=refreshLabel, func=self.Refresh, args=None, pos=(submit.width + 4,
          top,
          0,
          0), align=uiconst.TOPRIGHT)
@@ -3641,7 +3888,8 @@ class QuotePanel(uicls.Container):
 
     def GetBOMSubContent(self, nodedata, *args):
         scrolllist = []
-        if mls.UI_RMR_RAWMATERIAL in [nodedata.label, nodedata.Get('cleanLabel', None)]:
+        rawMaterialLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/RawMaterial')
+        if rawMaterialLabel in [nodedata.label, nodedata.Get('cleanLabel', None)]:
             for rawMaterial in nodedata.groupItems:
                 waste = 0
                 qty = rawMaterial.quantity
@@ -3667,10 +3915,12 @@ class QuotePanel(uicls.Container):
                 data.typeID = rawMaterial.requiredTypeID
                 data.sublevel = 1
                 data.line = 1
-                data.Set('sort_%s' % mls.UI_GENERIC_FACTORQTY, rawMaterial.quantity)
+                factorLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Factor')
+                data.Set('sort_%s' % factorLabel, rawMaterial.quantity)
                 scrolllist.append(listentry.Get('CheckEntry', data=data))
 
-        if mls.UI_RMR_EXTRAMATERIAL in [nodedata.label, nodedata.Get('cleanLabel', None)]:
+        extraMaterialLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ExtraMaterial')
+        if extraMaterialLabel in [nodedata.label, nodedata.Get('cleanLabel', None)]:
             for extra in nodedata.groupItems:
                 if extra.isSkillCheck:
                     continue
@@ -3692,7 +3942,8 @@ class QuotePanel(uicls.Container):
                 data.line = 1
                 scrolllist.append(listentry.Get('CheckEntry', data=data))
 
-        if mls.UI_GENERIC_SKILL in [nodedata.label, nodedata.Get('cleanLabel', None)]:
+        skillLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Skill')
+        if skillLabel in [nodedata.label, nodedata.Get('cleanLabel', None)]:
             for (typeID, level,) in nodedata.groupItems.iteritems():
                 data = util.KeyVal()
                 data.checked = True
@@ -3739,9 +3990,12 @@ class PlanetPanel(uicls.Container):
         self.sr.planetScroll.OnSelectionChange = self.OnPlanetScrollSelectionChange
         self.planetClickID = None
         (scrolllist, headers,) = self.GetPlanetScrollList()
-        self.sr.planetScroll.Load(contentList=scrolllist, headers=headers, noContentHint=mls.UI_PI_NOCOMMANDCENTERS)
-        self.sr.buttons = uicls.ButtonGroup(btns=[[mls.UI_GENERIC_VIEWPLANET, self.ViewPlanet, ()]], parent=self.parentContainer, idx=0)
-        self.sr.viewPlanetBtn = self.sr.buttons.GetBtnByLabel(mls.UI_GENERIC_VIEWPLANET)
+        noCommandBuiltLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/NoCommandCenterBuilt')
+        self.sr.planetScroll.Load(contentList=scrolllist, headers=headers, noContentHint=noCommandBuiltLabel)
+        viewPlanetLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ViewPlanet')
+        self.sr.buttons = uicls.ButtonGroup(btns=[[viewPlanetLabel, self.ViewPlanet, ()]], parent=self.parentContainer, idx=0)
+        viewPlanetLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/ViewPlanet')
+        self.sr.viewPlanetBtn = self.sr.buttons.GetBtnByLabel(viewPlanetLabel)
         self.sr.viewPlanetBtn.Disable()
 
 
@@ -3756,17 +4010,17 @@ class PlanetPanel(uicls.Container):
         cfg.evelocations.Prime(locationIDs)
         for row in rows:
             planetName = cfg.evelocations.Get(row.planetID).locationName
+            planetInstallationsLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/PlanetHasInstallations', planetName=planetName, installations=row.numberOfPins)
             data = util.KeyVal(label='%s<t>%s<t>%s<t>%s' % (cfg.evelocations.Get(row.solarSystemID).locationName,
              cfg.invtypes.Get(row.typeID).typeName,
              planetName,
-             row.numberOfPins), GetMenu=self.GetPlanetEntryMenu, OnClick=self.OnPlanetEntryClick, planetID=row.planetID, typeID=row.typeID, hint=mls.UI_PI_PLANETENTRYHINT % {'planetName': planetName,
-             'noOfInstallations': row.numberOfPins}, solarSystemID=row.solarSystemID, OnDblClick=self.OnPlanetEntryDblClick)
+             localizationUtil.FormatNumeric(row.numberOfPins, decimalPlaces=0, useGrouping=True)), GetMenu=self.GetPlanetEntryMenu, OnClick=self.OnPlanetEntryClick, planetID=row.planetID, typeID=row.typeID, hint=planetInstallationsLabel, solarSystemID=row.solarSystemID, OnDblClick=self.OnPlanetEntryDblClick)
             scrolllist.append(listentry.Get('Generic', data=data))
 
-        headers = [mls.UI_GENERIC_SYSTEMNAME,
-         mls.UI_GENERIC_PLANETTYPE,
-         mls.UI_GENERIC_PLANETNAME,
-         mls.UI_GENERIC_INSTALLATIONS]
+        headers = [localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/SystemName'),
+         localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/PlanetType'),
+         localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/PlanetName'),
+         localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/Installations')]
         return (scrolllist, headers)
 
 
@@ -3812,18 +4066,20 @@ class PlanetPanel(uicls.Container):
         if node.solarSystemID != session.solarsystemid:
             mapItem = sm.StartService('map').GetItem(node.solarSystemID)
             if eve.session.role & (service.ROLE_GML | service.ROLE_WORLDMOD):
-                menu += [(mls.UI_CMD_GMEXTRAS, ('isDynamic', menuSvc.GetGMMenu, (node.planetID,
+                gmExtrasLabel = localization.GetByLabel('UI/ScienceAndIndustry/ScienceAndIndustryWindow/GMWMExtrasCommand')
+                menu += [(gmExtrasLabel, ('isDynamic', menuSvc.GetGMMenu, (node.planetID,
                     None,
                     None,
                     None,
                     mapItem)))]
             menu += menuSvc.MapMenu([node.solarSystemID])
-            isOpen = sm.GetService('planetUI').IsOpen() and sm.GetService('planetUI').planetID == node.planetID
+            isOpen = sm.GetService('viewState').IsViewActive('planet') and sm.GetService('planetUI').planetID == node.planetID
             if isOpen:
-                menu += [[mls.UI_PI_EXIT_PLANET_MODE, sm.GetService('planetUI').Close, ()]]
+                menu += [[localization.GetByLabel('UI/PI/Common/ExitPlanetMode'), sm.GetService('viewState').CloseSecondaryView, ()]]
             else:
-                menu += [(mls.UI_PI_VIEW_IN_PLANET_MODE, sm.GetService('planetUI').Open, (node.planetID,))]
-            menu += [(mls.UI_CMD_SHOWINFO, menuSvc.ShowInfo, (node.typeID,
+                openPlanet = lambda planetID: sm.GetService('viewState').ActivateView('planet', planetID=planetID)
+                menu += [(localization.GetByLabel('UI/PI/Common/ViewInPlanetMode'), sm.GetService('planetUI').Open, (node.planetID,))]
+            menu += [(localization.GetByLabel('UI/Commands/ShowInfo'), menuSvc.ShowInfo, (node.typeID,
                node.planetID,
                0,
                None,
@@ -3837,7 +4093,7 @@ class PlanetPanel(uicls.Container):
     def ViewPlanet(self):
         if self.planetClickID is None:
             return 
-        sm.GetService('planetUI').Open(self.planetClickID)
+        sm.GetService('viewState').ActivateView('planet', planetID=self.planetClickID)
 
 
 
@@ -3849,7 +4105,7 @@ class PlanetPanel(uicls.Container):
 
     def OnPlanetEntryDblClick(self, entry):
         node = entry.sr.node
-        sm.GetService('planetUI').Open(node.planetID)
+        sm.GetService('viewState').ActivateView('planet', planetID=node.planetID)
 
 
 

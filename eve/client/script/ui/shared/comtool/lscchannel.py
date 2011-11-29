@@ -17,13 +17,15 @@ import uicls
 import base
 import vivoxConstants
 from itertools import izip, imap
+import localization
+import fontConst
 seemsURL = re.compile('\\bwww\\.[^ \\s><]*|\\bhttps?://[^ \\s><]*')
 ROLE_SLASH = service.ROLE_GML | service.ROLE_LEGIONEER
 ROLE_TRANSAM = service.ROLE_TRANSLATION | service.ROLE_TRANSLATIONADMIN | service.ROLE_TRANSLATIONEDITOR
 MAXMSGS = 100
 CHT_MAX_INPUT = 253
-CHANNELTYPEMODES = [{'no': mls.UI_SHARED_CHANNELHINT17}, {'recent': mls.UI_SHARED_CHANNELHINT18}, {'all': ''}]
-CHANNELTEXTMODES = [{'no': mls.UI_GENERIC_SHOWTEXTONLY}, {'small': mls.UI_GENERIC_SHOWTEXTWITHSMALLPORTRAIT}, {'big': mls.UI_GENERIC_SHOWTEXTWITHBIGPORTRAIT}]
+CHANNELTYPEMODES = [{'no': localization.GetByLabel('UI/Chat/HideMemberList')}, {'recent': localization.GetByLabel('UI/Chat/MemberListRecentSpeakers')}, {'all': ''}]
+CHANNELTEXTMODES = [{'no': localization.GetByLabel('UI/Chat/ShowTextOnly')}, {'small': localization.GetByLabel('UI/Chat/ShowTextWithSmallPortrait')}, {'big': localization.GetByLabel('UI/Chat/ShowTextWithBigPortrait')}]
 _tfrom = u'1370,-_*+=^~@\u263b\u3002\u03bc\u03bf\u043c\u043e\u0441'
 _tto = u'leto...........momoc'
 _spamTrans = dict(izip(imap(ord, _tfrom), _tto))
@@ -87,16 +89,11 @@ class LSCStack(uicls.WindowStack):
     __guid__ = 'form.LSCStack'
     default_width = 317
     default_height = 200
+    default_left = 0
 
-    def default_left(self):
-        (leftpush, rightpush,) = sm.GetService('neocom').GetSideOffset()
-        return leftpush
-
-
-
-    def default_top(self):
-        dh = uicore.desktop.height
-        return dh - self.default_height
+    @staticmethod
+    def default_top(*args):
+        return uicore.desktop.height - 200
 
 
 
@@ -105,8 +102,16 @@ class Channel(uicls.Window):
     __guid__ = 'form.LSCChannel'
     __notifyevents__ = ['OnSpeakingEvent']
     default_stackID = 'LSCStack'
+    default_windowID = 'chatchannel'
     default_width = 317
     default_height = 200
+    default_open = True
+
+    @classmethod
+    def Reload(cls, instance):
+        pass
+
+
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -139,11 +144,13 @@ class Channel(uicls.Window):
     def Startup(self, channelID, otherID = None):
         if channelID == -1:
             return 
+        self.attributesBunch.channelID = channelID
+        self.attributesBunch.otherID = otherID
         self.channelID = channelID
-        chatlog = '\r\n\r\n\n---------------------------------------------------------------\n\n  Channel ID:      %s\n  Channel Name:    %s\n  Listener:        %s\n  Session started: %s\n---------------------------------------------------------------\n\n' % (channelID,
+        chatlog = '\r\n\r\n\n        \n---------------------------------------------------------------\n\n  Channel ID:      %s\n  Channel Name:    %s\n  Listener:        %s\n  Session started: %s\n---------------------------------------------------------------\n\n' % (channelID,
          chat.GetDisplayName(channelID),
          cfg.eveowners.Get(eve.session.charid).name,
-         util.FmtDate(blue.os.GetTime()))
+         util.FmtDate(blue.os.GetWallclockTime()))
         self.scope = 'all'
         self.windowCaption = chat.GetDisplayName(channelID).split('\\')[-1]
         try:
@@ -157,7 +164,15 @@ class Channel(uicls.Window):
         self.logfile = None
         if settings.user.ui.Get('logchat', 1):
             try:
-                filename = '%s_%s' % (chat.GetDisplayName(channelID, otherID=otherID), util.FmtDate(blue.os.GetTime()))
+                (year, month, weekday, day, hour, minute, second, msec,) = blue.os.GetTimeParts(blue.os.GetWallclockTime())
+                timeStamp = '%d%.2d%.2d_%.2d%.2d%.2d' % (year,
+                 month,
+                 day,
+                 hour,
+                 minute,
+                 second)
+                displayName = uiutil.StripTags(chat.GetDisplayName(channelID, otherID=otherID))
+                filename = '%s_%s' % (displayName, timeStamp)
                 filename = filename.replace('\\', '_').replace('?', '_').replace('*', '_').replace(':', '').replace('.', '').replace(' ', '_')
                 filename = filename.replace('/', '_').replace('"', '_').replace('-', '_').replace('|', '_').replace('<', '_').replace('>', '_')
                 filename = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '/EVE/logs/Chatlogs/%s.txt' % filename
@@ -207,6 +222,7 @@ class Channel(uicls.Window):
             iconClipper.top = -1
         self.userlist = uicls.Scroll(parent=self.sr.topParent, name='userlist', align=uiconst.TORIGHT)
         self.userlist.width = settings.user.ui.Get('%s_userlistwidth' % self.name, 128)
+        self.userlist.GetContentContainer().OnDropData = self.OnDropCharacter
         div = uicls.Container(name='userlistdiv', parent=self.sr.topParent, width=const.defaultPadding, state=uiconst.UI_NORMAL, align=uiconst.TORIGHT)
         div.OnMouseDown = self.UserlistStartScale
         div.OnMouseUp = self.UserlistEndScale
@@ -271,15 +287,15 @@ class Channel(uicls.Window):
         self.input.CtrlDown = self.CtrlDown
         self.input.RegisterFocus = self.RegisterFocus
         uiutil.SetOrder(divider, 0)
-        btn = uicls.Icon(name='channelWndIcon', icon='ui_73_16_10', parent=self.sr.topParent, pos=(0, 0, 16, 16), align=uiconst.TOPRIGHT, hint=mls.UI_CMD_OPENCHANNELWND)
+        btn = uicls.Icon(name='channelWndIcon', icon='ui_73_16_10', parent=self.sr.topParent, pos=(0, 0, 16, 16), align=uiconst.TOPRIGHT, hint=localization.GetByLabel('UI/Chat/OpenChannelWindow'))
         btn.OnClick = self.OpenChannelWindow
-        self.sr.smaller = uicls.Label(text='a-', parent=self.sr.topParent, left=4, fontsize=9, mousehilite=1, letterspace=1, state=uiconst.UI_NORMAL)
+        self.sr.smaller = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Chat/DecreaseFontSizeIcon'), parent=self.sr.topParent, left=4, mousehilite=1, state=uiconst.UI_NORMAL)
         self.sr.smaller.OnClick = (self.ChangeFont, -1)
-        self.sr.smaller.hint = mls.UI_GENERIC_DECREASEFONTSIZE
+        self.sr.smaller.hint = localization.GetByLabel('UI/Chat/DecreaseFontSize')
         self.sr.smaller.top = -self.sr.smaller.textheight + 16
-        self.sr.bigger = uicls.Label(text='A+', parent=self.sr.topParent, left=20, fontsize=12, mousehilite=1, letterspace=1, state=uiconst.UI_NORMAL)
+        self.sr.bigger = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Chat/IncreaseFontSizeIcon'), parent=self.sr.topParent, left=20, mousehilite=1, state=uiconst.UI_NORMAL)
         self.sr.bigger.OnClick = (self.ChangeFont, 1)
-        self.sr.bigger.hint = mls.UI_GENERIC_INCREASEFONTSIZE
+        self.sr.bigger.hint = localization.GetByLabel('UI/Chat/IncreaseFontSize')
         self.sr.bigger.top = -self.sr.bigger.textheight + 16
         self.ChangeFont()
         self.UpdateUserIconHint()
@@ -300,18 +316,6 @@ class Channel(uicls.Window):
 
 
 
-    def default_left(self):
-        (leftpush, rightpush,) = sm.GetService('neocom').GetSideOffset()
-        return leftpush
-
-
-
-    def default_top(self):
-        dh = uicore.desktop.height
-        return dh - self.default_height
-
-
-
     def OnOutputResize(self, clipperWidth, clipperHeight, *args, **kw):
         self.resizeTimer = base.AutoTimer(100, self.DelayedOutputResize, clipperWidth, clipperHeight)
 
@@ -329,9 +333,11 @@ class Channel(uicls.Window):
 
 
     def __GetMOTD(self):
-        if type(self.channelID) == types.IntType:
+        if isinstance(self.channelID, int) or self.channelID[0][0] in ('corpid', 'allianceid'):
             if sm.IsServiceRunning('LSC') and self.channelID in sm.services['LSC'].channels:
                 return sm.services['LSC'].channels[self.channelID].info.motd or ''
+        elif self.channelID[0][0] == 'fleetid':
+            return sm.GetService('fleet').GetMotd()
         return ''
 
 
@@ -339,7 +345,7 @@ class Channel(uicls.Window):
     def SpeakMOTD(self, whine = False):
         motd = self._Channel__GetMOTD()
         if motd or whine:
-            self.Speak('%s: ' % mls.UI_SHARED_CHANNELMOTD + motd, const.ownerSystem)
+            self.Speak(localization.GetByLabel('UI/Chat/ChannelMotd', motd=motd), const.ownerSystem)
 
 
 
@@ -356,14 +362,14 @@ class Channel(uicls.Window):
         self.windowCaption = chat.GetDisplayName(channelID).split('\\')[-1]
         self.SetupUserlist(self.usermode)
         if self.messages:
-            self.messages = [ msg for msg in self.messages if msg[2] != const.ownerSystem or not msg[1].startswith(mls.UI_SHARED_CHANNELCHANGEDTO) ]
+            self.messages = [ msg for msg in self.messages if msg[2] != const.ownerSystem or not msg[1].startswith(localization.GetByLabel('UI/Chat/ChannelWindow/ChannelChangedTo')) ]
             self.LoadMessages()
         try:
             self.InitChannelModeButtons()
             if util.IsMemberlessLocal(channelID):
-                self.Speak(mls.UI_SHARED_CHANNELCHANGEDTO_WORM, const.ownerSystem)
+                self.Speak(localization.GetByLabel('UI/Chat/ChannelWindow/ChannelListUnavailable'), const.ownerSystem)
             else:
-                self.Speak('%s %s' % (mls.UI_SHARED_CHANNELCHANGEDTO, chat.GetDisplayName(channelID, systemOverride=1).split('\\')[-1]), const.ownerSystem)
+                self.Speak(localization.GetByLabel('UI/Chat/ChannelWindow/ChannelChangedToChannelName', channelName=chat.GetDisplayName(channelID, systemOverride=1).split('\\')[-1]), const.ownerSystem)
             self.SpeakMOTD()
         except:
             log.LogException()
@@ -392,7 +398,7 @@ class Channel(uicls.Window):
             elif displayMode == 'recent':
                 if not sm.StartService('LSC').IsMemberless(self.channelID):
                     btn.state = uiconst.UI_DISABLED
-                    btn.hint = mls.UI_SHARED_CHANNELHINT1
+                    btn.hint = localization.GetByLabel('UI/Chat/NoRecentSpeakerList')
             if self.usermode != 0 and btn.state == uiconst.UI_DISABLED and x in (1, 2):
                 idx = [1, 2][(x == 1)]
                 settings.user.ui.Set('%s_usermode' % self.name, idx)
@@ -468,19 +474,17 @@ class Channel(uicls.Window):
 
 
     def OpenChannelWindow(self, *args):
-        wnd = sm.GetService('window').GetWindow('channels', 1, decoClass=form.Channels)
-        if wnd:
-            wnd.Maximize()
+        form.Channels.Open()
 
 
 
     def UpdateUserIconHint(self):
         if type(self.channelID) != types.IntType and self.channelID[0][0] in ('global', 'regionid', 'constellationid'):
-            self.userlistbtns[2].hint = mls.UI_SHARED_CHANNELHINT2
+            self.userlistbtns[2].hint = localization.GetByLabel('UI/Chat/MemberListNone')
         elif sm.GetService('LSC').IsMemberless(self.channelID):
-            self.userlistbtns[2].hint = mls.UI_SHARED_CHANNELHINT3
+            self.userlistbtns[2].hint = localization.GetByLabel('UI/Chat/MemberListDelayed')
         else:
-            self.userlistbtns[2].hint = mls.UI_SHARED_CHANNELHINT4
+            self.userlistbtns[2].hint = localization.GetByLabel('UI/Chat/MemberListImmediate')
 
 
 
@@ -494,7 +498,7 @@ class Channel(uicls.Window):
         self.changingfont = 1
         self.fontsize = newsize
         self.letterSpace = 0
-        if self.fontsize <= 10:
+        if self.fontsize <= fontConst.EVE_SMALL_FONTSIZE:
             self.letterSpace = 1
         self.LoadMessages()
         self.input.SetDefaultFontSize(newsize)
@@ -526,13 +530,24 @@ class Channel(uicls.Window):
     def GetMenu(self, *args):
         m = uicls.Window.GetMenu(self)
         m += [None]
-        if type(self.channelID) == types.IntType and sm.GetService('LSC').IsOperator(self.channelID):
-            m.append((mls.UI_CMD_SETTINGS, self._Channel__Settings))
+        showSettings = False
+        if isinstance(self.channelID, int) and sm.GetService('LSC').IsOperator(self.channelID):
+            showSettings = True
+        elif isinstance(self.channelID, tuple):
+            channelType = self.channelID[0][0]
+            if channelType in ('corpid', 'allianceid'):
+                if session.corprole & const.corpRoleChatManager == const.corpRoleChatManager:
+                    showSettings = True
+            elif channelType == 'fleetid':
+                if sm.GetService('fleet').IsBoss():
+                    showSettings = True
+        if showSettings:
+            m.append((localization.GetByLabel('UI/Chat/Settings'), self._Channel__Settings))
         prefsName = 'chatWindowBlink_%s' % self.name
         if settings.user.ui.Get(prefsName, 1):
-            m.append((mls.UI_CMD_BLINKOFF, settings.user.ui.Set, (prefsName, 0)))
+            m.append((localization.GetByLabel('UI/Chat/BlinkOff'), settings.user.ui.Set, (prefsName, 0)))
         else:
-            m.append((mls.UI_CMD_BLINKON, settings.user.ui.Set, (prefsName, 1)))
+            m.append((localization.GetByLabel('UI/Chat/BlinkOn'), settings.user.ui.Set, (prefsName, 1)))
         if sm.GetService('vivox').Enabled() and sm.GetService('vivox').LoggedIn():
             m += [None]
             fleetChannels = ['fleet', 'wing', 'squad']
@@ -563,17 +578,17 @@ class Channel(uicls.Window):
                 raise RuntimeError('LSC only supports channel IDs of tuple or int type.')
             if not excludedFromVoice:
                 if sm.GetService('vivox').IsVoiceChannel(self.channelID):
-                    m.append((mls.UI_CMD_LEAVEAUDIO, self.VivoxLeaveAudio))
+                    m.append((localization.GetByLabel('UI/Chat/LeaveAudio'), self.VivoxLeaveAudio))
                     currentSpeakingChannel = sm.GetService('vivox').GetSpeakingChannel()
                     if type(currentSpeakingChannel) is types.TupleType:
                         currentSpeakingChannel = (currentSpeakingChannel,)
                     if currentSpeakingChannel != self.channelID:
-                        m.append((mls.UI_CMD_MAKESPEAKINGCHANNEL, self.VivoxSetAsSpeakingChannel))
+                        m.append((localization.GetByLabel('UI/Chat/MakeSpeakingChannel'), self.VivoxSetAsSpeakingChannel))
                 elif isFleetChannel:
                     if sm.GetService('fleet').GetOptions().isVoiceEnabled:
-                        m.append((mls.UI_CMD_JOINAUDIO, self.VivoxJoinAudio))
+                        m.append((localization.GetByLabel('UI/Chat/JoinAudio'), self.VivoxJoinAudio))
                 else:
-                    m.append((mls.UI_CMD_JOINAUDIO, self.VivoxJoinAudio))
+                    m.append((localization.GetByLabel('UI/Chat/JoinAudio'), self.VivoxJoinAudio))
         return m
 
 
@@ -610,12 +625,25 @@ class Channel(uicls.Window):
 
 
 
-    def OnDropData(self, dragObj, *args):
-        pass
+    def OnDropData(self, dragObj, nodes):
+        self.OnDropCharacter(dragObj, nodes)
 
 
 
-    def OnClose_(self, *args):
+    def OnDropCharacter(self, dragObj, nodes):
+        if not isinstance(self.channelID, int):
+            return 
+        for node in nodes[:5]:
+            if node.Get('__guid__', None) not in ('listentry.User', 'listentry.Sender', 'listentry.ChatUser', 'listentry.SearchedUser'):
+                return 
+            charID = node.charID
+            if util.IsCharacter(charID):
+                sm.GetService('LSC').Invite(charID, self.channelID)
+
+
+
+
+    def _OnClose(self, *args):
         if getattr(self, 'closing', 0):
             return 
         self.closing = 1
@@ -842,11 +870,11 @@ class Channel(uicls.Window):
         if not localEcho and IsSpam(txt):
             return 
         self.UpdateCaption(localEcho=localEcho)
-        if type(charid) in types.StringTypes:
+        if isinstance(charid, basestring):
             who = charid
         else:
             who = cfg.eveowners.Get(charid).name
-        time = blue.os.GetTime()
+        time = blue.os.GetWallclockTime()
         if self.destroyed:
             return 
         if self.logfile is not None and self.logfile.size > 0:
@@ -877,8 +905,8 @@ class Channel(uicls.Window):
             if self.state == uiconst.UI_HIDDEN and self.sr.btn and hasattr(self.sr.btn, 'SetBlink'):
                 self.sr.btn.SetBlink(1)
             elif self.sr.stack is not None and (self.sr.stack.state != uiconst.UI_NORMAL or self.state != uiconst.UI_NORMAL):
-                if self.sr.stack.sr.btn and hasattr(self.sr.stack.sr.btn, 'SetBlink'):
-                    stack.sr.btn.SetBlink(1)
+                if self.sr.stack.sr.minimizedBtn and hasattr(self.sr.stack.sr.minimizedBtn, 'SetBlink'):
+                    stack.sr.minimizedBtn.SetBlink(1)
             if self.state == uiconst.UI_HIDDEN:
                 self.SetBlinking()
 
@@ -895,7 +923,7 @@ class Channel(uicls.Window):
         shift = uicore.uilib.Key(uiconst.VK_SHIFT)
         if shift:
             return 
-        if self.waitingForReturn and blue.os.GetTime() - self.waitingForReturn < MIN:
+        if self.waitingForReturn and blue.os.GetWallclockTime() - self.waitingForReturn < MIN:
             txt = self.input.GetValue(html=0)
             txt = txt.rstrip()
             cursorPos = -1
@@ -904,11 +932,11 @@ class Channel(uicls.Window):
             return 
         NUM_SECONDS = 4
         if session.userType == 23 and (type(self.channelID) != types.IntType or self.channelID < 2100000000 and self.channelID > 0):
-            lastMessageTime = long(getattr(self, 'lastMessageTime', blue.os.GetTime() - 1 * MIN))
-            if blue.os.GetTime() - lastMessageTime < NUM_SECONDS * SEC:
-                eve.Message('LSCTrialRestriction_SendMessage', {'sec': (NUM_SECONDS * SEC - (blue.os.GetTime() - lastMessageTime)) / SEC})
+            lastMessageTime = long(getattr(self, 'lastMessageTime', blue.os.GetWallclockTime() - 1 * MIN))
+            if blue.os.GetWallclockTime() - lastMessageTime < NUM_SECONDS * SEC:
+                eve.Message('LSCTrialRestriction_SendMessage', {'sec': (NUM_SECONDS * SEC - (blue.os.GetWallclockTime() - lastMessageTime)) / SEC})
                 return 
-            setattr(self, 'lastMessageTime', blue.os.GetTime())
+            setattr(self, 'lastMessageTime', blue.os.GetWallclockTime())
         txt = self.input.GetValue(html=0)
         self.input.SetValue('')
         txt = txt.strip()
@@ -935,7 +963,7 @@ class Channel(uicls.Window):
                 return 
         if boot.region == 'optic':
             try:
-                bw = str(mls.textLabels['UI_SHARED_OPTICBANWORDS'][1]).decode('utf-7')
+                bw = str(localization.GetByLabel('UI/Chat/ChannelWindow/OpticServerBannedWords')).decode('utf-7')
                 banned = [ word for word in bw.split() if word ]
                 for bword in banned:
                     if txt.startswith('/') and not (txt.startswith('/emote') or txt.startswith('/me')):
@@ -947,17 +975,22 @@ class Channel(uicls.Window):
                 log.LogTraceback('Borgle?')
                 sys.exc_clear()
         if not sm.GetService('LSC').IsSpeaker(self.channelID):
-            borki = '%s<br>' % mls.UI_SHARED_CHANNELHINT5
             access = sm.GetService('LSC').GetMyAccessInfo(self.channelID)
-            hasAccessInfo = True
-            if access[1] is None:
-                hasAccessInfo = False
-            borki += '%s: ' % mls.UI_GENERIC_REASON + (hasAccessInfo and access[1].reason or 'Not Specified') + '<br>'
-            if hasAccessInfo and access[1].untilWhen:
-                borki += '%s: ' % mls.UI_SHARED_UNTIL + util.FmtDate(access[1].untilWhen) + '<br>'
+            if access[1]:
+                if access[1].reason:
+                    reason = access[1].reason
+                else:
+                    reason = localization.GetByLabel('UI/Chat/NotSpecified')
+                if access[1].admin:
+                    admin = access[1].admin
+                else:
+                    admin = localization.GetByLabel('UI/Chat/NotSpecified')
+                if access[1].untilWhen:
+                    borki = localization.GetByLabel('UI/Chat/CannotSpeakOnChannelUntil', reason=reason, untilWhen=access[1].untilWhen, admin=admin)
+                else:
+                    borki = localization.GetByLabel('UI/Chat/CannotSpeakOnChannel', reason=reason, admin=admin)
             else:
-                borki += '%s<br>' % mls.UI_SHARED_UNTILNOTSPECIFIED
-            borki += '%s: ' % mls.UI_GENERIC_ADMIN + (hasAccessInfo and access[1].admin or mls.UI_SHARED_NOTSPECIFIED) + '<br>'
+                borki = localization.GetByLabel('UI/Chat/CannotSpeakOnChannel', reason=localization.GetByLabel('UI/Chat/NotSpecified'), admin=localization.GetByLabel('UI/Chat/NotSpecified'))
             self._Channel__LocalEcho(borki)
         if txt != '' and txt.replace('\r', '').replace('\n', '').replace('<br>', '').replace(' ', '').replace('/emote', '').replace('/me', '') != '':
             if txt.startswith('/me'):
@@ -994,9 +1027,9 @@ class Channel(uicls.Window):
                  'br'])
                 try:
                     if type(self.channelID) != types.IntType and self.channelID[0][0] in ('constellationid', 'regionid') and util.IsWormholeSystem(eve.session.solarsystemid2):
-                        self._Channel__Output(mls.UI_GENERIC_NOCHANNELACCESS_WORMHOLE, 1, 1)
+                        self._Channel__Output(localization.GetByLabel('UI/Chat/NoChannelAccessWormhole'), 1, 1)
                         return 
-                    self.waitingForReturn = blue.os.GetTime()
+                    self.waitingForReturn = blue.os.GetWallclockTime()
                     self._Channel__LocalEcho(stext)
                     if not IsSpam(stext):
                         sm.GetService('LSC').SendMessage(self.channelID, stext)
@@ -1231,13 +1264,13 @@ class ChannelMenu(list):
         if charID != const.ownerSystem and sm.GetService('LSC').IsOperator(channelID):
             if not sm.GetService('LSC').IsOperator(channelID, charID):
                 if sm.GetService('LSC').IsGagged(channelID, charID):
-                    commands.append((mls.UI_CMD_ALLOWSPEAKING, self._ChannelMenu__UnGag))
+                    commands.append((localization.GetByLabel('UI/Chat/Unmute'), self._ChannelMenu__UnGag))
                 else:
-                    commands.append((mls.UI_CMD_MUTE, self._ChannelMenu__Gag))
-                commands.append((mls.UI_CMD_KICK, self._ChannelMenu__Kick))
-        self.append((mls.UI_CMD_REPORTISKSPAMMER, self.ReportISKSpammer))
+                    commands.append((localization.GetByLabel('UI/Chat/Mute'), self._ChannelMenu__Gag))
+                commands.append((localization.GetByLabel('UI/Chat/Kick'), self._ChannelMenu__Kick))
+        self.append((localization.GetByLabel('UI/Chat/ReportIskSpammer'), self.ReportISKSpammer))
         if commands:
-            self.append((mls.UI_CMD_CHANNEL, commands))
+            self.append((localization.GetByLabel('UI/Chat/Channel'), commands))
 
 
 
@@ -1265,7 +1298,7 @@ class ChannelMenu(list):
         format.append({'type': 'edit',
          'key': 'minutes',
          'setvalue': 30,
-         'label': mls.UI_SHARED_MINTOINF,
+         'label': localization.GetByLabel('UI/Chat/LengthMinutes'),
          'frame': 1,
          'maxLength': 5,
          'intonly': [0, 43200]})
@@ -1273,16 +1306,16 @@ class ChannelMenu(list):
          'frame': 1})
         format.append({'type': 'textedit',
          'key': 'reason',
-         'label': mls.UI_GENERIC_REASON,
+         'label': localization.GetByLabel('UI/Chat/Reason'),
          'frame': 1,
          'maxLength': 255})
         format.append({'type': 'push',
          'frame': 1})
         format.append({'type': 'btline'})
-        retval = uix.HybridWnd(format, mls.UI_GENERIC_GAG + ' ' + cfg.eveowners.Get(self.charID).name, 1, None, uiconst.OKCANCEL, minW=300, minH=160)
+        retval = uix.HybridWnd(format, localization.GetByLabel('UI/Chat/GagCharacter', char=self.charID), 1, None, uiconst.OKCANCEL, minW=300, minH=160)
         if retval is not None:
             if retval['minutes']:
-                untilWhen = blue.os.GetTime() + retval['minutes'] * MIN
+                untilWhen = blue.os.GetWallclockTime() + retval['minutes'] * MIN
             else:
                 untilWhen = None
             sm.GetService('LSC').AccessControl(self.channelID, self.charID, chat.CHTMODE_LISTENER, untilWhen, retval['reason'])
@@ -1295,7 +1328,7 @@ class ChannelMenu(list):
         if mode == 1:
             sm.RemoteSvc('LSC').AccessControl(self.channelID, self.charID, chat.CHTMODE_CONVERSATIONALIST)
         else:
-            sm.GetService('LSC').AccessControl(self.channelID, self.charID, chat.CHTMODE_NOTSPECIFIED, blue.os.GetTime() - 30 * MIN, '')
+            sm.GetService('LSC').AccessControl(self.channelID, self.charID, chat.CHTMODE_NOTSPECIFIED, blue.os.GetWallclockTime() - 30 * MIN, '')
 
 
 
@@ -1308,7 +1341,7 @@ class ChannelMenu(list):
         format.append({'type': 'edit',
          'key': 'minutes',
          'setvalue': 30,
-         'label': mls.UI_GENERIC_MINUTES,
+         'label': localization.GetByLabel('UI/Chat/LengthMinutes'),
          'frame': 1,
          'maxLength': 5,
          'intonly': [0, 43200]})
@@ -1316,16 +1349,16 @@ class ChannelMenu(list):
          'frame': 1})
         format.append({'type': 'textedit',
          'key': 'reason',
-         'label': mls.UI_GENERIC_REASON,
+         'label': localization.GetByLabel('UI/Chat/Reason'),
          'frame': 1,
          'maxLength': 255})
         format.append({'type': 'push',
          'frame': 1})
         format.append({'type': 'btline'})
-        retval = uix.HybridWnd(format, 'Kick %s' % cfg.eveowners.Get(self.charID).name, 1, None, uiconst.OKCANCEL, minW=300, minH=160)
+        retval = uix.HybridWnd(format, localization.GetByLabel('UI/Chat/KickCharacter', char=self.charID), 1, None, uiconst.OKCANCEL, minW=300, minH=160)
         if retval is not None:
             if retval['minutes']:
-                untilWhen = blue.os.GetTime() + retval['minutes'] * MIN
+                untilWhen = blue.os.GetWallclockTime() + retval['minutes'] * MIN
             else:
                 untilWhen = None
             sm.GetService('LSC').AccessControl(self.channelID, self.charID, chat.CHTMODE_DISALLOWED, untilWhen, retval['reason'])
@@ -1345,6 +1378,11 @@ class ChatUser(listentry.User):
 
     def GetNodeMenu(self, *args):
         return [None] + ChannelMenu(self.sr.node.channelID, self.sr.node.charID)
+
+
+
+    def OnDropData(self, dragObj, nodes):
+        self.sr.node.scroll.GetContentContainer().OnDropData(dragObj, nodes)
 
 
 
@@ -1379,7 +1417,7 @@ class ChatEntry(uicls.SE_BaseClassCore):
     allowDynamicResize = True
 
     def Startup(self, *args):
-        self.sr.text = uicls.Label(text='', parent=self, align=uiconst.TOTOP, padRight=5, state=uiconst.UI_NORMAL, color=None)
+        self.sr.text = uicls.EveLabelMedium(text='', parent=self, align=uiconst.TOTOP, padRight=5, state=uiconst.UI_NORMAL, autoDetectCharset=True, linkStyle=uiconst.LINKSTYLE_REGULAR)
         self.sr.text.GetMenu = self.GetMenu
         self.sr.picParent = uicls.Container(name='picpar', parent=self, align=uiconst.TOPLEFT, width=34, height=34, left=2, top=2)
         self.sr.pic = uicls.Icon(parent=self.sr.picParent, align=uiconst.TOALL, padLeft=1, padTop=1, padRight=1, padBottom=1)
@@ -1441,28 +1479,29 @@ class ChatEntry(uicls.SE_BaseClassCore):
 
     def GetMenu(self):
         m = []
-        if self.sr.text._activeLink:
-            if self.sr.text._activeLink.startswith('showinfo:'):
-                ids = self.sr.text._activeLink[9:].split('//')
-                try:
-                    typeID = int(ids[0])
-                    if len(ids) > 1:
-                        itemID = int(ids[1])
-                        m = sm.StartService('menu').GetMenuFormItemIDTypeID(itemID, typeID, ignoreMarketDetails=0)
-                        if cfg.invtypes.Get(typeID).Group().id == const.groupCharacter:
-                            m += [None]
-                            m += ChannelMenu(self.sr.node.channelid, itemID)
-                    else:
-                        m = uicls.BaseLink().GetLinkMenu(self.sr.text, self.sr.text._activeLink.replace('&amp;', '&'))
-                except:
-                    log.LogTraceback('failed to convert string to ids in chat entry:GetMenu')
-                    sys.exc_clear()
+        mouseOverUrl = self.sr.text.GetMouseOverUrl()
+        if mouseOverUrl:
+            if mouseOverUrl.startswith('showinfo:'):
+                parsedArgs = uicls.BaseLink().ParseShowInfo(mouseOverUrl)
+                if parsedArgs:
+                    (typeID, itemID, data,) = parsedArgs
+                    try:
+                        if typeID and itemID:
+                            m = sm.StartService('menu').GetMenuFormItemIDTypeID(itemID, typeID, ignoreMarketDetails=0)
+                            if cfg.invtypes.Get(typeID).Group().id == const.groupCharacter:
+                                m += [None]
+                                m += ChannelMenu(self.sr.node.channelid, itemID)
+                        else:
+                            m = uicls.BaseLink().GetLinkMenu(self.sr.text, mouseOverUrl.replace('&amp;', '&'))
+                    except:
+                        log.LogTraceback('failed to convert string to ids in chat entry:GetMenu')
+                        sys.exc_clear()
             else:
-                m = uicls.BaseLink().GetLinkMenu(self.sr.text, self.sr.text._activeLink.replace('&amp;', '&'))
+                m = uicls.BaseLink().GetLinkMenu(self.sr.text, mouseOverUrl.replace('&amp;', '&'))
         m += [None,
-         (mls.UI_CMD_COPY, self.CopyText),
-         (mls.UI_CMD_COPYALL, self.CopyAll),
-         (mls.UI_CMD_TOGGLETIMESTAMP, self.ToggleTimestamp)]
+         (localization.GetByLabel('UI/Common/Copy'), self.CopyText),
+         (localization.GetByLabel('UI/Common/CopyAll'), self.CopyAll),
+         (localization.GetByLabel('UI/Chat/ToggleTimestamp'), self.ToggleTimestamp)]
         return m
 
 

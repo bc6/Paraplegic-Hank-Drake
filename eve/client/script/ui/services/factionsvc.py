@@ -5,7 +5,6 @@ import util
 
 class Faction(service.Service):
     __exportedcalls__ = {'GetFaction': [],
-     'GetFactionEx': [],
      'GetCorpsOfFaction': [],
      'GetFactionLocations': [],
      'GetFactionOfSolarSystem': [],
@@ -22,7 +21,6 @@ class Faction(service.Service):
 
     def Run(self, memStream = None):
         self.LogInfo('Starting Faction Svc')
-        self.factions = {}
         self.factionIDbyNPCCorpID = None
         self.factionRegions = None
         self.factionConstellations = None
@@ -152,20 +150,6 @@ class Faction(service.Service):
         if self.factionIDbyNPCCorpID is None:
             self.GetData()
         return self.factionIDbyNPCCorpID.get(corporationID, None)
-
-
-
-    def GetFactionEx(self, factionID = None):
-        if not self.factions:
-            factions = sm.RemoteSvc('charMgr').GetFactions()
-            for (i, faction,) in enumerate(factions):
-                self.factions[faction.factionID] = factions[i]
-
-        if self.factions:
-            if factionID:
-                return self.factions.get(factionID, None)
-            else:
-                return self.factions
 
 
 

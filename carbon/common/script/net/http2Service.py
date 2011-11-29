@@ -15,7 +15,7 @@ class CherryServer(service.Service):
             return 
         import dust.cherryServerPages
         cherryTree = dust.cherryServerPages.InitializeEspApp()
-        port = self.machoNet.CalculatePortNumber('tcp:raw:http', macho.mode) + 1
+        port = self.machoNet.GetBasePortNumber() + macho.offsetMap[macho.mode]['tcp:raw:http2']
         server = self.WSGIService.StartServer(cherryTree, port)
         self.servers.append(server)
         self.LogNotice('CherryPy ESP app server running on port %s' % port)

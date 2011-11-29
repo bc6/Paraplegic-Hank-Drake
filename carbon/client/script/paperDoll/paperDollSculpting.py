@@ -16,8 +16,28 @@ class PaperDollSculpting:
 
 
 
+    def OnInvalidate(self, dev):
+        self.Stop()
+
+
+
+    def OnCreate(self, dev):
+        self.PreloadZoneMaps(self.doll)
+        self.Reset(self.doll, self.avatar, mode=self.mode, camera=self.camera, callback=self.callback, pickCallback=self.pickCallback, inactiveZones=self.inactiveZones)
+        self.ready = True
+
+
+
     @bluepy.CCP_STATS_ZONE_METHOD
     def GetMaskAtPixel(self, x, y):
+        self.zoneSize = (self.zoneMap.width, self.zoneMap.height)
+        self.bodyZoneSize = (self.bodyZoneMap.width, self.bodyZoneMap.height)
+        if self.zoneSize[0] == 0 or self.bodyZoneSize[0] == 0:
+            return (0,
+             0,
+             [0, 0],
+             0,
+             True)
         mask = 0
         dev = trinity.device
         (cameraProj, cameraView,) = self.GetProjectionAndViewMatrixFunc()
@@ -42,6 +62,8 @@ class PaperDollSculpting:
              True)
         pickedPixelUV = self.pickScene.PickObjectUV(x, y, cameraProj, cameraView, viewport)
         isHead = True
+        self.pickedSide = 'right'
+        midpoint = 0.5
         if pickedPixelUV[0] > 0.5:
             self.pickedMesh = 'head'
             pickedPixelUV = [(pickedPixelUV[0] - 0.5) * 2.0, pickedPixelUV[1] * 2.0]
@@ -65,8 +87,10 @@ class PaperDollSculpting:
             color = struct.unpack_from('=BBBB', buffer[0], pixel[0] * 4 + pixel[1] * buffer[3])
             mask = color[0]
             self.bodyZoneMap.UnlockRect()
-        self.pickedSide = 'right'
-        if pickedPixelUV[0] > 0.5:
+            zone = self.ConvertMaskToZone(mask)
+            if zone in (0, 2, 5) or zone == 1 and pickedPixelUV[0] < 0.37:
+                midpoint = 0.2
+        if pickedPixelUV[0] > midpoint:
             self.pickedSide = 'left'
         return (mask,
          pick[0],
@@ -239,7 +263,7 @@ class PaperDollSculpting:
                  2.0,
                  each * 10 / 255.0))
                 while time.time() < start + (i + 1) / 3.0:
-                    blue.synchro.Yield()
+                    PD.Yield(frameNice=False)
 
 
         else:
@@ -264,7 +288,7 @@ class PaperDollSculpting:
                      2.0,
                      i * 10 / 255.0))
                 while time.time() < start + i / 3.0:
-                    blue.synchro.Yield()
+                    PD.Yield(frameNice=False)
 
 
         self.highlightGhost.Stop()
@@ -523,6 +547,7 @@ class PaperDollSculpting:
         self.PreloadZoneMaps(doll)
         self.Reset(doll, avatar, mode=mode, camera=camera, callback=callback, pickCallback=pickCallback, inactiveZones=inactiveZones)
         self.ready = True
+        trinity.device.RegisterResource(self)
 
 
 
@@ -576,11 +601,10 @@ class PaperDollSculpting:
                 if doll.gender == 'female':
                     headGridPath = headGridPath.replace('male_', 'female_')
                 headTiling = 1
-            zoneMap = blue.resMan.GetResource(zonePath)
-            bodyZoneMap = blue.resMan.GetResource(bodyZonePath)
-            blue.resMan.Wait()
-            zoneSize = (zoneMap.width, zoneMap.height)
-            bodyZoneSize = (bodyZoneMap.width, bodyZoneMap.height)
+            zoneMap = blue.resMan.GetResource(zonePath, 'lockable')
+            bodyZoneMap = blue.resMan.GetResource(bodyZonePath, 'lockable')
+            zoneSize = (0, 0)
+            bodyZoneSize = (0, 0)
             self.zoneMaps[each] = (zonePath,
              headGridPath,
              bodyGridPath,
@@ -639,6 +663,8 @@ class PaperDollSculpting:
             (zonePath, headGridPath, bodyGridPath, headTiling, bodyTiling, bodyZonePath, self.zoneMap, self.zoneSize, self.bodyZoneMap, self.bodyZoneSize,) = self.zoneMaps[mode]
         else:
             (zonePath, headGridPath, bodyGridPath, headTiling, bodyTiling, bodyZonePath, self.zoneMap, self.zoneSize, self.bodyZoneMap, self.bodyZoneSize,) = self.zoneMaps['default']
+        self.zoneSize = (self.zoneMap.width, self.zoneMap.height)
+        self.bodyZoneSize = (self.bodyZoneMap.width, self.bodyZoneMap.height)
         if self.useHighlighting:
             import PaperdollSculptingGhost
             self.highlightGhost = PaperdollSculptingGhost.PaperdollSculptingGhost(zonePath=zonePath, texturePath=headGridPath, noisePath='res:/Texture/Global/noise.png', meshFilter=['head'], tiling=headTiling)
@@ -710,7 +736,7 @@ class PaperDollSculpting:
             for d in deleteList:
                 self.pickAvatar.visualModel.meshes.remove(d)
 
-            torsoMod = self.factory.CollectBuildData('topinner/torso_nude', self.factory.GetOptionsByGender(self.doll.gender))
+            torsoMod = self.factory.CollectBuildData(self.doll.gender, 'topinner/torso_nude')
             self.pickExtraMods.append(torsoMod)
             item = blue.os.LoadObject(torsoMod.redfile)
             if item:
@@ -724,7 +750,7 @@ class PaperDollSculpting:
 
         index = 1
         for armPart in ['dependants/sleeveslower/standard', 'dependants/sleevesupper/standard']:
-            armMod = self.factory.CollectBuildData(armPart, self.factory.GetOptionsByGender(self.doll.gender))
+            armMod = self.factory.CollectBuildData(self.doll.gender, armPart)
             self.pickExtraMods.append(armMod)
             item = blue.os.LoadObject(armMod.redfile)
             if item:
@@ -737,7 +763,7 @@ class PaperDollSculpting:
 
 
         if not foundLowerNude:
-            legMod = self.factory.CollectBuildData('bottominner/legs_nude', self.factory.GetOptionsByGender(self.doll.gender))
+            legMod = self.factory.CollectBuildData(self.doll.gender, 'bottominner/legs_nude')
             self.pickExtraMods.append(legMod)
             item = blue.os.LoadObject(legMod.redfile)
             if item:
@@ -750,7 +776,7 @@ class PaperDollSculpting:
                     index += 1
 
         if not foundHead:
-            headMod = self.factory.CollectBuildData('head/head_generic', self.factory.GetOptionsByGender(self.doll.gender))
+            headMod = self.factory.CollectBuildData(self.doll.gender, 'head/head_generic')
             self.pickExtraMods.append(headMod)
             item = blue.os.LoadObject(headMod.redfile)
             if item:
@@ -762,7 +788,7 @@ class PaperDollSculpting:
                     self.pickAvatarPaths[m.name] = m.geometryResPath
                     index += 1
 
-        handMod = self.factory.CollectBuildData('hands/hands_nude', self.factory.GetOptionsByGender(self.doll.gender))
+        handMod = self.factory.CollectBuildData(self.doll.gender, 'hands/hands_nude')
         self.pickExtraMods.append(handMod)
         item = blue.os.LoadObject(handMod.redfile)
         if item:
@@ -774,7 +800,7 @@ class PaperDollSculpting:
                 self.pickAvatarPaths[m.name] = m.geometryResPath
                 index += 1
 
-        feetMod = self.factory.CollectBuildData('feet/feet_nude', self.factory.GetOptionsByGender(self.doll.gender))
+        feetMod = self.factory.CollectBuildData(self.doll.gender, 'feet/feet_nude')
         self.pickExtraMods.append(feetMod)
         item = blue.os.LoadObject(feetMod.redfile)
         if item:
@@ -785,6 +811,12 @@ class PaperDollSculpting:
                 feetMod.meshGeometryResPaths[m.name] = m.geometryResPath
                 self.pickAvatarPaths[m.name] = m.geometryResPath
                 index += 1
+
+        for mesh in self.pickAvatar.visualModel.meshes:
+            if len(mesh.decalAreas):
+                for decalArea in mesh.decalAreas:
+                    mesh.opaqueAreas.append(decalArea)
+
 
         self.pickAvatar.animationUpdater = self.avatar.animationUpdater
         self.pickAvatar.worldTransformUpdater = self.avatar.worldTransformUpdater

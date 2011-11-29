@@ -5,6 +5,7 @@ import util
 import sys
 import os
 import random
+import localization
 
 class JukeboxSvc(service.Service):
     __guid__ = 'svc.jukebox'
@@ -43,6 +44,7 @@ class JukeboxSvc(service.Service):
         self.playlist = None
         self.currentTrackIndex = self.GetAudioSetting('jukeboxTrackIndex', -1)
         self.currTrackStartedAt = 0
+        self.currTrackPausedAt = None
         self.shuffleActive = self.GetAudioSetting('jukeboxShuffle', False)
         self.stingerMessage = None
         self.messageQueue = []
@@ -52,7 +54,7 @@ class JukeboxSvc(service.Service):
         self.playlistLoaded = False
         self.ingamePlayList = ''
         self.volumeObservers = []
-        cachePath = os.path.normpath(os.path.join(blue.os.cachepath, 'Jukebox'))
+        cachePath = blue.os.ResolvePathForWriting(u'cache:/Jukebox/')
         if not os.path.exists(cachePath):
             os.makedirs(cachePath)
 
@@ -60,7 +62,7 @@ class JukeboxSvc(service.Service):
 
     def Run(self, ms = None):
         self.SetVolume(self.GetVolume())
-        cachePath = os.path.normpath(os.path.join(blue.os.cachepath, 'Jukebox'))
+        cachePath = blue.os.ResolvePathForWriting(u'cache:/Jukebox/')
         if os.path.exists(cachePath):
             for (root, folders, playlists,) in os.walk(unicode(cachePath)):
                 for playlist in playlists:
@@ -109,9 +111,9 @@ class JukeboxSvc(service.Service):
     def OnAudioActivated(self):
         self.SetVolume(self.GetVolume())
         if len(self.playlists) == 0:
-            self.AddPlaylist('mls://DEFAULT_JUKEBOX_PLAYLIST', self.ingamePlayList)
+            self.AddPlaylist('mls://Carbon/Audio/Jukebox/DefaultPlaylist', self.ingamePlayList)
         if self.playlist is None:
-            self.SetPlaylist('mls://DEFAULT_JUKEBOX_PLAYLIST')
+            self.SetPlaylist('mls://Carbon/Audio/Jukebox/DefaultPlaylist')
         if self.resumeOnActivate:
             self.Play()
 
@@ -160,7 +162,15 @@ class JukeboxSvc(service.Service):
 
 
     def TranslateTitle(self, title):
-        return title
+        pos = title.rfind('mls://')
+        if pos > -1:
+            mlskey = title[(pos + 6):]
+        else:
+            return title.lstrip()
+        if localization.IsValidLabel(mlskey):
+            return localization.GetByLabel(mlskey)
+        else:
+            return title.lstrip()
 
 
 
@@ -217,11 +227,11 @@ class JukeboxSvc(service.Service):
         elif currentState == 'play':
             self.audio.SendJukeboxEvent('music_global_pause')
             self.SetState('pause', persist=True)
-            self.currTrackPausedAt = blue.os.TimeAsDouble()
+            self.currTrackPausedAt = blue.os.TimeAsDouble(blue.os.GetWallclockTime())
         elif currentState == 'pause':
             self.audio.SendJukeboxEvent('music_global_resume')
             if self.currTrackPausedAt is not None:
-                self.currTrackStartedAt += blue.os.TimeAsDouble() - self.currTrackPausedAt
+                self.currTrackStartedAt += blue.os.TimeAsDouble(blue.os.GetWallclockTime()) - self.currTrackPausedAt
                 self.currTrackPausedAt = None
             self.SetState('play', persist=True)
         else:
@@ -272,7 +282,7 @@ class JukeboxSvc(service.Service):
         if self.GetState() == 'pause':
             return int(self.currTrackPausedAt - self.currTrackStartedAt)
         else:
-            return int(blue.os.TimeAsDouble() - self.currTrackStartedAt)
+            return int(blue.os.TimeAsDouble(blue.os.GetWallclockTime()) - self.currTrackStartedAt)
 
 
 
@@ -320,7 +330,7 @@ class JukeboxSvc(service.Service):
             return 
         try:
             del self.playlists[playlistName]
-            os.remove(os.path.join(blue.os.cachepath, 'Jukebox/', '%s.m3u' % playlistName))
+            os.remove(blue.os.ResolvePathForWriting(u'cache:/Jukebox/%s.m3u' % playlistName))
 
         finally:
             if playlistName == self.playlist.name:
@@ -439,7 +449,7 @@ class JukeboxSvc(service.Service):
                 self.audio.SendJukeboxEvent(track.message)
             self.ReportJukeboxChange('track')
             self.SetState('play', persist=not ignoreState)
-            self.currTrackStartedAt = blue.os.TimeAsDouble()
+            self.currTrackStartedAt = blue.os.TimeAsDouble(blue.os.GetWallclockTime())
             self.currTrackPausedAt = None
             self.currentTrack = self.playlist.tracks[self.currentTrackIndex]
             return True
@@ -799,14 +809,14 @@ class PlaylistForWise():
         if newFile:
             i = 0
             while 1:
-                saveFilePath = '%s//Playlist%s.m3u' % (os.path.normpath(os.path.join(blue.os.cachepath, 'Jukebox')), i)
+                saveFilePath = '%s//Playlist%s.m3u' % (os.path.normpath(os.path.join(blue.os.ResolvePath(u'cache:/Jukebox'))), i)
                 if not os.path.exists(saveFilePath):
                     self.name = 'Playlist%s' % i
                     break
                 i += 1
 
         else:
-            saveFilePath = '%s//%s.m3u' % (os.path.normpath(os.path.join(blue.os.cachepath, 'Jukebox')), self.name)
+            saveFilePath = '%s//%s.m3u' % (os.path.normpath(os.path.join(blue.os.ResolvePath(u'cache:/Jukebox'))), self.name)
         f = open(unicode(saveFilePath), 'w')
         try:
             f.write('#EXTM3U\n')

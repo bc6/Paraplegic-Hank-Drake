@@ -1,6 +1,5 @@
 import service
 import state
-import turret
 
 class TurretSvc(service.Service):
     __exportedcalls__ = {}
@@ -8,7 +7,8 @@ class TurretSvc(service.Service):
      'OnTarget',
      'OnTargets',
      'OnGodmaItemChange',
-     'ProcessShipEffect']
+     'ProcessShipEffect',
+     'ProcessActiveShipChanged']
     __dependencies__ = []
     __guid__ = 'svc.turret'
     __servicename__ = 'turret'
@@ -51,7 +51,8 @@ class TurretSvc(service.Service):
         if ball is None:
             return 
         if item.groupID in const.turretModuleGroups:
-            turret.TurretSet.FitTurrets(eve.session.shipid, ball.model)
+            ball.UnfitHardpoints()
+            ball.FitHardpoints()
 
 
 
@@ -89,6 +90,21 @@ class TurretSvc(service.Service):
                         turret.Online()
                     else:
                         turret.Offline()
+
+
+
+    def ProcessActiveShipChanged(self, shipID, oldShipID):
+        if session.solarsystemid is not None:
+            bp = sm.GetService('michelle').GetBallpark()
+            try:
+                ship = bp.balls[shipID]
+            except KeyError:
+                return 
+            try:
+                ship.UnfitHardpoints()
+                ship.FitHardpoints()
+            except AttributeError:
+                self.LogInfo("Ship didn't have attribute fitted. Probably still being initialized", shipID)
 
 
 

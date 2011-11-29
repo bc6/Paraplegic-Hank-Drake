@@ -1,3 +1,4 @@
+import cef
 import collections
 import geo2
 import service
@@ -9,7 +10,7 @@ STATE_REGISTERED = 1
 
 class PositionService(service.Service):
     __guid__ = 'svc.position'
-    __componentTypes__ = ['position']
+    __componentTypes__ = [cef.PositionComponentView.GetComponentCodeName()]
 
     def CreateComponent(self, name, state):
         c = GameWorld.PositionComponent()
@@ -29,7 +30,7 @@ class PositionService(service.Service):
 
 
     def PrepareComponent(self, sceneID, entityID, component):
-        pass
+        self.entityService.entitySceneManager.PrepareComponent(entityID, sceneID, component)
 
 
 

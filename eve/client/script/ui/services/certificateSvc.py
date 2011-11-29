@@ -4,6 +4,7 @@ import uthread
 import util
 import types
 import form
+import localization
 
 class Certificates(service.Service):
     __exportedcalls__ = {'GrantCertificate': [],
@@ -115,7 +116,7 @@ class Certificates(service.Service):
         if not self.HasPrerequisiteCertificates(certificateID):
             raise UserError('CertificateCertPrerequisitesNotMet')
         sm.RemoteSvc('certificateMgr').GrantCertificate(certificateID)
-        self.myCertificates[certificateID] = util.KeyVal(grantDate=blue.os.GetTime(), visibilityFlags=0)
+        self.myCertificates[certificateID] = util.KeyVal(grantDate=blue.os.GetWallclockTime(), visibilityFlags=0)
         sm.ScatterEvent('OnCertificateIssued', certificateID)
 
 
@@ -171,9 +172,9 @@ class Certificates(service.Service):
     def OpenCertificateWindow(self, certID = None):
         if not certID:
             certID = settings.user.ui.Get('cert_lastViewed', 1)
-        wnd = sm.StartService('window').GetWindow('CertificateWindow', decoClass=form.certificateWindow, create=0)
+        wnd = form.certificateWindow.GetIfOpen()
         if not wnd:
-            wnd = sm.StartService('window').GetWindow('CertificateWindow', decoClass=form.certificateWindow, create=1, maximize=1, certID=int(certID))
+            wnd = form.certificateWindow.Open(certID=int(certID))
         else:
             wnd.Maximize()
             wnd.LoadTree(int(certID))
@@ -181,8 +182,7 @@ class Certificates(service.Service):
 
 
     def FindCertificateWindow(self):
-        wnd = sm.StartService('window').GetWindow('CertificateWindow', decoClass=form.certificateWindow, create=0)
-        return wnd
+        return form.certificateWindow.GetIfOpen()
 
 
 
@@ -336,7 +336,7 @@ class Certificates(service.Service):
         if not issued:
             return 
         for certificateID in issued:
-            self.myCertificates[certificateID] = util.KeyVal(grantDate=blue.os.GetTime(), visibilityFlags=0)
+            self.myCertificates[certificateID] = util.KeyVal(grantDate=blue.os.GetWallclockTime(), visibilityFlags=0)
 
         sm.ScatterEvent('OnCertificateIssued')
 
@@ -344,7 +344,7 @@ class Certificates(service.Service):
 
     def FindAvailableCerts(self, showProgress = 0):
         self.LogInfo('Finding available certificates...')
-        startTime = blue.os.GetTime()
+        startTime = blue.os.GetWallclockTime()
         readyDict = {}
         childrenDict = {}
         for cert in cfg.certificates:
@@ -357,7 +357,7 @@ class Certificates(service.Service):
 
 
         if showProgress:
-            sm.GetService('loading').ProgressWnd(mls.UI_SHARED_CERT_AWARDING, mls.UI_SHARED_CERT_VERIFYCRITERIA, 2, 4)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Certificates/LoadingWindow/LoadingTitle'), localization.GetByLabel('UI/Certificates/LoadingWindow/LoadingText'), 2, 4)
         somethingFound = 1
         while somethingFound:
             blue.pyos.BeNice()
@@ -375,7 +375,7 @@ class Certificates(service.Service):
 
 
 
-        diff = (blue.os.GetTime() - startTime) / float(SEC)
+        diff = (blue.os.GetWallclockTime() - startTime) / float(SEC)
         self.LogInfo('Done finding available certificates. Found', len(readyDict), 'certificates in', diff, 'seconds')
         return readyDict
 
@@ -396,6 +396,28 @@ class Certificates(service.Service):
                     return False
 
         return True
+
+
+
+    def GetCertificateLabel(self, certificateID):
+        classes = sm.RemoteSvc('certificateMgr').GetCertificateClasses()
+        data = cfg.certificates.Get(certificateID)
+        label = cfg.invtypes.Get(const.typeCertificate).name
+        desc = cfg.invtypes.Get(const.typeCertificate).description
+        grade = localization.GetByLabel('UI/Certificates/CertificateGrades/Grade1')
+        if data:
+            classdata = classes[data.classID]
+            if classdata:
+                label = localization.GetByMessageID(classdata.classNameID)
+            gradeDict = {1: 'UI/Certificates/CertificateGrades/Grade1',
+             2: 'UI/Certificates/CertificateGrades/Grade2',
+             3: 'UI/Certificates/CertificateGrades/Grade3',
+             4: 'UI/Certificates/CertificateGrades/Grade4',
+             5: 'UI/Certificates/CertificateGrades/Grade5'}
+            gradePath = gradeDict.get(data.grade)
+            grade = localization.GetByLabel(gradePath)
+            desc = data.description
+        return (label, grade, desc)
 
 
 

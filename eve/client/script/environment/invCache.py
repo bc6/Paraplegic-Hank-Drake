@@ -15,6 +15,9 @@ import inventoryFlagsCommon
 import yaml
 import os
 import log
+import uicls
+import localization
+import copy
 from collections import defaultdict
 SEC = 10000000L
 MIN = SEC * 60L
@@ -93,7 +96,7 @@ class invCache(service.Service):
         try:
             if not session.charid:
                 return self.InvalidateCache()
-            if change.has_key('corprole') and session.stationid2:
+            if 'corprole' in change and session.stationid2:
                 self.LogInfo('ProcessSessionChange corprole in station')
                 office = sm.GetService('corp').GetOffice()
                 if office is not None:
@@ -132,18 +135,16 @@ class invCache(service.Service):
                 self.LogError('Could not load planet attributes for region', change['regionid'][1], '- the following exception should give more information why.')
                 log.LogException()
                 sys.exc_clear()
-        if change.has_key('corprole') and eve.session.stationid:
+        if change.has_key('corprole') and session.stationid2:
             self.LogInfo('OnSessionChanged corprole in station')
             office = sm.GetService('corp').GetOffice()
             if office is not None:
                 wndid = 'corpHangar_%s' % office.itemID
-                wasopen = sm.GetService('window').GetWndState(wndid, 'open')
+                wasopen = uicore.registry.GetRegisteredWindowState(wndid, 'open')
                 self.LogInfo("Char's corp has a hangar wndid", wndid, 'wasopen', wasopen)
                 if wasopen:
-                    wnd = sm.GetService('window').GetWindow(wndid)
-                    if wnd:
-                        self.LogInfo('Closing corphangar')
-                        wnd.CloseX()
+                    uicls.Window.CloseIfOpen(windowID=wndid)
+                    self.LogInfo('Closing corphangar')
                 key = (office.itemID, None)
                 if self.inventories.has_key(key):
                     self.LogInfo('Removing invnetory for corp hangar')
@@ -164,7 +165,7 @@ class invCache(service.Service):
         if key == 'inventorymgr':
             while eve.session.IsMutating() and not eve.session.IsChanging():
                 self.LogInfo('Sleeping while waiting for a session change or mutation to complete')
-                blue.pyos.synchro.Sleep(250)
+                blue.pyos.synchro.SleepSim(250)
 
             if self._invCache__invmgr is None or self._invCache__invlocID != eve.session.locationid:
                 self._invCache__invlocID = eve.session.locationid
@@ -173,9 +174,11 @@ class invCache(service.Service):
         if key == 'stationInventoryMgr':
             while session.IsMutating() and not session.IsChanging():
                 self.LogInfo('Sleeping while waiting for a session change or mutation to complete')
-                blue.pyos.synchro.Sleep(250)
+                blue.pyos.synchro.SleepSim(250)
 
             if self._invCache__stationinvmgr is None or self._invCache__stationID != session.stationid2:
+                if session.stationid2 is None:
+                    raise RuntimeError('Character not at station')
                 self._invCache__stationID = session.stationid2
                 self._invCache__stationinvmgr = moniker.GetStationInventoryMgr(session.stationid2)
             return self._invCache__stationinvmgr
@@ -212,7 +215,7 @@ class invCache(service.Service):
 
                 (keyIs, keyWas,) = (None, None)
                 if session.stationid2:
-                    if item.locationID == eve.session.stationid:
+                    if item.locationID == session.stationid2:
                         if item.ownerID == eve.session.charid:
                             keyIs = (const.containerHangar, None)
                         elif item.flagID == const.flagCorpMarket:
@@ -290,7 +293,7 @@ class invCache(service.Service):
                     co_filname = frame[0]
                     co_lineno = frame[1]
                     self.LogInfo('TryLockItem called by ', co_name, ' ', co_filename, '(', co_lineno, ')')
-                now = blue.os.GetTime()
+                now = blue.os.GetWallclockTime()
                 self.lockedItems[itemID] = (now,
                  userErrorName,
                  userErrorDict,
@@ -313,7 +316,7 @@ class invCache(service.Service):
     def RaiseLockError(self, itemID, lockTime, userErrorName, userErrorDict, co_name, co_filename, co_lineno):
         if len(userErrorName) == 0:
             userErrorName = 'ItemIsLocked'
-            userErrorDict = {'reason': mls.UI_GENERIC_NOREASONWASSPECIFIED,
+            userErrorDict = {'reason': localization.GetByLabel('UI/Generic/NoReasonWasSpecified'),
              'lockTime': util.FmtDate(lockTime)}
         if userErrorDict == type({}):
             userErrorDict['lockTime'] = lockTime
@@ -322,18 +325,18 @@ class invCache(service.Service):
         message = cfg.GetMessage(userErrorName, userErrorDict)
         msgDict = {}
         if co_name is None:
-            co_name = mls.UI_GENERIC_UNKNOWN
+            co_name = localization.GetByLabel('UI/Generic/Unknown')
         if co_filename is None:
-            co_filename = mls.UI_GENERIC_UNKNOWN
+            co_filename = localization.GetByLabel('UI/Generic/Unknown')
         if co_lineno is None:
-            co_lineno = mls.UI_GENERIC_UNKNOWN
+            co_lineno = localization.GetByLabel('UI/Generic/Unknown')
         msgDict['title'] = message.title
         msgDict['text'] = message.text
         msgDict['itemID'] = itemID
         msgDict['co_name'] = co_name
         msgDict['co_filename'] = co_filename
         msgDict['co_lineno'] = co_lineno
-        msgDict['lockTime'] = util.FmtDate(lockTime)
+        msgDict['lockTime'] = lockTime
         raise UserError('AdminReportItemLocked', msgDict)
 
 
@@ -416,13 +419,13 @@ class invCache(service.Service):
 
 
     def CloseContainer(self, id_):
-        wnd = sm.GetService('window').GetWindow('loot_%s' % id_)
+        wnd = uicls.Window.GetIfOpen(windowID='loot_%s' % id_)
         if wnd is None:
-            wnd = sm.GetService('window').GetWindow('shipCargo_%s' % id_)
+            wnd = uicls.Window.GetIfOpen(windowID='shipCargo_%s' % id_)
             if wnd is None:
-                wnd = sm.GetService('window').GetWindow('drones_%s' % id_)
+                wnd = uicls.Window.GetIfOpen(windowID='drones_%s' % id_)
         if wnd is not None and not wnd.destroyed:
-            wnd.SelfDestruct()
+            wnd.Close()
         else:
             self.LogInfo('CloseContainer window NOT found')
 
@@ -442,7 +445,7 @@ class invCache(service.Service):
 
 
     def GetInventory(self, containerid, param1 = None):
-        if containerid == const.containerHangar:
+        if containerid in (const.containerHangar, const.containerCorpMarket):
             if self._invCache__stationID != session.stationid2:
                 self.InvalidateCache()
             inventoryMgr = self.stationInventoryMgr
@@ -471,7 +474,7 @@ class invCache(service.Service):
         if not self.inventories.has_key(key):
             inv = inventoryMgr.GetInventory(containerid, param1)
             inv.SetSessionCheck(sessionCheckParams)
-            self.inventories[key] = invCacheContainer(inv, key)
+            self.inventories[key] = invCacheContainer(inv, key, self)
         return self.inventories[key]
 
 
@@ -499,7 +502,7 @@ class invCache(service.Service):
             else:
                 inv = inventoryMgr.GetInventoryFromId(itemid, passive)
                 inv.SetSessionCheck(sessionCheckParams)
-                self.inventories[key] = invCacheContainer(inv, key)
+                self.inventories[key] = invCacheContainer(inv, key, self)
                 return self.inventories[key]
         except UserError as e:
             if e.args[0] == 'CrpAccessDenied':
@@ -649,7 +652,7 @@ class inv5MinCacheContainer():
     def ListStations(self, blueprintsOnly = 0, forCorp = 0):
         self._inv5MinCacheContainer__EnterCriticalSection('ListStations')
         try:
-            now = blue.os.GetTime()
+            now = blue.os.GetWallclockTime()
             if forCorp:
                 if util.IsNPC(eve.session.corpid):
                     return []
@@ -680,7 +683,7 @@ class inv5MinCacheContainer():
     def ListStationBlueprintItems(self, locationID, stationID, forCorp = 0):
         try:
             self._inv5MinCacheContainer__EnterCriticalSection('ListStationBlueprintItems', locationID)
-            now = blue.os.GetTime()
+            now = blue.os.GetWallclockTime()
             if forCorp:
                 if self.cachedStationBpItemsCorp.has_key(locationID):
                     if self.cachedStationBpItemsCorp[locationID][0] + MIN * 5 < now:
@@ -705,7 +708,7 @@ class inv5MinCacheContainer():
     def ListStationItems(self, stationID):
         try:
             self._inv5MinCacheContainer__EnterCriticalSection('ListStationItems', stationID)
-            now = blue.os.GetTime()
+            now = blue.os.GetWallclockTime()
             if self.cachedStationItems.has_key(stationID):
                 if self.cachedStationItems[stationID][0] + MIN * 5 < now:
                     del self.cachedStationItems[stationID]
@@ -726,7 +729,7 @@ class inv5MinCacheContainer():
 
 
     def List(self):
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         if self.listed is not None:
             if self.listTime + MIN * 5 < now:
                 self.listed = None
@@ -762,7 +765,8 @@ class invCacheContainer():
     __guid__ = 'invCache.invCacheContainer'
     __update_on_reload__ = 1
 
-    def __init__(self, moniker, key):
+    def __init__(self, moniker, key, broker):
+        self.broker = broker
         self.key = key
         self.moniker = PasswordHandlerObjectWrapper(moniker)
         self.cachedItems = {}
@@ -818,7 +822,7 @@ class invCacheContainer():
 
 
     def MakeDBLessItemReal(self, itemKey, quantity = None, preferMerge = True):
-        inv = eve.GetInventoryFromId(itemKey[0])
+        inv = self.broker.GetInventoryFromId(itemKey[0])
         useHangar = False
         useCargoBay = False
         if session.stationid2:
@@ -851,32 +855,32 @@ class invCacheContainer():
             raise UserError('CannotPlaceItemInsideItself')
         success = False
         oldItemID = itemID
-        sm.GetService('invCache').TryLockItem(itemID, 'lockAddItemToContainer', {'containerType': cfg.invtypes.Get(self.GetTypeID()).typeName}, 1)
+        self.broker.TryLockItem(itemID, 'lockAddItemToContainer', {'containerType': self.GetTypeID()}, 1)
         try:
             if type(itemID) is tuple:
                 itemID = self.MakeDBLessItemReal(itemID, kw.get('qty', None))
                 if itemID is None:
                     return 
                 sourceID = session.shipid
-                if session.stationid:
-                    sourceID = session.stationid
+                if session.stationid2:
+                    sourceID = session.stationid2
             success = True
 
         finally:
             if not success or oldItemID != itemID:
-                sm.GetService('invCache').UnlockItem(oldItemID)
+                self.broker.UnlockItem(oldItemID)
 
         if 'qty' in kw and kw['qty'] == 0:
             self.LogError('Trying to add a stack with 0 quantity to a container. Fix your code.')
             return 
         self.InjectCapacityToKwargs(kw)
         if oldItemID != itemID:
-            sm.GetService('invCache').TryLockItem(itemID, 'lockAddItemToContainer', {'containerType': cfg.invtypes.Get(self.GetTypeID()).typeName}, 1)
+            self.broker.TryLockItem(itemID, 'lockAddItemToContainer', {'containerType': self.GetTypeID()}, 1)
         try:
             return self.moniker.Add(itemID, sourceID, **kw)
 
         finally:
-            sm.GetService('invCache').UnlockItem(itemID)
+            self.broker.UnlockItem(itemID)
 
 
 
@@ -899,8 +903,8 @@ class invCacheContainer():
                 continue
             if sm.GetService('corp').IsItemIDLocked(itemID):
                 continue
-            if not sm.GetService('invCache').IsItemLocked(itemID):
-                if sm.GetService('invCache').TryLockItem(itemID):
+            if not self.broker.IsItemLocked(itemID):
+                if self.broker.TryLockItem(itemID):
                     if type(itemID) is tuple:
                         itemIDsToConvert.append(itemID)
                     lockedItems.add(itemID)
@@ -913,24 +917,24 @@ class invCacheContainer():
             chargeIDs = set()
             for itemID in itemIDsToConvert:
                 chargeID = self.MakeDBLessItemReal(itemID, preferMerge=preferMerge, quantity=kw.get('qty', None))
-                sm.GetService('invCache').UnlockItem(itemID)
+                self.broker.UnlockItem(itemID)
                 lockedItems.remove(itemID)
-                sm.GetService('invCache').TryLockItem(chargeID)
+                self.broker.TryLockItem(chargeID)
                 lockedItems.add(chargeID)
                 chargeIDs.add(chargeID)
 
             nonCharges = lockedItems - chargeIDs
             if len(chargeIDs) > 0:
                 chargeSourceID = session.shipid
-                if session.stationid and itemIDsToConvert[0][0] != self.itemID:
-                    chargeSourceID = session.stationid
+                if session.stationid2 and itemIDsToConvert[0][0] != self.itemID:
+                    chargeSourceID = session.stationid2
                 self.moniker.MultiAdd(list(chargeIDs), chargeSourceID, **kw)
             if len(nonCharges) > 0:
                 self.moniker.MultiAdd(list(nonCharges), sourceID, **kw)
 
         finally:
             for itemID in lockedItems:
-                sm.GetService('invCache').UnlockItem(itemID)
+                self.broker.UnlockItem(itemID)
 
 
 
@@ -944,8 +948,8 @@ class invCacheContainer():
                 continue
             if sm.GetService('corp').IsItemIDLocked(bookmarkID):
                 continue
-            if not sm.GetService('invCache').IsItemLocked(bookmarkID):
-                if sm.GetService('invCache').TryLockItem(bookmarkID):
+            if not self.broker.IsItemLocked(bookmarkID):
+                if self.broker.TryLockItem(bookmarkID):
                     bookmarkIDsToLock.append(bookmarkID)
 
         if not len(bookmarkIDsToLock):
@@ -955,7 +959,7 @@ class invCacheContainer():
 
         finally:
             for bookmarkID in bookmarkIDsToLock:
-                sm.GetService('invCache').UnlockItem(bookmarkID)
+                self.broker.UnlockItem(bookmarkID)
 
 
 
@@ -971,7 +975,7 @@ class invCacheContainer():
             ids.append(bookmark.bookmarkID)
 
         if len(ids):
-            sm.GetService('addressbook').DeleteBookmarks(ids, alreadyDeleted=1)
+            sm.GetService('bookmarkSvc').HandleBookmarksDeleted(ids)
 
 
 
@@ -994,8 +998,8 @@ class invCacheContainer():
                 typeCounts[each.typeID] += 1
                 if typeCounts[each.typeID] > 1:
                     hasSomethingToStack = True
-            if not sm.GetService('invCache').IsItemLocked(each.itemID):
-                if sm.GetService('invCache').TryLockItem(each.itemID):
+            if not self.broker.IsItemLocked(each.itemID):
+                if self.broker.TryLockItem(each.itemID):
                     itemIDsToLock.append(each.itemID)
 
         if not len(itemIDsToLock):
@@ -1006,7 +1010,7 @@ class invCacheContainer():
 
         finally:
             for itemID in itemIDsToLock:
-                sm.GetService('invCache').UnlockItem(itemID)
+                self.broker.UnlockItem(itemID)
 
 
 
@@ -1020,24 +1024,32 @@ class invCacheContainer():
                 continue
             if sm.GetService('corp').IsItemIDLocked(sourceid):
                 continue
-            if not sm.GetService('invCache').IsItemLocked(sourceid):
-                if sm.GetService('invCache').TryLockItem(sourceid):
+            if not self.broker.IsItemLocked(sourceid):
+                if self.broker.TryLockItem(sourceid):
                     itemIDsToLock.append(sourceid)
 
         if not len(itemIDsToLock):
             return 
         try:
-            for (i, (sourceid, destid, qty,),) in enumerate(ops):
+            dbLessOps = []
+            for (sourceid, destid, qty,) in copy.copy(ops):
                 if type(sourceid) is tuple:
                     args = [sourceid, destid, qty]
                     args[0] = self.MakeDBLessItemReal(args[0])
-                    ops[i] = args
+                    dbLessOps.append(args)
+                    ops.remove((sourceid, destid, qty))
 
-            return self.moniker.MultiMerge(ops, sourceContainerID)
+            self.LogInfo('MultiMerge - merging ops = ', len(ops), ' dbLessOps ', len(dbLessOps))
+            if len(dbLessOps) > 0:
+                dbLessSourceContainerID = session.stationid if session.stationid else sourceContainerID
+                self.moniker.MultiMerge(dbLessOps, dbLessSourceContainerID)
+            if len(ops) > 0:
+                self.moniker.MultiMerge(ops, sourceContainerID)
+            return 
 
         finally:
             for itemID in itemIDsToLock:
-                sm.GetService('invCache').UnlockItem(itemID)
+                self.broker.UnlockItem(itemID)
 
 
 
@@ -1067,7 +1079,7 @@ class invCacheContainer():
                         self.cachedItems[subloc.itemID] = subloc.invItem
 
             self.listed = 1
-        res = dbutil.CRowset(sm.GetService('invCache').GetItemHeader(), [])
+        res = dbutil.CRowset(self.broker.GetItemHeader(), [])
         if flag is None:
             if self.key[0] == const.containerHangar:
                 flag = const.flagHangar
@@ -1212,9 +1224,9 @@ class invCacheContainer():
             if actualCapacity is None:
                 actualCapacity = cfg.invtypes.Get(typeID).capacity
         used = 0.0
-        isCargoLink = cfg.invtypes.Get(typeID).groupID == const.groupPlanetaryCustomsOffices
+        isCustomsOffice = cfg.invtypes.Get(typeID).groupID == const.groupPlanetaryCustomsOffices
         for each in listing:
-            if isCargoLink and each.ownerID != session.charid:
+            if isCustomsOffice and flag == const.flagHangar and each.ownerID != session.charid:
                 continue
             if each.flagID == flag:
                 used = used + cfg.GetItemVolume(each)
@@ -1271,12 +1283,12 @@ class invCacheContainer():
         if location == const.containerHangar:
             if owner is not None and owner not in [item.ownerID, oldItem.ownerID]:
                 return 
-            if not eve.session.stationid:
+            if not session.stationid2:
                 return 
             if location == const.containerHangar and owner is not None and item.ownerID == owner and const.ixOwnerID in change:
                 self.cachedItems[item.itemID] = item
                 return 
-            if item.locationID != eve.session.stationid or item.stacksize == 0 or item.ownerID != eve.session.charid:
+            if item.locationID != session.stationid2 or item.stacksize == 0 or item.ownerID != eve.session.charid:
                 if self.capacityByFlag.has_key(oldItem.flagID):
                     del self.capacityByFlag[oldItem.flagID]
                 elif self.item and self.IsFlagCapacityLocationWide(self.item, oldItem.flagID):
@@ -1293,9 +1305,9 @@ class invCacheContainer():
         elif location == const.containerCorpMarket:
             if owner is not None and owner not in [item.ownerID, oldItem.ownerID]:
                 return 
-            if not eve.session.stationid:
+            if not session.stationid2:
                 return 
-            if item.locationID != eve.session.stationid or item.stacksize == 0 or item.ownerID != eve.session.corpid:
+            if item.locationID != session.stationid2 or item.stacksize == 0 or item.ownerID != eve.session.corpid:
                 if self.capacityByFlag.has_key(oldItem.flagID):
                     del self.capacityByFlag[oldItem.flagID]
                 elif self.item and self.IsFlagCapacityLocationWide(self.item, oldItem.flagID):
@@ -1308,7 +1320,7 @@ class invCacheContainer():
                     del self.capacityByFlag[oldItem.flagID]
                 elif self.item and self.IsFlagCapacityLocationWide(self.item, oldItem.flagID):
                     self.capacityByLocation = None
-                if oldItem.locationID != eve.session.stationid and item.locationID == eve.session.stationid:
+                if oldItem.locationID != session.stationid2 and item.locationID == session.stationid2:
                     if self.cachedItems.has_key(item.itemID):
                         del self.cachedItems[item.itemID]
                     self.cachedItems[item.itemID] = item
@@ -1373,12 +1385,12 @@ class PasswordHandlerCallWrapper():
                 if what.args[0] in ('SCGeneralPasswordRequired', 'SCConfigPasswordRequired') and self.__method__ != 'SetPassword':
                     if what.args[0] == 'SCGeneralPasswordRequired':
                         which = const.SCCPasswordTypeGeneral
-                        caption = mls.UI_SHARED_ACCESSPASSWORDREQUIRED
-                        label = mls.UI_SHARED_PLEASE_ENTER_ACCESSPASSWORD
+                        caption = localization.GetByLabel('UI/Inventory/ItemActions/AccessPasswordRequiredCaption')
+                        label = localization.GetByLabel('UI/Inventory/ItemActions/PleaseEnterAccessPassword')
                     else:
                         which = const.SCCPasswordTypeConfig
-                        caption = mls.UI_SHARED_CONFIGURATION_PASSWORD_REQUIRED
-                        label = mls.UI_SHARED_PLEASE_ENTER_CONFIGURATIONPASSWORD
+                        caption = localization.GetByLabel('UI/Inventory/ItemActions/ConfigurationPasswordRequiredCaption')
+                        label = localization.GetByLabel('UI/Inventory/ItemActions/PleaseEnterConfigurationPassword')
                     passw = uix.NamePopup(caption=caption, label=label, setvalue='', icon=-1, modal=1, btns=None, maxLength=16, passwordChar='*')
                     if passw is None:
                         raise 

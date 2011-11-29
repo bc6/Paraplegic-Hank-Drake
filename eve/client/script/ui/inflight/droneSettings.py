@@ -10,14 +10,15 @@ import service
 import listentry
 import base
 import math
-import draw
 import sys
 import uicls
 import uiconst
+import localization
 
 class DroneSettings(uicls.Window):
     __guid__ = 'form.DroneSettings'
     __notifyevents__ = ['OnDroneSettingChanges']
+    default_windowID = 'droneSettings'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -29,7 +30,7 @@ class DroneSettings(uicls.Window):
             self.droneBehaviour[const.attributeDroneIsAggressive] = settings.char.ui.Get('droneSettingAttributeID ' + str(const.attributeDroneIsAggressive), 0)
         self.tempStuff = []
         self.scope = 'inflight'
-        self.SetCaption(mls.UI_INFLIGHT_DRONE_SETTINGS)
+        self.SetCaption(localization.GetByLabel('UI/Drones/DroneSettings'))
         self.MakeUnResizeable()
         self.SetTopparentHeight(4)
         self.SetWndIcon(None)
@@ -46,11 +47,11 @@ class DroneSettings(uicls.Window):
         self.aggresssionRadioButton.left = 10
         for (cfgname, value, label, checked, group,) in [['droneAggression',
           0,
-          mls.UI_INFLIGHT_DRONE_ISPASSIVE,
+          localization.GetByLabel('UI/Drones/AggressionStatePassive'),
           settings.char.ui.Get('droneAggression', self.droneAggressionDefVal) == 0,
           'aggression'], ['droneAggression',
           1,
-          mls.UI_INFLIGHT_DRONE_ISAGGRESSIVE,
+          localization.GetByLabel('UI/Drones/AggressionStateAggressive'),
           settings.char.ui.Get('droneAggression', self.droneAggressionDefVal) == 1,
           'aggression']]:
             self.tempStuff.append(uicls.Checkbox(text=label, parent=self.aggresssionRadioButton, configName=cfgname, retval=value, checked=checked, groupname=group, callback=self.CheckBoxChange))
@@ -58,11 +59,11 @@ class DroneSettings(uicls.Window):
         self.aggression = self.tempStuff
         droneFFContainer = uicls.Container(name='droneFocusFireParent', parent=droneFocusFireParent, pos=(0, 0, 0, 0))
         droneFFContainer.left = 10
-        self.droneIsFocusFire = uicls.Checkbox(text=mls.UI_INFLIGHT_FOCUS_FIRE, parent=droneFFContainer, configName='droneFocusFire', retval=None, checked=settings.char.ui.Get('droneFocusFire', self.droneFFDefVal), callback=self.CheckBoxChange)
-        uix.GetContainerHeader(mls.UI_INFLIGHT_FIGHTER_SETTINGS, fighterFollowParent, 0)
+        self.droneIsFocusFire = uicls.Checkbox(text=localization.GetByLabel('UI/Drones/AttackModeFocusFire'), parent=droneFFContainer, configName='droneFocusFire', retval=None, checked=settings.char.ui.Get('droneFocusFire', self.droneFFDefVal), callback=self.CheckBoxChange)
+        uix.GetContainerHeader(localization.GetByLabel('UI/Drones/FighterSettings'), fighterFollowParent, 0)
         fafContainer = uicls.Container(name='droneFocusFireParent', parent=fighterFollowParent, pos=(0, 0, 0, 0))
         fafContainer.left = 10
-        self.fighterAttackAndFollow = uicls.Checkbox(text=mls.UI_INFLIGHT_DRONE_ATTACK_AND_FOLLOW, parent=fafContainer, configName='fighterAttackAndFollow', retval=None, checked=settings.char.ui.Get('fighterAttackAndFollow', self.fafDefVal), callback=self.CheckBoxChange)
+        self.fighterAttackAndFollow = uicls.Checkbox(text=localization.GetByLabel('UI/Drones/AttackModeAttackAndFollow'), parent=fafContainer, configName='fighterAttackAndFollow', retval=None, checked=settings.char.ui.Get('fighterAttackAndFollow', self.fafDefVal), callback=self.CheckBoxChange)
 
 
 

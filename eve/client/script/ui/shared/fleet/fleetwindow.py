@@ -10,6 +10,8 @@ import uthread
 import uicls
 import fleetbr
 import fleetcommon
+import localization
+import fontConst
 BROADCAST_HEIGHT = 46
 
 class FleetWindow(uicls.Window):
@@ -17,6 +19,7 @@ class FleetWindow(uicls.Window):
     __notifyevents__ = ['OnFleetBroadcast_Local', 'OnSpeakingEvent_Local', 'OnBroadcastScopeChange']
     default_width = 400
     default_height = 300
+    default_windowID = 'fleetwindow'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -24,14 +27,14 @@ class FleetWindow(uicls.Window):
         self.isFlat = settings.user.ui.Get('flatFleetView', True)
         self.scope = 'all'
         self.broadcastMenuItems = []
-        self.SetCaption(mls.UI_FLEET_FLEET)
+        self.SetCaption(localization.GetByLabel('UI/Fleet/Fleet'))
         self.SetTopparentHeight(0)
         self.SetWndIcon('53_16')
         self.SetHeaderIcon()
         hicon = self.sr.headerIcon
         hicon.GetMenu = self.GetFleetMenuTop
         hicon.expandOnLeft = 1
-        hicon.hint = mls.UI_FLEET_FORMFLEET
+        hicon.hint = localization.GetByLabel('UI/Fleet/FleetWindow/FleetMenuHint')
         currentryActiveColumn = settings.user.ui.Get('activeSortColumns', {})
         self.sr.main = uiutil.GetChild(self, 'main')
         self.InitBroadcastBottom()
@@ -48,14 +51,14 @@ class FleetWindow(uicls.Window):
         myFleetParent.children.append(self.startPage)
         self.sr.tabs = uicls.TabGroup(name='fleettabs', parent=self.sr.main, idx=0)
         tabs = []
-        inFleetTabs = [[mls.UI_FLEET_MYFLEET,
+        inFleetTabs = [[localization.GetByLabel('UI/Fleet/FleetWindow/MyFleet'),
           myFleetParent,
           self,
-          'myfleet'], [mls.UI_FLEET_HISTORY,
+          'myfleet'], [localization.GetByLabel('UI/Fleet/FleetWindow/FleetHistory'),
           broadcastsParent,
           self,
           'broadcasts']]
-        fleetFinderTabs = [[mls.UI_FLEET_FLEETFINDER,
+        fleetFinderTabs = [[localization.GetByLabel('UI/Fleet/FleetWindow/FleetFinder'),
           fleetFinderParent,
           self,
           'fleetfinder']]
@@ -64,16 +67,16 @@ class FleetWindow(uicls.Window):
         tabs.extend(fleetFinderTabs)
         self.sr.tabs.Startup(tabs, 'fleettabs', autoselecttab=1)
         if session.fleetid:
-            tabToOpen = mls.UI_FLEET_MYFLEET
+            tabToOpen = localization.GetByLabel('UI/Fleet/FleetWindow/MyFleet')
         else:
-            tabToOpen = mls.UI_FLEET_FLEETFINDER
+            tabToOpen = localization.GetByLabel('UI/Fleet/FleetWindow/FleetFinder')
         uthread.new(self.sr.tabs.ShowPanelByName, tabToOpen)
         if settings.user.ui.Get('fleetFinderBroadcastsVisible', False) and session.fleetid:
             self.ToggleBroadcasts()
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         pass
 
 
@@ -97,18 +100,15 @@ class FleetWindow(uicls.Window):
         broadcastHeaderParent.padBottom = 3
         expanderCont = uicls.Container(name='expanderCont', parent=broadcastHeaderParent, align=uiconst.TORIGHT, state=uiconst.UI_NORMAL, width=18)
         expanderCont.OnClick = self.ToggleBroadcasts
-        c = '<b>%s</b>' % mls.UI_FLEET_BROADCASTS
-        c = ''
-        t = uicls.Label(text=c, parent=broadcastHeaderParent, state=uiconst.UI_DISABLED, left=6, align=uiconst.CENTERLEFT)
-        broadcastHeaderParent.height = max(16, t.textheight + 2)
+        broadcastHeaderParent.height = 16
         self.sr.broadcastHeaderParent = broadcastHeaderParent
         expander = uicls.Sprite(parent=expanderCont, pos=(5, 0, 11, 11), name='expandericon', state=uiconst.UI_DISABLED, texturePath='res:/UI/Texture/Shared/expanderUp.png', align=uiconst.TOPRIGHT)
         self.sr.broadcastExpanderIcon = expander
         uix.Flush(self.sr.broadcastBottom)
         self.sr.lastBroadcastCont = uicls.Container(name='lastBroadcastCont', parent=broadcastHeaderParent, align=uiconst.TOALL, pos=(0, 0, 0, 0), state=uiconst.UI_NORMAL)
-        t = uicls.Label(text='<color=0xFF999999>%s</color>' % mls.UI_FLEET_NOBROADCASTS, parent=self.sr.lastBroadcastCont, left=6, top=1, width=500, autowidth=False, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/Fleet/FleetBroadcast/NoBroadcasts'), parent=self.sr.lastBroadcastCont, left=6, top=1, width=500, state=uiconst.UI_NORMAL)
         self.sr.lastVoiceEventCont = uicls.Container(name='lastVoiceEventCont', parent=self.sr.broadcastBottom, align=uiconst.TOPLEFT, top=0, left=0, height=20, width=200, state=uiconst.UI_NORMAL)
-        uicls.Label(text='<color=0xFF999999>%s</color>' % mls.UI_FLEET_NOVOICEBROADCASTS, parent=self.sr.lastVoiceEventCont, left=6, top=0, width=500, autowidth=False)
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/Fleet/FleetBroadcast/NoVoiceBroadcasts'), parent=self.sr.lastVoiceEventCont, left=6, top=0, width=500)
         self.sr.actionsCont = uicls.Container(name='actionsCont', parent=self.sr.broadcastBottom, align=uiconst.TOBOTTOM, height=26, state=uiconst.UI_NORMAL)
         self.sr.toggleCont = uicls.Container(name='toggleCont', parent=self.sr.actionsCont, align=uiconst.TOBOTTOM, height=26, state=uiconst.UI_PICKCHILDREN)
         self.sr.line = uicls.Container(name='lineparent', align=uiconst.TOTOP, parent=self.sr.actionsCont, idx=0, height=1)
@@ -184,34 +184,34 @@ class FleetWindow(uicls.Window):
     def GetFleetMenuTop(self):
         fleetSvc = sm.GetService('fleet')
         if session.fleetid is None:
-            ret = [(mls.UI_FLEET_FORMFLEET, lambda : sm.GetService('menu').InviteToFleet(eve.session.charid))]
+            ret = [(localization.GetByLabel('UI/Fleet/FleetWindow/FormFleet'), lambda : sm.GetService('menu').InviteToFleet(eve.session.charid))]
             ret.append(None)
         else:
-            ret = [(mls.UI_FLEET_LEAVE, fleetSvc.LeaveFleet)]
+            ret = [(localization.GetByLabel('UI/Fleet/LeaveMyFleet'), fleetSvc.LeaveFleet)]
             ret.append(None)
             if session.fleetrole in [const.fleetRoleLeader, const.fleetRoleWingCmdr, const.fleetRoleSquadCmdr]:
-                ret.append((mls.UI_FLEET_REGROUP, lambda : fleetSvc.Regroup()))
+                ret.append((localization.GetByLabel('UI/Fleet/FleetWindow/Regroup'), lambda : fleetSvc.Regroup()))
             if fleetSvc.HasActiveBeacon(session.charid):
-                ret.append((mls.UI_FLEET_BROADCASTBEACON, lambda : fleetSvc.SendBroadcast_JumpBeacon()))
+                ret.append((localization.GetByLabel('UI/Fleet/BroadcastJumpBeacon'), lambda : fleetSvc.SendBroadcast_JumpBeacon()))
             if fleetSvc.IsBoss():
                 options = fleetSvc.GetOptions()
-                ret.append(([mls.UI_FLEET_SETFREEMOVE, mls.UI_FLEET_UNSETFREEMOVE][options.isFreeMove], lambda : fleetSvc.SetOptions(isFreeMove=not options.isFreeMove)))
-                ret.append(([mls.UI_FLEET_SETVOICEENABLED, mls.UI_FLEET_UNSETVOICEENABLED][options.isVoiceEnabled], lambda : fleetSvc.SetOptions(isVoiceEnabled=not options.isVoiceEnabled)))
+                ret.append(([localization.GetByLabel('UI/Fleet/FleetWindow/SetFreeMove'), localization.GetByLabel('UI/Fleet/FleetWindow/UnsetFreeMove')][options.isFreeMove], lambda : fleetSvc.SetOptions(isFreeMove=not options.isFreeMove)))
+                ret.append(([localization.GetByLabel('UI/Fleet/FleetWindow/SetVoiceEnabled'), localization.GetByLabel('UI/Fleet/FleetWindow/UnsetVoiceEnabled')][options.isVoiceEnabled], lambda : fleetSvc.SetOptions(isVoiceEnabled=not options.isVoiceEnabled)))
             ret.append(None)
-            ret.extend([None, [mls.UI_FLEET_BROADCASTS, self.broadcastMenuItems]])
-            ret.append((mls.UI_FLEET_BROADCASTSETTINGS, lambda : sm.GetService('window').GetWindow('broadcastsettings', decoClass=form.BroadcastSettings, maximize=1, create=1)))
-            ret.append(([mls.UI_FLEET_SETHEIRARCHY, mls.UI_FLEET_SETFLAT][(not self.isFlat)], self.ToggleFlat))
-            ret.extend([None, [mls.UI_FLEET_EXPORTLOOTHISTORY, self.ExportLootHistory]])
+            ret.extend([None, [localization.GetByLabel('UI/Fleet/FleetWindow/Broadcasts'), self.broadcastMenuItems]])
+            ret.append((localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastSettings'), lambda : form.BroadcastSettings.Open()))
+            ret.append(([localization.GetByLabel('UI/Fleet/FleetWindow/ViewAsHierarchy'), localization.GetByLabel('UI/Fleet/FleetWindow/ViewAsFlatList')][(not self.isFlat)], self.ToggleFlat))
+            ret.extend([None, [localization.GetByLabel('UI/Fleet/FleetWindow/ExportLootHistory'), self.ExportLootHistory]])
             if fleetSvc.IsCommanderOrBoss():
                 ret.append(None)
-                ret.append((mls.UI_FLEET_SHOWFLEETCOMPOSITION, fleetSvc.OpenFleetCompositionWindow))
+                ret.append((localization.GetByLabel('UI/Fleet/FleetWindow/ShowFleetComposition'), fleetSvc.OpenFleetCompositionWindow))
             if fleetSvc.IsBoss():
-                ret.append((mls.UI_FLEET_OPENJOINREQUESTS, fleetSvc.OpenJoinRequestWindow))
+                ret.append((localization.GetByLabel('UI/Fleet/FleetWindow/OpenJoinRequest'), fleetSvc.OpenJoinRequestWindow))
                 if fleetSvc.options.isRegistered:
-                    ret.append((mls.UI_FLEET_EDITREGISTRATION, sm.GetService('fleet').OpenRegisterFleetWindow))
-                    ret.append((mls.UI_FLEET_UNREGISTER, sm.GetService('fleet').UnregisterFleet))
+                    ret.append((localization.GetByLabel('UI/Fleet/FleetWindow/EditAdvert'), sm.GetService('fleet').OpenRegisterFleetWindow))
+                    ret.append((localization.GetByLabel('UI/Fleet/FleetWindow/RemoveAdvert'), sm.GetService('fleet').UnregisterFleet))
                 else:
-                    ret.append((mls.UI_FLEET_REGISTERFLEET, sm.GetService('fleet').OpenRegisterFleetWindow))
+                    ret.append((localization.GetByLabel('UI/Fleet/FleetWindow/CreateAdvert'), sm.GetService('fleet').OpenRegisterFleetWindow))
         return ret
 
 
@@ -227,23 +227,16 @@ class FleetWindow(uicls.Window):
     def UpdateHeader(self):
         if self and not self.destroyed:
             self.sr.node = self.sr.myFleetContent.GetHeaderData('fleet', session.fleetid, 0)
-            fleetName = mls.UI_FLEET_FLEET
-            cmdrTextAlpha = 190
-            fleetName %= {'alpha': cmdrTextAlpha}
-            self.sr.headerIcon.hint = mls.UI_FLEET_FLEETMENU
             nMembers = len(self.sr.myFleetContent.members)
             info = sm.GetService('fleet').GetMemberInfo(session.charid)
             if info is None:
                 return 
             if info.role == const.fleetRoleLeader:
-                caption = '%s (%d)' % (fleetName, nMembers)
+                caption = localization.GetByLabel('UI/Fleet/FleetWindow/FleetHeaderBoss', numMembers=nMembers)
             elif info.role == const.fleetRoleWingCmdr:
-                caption = '%s (%d) / %s' % (fleetName, nMembers, info.wingName)
+                caption = localization.GetByLabel('UI/Fleet/FleetWindow/FleetHeaderWingCmdr', numMembers=nMembers, wingName=info.wingName)
             else:
-                caption = '%s (%d) / %s / %s' % (fleetName,
-                 nMembers,
-                 info.wingName,
-                 info.squadName)
+                caption = localization.GetByLabel('UI/Fleet/FleetWindow/FleetHeaderSquadMember', numMembers=nMembers, wingName=info.wingName, squadName=info.squadName)
             self.SetCaption(caption)
 
 
@@ -262,7 +255,7 @@ class FleetWindow(uicls.Window):
             par = xtriui.FleetAction(parent=self.sr.actionsCont, align=uiconst.TOPLEFT, top=4, left=left, width=21, height=16, state=uiconst.UI_NORMAL)
             par.OnClick = BroadcastSender(name)
             left += hmargin + par.width + 1
-            hint = '%s: %s' % (mls.UI_FLEET_BROADCAST, getattr(mls, 'UI_FLEET_BROADCAST_%s' % name.upper()))
+            hint = fleetbr.GetBroadcastName(name)
             icon = fleetbr.types[name]['smallIcon']
             par.Startup(hint, icon)
             par.align = uiconst.RELATIVE
@@ -270,7 +263,7 @@ class FleetWindow(uicls.Window):
 
         self.SetBroadcastScopeButton()
         if eve.session.fleetrole in (const.fleetRoleLeader, const.fleetRoleWingCmdr, const.fleetRoleSquadCmdr):
-            self.broadcastMenuItems.append(('%s: %s' % (mls.UI_FLEET_BROADCAST, mls.UI_FLEET_TRAVELTOME), sm.GetService('fleet').SendBroadcast_TravelTo, (eve.session.solarsystemid2,)))
+            self.broadcastMenuItems.append((localization.GetByLabel('UI/Fleet/FleetBroadcast/Commands/BroadcastTravelToMe'), sm.GetService('fleet').SendBroadcast_TravelTo, (eve.session.solarsystemid2,)))
         self.broadcastMenuItems += [None]
 
 
@@ -288,7 +281,7 @@ class FleetWindow(uicls.Window):
     def SetBroadcastScopeButton(self):
         uix.Flush(self.sr.toggleCont)
         scope = sm.GetService('fleet').broadcastScope
-        hint = mls.UI_FLEET_CYCLEBROADCASTSCOPE % {'name': fleetbr.GetBroadcastScopeName(scope)}
+        hint = localization.GetByLabel('UI/Fleet/FleetBroadcast/CycleBroadcastScope', scope=fleetbr.GetBroadcastScopeName(scope))
         self.sr.broadcastScopeButton = par = xtriui.FleetAction(parent=self.sr.toggleCont, align=uiconst.TOPRIGHT, top=4, left=4, width=21, height=16, state=uiconst.UI_NORMAL)
         icon = {fleetcommon.BROADCAST_DOWN: 'ui_73_16_28',
          fleetcommon.BROADCAST_UP: 'ui_73_16_27',
@@ -308,53 +301,36 @@ class FleetWindow(uicls.Window):
 
 
     def OnFleetBroadcast_Local(self, broadcast):
-        caption = fleetbr.GetCaption(broadcast.charID, broadcast.broadcastName, broadcast.broadcastExtra)
-        caption = '<b>%s</b>' % caption
+        caption = broadcast.broadcastLabel
         iconName = fleetbr.defaultIcon[1]
         t = fleetbr.types.get(broadcast.name, None)
         if t:
             iconName = t['smallIcon']
         roleIcon = fleetbr.GetRoleIconFromCharID(broadcast.charID)
         self.sr.lastBroadcastCont.Flush()
-        t = uicls.Label(text=caption, parent=self.sr.lastBroadcastCont, align=uiconst.TOALL, left=25, singleline=1, state=uiconst.UI_DISABLED)
+        t = uicls.EveLabelMedium(text=caption, parent=self.sr.lastBroadcastCont, align=uiconst.TOALL, left=25, singleline=1, state=uiconst.UI_DISABLED)
         self.sr.lastBroadcastCont.GetMenu = lambda : self.GetLastBroadcastMenu(broadcast)
         self.sr.lastBroadcastCont.OnClick = lambda : self.OnLastBroadcastClick(broadcast)
-        captionHint = broadcast.broadcastName
-        if broadcast.broadcastExtra:
-            captionHint += ' - %s' % broadcast.broadcastExtra
-        hintRole = ''
-        info = sm.GetService('fleet').GetMemberInfo(int(broadcast.charID))
-        hintRole = fleetbr.GetRankName(info)
-        if hintRole:
-            hintRole = ' - <b>%s</b>' % hintRole
-        sendByHint = '%s %s%s' % (mls.UI_FLEET_SENTBY, cfg.eveowners.Get(broadcast.charID).name, hintRole)
-        sentAtHint = '%s %s' % (mls.UI_FLEET_SENTAT, util.FmtDate(broadcast.time, 'nl'))
-        recipientsHint = '%s %s' % (mls.UI_FLEET_SENTTO, fleetbr.GetBroadcastScopeName(broadcast.scope))
-        if broadcast.where != fleetcommon.BROADCAST_UNIVERSE:
-            recipientsHint += ' (%s)' % fleetbr.GetBroadcastWhereName(broadcast.where)
-        self.sr.lastBroadcastCont.hint = '%s<br>%s<br>%s<br>%s' % (captionHint,
-         sendByHint,
-         recipientsHint,
-         sentAtHint)
+        self.sr.lastBroadcastCont.hint = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastNotificationHint', eventLabel=broadcast.broadcastLabel, time=broadcast.time, charID=broadcast.charID, range=fleetbr.GetBroadcastScopeName(broadcast.scope, broadcast.where), role=fleetbr.GetRankName(sm.GetService('fleet').GetMemberInfo(int(broadcast.charID))))
         icon = uicls.Icon(icon=iconName, parent=self.sr.lastBroadcastCont, align=uiconst.RELATIVE, pos=(6, 0, 16, 16), state=uiconst.UI_DISABLED)
         uthread.worker('fleet::flash', self.Flash, icon)
 
 
 
     def Flash(self, icon):
-        timeStart = blue.os.GetTime()
+        timeStart = blue.os.GetWallclockTime()
         period = 0.7
         cycles = 3
         duration = period * int(cycles)
         import math
         coeff = math.pi / period
         while True:
-            time = (blue.os.GetTime() - timeStart) / 10000000.0
+            time = (blue.os.GetWallclockTime() - timeStart) / 10000000.0
             if time >= duration:
                 icon.SetAlpha(1.0)
                 return 
             icon.SetAlpha(1.0 - math.sin(coeff * (time % period)))
-            blue.pyos.synchro.Sleep(10)
+            blue.pyos.synchro.SleepWallclock(10)
 
 
 
@@ -362,16 +338,14 @@ class FleetWindow(uicls.Window):
     def OnSpeakingEvent_Local(self, data):
         if self.destroyed:
             return 
-        caption = mls.UI_FLEET_ISSPEAKINGIN % {'who': data.charName,
-         'where': data.channelName}
-        caption = '<b>%s</b>' % caption
+        caption = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventSpeaking', charID=data.charID, channelName=data.channelName)
         iconName = '73_35'
         roleIcon = fleetbr.GetRoleIconFromCharID(data.charID)
         uix.Flush(self.sr.lastVoiceEventCont)
-        t = uicls.Label(text=caption, parent=self.sr.lastVoiceEventCont, align=uiconst.TOALL, left=25, singleline=1, autoheight=False, autowidth=False)
+        t = uicls.EveLabelMedium(text=caption, parent=self.sr.lastVoiceEventCont, align=uiconst.TOALL, left=25, singleline=1)
         lt = t
         lt.GetMenu = lambda : fleetbr.GetVoiceMenu(None, data.charID, data.channelID)
-        lt.hint = '%s<br>%s' % (caption, mls.UI_FLEET_BROADCASTRECEIVEDAT % {'time': util.FmtDate(data.time, 'nl')})
+        lt.hint = localization.GetByLabel('UI/Fleet/FleetBroadcast/VoiceBroadcastReceivedAt', time=data.time)
         icon = uicls.Icon(align=uiconst.RELATIVE, left=6, top=0, icon=iconName, width=16, height=16)
         icon.state = uiconst.UI_DISABLED
         self.sr.lastVoiceEventCont.children.append(icon)
@@ -397,7 +371,7 @@ class FleetWindow(uicls.Window):
 
 
     def ExportToDisk(self, header, rows, fileNameExtension):
-        date = util.FmtDate(blue.os.GetTime())
+        date = util.FmtDate(blue.os.GetWallclockTime())
         f = blue.os.CreateInstance('blue.ResFile')
         directory = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '\\EVE\\logs\\Fleetlogs\\'
         filename = '%s - %s.txt' % (fileNameExtension, date.replace(':', '.'))
@@ -422,17 +396,18 @@ class FleetWindow(uicls.Window):
 
 class FleetJoinRequestWindow(uicls.Window):
     __guid__ = 'form.FleetJoinRequestWindow'
+    default_windowID = 'FleetJoinRequestWindow'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.scope = 'all'
-        self.SetCaption(mls.UI_FLEET_JOINREQUESTS)
+        self.SetCaption(localization.GetByLabel('UI/Fleet/FleetWindow/JoinRequests'))
         self.SetMinSize([256, 75])
         self.SetTopparentHeight(0)
         self.SetWndIcon('53_16')
         self.SetTopparentHeight(0)
         self.sr.main.left = self.sr.main.width = self.sr.main.top = self.sr.main.height = const.defaultPadding
-        uicls.Label(text=mls.UI_FLEET_JOINREQUESTSHELP, parent=self.sr.main, align=uiconst.TOTOP, left=20, autowidth=False, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/Fleet/FleetWindow/JoinRequestsHelp'), parent=self.sr.main, align=uiconst.TOTOP, left=20, state=uiconst.UI_NORMAL)
         uicls.Container(name='push', parent=self.sr.main, align=uiconst.TOTOP, height=6)
         self.sr.scroll = uicls.Scroll(parent=self.sr.main)
         self.sr.scroll.multiSelect = 0
@@ -440,7 +415,7 @@ class FleetJoinRequestWindow(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         pass
 
 
@@ -450,7 +425,7 @@ class FleetJoinRequestWindow(uicls.Window):
         for joinRequest in sm.GetService('fleet').GetJoinRequests().itervalues():
             if joinRequest is None:
                 continue
-            name = cfg.eveowners.Get(joinRequest.charID).name
+            name = localization.GetByLabel('UI/Common/CharacterNameLabel', charID=joinRequest.charID)
             data = util.KeyVal()
             data.label = name
             data.props = None
@@ -472,8 +447,8 @@ class JoinRequestField(listentry.Generic):
 
     def Startup(self, *args):
         listentry.Generic.Startup(self, *args)
-        self.rejectBtn = uicls.Button(parent=self, label='<color=0xFFFF5555>%s' % mls.UI_FLEET_REJECT, left=2, func=self.RejectJoinRequest, idx=0, align=uiconst.TOPRIGHT)
-        self.acceptBtn = uicls.Button(parent=self, label='<color=0xFF55FF55>%s' % mls.UI_FLEET_ACCEPT, left=self.rejectBtn.left + self.rejectBtn.width + 2, func=self.AcceptJoinRequest, idx=0, align=uiconst.TOPRIGHT)
+        self.rejectBtn = uicls.Button(parent=self, label='<color=0xFFFF5555>' + localization.GetByLabel('UI/Fleet/RejectJoinRequest') + '</color>', left=2, func=self.RejectJoinRequest, idx=0, align=uiconst.TOPRIGHT)
+        self.acceptBtn = uicls.Button(parent=self, label='<color=0xFF55FF55>' + localization.GetByLabel('UI/Fleet/AcceptJoinRequest') + '</color>', left=self.rejectBtn.left + self.rejectBtn.width + 2, func=self.AcceptJoinRequest, idx=0, align=uiconst.TOPRIGHT)
 
 
 
@@ -484,8 +459,7 @@ class JoinRequestField(listentry.Generic):
 
     def GetHeight(self, *args):
         (node, width,) = args
-        btnHeight = uix.GetTextHeight(mls.UI_CMD_LEAVE + mls.UI_CMD_JOIN, autoWidth=1, singleLine=1, fontsize=10, hspace=1, uppercase=1) + 9
-        node.height = btnHeight + 2
+        node.height = 23
         return node.height
 
 
@@ -494,7 +468,7 @@ class JoinRequestField(listentry.Generic):
         menuSvc = sm.GetService('menu')
         charID = self.sr.node.charID
         m = []
-        m += [(mls.UI_CMD_SHOWINFO, menuSvc.ShowInfo, (int(1377),
+        m += [(localization.GetByLabel('UI/Commands/ShowInfo'), menuSvc.ShowInfo, (int(1377),
            charID,
            0,
            None,
@@ -520,20 +494,21 @@ class JoinRequestField(listentry.Generic):
 
 class FleetComposition(uicls.Window):
     __guid__ = 'form.FleetComposition'
+    default_windowId = 'FleetComposition'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.scope = 'all'
-        self.SetCaption(mls.UI_FLEET_FLEETCOMPOSITION)
-        self.SetMinSize([360, 200])
+        self.SetCaption(localization.GetByLabel('UI/Fleet/FleetComposition/FleetComposition'))
+        self.SetMinSize([390, 200])
         self.SetWndIcon()
         self.SetTopparentHeight(0)
         self.sr.main.left = self.sr.main.width = self.sr.main.top = self.sr.main.height = const.defaultPadding
         self.sr.top = uicls.Container(name='topCont', parent=self.sr.main, align=uiconst.TOTOP, height=34)
         self.sr.bottom = uicls.Container(name='bottomCont', parent=self.sr.main, align=uiconst.TOALL, pos=(0, 0, 0, 0))
         refreshButtCont = uicls.Container(name='refreshButtCont', parent=self.sr.top, align=uiconst.TORIGHT, width=80)
-        uicls.Label(text=mls.UI_FLEET_FLEETCOMPOSITIONHELP, parent=self.sr.top, align=uiconst.TOALL, left=3, autowidth=False)
-        self.sr.refreshBtn = btn = uicls.Button(parent=refreshButtCont, label=mls.UI_GENERIC_REFRESH, left=2, func=self.RefreshClick, align=uiconst.TOPRIGHT)
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/Fleet/FleetComposition/FleetCompositionHelp'), parent=self.sr.top, align=uiconst.TOALL, left=3)
+        self.sr.refreshBtn = uicls.Button(parent=refreshButtCont, label=localization.GetByLabel('UI/Commands/Refresh'), left=2, func=self.RefreshClick, align=uiconst.TOPRIGHT)
         self.sr.scrollBroadcasts = uicls.Scroll(name='scrollComposition', parent=self.sr.bottom)
         self.sr.scrollBroadcasts.multiSelect = 0
         self.LoadComposition()
@@ -553,47 +528,38 @@ class FleetComposition(uicls.Window):
             member = fleetSvc.GetMemberInfo(kv.characterID)
             if not fleetSvc.IsMySubordinate(kv.characterID) and not fleetSvc.IsBoss():
                 continue
-            roleName = member.roleName
             data = util.KeyVal()
-            name = cfg.eveowners.Get(kv.characterID).name
-            locationName = cfg.evelocations.Get(kv.solarSystemID).name
-            shipTypeName = '(%s)' % mls.UI_GENERIC_DOCKED
-            shipGroupName = '-'
+            charName = localization.GetByLabel('UI/Common/CharacterNameLabel', charID=kv.characterID)
+            locationName = localization.GetByLabel('UI/Common/LocationDynamic', location=kv.solarSystemID)
             if kv.shipTypeID is not None:
                 t = cfg.invtypes.Get(kv.shipTypeID)
                 shipTypeName = t.name
                 shipGroupName = t.Group().name
-            skillLevels = '-'
+            else:
+                shipTypeName = localization.GetByLabel('UI/Fleet/FleetComposition/Docked')
+                shipGroupName = ''
             if kv.skills:
-                skillLevels = '%d - %d - %d' % (kv.skills[2], kv.skills[1], kv.skills[0])
-            data.label = '%s<t>%s<t>%s<t>%s<t>%s<t>%s' % (name,
-             locationName,
-             shipTypeName,
-             shipGroupName,
-             roleName,
-             skillLevels)
+                skillLevels = localization.GetByLabel('UI/Fleet/FleetComposition/SkillLevels', skillLevelA=kv.skills[2], skillLevelB=kv.skills[1], skillLevelC=kv.skills[0])
+                data.hint = localization.GetByLabel('UI/Fleet/FleetComposition/SkillsHint', skillTypeA=kv.skillIDs[2], skillLevelA=kv.skills[2], skillTypeB=kv.skillIDs[1], skillLevelB=kv.skills[1], skillTypeC=kv.skillIDs[0], skillLevelC=kv.skills[0])
+            else:
+                skillLevels = ''
+            data.label = charName + '<t>' + locationName + '<t>' + shipTypeName + '<t>' + shipGroupName + '<t>' + member.roleName + '<t>' + skillLevels
             data.GetMenu = self.OnCompositionEntryMenu
-            data.cfgname = name
+            data.cfgname = charName
             data.retval = None
-            if kv.skills is not None:
-                data.hint = '%s: %s<br>%s: %s<br>%s: %s' % (mls.UI_FLEET_FLEETCOMMAND,
-                 kv.skills[2],
-                 mls.UI_FLEET_WINGCOMMAND,
-                 kv.skills[1],
-                 mls.UI_FLEET_LEADERSHIP,
-                 kv.skills[0])
             data.charID = kv.characterID
             data.shipTypeID = kv.shipTypeID
             data.solarSystemID = kv.solarSystemID
             scrolllist.append(listentry.Get('Generic', data=data))
 
         self.sr.scrollBroadcasts.sr.id = 'scrollComposition'
-        self.sr.scrollBroadcasts.Load(headers=[mls.UI_GENERIC_NAME,
-         mls.UI_GENERIC_LOCATION,
-         mls.UI_GENERIC_SHIPTYPE,
-         mls.UI_GENERIC_SHIPGROUP,
-         mls.UI_FLEET_ROLE,
-         mls.UI_GENERIC_SKILLS], contentList=scrolllist)
+        headers = [localization.GetByLabel('UI/Common/Name'),
+         localization.GetByLabel('UI/Common/Location'),
+         localization.GetByLabel('UI/Fleet/FleetComposition/ShipType'),
+         localization.GetByLabel('UI/Fleet/FleetComposition/ShipGroup'),
+         localization.GetByLabel('UI/Fleet/FleetComposition/FleetRole'),
+         localization.GetByLabel('UI/Fleet/FleetComposition/FleetSkills')]
+        self.sr.scrollBroadcasts.Load(headers=headers, contentList=scrolllist)
 
 
 
@@ -602,9 +568,9 @@ class FleetComposition(uicls.Window):
         data = entry.sr.node
         m += fleetbr.GetMenu_Member(data.charID)
         if data.solarSystemID:
-            m += [(mls.UI_GENERIC_SOLARSYSTEM, sm.GetService('menu').CelestialMenu(data.solarSystemID))]
+            m += [(localization.GetByLabel('UI/Common/SolarSystem'), sm.GetService('menu').CelestialMenu(data.solarSystemID))]
         if data.shipTypeID:
-            m += [(mls.UI_GENERIC_SHIPTYPE, sm.GetService('menu').GetMenuFormItemIDTypeID(None, data.shipTypeID, ignoreMarketDetails=0))]
+            m += [(localization.GetByLabel('UI/Common/Ship'), sm.GetService('menu').GetMenuFormItemIDTypeID(None, data.shipTypeID, ignoreMarketDetails=0))]
         return m
 
 

@@ -76,9 +76,7 @@ class LogMixin():
                     s = strx(argsList[0])
                 else:
                     s = ' '.join(map(strx, argsList))
-                for x in util.LineWrap(s, 4):
-                    logChannel.Log(x, log.LGINFO, 1, force=True)
-
+                logChannel.Log(s, log.LGINFO, 1, force=True)
             except TypeError:
                 logChannel.Log('[X]'.join(map(strx, argsList)).replace('\x00', '\\0'), log.LGINFO, 1, force=True)
                 sys.exc_clear()
@@ -96,9 +94,7 @@ class LogMixin():
                     s = strx(argsList[0])
                 else:
                     s = ' '.join(map(strx, argsList))
-                for x in util.LineWrap(s, 4):
-                    self.logChannel.Log(x, log.LGINFO, 1, force=True)
-
+                self.logChannel.Log(s, log.LGINFO, 1, force=True)
             except TypeError:
                 self.logChannel.Log('[X]'.join(map(strx, argsList)).replace('\x00', '\\0'), log.LGINFO, 1, force=True)
                 sys.exc_clear()
@@ -116,9 +112,9 @@ class LogMixin():
                     s = strx(argsList[0])
                 else:
                     s = ' '.join(map(strx, argsList))
+                if self.logChannel.IsOpen(log.LGWARN):
+                    self.logChannel.Log(s, log.LGWARN, 1, force=True)
                 for x in util.LineWrap(s, 10):
-                    if self.logChannel.IsOpen(log.LGWARN):
-                        self.logChannel.Log(x, log.LGWARN, 1, force=True)
                     if charsession and not boot.role == 'client':
                         charsession.LogSessionHistory(x, None, 1)
 
@@ -147,9 +143,9 @@ class LogMixin():
                     s = strx(argsList[0])
                 else:
                     s = ' '.join(map(strx, argsList))
+                if self.logChannel.IsOpen(log.LGERR):
+                    self.logChannel.Log(s, log.LGERR, 1)
                 for x in util.LineWrap(s, 40):
-                    if self.logChannel.IsOpen(log.LGERR):
-                        self.logChannel.Log(x, log.LGERR, 1)
                     if charsession:
                         charsession.LogSessionHistory(x, None, 1)
 
@@ -178,9 +174,7 @@ class LogMixin():
                     s = strx(argsList[0])
                 else:
                     s = ' '.join(map(strx, argsList))
-                for x in util.LineWrap(s, 4):
-                    self.logChannel.Log(x, log.LGNOTICE, 1, force=True)
-
+                self.logChannel.Log(s, log.LGNOTICE, 1, force=True)
             except TypeError:
                 self.logChannel.Log('[X]'.join(map(strx, argsList)).replace('\x00', '\\0'), log.LGNOTICE, 1, force=True)
                 sys.exc_clear()

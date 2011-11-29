@@ -6,10 +6,42 @@ import zaction
 import inspect
 import ztree
 import uthread
+import stackless
+
+class ActionComponent:
+    __guid__ = 'zaction.ActionComponent'
+
+    def __init__(self, state):
+        self.rootID = 0
+        self.treeInstance = None
+        self.treeState = None
+        self.stepState = None
+        self.sharedState = None
+        self.TreeInstanceID = const.ztree.GENERATE_TREE_INSTANCE_ID
+        self.defaultAction = None
+        if boot.role == 'client':
+            action = sm.GetService('zactionClient').defaultAction
+        else:
+            action = sm.GetService('zactionServer').GetDefaultStartingAction()
+        try:
+            self.defaultAction = state.get(const.zaction.ACTIONTREE_RECIPE_DEFAULT_ACTION_NAME, action)
+            if self.defaultAction is None:
+                self.defaultAction = action
+            self.defaultAction = int(self.defaultAction)
+        except:
+            log.LogException()
+            self.defaultAction = action
+
+
+
+    def GetDefaultAction(self):
+        return self.defaultAction
+
+
+
 
 class zactionCommonBase(service.Service):
     __guid__ = 'zaction.zactionCommonBase'
-    __notifyevents__ = ['OnPostCfgDataChanged']
 
     def __init__(self, treeManager):
         self.treeManager = treeManager
@@ -127,30 +159,18 @@ class zactionCommonBase(service.Service):
         actionTreeNode = component.treeInstance.GetCurrentTreeNode()
         if actionTreeNode and component.treeInstance.debugItem:
             report['Current Action'] = '%s  duration: %f' % (actionTreeNode.name, component.treeInstance.debugItem.duration)
+        else:
+            report['Current Action'] = actionTreeNode.name
         return report
 
 
 
-    def OnPostCfgDataChanged(self, part, updatedRow):
-        if part == 'treeNodes':
-            if updatedRow.systemID == self.GetTreeSystemID():
-                self.ResetTree()
-        if part == 'treeLinks':
-            if updatedRow.systemID == self.GetTreeSystemID():
-                self.ResetTree()
-        if part == 'treeNodeProperties':
-            for node in cfg.treeNodes:
-                if node.treeNodeID == updatedRow.treeNodeID:
-                    if node.systemID == self.GetTreeSystemID():
-                        self.ResetTree()
-
-
-
-
     def ResetTree(self):
+        log.LogWarn('%s: Action Tree Reset Initiated.' % self.__guid__)
         self.treeManager.PrepareForReload()
         self.SetupActionTree(self.GetTreeSystemID())
-        self.treeManager.EnableTreeInstances(self.defaultAction)
+        self.treeManager.EnableTreeInstances()
+        log.LogWarn('%s: Action Tree Reset Finished.' % self.__guid__)
 
 
 
@@ -178,17 +198,43 @@ class zactionCommon(zactionCommonBase):
 
 
 
-def ZactionCommonBasePythonProcMethod(method, args):
-    with uthread.BlockTrapSection():
-        result = method(*args)
-    return result
+def ZactionCommonBasePythonProcMethod(method, args, blocking):
+    if blocking:
+        callbackHandle = GameWorld.GetResultHandleForCurrentPythonProc()
+
+        def _CallBlockingMethod():
+            result = method(*args)
+            GameWorld.SetResultForPythonProcFromHandle(callbackHandle, int(result))
+
+
+        thread = uthread.new(_CallBlockingMethod)
+        thread.localStorage['callbackHandle'] = callbackHandle
+        return False
+    else:
+        try:
+            with uthread.BlockTrapSection():
+                result = method(*args)
+        except:
+            log.LogException()
+            result = False
+        return result
+
+
+
+def GetPropertyForCurrentPythonProc(propName):
+    return GameWorld.GetPropertyForCurrentPythonProc(propName, stackless.getcurrent().localStorage.get('callbackHandle'))
+
+
+
+def AddPropertyForCurrentPythonProc(propDict):
+    GameWorld.AddPropertyForCurrentPythonProc(propDict, stackless.getcurrent().localStorage.get('callbackHandle'))
 
 
 
 class ProcTypeDef(object):
     __guid__ = 'zaction.ProcTypeDef'
 
-    def __init__(self, procCategory = None, isMaster = True, isConditional = False, properties = [], displayName = None, pythonProc = None, description = None, stepLocationRequirements = [const.zaction.ACTIONSTEP_LOC_SERVERONLY, const.zaction.ACTIONSTEP_LOC_CLIENTSERVER, const.zaction.ACTIONSTEP_LOC_CLIENTONLY]):
+    def __init__(self, procCategory = None, isMaster = True, isConditional = False, properties = [], displayName = None, pythonProc = None, description = None, stepLocationRequirements = None, stepTypeRequirements = None, invalidProcDef = False):
         self.isMaster = isMaster
         self.isConditional = isConditional
         self.properties = properties
@@ -196,7 +242,14 @@ class ProcTypeDef(object):
         self.displayName = displayName
         self.pythonProc = pythonProc
         self.stepLocationRequirements = stepLocationRequirements
+        if not stepTypeRequirements:
+            if isConditional:
+                stepTypeRequirements = const.zaction.ACTION_STEP_TYPE_CONDITIONALS
+            else:
+                stepTypeRequirements = const.zaction.ACTION_STEP_TYPE_NORMALS
+        self.stepTypeRequirements = stepTypeRequirements
         self.description = description
+        self.invalidProcDef = invalidProcDef
 
 
 
@@ -267,5 +320,7 @@ def ProcNameHelper(displayName):
     return lambda procRow: _ProcNameHelper(displayName, procRow)
 
 
-exports = {'zaction.ProcNameHelper': ProcNameHelper}
+exports = {'zaction.ProcNameHelper': ProcNameHelper,
+ 'zaction.GetPropertyForCurrentPythonProc': GetPropertyForCurrentPythonProc,
+ 'zaction.AddPropertyForCurrentPythonProc': AddPropertyForCurrentPythonProc}
 

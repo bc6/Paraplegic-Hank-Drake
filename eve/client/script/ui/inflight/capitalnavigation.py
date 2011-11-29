@@ -7,10 +7,12 @@ import uthread
 import blue
 import uicls
 import uiconst
+import localization
 
 class CapitalNav(uicls.Window):
     __guid__ = 'form.CapitalNav'
     __notifyevents__ = ['OnSessionChanged']
+    default_windowID = 'capitalnav'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -19,8 +21,8 @@ class CapitalNav(uicls.Window):
         self.sr.main = uiutil.GetChild(self, 'main')
         self.SetWndIcon('ui_53_64_11', mainTop=-8)
         self.SetMinSize([350, 200])
-        self.SetCaption(mls.UI_INFLIGHT_CAPITALNAVIGATION)
-        uicls.WndCaptionLabel(text=mls.UI_INFLIGHT_CAPITALNAVIGATION, subcaption=mls.UI_INFLIGHT_CAPITALNAVIGATIONONLYSTATIC + '. ' + mls.UI_CORP_DELAYED5MINUTES, parent=self.sr.topParent, align=uiconst.RELATIVE)
+        self.SetCaption(localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/CapitalNavigationLabel'))
+        uicls.WndCaptionLabel(text=localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/CapitalNavigationLabel'), subcaption=localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/OnlinedStarbaseMessage'), parent=self.sr.topParent, align=uiconst.RELATIVE)
         self.sr.scroll = uicls.Scroll(name='scroll', parent=self.sr.main, padding=(const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding,
@@ -29,18 +31,18 @@ class CapitalNav(uicls.Window):
          const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding), clipChildren=1)
-        maintabs = [[mls.UI_CMD_JUMPTO,
+        maintabs = [[localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/JumpTo'),
           self.sr.scroll,
           self,
           'jumpto',
-          self.sr.scroll], [mls.UI_MENUHINT_CHECKDIST1000000,
+          self.sr.scroll], [localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/WithinRange'),
           self.sr.scroll,
           self,
           'inrange',
           self.sr.scroll]]
         shipID = util.GetActiveShip()
         if shipID and sm.GetService('clientDogmaIM').GetDogmaLocation().GetItem(shipID).groupID == const.groupTitan:
-            maintabs.insert(1, [mls.UI_CMD_BRIDGETO,
+            maintabs.insert(1, [localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/BridgeTo'),
              self.sr.scroll,
              self,
              'bridgeto',
@@ -56,7 +58,7 @@ class CapitalNav(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         self.soldict = {}
 
 
@@ -78,7 +80,7 @@ class CapitalNav(uicls.Window):
         shipID = util.GetActiveShip()
         if not shipID:
             return 
-        self.sr.scroll.Load(contentList=[], noContentHint=mls.UI_RMR_FETCHINGDATA)
+        self.sr.scroll.Load(contentList=[], noContentHint=localization.GetByLabel('UI/Common/GettingData'))
         (jumpDriveRange, consumptionType, consumptionAmount,) = self.GetJumpDriveInfo(shipID)
         inRange = {}
         soldict = self.soldict.get(session.solarsystemid2, None)
@@ -104,15 +106,15 @@ class CapitalNav(uicls.Window):
                     scrolllist.append(entry)
 
         if not len(scrolllist):
-            self.sr.scroll.ShowHint(mls.UI_GENERIC_NOTHINGFOUND)
+            self.sr.scroll.ShowHint(localization.GetByLabel('UI/Common/NothingFound'))
         if self.sr.scroll and scrolllist and self.sr.Get('showing', None) == 'inrange':
             self.sr.scroll.ShowHint('')
-            self.sr.scroll.Load(contentList=scrolllist, headers=[mls.UI_GENERIC_SOLARSYSTEM,
-             mls.UI_GENERIC_SECURITY,
-             mls.UI_INFLIGHT_FUEL,
-             mls.UI_GENERIC_VOLUME,
-             mls.UI_GENERIC_DISTANCE,
-             mls.UI_CMD_JUMPTO])
+            self.sr.scroll.Load(contentList=scrolllist, headers=[localization.GetByLabel('UI/Common/LocationTypes/SolarSystem'),
+             localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/SecurityColumnHeader'),
+             localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/FuelColumnHeader'),
+             localization.GetByLabel('UI/Common/Volume'),
+             localization.GetByLabel('UI/Common/Distance'),
+             localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/JumpTo')])
 
 
 
@@ -122,7 +124,7 @@ class CapitalNav(uicls.Window):
         if self.sr.Get('showing', '') != 'inrange':
             cache = sm.GetService('map').GetMapCache()
             current = cache['items'].get(session.solarsystemid2, None)
-            self.sr.scroll.Load(contentList=[], noContentHint=mls.UI_INFLIGHT_CALCULATINGSTELLARDISTANCES)
+            self.sr.scroll.Load(contentList=[], noContentHint=localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/CalculatingStellarDistancesMessage'))
             uthread.pool('form.CapitalNav::ShowInRangeTab', self.GetSolarSystemsInRange_thread, current, cache['items'])
             self.sr.showing = 'inrange'
 
@@ -130,7 +132,7 @@ class CapitalNav(uicls.Window):
 
     def ShowJumpBridgeToTab(self, isBridge = False):
         allianceBeacons = [] if eve.session.allianceid is None else sm.RemoteSvc('map').GetAllianceBeacons()
-        showing = 'bridgeto' if isBridge else 'jumpto'
+        showing = 'UI/CapitalNavigation/CapitalNavigationWindow/BridgeTo' if isBridge else 'UI/CapitalNavigation/CapitalNavigationWindow/JumpTo'
         if self.sr.Get('showing', '') != showing:
             scrolllist = []
             shipID = util.GetActiveShip()
@@ -144,13 +146,13 @@ class CapitalNav(uicls.Window):
                         scrolllist.append(entry)
 
             if not len(scrolllist):
-                self.sr.scroll.ShowHint(mls.UI_GENERIC_NOTHINGFOUND if eve.session.allianceid else mls.UI_CONTRACTS_CREATEWIZ_18)
-            headers = [] if eve.session.allianceid is None else [mls.UI_GENERIC_SOLARSYSTEM,
-             mls.UI_GENERIC_SECURITY,
-             mls.UI_INFLIGHT_FUEL,
-             mls.UI_GENERIC_VOLUME,
-             mls.UI_GENERIC_DISTANCE,
-             getattr(mls, 'UI_CMD_%s' % showing.upper(), '')]
+                self.sr.scroll.ShowHint(localization.GetByLabel('UI/Common/NothingFound') if eve.session.allianceid else localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/CorporationNotInAllianceMessage'))
+            headers = [] if eve.session.allianceid is None else [localization.GetByLabel('UI/Common/LocationTypes/SolarSystem'),
+             localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/SecurityColumnHeader'),
+             localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/FuelColumnHeader'),
+             localization.GetByLabel('UI/Common/Volume'),
+             localization.GetByLabel('UI/Common/Distance'),
+             localization.GetByLabel(showing)]
             self.sr.scroll.state = uiconst.UI_NORMAL
             self.sr.scroll.Load(contentList=scrolllist, headers=headers)
             self.sr.showing = showing
@@ -160,7 +162,7 @@ class CapitalNav(uicls.Window):
     def JumpTo(self, entry, *args):
         m = []
         if entry.sr.node.itemID != session.solarsystemid2:
-            m = [(mls.UI_CMD_JUMPTO, self._JumpTo, (entry.sr.node.itemID, entry.sr.node.beaconID))]
+            m = [(localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/JumpTo'), self._JumpTo, (entry.sr.node.itemID, entry.sr.node.beaconID))]
         return m
 
 
@@ -173,7 +175,7 @@ class CapitalNav(uicls.Window):
     def BridgeTo(self, entry, *args):
         m = []
         if entry.sr.node.itemID != session.solarsystemid2:
-            m = [(mls.UI_CMD_BRIDGETO, self._BridgeTo, (entry.sr.node.itemID, entry.sr.node.beaconID))]
+            m = [(localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/BridgeTo'), self._BridgeTo, (entry.sr.node.itemID, entry.sr.node.beaconID))]
         return m
 
 
@@ -188,18 +190,22 @@ class CapitalNav(uicls.Window):
             return 
         cache = sm.GetService('map').GetMapCache()
         invType = cfg.invtypes.Get(requiredType)
-        s_distance = uix.GetLightYearDistance(session.solarsystemid2, solarSystemID)
+        lightYearDistance = uix.GetLightYearDistance(session.solarsystemid2, solarSystemID, False)
         s_typename = invType.name
-        s_solsname = cfg.evelocations.Get(solarSystemID).name
-        s_solssecu = '%.1f' % sm.GetService('map').GetSecurityStatus(solarSystemID)
+        solarSystemName = localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/SolarSystemName', solarSystem=solarSystemID)
+        securityStatus = sm.GetService('map').GetSecurityStatus(solarSystemID)
         requiredVolume = invType.volume * requiredQty
-        label = '%s<t>%s<t>%s %s<t>%.1f m3<t>%s<t>%s' % (s_solsname,
-         s_solssecu,
-         requiredQty,
-         s_typename,
-         requiredVolume,
-         '%s LY' % s_distance,
-         mls.UI_MENUHINT_CHECKDIST1000000 if jumpDriveRange > s_distance else mls.UI_MENUHINT_CHECKDIST1000000NOT)
+        rangeString = ''
+        if jumpDriveRange > lightYearDistance:
+            rangeString = 'UI/CapitalNavigation/CapitalNavigationWindow/WithinRange'
+        else:
+            rangeString = 'UI/CapitalNavigation/CapitalNavigationWindow/NotInRange'
+        label = '%s<t>%s<t>%s<t>%s<t>%s<t>%s' % (solarSystemName,
+         localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/SecurityStatus', securityStatus=securityStatus),
+         localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/FuelTypeRequired', fuelType=requiredType, requiredQty=requiredQty),
+         localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/FuelVolumeRequired', requiredVolume=requiredVolume),
+         localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/DistanceToSystem', lightYearDistance=lightYearDistance),
+         localization.GetByLabel(rangeString))
         data = util.KeyVal()
         data.label = label
         data.showinfo = 1
@@ -211,11 +217,11 @@ class CapitalNav(uicls.Window):
                 data.GetMenu = self.BridgeTo
             else:
                 data.GetMenu = self.JumpTo
-        data.Set('sort_%s' % mls.UI_GENERIC_DISTANCE, s_distance)
-        data.Set('sort_%s' % mls.UI_INFLIGHT_FUEL, requiredQty)
-        data.Set('sort_%s' % mls.UI_GENERIC_DESTINATION, s_solsname)
-        data.Set('sort_%s' % mls.UI_GENERIC_SECURITY, s_solssecu)
-        data.Set('sort_%s' % mls.UI_GENERIC_VOLUME, requiredVolume)
+        data.Set('sort_%s' % localization.GetByLabel('UI/Common/Distance'), lightYearDistance)
+        data.Set('sort_%s' % localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/FuelColumnHeader'), requiredQty)
+        data.Set('sort_%s' % localization.GetByLabel('UI/Common/Destination'), solarSystemName)
+        data.Set('sort_%s' % localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/SecurityColumnHeader'), securityStatus)
+        data.Set('sort_%s' % localization.GetByLabel('UI/Common/Volume'), requiredVolume)
         return listentry.Get('Generic', data=data)
 
 

@@ -1,7 +1,10 @@
 import paperDoll.AvatarGhost
 from paperDoll import SetOrAddMap
+from paperDoll import BeFrameNice
 import trinity
 import math
+import blue
+import stackless
 
 class PaperdollSculptingGhost(paperDoll.AvatarGhost):
     __guid__ = 'PaperdollSculptingGhost.PaperdollSculptingGhost'
@@ -35,16 +38,18 @@ class PaperdollSculptingGhost(paperDoll.AvatarGhost):
         if self.ignoreZ:
             fxPath = 'res:/Graphics/Effect/Managed/Interior/Avatar/SculptingOverlay_NoZ.fx'
         self.fx = self.StartGhostRenderJob(avatar, fxPath, rjName='Sculpting Overlay', meshFilter=Filter, insertFront=False)
-        for f in self.fx:
-            SetOrAddMap(f, 'ZoneMap', self.zonePath)
-            SetOrAddMap(f, 'HexGridMap', self.texturePath)
-            SetOrAddMap(f, 'NoiseMap', self.noisePath)
-            for tp in f.parameters:
-                if tp.name == 'SculptingTexture':
-                    tp.v1 = self.tiling
-                    tp.v2 = 0.0
-                    tp.v3 = 0.0
-                    tp.v4 = 0.0
+        BeFrameNice()
+        if self.fx:
+            for f in self.fx:
+                SetOrAddMap(f, 'ZoneMap', self.zonePath)
+                SetOrAddMap(f, 'HexGridMap', self.texturePath)
+                SetOrAddMap(f, 'NoiseMap', self.noisePath)
+                for tp in f.parameters:
+                    if tp.name == 'SculptingTexture':
+                        tp.v1 = self.tiling
+                        tp.v2 = 0.0
+                        tp.v3 = 0.0
+                        tp.v4 = 0.0
 
 
         mouseRed = 113

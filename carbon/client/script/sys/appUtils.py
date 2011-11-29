@@ -1,10 +1,11 @@
 import blue
 import lg
+import bluepy
 
 def Reboot(reason = ''):
     lg.Info('appUtils.Reboot', 'About to reboot the client because:' + reason)
     prefs.SetValue('rebootReason', reason)
-    prefs.SetValue('rebootTime', blue.os.GetTime())
+    prefs.SetValue('rebootTime', blue.os.GetWallclockTime())
     allargs = blue.pyos.GetArg()
     cmd = allargs[0]
     args = []
@@ -24,7 +25,7 @@ def Reboot(reason = ''):
     except Exception as e:
         lg.Error('appUtils.Reboot', 'Failed with: ' + str(e))
         raise 
-    blue.pyos.Quit(reason)
+    bluepy.Terminate(reason)
 
 
 exports = {'appUtils.Reboot': Reboot}

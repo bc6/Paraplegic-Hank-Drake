@@ -11,6 +11,20 @@ import math
 import skillUtil
 import uiconst
 import uicls
+import localization
+import localizationUtil
+BLUE_COLOR = (0.0,
+ 0.52,
+ 0.67,
+ 1.0)
+LIGHTBLUE_COLOR = (0.6,
+ 0.8,
+ 0.87,
+ 1.0)
+WHITE_COLOR = (1.0,
+ 1.0,
+ 1.0,
+ 0.5)
 
 class BaseSkillEntry(uicls.SE_BaseClassCore):
     __guid__ = 'listentry.BaseSkillEntry'
@@ -23,8 +37,9 @@ class BaseSkillEntry(uicls.SE_BaseClassCore):
         self.timer = None
         self.totalpoints = None
         self.hilitePartiallyTrained = None
-        self.blueColor = (0.0, 0.52, 0.67, 1.0)
-        self.whiteColor = (1.0, 1.0, 1.0, 0.5)
+        self.blueColor = BLUE_COLOR
+        self.lightBlueColor = LIGHTBLUE_COLOR
+        self.whiteColor = WHITE_COLOR
         self.skillPointsText = ''
         self.rank = 0.0
 
@@ -38,7 +53,8 @@ class BaseSkillEntry(uicls.SE_BaseClassCore):
 
     def Startup(self, *args):
         sub = uicls.Container(name='sub', parent=self)
-        self.sr.inTrainingHilite = uicls.Fill(parent=self, name='inTrainingHilite', padTop=1, padBottom=1, color=(1.0, 1.0, 1.0, 0.15), state=uiconst.UI_HIDDEN)
+        self.sr.inTrainingHilite = uicls.Fill(parent=self, name='inTrainingHilite', padTop=1, padBottom=1, color=self.blueColor, state=uiconst.UI_HIDDEN)
+        self.sr.inTrainingHilite.SetAlpha(0.15)
         uicls.Container(name='push', parent=sub, width=32, align=uiconst.TOLEFT)
         self.sr.icon = uicls.Icon(name='skillIcon', parent=sub, align=uiconst.CENTERLEFT, size=32, width=32, height=32, ignoreSize=True)
         self.sr.icon.state = uiconst.UI_DISABLED
@@ -47,28 +63,25 @@ class BaseSkillEntry(uicls.SE_BaseClassCore):
         self.sr.levelParent = uicls.Container(name='levelParent', parent=sub, align=uiconst.TORIGHT, state=uiconst.UI_DISABLED)
         self.sr.levelHeaderParent = uicls.Container(name='levelHeaderParent', parent=sub, align=uiconst.TORIGHT, state=uiconst.UI_HIDDEN)
         self.sr.levels = uicls.Container(name='levels', parent=self.sr.levelParent, align=uiconst.TOPLEFT, left=0, top=5, width=48, height=10)
-        uicls.Line(parent=self.sr.levels, align=uiconst.TOTOP, color=(1.0, 1.0, 1.0, 0.5))
-        uicls.Line(parent=self.sr.levels, align=uiconst.TOBOTTOM, color=(1.0, 1.0, 1.0, 0.5))
-        uicls.Line(parent=self.sr.levels, align=uiconst.TOLEFT, color=(1.0, 1.0, 1.0, 0.5))
-        uicls.Line(parent=self.sr.levels, align=uiconst.TORIGHT, color=(1.0, 1.0, 1.0, 0.5))
+        uicls.Frame(parent=self.sr.levels, color=self.whiteColor)
         for i in xrange(5):
             f = uicls.Fill(parent=self.sr.levels, name='level%d' % i, align=uiconst.RELATIVE, color=(1.0, 1.0, 1.0, 0.5), left=2 + i * 9, top=2, width=8, height=6)
             setattr(self.sr, 'box_%s' % i, f)
 
         self.sr.progressbarparent = uicls.Container(name='progressbarparent', parent=self.sr.levelParent, align=uiconst.TOPLEFT, left=0, top=20, width=48, height=6)
-        self.sr.progressBar = uicls.Fill(parent=self.sr.progressbarparent, name='progressbar', align=uiconst.RELATIVE, color=(1.0, 1.0, 1.0, 0.5), left=2, top=2, height=2, state=uiconst.UI_HIDDEN)
+        self.sr.progressBar = uicls.Fill(parent=self.sr.progressbarparent, name='progressbar', align=uiconst.RELATIVE, color=self.whiteColor, height=4, top=1, left=1, state=uiconst.UI_HIDDEN)
         uicls.Frame(parent=self.sr.progressbarparent)
-        self.sr.levelHeader1 = uicls.Label(text='', parent=self.sr.levelHeaderParent, left=10, top=5, letterspace=2, fontsize=9, linespace=10, state=uiconst.UI_DISABLED, uppercase=1, idx=0, align=uiconst.TOPRIGHT)
+        self.sr.levelHeader1 = uicls.EveLabelSmall(text='', parent=self.sr.levelHeaderParent, left=10, top=3, state=uiconst.UI_DISABLED, idx=0, align=uiconst.TOPRIGHT)
         self.sr.levelHeader1.name = 'levelHeader1'
         textCont = uicls.Container(name='textCont', parent=sub, align=uiconst.TOALL, pos=(0, 0, 0, 0), clipChildren=1)
-        self.sr.nameLevelLabel = uicls.Label(text='', parent=textCont, left=0, top=2, state=uiconst.UI_DISABLED, clipped=1, singleline=1)
+        self.sr.nameLevelLabel = uicls.EveLabelMedium(text='', parent=textCont, left=0, top=0, state=uiconst.UI_DISABLED, clipped=1, singleline=1)
         self.sr.nameLevelLabel.name = 'nameLevelLabel'
-        self.sr.pointsLabel = uicls.Label(text='', parent=textCont, left=0, top=16, state=uiconst.UI_DISABLED, clipped=1, singleline=1)
+        self.sr.pointsLabel = uicls.EveLabelMedium(text='', parent=textCont, left=0, top=16, state=uiconst.UI_DISABLED, clipped=1, singleline=1)
         self.sr.pointsLabel.name = 'pointsLabel'
         self.sr.selection = uicls.Fill(parent=self, padTop=1, padBottom=1, color=(1.0, 1.0, 1.0, 0.25))
         self.sr.selection.name = 'selection'
         self.sr.selection.state = uiconst.UI_HIDDEN
-        self.sr.timeLeftText = uicls.Label(text='', parent=self.sr.levelHeaderParent, left=10, top=19, letterspace=1, fontsize=9, linespace=10, state=uiconst.UI_DISABLED, uppercase=1, idx=0, align=uiconst.TOPRIGHT)
+        self.sr.timeLeftText = uicls.EveHeaderSmall(text='', parent=self.sr.levelHeaderParent, left=10, top=17, state=uiconst.UI_DISABLED, idx=0, align=uiconst.TOPRIGHT)
         self.sr.timeLeftText.name = 'timeLeftText'
         uicls.Line(parent=self, align=uiconst.TOBOTTOM)
         self.sr.hilite = uicls.Fill(parent=self, name='hilite', padTop=1, padBottom=1, color=(1.0, 1.0, 1.0, 0.25))
@@ -95,9 +108,9 @@ class BaseSkillEntry(uicls.SE_BaseClassCore):
         if data.trained:
             self.rank = int(data.skill.skillTimeConstant + 0.4)
             if data.skill.skillLevel >= 5:
-                self.skillPointsText = '<b>SP: %s</b>' % util.FmtAmt(data.skill.skillPoints)
+                self.skillPointsText = localization.GetByLabel('UI/SkillQueue/Skills/SkillPointsValue', skillPoints=int(data.skill.skillPoints))
             else:
-                self.skillPointsText = '<b>SP: %s/%s</b>' % (util.FmtAmt(data.skill.skillPoints), util.FmtAmt(data.skill.spHi + 0.5))
+                self.skillPointsText = localization.GetByLabel('UI/SkillQueue/Skills/SkillPointsAndNextLevelValues', skillPoints=int(data.skill.skillPoints), skillPointsToNextLevel=int(data.skill.spHi + 0.5))
                 self.sr.node.meetRequirements = True
             self.sr.levelParent.state = uiconst.UI_PICKCHILDREN
             self.sr.levelHeaderParent.state = uiconst.UI_PICKCHILDREN
@@ -112,9 +125,9 @@ class BaseSkillEntry(uicls.SE_BaseClassCore):
             self.sr.haveicon.state = uiconst.UI_PICKCHILDREN
             self.sr.node.meetRequirements = sm.StartService('charactersheet').MeetSkillRequirements(data.invtype.typeID)
             if self.sr.node.meetRequirements:
-                tappend = mls.UI_GENERIC_SKILLMEETREQUIREMENTS
+                tappend = localization.GetByLabel('UI/SkillQueue/Skills/SkillRequirementsMet')
             else:
-                tappend = mls.UI_GENERIC_SKILLNOTMEETREQUIREMENTS
+                tappend = localization.GetByLabel('UI/SkillQueue/Skills/SkillRequirementsNotMet')
             self.GetHaveIcon(self.sr.node.meetRequirements)
             self.skillPointsText = tappend
             self.hint = tappend
@@ -167,7 +180,7 @@ class BaseSkillEntry(uicls.SE_BaseClassCore):
         if not self or self.destroyed or util.GetAttrs(self, 'sr', 'node', 'skill', 'itemID') != skill.itemID:
             return 
         if ETA:
-            time = ETA - blue.os.GetTime()
+            time = ETA - blue.os.GetWallclockTime()
             secs = time / 10000000L
         else:
             time = 0
@@ -185,7 +198,7 @@ class BaseSkillEntry(uicls.SE_BaseClassCore):
             self.endOfTraining = ETA
         else:
             self.endOfTraining = None
-        self.lasttime = blue.os.GetTime()
+        self.lasttime = blue.os.GetWallclockTime()
         self.lastsecs = secs
         self.lastpoints = currentPoints
         self.timer = base.AutoTimer(1000, self.UpdateProgress)
@@ -199,7 +212,7 @@ class BaseSkillEntry(uicls.SE_BaseClassCore):
             self.timer = None
             currentPoints = skill.skillPoints
         elif self.rec.flagID == const.flagSkillInTraining:
-            secs = (self.endOfTraining - blue.os.GetTime()) / 10000000L
+            secs = (self.endOfTraining - blue.os.GetWallclockTime()) / 10000000L
             currentPoints = min(skill.spHi - secs / 60.0 * skill.spm, skill.spHi)
             self.GetIcon('intraining')
         else:
@@ -209,11 +222,15 @@ class BaseSkillEntry(uicls.SE_BaseClassCore):
             if skill.skillPoints > int(math.ceil(skill.spLo)):
                 self.GetIcon('partial')
                 if self.hilitePartiallyTrained:
-                    self.sr.nameLevelLabel.text = '<color=0xffeec900>%s' % self.sr.nameLevelLabel.text
-                    self.sr.pointsLabel.text = '<color=0xffeec900>%s' % self.sr.pointsLabel.text
+                    yellowish = (238 / 255.0,
+                     201 / 255.0,
+                     0.0,
+                     1.0)
+                    self.sr.nameLevelLabel.SetTextColor(yellowish)
+                    self.sr.pointsLabel.SetTextColor(yellowish)
             else:
                 self.GetIcon('chapter')
-            self.sr.progressBar.width = int(44 * (float(currentPoints - currentSpL) / (skill.spHi - currentSpL)))
+            self.sr.progressBar.width = int(46 * (float(currentPoints - currentSpL) / (skill.spHi - currentSpL)))
             self.sr.progressBar.state = uiconst.UI_DISABLED
         else:
             self.GetIcon('complete')
@@ -230,10 +247,10 @@ class BaseSkillEntry(uicls.SE_BaseClassCore):
             skillPoints = self.rec.skillPoints
         skill = self.rec
         if skill.skillLevel >= 5:
-            skillPointsText = '<b>SP: %s</b>' % util.FmtAmt(skillPoints)
+            skillPointsText = localization.GetByLabel('UI/SkillQueue/Skills/SkillPointsValue', skillPoints=int(skillPoints))
         else:
-            skillPointsText = '<b>SP: %s/%s</b>' % (util.FmtAmt(skillPoints), util.FmtAmt(skill.spHi + 0.5))
-        self.sr.nameLevelLabel.text = '%s (%sx)' % (skill.type.typeName, int(skill.skillTimeConstant + 0.4))
+            skillPointsText = localization.GetByLabel('UI/SkillQueue/Skills/SkillPointsAndNextLevelValues', skillPoints=int(skillPoints), skillPointsToNextLevel=int(skill.spHi + 0.5))
+        self.sr.nameLevelLabel.text = localization.GetByLabel('UI/SkillQueue/Skills/SkillNameAndRankValue', skill=skill.type.typeID, rank=int(skill.skillTimeConstant + 0.4))
         self.sr.pointsLabel.text = skillPointsText
 
 
@@ -295,10 +312,10 @@ class BaseSkillEntry(uicls.SE_BaseClassCore):
             if timeLeft is None:
                 timeLeftText = ''
             elif timeLeft <= 0:
-                timeLeftText = mls.UI_SHARED_COMPLETIONIMMINENT
+                timeLeftText = localization.GetByLabel('UI/SkillQueue/Skills/CompletionImminent')
             else:
-                timeLeftText = util.FmtDate(long(timeLeft), 'ss')
-            self.sr.timeLeftText.text = '%s' % timeLeftText
+                timeLeftText = localizationUtil.FormatTimeIntervalShortWritten(long(timeLeft), showFrom='year', showTo='second')
+            self.sr.timeLeftText.text = timeLeftText
             self.AdjustTimerContWidth()
 
 
@@ -330,9 +347,9 @@ class SkillEntry(BaseSkillEntry):
                 fill.state = uiconst.UI_DISABLED
             sm.StartService('ui').StopBlink(fill)
 
-        self.sr.nameLevelLabel.text = '%s (%sx)' % (data.invtype.name, self.rank)
+        self.sr.nameLevelLabel.text = localization.GetByLabel('UI/SkillQueue/Skills/SkillNameAndRankValue', skill=data.invtype.typeID, rank=self.rank)
         self.sr.pointsLabel.text = self.skillPointsText
-        self.sr.levelHeader1.text = '%s %s' % (mls.UI_GENERIC_LEVEL, data.skill.skillLevel)
+        self.sr.levelHeader1.text = localization.GetByLabel('UI/SkillQueue/Skills/SkillLevelWordAndValue', skillLevel=data.skill.skillLevel)
         if data.trained:
             if data.skill.flagID == const.flagSkillInTraining:
                 uthread.new(self.UpdateTraining, data.skill)
@@ -356,7 +373,7 @@ class SkillEntry(BaseSkillEntry):
         level = skill.skillLevel
         fill = self.sr.Get('box_%s' % int(level))
         fill.state = uiconst.UI_DISABLED
-        fill.SetRGB(*self.whiteColor)
+        fill.SetRGB(*self.lightBlueColor)
         sm.StartService('ui').BlinkSpriteA(fill, 1.0, time=1000.0, maxCount=0, passColor=0, minA=0.5)
         self.OnSkillpointChange(currentPoints)
         self.UpdateHalfTrained()
@@ -380,10 +397,10 @@ class SkillEntry(BaseSkillEntry):
             if self.endOfTraining is None:
                 self.timer = None
                 return 
-            ms = blue.os.TimeDiffInMs(self.lasttime)
-            timeEndured = blue.os.GetTime() - self.lasttime
+            ms = blue.os.TimeDiffInMs(self.lasttime, blue.os.GetWallclockTime())
+            timeEndured = blue.os.GetWallclockTime() - self.lasttime
             skill = self.rec
-            timeLeft = self.endOfTraining - blue.os.GetTime()
+            timeLeft = self.endOfTraining - blue.os.GetWallclockTime()
             secs = timeLeft / 10000000L
             currentPoints = min(skill.spHi - secs / 60.0 * skill.spm, skill.spHi)
             self.OnSkillpointChange(currentPoints)
@@ -405,6 +422,69 @@ class SkillEntry(BaseSkillEntry):
         (node, width,) = args
         node.height = 32
         return node.height
+
+
+
+
+class SkillLevels(uicls.Container):
+    __guid__ = 'uicls.SkillLevels'
+    default_align = uiconst.TORIGHT
+    default_state = uiconst.UI_NORMAL
+    default_width = 48
+    default_height = 10
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        self.typeID = attributes.get('typeID', None)
+        self.groupID = attributes.get('groupID', None)
+        uicls.Frame(parent=self)
+        for i in xrange(5):
+            f = uicls.Fill(parent=self, name='level%d' % i, align=uiconst.RELATIVE, color=(1.0, 1.0, 1.0, 0.5), left=2 + i * 9, top=2, width=8, height=6)
+            setattr(self.sr, 'box_%s' % i, f)
+
+        skill = self.GetSkill()
+        self.SetLevel(skill)
+
+
+
+    def GetSkill(self):
+        return sm.GetService('skills').GetMySkillsFromTypeID(self.typeID)
+
+
+
+    def SetLevel(self, skill):
+        skillQueue = sm.StartService('skillqueue').GetQueue()
+        level = skill.skillLevel
+        if level == 0:
+            hint = localization.GetByLabel('UI/SkillQueue/Skills/SkillNotTrained')
+        elif level == 5:
+            hint = localization.GetByLabel('UI/SkillQueue/Skills/SkillAtMaximumLevel')
+        else:
+            hint = localization.GetByLabel('UI/SkillQueue/Skills/SkillAtLevel', skillLevel=level)
+        inTraining = 0
+        plannedInQueue = 0
+        for (skillTypeID, skillLevel,) in skillQueue:
+            if skillTypeID == self.typeID:
+                plannedInQueue = skillLevel
+
+        if hasattr(skill, 'flagID') and skill.flagID == const.flagSkillInTraining:
+            inTraining = 1
+        for i in xrange(5):
+            fill = self.sr.Get('box_%s' % i)
+            fill.SetRGB(*WHITE_COLOR)
+            if level > i:
+                fill.display = True
+            else:
+                fill.display = False
+            if plannedInQueue and i >= level and i <= plannedInQueue - 1:
+                hint = localization.GetByLabel('UI/SkillQueue/Skills/SkillTrainingToLevel', skillLevel=plannedInQueue)
+                fill.SetRGB(*BLUE_COLOR)
+                fill.display = True
+            if inTraining and i == level:
+                fill.SetRGB(*LIGHTBLUE_COLOR)
+                sm.GetService('ui').BlinkSpriteA(fill, 1.0, time=1000.0, maxCount=0, passColor=0, minA=0.5)
+
+        self.hint = hint
 
 
 

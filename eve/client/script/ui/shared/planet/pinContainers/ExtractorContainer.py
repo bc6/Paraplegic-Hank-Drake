@@ -3,6 +3,7 @@ import planetCommon
 import uicls
 import planet
 import blue
+import localization
 
 class ExtractorContainer(planet.ui.ObsoletePinContainer):
     __guid__ = 'planet.ui.ExtractorContainer'
@@ -19,14 +20,14 @@ class ExtractorContainer(planet.ui.ObsoletePinContainer):
          p,
          p,
          p))
-        self.currDepositTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=mls.UI_PI_EXTRACTING, top=0)
-        self.depositsLeftTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=mls.UI_PI_TOTALAMOUNTLEFT, top=40)
-        self.timeToDeplTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=mls.UI_PI_TIMETODEPLETION, top=70)
+        self.currDepositTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=localization.GetByLabel('UI/PI/Common/Extracting'), top=0)
+        self.depositsLeftTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=localization.GetByLabel('UI/PI/Common/TotalAmountLeft'), top=40)
+        self.timeToDeplTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=localization.GetByLabel('UI/PI/Common/TimeToDepletion'), top=70)
         left = self.infoContRightColAt
-        self.currCycleGauge = uicls.Gauge(parent=infoCont, value=0.0, color=planetCommon.PLANET_COLOR_CYCLE, label=mls.UI_PI_CURRENTCYCLE, cyclic=True)
+        self.currCycleGauge = uicls.Gauge(parent=infoCont, value=0.0, color=planetCommon.PLANET_COLOR_CYCLE, label=localization.GetByLabel('UI/PI/Common/CurrentCycle'), cyclic=True)
         self.currCycleGauge.left = left
-        self.amountPerCycleTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=mls.UI_PI_OUTPUTPERCYCLE, top=40, left=left)
-        self.amountPerHourTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=mls.UI_PI_OUTPUTPERHOUR, top=70, left=left)
+        self.amountPerCycleTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=localization.GetByLabel('UI/PI/Common/OutputPerCycle'), top=40, left=left)
+        self.amountPerHourTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=localization.GetByLabel('UI/PI/Common/OutputPerHour'), top=70, left=left)
         return infoCont
 
 
@@ -35,7 +36,7 @@ class ExtractorContainer(planet.ui.ObsoletePinContainer):
         if self.pin.depositType is not None and self.pin.depositQtyPerCycle > 0:
             timeToDepletion = self.pin.GetTimeToDepletion()
             totalTimeLeft = timeToDepletion
-            self.timeToDeplTxt.SetCaption(mls.UI_PI_TIMETODEPLETION)
+            self.timeToDeplTxt.SetCaption(localization.GetByLabel('UI/PI/Common/TimeToDepletion'))
             if totalTimeLeft < DAY:
                 totalTimeLeft = util.FmtTime(float(totalTimeLeft))
             else:
@@ -46,7 +47,7 @@ class ExtractorContainer(planet.ui.ObsoletePinContainer):
                 currCycleProportion = 0.0
                 cycleTime = 0
             else:
-                currCycle = blue.os.GetTime() - self.pin.lastRunTime
+                currCycle = blue.os.GetWallclockTime() - self.pin.lastRunTime
             currCycleProportion = currCycle / float(self.pin.GetCycleTime())
             cycleTime = self.pin.GetCycleTime()
         else:
@@ -54,18 +55,18 @@ class ExtractorContainer(planet.ui.ObsoletePinContainer):
             totalTimeLeft = util.FmtTime(0)
             currCycleProportion = 0.0
             cycleTime = 0
-            deposName = '<color=red>%s<color>' % mls.UI_GENERIC_NOTHING
+            deposName = localization.GetByLabel('UI/PI/Common/NothingExtracted')
         self.currDepositTxt.SetIcon(self.pin.depositType)
         self.currDepositTxt.SetSubtext(deposName)
-        self.depositsLeftTxt.SetSubtext('%s %s' % (self.pin.depositQtyRemaining, mls.UI_GENERIC_UNITS))
+        self.depositsLeftTxt.SetSubtext(localization.GetByLabel('UI/PI/Common/UnitsAmount', amount=self.pin.depositQtyRemaining))
         if self.pin.IsInEditMode():
-            self.currCycleGauge.SetSubText(mls.UI_PI_INACTIVE_REASON % {'reason': mls.UI_PI_GENERIC_EDITMODE})
-            self.timeToDeplTxt.SetSubtext(mls.UI_PI_INACTIVE_REASON % {'reason': mls.UI_PI_GENERIC_EDITMODE})
+            self.currCycleGauge.SetSubText(localization.GetByLabel('UI/PI/Common/InactiveEditMode'))
+            self.timeToDeplTxt.SetSubtext(localization.GetByLabel('UI/PI/Common/InactiveEditMode'))
         else:
             self.currCycleGauge.SetValueInstantly(currCycleProportion)
             self.timeToDeplTxt.SetSubtext(totalTimeLeft)
-            self.currCycleGauge.SetSubText('%s / %s' % (util.FmtTime(currCycle), util.FmtTime(cycleTime)))
-        self.amountPerCycleTxt.SetSubtext('%s %s' % (self.pin.depositQtyPerCycle, mls.UI_GENERIC_UNITS))
+            self.currCycleGauge.SetSubText(localization.GetByLabel('UI/PI/Common/CycleTimeElapsed', currTime=currCycle, totalTime=cycleTime))
+        self.amountPerCycleTxt.SetSubtext(localization.GetByLabel('UI/PI/Common/UnitsAmount', amount=self.pin.depositQtyPerCycle))
         attr = cfg.dgmattribs.GetIfExists(const.attributeLogisticalCapacity)
         self.amountPerHourTxt.SetSubtext(sm.GetService('info').GetFormatAndValue(attr, self.pin.GetOutputVolumePerHour()))
 

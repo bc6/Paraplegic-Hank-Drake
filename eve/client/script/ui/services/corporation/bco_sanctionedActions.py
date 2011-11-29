@@ -49,7 +49,7 @@ class SanctionedActionsO(corpObject.base):
                 state = inEffect
                 if inEffect == 0:
                     if change.has_key('expires'):
-                        if change['expires'][1] > blue.os.GetTime():
+                        if change['expires'][1] > blue.os.GetWallclockTime():
                             state = 2
                 if not self._SanctionedActionsO__sanctionedActionsByCorpID[state].has_key(corpID):
                     header = self._SanctionedActionsO__sanctionedActionsRowsetHeader

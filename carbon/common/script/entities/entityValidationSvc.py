@@ -1,4 +1,5 @@
 import cef
+import log
 import service
 
 class ValidationMessage(object):
@@ -59,70 +60,61 @@ class EntityValidationSvc(service.Service):
     __guid__ = 'svc.entityValidationSvc'
     __dependencies__ = ['entityRecipeSvc']
 
-    def Validate(self, parentID, parentType):
-        recipeDict = self._GetRecipeDict(parentID, parentType)
-        return self._ValidateRecipeDictionary(parentID, parentType, recipeDict)
+    def Validate(self, recipeID):
+        recipeDict = self.entityRecipeSvc.GetRecipe(recipeID)
+        return self._ValidateRecipeDictionary(recipeID, recipeDict)
 
 
 
-    def ValidateCategory(self, categoryID):
-        return self.Validate(categoryID, const.cef.PARENT_CATEGORYID)
-
-
-
-    def ValidateGroup(self, groupID):
-        return self.Validate(groupID, const.cef.PARENT_GROUPID)
-
-
-
-    def ValidateType(self, typeID):
-        return self.Validate(typeID, const.cef.PARENT_TYPEID)
-
-
-
-    def ValidateSpawn(self, spawnID):
-        return self.Validate(spawnID, const.cef.PARENT_SPAWNID)
-
-
-
-    def _GetRecipeDict(self, parentID, parentType):
-        if parentType == const.cef.PARENT_CATEGORYID:
-            return self.entityRecipeSvc.GetCategoryRecipe(parentID)
-        if parentType == const.cef.PARENT_GROUPID:
-            return self.entityRecipeSvc.GetGroupRecipe(parentID)
-        if parentType == const.cef.PARENT_TYPEID:
-            return self.entityRecipeSvc.GetTypeRecipe(parentID)
-        if parentType == const.cef.PARENT_SPAWNID:
-            return self.entityRecipeSvc.GetSpawnRecipe(parentID)
-        raise TypeError('Parent type is unknown:', parentType)
-
-
-
-    def _ValidateRecipeDictionary(self, parentID, parentType, recipeDict):
+    def _ValidateRecipeDictionary(self, recipeID, recipeDict):
         result = cef.ValidationMessage()
-        self._ValidateEachComponent(result, parentID, parentType, recipeDict)
+        self._ValidateEachComponent(result, recipeID, recipeDict)
         return result
 
 
 
-    def _ValidateEachComponent(self, result, parentID, parentType, recipeDict):
+    def _ValidateEachComponent(self, result, recipeID, recipeDict):
+        perComponentValidationFuncs = [self._ValidateComponentViewIsDefined,
+         self._ValidateComponentSpawnInputs,
+         self._ValidateComponentDependencies,
+         self._ValidateCustomComponentInfo]
         for componentID in recipeDict:
             componentView = cef.BaseComponentView.GetComponentViewByID(componentID)
-            if componentView is None:
-                result.AddMessage('Component is not valid: %s' % componentID)
-                continue
-            componentResult = cef.ValidationMessage(name=componentView.__COMPONENT_DISPLAY_NAME__)
-            self._ValidateSpawnInputs(componentResult, parentID, parentType, recipeDict, componentView)
-            componentView.ValidateComponent(componentResult, parentID, parentType, recipeDict)
+            componentResult = cef.ValidationMessage(name=self._GetComponentName(componentView, componentID))
+            for validationFunc in perComponentValidationFuncs:
+                try:
+                    canContinue = validationFunc(componentResult, recipeID, recipeDict, componentView, componentID)
+                except Exception as e:
+                    self.LogError('An error occurred while running validation for component "%s" at recipeID=%s' % (componentView.__COMPONENT_DISPLAY_NAME__, recipeID))
+                    log.LogException(e)
+                    componentResult.AddMessage('An error occurred while running validation for this component')
+                    canContinue = True
+                if not canContinue:
+                    break
+
             result.AddMessage(componentResult)
 
 
 
 
-    def _ValidateSpawnInputs(self, result, parentID, parentType, recipeDict, componentView):
+    def _GetComponentName(self, componentView, componentID):
+        if componentView is not None:
+            return componentView.__COMPONENT_DISPLAY_NAME__
+        return '<Invalid Component %s>' % componentID
+
+
+
+    def _ValidateComponentViewIsDefined(self, result, recipeID, recipeDict, componentView, componentID):
+        if componentView is None:
+            result.AddMessage('Component is not valid: %s' % componentID)
+        return componentView is not None
+
+
+
+    def _ValidateComponentSpawnInputs(self, result, recipeID, recipeDict, componentView, componentID):
         spawnInputs = set()
         missingInputs = set()
-        componentRecipe = recipeDict[componentView.__COMPONENT_ID__]
+        componentRecipe = recipeDict[componentID]
         spawnInitValueNameTuples = componentView.GetInputs(groupFilter=componentView.ALL_SPAWN)
         for initValueNameTuple in spawnInitValueNameTuples:
             for initialValueName in initValueNameTuple:
@@ -132,18 +124,39 @@ class EntityValidationSvc(service.Service):
                     missingInputs.add(initValueNameTuple)
 
 
-        if parentType == const.cef.PARENT_SPAWNID and len(missingInputs) == 0:
-            return 
-        if parentType != const.cef.PARENT_SPAWNID and len(spawnInputs) == 0:
-            return 
-        if parentType == const.cef.PARENT_SPAWNID:
+        isSpawn = recipeID in cfg.entitySpawnsByRecipeID
+        if isSpawn and len(missingInputs) == 0:
+            return True
+        if not isSpawn and len(spawnInputs) == 0:
+            return True
+        if isSpawn:
             for initValueNameTuple in missingInputs:
                 result.AddMessage('Missing input: %s' % initValueNameTuple)
 
-        if parentType != const.cef.PARENT_SPAWNID:
+        if not isSpawn:
             for initValueNameTuple in spawnInputs:
                 result.AddMessage('Spawn input on non-spawn: %s' % initValueNameTuple)
 
+        return True
+
+
+
+    def _ValidateComponentDependencies(self, result, recipeID, recipeDict, componentView, componentID):
+        dependentComponentIDs = componentView.GetDependencies()
+        for otherComponentID in dependentComponentIDs:
+            otherComponentView = cef.BaseComponentView.GetComponentViewByID(otherComponentID)
+            if otherComponentView is None:
+                result.AddMessage('Contact Programmer: Invalid dependent component: %s' % otherComponentID)
+                continue
+            if otherComponentID not in recipeDict:
+                result.AddMessage('Missing component: %s' % otherComponentView.__COMPONENT_DISPLAY_NAME__)
+
+        return True
+
+
+
+    def _ValidateCustomComponentInfo(self, result, recipeID, recipeDict, componentView, componentID):
+        return componentView.ValidateComponent(result, recipeID, recipeDict)
 
 
 

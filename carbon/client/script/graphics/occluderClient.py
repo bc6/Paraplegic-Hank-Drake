@@ -1,3 +1,4 @@
+import cef
 import service
 import graphicWrappers
 import collections
@@ -10,7 +11,7 @@ class OccluderClientComponent:
 
 class OccluderClient(service.Service):
     __guid__ = 'svc.occluderClient'
-    __componentTypes__ = ['occluder']
+    __componentTypes__ = [cef.OccluderComponentView.GetComponentCodeName()]
     __dependencies__ = ['graphicClient']
 
     def __init__(self):
@@ -31,7 +32,7 @@ class OccluderClient(service.Service):
         renderObject = trinity.Tr2InteriorOccluder()
         component.renderObject = renderObject
         graphicWrappers.Wrap(renderObject)
-        renderObject.SetScale(state.get('scaleX', 1), state.get('scaleY', 1), state.get('scaleZ', 1))
+        renderObject.SetScale((state.get('scaleX', 1), state.get('scaleY', 1), state.get('scaleZ', 1)))
         return component
 
 

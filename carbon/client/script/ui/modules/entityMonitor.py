@@ -6,28 +6,34 @@ import uiutil
 import const
 import sys
 import uiconst
+import service
 
-class EntityBrowserCore(uicls.WindowCore):
+class EntityBrowserCore(uicls.Window):
     __guid__ = 'uicls.EntityBrowserCore'
     default_windowID = 'entityBrowser'
+    default_width = 300
+    default_height = 200
 
     def ApplyAttributes(self, attributes):
         super(uicls.EntityBrowserCore, self).ApplyAttributes(attributes)
-        self.entityClient = sm.GetService('entityClient')
-        self.SetMinSize([100, 200])
-        self.SetHeight(200)
+        self.SetHeight(self.default_height)
         self.SetCaption('Entity Browser')
+        if not session.role & service.ROLE_QA:
+            uicls.Label(text='Viewing the entity window is restricted to users with QA privileges', align=uiconst.TOTOP, parent=self.sr.content)
+            return 
+        self.entityClient = sm.GetService('entityClient')
         self.sr.content.SetPadding(5, 5, 5, 5)
-        self.sr.content.searchEntryLabel = uicls.LabelCore(parent=self.sr.content, align=uiconst.TOPLEFT, text='Entity ID:  ')
-        self.sr.content.searchEntry = uicls.SinglelineEditCore(parent=self.sr.content, align=uiconst.TOPLEFT, left=self.sr.content.searchEntryLabel.width + 10, width=200)
-        self.sr.content.searchButton = uicls.ButtonCore(parent=self.sr.content, align=uiconst.TOPLEFT, left=self.sr.content.searchEntry.left + self.sr.content.searchEntry.width + 20, label='View Entity', func=self.ViewEntityButtonFunc)
-        self.sr.content.filterEntryLabel = uicls.LabelCore(parent=self.sr.content, align=uiconst.TOPLEFT, top=25, text='Component Filters:  ')
-        self.sr.content.filterEntry = uicls.SinglelineEditCore(parent=self.sr.content, align=uiconst.TOPLEFT, hinttext='Comma separated component names', OnReturn=self.FilterEntitiesFunc, left=self.sr.content.filterEntryLabel.width + 10, top=25, width=300)
-        self.sr.content.filterButton = uicls.ButtonCore(parent=self.sr.content, align=uiconst.TOPLEFT, left=self.sr.content.filterEntry.left + self.sr.content.filterEntry.width + 20, top=25, label='Filter Entities', func=self.FilterEntitiesFunc)
+        self.sr.content.searchEntryLabel = uicls.Label(parent=self.sr.content, align=uiconst.TOPLEFT, top=14, text='Entity ID:  ')
+        self.sr.content.searchEntry = uicls.SinglelineEdit(parent=self.sr.content, align=uiconst.TOPLEFT, top=14, left=self.sr.content.searchEntryLabel.width + 10, width=200)
+        self.sr.content.searchButton = uicls.Button(parent=self.sr.content, align=uiconst.TOPLEFT, top=14, left=self.sr.content.searchEntry.left + self.sr.content.searchEntry.width + 20, label='View Entity', func=self.ViewEntityButtonFunc)
+        self.sr.content.filterEntryLabel = uicls.Label(parent=self.sr.content, align=uiconst.TOPLEFT, top=self.sr.content.searchButton.top + self.sr.content.searchButton.height + 2, text='Component Filters:  ')
+        self.sr.content.filterEntry = uicls.SinglelineEdit(parent=self.sr.content, align=uiconst.TOPLEFT, hinttext='Comma separated component names', OnReturn=self.FilterEntitiesFunc, left=self.sr.content.filterEntryLabel.width + 10, top=self.sr.content.searchButton.top + self.sr.content.searchButton.height + 2, width=300)
+        filterButton = uicls.Button(parent=self.sr.content, align=uiconst.TOPLEFT, left=self.sr.content.filterEntry.left + self.sr.content.filterEntry.width + 20, top=self.sr.content.searchButton.top + self.sr.content.searchButton.height + 2, label='Filter Entities', func=self.FilterEntitiesFunc)
+        self.SetMinSize([filterButton.left + filterButton.width + 10, self.default_height])
         self.sceneNodes = {}
         self.sceneDataNodes = {}
         self.componentFilters = []
-        self.sr.content.scroll = uicls.ScrollCore(parent=self.sr.content, top=55)
+        self.sr.content.scroll = uicls.Scroll(parent=self.sr.content, padTop=filterButton.top + filterButton.height + 2)
         self.thread = uthread.new(self.LoadScenesThread)
 
 
@@ -35,7 +41,7 @@ class EntityBrowserCore(uicls.WindowCore):
     def LoadScenesThread(self):
         while not self.dead:
             self.LoadScenes()
-            blue.pyos.synchro.Sleep(1000)
+            blue.pyos.synchro.SleepWallclock(1000)
 
 
 
@@ -69,7 +75,11 @@ class EntityBrowserCore(uicls.WindowCore):
 
 
         if requiresUpdate or forceUpdate:
-            self.sr.content.scroll.LoadContent(contentList=self.sceneNodes.values(), headers=['ID', 'Name', 'State'])
+            self.sr.content.scroll.LoadContent(contentList=self.sceneNodes.values(), headers=['ID',
+             'Name',
+             'State',
+             'SpawnID',
+             'RecipeID'])
 
 
 
@@ -83,6 +93,16 @@ class EntityBrowserCore(uicls.WindowCore):
 
 
 
+    def GetEntitySpawnID(self, entity):
+        return 'UNKNOWN'
+
+
+
+    def GetEntityRecipeID(self, entity):
+        return 'UNKNOWN'
+
+
+
     def GetSceneListEntries(self, data, *args):
         scene = data['scene']
         self.sceneDataNodes[scene.sceneID] = {}
@@ -92,8 +112,14 @@ class EntityBrowserCore(uicls.WindowCore):
                     break
             else:
                 name = self.GetEntityName(entity)
+                spawnID = self.GetEntitySpawnID(entity)
+                recipeID = self.GetEntityRecipeID(entity)
                 data = {'decoClass': uicls.SE_EntityBrowserEntry,
-                 'label': '%s<t>%s<t>%s' % (entityID, name, const.cef.ENTITY_STATE_NAMES[entity.state]),
+                 'label': '%s<t>%s<t>%s<t>%s<t>%s' % (entityID,
+                           name,
+                           const.cef.ENTITY_STATE_NAMES[entity.state],
+                           spawnID,
+                           recipeID),
                  'entityID': entityID,
                  'OnDblClick': self.DblClickEntry}
                 node = uicls.ScrollEntryNode(**data)
@@ -137,18 +163,20 @@ class EntityBrowserCore(uicls.WindowCore):
 
 
 
-class EntityMonitor(uicls.WindowCore):
+class EntityMonitor(uicls.Window):
     __guid__ = 'uicls.EntityMonitor'
     default_windowID = 'entityMonitor'
+    default_width = 300
+    default_height = 200
 
     def ApplyAttributes(self, attributes):
         super(uicls.EntityMonitor, self).ApplyAttributes(attributes)
-        self.SetMinSize([300, 200])
-        self.SetHeight(200)
+        self.SetMinSize([self.default_width, self.default_height])
+        self.SetHeight(self.default_height)
         self.entityID = attributes.get('entID', 0)
         self.SetCaption('Entity Monitor for %d' % self.entityID)
         self.entityClient = sm.GetService('entityClient')
-        self.sr.content.scroll = uicls.ScrollCore(parent=self.sr.content, padding=(5, 5, 5, 5))
+        self.sr.content.scroll = uicls.Scroll(parent=self.sr.content, top=14, padding=5)
         self.componentNodes = {}
         self.componentDataNodes = {}
         clientNodeData = {'decoClass': uicls.SE_ListGroupCore,
@@ -174,7 +202,7 @@ class EntityMonitor(uicls.WindowCore):
     def LoadEntityThread(self):
         while not self.dead:
             self.LoadEntity()
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
 
 
 
@@ -187,14 +215,15 @@ class EntityMonitor(uicls.WindowCore):
             self.componentDataNodes = {}
             self.sr.content.scroll.LoadContent(contentList=[])
             return 
-        newComponents = entity.components.keys()
+        newComponents = {}
+        newComponents['client'] = entity.components.keys()
+        newComponents['server'] = []
+        if not self.entityClient.IsClientSideOnly(entity.scene.sceneID):
+            newComponents['server'] = sm.RemoteSvc('entityServer').GetServerComponentNames(self.entityID) or newComponents['server']
         requiresUpdate = False
-        for componentName in newComponents:
-            locations = ['client']
-            if not self.entityClient.IsClientSideOnly(entity.scene.sceneID):
-                locations.append('server')
-            for location in locations:
-                nodeName = '%s - %s' % (componentName, location.upper())
+        for componentLocation in newComponents:
+            for componentName in newComponents[componentLocation]:
+                nodeName = '%s - %s' % (componentName, componentLocation.upper())
                 if nodeName not in self.componentNodes:
                     requiresUpdate = True
                     data = {'decoClass': uicls.SE_ListGroupCore,
@@ -204,15 +233,15 @@ class EntityMonitor(uicls.WindowCore):
                      'showicon': 'hide',
                      'showlen': False,
                      'componentName': componentName,
-                     'location': location,
+                     'location': componentLocation,
                      'sublevel': 1,
                      'state': 'locked'}
                     node = uicls.ScrollEntryNode(**data)
                     self.componentNodes[nodeName] = node
                 if nodeName in self.componentDataNodes:
-                    if location == 'client':
+                    if componentLocation == 'client':
                         state = self.entityClient.GetComponentStateByID(self.entityID, componentName)
-                    elif location == 'server' and not self.entityClient.IsClientSideOnly(entity.scene.sceneID):
+                    elif componentLocation == 'server':
                         state = self.entityClient.ServerReportState(self.entityID, componentName)
                     if state:
                         for (name, value,) in state.iteritems():
@@ -234,6 +263,7 @@ class EntityMonitor(uicls.WindowCore):
             if 'CLIENT' in node:
                 clientNodes.append(self.componentNodes[node])
 
+        clientNodes.sort()
         return clientNodes
 
 
@@ -244,6 +274,7 @@ class EntityMonitor(uicls.WindowCore):
             if 'SERVER' in node:
                 serverNodes.append(self.componentNodes[node])
 
+        serverNodes.sort()
         return serverNodes
 
 

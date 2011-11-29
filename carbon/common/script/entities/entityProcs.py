@@ -1,7 +1,6 @@
 import service
 import GameWorld
 import zaction
-import blue
 import uthread
 import geo2
 MOTIONSTATE_NO_CHANGE = 0
@@ -17,7 +16,7 @@ class EntityProcSvc(service.Service):
         GameWorld.RegisterPythonActionProc('SetEntityPosition', self._SetEntityPosition, ('ENTID', 'ALIGN_POSITION', 'ALIGN_ROTATION', 'MotionState'))
         GameWorld.RegisterPythonActionProc('GetEntitySceneID', self._GetEntitySceneID, ('ENTID',))
         GameWorld.RegisterPythonActionProc('GetBonePosRot', self._GetBonePosRot, ('ENTID', 'boneName', 'posProp', 'rotProp'))
-        GameWorld.RegisterPythonActionProc('SetAllowedToMove', self._SetAllowedToMove, ('ENTID', 'allowedToMove'))
+        GameWorld.RegisterPythonActionProc('AllowPlayerMoveControl', self._AllowPlayerMoveControl, ('inControl',))
 
 
 
@@ -74,23 +73,21 @@ class EntityProcSvc(service.Service):
                 movementComponent = entity.GetComponent('movement')
                 if movementComponent is not None:
                     if MotionState is MOTIONSTATE_KEY_FRAME:
-                        movementComponent.avatar.SetKeyFrameMode(ALIGN_POSITION, ALIGN_ROTATION)
+                        movementComponent.moveModeManager.PushMoveMode(GameWorld.KeyFrameMode(ALIGN_POSITION, ALIGN_ROTATION))
                     elif MotionState is MOTIONSTATE_CHARACTER:
-                        movementComponent.avatar.SetCharacterMode(ALIGN_POSITION, ALIGN_ROTATION)
+                        movementComponent.moveModeManager.RestoreDefaultMode()
 
 
 
-    def _SetAllowedToMove(self, ENTID, allowedToMove):
-        entity = self.entityService.FindEntityByID(ENTID)
-        if entity is not None:
-            movementComponent = entity.GetComponent('movement')
-            if movementComponent is not None:
-                movementComponent.allowMovement = allowedToMove
+    def _AllowPlayerMoveControl(self, inControl):
+        nav = sm.GetService('navigation')
+        nav.hasControl = inControl
         return True
 
 
 
 MotionStateList = [('No Change', MOTIONSTATE_NO_CHANGE, ''), ('Key Frame', MOTIONSTATE_KEY_FRAME, ''), ('Character', MOTIONSTATE_CHARACTER, '')]
+TargetTypeList = [('Me', 0, 'me'), ('My Target', 1, 'target'), ('Buff Source', 2, 'buffSource')]
 
 def CreateLocatorList(self):
     from locator import Locator
@@ -103,10 +100,12 @@ def CreateLocatorList(self):
 
 
 exports = {'actionProperties.MotionState': ('list', MotionStateList),
+ 'actionProperties.TargetTypeList': ('list', TargetTypeList),
  'actionProperties.LocatorList': ('listMethod', CreateLocatorList),
- 'actionProcTypes.SetEntityPosition': zaction.ProcTypeDef(isMaster=True, procCategory='Entity', properties=[zaction.ProcPropertyTypeDef('MotionState', 'I', userDataType='MotionState', isPrivate=True)]),
- 'actionProcTypes.GetEntitySceneID': zaction.ProcTypeDef(isMaster=True, procCategory='Entity'),
- 'actionProcTypes.GetBonePosRot': zaction.ProcTypeDef(isMaster=True, procCategory='Entity', properties=[zaction.ProcPropertyTypeDef('boneName', 'S', userDataType='Bone Name', isPrivate=True), zaction.ProcPropertyTypeDef('posProp', 'S', userDataType='Position Property', isPrivate=True), zaction.ProcPropertyTypeDef('rotProp', 'S', userDataType='Rotation Property', isPrivate=True)]),
+ 'actionProcTypes.SetEntityPosition': zaction.ProcTypeDef(isMaster=True, procCategory='Entity', properties=[zaction.ProcPropertyTypeDef('MotionState', 'I', userDataType='MotionState', isPrivate=True)], description='Sets the requesting entity\'s position. This uses the ALIGN_POSITION and ALIGN_ROTATION properties right now, though could be altered to use specified properties. The "MotionState" corresponds to move modes -- Keyframe and Character.'),
+ 'actionProcTypes.GetEntitySceneID': zaction.ProcTypeDef(isMaster=True, procCategory='Entity', description='Gets the entity scene ID of the entity performing this action.'),
+ 'actionProcTypes.GetBonePosRot': zaction.ProcTypeDef(isMaster=True, procCategory='Entity', properties=[zaction.ProcPropertyTypeDef('boneName', 'S', userDataType='Bone Name', isPrivate=True), zaction.ProcPropertyTypeDef('posProp', 'S', userDataType='Position Property', isPrivate=True), zaction.ProcPropertyTypeDef('rotProp', 'S', userDataType='Rotation Property', isPrivate=True)], description='Gets the position and rotation of a specified bone. The output is stored into properties with the specified names to be accessed later.'),
  'actionProcTypes.TeleportToLocator': zaction.ProcTypeDef(isMaster=True, procCategory='Entity', properties=[zaction.ProcPropertyTypeDef('TargetType', 'I', userDataType='TargetTypeList', isPrivate=True), zaction.ProcPropertyTypeDef('LocatorName', 'S', userDataType='LocatorList', isPrivate=True)]),
- 'actionProcTypes.SetAllowedToMove': zaction.ProcTypeDef(isMaster=True, procCategory='Entity', properties=[zaction.ProcPropertyTypeDef('allowedToMove', 'B', userDataType=None, isPrivate=True)])}
+ 'actionProcTypes.SetAllowedToMove': zaction.ProcTypeDef(isMaster=False, procCategory='Entity', properties=[zaction.ProcPropertyTypeDef('allowedToMove', 'B', userDataType=None, isPrivate=True)], description='Sets the enable movement flag on the MoveModeManager.  Use this to disable movement when an avatar is disabled, for example: unconscious.'),
+ 'actionProcTypes.AllowPlayerMoveControl': zaction.ProcTypeDef(isMaster=False, procCategory='Entity', properties=[zaction.ProcPropertyTypeDef('inControl', 'B', userDataType=None, isPrivate=True)], description='Sets the a flag that enables/disables movement input on the navigation service. This affects movement controls on the local player only.')}
 

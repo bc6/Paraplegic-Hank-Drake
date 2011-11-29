@@ -1,9 +1,7 @@
-import uiutil
 import uicls
 import uiconst
 import uthread
 import form
-import uix
 import blue
 import trinity
 import util
@@ -16,21 +14,195 @@ import const
 import appUtils
 import svc
 import destiny
+import uix
+import localization
+import bluepy
 contextFiS = 1
 contextIncarna = 2
+labelsByFuncName = {'CmdAccelerate': 'UI/Commands/CmdAccelerate',
+ 'CmdActivateHighPowerSlot1': 'UI/Commands/CmdActivateHighPowerSlot1',
+ 'CmdActivateHighPowerSlot2': 'UI/Commands/CmdActivateHighPowerSlot2',
+ 'CmdActivateHighPowerSlot3': 'UI/Commands/CmdActivateHighPowerSlot3',
+ 'CmdActivateHighPowerSlot4': 'UI/Commands/CmdActivateHighPowerSlot4',
+ 'CmdActivateHighPowerSlot5': 'UI/Commands/CmdActivateHighPowerSlot5',
+ 'CmdActivateHighPowerSlot6': 'UI/Commands/CmdActivateHighPowerSlot6',
+ 'CmdActivateHighPowerSlot7': 'UI/Commands/CmdActivateHighPowerSlot7',
+ 'CmdActivateHighPowerSlot8': 'UI/Commands/CmdActivateHighPowerSlot8',
+ 'CmdActivateLowPowerSlot1': 'UI/Commands/CmdActivateLowPowerSlot1',
+ 'CmdActivateLowPowerSlot2': 'UI/Commands/CmdActivateLowPowerSlot2',
+ 'CmdActivateLowPowerSlot3': 'UI/Commands/CmdActivateLowPowerSlot3',
+ 'CmdActivateLowPowerSlot4': 'UI/Commands/CmdActivateLowPowerSlot4',
+ 'CmdActivateLowPowerSlot5': 'UI/Commands/CmdActivateLowPowerSlot5',
+ 'CmdActivateLowPowerSlot6': 'UI/Commands/CmdActivateLowPowerSlot6',
+ 'CmdActivateLowPowerSlot7': 'UI/Commands/CmdActivateLowPowerSlot7',
+ 'CmdActivateLowPowerSlot8': 'UI/Commands/CmdActivateLowPowerSlot8',
+ 'CmdActivateMediumPowerSlot1': 'UI/Commands/CmdActivateMediumPowerSlot1',
+ 'CmdActivateMediumPowerSlot2': 'UI/Commands/CmdActivateMediumPowerSlot2',
+ 'CmdActivateMediumPowerSlot3': 'UI/Commands/CmdActivateMediumPowerSlot3',
+ 'CmdActivateMediumPowerSlot4': 'UI/Commands/CmdActivateMediumPowerSlot4',
+ 'CmdActivateMediumPowerSlot5': 'UI/Commands/CmdActivateMediumPowerSlot5',
+ 'CmdActivateMediumPowerSlot6': 'UI/Commands/CmdActivateMediumPowerSlot6',
+ 'CmdActivateMediumPowerSlot7': 'UI/Commands/CmdActivateMediumPowerSlot7',
+ 'CmdActivateMediumPowerSlot8': 'UI/Commands/CmdActivateMediumPowerSlot8',
+ 'CmdAlignToItem': 'UI/Commands/CmdAlignToItem',
+ 'CmdApproachItem': 'UI/Commands/CmdApproachItem',
+ 'CmdCycleFleetBroadcastScope': 'UI/Commands/CmdCycleFleetBroadcastScope',
+ 'CmdDecelerate': 'UI/Commands/CmdDecelerate',
+ 'CmdDockOrJumpOrActivateGate': 'UI/Commands/CmdDockOrJumpOrActivateGate',
+ 'CmdDronesEngage': 'UI/Commands/CmdDronesEngage',
+ 'CmdDronesReturnAndOrbit': 'UI/Commands/CmdDronesReturnAndOrbit',
+ 'CmdDronesReturnToBay': 'UI/Commands/CmdDronesReturnToBay',
+ 'CmdExitStation': 'UI/Commands/CmdExitStation',
+ 'CmdEnterCQ': 'UI/Commands/EnterCQ',
+ 'CmdEnterHangar': 'UI/Commands/EnterHangar',
+ 'CmdFleetBroadcast_EnemySpotted': 'UI/Fleet/FleetBroadcast/Commands/EnemySpotted',
+ 'CmdFleetBroadcast_HealArmor': 'UI/Fleet/FleetBroadcast/Commands/HealArmor',
+ 'CmdFleetBroadcast_HealCapacitor': 'UI/Fleet/FleetBroadcast/Commands/HealCapacitor',
+ 'CmdFleetBroadcast_HealShield': 'UI/Fleet/FleetBroadcast/Commands/HealShield',
+ 'CmdFleetBroadcast_HoldPosition': 'UI/Fleet/FleetBroadcast/Commands/HoldPosition',
+ 'CmdFleetBroadcast_InPosition': 'UI/Fleet/FleetBroadcast/Commands/InPosition',
+ 'CmdFleetBroadcast_JumpBeacon': 'UI/Fleet/FleetBroadcast/Commands/JumpBeacon',
+ 'CmdFleetBroadcast_Location': 'UI/Fleet/FleetBroadcast/Commands/Location',
+ 'CmdFleetBroadcast_NeedBackup': 'UI/Fleet/FleetBroadcast/Commands/NeedBackup',
+ 'CmdForceFadeFromBlack': 'UI/Commands/CmdForceFadeFromBlack',
+ 'CmdHideCursor': 'UI/Commands/CmdHideCursor',
+ 'CmdHideUI': 'UI/Commands/CmdHideUI',
+ 'CmdKeepItemAtRange': 'UI/Commands/CmdKeepItemAtRange',
+ 'CmdLockTargetItem': 'UI/Commands/CmdLockTargetItem',
+ 'CmdLogOff': 'UI/Commands/CmdLogOff',
+ 'CmdMoveBackward': 'UI/Commands/CmdMoveBackward',
+ 'CmdMoveForward': 'UI/Commands/CmdMoveForward',
+ 'CmdMoveLeft': 'UI/Commands/CmdMoveLeft',
+ 'CmdMoveRight': 'UI/Commands/CmdMoveRight',
+ 'CmdNextStackedWindow': 'UI/Commands/CmdNextStackedWindow',
+ 'CmdNextTab': 'UI/Commands/CmdNextTab',
+ 'CmdOpenNewMessage': 'UI/Commands/CmdOpenNewMessage',
+ 'CmdOrbitItem': 'UI/Commands/CmdOrbitItem',
+ 'CmdOverloadHighPowerRack': 'UI/Commands/CmdOverloadHighPowerRack',
+ 'CmdOverloadHighPowerSlot1': 'UI/Commands/CmdOverloadHighPowerSlot1',
+ 'CmdOverloadHighPowerSlot2': 'UI/Commands/CmdOverloadHighPowerSlot2',
+ 'CmdOverloadHighPowerSlot3': 'UI/Commands/CmdOverloadHighPowerSlot3',
+ 'CmdOverloadHighPowerSlot4': 'UI/Commands/CmdOverloadHighPowerSlot4',
+ 'CmdOverloadHighPowerSlot5': 'UI/Commands/CmdOverloadHighPowerSlot5',
+ 'CmdOverloadHighPowerSlot6': 'UI/Commands/CmdOverloadHighPowerSlot6',
+ 'CmdOverloadHighPowerSlot7': 'UI/Commands/CmdOverloadHighPowerSlot7',
+ 'CmdOverloadHighPowerSlot8': 'UI/Commands/CmdOverloadHighPowerSlot8',
+ 'CmdOverloadLowPowerRack': 'UI/Commands/CmdOverloadLowPowerRack',
+ 'CmdOverloadLowPowerSlot1': 'UI/Commands/CmdOverloadLowPowerSlot1',
+ 'CmdOverloadLowPowerSlot2': 'UI/Commands/CmdOverloadLowPowerSlot2',
+ 'CmdOverloadLowPowerSlot3': 'UI/Commands/CmdOverloadLowPowerSlot3',
+ 'CmdOverloadLowPowerSlot4': 'UI/Commands/CmdOverloadLowPowerSlot4',
+ 'CmdOverloadLowPowerSlot5': 'UI/Commands/CmdOverloadLowPowerSlot5',
+ 'CmdOverloadLowPowerSlot6': 'UI/Commands/CmdOverloadLowPowerSlot6',
+ 'CmdOverloadLowPowerSlot7': 'UI/Commands/CmdOverloadLowPowerSlot7',
+ 'CmdOverloadLowPowerSlot8': 'UI/Commands/CmdOverloadLowPowerSlot8',
+ 'CmdOverloadMediumPowerRack': 'UI/Commands/CmdOverloadMediumPowerRack',
+ 'CmdOverloadMediumPowerSlot1': 'UI/Commands/CmdOverloadMediumPowerSlot1',
+ 'CmdOverloadMediumPowerSlot2': 'UI/Commands/CmdOverloadMediumPowerSlot2',
+ 'CmdOverloadMediumPowerSlot3': 'UI/Commands/CmdOverloadMediumPowerSlot3',
+ 'CmdOverloadMediumPowerSlot4': 'UI/Commands/CmdOverloadMediumPowerSlot4',
+ 'CmdOverloadMediumPowerSlot5': 'UI/Commands/CmdOverloadMediumPowerSlot5',
+ 'CmdOverloadMediumPowerSlot6': 'UI/Commands/CmdOverloadMediumPowerSlot6',
+ 'CmdOverloadMediumPowerSlot7': 'UI/Commands/CmdOverloadMediumPowerSlot7',
+ 'CmdOverloadMediumPowerSlot8': 'UI/Commands/CmdOverloadMediumPowerSlot8',
+ 'CmdPrevStackedWindow': 'UI/Commands/CmdPrevStackedWindow',
+ 'CmdPrevTab': 'UI/Commands/CmdPrevTab',
+ 'CmdQuitGame': 'UI/Commands/CmdQuitGame',
+ 'CmdReconnectToDrones': 'UI/Commands/ReconnectToLostDrones',
+ 'CmdReloadAmmo': 'UI/Commands/CmdReloadAmmo',
+ 'CmdResetMonitor': 'UI/Commands/CmdResetMonitor',
+ 'CmdSelectNextTarget': 'UI/Commands/CmdSelectNextTarget',
+ 'CmdSelectPrevTarget': 'UI/Commands/CmdSelectPrevTarget',
+ 'CmdSendBroadcast_Target': 'UI/Commands/CmdSendBroadcast_Target',
+ 'CmdSetChatChannelFocus': 'UI/Commands/CmdSetChatChannelFocus',
+ 'CmdSetOverviewFocus': 'UI/Commands/CmdSetOverviewFocus',
+ 'CmdSetShipFullSpeed': 'UI/Commands/CmdSetShipFullSpeed',
+ 'CmdShowItemInfo': 'UI/Commands/CmdShowItemInfo',
+ 'CmdStopShip': 'UI/Commands/CmdStopShip',
+ 'CmdToggleAggressivePassive': 'UI/Commands/CmdToggleAggressivePassive',
+ 'CmdToggleAutopilot': 'UI/Commands/CmdToggleAutopilot',
+ 'CmdToggleCombatView': 'UI/Commands/CmdToggleCombatView',
+ 'CmdToggleDroneFocusFire': 'UI/Commands/CmdToggleDroneFocusFire',
+ 'CmdToggleEffects': 'UI/Commands/CmdToggleEffects',
+ 'CmdToggleEffectTurrets': 'UI/Commands/CmdToggleEffectTurrets',
+ 'CmdToggleFighterAttackAndFollow': 'UI/Commands/CmdToggleFighterAttackAndFollow',
+ 'CmdToggleLookAtItem': 'UI/Commands/CmdToggleLookAtItem',
+ 'CmdToggleMap': 'UI/Commands/CmdToggleMap',
+ 'CmdToggleShowAllBrackets': 'UI/Commands/CmdToggleShowAllBrackets',
+ 'CmdToggleShowNoBrackets': 'UI/Commands/CmdToggleShowNoBrackets',
+ 'CmdToggleShowSpecialBrackets': 'UI/Commands/CmdToggleShowSpecialBrackets',
+ 'CmdToggleTacticalOverlay': 'UI/Commands/CmdToggleTacticalOverlay',
+ 'CmdToggleTargetItem': 'UI/Commands/CmdToggleTargetItem',
+ 'CmdUnlockTargetItem': 'UI/Commands/CmdUnlockTargetItem',
+ 'CmdWarpToItem': 'UI/Commands/CmdWarpToItem',
+ 'CmdZoomIn': 'UI/Commands/CmdZoomIn',
+ 'CmdZoomOut': 'UI/Commands/CmdZoomOut',
+ 'OpenAgentFinder': 'UI/Commands/OpenAgentFinder',
+ 'OpenAssets': 'UI/Commands/OpenAssets',
+ 'OpenBrowser': 'UI/Commands/OpenBrowser',
+ 'OpenCalculator': 'UI/Commands/OpenCalculator',
+ 'OpenCalendar': 'UI/Commands/OpenCalendar',
+ 'OpenCapitalNavigation': 'UI/Commands/OpenCapitalNavigation',
+ 'OpenCargoHoldOfActiveShip': 'UI/Commands/OpenCargoHoldOfActiveShip',
+ 'OpenCertificatePlanner': 'UI/Commands/OpenCertificatePlanner',
+ 'OpenChannels': 'UI/Commands/OpenChannels',
+ 'OpenCharacterCustomization': 'UI/Commands/OpenCharacterCustomization',
+ 'OpenCharactersheet': 'UI/Commands/OpenCharactersheet',
+ 'OpenConfigMenu': 'UI/Commands/OpenConfigMenu',
+ 'OpenContracts': 'UI/Commands/OpenContracts',
+ 'OpenCorpDeliveries': 'UI/Commands/OpenCorpDeliveries',
+ 'OpenCorporationPanel': 'UI/Commands/OpenCorporationPanel',
+ 'OpenDroneBayOfActiveShip': 'UI/Commands/OpenDroneBayOfActiveShip',
+ 'OpenDungeonEditor': 'UI/Commands/OpenDungeonEditor',
+ 'OpenEveMenu': 'UI/Commands/OpenEveMenu',
+ 'OpenFitting': 'UI/Commands/OpenFitting',
+ 'OpenFleet': 'UI/Commands/OpenFleet',
+ 'OpenFpsMonitor': 'UI/Commands/OpenFpsMonitor',
+ 'OpenHangarFloor': 'UI/Commands/OpenHangarFloor',
+ 'OpenHelp': 'UI/Commands/OpenHelp',
+ 'OpenInsurance': 'UI/Commands/OpenInsurance',
+ 'OpenJournal': 'UI/Commands/OpenJournal',
+ 'OpenJukebox': 'UI/Commands/OpenJukebox',
+ 'OpenLog': 'UI/Commands/OpenLog',
+ 'OpenLpstore': 'UI/Commands/OpenLpstore',
+ 'OpenMail': 'UI/Commands/OpenMail',
+ 'OpenMapBrowser': 'UI/Commands/OpenMapBrowser',
+ 'OpenMarket': 'UI/Commands/OpenMarket',
+ 'OpenMedical': 'UI/Commands/OpenMedical',
+ 'OpenMilitia': 'UI/Commands/OpenMilitia',
+ 'OpenMissions': 'UI/Commands/OpenMissions',
+ 'OpenMonitor': 'UI/Commands/OpenMonitor',
+ 'OpenMoonMining': 'UI/Commands/OpenMoonMining',
+ 'OpenNotepad': 'UI/Commands/OpenNotepad',
+ 'OpenOverviewSettings': 'UI/Commands/OpenOverviewSettings',
+ 'OpenPeopleAndPlaces': 'UI/Commands/OpenPeopleAndPlaces',
+ 'OpenRepairshop': 'UI/Commands/OpenRepairshop',
+ 'OpenReprocessingPlant': 'UI/Commands/OpenReprocessingPlant',
+ 'OpenScanner': 'UI/Commands/OpenScanner',
+ 'OpenScienceAndIndustry': 'UI/Commands/OpenScienceAndIndustry',
+ 'OpenShipConfig': 'UI/Commands/OpenShipConfig',
+ 'OpenShipHangar': 'UI/Commands/OpenShipHangar',
+ 'OpenSkillQueueWindow': 'UI/Commands/OpenSkillQueueWindow',
+ 'OpenSovDashboard': 'UI/Commands/OpenSovDashboard',
+ 'OpenStationManagement': 'UI/Commands/OpenStationManagement',
+ 'OpenStore': 'UI/Commands/OpenStore',
+ 'OpenTutorials': 'UI/Commands/OpenTutorials',
+ 'OpenUIDebugger': 'UI/Commands/OpenUIDebugger',
+ 'OpenWallet': 'UI/Commands/OpenWallet',
+ 'WinCmdToggleWindowed': 'UI/Commands/WinCmdToggleWindowed'}
 
 class EveCommandService(svc.cmd):
     __guid__ = 'svc.eveCmd'
     __displayname__ = 'Command service'
     __replaceservice__ = 'cmd'
     __notifyevents__ = ['OnSessionChanged']
-    __categoryToContext__ = {mls.UI_GENERIC_GENERAL: (contextFiS, contextIncarna),
-     mls.UI_GENERIC_WINDOW: (contextFiS, contextIncarna),
-     mls.UI_GENERIC_COMBAT: (contextFiS,),
-     mls.UI_GENERIC_DRONES: (contextFiS,),
-     mls.UI_GENERIC_MODULES: (contextFiS,),
-     mls.UI_GENERIC_NAVIGATION: (contextFiS,),
-     mls.UI_GENERIC_MOVEMENT: (contextIncarna,)}
+    __categoryToContext__ = {'general': (contextFiS, contextIncarna),
+     'window': (contextFiS, contextIncarna),
+     'combat': (contextFiS,),
+     'drones': (contextFiS,),
+     'modules': (contextFiS,),
+     'navigation': (contextFiS,),
+     'movement': (contextIncarna,)}
 
     def Run(self, memStream = None):
         svc.cmd.Run(self, memStream)
@@ -38,6 +210,8 @@ class EveCommandService(svc.cmd):
         self.combatCmdLoaded = None
         self.combatCmdCurrentHasExecuted = False
         self.contextToCommand = {}
+        self.labelsByFuncName.update(labelsByFuncName)
+        uicore.uilib.RegisterForTriuiEvents(uiconst.UI_ACTIVE, self.OnApplicationFocusChanged)
 
 
 
@@ -58,18 +232,38 @@ class EveCommandService(svc.cmd):
 
     def LoadAllAccelerators(self):
         self.commandMap.UnloadAllAccelerators()
-        self.commandMap.LoadAcceleratorsByCategory(mls.UI_GENERIC_GENERAL)
-        self.commandMap.LoadAcceleratorsByCategory(mls.UI_GENERIC_WINDOW)
+        self.commandMap.LoadAcceleratorsByCategory('general')
+        self.commandMap.LoadAcceleratorsByCategory('window')
         if getattr(session, 'locationid', None):
-            if util.IsWorldSpace(session.locationid):
-                self.commandMap.LoadAcceleratorsByCategory(mls.UI_GENERIC_MOVEMENT)
-            elif util.IsStation(session.locationid):
-                self.commandMap.LoadAcceleratorsByCategory(mls.UI_GENERIC_MOVEMENT)
+            if util.IsWorldSpace(session.locationid) or util.IsStation(session.locationid):
+                self.commandMap.LoadAcceleratorsByCategory('movement')
             else:
-                self.commandMap.LoadAcceleratorsByCategory(mls.UI_GENERIC_COMBAT)
-                self.commandMap.LoadAcceleratorsByCategory(mls.UI_GENERIC_DRONES)
-                self.commandMap.LoadAcceleratorsByCategory(mls.UI_GENERIC_MODULES)
-                self.commandMap.LoadAcceleratorsByCategory(mls.UI_GENERIC_NAVIGATION)
+                self.commandMap.LoadAcceleratorsByCategory('combat')
+                self.commandMap.LoadAcceleratorsByCategory('drones')
+                self.commandMap.LoadAcceleratorsByCategory('modules')
+                self.commandMap.LoadAcceleratorsByCategory('navigation')
+
+
+
+    def OnApplicationFocusChanged(self, obj, eventID, params):
+        if not obj:
+            return True
+        if getattr(session, 'locationid', None) and util.IsSolarSystem(session.locationid):
+            cmds = self.commandMap.GetAllCommands()
+            combatCmds = [ cmd for cmd in cmds if cmd.category == 'combat' ]
+            for cmd in combatCmds:
+                allPressed = True
+                if not cmd.shortcut:
+                    continue
+                for key in cmd.shortcut:
+                    if not uicore.uilib.Key(key):
+                        allPressed = False
+
+                if allPressed:
+                    cmd.callback()
+                    return True
+
+        return True
 
 
 
@@ -123,10 +317,9 @@ class EveCommandService(svc.cmd):
              c(getattr(self, 'CmdOverloadLowPowerSlot%s' % i), (CTRL, SHIFT, key))])
 
         for cm in m:
-            cm.category = mls.UI_GENERIC_MODULES
+            cm.category = 'modules'
             ret.append(cm)
 
-        brdcstStr = '%s: ' % mls.UI_FLEET_BROADCAST
         m = [c(self.CmdSelectPrevTarget, (ALT, uiconst.VK_LEFT)),
          c(self.CmdSelectNextTarget, (ALT, uiconst.VK_RIGHT)),
          c(self.CmdZoomIn, uiconst.VK_PRIOR, repeatable=True),
@@ -140,29 +333,30 @@ class EveCommandService(svc.cmd):
          c(self.CmdToggleShowAllBrackets, (ALT, uiconst.VK_Z)),
          c(self.CmdToggleShowNoBrackets, (ALT, SHIFT, uiconst.VK_Z)),
          c(self.CmdToggleShowSpecialBrackets, (ALT, SHIFT, uiconst.VK_X)),
-         c(self.CmdFleetBroadcast_EnemySpotted, uiconst.VK_Z, description=brdcstStr + mls.UI_FLEET_BROADCAST_ENEMYSPOTTED),
-         c(self.CmdFleetBroadcast_NeedBackup, None, description=brdcstStr + mls.UI_FLEET_BROADCAST_NEEDBACKUP),
-         c(self.CmdFleetBroadcast_HealArmor, None, description=brdcstStr + mls.UI_FLEET_BROADCAST_HEALARMOR),
-         c(self.CmdFleetBroadcast_HealShield, None, description=brdcstStr + mls.UI_FLEET_BROADCAST_HEALSHIELD),
-         c(self.CmdFleetBroadcast_HealCapacitor, None, description=brdcstStr + mls.UI_FLEET_BROADCAST_HEALCAPACITOR),
-         c(self.CmdFleetBroadcast_InPosition, None, description=brdcstStr + mls.UI_FLEET_BROADCAST_INPOSITION),
-         c(self.CmdFleetBroadcast_HoldPosition, None, description=brdcstStr + mls.UI_FLEET_BROADCAST_HOLDPOSITION),
-         c(self.CmdFleetBroadcast_JumpBeacon, None, description=brdcstStr + mls.UI_FLEET_BROADCAST_JUMPBEACON),
-         c(self.CmdFleetBroadcast_Location, None, description=brdcstStr + mls.UI_FLEET_BROADCAST_LOCATION),
+         c(self.CmdFleetBroadcast_EnemySpotted, uiconst.VK_Z),
+         c(self.CmdFleetBroadcast_NeedBackup, None),
+         c(self.CmdFleetBroadcast_HealArmor, None),
+         c(self.CmdFleetBroadcast_HealShield, None),
+         c(self.CmdFleetBroadcast_HealCapacitor, None),
+         c(self.CmdFleetBroadcast_InPosition, None),
+         c(self.CmdFleetBroadcast_HoldPosition, None),
+         c(self.CmdFleetBroadcast_JumpBeacon, None),
+         c(self.CmdFleetBroadcast_Location, None),
          c(self.CmdSendBroadcast_Target, uiconst.VK_X),
-         c(self.CmdCycleFleetBroadcastScope, None, description=mls.UI_CMD_CYCLEFLEETBROADCAST)]
+         c(self.CmdCycleFleetBroadcastScope, None)]
         for cm in m:
-            cm.category = mls.UI_GENERIC_NAVIGATION
+            cm.category = 'navigation'
             ret.append(cm)
 
         m = [c(self.CmdDronesEngage, uiconst.VK_F),
          c(self.CmdDronesReturnAndOrbit, (SHIFT, ALT, uiconst.VK_R)),
          c(self.CmdDronesReturnToBay, (SHIFT, uiconst.VK_R)),
+         c(self.CmdReconnectToDrones, None),
          c(self.CmdToggleAggressivePassive, None),
          c(self.CmdToggleDroneFocusFire, None),
          c(self.CmdToggleFighterAttackAndFollow, None)]
         for cm in m:
-            cm.category = mls.UI_GENERIC_DRONES
+            cm.category = 'drones'
             ret.append(cm)
 
         m = [c(self.CmdPrevStackedWindow, (CTRL, SHIFT, uiconst.VK_PRIOR)),
@@ -170,21 +364,23 @@ class EveCommandService(svc.cmd):
          c(self.CmdPrevTab, (CTRL, uiconst.VK_PRIOR)),
          c(self.CmdNextTab, (CTRL, uiconst.VK_NEXT)),
          c(self.CmdExitStation, None),
+         c(self.CmdEnterCQ, None),
+         c(self.CmdEnterHangar, None),
          c(self.CmdHideUI, (CTRL, uiconst.VK_F9)),
          c(self.CmdHideCursor, (ALT, uiconst.VK_F9)),
          c(self.CmdToggleEffects, (CTRL,
           ALT,
           SHIFT,
-          uiconst.VK_E), description=mls.UI_CMD_DISABLEEFFECTS),
+          uiconst.VK_E)),
          c(self.CmdToggleEffectTurrets, (CTRL,
           ALT,
           SHIFT,
-          uiconst.VK_T), description=mls.UI_CMD_DISABLETURRETEFFECTS)]
+          uiconst.VK_T))]
         ret.extend(m)
         if bool(session.role & service.ROLE_CONTENT):
             ret.append(c(self.OpenDungeonEditor, (CTRL, SHIFT, uiconst.VK_D)))
         if bool(session.role & service.ROLEMASK_ELEVATEDPLAYER):
-            ret.append(c(self.CmdToggleCombatView, (CTRL, ALT, uiconst.VK_T), description=mls.UI_CMD_DISABLECOMBATVIEW))
+            ret.append(c(self.CmdToggleCombatView, (CTRL, ALT, uiconst.VK_T)))
         m = [c(self.CmdToggleTargetItem, None),
          c(self.CmdLockTargetItem, CTRL),
          c(self.CmdUnlockTargetItem, (CTRL, SHIFT)),
@@ -197,7 +393,7 @@ class EveCommandService(svc.cmd):
          c(self.CmdDockOrJumpOrActivateGate, uiconst.VK_D),
          c(self.CmdWarpToItem, uiconst.VK_S)]
         for cm in m:
-            cm.category = mls.UI_GENERIC_COMBAT
+            cm.category = 'combat'
             ret.append(cm)
 
         m = [c(self.CmdOpenNewMessage, None),
@@ -218,7 +414,7 @@ class EveCommandService(svc.cmd):
          c(self.OpenCorpDeliveries, None),
          c(self.OpenCorporationPanel, None),
          c(self.OpenDroneBayOfActiveShip, None),
-         c(self.OpenFactories, (ALT, uiconst.VK_S)),
+         c(self.OpenScienceAndIndustry, (ALT, uiconst.VK_S)),
          c(self.OpenFitting, (ALT, uiconst.VK_F)),
          c(self.OpenFleet, None),
          c(self.OpenFpsMonitor, (CTRL, uiconst.VK_F)),
@@ -254,9 +450,9 @@ class EveCommandService(svc.cmd):
          c(self.OpenAgentFinder, None),
          c(self.OpenStore, None)]
         if bool(session.role & service.ROLE_PROGRAMMER):
-            m.append(c(self.OpenUIDebugger, None, description='Open UI Debugger'))
+            m.append(c(self.OpenUIDebugger, None))
         for cm in m:
-            cm.category = mls.UI_GENERIC_WINDOW
+            cm.category = 'window'
             ret.append(cm)
 
         m = [c(self.CmdMoveForward, uiconst.VK_W),
@@ -264,7 +460,7 @@ class EveCommandService(svc.cmd):
          c(self.CmdMoveLeft, uiconst.VK_A),
          c(self.CmdMoveRight, uiconst.VK_D)]
         for cm in m:
-            cm.category = mls.UI_GENERIC_MOVEMENT
+            cm.category = 'movement'
             ret.append(cm)
 
         return ret
@@ -550,15 +746,16 @@ class EveCommandService(svc.cmd):
 
     def _Zoom(self, direction):
         camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
-        if sm.GetService('planetUI').IsOpen():
+        viewSvc = sm.GetService('viewState')
+        if viewSvc.IsViewActive('planet'):
             dz = -30 * direction
             sm.GetService('planetUI').planetNav.camera.ManualZoom(dz)
         elif camera is not None and camera.__typename__ == 'EveCamera':
             dz = 0.12 * direction
             camera.Dolly(dz * abs(camera.translationFromParent.z))
-            if eve.session.stationid is not None:
+            if viewSvc.IsViewActive('station'):
                 camera.translationFromParent.z = sm.GetService('station').CheckCameraTranslation(camera.translationFromParent.z)
-            elif eve.session.solarsystemid is not None:
+            elif viewSvc.IsViewActive('inflight'):
                 camera.translationFromParent.z = sm.GetService('camera').CheckTranslationFromParent(camera.translationFromParent.z)
 
 
@@ -584,8 +781,7 @@ class EveCommandService(svc.cmd):
             bp = sm.GetService('michelle').GetBallpark()
             ownBall = bp.GetBall(eve.session.shipid)
             if rp is not None and ownBall is not None:
-                newSpeed = min(1.0, ownBall.speedFraction - 0.1)
-                rp.SetSpeedFraction(newSpeed)
+                rp.SetSpeedFraction(min(1.0, ownBall.speedFraction - 0.1))
 
 
 
@@ -595,23 +791,22 @@ class EveCommandService(svc.cmd):
             bp = sm.GetService('michelle').GetBallpark()
             ownBall = bp.GetBall(eve.session.shipid)
             if rp is not None and ownBall is not None:
-                newSpeed = min(1.0, ownBall.speedFraction + 0.1)
-                rp.SetSpeedFraction(newSpeed)
+                rp.SetSpeedFraction(min(1.0, ownBall.speedFraction + 0.1))
 
 
 
     def CmdStopShip(self, *args):
         if eve.session.shipid and eve.session.solarsystemid:
-            sm.GetService('menu').AbortWarpDock()
+            sm.GetService('autoPilot').AbortApproachAndTryCommand()
+            sm.GetService('autoPilot').AbortWarpAndTryCommand()
             if session.IsItSafe():
                 bp = sm.GetService('michelle').GetRemotePark()
                 if bp and session.IsItSafe():
                     bp.Stop()
-            sm.GetService('logger').AddText(mls.UI_INFLIGHT_SHIPSTOPPING, 'notify')
-            sm.GetService('gameui').Say(mls.UI_INFLIGHT_SHIPSTOPPING)
+            sm.GetService('logger').AddText(localization.GetByLabel('UI/Commands/ShipStopping'), 'notify')
+            sm.GetService('gameui').Say(localization.GetByLabel('UI/Commands/ShipStopping'))
             if sm.GetService('autoPilot').GetState():
                 sm.GetService('autoPilot').SetOff()
-            sm.GetService('menu').CancelWarpDock()
 
 
 
@@ -624,20 +819,21 @@ class EveCommandService(svc.cmd):
         if ownBall and rbp is not None and ownBall.mode == destiny.DSTBALL_STOP:
             if not sm.GetService('autoPilot').GetState():
                 direction = trinity.TriVector(0.0, 0.0, 1.0)
-                currentDirection = ownBall.GetQuaternionAt(blue.os.GetTime())
+                currentDirection = ownBall.GetQuaternionAt(blue.os.GetSimTime())
                 direction.TransformQuaternion(currentDirection)
                 rbp.GotoDirection(direction.x, direction.y, direction.z)
         if rbp is not None:
             rbp.SetSpeedFraction(1.0)
-            sm.GetService('logger').AddText('%s %s' % (mls.UI_INFLIGHT_SPEEDCHANGEDTO, self._FormatSpeed(ownBall.maxVelocity)), 'notify')
-            sm.GetService('gameui').Say('%s %s' % (mls.UI_INFLIGHT_SPEEDCHANGEDTO, self._FormatSpeed(ownBall.maxVelocity)))
+            speedText = self._FormatSpeed(ownBall.maxVelocity)
+            sm.GetService('logger').AddText(speedText, 'notify')
+            sm.GetService('gameui').Say(speedText)
 
 
 
     def _FormatSpeed(self, speed):
-        if speed < 100:
-            return '%.1f %s' % (speed, mls.UI_GENERIC_MPERS)
-        return '%i %s' % (long(speed), mls.UI_GENERIC_MPERS)
+        if speed >= 100:
+            speed = long(speed)
+        return localization.GetByLabel('UI/Commands/SpeedChangedTo', speed=speed)
 
 
 
@@ -700,11 +896,23 @@ class EveCommandService(svc.cmd):
         modalWnd = uicore.registry.GetModalWindow()
         if modalWnd and modalWnd.__guid__ == 'form.MessageBox':
             return 
-        if uicore.Message('AskQuitGame', {}, uiconst.YESNO, suppress=uiconst.ID_YES) == uiconst.ID_YES:
-            sm.GetService('tutorial').OnCloseApp()
-            self.settings.SaveSettings()
-            sm.GetService('clientStatsSvc').OnProcessExit()
-            blue.pyos.Quit('User requesting close')
+        if uicore.Message('AskQuitGame', {}, uiconst.YESNO, suppress=uiconst.ID_YES, ignoreNotFound=1) == uiconst.ID_YES:
+            self.DoQuitGame()
+
+
+
+    def DoQuitGame(self):
+        try:
+            try:
+                sm.GetService('tutorial').OnCloseApp()
+                self.settings.SaveSettings()
+                sm.GetService('clientStatsSvc').OnProcessExit()
+            except:
+                self.LogException()
+
+        finally:
+            bluepy.Terminate('User requesting close')
+
 
 
 
@@ -741,7 +949,7 @@ class EveCommandService(svc.cmd):
             ret = entity.CmdReturnHome(droneIDs)
             sm.GetService('menu').HandleMultipleCallError(droneIDs, ret, 'MultiDroneCmdResult')
             if droneIDs and targetID:
-                eve.Message('Command', {'command': mls.UI_INFLIGHT_ALLDRONESRETURNINGANDORBITING})
+                eve.Message('Command', {'command': localization.GetByLabel('UI/Commands/DronesReturningAndOrbiting')})
 
 
 
@@ -756,7 +964,12 @@ class EveCommandService(svc.cmd):
             ret = entity.CmdReturnBay(droneIDs)
             sm.GetService('menu').HandleMultipleCallError(droneIDs, ret, 'MultiDroneCmdResult')
             if droneIDs and targetID:
-                eve.Message('Command', {'command': mls.UI_INFLIGHT_ALLDRONESRETURNINGTOBAY})
+                eve.Message('Command', {'command': localization.GetByLabel('UI/Commands/DronesReturningToDroneBay')})
+
+
+
+    def CmdReconnectToDrones(self, *args):
+        sm.GetService('menu').ReconnectToDrones()
 
 
 
@@ -792,8 +1005,8 @@ class EveCommandService(svc.cmd):
 
     def WinCmdToggleWindowed(self, *args):
         lastTimeToggled = settings.user.ui.Get('LastTimeToggleWindowed', 0)
-        if blue.os.GetTime() - lastTimeToggled > 2 * SEC:
-            settings.user.ui.Set('LastTimeToggleWindowed', blue.os.GetTime())
+        if blue.os.GetWallclockTime() - lastTimeToggled > 2 * SEC:
+            settings.user.ui.Set('LastTimeToggleWindowed', blue.os.GetWallclockTime())
             sm.GetService('device').ToggleWindowed()
 
 
@@ -872,33 +1085,26 @@ class EveCommandService(svc.cmd):
             ccLayer = uicore.layer.Get('charactercreation')
             if ccLayer is not None and ccLayer.isopen:
                 return 
+            if sm.GetService('viewState').HasActiveTransition():
+                return 
             sm.GetService('tutorial').ChangeTutorialWndState(visible=False)
             sm.GetService('station').Exit()
 
 
 
     def CmdEnterCQ(self, *args):
-        if util.GetCurrentView() == 'station' or prefs.GetValue('loadstationenv', 1) == 0:
+        if sm.GetService('viewState').IsViewActive('station'):
             return 
-        settings.user.ui.Set('defaultDockingView', 'station')
-        sm.GetService('loading').FadeToBlack()
-        change = {'worldspaceid': (session.worldspaceid, session.worldspaceid),
-         'stationid': (session.stationid2, session.stationid2)}
-        sm.GetService('gameui').OnSessionChanged(0, session, change)
-        sm.GetService('neocom').ShowToggleHangarCQButton()
-        sm.GetService('loading').FadeFromBlack()
+        change = {'worldspaceid': (session.worldspaceid, session.worldspaceid)}
+        uthread.pool('eveCommands::CmdEnterCQ', sm.GetService('viewState').ChangePrimaryView, 'station', change=change)
 
 
 
     def CmdEnterHangar(self, *args):
-        if util.GetCurrentView() == 'hangar' and prefs.GetValue('loadstationenv', 1) == 1:
+        if sm.GetService('viewState').IsViewActive('hangar'):
             return 
-        settings.user.ui.Set('defaultDockingView', 'hangar')
-        sm.GetService('loading').FadeToBlack()
         change = {'stationid': (session.stationid2, session.stationid2)}
-        sm.GetService('gameui').OnSessionChanged(0, session, change)
-        sm.GetService('neocom').ShowToggleHangarCQButton()
-        sm.GetService('loading').FadeFromBlack()
+        uthread.pool('eveCommands::CmdEnterHangar', sm.GetService('viewState').ChangePrimaryView, 'hangar', change=change)
 
 
 
@@ -908,22 +1114,9 @@ class EveCommandService(svc.cmd):
 
 
     def CmdSetOverviewFocus(self, *args):
-        wnd = sm.GetService('window').GetWindow('overview')
+        wnd = form.OverView.GetIfOpen()
         if wnd:
             uicore.registry.SetFocus(wnd)
-
-
-
-    def GetActiveWnd(self, *args):
-        all = sm.GetService('window').GetWindows()
-        active = uicore.registry.GetActive()
-        if active:
-            for each in all:
-                if each == active:
-                    return each
-                if uiutil.IsUnder(active, each):
-                    return each
-
 
 
 
@@ -932,14 +1125,11 @@ class EveCommandService(svc.cmd):
             return 
         if not getattr(eve, 'chooseWndMenu', None) or eve.chooseWndMenu.destroyed or eve.chooseWndMenu.state == uiconst.UI_HIDDEN:
             menu.KillAllMenus()
-            if sm.GetService('window').GetWindow('CtrlTabWindow') is not None:
-                sm.GetService('window').GetWindow('CtrlTabWindow').SelfDestruct()
-            mv = sm.GetService('window').GetWindow('CtrlTabWindow', create=1, decoClass=form.CtrlTabWindow)
+            form.CtrlTabWindow.CloseIfOpen()
+            mv = form.CtrlTabWindow.Open()
             mv.left = (uicore.desktop.width - mv.width) / 2
             mv.top = (uicore.desktop.height - mv.height) / 2
             eve.chooseWndMenu = mv
-        if uix.GetInflightNav(0):
-            uix.GetInflightNav(0).CloseZoomCursor()
         return eve.chooseWndMenu
 
 
@@ -991,7 +1181,7 @@ class EveCommandService(svc.cmd):
 
     def OpenCapitalNavigation(self, *args):
         if util.GetActiveShip():
-            wnd = sm.GetService('window').GetWindow('capitalnav', decoClass=form.CapitalNav, create=1, maximize=1)
+            form.CapitalNav.ToggleOpenClose()
 
 
 
@@ -1022,19 +1212,13 @@ class EveCommandService(svc.cmd):
 
     def OpenMail(self, *args):
         if session.charid:
-            wnd = sm.GetService('mailSvc').GetMailWindow()
-            if wnd:
-                wnd.Maximize()
+            return form.MailWindow.ToggleOpenClose()
 
 
 
     def OpenAgentFinder(self, *args):
         if session.charid:
-            wnd = sm.GetService('window').GetWindow('AgentFinderWnd')
-            if wnd:
-                wnd.Maximize()
-            else:
-                sm.GetService('window').GetWindow('AgentFinderWnd', create=1, decoClass=form.AgentFinderWnd)
+            form.AgentFinderWnd.ToggleOpenClose()
 
 
 
@@ -1046,13 +1230,17 @@ class EveCommandService(svc.cmd):
 
     def OpenWallet(self, *args):
         if eve.session.solarsystemid2:
-            sm.GetService('wallet').Show()
+            form.Wallet.ToggleOpenClose()
 
 
 
     def OpenCorporationPanel(self, *args):
         if eve.session.solarsystemid2:
-            sm.GetService('corpui').Show()
+            wnd = form.Corporation.GetIfOpen()
+            if wnd:
+                form.Corporation.ToggleOpenClose()
+            else:
+                sm.GetService('corpui').Show()
 
 
 
@@ -1064,7 +1252,7 @@ class EveCommandService(svc.cmd):
 
     def OpenAssets(self, *args):
         if eve.session.solarsystemid2:
-            sm.GetService('assets').Show()
+            form.AssetsWindow.ToggleOpenClose()
 
 
 
@@ -1076,7 +1264,7 @@ class EveCommandService(svc.cmd):
 
     def OpenJournal(self, *args):
         if eve.session.solarsystemid2:
-            sm.GetService('journal').Show()
+            form.Journal.ToggleOpenClose()
 
 
 
@@ -1084,7 +1272,7 @@ class EveCommandService(svc.cmd):
         if not sm.GetService('audio').IsActivated():
             eve.Message('UnableToOpenJukebox')
             return 
-        wnd = sm.GetService('window').GetWindow('jukebox', decoClass=form.jukebox, create=1, maximize=1)
+        form.jukebox.ToggleOpenClose()
 
 
 
@@ -1096,8 +1284,7 @@ class EveCommandService(svc.cmd):
 
     def OpenSkillQueueWindow(self, *args):
         if session.charid:
-            wnd = sm.GetService('window').GetWindow('trainingqueue', create=1, decoClass=form.SkillQueue)
-            wnd.Maximize()
+            form.SkillQueue.ToggleOpenClose()
 
 
 
@@ -1112,7 +1299,7 @@ class EveCommandService(svc.cmd):
 
 
     def __OpenLog_thread(self, *args):
-        sm.GetService('logger').Show()
+        form.Logger.ToggleOpenClose()
 
 
 
@@ -1138,14 +1325,14 @@ class EveCommandService(svc.cmd):
 
     def __OpenCargoHoldOfActiveShip_thread(self, *args):
         shipID = util.GetActiveShip()
-        shipItem = sm.GetService('clientDogmaIM').GetDogmaLocation().GetDogmaItem(shipID)
-        if shipID is not None:
-            wnd = sm.GetService('window').GetWindow('shipCargo_%s' % shipID)
-            if wnd:
-                wnd.Maximize()
-            else:
-                shipName = cfg.evelocations.Get(shipID).name
-                sm.GetService('window').OpenCargo(shipItem, shipName, '%s%s %s' % (shipName, mls.AGT_AGENTMGR_FORMATMESSAGE_APPEND_APOSTROPHE_AND_S, mls.UI_GENERIC_CARGO))
+        if shipID is None:
+            return 
+        shipItem = sm.GetService('clientDogmaIM').GetDogmaLocation().GetDogmaItemWithWait(shipID)
+        if shipItem is None:
+            return 
+        uicls.Window.GetIfOpen(windowID='shipCargo_%s' % shipID)
+        shipName = cfg.evelocations.Get(shipID).name
+        sm.GetService('window').OpenCargo(shipItem, shipName)
 
 
 
@@ -1156,44 +1343,39 @@ class EveCommandService(svc.cmd):
 
 
     def OpenFleet(self, *args):
-        wnd = sm.GetService('window').GetWindow('fleetwindow', create=0, decoClass=form.FleetWindow, maximize=1)
-        if not wnd:
-            sm.GetService('window').GetWindow('fleetwindow', create=1, decoClass=form.FleetWindow, maximize=1)
+        form.FleetWindow.ToggleOpenClose()
 
 
 
-    def OpenSovDashboard(self, solarSystemID = None):
-        wnd = sm.GetService('window').GetWindow('sovOverview', decoClass=form.SovereigntyOverviewWnd, create=0)
-        if not wnd:
-            wnd = sm.GetService('window').GetWindow('sovOverview', decoClass=form.SovereigntyOverviewWnd, create=1)
-        if wnd is not None and not wnd.destroyed:
-            if solarSystemID:
-                regionID = sm.GetService('map').GetRegionForSolarSystem(solarSystemID)
-                constellationID = sm.GetService('map').GetConstellationForSolarSystem(solarSystemID)
-                wnd.SetLocation(solarSystemID, constellationID, regionID)
-            wnd.Maximize()
+    def OpenSovDashboard(self, solarSystemID = None, *args):
+        wnd = form.SovereigntyOverviewWnd.ToggleOpenClose()
+        if wnd and solarSystemID:
+            regionID = sm.GetService('map').GetRegionForSolarSystem(solarSystemID)
+            constellationID = sm.GetService('map').GetConstellationForSolarSystem(solarSystemID)
+            wnd.SetLocation(solarSystemID, constellationID, regionID)
 
 
 
     def OpenPeopleAndPlaces(self, *args):
         if eve.session.solarsystemid2:
-            sm.GetService('addressbook').Show()
+            form.AddressBook.ToggleOpenClose()
 
 
 
     def OpenHelp(self, *args):
         if eve.session.charid:
-            wnd = sm.GetService('window').GetWindow('help', decoClass=form.HelpWindow, maximize=1, create=1)
-            if wnd:
-                wnd.sr.mainTabs.ShowPanelByName('Support')
+            form.HelpWindow.ToggleOpenClose()
+
+
+
+    def OpenReportBug(self, *args):
+        form.BugReportingWindow.ToggleOpenClose()
 
 
 
     def OpenStationManagement(self, *args):
         if eve.session.solarsystemid2:
-            wnd = sm.GetService('window').GetWindow('StationManagement', maximize=1)
-            if not wnd:
-                form.StationManagement().Startup()
+            form.StationManagement().Startup()
 
 
 
@@ -1205,22 +1387,13 @@ class EveCommandService(svc.cmd):
 
     def __OpenScanner_thread(self, *args):
         if eve.session.solarsystemid:
-            wnd = sm.GetService('window').GetWindow('scanner', showIfInStack=False)
-            if wnd is not None and not wnd.destroyed:
-                if wnd.IsMinimized():
-                    wnd.Maximize()
-                elif wnd.IsCollapsed():
-                    wnd.Expand()
-                else:
-                    wnd.CloseX()
-            else:
-                sm.GetService('window').GetWindow('scanner', create=1, decoClass=form.Scanner)
+            form.Scanner.ToggleOpenClose()
 
 
 
     def OpenMapBrowser(self, locationID = None):
         if eve.session.solarsystemid2:
-            wnd = sm.GetService('window').GetWindow('mapbrowser')
+            wnd = form.MapBrowserWnd.GetIfOpen()
             if wnd and not wnd.destroyed:
                 if locationID is None:
                     if wnd.state == uiconst.UI_HIDDEN:
@@ -1231,7 +1404,7 @@ class EveCommandService(svc.cmd):
                     wnd.Show()
                 wnd.DoLoad(locationID)
                 return 
-            sm.GetService('window').GetWindow('mapbrowser', 1, decoClass=form.MapBrowserWnd, locationID=locationID)
+            form.MapBrowserWnd.Open(locationID=locationID)
 
 
 
@@ -1239,49 +1412,49 @@ class EveCommandService(svc.cmd):
         if session.stationid2 is None:
             return 
         if eve.rookieState is None and settings.user.windows.Get('dockshipsanditems', 0):
-            lobby = sm.GetService('station').GetLobby()
+            lobby = form.Lobby.GetIfOpen()
             if lobby:
                 lobby.ShowItems()
             return 
-        sm.GetService('window').GetWindow('hangarFloor', create=True, maximize=True, decoClass=form.ItemHangar)
+        form.ItemHangar.ToggleOpenClose()
 
 
 
-    def OpenShipHangar(self, maximizeWindow = 1, *args):
+    def OpenShipHangar(self, *args, **kwds):
         if session.stationid2 is None:
             return 
         if eve.rookieState is None and settings.user.windows.Get('dockshipsanditems', 0):
-            lobby = sm.GetService('station').GetLobby()
+            lobby = form.Lobby.GetIfOpen()
             if lobby:
                 lobby.ShowShips()
             return 
-        sm.GetService('window').GetWindow('shipHangar', create=True, maximize=maximizeWindow, decoClass=form.ShipHangar, showIfInStack=maximizeWindow)
+        form.ShipHangar.ToggleOpenClose()
 
 
 
     def OpenCalculator(self, *args):
-        sm.GetService('window').GetWindow('calculator', decoClass=form.Calculator, maximize=1, create=1)
+        form.Calculator.ToggleOpenClose()
 
 
 
     def OpenOverviewSettings(self, *args):
-        sm.GetService('window').GetWindow('overviewsettings', decoClass=form.OverviewSettings, maximize=1, create=1)
+        form.OverviewSettings.ToggleOpenClose()
 
 
 
     def OpenCorpDeliveries(self, *args):
         deliveryRoles = const.corpRoleAccountant | const.corpRoleJuniorAccountant | const.corpRoleTrader
-        if eve.session.corprole & deliveryRoles == 0:
-            raise UserError('CrpAccessDenied', {'reason': mls.UI_CORP_ACCESSDENIED14})
-        if eve.session.stationid:
+        if session.corprole & deliveryRoles == 0:
+            raise UserError('CrpAccessDenied', {'reason': localization.GetByLabel('UI/Commands/CorpRoleMissing')})
+        if session.stationid2:
             t = uthread.new(self._EveCommandService__OpenCorpDeliveries_thread)
             t.context = 'lobby::OpenCorpDeliveries'
 
 
 
     def __OpenCorpDeliveries_thread(self, *args):
-        if eve.session.stationid:
-            wnd = sm.GetService('window').GetWindow('corpMarketHangar', create=1, maximize=1, decoClass=form.CorpMarketHangar, prefsName='container')
+        if session.stationid2:
+            form.CorpMarketHangar.ToggleOpenClose()
 
 
 
@@ -1290,22 +1463,23 @@ class EveCommandService(svc.cmd):
             if url is not None and url != 'home' and (url.startswith('http://') or url.startswith('https://')):
                 blue.os.ShellExecute(url)
                 return 
-        w = sm.GetService('window').GetWindow(windowName, decoClass=form.EveBrowserWindow, maximize=1, create=0)
-        if w is None:
-            w = sm.GetService('window').GetWindow(windowName, decoClass=form.EveBrowserWindow, maximize=1, create=1, initialUrl=url)
+        browserWindow = uicls.BrowserWindow.GetIfOpen(windowID=windowName)
+        if browserWindow is None:
+            return uicls.BrowserWindow.Open(initialUrl=url, windowID=windowName)
+        browserWindow.Maximize()
+        if url == 'home':
+            uthread.new(browserWindow.GoHome)
         elif url:
-            if url == 'home':
-                uthread.new(w.GoHome)
-            elif newTab:
-                uthread.new(w.AddTab, url)
+            if newTab:
+                uthread.new(browserWindow.AddTab, url)
             else:
-                uthread.new(w.BrowseTo, url, args=args, data=data)
-        return w
+                uthread.new(browserWindow.BrowseTo, url, args=args, data=data)
+        return browserWindow
 
 
 
     def OpenNotepad(self, *args):
-        sm.GetService('notepad').Show()
+        form.Notepad.ToggleOpenClose()
 
 
 
@@ -1319,7 +1493,7 @@ class EveCommandService(svc.cmd):
 
         if not id:
             return 
-        sm.GetService('window').GetWindow('moon', decoClass=form.MoonMining, slimItem=id, maximize=1, create=1)
+        form.MoonMining.ToggleOpenClose(slimItem=id)
 
 
 
@@ -1327,39 +1501,37 @@ class EveCommandService(svc.cmd):
         if session.shipid is not None and session.solarsystemid is not None:
             ship = sm.GetService('godma').GetItem(session.shipid)
             if bool(sm.GetService('godma').GetType(ship.typeID).hasShipMaintenanceBay):
-                sm.GetService('window').GetWindow('shipconfig', decoClass=form.ShipConfig, maximize=1, create=1)
+                form.ShipConfig.ToggleOpenClose()
 
 
 
     def OpenTutorials(self, *args):
         if eve.session.charid:
-            wnd = sm.GetService('window').GetWindow('help', decoClass=form.HelpWindow, maximize=1, create=1)
-            if wnd:
-                wnd.sr.mainTabs.ShowPanelByName('Tutorials')
+            form.HelpWindow.Open(showPanel='Tutorials')
 
 
 
     def OpenMarket(self, *args):
-        wnd = sm.GetService('window').GetWindow('market', decoClass=form.RegionalMarket, maximize=1, create=1)
-        if wnd is not None and not wnd.destroyed:
-            wnd.Maximize()
+        form.RegionalMarket.ToggleOpenClose()
 
 
 
     def OpenContracts(self, *args):
-        sm.GetService('contracts').Show()
+        wnd = form.ContractsWindow.ToggleOpenClose()
+        if wnd:
+            sm.GetService('tutorial').OpenTutorialSequence_Check(uix.tutorialInformativeContracts)
 
 
 
-    def OpenFactories(self, *args):
+    def OpenScienceAndIndustry(self, *args):
         if eve.session.solarsystemid2:
-            sm.GetService('manufacturing').Show()
+            form.Manufacturing.ToggleOpenClose()
 
 
 
     def OpenCorporationPanel_Planets(self, *args):
         if eve.session.solarsystemid2:
-            sm.GetService('manufacturing').Show(panelName=mls.UI_GENERIC_PLANETS)
+            form.Manufacturing.ToggleOpenClose(panelName=localization.GetByLabel('UI/Common/Planets'))
 
 
 
@@ -1368,62 +1540,53 @@ class EveCommandService(svc.cmd):
         if shipID is None:
             uicore.Message('CannotPerformActionWithoutShip')
         else:
-            wnd = sm.GetService('window').GetWindow('fitting')
-            if wnd:
-                if wnd.IsMinimized():
-                    wnd.Maximize()
-                else:
-                    wnd.SelfDestruct()
-            else:
-                sm.GetService('window').GetWindow('fitting', decoClass=form.FittingWindow, create=1, maximize=1, shipID=shipID)
+            form.FittingWindow.ToggleOpenClose(shipID=shipID)
 
 
 
     def OpenMedical(self, *args):
-        if eve.session.stationid:
+        if session.stationid2:
             if eve.stationItem.serviceMask & const.stationServiceCloning == const.stationServiceCloning or eve.stationItem.serviceMask & const.stationServiceSurgery == const.stationServiceSurgery or eve.stationItem.serviceMask & const.stationServiceDNATherapy == const.stationServiceDNATherapy:
-                sm.GetService('window').GetWindow('medical', decoClass=form.MedicalWindow, create=1, maximize=1)
+                form.MedicalWindow.ToggleOpenClose()
 
 
 
     def OpenRepairshop(self, *args):
-        if eve.session.stationid:
+        if session.stationid2:
             if eve.stationItem.serviceMask & const.stationServiceRepairFacilities == const.stationServiceRepairFacilities:
-                sm.GetService('window').GetWindow('repairshop', decoClass=form.RepairShopWindow, create=1, maximize=1)
+                form.RepairShopWindow.ToggleOpenClose()
 
 
 
     def OpenInsurance(self, *args):
-        if eve.session.stationid:
+        if session.stationid2:
             if eve.stationItem.serviceMask & const.stationServiceInsurance == const.stationServiceInsurance:
-                sm.GetService('window').GetWindow('insurance', decoClass=form.InsuranceWindow, create=1, maximize=1)
+                form.InsuranceWindow.ToggleOpenClose()
 
 
 
     def OpenMissions(self, charID = None):
-        if eve.session.stationid:
+        if session.stationid2:
             if eve.stationItem.serviceMask & const.stationServiceBountyMissions == const.stationServiceBountyMissions or eve.stationItem.serviceMask & const.stationServiceAssassinationMissions == const.stationServiceAssassinationMissions:
-                wnd = sm.GetService('window').GetWindow('missions', decoClass=form.BountyWindow, create=1, maximize=1)
-                if wnd and charID:
-                    wnd.PlaceBountyExt(charID)
+                form.BountyWindow.ToggleOpenClose(charID=charID)
 
 
 
     def OpenMilitia(self, *args):
         if sm.StartService('facwar').CheckStationElegibleForMilitia():
-            sm.GetService('window').GetWindow('militia', decoClass=form.MilitiaWindow, create=1, maximize=1)
+            form.MilitiaWindow.ToggleOpenClose()
 
 
 
     def OpenReprocessingPlant(self, items = None, outputOwner = None, outputFlag = None):
-        if session.stationid:
+        if session.stationid2:
             if eve.stationItem.serviceMask & const.stationServiceReprocessingPlant == const.stationServiceReprocessingPlant:
-                sm.GetService('window').GetWindow('reprocessing', create=1, maximize=1, decoClass=form.ReprocessingDialog, items=items, outputOwner=outputOwner, outputFlag=outputFlag)
+                form.ReprocessingDialog.ToggleOpenClose(items=items, outputOwner=outputOwner, outputFlag=outputFlag)
 
 
 
     def OpenLpstore(self, *args):
-        if eve.session.stationid:
+        if session.stationid2:
             corpID = eve.stationItem.ownerID
             if util.IsNPC(corpID):
                 sm.GetService('lpstore').OpenLPStore(corpID)
@@ -1438,12 +1601,6 @@ class EveCommandService(svc.cmd):
         if session.stationid:
             try:
                 self.loadingCharacterCustomization = True
-                if sm.GetService('planetUI').IsOpen():
-                    exitPI = sm.GetService('planetUI').Close()
-                    if not exitPI:
-                        return 
-                if sm.GetService('map').IsOpen():
-                    sm.GetService('map').Close()
                 sm.GetService('gameui').GoCharacterCreationCurrentCharacter()
 
             finally:
@@ -1455,16 +1612,14 @@ class EveCommandService(svc.cmd):
     def OpenStore(self, *args):
         sm.GetService('store').CheckStoreOpen()
         if session.stationid2:
-            sm.GetService('window').GetWindow('virtualGoodsStore', decoClass=form.VirtualGoodsStore, create=1, maximize=1)
+            form.VirtualGoodsStore.ToggleOpenClose()
 
 
 
     def OpenCalendar(self, *args):
         sm.GetService('neocom').BlinkOff('clock')
         if session.charid:
-            wnd = sm.GetService('window').GetWindow('calendar', create=1, decoClass=form.eveCalendarWnd)
-            if wnd:
-                wnd.Maximize()
+            form.eveCalendarWnd.ToggleOpenClose()
 
 
 
@@ -1484,11 +1639,11 @@ class EveCommandService(svc.cmd):
             return 
         sm.GetService('tutorial').ChangeTutorialWndState(visible=0)
         sm.GetService('neocom').UpdateWindowPush(None)
-        layersToHide = ('main', 'tabs', 'login', 'intro', 'charsel', 'shipui', 'bracket', 'target', 'tactical', 'neocom')
+        layersToHide = ('main', 'login', 'intro', 'charsel', 'shipui', 'bracket', 'target', 'tactical', 'neocom')
         hiddenUIState = []
         for each in layersToHide:
             layer = uicore.layer.Get(each)
-            if layer.state == uiconst.UI_HIDDEN:
+            if layer is None or layer.state == uiconst.UI_HIDDEN:
                 continue
             layer.state = uiconst.UI_HIDDEN
             hiddenUIState.append(each)
@@ -1523,20 +1678,16 @@ class EveCommandService(svc.cmd):
 
     def OpenDungeonEditor(self, *args):
         if session.solarsystemid and eve.session.role & service.ROLE_CONTENT:
-            sm.GetService('window').GetWindow('dungeoneditor', create=1, decoClass=form.DungeonEditor)
+            form.DungeonEditor.Open()
             if '/jessica' in blue.pyos.GetArg():
-                sm.StartService('window').GetWindow('dungeonObjectProperties', create=1, decoClass=form.DungeonObjectProperties)
+                form.DungeonObjectProperties.Open()
                 import panel
                 panel.LoadDungeonListViewer()
 
 
 
     def OpenUIDebugger(self, *args):
-        wnd = sm.GetService('window').GetWindow('UIDebugger')
-        if wnd:
-            wnd.CloseX()
-        else:
-            sm.GetService('window').GetWindow('UIDebugger', create=1)
+        form.UIDebugger.ToggleOpenClose()
 
 
 
@@ -1668,7 +1819,7 @@ class EveCommandService(svc.cmd):
                 delayMs = 0
                 break
 
-        sm.GetService('space').Indicate(cmd.GetDescription(), '<center>%s' % mls.UI_CMD_CLICKTARGET, delayMs)
+        sm.GetService('space').Indicate(cmd.GetDescription(), localization.GetByLabel('UI/Commands/ClickTarget'), delayMs)
 
 
 
@@ -1741,7 +1892,7 @@ class EveCommandService(svc.cmd):
 
 
     def _UpdateMovement(self, direction):
-        if uicore.layer.charcontrol.isopen:
+        if sm.GetService('viewState').IsViewActive('station'):
             sm.GetService('navigation').UpdateMovement(direction)
         return False
 
@@ -1749,7 +1900,7 @@ class EveCommandService(svc.cmd):
 
     def Reset(self, resetKey):
         if resetKey == 'windows':
-            sm.GetService('window').ResetAll()
+            sm.GetService('window').ResetWindowSettings()
         elif resetKey == 'window color':
             sm.GetService('window').ResetWindowColors()
         elif resetKey == 'clear cache':
@@ -1779,13 +1930,12 @@ class EveCommandService(svc.cmd):
         if uicore.layer.loading.state == uiconst.UI_NORMAL:
             uthread.new(sm.GetService('loading').HideAllLoad)
             return 
-        intro = uicore.layer.intro
-        if intro.isopen:
-            intro.OnEsc()
+        viewSvc = sm.GetService('viewState')
+        if viewSvc.IsViewActive('intro'):
+            viewSvc.GetView('intro').layer.OnEsc()
             return 
-        login = uicore.layer.login
-        if login.isopen:
-            login.OnEsc()
+        if viewSvc.IsViewActive('login'):
+            viewSvc.GetView('login').layer.OnEsc()
             return 
         sys = uicore.layer.systemmenu
         if sys.isopen:
@@ -1798,42 +1948,17 @@ class EveCommandService(svc.cmd):
 
 
     def OnTab(self):
-        oldfoc = uicore.registry.GetFocus()
-        if oldfoc is None or oldfoc in (uicore.desktop, uicore.layer.charcontrol):
-            prestate = getattr(uicore, 'toggleState', None)
-            if prestate:
-                for windowID in prestate:
-                    wnd = uicore.registry.GetWindow(windowID)
-                    if wnd and (getattr(wnd, '_collapsed', 0) or getattr(wnd, 'collapsed', 0)):
-                        wnd.Expand()
-
-                uicore.toggleState = None
-                return 
-            state = []
-            wnds = uicore.registry.GetValidWindows(floatingOnly=True)
-            for wnd in wnds:
-                if not getattr(wnd, 'windowID', None):
-                    continue
-                if not (getattr(wnd, '_collapsed', 0) or getattr(wnd, 'collapsed', 0)):
-                    windowID = wnd.windowID
-                    wnd.Collapse()
-                    state.append(windowID)
-
-            if not state:
-                for wnd in wnds:
-                    if getattr(wnd, '_collapsed', 0) or getattr(wnd, 'collapsed', 0):
-                        wnd.Expand()
-
-            uicore.toggleState = state
-            if state:
-                return 
-        uicore.registry.FindFocus([1, -1][uicore.uilib.Key(uiconst.VK_SHIFT)])
+        focus = uicore.registry.GetFocus()
+        if focus is None or focus in (uicore.desktop, uicore.layer.charcontrol):
+            uicore.registry.ToggleCollapseAllWindows()
+        else:
+            uicore.registry.FindFocus([1, -1][uicore.uilib.Key(uiconst.VK_SHIFT)])
 
 
 
     def MapCmd(self, cmdname, context):
         self.commandMap.UnloadAllAccelerators()
-        wnd = sm.GetService('window').GetWindow('MapCmdWindow', create=1, cmdname=cmdname)
+        wnd = form.MapCmdWindow.Open(cmdname=cmdname)
         modalResult = wnd.ShowModal()
         self.LoadAllAccelerators()
         if modalResult == 1:
@@ -1873,7 +1998,7 @@ class EveCommandService(svc.cmd):
 
     def MapCmdErrorCheck(self, cmdname, shortcut, context):
         if not shortcut:
-            return mls.UI_GENERIC_MAPKEYERROR2
+            return localization.GetByLabel('UI/Commands/ChooseAKeyPrompt')
         for key in shortcut:
             keyName = self.GetKeyNameFromVK(key)
             if not getattr(uiconst, 'VK_%s' % keyName.upper(), None):
@@ -1887,14 +2012,10 @@ class EveCommandService(svc.cmd):
             cmdEditContext = self.__categoryToContext__[cmdEdit.category]
             sameContext = self.CheckContextIntersection(alreadyUsingContext, cmdEditContext)
             if sameContext and alreadyUsing.name != cmdname:
-                descString = '%s/%s' % (alreadyUsing.category, alreadyUsing.GetDescription())
-                return mls.UI_GENERIC_MAPKEYERROR3 % {'cmd': alreadyUsing.GetShortcutAsString(),
-                 'func': descString}
+                return localization.GetByLabel('UI/Commands/ShortcutAlreadyUsedByCmd', cmd=alreadyUsing.GetShortcutAsString(), category=alreadyUsing.category, func=alreadyUsing.GetDescription())
         if context in self.contextToCommand and shortcut in self.contextToCommand[context]:
             alreadyUsing = self.contextToCommand[context][shortcut]
-            descString = '%s/%s' % (alreadyUsing.category, alreadyUsing.GetDescription())
-            return mls.UI_GENERIC_MAPKEYERROR3 % {'cmd': alreadyUsing.GetShortcutAsString(),
-             'func': descString}
+            return localization.GetByLabel('UI/Commands/ShortcutAlreadyUsedByCmd', cmd=alreadyUsing.GetShortcutAsString(), category=alreadyUsing.category, func=alreadyUsing.GetDescription())
         return ''
 
 
@@ -1914,6 +2035,7 @@ class MapCmdWindow(uicls.Window):
     default_fixedWidth = 250
     default_fixedHeight = 135
     default_state = uiconst.UI_NORMAL
+    default_windowID = 'MapCmdWindow'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -1925,9 +2047,9 @@ class MapCmdWindow(uicls.Window):
         self.MakeUnpinable()
         self.mouseCookie = uicore.event.RegisterForTriuiEvents(uiconst.UI_MOUSEUP, self.OnGlobalMouseUp)
         self.keyCookie = uicore.event.RegisterForTriuiEvents(uiconst.UI_KEYUP, self.OnGlobalKeyUp)
-        currShortcut = uicore.cmd.GetShortcutStringByFuncName(cmdname) or mls.UI_GENERIC_NONE
-        uicls.Label(text=mls.UI_SYSTEMMENU_ENTERSHORTCUT % {'currShortcut': currShortcut}, parent=self.sr.main, state=uiconst.UI_DISABLED, width=self.default_width - 100, left=50, autowidth=False, top=10, singleline=False)
-        btnGroup = uicls.ButtonGroup(btns=[(mls.UI_CMD_CANCEL, self.SelfDestruct, None)], parent=self.sr.main, line=True)
+        currShortcut = uicore.cmd.GetShortcutStringByFuncName(cmdname) or localization.GetByLabel('UI/Common/None')
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/Commands/EnterNewShortcutPrompt', currShortcut=currShortcut), parent=self.sr.main, state=uiconst.UI_DISABLED, width=self.default_width - 100, left=50, top=10, singleline=False)
+        btnGroup = uicls.ButtonGroup(btns=[(localization.GetByLabel('UI/Common/Cancel'), self.Close, None)], parent=self.sr.main, line=True)
 
 
 
@@ -1964,7 +2086,7 @@ class MapCmdWindow(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         uicore.event.UnregisterForTriuiEvents(self.mouseCookie)
         uicore.event.UnregisterForTriuiEvents(self.keyCookie)
 

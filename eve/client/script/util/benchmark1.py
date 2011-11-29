@@ -9,8 +9,9 @@ import time
 import uthread
 import appUtils
 import trinity
-from service import *
-Sleep = blue.pyos.synchro.Sleep
+import bluepy
+from service import ROLEMASK_ELEVATEDPLAYER, ROLE_SPAWN, ROLE_WORLDMOD, ROLE_HEALOTHERS, ROLE_GML, ROLE_GMH
+SleepSim = blue.pyos.synchro.SleepSim
 Yield = blue.pyos.synchro.Yield
 Progress = lambda title, text, current, total: sm.GetService('loading').ProgressWnd(title, text, current, total)
 OUTPUT_FILE = 'benchmark.yaml'
@@ -192,10 +193,10 @@ class Script(object):
 
 
     def WaitForSession(self):
-        if blue.os.GetTime() <= session.nextSessionChange:
-            ms = 1000 + 1000L * (session.nextSessionChange - blue.os.GetTime()) / 10000000L
+        if blue.os.GetSimTime() <= session.nextSessionChange:
+            ms = 1000 + 1000L * (session.nextSessionChange - blue.os.GetSimTime()) / 10000000L
             Log('Waiting for session change to complete, %fs' % (ms / 1000.0))
-            Sleep(ms)
+            SleepSim(ms)
 
 
 
@@ -208,11 +209,11 @@ class Script(object):
         while not bp:
             tries += 1
             bp = sm.GetService('michelle').GetBallpark()
-            Sleep(250)
+            SleepSim(250)
 
         while not len(bp.balls) and not bp.validState:
             tries += 1
-            Sleep(250)
+            SleepSim(250)
 
         if tries:
             self.WaitForEvent('newstate')
@@ -231,7 +232,7 @@ class Script(object):
             ball = bp.balls.get(bp.ego, None) or bp.balls.get(session.shipid, None)
             if ball:
                 break
-            Sleep(1000)
+            SleepSim(1000)
             triesLeft -= 1
 
         if ball:
@@ -246,7 +247,7 @@ class Script(object):
     def WaitForEula(self):
         Log('Waiting for the EULA')
         self.WaitForEvent('login')
-        Sleep(2000)
+        SleepSim(2000)
         MakeTopmost()
 
 
@@ -321,7 +322,7 @@ class Script(object):
                 count += 1
                 if count == 10:
                     Quit('Slash command failed after 10 tries: %s' % cmd)
-                Sleep(10000)
+                SleepSim(10000)
 
 
 
@@ -397,7 +398,7 @@ class Script(object):
          'videocard': video,
          'videodriver': driverVersion,
          'adapterCount': int(deviceCount),
-         'startTime': blue.os.GetTime(),
+         'startTime': blue.os.GetWallclockTime(),
          'version': boot.keyval['version'].split('=')[1],
          'build': int(boot.keyval['build'].split('=')[1]),
          'server': server,
@@ -480,7 +481,7 @@ class Script(object):
         statusText = serverStatus = None
         try:
             (statusText, serverStatus,) = sm.GetService('machoNet').GetServerStatus('%s:%s' % (server, 26000))
-            Sleep(5000)
+            SleepSim(5000)
             Log("Server status: '%s'" % serverStatus)
         except:
             Log('Server status: None')
@@ -507,15 +508,15 @@ class Script(object):
         except:
             sys.exc_clear()
             self.invalidFields = []
-            self.invalidFields.append(mls.UI_LOGIN_USERNAME)
-            self.invalidFields.append(mls.UI_LOGIN_PASSWORD)
+            self.invalidFields.append('username')
+            self.invalidFields.append('password')
             self.invalidFieldsText = ''
             field = self.invalidFields.pop(0)
             while len(self.invalidFields) > 0:
                 field = self.invalidFields.pop(0)
                 if len(self.invalidFieldsText):
                     if len(self.invalidFields) == 0:
-                        self.invalidFieldsText = '%s %s %s' % (self.invalidFieldsText, mls.UI_GENERIC_AND, field)
+                        self.invalidFieldsText = '%s %s %s' % (self.invalidFieldsText, 'and', field)
                     else:
                         self.invalidFieldsText = '%s, %s' % (self.invalidFieldsText, field)
                 else:
@@ -577,10 +578,11 @@ class Script(object):
             return 
         self.WaitForSession()
         Log('Undocking')
-        shipsvc = sm.GetService('gameui').GetShipAccess()
-        sm.GetService('sessionMgr').PerformSessionChange('undock', shipsvc.Undock)
+        station = sm.GetService('station')
+        shipID = util.GetActiveShip()
+        station.UndockAttempt(shipID)
         self.WaitForEvent('inflight')
-        Sleep(7500)
+        SleepSim(7500)
         Log('Inflight, stopping ship (II)')
         uicore.cmd.CmdStopShip()
         self.WaitForBallpark()
@@ -624,13 +626,12 @@ class Script(object):
 
 
     def TravelTo(self, itemID):
-        if util.IsStation(itemID):
-            stationID = itemID
-            info = sm.RemoteSvc('stationSvc').GetStation(stationID)
-            solarSystemID = info.solarSystemID
-        elif util.IsSolarSystem(itemID):
-            stationID = None
+        stationID = None
+        if util.IsSolarSystem(itemID):
             solarSystemID = itemID
+        else:
+            stationID = itemID
+            solarSystemID = cfg.stations.Get(itemID).solarSystemID
         Log('RouteID: %s' % self.routeID)
         Log('Travel: Destination systemID %s, stationID %s' % (solarSystemID, stationID))
         self.Undock()
@@ -642,9 +643,9 @@ class Script(object):
         while session.solarsystemid2 != solarSystemID:
             if not ap.GetState():
                 Log('Travel: Activating autopilot...')
-                sm.StartService('starmap').SetWaypoint(solarSystemID, 1)
+                sm.StartService('starmap').SetWaypoint(solarSystemID, clearOtherWaypoints=True)
                 sm.GetService('autoPilot').SetOn()
-            Sleep(5000)
+            SleepSim(5000)
 
         Log('Travel: Arrived in destination system!')
 
@@ -674,7 +675,7 @@ class Script(object):
         sess = self.benchmark.CreateSession(sessionName, description, runID)
         if ms is not None:
             uthread.new(sess.CaptureStart)
-            Sleep(ms)
+            SleepSim(ms)
             sess.CaptureEnd()
         elif snapShot:
             sess.Snap()
@@ -742,7 +743,7 @@ class Script(object):
         uicore.cmd.CmdStopShip()
         bm = self.Benchmark(None, 'AutopilotPerformance1', 'Trip from Kisogo to Madirmilire', self.runID)
         self.TravelTo(self.endID)
-        Sleep(5000)
+        SleepSim(5000)
         bm.CaptureEnd()
 
 
@@ -754,11 +755,11 @@ class Script(object):
         Log('Stopping ship')
         uicore.cmd.CmdStopShip()
         sm.GetService('slash').SlashCmd('/tr me offset=randvec(100au)')
-        Sleep(7500)
+        SleepSim(7500)
         try:
             sm.GetService('slash').SlashCmd('/entity deploy 32 "Guristas Ascriber"')
             sm.GetService('slash').SlashCmd('/entity deploy  8 "Guristas Conquistador"')
-            Sleep(2000)
+            SleepSim(2000)
             targets = []
             bp = sm.GetService('michelle').GetBallpark()
             for ballID in bp.balls.keys():
@@ -768,16 +769,16 @@ class Script(object):
 
             bm = self.Benchmark(None, 'RattingPerformance1', 'Destroying NPCs', self.runID)
             for targetID in targets:
-                Sleep(500)
+                SleepSim(500)
                 sm.GetService('slash').SlashCmd('/heal %d 0' % targetID)
 
-            Sleep(2000)
+            SleepSim(2000)
             bm.CaptureEnd()
             sm.GetService('insider').HealRemove(const.groupWreck)
 
         finally:
             sm.RemoteSvc('slash').SlashCmd('/nukem')
-            Sleep(2000)
+            SleepSim(2000)
             sm.GetService('insider').HealRemove(const.groupWreck)
 
 
@@ -787,7 +788,7 @@ class Script(object):
         self.Dock(60014659)
         sm.GetService('station').LoadSvc(None, close=True)
         sm.GetService('station').LoadSvc('fitting')
-        Sleep(4000)
+        SleepSim(4000)
         ship = sm.GetService('godma').GetItem(session.shipid)
         (t, a, p,) = sm.GetService('modtest').GetModuleLists()
         t = t + a + p
@@ -795,7 +796,7 @@ class Script(object):
         current = 0
         errors = []
         while t:
-            Sleep(1000)
+            SleepSim(1000)
             sm.RemoteSvc('slash').SlashCmd('/unload me all')
             slotsLeft = {'hiPower': [ x + const.flagHiSlot0 for x in range(int(ship.hiSlots)) ],
              'medPower': [ x + const.flagMedSlot0 for x in range(int(ship.medSlots)) ],
@@ -812,7 +813,7 @@ class Script(object):
                         flag = slotsLeft[slotType].pop(0)
                         module = []
                         while not module:
-                            blue.pyos.synchro.Sleep(500)
+                            blue.pyos.synchro.SleepWallclock(500)
                             module = [ x for x in sm.GetService('godma').GetItem(session.shipid).modules if x.flagID == flag ]
 
                         if slotsLeft.values() == [[], [], []]:
@@ -831,22 +832,22 @@ class Script(object):
 
     def bm_MapPerformance(self):
         import mapcommon
-        sm.GetService('map').OpenStarMap()
+        sm.GetService('viewState').ActivateView('starmap')
         try:
             bm = self.Benchmark(None, 'MapPerformance1', 'Map Stuff', self.runID)
             for i in range(3):
                 sm.GetService('starmap').SetStarColorMode(mapcommon.STARMODE_PLAYERCOUNT)
-                Sleep(2000)
+                SleepSim(2000)
                 sm.GetService('starmap').SetStarColorMode(mapcommon.STARMODE_SHIPKILLS24HR)
-                Sleep(2000)
+                SleepSim(2000)
                 sm.GetService('starmap').SetStarColorMode(mapcommon.STARMODE_REAL)
-                Sleep(2000)
+                SleepSim(2000)
 
-            Sleep(2000)
+            SleepSim(2000)
             bm.CaptureEnd()
 
         finally:
-            sm.GetService('map').Close()
+            sm.GetService('viewState').CloseSecondaryView()
             self.SlashCmd('/tr me home')
 
 
@@ -860,13 +861,13 @@ class Script(object):
             prefs.SetValue('bmnextrun', count)
             prefs.SetValue('cscount', count)
             for a in xrange(timeperiod, -1, -1):
-                Sleep(1000)
+                SleepSim(1000)
                 sm.GetService('gameui').Say('Connection test in progress.<br>%s seconds until restart, %s runs left.' % (a, count))
 
             sm.GetService('gameui').Say('Connection test in progress.<br>Current cycle complete, rebooting!')
             completedsofar = prefs.GetValue('cscompleted', 0)
             prefs.SetValue('cscompleted', completedsofar + 1)
-            Sleep(2000)
+            SleepSim(2000)
             text = 'Client Stats test, %s runs left' % count
             appUtils.Reboot(text)
 
@@ -980,7 +981,7 @@ class Script(object):
                         for benchmark in testList:
                             (e, m, d, s,) = benchmark
                             Try((m, d, s), e)
-                            Sleep(5000)
+                            SleepSim(5000)
                             Try(self.Save)
 
 
@@ -994,7 +995,7 @@ class Script(object):
                         for benchmark in testList:
                             (e, m, d, s,) = benchmark
                             Try((m, d, s), e)
-                            Sleep(5000)
+                            SleepSim(5000)
                             Try(self.Save)
 
 
@@ -1002,7 +1003,7 @@ class Script(object):
                 for benchmark in testList:
                     (e, m, d, s,) = benchmark
                     Try((m, d, s), e)
-                    Sleep(5000)
+                    SleepSim(5000)
                     Try(self.Save)
 
             Try(self.Dock)
@@ -1153,7 +1154,7 @@ def ScriptWrapper(methodName):
     except Quitter as e:
         CloseXML()
         Log('Quitting: %s' % e)
-        blue.pyos.Quit(str(e))
+        bluepy.Terminate(str(e))
         sys.exc_clear()
     except:
         CloseXML()
@@ -1161,7 +1162,7 @@ def ScriptWrapper(methodName):
         sys.exc_clear()
         Log('Quitting!')
         if methodName != 'Test':
-            blue.pyos.Quit('Yikes!')
+            bluepy.Terminate('Yikes!')
     CloseXML()
     Log('Finished Script')
 

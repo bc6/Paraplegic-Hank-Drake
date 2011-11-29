@@ -1,7 +1,6 @@
 import blue
 import bluepy
 import trinity
-import log
 import mathUtil
 import uicls
 import uiutil
@@ -10,6 +9,12 @@ import fontConst
 import sys
 import log
 import re
+import localization
+import localizationUtil
+import localizationInternalUtil
+import types
+import service
+import uthread
 layoutCountStat = blue.statistics.Find('CarbonUI/labelLayout')
 if not layoutCountStat:
     print "Registering new 'CarbonUI/labelLayout' stat"
@@ -22,22 +27,26 @@ if not layoutCountStat:
 
 class LabelCore(uicls.Sprite):
     __guid__ = 'uicls.LabelCore'
+    linespace = 0
     ALLEFT = 0
     ALRIGHT = 1
     ALCENTER = 2
     default_name = 'label'
     default_state = uiconst.UI_DISABLED
-    default_font = fontConst.DEFAULT_FONT
     default_fontsize = fontConst.DEFAULT_FONTSIZE
+    default_fontStyle = None
+    default_fontFamily = None
+    default_fontPath = None
+    default_linkStyle = uiconst.LINKSTYLE_SUBTLE
     default_color = None
     default_text = ''
     default_tabs = []
-    default_shadow = [(1, -1, -1090519040)]
     default_uppercase = False
     default_maxlines = None
     default_singleline = 0
-    default_linespace = None
-    default_letterspace = uiconst.LABELLETTERSPACE
+    default_lineSpacing = 0.0
+    default_wordspace = 0
+    default_letterspace = 0
     default_underline = 0
     default_bold = 0
     default_italic = 0
@@ -46,73 +55,78 @@ class LabelCore(uicls.Sprite):
     default_width = 0
     default_height = 0
     default_textalign = ALLEFT
-    default_boldlinks = 1
-    default_filter = False
     default_specialIndent = 0
+    default_autoDetectCharset = False
 
     def ApplyAttributes(self, attributes):
         uicls.Sprite.ApplyAttributes(self, attributes)
+        self.useSizeFromTexture = True
+        self._lineSpacing = self.default_lineSpacing
         align = self.GetAlign()
         if align != uiconst.TOALL:
             self._setWidth = self.width
-            self._setheight = self.height
+            self._setHeight = self.height
         else:
             self._setWidth = 0
-            self._setheight = 0
+            self._setHeight = 0
         self.busy = 1
+        self._layoutOnSizeChangeThread = None
         self.textwidth = 0
         self.textheight = 0
+        self.actualTextWidth = 0
+        self.actualTextHeight = 0
         self._resolvingAutoSizing = False
         self._defaultcolor = mathUtil.LtoI(4294967295L)
-        self._colorstack = []
-        self._boundingBoxes = []
+        self.localizationErrorCheckEnabled = localizationUtil.IsHardcodedStringDetectionEnabled() and session.role & service.ROLE_QA == service.ROLE_QA
+        self.localizationPseudolocalizationEnabled = localizationUtil.IsPseudolocalizationEnabled() and localizationUtil.GetLanguageID() == localization.LOCALE_SHORT_ENGLISH
+        self._numCharactersAdded = 0
         self._links = []
-        self._renderlines = []
-        self._parsingBuff = []
-        self._paramsBackup = None
+        self._inlineObjects = []
+        self._inlineObjectsBuff = []
         self._tabMargin = uiconst.LABELTABMARGIN
         self._hilite = 0
-        self._currentLink = None
-        self._activeLink = None
+        self._mouseOverUrl = None
         self._numLines = None
         self._lastAbs = None
         self._inited = 1
         self.tabs = attributes.get('tabs', self.default_tabs)
-        self.shadow = attributes.get('shadow', self.default_shadow)
-        self.font = attributes.get('font', self.default_font)
+        self.fontStyle = attributes.get('fontStyle', self.default_fontStyle)
+        self.fontFamily = attributes.get('fontFamily', self.default_fontFamily)
+        self.fontPath = attributes.get('fontPath', self.default_fontPath)
+        self.linkStyle = attributes.get('linkStyle', self.default_linkStyle)
         self.fontsize = attributes.get('fontsize', self.default_fontsize)
-        self.uppercase = attributes.get('uppercase', self.default_uppercase)
-        self.maxlines = attributes.get('maxlines', self.default_maxlines)
-        self.singleline = attributes.get('singleline', self.default_singleline)
-        self.linespace = attributes.get('linespace', self.default_linespace)
-        self.letterspace = attributes.get('letterspace', self.default_letterspace)
         self.underline = attributes.get('underline', self.default_underline)
         self.bold = attributes.get('bold', self.default_bold)
         self.italic = attributes.get('italic', self.default_italic)
+        self.uppercase = attributes.get('uppercase', self.default_uppercase)
+        self.autoDetectCharset = attributes.get('autoDetectCharset', self.default_autoDetectCharset)
+        self.maxlines = attributes.get('maxlines', self.default_maxlines)
+        self.singleline = attributes.get('singleline', self.default_singleline)
+        self.lineSpacing = attributes.get('lineSpacing', self.default_lineSpacing)
+        self.wordspace = attributes.get('wordspace', self.default_wordspace)
+        self.letterspace = attributes.get('letterspace', self.default_letterspace)
         self.mousehilite = attributes.get('mousehilite', self.default_mousehilite)
         self.allowpartialtext = attributes.get('allowpartialtext', self.default_allowpartialtext)
-        self.boldLinks = attributes.get('boldlinks', self.default_boldlinks)
         self.specialIndent = attributes.get('specialIndent', self.default_specialIndent)
         self._measuringText = attributes.get('measuringText', False)
         self.SetRGB(1.0, 1.0, 1.0, 1.0)
-        textcolor = attributes.get('color', self.default_color) or self.default_color
+        textcolor = attributes.color or self.default_color
         if textcolor is not None:
             self.SetTextColor(textcolor)
         self.__dict__['labelIsReady'] = True
         self.busy = 0
+        self._cachedLines = None
         self.text = attributes.get('text', self.default_text)
         trinity.device.RegisterResource(self)
+        uicore.textObjects.add(self)
 
 
 
     def Close(self):
         uicls.Sprite.Close(self)
-        self._boundingBoxes = []
         self._links = []
-        self._renderlines = []
-        self._parsingBuff = []
-        self._paramsBackup = None
-        self._renderer = None
+        self._inlineObjects = []
+        self._inlineObjectsBuff = []
         self.measurer = None
         self.params = None
 
@@ -140,12 +154,18 @@ class LabelCore(uicls.Sprite):
             self.height = setHeight or self.textheight
             self.rectHeight = self.height
             absHeight = self.height
-        elif align in (uiconst.TOLEFT, uiconst.TORIGHT):
+        elif align in (uiconst.TOLEFT,
+         uiconst.TORIGHT,
+         uiconst.TOLEFT_NOPUSH,
+         uiconst.TORIGHT_NOPUSH):
             self.width = setWidth or self.textwidth
             self.rectWidth = self.width
             self.rectHeight = absHeight
             absWidth = self.width
-        elif align in (uiconst.TOBOTTOM, uiconst.TOTOP):
+        elif align in (uiconst.TOBOTTOM,
+         uiconst.TOTOP,
+         uiconst.TOBOTTOM_NOPUSH,
+         uiconst.TOTOP_NOPUSH):
             self.height = setHeight or self.textheight
             self.rectHeight = self.height
             self.rectWidth = absWidth
@@ -200,20 +220,48 @@ class LabelCore(uicls.Sprite):
 
 
     @apply
+    def hint():
+
+        def fget(self):
+            return getattr(self, '_hint', None)
+
+
+
+        def fset(self, value):
+            if not getattr(self, '_resolvingInlineHint', False):
+                self._objectHint = value
+            else:
+                self._hint = value
+
+
+        return property(**locals())
+
+
+
+    @apply
     def text():
-        doc = 'Text of this label'
+        doc = 'Text of this label, this can be pure string or list of [formattags, str, ...]'
 
         def fget(self):
             return self._text
 
 
 
+        @bluepy.CCP_STATS_ZONE_METHOD
         def fset(self, value):
-            if value is None:
-                value = ''
-            self._text = unicode(value)
+            value = uiutil.GetAsUnicode(value)
+            if self.localizationErrorCheckEnabled:
+                (self._renderText, self._localizationError,) = localizationUtil.CheckForLocalizationErrors(value)
+                self._text = uiutil.StripTags(self._renderText, stripOnly=['localized'])
+                self._renderText = localizationInternalUtil.WrapStringForDisplay(self._renderText)
+            else:
+                self._text = value
+                self._renderText = value
+                self._localizationError = False
+            self._renderText = self._renderText.replace(u'<BR>', u'<br>').replace(u'\r\n', u'<br>').replace(u'\n', u'<br>').replace(u'<T>', u'<t>').replace('<br />', '<br>').replace('<br/>', '<br>').replace('\t', ' ').replace('&nbsp;', ' ')
+            self._cachedLines = None
             if 'labelIsReady' in self.__dict__:
-                self._activeLink = None
+                self._mouseOverUrl = None
                 self.Layout('text')
 
 
@@ -222,17 +270,53 @@ class LabelCore(uicls.Sprite):
 
 
     @apply
-    def font():
-        doc = 'Font'
+    def fontStyle():
+        doc = ''
 
         def fget(self):
-            return self._font
+            return self._fontStyle
 
 
 
         def fset(self, value):
-            self._font = value
-            self.Layout('font')
+            self._fontStyle = value
+            self.Layout('fontStyle')
+
+
+        return property(**locals())
+
+
+
+    @apply
+    def fontFamily():
+        doc = 'Font Family, list of 4 font resPaths representing regular, italic, bold, boldItalic'
+
+        def fget(self):
+            return self._fontFamily
+
+
+
+        def fset(self, value):
+            self._fontFamily = value
+            self.Layout('fontFamily')
+
+
+        return property(**locals())
+
+
+
+    @apply
+    def fontPath():
+        doc = 'Font Family, list of 4 font resPaths representing regular, italic, bold, boldItalic'
+
+        def fget(self):
+            return self._fontPath
+
+
+
+        def fset(self, value):
+            self._fontPath = value
+            self.Layout('fontPath')
 
 
         return property(**locals())
@@ -280,7 +364,7 @@ class LabelCore(uicls.Sprite):
         doc = ''
 
         def fget(self):
-            return self._uppercase
+            return bool(self._uppercase)
 
 
 
@@ -294,17 +378,19 @@ class LabelCore(uicls.Sprite):
 
 
     @apply
-    def linespace():
+    def lineSpacing():
         doc = ''
 
         def fget(self):
-            return self._linespace
+            return self._lineSpacing
 
 
 
         def fset(self, value):
-            self._linespace = value
-            self.Layout('linespace')
+            value = max(-1.0, value)
+            if self._lineSpacing != value:
+                self._lineSpacing = value
+                self.Layout('lineSpacing')
 
 
         return property(**locals())
@@ -389,6 +475,7 @@ class LabelCore(uicls.Sprite):
         if len(color) != 4:
             tricolor.a = 1.0
         self._defaultcolor = tricolor.AsInt()
+        self.Layout('SetTextColor')
 
 
     SetDefaultColor = SetTextColor
@@ -400,32 +487,21 @@ class LabelCore(uicls.Sprite):
 
 
 
-    def GetRenderer(self):
-        if not getattr(self, '_renderer', None):
-            self._renderer = uicore.font.GetRenderer()
-        return self._renderer
-
-
-
     def GetMeasurer(self):
         if not getattr(self, 'measurer', None):
-            self.measurer = uicore.font.GetMeasurer()
+            self.measurer = trinity.Tr2FontMeasurer()
         return self.measurer
 
 
 
     def GetParams(self, new = 0):
         if not getattr(self, 'params', None) or new:
-            params = uicore.font.GetParams()
-            params.font = self.font
-            params.fontsize = self.fontsize
-            params.underline = self.underline
-            params.bold = self.bold
-            params.italic = self.italic
-            params.letterspace = self.letterspace
-            params.linespace = self.linespace or self.fontsize
-            params.color = self._defaultcolor
+            params = uiutil.Bunch()
+            params.fontStyle = self.fontStyle
+            params.fontFamily = self.fontFamily
+            params.fontPath = self.fontPath
             self.params = params
+            return params
         return self.params
 
 
@@ -455,7 +531,7 @@ class LabelCore(uicls.Sprite):
             text = text.replace(u'<br>', u' ')
         rettext = ''
         characterCount = 0
-        currentCharacterAmount = len(self._boundingBoxes)
+        currentCharacterAmount = self._numCharactersAdded
         startedToAdd = False
         for line in text.split(u'<br>'):
             if startedToAdd:
@@ -487,20 +563,25 @@ class LabelCore(uicls.Sprite):
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def Layout(self, hint = 'None', params = None, absSize = None):
+    def Layout(self, hint = 'None', absSize = None):
         layoutCountStat.Inc()
         if getattr(self, 'busy', 0):
             return 
         self.busy = True
-        self._boundingBoxes = []
+        self.GetMeasurer().Reset()
+        self._numCharactersAdded = 0
         self.textwidth = 0
+        self.actualTextWidth = 0
         self.textheight = 0
-        text = self.text or u''
+        self.actualTextHeight = 0
+        text = self._renderText
         if not text:
             self.texture = None
             self.spriteEffect = trinity.TR2_SFX_NONE
             self.busy = False
             return 
+        if self.localizationPseudolocalizationEnabled and localizationInternalUtil.IsLocalizationSafeString(text):
+            text = localization.Pseudolocalize(text)
         self.spriteEffect = trinity.TR2_SFX_COPY
         align = self.GetAlign()
         if align in (uiconst.RELATIVE,
@@ -522,23 +603,27 @@ class LabelCore(uicls.Sprite):
         else:
             (width, height,) = self.GetAbsoluteSize()
         self.textalign = self.ALLEFT
-        self._currentLink = None
-        self._colorstack = []
+        self.ResetTagStack()
         self._links = []
-        self._renderlines = []
-        self._parsingBuff = []
+        self._inlineObjects = []
+        self._inlineObjectsBuff = []
         self._numLines = 0
-        p = params or self.GetParams(1)
         margin = self._tabMargin
-        text = text.replace(u'<BR>', u'<br>').replace(u'\r\n', u'<br>').replace(u'\n', u'<br>').replace(u'<T>', u'<t>')
         if self.singleline:
-            text = text.replace(u'<br>', u' ')
-        for line in text.split(u'<br>'):
+            lines = [text.replace(u'<br>', u' ')]
+        else:
+            lines = self._cachedLines
+            if lines is None:
+                self._cachedLines = self.SplitIntoLines(text)
+                lines = self._cachedLines
+        for line in lines:
             tabtext = line.split(u'<t>')
             if len(tabtext) > 1:
                 vScrollshiftX = getattr(self, 'xShift', 0)
                 left = max(0, margin + vScrollshiftX)
                 for i in xrange(len(tabtext)):
+                    if i == 0:
+                        left = 0
                     self.textalign = self.default_textalign
                     right = self.GetTab(i, width) - margin
                     self.Parse(tabtext[i], left, right + vScrollshiftX - left)
@@ -549,25 +634,33 @@ class LabelCore(uicls.Sprite):
                 self.Parse(tabtext[0], 0, width)
             self.Linebreak()
 
-        if self.shadow:
-            extendLeft = 0
-            extendTop = 0
-            extendRight = 0
-            extendBottom = 0
-            for (sx, sy, scol,) in self.shadow:
-                extendLeft = min(extendLeft, sx)
-                extendRight = max(extendRight, sx)
-                extendTop = max(extendTop, sy)
-                extendBottom = min(extendBottom, sy)
-
-            self.textwidth += -extendLeft + extendRight
-            self.textheight += -extendBottom + extendTop
+        if uicore.desktop.dpiScaling != 1.0:
+            self.textwidth = self.ReverseScaleDpi(self.actualTextWidth + 0.5)
+            self.textheight = self.ReverseScaleDpi(self.actualTextHeight + 0.5)
+        else:
+            self.textwidth = self.actualTextWidth
+            self.textheight = self.actualTextHeight
         if not self._measuringText:
             absoluteSize = self.GetAbsoluteSize()
             absoluteSize = self.ResolveAutoSizing(absoluteSize=absoluteSize)
             self.Render(absoluteSize)
             self._lastRenderData = (text, absoluteSize)
         self.busy = False
+
+
+
+    def ResetTagStack(self):
+        self._tagStack = {'font': [],
+         'fontsize': [self.fontsize],
+         'color': [self._defaultcolor],
+         'letterspace': [self.letterspace],
+         'hint': [],
+         'link': [],
+         'localized': [],
+         'u': self.underline,
+         'b': self.bold,
+         'i': self.italic,
+         'uppercase': self.uppercase}
 
 
 
@@ -578,14 +671,12 @@ class LabelCore(uicls.Sprite):
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def Render(self, absoluteSize = None):
-        if not hasattr(self, '_renderlines'):
-            return 
         if absoluteSize:
             (absW, absH,) = absoluteSize
         else:
             (absW, absH,) = self.GetAbsoluteSize()
-        needW = max(2, absW, self.textwidth)
-        needH = max(2, absH, self.textheight)
+        needW = max(2, self.ScaleDpi(absW), self.actualTextWidth)
+        needH = max(2, self.ScaleDpi(absH), self.actualTextHeight)
         if needW > self.GetMaxWidth():
             needW = self.GetMaxWidth()
         if needW < 1 or needH < 4:
@@ -600,46 +691,15 @@ class LabelCore(uicls.Sprite):
         if needNewTexture:
             self.texture = None
             texturePrimary = trinity.Tr2Sprite2dTexture()
-            texturePrimary.atlasTexture = uicore.uilib.CreateTexture(int(needW), int(needH))
+            texturePrimary.atlasTexture = uicore.uilib.CreateTexture(needW, needH)
             texturePrimary.srcX = 0.0
             texturePrimary.srcY = 0.0
             self.texture = texturePrimary
         else:
             texturePrimary = self.texture
-        texturePrimary.srcWidth = int(absW)
-        texturePrimary.srcHeight = int(absH)
-        try:
-            bufferData = texturePrimary.atlasTexture.LockBuffer()
-        except AttributeError:
-            if texturePrimary.atlasTexture:
-                texturePrimary.atlasTexture.UnlockBuffer()
-                bufferData = texturePrimary.atlasTexture.LockBuffer()
-            else:
-                self.display = False
-                return 
-        (bufferDataData, bufferDataWidth, bufferDataHeight, bufferDataPitch,) = bufferData
-        uicore.font.Clear_Buffer(*bufferData)
-        renderer = self.GetRenderer()
-        shadowOffsetX = shadowOffsetY = 0
-        if self.shadow:
-            (sx, sy, scol,) = self.shadow[-1]
-            if sx < 0:
-                shadowOffsetX = abs(sx)
-            if sy > 0:
-                shadowOffsetY = sy
-            extendLeft = 0
-            extendTop = 0
-            for (sx, sy, scol,) in self.shadow:
-                extendLeft = min(extendLeft, sx)
-                extendTop = max(extendTop, sy)
-
-            shadowOffsetX = -extendLeft
-            shadowOffsetY = extendTop
-        for (text, params, shiftX, shiftY, strong, sBits,) in self._renderlines:
-            renderer.Reset(bufferData, (shiftX + shadowOffsetX, bufferDataHeight - shiftY - shadowOffsetY), self._hilite, self.shadow)
-            renderer.AddTextFast(text, params, sBits)
-
-        texturePrimary.atlasTexture.UnlockBuffer()
+        texturePrimary.srcWidth = self.ScaleDpi(absW)
+        texturePrimary.srcHeight = self.ScaleDpi(absH)
+        self.measurer.DrawToAtlasTexture(texturePrimary.atlasTexture)
 
 
 
@@ -647,119 +707,125 @@ class LabelCore(uicls.Sprite):
     def Parse(self, line, xoffset, width):
         self.tabwidth = width
         self.tabpos = xoffset
-        self.GetMeasurer().Reset(self.tabwidth, self.GetParams())
-        for each in line.split(u'>'):
-            texttag = each.split(u'<', 1)
-            if len(texttag) == 1:
-                (text, tag,) = (self.Encode(texttag[0]), None)
+        self.measurer.limit = int(self.ScaleDpi(self.tabwidth))
+        self.measurer.cursorX = 0
+        self.measurer.cursorY = 0
+        texts_tags = self.GetTextAndTags(line)
+        paramsDirty = True
+        for (isTag, text_or_tag,) in texts_tags:
+            if isTag:
+                self.ParseTag(text_or_tag[1:-1])
+                paramsDirty = True
             else:
-                (text, tag,) = (self.Encode(texttag[0]), texttag[1])
-            if text:
-                if self.uppercase:
-                    text = text.upper()
-                for word in uiutil.FindTextBoundaries(text, regexObject=uiconst.LINE_BREAK_BOUNDARY_REGEX):
-                    if not self.PushWord(word):
-                        if tag:
-                            self.ParseTag(tag)
-                        return 
+                if paramsDirty:
+                    params = self.GetParams()
+                    tagStack = self._tagStack
+                    if self.autoDetectCharset and not params.fontPath:
+                        windowsLanguageID = uicore.font.GetWindowsLanguageIDForText(text_or_tag)
+                        if windowsLanguageID:
+                            fontFamily = uicore.font.GetFontFamilyBasedOnWindowsLanguageID(windowsLanguageID)
+                            params.fontFamily = fontFamily
+                    params.fontsize = self.ScaleDpi(tagStack['fontsize'][-1])
+                    params.color = tagStack['color'][-1]
+                    params.letterspace = tagStack['letterspace'][-1]
+                    params.underline = bool(tagStack['u'])
+                    params.italic = bool(tagStack['i'])
+                    params.bold = bool(tagStack['b'])
+                    if self.localizationErrorCheckEnabled:
+                        if not self._tagStack['localized']:
+                            params.color = localizationUtil.COLOR_HARDCODED
+                        if self._localizationError:
+                            params.color = localizationUtil.COLOR_HARDCODED
+                    uicore.font.ResolveFontFamily(params)
+                    paramsDirty = False
+                couldAdd = self.PushWord(text_or_tag)
+                if not couldAdd:
+                    return 
 
-            if tag:
-                self.ParseTag(tag)
 
-        if not self._parsingBuff:
-            self.PushWord(u' ')
+
+
+    def GetTrailingWhiteSpaces(self, text):
+        trail = u''
+        while text and text[-1] == ' ':
+            trail += u' '
+            text = text[:-1]
+
+        return (text, trail)
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def PushWord(self, word, params = None):
+    def PushWord(self, word):
         toReturn = True
         if word:
-            params = params or self.GetParams()
-            (n, last, bbox, renderData,) = self.GetMeasurer().AddTextGetRenderData(word, params)
-            if not n:
-                if not self.singleline and self._parsingBuff:
-                    if len(self._parsingBuff) > 1:
-                        lastWord = self._parsingBuff[-1][0]
-                        lastParams = self._parsingBuff[-1][3]
-                    self.Linebreak()
-                    if self.maxlines and self._numLines >= self.maxlines:
-                        return False
-                    return self.PushWord(word)
-                return False
+            params = self.params
+            measurer = self.measurer
+            tagStack = self._tagStack
+            if tagStack['uppercase']:
+                word = uiutil.UpperCase(word)
+            if not self.singleline:
+                (word, trailingSpaces,) = self.GetTrailingWhiteSpaces(word)
+            else:
+                trailingSpaces = u''
+            hasUncommittedText = measurer.HasUncommittedText()
+            n = measurer.AddText(word, params)
+            t = measurer.AddText(trailingSpaces, params)
             if self._setHeight:
-                measurer = self.GetMeasurer()
                 actualHeight = measurer.asc - measurer.des
-                linespace = params.linespace
-                lineheight = linespace or actualHeight
-                if self.textheight + lineheight >= self._setHeight:
+                if self.actualTextHeight:
+                    current = self.actualTextHeight + int(self.lineSpacing * actualHeight)
+                else:
+                    current = 0
+                if current + actualHeight >= self._setHeight:
                     if self.allowpartialtext:
                         toReturn = False
                     else:
+                        measurer.CancelLastText()
+                        measurer.CancelLastText()
                         return False
             if n < len(word):
                 if self.singleline:
-                    self._parsingBuff += renderData[:n]
-                    for each in renderData[:n]:
-                        self._boundingBoxes += each[-1]
-
                     return False
-                if not self._parsingBuff:
-                    self._parsingBuff += renderData[:n]
-                    for each in renderData[:n]:
-                        self._boundingBoxes += each[-1]
-
-                    return self.PushWord(word[n:])
-                if self._parsingBuff:
-                    if len(self._parsingBuff) > 1:
-                        lastWord = self._parsingBuff[-1][0]
-                        lastParams = self._parsingBuff[-1][3]
-                        if not lastWord[-1] == ' ':
-                            self._parsingBuff = self._parsingBuff[:-1]
-                            self.Linebreak()
-                            if self.maxlines and self._numLines >= self.maxlines:
-                                return False
-                            self.PushWord(lastWord, lastParams)
-                        else:
-                            self.Linebreak()
-                            if self.maxlines and self._numLines >= self.maxlines:
-                                return False
-                    else:
+                else:
+                    if hasUncommittedText:
+                        measurer.CancelLastText()
+                        measurer.CancelLastText()
                         self.Linebreak()
                         if self.maxlines and self._numLines >= self.maxlines:
                             return False
-                return self.PushWord(word)
-            self._parsingBuff += renderData[:n]
-            for each in renderData[:n]:
-                self._boundingBoxes += each[-1]
-
+                        return self.PushWord(word + trailingSpaces)
+                    if n == 0:
+                        return False
+                    measurer.CancelLastText()
+                    measurer.CancelLastText()
+                    n = measurer.AddText(word[:n], params)
+                    self._numCharactersAdded += n
+                    measurer.AddText(u'', params)
+                    self.Linebreak()
+                    if self.maxlines and self._numLines >= self.maxlines:
+                        return False
+                    return self.PushWord(word[n:] + trailingSpaces)
+            else:
+                self._numCharactersAdded += n + t
         return toReturn
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def GetIndexUnderPos(self, pos):
-        retIndex = 0
-        totalWidth = 0
-        if pos < 0:
-            return (retIndex, totalWidth)
-        for sBit in self._boundingBoxes:
-            glyphWidth = sBit.xadvance
-            if totalWidth - glyphWidth / 2.0 < pos <= totalWidth + glyphWidth / 2.0 or totalWidth >= pos:
-                break
-            totalWidth += glyphWidth
-            retIndex += 1
-
-        return (retIndex, totalWidth)
+    def GetIndexUnderPos(self, layoutPosition):
+        index = self.measurer.GetIndexAtPos(self.ScaleDpi(layoutPosition))
+        width = self.ReverseScaleDpi(self.measurer.GetWidthAtIndex(index))
+        return (index, width)
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def GetWidthToIndex(self, index):
         if index == -1:
-            index = len(self._boundingBoxes)
-        index = min(len(self._boundingBoxes), max(0, index))
-        return (index, sum([ each.xadvance for each in self._boundingBoxes[:index] ]))
+            index = len(self._renderText)
+        width = self.ReverseScaleDpi(self.GetMeasurer().GetWidthAtIndex(index))
+        return (index, width)
 
 
 
@@ -768,45 +834,61 @@ class LabelCore(uicls.Sprite):
         self.FlushBuff()
         measurer = self.GetMeasurer()
         actualHeight = measurer.asc - measurer.des
-        linespace = self.GetParams().linespace
-        lineheight = max(linespace, actualHeight)
-        self.textheight += lineheight
-        if self._currentLink:
-            self._links[-1][3] = measurer.cursor
-            self._links[-1][4] = self.textheight
-        measurer.Reset(self.tabwidth)
-        measurer.cursor = self.specialIndent
+        if self.actualTextHeight:
+            self.actualTextHeight += int(self.lineSpacing * actualHeight) + actualHeight
+        else:
+            self.actualTextHeight = actualHeight
+        if uicore.desktop.dpiScaling != 1.0:
+            self.textwidth = self.ReverseScaleDpi(self.actualTextWidth + 0.5)
+            self.textheight = self.ReverseScaleDpi(self.actualTextHeight + 0.5)
+        else:
+            self.textwidth = self.actualTextWidth
+            self.textheight = self.actualTextHeight
+        measurer.limit = self.ScaleDpi(self.tabwidth)
+        measurer.cursorX = self.specialIndent
         self._numLines += 1
-        if self._currentLink:
-            self._links.append([self._currentLink,
-             measurer.cursor,
-             self.textheight,
-             0,
-             0])
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def FlushBuff(self):
-        if not self._parsingBuff:
-            return 
-        buffWidth = self._parsingBuff[-1][2]
-        pos = self.tabpos
+        measurer = self.GetMeasurer()
+        buffWidth = measurer.cursorX
+        pos = self.ScaleDpi(self.tabpos)
+        scaledTabWidth = self.ScaleDpi(self.tabwidth)
         if self.textalign == self.ALRIGHT:
-            pos += self.tabwidth - buffWidth
+            pos += scaledTabWidth - buffWidth
         elif self.textalign == self.ALCENTER:
-            pos += int((self.tabwidth - buffWidth) / 2)
-        shiftY = self.textheight + self.GetMeasurer().asc
-        for (text, textStart, textEnd, params, sBits,) in self._parsingBuff:
-            self._renderlines.append((text,
-             params,
-             pos + textStart,
-             shiftY,
-             0,
-             sBits))
-            self.textwidth = max(self.textwidth, pos + textStart + (textEnd - textStart))
+            pos += int((scaledTabWidth - buffWidth) / 2)
+        lineHeight = measurer.asc - measurer.des
+        lineSpacing = int(self.lineSpacing * lineHeight)
+        if self.actualTextHeight:
+            shiftY = self.actualTextHeight + lineSpacing + self.measurer.asc
+        else:
+            shiftY = self.measurer.asc
+        moveToNextLine = []
+        for object in self._inlineObjectsBuff:
+            registerObject = object.Copy()
+            if object.inlineXEnd is None:
+                object.inlineX = self.tabpos
+                moveToNextLine.append(object)
+                registerObject.inlineXEnd = measurer.cursorX
+            registerObject.inlineX += self.ReverseScaleDpi(pos)
+            registerObject.inlineXEnd += self.ReverseScaleDpi(pos)
+            registerObject.inlineY = self.textheight
+            registerObject.inlineHeight = self.ReverseScaleDpi(lineHeight + lineSpacing)
+            self._inlineObjects.append(registerObject)
 
-        self._parsingBuff = []
+        commited = self.measurer.CommitText(pos, shiftY)
+        self.actualTextWidth = max(self.actualTextWidth, pos + buffWidth)
+        self._inlineObjectsBuff = moveToNextLine
+
+
+
+    def StripQuotes(self, tag):
+        tag = tag.replace('"', '')
+        tag = tag.replace("'", '')
+        return tag
 
 
 
@@ -814,35 +896,78 @@ class LabelCore(uicls.Sprite):
     def ParseTag(self, _tag):
         orgTag = _tag
         tag = _tag.lower()
-        params = self.GetParams()
-        if tag == u'u':
-            if self.params.underline != 1:
-                self.params = params.Copy()
-            self.params.underline = 1
-        elif tag == u'/u':
-            if self.params.underline != 0:
-                self.params = params.Copy()
-            self.params.underline = 0
-        elif tag.startswith(u'url'):
-            self.StartLink(orgTag[4:], params)
-        elif tag == u'/url':
-            self.EndLink(params)
-        elif tag == u'b':
-            if self.params.bold != 1:
-                self.params = params.Copy()
-            self.params.bold = 1
-        elif tag == u'/b':
-            if self.params.bold != 0:
-                self.params = params.Copy()
-            self.params.bold = 0
-        elif tag == u'i':
-            if self.params.italic != 1:
-                self.params = params.Copy()
-            self.params.italic = 1
-        elif tag == u'/i':
-            if self.params.italic != 0:
-                self.params = params.Copy()
-            self.params.italic = 0
+        if tag.startswith('font '):
+            fontcolor = self.GetTagValue(' color=', tag)
+            if fontcolor:
+                self.ParseTag('color=' + self.StripQuotes(fontcolor))
+            fontsize = self.GetTagValue(' size=', tag)
+            if fontsize:
+                self.ParseTag('fontsize=' + self.StripQuotes(fontsize))
+            self._tagStack['font'].append(tag)
+            return 
+        if tag == '/font':
+            tagStack = self._tagStack['font']
+            if tagStack:
+                closeFontTag = tagStack.pop()
+                fontcolor = self.GetTagValue(' color=', closeFontTag)
+                if fontcolor:
+                    self.ParseTag('/color')
+                fontsize = self.GetTagValue(' size=', closeFontTag)
+                if fontsize:
+                    self.ParseTag('/fontsize')
+            return 
+        if tag in ('u', 'i', 'b', 'uppercase'):
+            self._tagStack[tag] += 1
+        elif tag in ('/u', '/i', '/b', '/uppercase'):
+            stackTag = tag[1:]
+            self._tagStack[stackTag] = max(0, self._tagStack[stackTag] - 1)
+        elif tag.startswith(u'url') or tag.startswith(u'a href'):
+            fulltag = orgTag.replace('a href', 'url').replace('url:', 'url=')
+            url = self.GetTagStringValue('url=', fulltag)
+            if not url:
+                url = self.GetTagValue('url=', fulltag)
+            alt = self.GetTagStringValue(' alt=', fulltag)
+            url = url.replace('&amp;', '&')
+            inlineObject = self.StartInline('link', orgTag)
+            inlineObject.url = url
+            inlineObject.alt = alt
+            self._tagStack['link'].append(inlineObject)
+            linkState = uiconst.LINK_IDLE
+            if self._mouseOverUrl and url == self._mouseOverUrl:
+                if uicore.uilib.leftbtn:
+                    linkState = uiconst.LINK_ACTIVE
+                else:
+                    linkState = uiconst.LINK_HOVER
+            linkFmt = uicls.BaseLink().GetLinkFormat(url, linkState, self.linkStyle)
+            linkColor = None
+            if linkState == uiconst.LINK_IDLE:
+                colorSyntax = self.GetTagValue(' color=', fulltag)
+                if colorSyntax:
+                    colorSyntax = colorSyntax.replace('#', '0x')
+                    hexColor = uiutil.StringColorToHex(colorSyntax) or colorSyntax
+                    if hexColor:
+                        linkColor = mathUtil.LtoI(long(hexColor, 0))
+            inlineObject.bold = linkFmt.bold
+            inlineObject.italic = linkFmt.italic
+            inlineObject.underline = linkFmt.underline
+            if linkFmt.bold:
+                self.ParseTag('b')
+            if linkFmt.italic:
+                self.ParseTag('i')
+            if linkFmt.underline:
+                self.ParseTag('u')
+            self._tagStack['color'].append(linkColor or linkFmt.color or self._defaultcolor)
+        elif tag == u'/url' or tag == u'/a':
+            self.EndInline('link')
+            if self._tagStack['link']:
+                closingLink = self._tagStack['link'].pop()
+                if closingLink.bold:
+                    self.ParseTag('/b')
+                if closingLink.italic:
+                    self.ParseTag('/i')
+                if closingLink.underline:
+                    self.ParseTag('/u')
+                self.ParseTag('/color')
         elif tag == u'left':
             self.textalign = self.ALLEFT
         elif tag == u'right':
@@ -851,91 +976,73 @@ class LabelCore(uicls.Sprite):
             self.textalign = self.ALCENTER
         elif tag.startswith(u'fontsize='):
             fs = int(_tag[9:])
-            if self.params.fontsize != fs:
-                self.params = params.Copy()
-            self.params.fontsize = fs
-        elif tag.startswith(u'font='):
-            fn = _tag[5:]
-            if self.params.font != fn:
-                self.params = params.Copy()
-            self.params.font = fn
+            if 'fontsize' not in self._tagStack:
+                self._tagStack['fontsize'] = []
+            self._tagStack['fontsize'].append(fs)
         elif tag.startswith(u'letterspace='):
             ls = int(_tag[12:])
-            if self.params.letterspace != ls:
-                self.params = params.Copy()
-            self.params.letterspace = fs
-        elif tag.startswith(u'icon='):
-            measurer = self.GetMeasurer()
-            measurer.AddSpace(16)
-            fakeSbit = uiutil.Bunch()
-            fakeSbit.xadvance = 16
-            self._boundingBoxes.append(fakeSbit)
+            if 'letterspace' not in self._tagStack:
+                self._tagStack['letterspace'] = []
+            self._tagStack['letterspace'].append(fs)
         elif tag.startswith(u'color='):
             color = uiutil.StringColorToHex(_tag[6:])
             if color is None:
                 color = _tag[6:16]
+                color = color.replace('#', '0x')
             col = mathUtil.LtoI(long(color, 0))
-            if self._currentLink and self._currentLink == self._activeLink:
-                col = -9472
-            if self.params.color != col:
-                self.params = params.Copy()
-            self.params.color = col
-            self._colorstack.append(col)
-        elif tag.startswith(u'/color'):
-            if self.params.color != self._defaultcolor:
-                self.params = params.Copy()
-            if self._colorstack:
-                self._colorstack.pop()
-            if self._colorstack:
-                self.params.color = self._colorstack[-1]
-            else:
-                self.params.color = self._defaultcolor
+            self._tagStack['color'].append(col)
+        elif tag.startswith(u'hint='):
+            hint = self.GetTagStringValue('hint=', orgTag)
+            inlineObject = self.StartInline('hint', hint)
+            self._tagStack['hint'].append(inlineObject)
+        elif tag == '/hint':
+            self.EndInline('hint')
+            if self._tagStack['hint']:
+                self._tagStack['hint'].pop()
+        elif tag in ('/color', '/fontsize', '/letterspace'):
+            stackTag = tag[1:]
+            if stackTag in self._tagStack and len(self._tagStack[stackTag]) > 1:
+                self._tagStack[stackTag].pop()
+        elif self.localizationErrorCheckEnabled:
+            if tag.startswith('localized'):
+                self._tagStack['localized'].append(tag)
+            elif tag == '/localized':
+                if self._tagStack['localized']:
+                    self._tagStack['localized'].pop()
 
 
 
-    @bluepy.CCP_STATS_ZONE_METHOD
-    def StartLink(self, url, params):
-        url = url.replace('&amp;', '&')
-        self._currentLink = url
-        self._paramsBackup = params.Copy()
-        self.params = params.Copy()
-        if url == self._activeLink:
-            self.params.color = -9472
-        else:
-            self.params.color = getattr(self, 'linkColor', None) or -23040
-        self.params.bold = self.boldLinks
+    def GetMouseOverUrl(self):
+        return self._mouseOverUrl
+
+
+
+    def StartInline(self, inlineType, data):
+        inlineObject = uiutil.Bunch()
+        inlineObject.inlineType = inlineType
+        inlineObject.data = data
         measurer = self.GetMeasurer()
-        self._links.append([url,
-         self.tabpos + measurer.cursor,
-         self.textheight,
-         0,
-         0])
+        inlineObject.inlineX = self.ReverseScaleDpi(measurer.cursorX)
+        inlineObject.inlineXEnd = None
+        self._inlineObjectsBuff.append(inlineObject)
+        return inlineObject
 
 
 
-    @bluepy.CCP_STATS_ZONE_METHOD
-    def EndLink(self, params):
-        if not self._links:
-            return 
-        measurer = self.GetMeasurer()
-        actualHeight = measurer.asc - measurer.des
-        lineheight = self.GetParams().linespace or actualHeight
-        self._links[-1][3] = self.tabpos + measurer.cursor
-        self._links[-1][4] = self.textheight + lineheight
-        if self._paramsBackup:
-            self.params = self._paramsBackup.Copy()
-            self._paramsBackup = None
-        else:
-            self.params = None
-        self._currentLink = None
+    def EndInline(self, inlineType):
+        if inlineType in self._tagStack and self._tagStack[inlineType]:
+            inlineObject = self._tagStack[inlineType][-1]
+            if inlineObject:
+                measurer = self.GetMeasurer()
+                inlineObject.inlineXEnd = self.ReverseScaleDpi(measurer.cursorX)
 
 
 
     def GetMenu(self):
         m = []
-        if self._activeLink:
-            m = uicls.BaseLink().GetLinkMenu(self, self._activeLink.replace('&amp;', '&'))
-        m += [(mls.UI_CMD_COPY, self.CopyText)]
+        if self._mouseOverUrl:
+            m = uicls.BaseLink().GetLinkMenu(self, self._mouseOverUrl)
+        m += [(localization.GetByLabel('/Carbon/UI/Controls/Common/Copy'), self.CopyText)]
         return m
 
 
@@ -954,7 +1061,7 @@ class LabelCore(uicls.Sprite):
 
     def OnMouseMove(self, *args):
         if not self._hilite:
-            self.CheckLinks()
+            self.CheckInlines()
 
 
 
@@ -963,42 +1070,66 @@ class LabelCore(uicls.Sprite):
             self._hilite = 0
             self.Render((self._displayWidth, self._displayHeight))
         else:
-            self.CheckLinks()
+            self.CheckInlines()
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def CheckLinks(self):
-        aLink = None
-        if self._links and uicore.uilib.mouseOver == self:
+    def CheckInlines(self):
+        inlineLinkObj = None
+        inlineHintObj = None
+        if self._inlineObjects and uicore.uilib.mouseOver == self:
             mouseX = uicore.uilib.x
             mouseY = uicore.uilib.y
             (left, top, width, height,) = self.GetAbsolute()
-            for (url, startX, startY, endX, endY,) in self._links:
+            for inline in self._inlineObjects:
+                startX = inline.inlineX
+                endX = inline.inlineXEnd
+                startY = inline.inlineY
+                endY = startY + inline.inlineHeight
                 if left + startX < mouseX < left + endX and top + startY < mouseY < top + endY:
-                    hint = url
-                    aLink = url
-                    break
+                    if inline.inlineType == 'link':
+                        inlineLinkObj = inline
+                    elif inline.inlineType == 'hint':
+                        inlineHintObj = inline
 
-            if not aLink:
-                self.sr.hint = None
-                self.cursor = uiconst.UICURSOR_DEFAULT
+        self._resolvingInlineHint = True
+        mouseOverUrl = None
+        inlineHint = None
+        if inlineLinkObj:
+            mouseOverUrl = inlineLinkObj.url
+            if inlineLinkObj.alt:
+                inlineHint = inlineLinkObj.alt
             else:
-                self.cursor = uiconst.UICURSOR_SELECT
-        if aLink != self._activeLink:
-            self._activeLink = aLink
+                standardHint = uicls.BaseLink().GetStandardLinkHint(mouseOverUrl)
+                if standardHint:
+                    inlineHint = standardHint
+        if not inlineHint and inlineHintObj:
+            inlineHint = inlineHintObj.data
+        hint = inlineHint or getattr(self, '_objectHint', None)
+        if hint != self.hint:
+            self.hint = hint
+            uicore.CheckHint()
+        self._resolvingInlineHint = False
+        if mouseOverUrl != self._mouseOverUrl:
+            self._mouseOverUrl = mouseOverUrl
             self.Layout()
 
 
 
+    def GetStandardLinkHint(self, url):
+        return None
+
+
+
     def OnClick(self, *args):
-        if self._activeLink:
-            uicls.BaseLink().ClickLink(self, self._activeLink.replace('&amp;', '&'))
+        if self._mouseOverUrl:
+            uicls.BaseLink().ClickLink(self, self._mouseOverUrl.replace('&amp;', '&'))
 
 
 
     def Encode(self, text):
-        return text.replace(u'&gt;', u'>').replace(u'&lt;', u'<').replace(u'&amp;', u'&').replace(u'&GT;', u'>').replace(u'&LT;', u'<')
+        return text.replace(u'&gt;', u'>').replace(u'&lt;', u'<').replace(u'&amp;', u'&').replace(u'&AMP;', u'&').replace(u'&GT;', u'>').replace(u'&LT;', u'<')
 
 
 
@@ -1018,6 +1149,161 @@ class LabelCore(uicls.Sprite):
                 self.Layout('_OnSizeChange_NoBlock', absSize=newAbs)
         if getattr(self, 'OnSizeChanged', None):
             self.OnSizeChanged()
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetTagStringValue(self, tagtofind, tagstring):
+        start = tagstring.find(tagtofind)
+        if start != -1:
+            tagBegin = tagstring[(start + len(tagtofind)):]
+            for checkQuote in ['"', "'"]:
+                if tagBegin.startswith(checkQuote):
+                    end = tagBegin.find(checkQuote, 1)
+                    if end != -1:
+                        return tagBegin[1:end]
+
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetTagValue(self, tagtofind, tagstring):
+        start = tagstring.find(tagtofind)
+        if start != -1:
+            end = tagstring.find(' ', start)
+            if end == start:
+                end = tagstring.find(' ', start + 1)
+            if end == -1:
+                end = tagstring.find('>', start)
+            if end == -1:
+                end = len(tagstring)
+            return tagstring[(start + len(tagtofind)):end]
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetTextAndTags(self, text):
+        if not text:
+            return []
+        tagStart = None
+        tagSkip = 0
+        charBuff = ''
+        textOutsideTags = ''
+        texts_or_tags = []
+        if text.find('<') != -1:
+            for (i, char,) in enumerate(text):
+                if char == '<':
+                    if tagStart is None:
+                        if charBuff:
+                            textOutsideTags += charBuff
+                            texts_or_tags.append((False, self.Encode(charBuff)))
+                            charBuff = ''
+                        tagStart = i
+                    else:
+                        tagSkip += 1
+                elif char == '>':
+                    if not tagSkip:
+                        texts_or_tags.append((True, text[tagStart:(i + 1)]))
+                        tagStart = None
+                    else:
+                        tagSkip -= 1
+                elif tagStart is None:
+                    charBuff += char
+
+        else:
+            charBuff = text
+        if charBuff:
+            textOutsideTags += charBuff
+            texts_or_tags.append((False, self.Encode(charBuff)))
+        if self.singleline:
+            return texts_or_tags
+        wrapPoints = []
+        boundaries = uiutil.FindTextBoundaries(self.Encode(textOutsideTags), regexObject=uiconst.LINE_BREAK_BOUNDARY_REGEX)
+        for boundary in boundaries:
+            if wrapPoints:
+                wrapPoints.append(wrapPoints[-1] + len(boundary))
+            else:
+                wrapPoints.append(len(boundary))
+
+        charBuff = ''
+        charCounter = 0
+        wraptexts_or_tags = []
+        for (isTag, each,) in texts_or_tags:
+            if isTag:
+                if charBuff:
+                    wraptexts_or_tags.append((False, charBuff))
+                    charBuff = ''
+                wraptexts_or_tags.append((True, each))
+            else:
+                for char in each:
+                    charBuff += char
+                    charCounter += 1
+                    if charCounter in wrapPoints:
+                        wraptexts_or_tags.append((False, charBuff))
+                        charBuff = ''
+
+
+        return wraptexts_or_tags
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def SplitIntoLines(self, text):
+        if not text:
+            return []
+        tagStart = None
+        tagSkip = 0
+        charBuff = ''
+        texts_or_tags = []
+        if text.find('<') != -1:
+            for (i, char,) in enumerate(text):
+                if char == '<':
+                    if tagStart is None:
+                        if charBuff:
+                            texts_or_tags.append(charBuff)
+                            charBuff = ''
+                        tagStart = i
+                    else:
+                        tagSkip += 1
+                elif char == '>':
+                    if not tagSkip:
+                        texts_or_tags.append(text[tagStart:(i + 1)])
+                        tagStart = None
+                    else:
+                        tagSkip -= 1
+                elif tagStart is None:
+                    charBuff += char
+
+        else:
+            return [text]
+        if charBuff:
+            texts_or_tags.append(charBuff)
+        ret = []
+        buff = u''
+        for each in texts_or_tags:
+            if each == '<br>':
+                if buff:
+                    ret.append(buff)
+                buff = u''
+            else:
+                buff += each
+
+        if buff:
+            ret.append(buff)
+        return ret
+
+
+
+    @classmethod
+    def MeasureTextSize(cls, text, **customAttributes):
+        if 'width' in customAttributes and customAttributes.get('singleline', False):
+            raise RuntimeError('You cannot set both width and singleline when measuring textsize', '(MeasureTextSize)')
+        customAttributes['text'] = text
+        customAttributes['parent'] = None
+        customAttributes['measuringText'] = True
+        customAttributes['align'] = uiconst.TOPLEFT
+        label = cls(**customAttributes)
+        return (label.textwidth, label.textheight)
 
 
 

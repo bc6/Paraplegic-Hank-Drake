@@ -67,7 +67,7 @@ def MeshAreaListIterator(mesh, includePLP = False):
 
 
 @bluepy.CCP_STATS_ZONE_FUNCTION
-def GetEffectsFromMesh(mesh):
+def GetEffectsFromMesh(mesh, allowShaderMaterial = False, includePLP = False):
     effects = []
     if type(mesh) is trinity.Tr2ClothingActor:
         if hasattr(mesh, 'effect') and mesh.effect is not None:
@@ -75,14 +75,15 @@ def GetEffectsFromMesh(mesh):
         if hasattr(mesh, 'effectReversed') and mesh.effectReversed is not None:
             effects.append(mesh.effectReversed)
     elif type(mesh) is trinity.Tr2Mesh:
-        for area in MeshAreaListIterator(mesh):
+        for area in MeshAreaListIterator(mesh, includePLP=includePLP):
             effects += GetEffectsFromAreaList(area)
 
     elif type(mesh) is trinity.Tr2InteriorStatic:
         for area in mesh.enlightenAreas:
             effects.append(area.effect)
 
-    effects = [ effect for effect in effects if effect if type(effect) != trinity.Tr2ShaderMaterial ]
+    if not allowShaderMaterial:
+        effects = [ effect for effect in effects if effect if type(effect) != trinity.Tr2ShaderMaterial ]
     return effects
 
 
@@ -199,6 +200,31 @@ def PutMeshToLookup(lookup, m):
         c = 0
     meshName = StripDigits(m.name)
     lookup[meshName] = max([c, lookup.get(meshName)]) + 1
+
+
+
+def FindParameterByName(effect, parameterName):
+    for param in effect.parameters:
+        if hasattr(param, 'name') and param.name == parameterName:
+            return param
+
+
+
+
+def FindResourceByName(effect, resourceName):
+    for res in effect.resources:
+        if res.name == resourceName:
+            return res
+
+
+
+
+def GetHighLevelShaderByName(name):
+    sm = trinity.GetShaderManager()
+    for shader in sm.shaderLibrary:
+        if shader.name == name:
+            return shader
+
 
 
 exports = util.AutoExports('paperDoll', globals())

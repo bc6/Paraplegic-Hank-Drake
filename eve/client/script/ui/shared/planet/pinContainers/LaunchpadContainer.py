@@ -2,6 +2,8 @@ import uiconst
 import util
 import uicls
 import planet
+import planetCommon
+import localization
 
 class LaunchpadContainer(planet.ui.StorageFacilityContainer):
     __guid__ = 'planet.ui.LaunchpadContainer'
@@ -13,7 +15,7 @@ class LaunchpadContainer(planet.ui.StorageFacilityContainer):
 
 
     def _GetActionButtons(self):
-        btns = [util.KeyVal(name=mls.UI_PI_LAUNCH, panelCallback=self.PanelLaunch, icon='ui_44_32_6'), util.KeyVal(name=mls.UI_PI_STORAGE, panelCallback=self.PanelShowStorage, icon='ui_44_32_3')]
+        btns = [util.KeyVal(id=planetCommon.PANEL_LAUNCH, panelCallback=self.PanelLaunch), util.KeyVal(id=planetCommon.PANEL_STORAGE, panelCallback=self.PanelShowStorage)]
         btns.extend(planet.ui.BasePinContainer._GetActionButtons(self))
         return btns
 
@@ -23,23 +25,32 @@ class LaunchpadContainer(planet.ui.StorageFacilityContainer):
         bp = sm.GetService('michelle').GetBallpark()
         text = None
         if bp is not None and not self.pin.IsInEditMode():
-            cargoLinkIDs = bp.GetCargoLinksForPlanet(sm.GetService('planetUI').planetID)
-            if cargoLinkIDs is not None and len(cargoLinkIDs) > 0:
+            customsOfficeIDs = sm.GetService('planetInfo').GetOrbitalsForPlanet(sm.GetService('planetUI').planetID, const.groupPlanetaryCustomsOffices)
+            if len(customsOfficeIDs) > 0:
                 try:
-                    sm.GetService('planetUI').OpenPlanetCargoLinkImportWindow(cargoLinkIDs[0], self.pin.id, True)
-                    self.CloseX()
+                    customsOfficeID = None
+                    for ID in customsOfficeIDs:
+                        customsOfficeID = ID
+                        break
+
+                    sm.GetService('planetUI').OpenPlanetCustomsOfficeImportWindow(customsOfficeID, self.pin.id)
+                    self.CloseByUser()
                     return 
                 except UserError as e:
                     if e.msg == 'ShipCloaked':
-                        text = mls.UI_PI_CANNOTACCESSLAUNCHPADWHILECLOAKED
+                        text = localization.GetByLabel('UI/PI/Common/CannotAccessLaunchpadWhileCloaked')
                     else:
                         message = cfg.GetMessage(e.msg)
                         text = message.text
         if text is None:
             if self.pin.IsInEditMode():
-                text = mls.UI_PI_CUSTOMSOFFICEINACCESSIBLENOTBUILT
+                text = localization.GetByLabel('UI/PI/Common/CustomsOfficeNotBuilt')
             else:
-                text = mls.UI_PI_SPACEPORT_CANNOTACCESSCARGOLINK
+                solarSystemID = sm.GetService('planetUI').GetCurrentPlanet().solarSystemID
+                if solarSystemID == session.locationid:
+                    text = localization.GetByLabel('UI/PI/Common/CannotAccessLaunchpadNotThere')
+                else:
+                    text = localization.GetByLabel('UI/PI/Common/CannotAccessLaunchpadLocation')
         cont = uicls.Container(parent=self.actionCont, pos=(0, 0, 0, 0), align=uiconst.TOTOP, state=uiconst.UI_HIDDEN)
         editBox = self._DrawEditBox(cont, text)
         cont.height = editBox.height + 4

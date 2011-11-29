@@ -19,8 +19,10 @@ class ButtonCore(uicls.Container):
     default_mousedownfunc = None
     default_fixedwidth = None
     default_state = uiconst.UI_NORMAL
-    default_font = fontConst.DEFAULT_FONT
     default_fontsize = fontConst.DEFAULT_FONTSIZE
+    default_fontStyle = None
+    default_fontFamily = None
+    default_fontPath = None
 
     def ApplyAttributes(self, attributes):
         uicls.Container.ApplyAttributes(self, attributes)
@@ -39,9 +41,13 @@ class ButtonCore(uicls.Container):
         self.args = attributes.get('args', self.default_args)
         self.mouseupfunc = attributes.get('mouseupfunc', self.default_mouseupfunc)
         self.mousedownfunc = attributes.get('mousedownfunc', self.default_mousedownfunc)
+        self.fontStyle = attributes.get('fontStyle', self.default_fontStyle)
+        self.fontFamily = attributes.get('fontFamily', self.default_fontFamily)
+        self.fontPath = attributes.get('fontPath', self.default_fontPath)
+        self.fontsize = attributes.get('fontsize', self.default_fontsize)
         if self.sr.label:
-            if attributes.font:
-                self.sr.label.font = attributes.font
+            if attributes.fontFamily:
+                self.sr.label.fontFamily = attributes.fontFamily
             if attributes.fontsize:
                 self.sr.label.fontsize = attributes.fontsize
             label = attributes.get('label', self.default_label)
@@ -51,7 +57,7 @@ class ButtonCore(uicls.Container):
 
 
     def Prepare_(self):
-        self.sr.label = uicls.Label(parent=self, state=uiconst.UI_DISABLED, align=uiconst.CENTER, bold=1, uppercase=1, idx=0, font=self.default_font, fontsize=self.default_fontsize, autowidth=1, autoheight=1)
+        self.sr.label = uicls.Label(parent=self, state=uiconst.UI_DISABLED, align=uiconst.CENTER, bold=1, uppercase=1, idx=0, fontFamily=self.fontFamily, fontStyle=self.fontStyle, fontPath=self.fontPath, fontsize=self.fontsize)
         self.sr.activeframe = uicls.Frame(parent=self, name='activeframe', state=uiconst.UI_HIDDEN, color=(1.0, 1.0, 1.0, 0.5), frameConst=uiconst.FRAME_BORDER1_SHADOW_CORNER4)
         self.sr.hilite = uicls.Fill(parent=self, name='hilite', state=uiconst.UI_HIDDEN, color=(1.0, 1.0, 1.0, 0.25), padding=(2, 2, 2, 2))
         uicls.Frame(parent=self, name='background', state=uiconst.UI_DISABLED, frameConst=uiconst.FRAME_BORDER1_SHADOW_CORNER4, color=(1.0, 1.0, 1.0, 0.5))

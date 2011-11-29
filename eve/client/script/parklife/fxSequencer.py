@@ -211,7 +211,7 @@ class Activation():
 
         if candidate is None:
             return -1
-        now = blue.os.GetTime()
+        now = blue.os.GetSimTime()
         wholeRepeatsLeft = long((candidate.stamp - now) / (candidate.duration * SECOND / 1000.0))
         if wholeRepeatsLeft == candidate.repeat:
             newStamp = candidate.stamp - (wholeRepeatsLeft - 1) * long(candidate.duration * SECOND / 1000.0)
@@ -258,7 +258,7 @@ class Activation():
 
 
     def PurgeTriggers(self):
-        now = blue.os.GetTime()
+        now = blue.os.GetSimTime()
         changes = False
         while self.triggers and self.triggers[0].stamp <= now:
             changes = True
@@ -332,7 +332,7 @@ class FxSequencer(service.Service):
     def Stop(self, ms):
         service.Service.Stop(self)
         self.killLoop = True
-        blue.pyos.synchro.WakeupAt(self.sequencerTasklet, 0, -1)
+        blue.pyos.synchro.WakeupAtSim(self.sequencerTasklet, 0, -1)
         self.sequencerTasklet = None
 
 
@@ -341,7 +341,7 @@ class FxSequencer(service.Service):
         if start == 1 and guid in self.disabledGuids:
             return 
         if startTime is not None and guid in FX_LONG_ONESHOT_GUIDS:
-            now = blue.os.GetTime()
+            now = blue.os.GetSimTime()
             if now - startTime > 150000000:
                 return 
         trigger = Trigger(shipID=shipID, moduleID=moduleID, moduleTypeID=moduleTypeID, targetID=targetID, otherTypeID=otherTypeID, area=area, guid=guid, isOffensive=isOffensive, duration=duration, repeat=repeat, startTime=startTime, graphicInfo=graphicInfo)
@@ -457,7 +457,7 @@ class FxSequencer(service.Service):
                 trigger.duration = klass._GetDuration()
             if trigger.repeat is None or trigger.repeat == 0:
                 trigger.repeat = 1
-            trigger.__dict__['stamp'] = blue.os.GetTime() + long(trigger.duration * trigger.repeat / 1000.0 * SECOND)
+            trigger.__dict__['stamp'] = blue.os.GetSimTime() + long(trigger.duration * trigger.repeat / 1000.0 * SECOND)
             if key in self.activations and not klass.__guid__ == 'effects.Uncloak':
                 activation = self.activations[key]
                 activation.AddTrigger(trigger)
@@ -497,19 +497,19 @@ class FxSequencer(service.Service):
         self.LogInfo('FxSequencer: Sequencer loop starting')
         while not getattr(self, 'killLoop', True):
             self.CheckForStopCandidates()
-            now = blue.os.GetTime()
+            now = blue.os.GetSimTime()
             if self.stopCandidates:
                 wakeupTime = self.stopCandidates[0].stamp
             else:
-                wakeupTime = blue.os.GetTime() + 60 * SECOND
-            reason = blue.pyos.synchro.SleepUntil(wakeupTime)
+                wakeupTime = blue.os.GetSimTime() + 60 * SECOND
+            reason = blue.pyos.synchro.SleepUntilSim(wakeupTime)
 
         self.LogInfo('FxSequencer: Sequencer loop terminated with reason', reason)
 
 
 
     def CheckForStopCandidates(self):
-        now = blue.os.GetTime()
+        now = blue.os.GetSimTime()
         while self.stopCandidates and self.stopCandidates[0].stamp <= now:
             blue.pyos.BeNice()
             activation = heapq.heappop(self.stopCandidates)
@@ -519,7 +519,7 @@ class FxSequencer(service.Service):
                 self.RemoveActivation(activation)
             else:
                 heapq.heappush(self.stopCandidates, activation)
-            now = blue.os.GetTime()
+            now = blue.os.GetSimTime()
 
 
 
@@ -552,7 +552,7 @@ class FxSequencer(service.Service):
         if reschedule:
             try:
                 self.LogInfo('\t\tAddActivationToSequencer: just going for some rescheduling here')
-                blue.pyos.synchro.WakeupAt(self.sequencerTasklet, currentStopTime)
+                blue.pyos.synchro.WakeupAtSim(self.sequencerTasklet, currentStopTime)
             except:
                 self.LogInfo('\t\tAddActivationToSequencer: Activation rescedule failed, sequencer will wake up by itself')
                 sys.exc_clear()
@@ -583,9 +583,9 @@ class FxSequencer(service.Service):
             heapq.heapify(self.stopCandidates)
             try:
                 if self.stopCandidates:
-                    blue.pyos.synchro.WakeupAt(self.sequencerTasklet, self.stopCandidates[0].stamp)
+                    blue.pyos.synchro.WakeupAtSim(self.sequencerTasklet, self.stopCandidates[0].stamp)
                 else:
-                    blue.pyos.synchro.WakeupAt(self.sequencerTasklet, blue.os.GetTime() + 60 * SECOND)
+                    blue.pyos.synchro.WakeupAtSim(self.sequencerTasklet, blue.os.GetSimTime() + 60 * SECOND)
             except:
                 pass
             self.LogInfo('RemoveActivationFromSequencer:', activation)
@@ -613,6 +613,13 @@ class FxSequencer(service.Service):
             for trigger in initiateTriggers:
                 self.AddTrigger(trigger)
 
+
+
+
+    def GetAllBallActivations(self, ballID):
+        if ballID in self.ballRegister:
+            return self.ballRegister[ballID]
+        return []
 
 
 

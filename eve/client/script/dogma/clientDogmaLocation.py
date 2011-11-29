@@ -2,7 +2,6 @@ import dogmax
 import sys
 import weakref
 import util
-import string
 import math
 import uix
 import log
@@ -12,6 +11,8 @@ import uiutil
 import uiconst
 import uthread
 import itertools
+import localization
+import localizationUtil
 from collections import defaultdict
 GROUPALL_THROTTLE_TIMER = 2 * const.SEC
 
@@ -23,7 +24,7 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
         dogmax.BaseDogmaLocation.__init__(self, broker)
         self.instanceCache = {}
         self.scatterAttributeChanges = True
-        self.dogmaStaticMgr = sm.GetService('baseDogmaStaticSvc')
+        self.dogmaStaticMgr = sm.GetService('clientDogmaStaticSvc')
         self.remoteDogmaLM = None
         self.godma = sm.GetService('godma')
         self.stateMgr = self.godma.GetStateManager()
@@ -53,7 +54,7 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
                 return 
             while not session.IsItSafe():
                 self.LogInfo('MakeShipActive - session is mutating. Sleeping for 250ms')
-                blue.pyos.synchro.Sleep(250)
+                blue.pyos.synchro.SleepSim(250)
 
             if shipID is None:
                 log.LogTraceback('Unexpectedly got shipID = None')
@@ -82,7 +83,7 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
 
 
                 if shipID is not None:
-                    self.FitItemToLocation(shipID, session.charid, const.flagPilot)
+                    self.OnCharacterEmbarkation(session.charid, shipID, switching=oldShipID is not None)
                     for skill in charItems.itervalues():
                         self.StartPassiveEffects(skill.itemID, skill.typeID)
 
@@ -308,15 +309,10 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
                 missingSkills[requiredSkillTypeID] = requiredSkillLevel
 
         if len(missingSkills) > 0:
-            skillNameList = []
-            for (skillTypeID, skillLevel,) in missingSkills.iteritems():
-                skillName = cfg.invtypes.Get(skillTypeID).name
-                if skillLevel:
-                    skillName += ' %s %d' % (mls.SKILL_LEVEL, skillLevel)
-                skillNameList.append(skillName)
-
-            raise UserError(errorMsgName, {'requiredSkills': string.join(skillNameList, ', '),
-             'itemName': (TYPEID, typeID)})
+            nameList = [ cfg.invtypes.Get(skillTypeID).typeName for skillTypeID in missingSkills ]
+            raise UserError(errorMsgName, {'requiredSkills': localizationUtil.FormatGenericList(nameList),
+             'itemName': (TYPEID, typeID),
+             'skillCount': len(nameList)})
         return missingSkills
 
 
@@ -399,7 +395,8 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
             try:
                 self.OnlineModule(item.itemID)
             except UserError as e:
-                uthread.pool('FitItem::RaiseUserError', eve.Message, e.msg, e.args[1])
+                if e.msg != 'EffectAlreadyActive2':
+                    uthread.pool('FitItem::RaiseUserError', eve.Message, e.msg, e.args[1])
             except Exception:
                 log.LogException('Raised during OnlineModule')
 
@@ -414,6 +411,7 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
          const.flagBooster))
         if wasFitted and not isFitted:
             if item.categoryID == const.categoryDrone:
+                self.UnfitItemFromLocation(self.shipID, item.itemID)
                 self.UnloadItem(item.itemID)
             else:
                 self.UnfitItem(item.itemID)
@@ -607,7 +605,7 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
     def GetDisplayAttributes(self, itemID, attributes):
         ret = {}
         dogmaItem = self.dogmaItems[itemID]
-        for attributeID in itertools.chain(dogmaItem.attributeCache, dogmaItem.attributes):
+        for attributeID in itertools.chain(dogmaItem.attributeCache, dogmaItem.attributes, attributes):
             if attributeID == const.attributeVolume:
                 continue
             ret[attributeID] = self.GetAttributeValue(itemID, attributeID)
@@ -619,6 +617,10 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
     def LinkWeapons(self, shipID, toID, fromID, merge = True):
         toItem = self.dogmaItems[toID]
         fromItem = self.dogmaItems[fromID]
+        for item in (toItem, fromItem):
+            if not item.IsOnline():
+                raise UserError('CantLinkModuleNotOnline')
+
         if toItem.typeID != fromItem.typeID:
             self.LogInfo('LinkWeapons::Modules not of same type', toItem, fromItem)
             return 
@@ -656,14 +658,14 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
     def UnlinkAllWeapons(self, shipID):
         info = self.remoteDogmaLM.UnlinkAllModules(shipID)
         self.OnWeaponBanksChanged(shipID, info)
-        self.lastUngroupAllRequest = blue.os.GetTime()
+        self.lastUngroupAllRequest = blue.os.GetSimTime()
 
 
 
     def LinkAllWeapons(self, shipID):
         info = self.remoteDogmaLM.LinkAllWeapons(shipID)
         self.OnWeaponBanksChanged(shipID, info)
-        self.lastGroupAllRequest = blue.os.GetTime()
+        self.lastGroupAllRequest = blue.os.GetSimTime()
 
 
 
@@ -671,7 +673,7 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
         lastRequest = getattr(self, attributeName)
         if lastRequest is None:
             return 1.0
-        timeDiff = blue.os.GetTime() - lastRequest
+        timeDiff = blue.os.GetSimTime() - lastRequest
         waitTime = min(GROUPALL_THROTTLE_TIMER, GROUPALL_THROTTLE_TIMER - timeDiff)
         opacity = max(0, 1 - float(waitTime) / GROUPALL_THROTTLE_TIMER)
         return opacity
@@ -869,6 +871,7 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
 
 
     def LoadChargeToModule(self, itemID, chargeTypeID, chargeItems = None, qty = None, preferSingletons = False):
+        self.CheckSkillRequirementsForType(chargeTypeID, 'FittingHasSkillPrerequisites')
         shipID = self.dogmaItems[itemID].locationID
         masterID = self.GetMasterModuleID(shipID, itemID)
         if masterID is None:
@@ -911,6 +914,7 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
 
 
     def LoadAmmoToModules(self, shipID, moduleIDs, chargeTypeID, itemID, ammoLocationID, qty = None):
+        self.CheckSkillRequirementsForType(chargeTypeID, 'FittingHasSkillPrerequisites')
         self.remoteDogmaLM.LoadAmmoToModules(shipID, moduleIDs, chargeTypeID, itemID, ammoLocationID, qty=qty)
 
 
@@ -924,9 +928,9 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
                 maxQty += item.stacksize
 
             if maxQty == 0:
-                errmsg = mls.UI_INFLIGHT_NOMOREUNITS
+                errmsg = localization.GetByLabel('UI/Common/NoMoreUnits')
             else:
-                errmsg = mls.UI_INFLIGHT_NOROOMFORMORE
+                errmsg = localization.GetByLabel('UI/Common/NoRoomForMore')
             qty = None
             ret = uix.QtyPopup(int(maxQty), 0, int(maxQty), errmsg)
             if ret is not None:
@@ -939,12 +943,12 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
 
     def UnloadModuleToContainer(self, shipID, itemID, containerArgs, flag = None):
         if self.IsInWeaponBank(shipID, itemID):
-            ret = eve.Message('CustomQuestion', {'header': mls.UI_GENERIC_CONFIRM,
-             'question': mls.UI_SHARED_WEAPONLINK_UNFIT}, uiconst.YESNO)
+            ret = eve.Message('CustomQuestion', {'header': localization.GetByLabel('UI/Common/Confirm'),
+             'question': localization.GetByLabel('UI/Fitting/ClearGroupModule')}, uiconst.YESNO)
             if ret != uiconst.ID_YES:
                 return 
         item = self.GetItem(itemID)
-        containerInv = eve.GetInventoryFromId(*containerArgs)
+        containerInv = self.broker.invCache.GetInventoryFromId(*containerArgs)
         if item is not None:
             subLocation = self.GetSubLocation(item.locationID, item.flagID)
             if subLocation is not None:
@@ -974,9 +978,9 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
             modulesByGroup = self.GetModuleListByShipGroup(locationID, item.groupID)
             if len(modulesByGroup) >= maxGroupFitted:
                 shipItem = self.dogmaItems[locationID]
-                raise UserError('CantFitTooManyByGroup', {'shipName': (TYPEID, shipItem.typeID),
-                 'moduleName': (TYPEID, item.typeID),
-                 'groupName': (GROUPID, item.groupID),
+                raise UserError('CantFitTooManyByGroup', {'ship': shipItem.typeID,
+                 'module': item.typeID,
+                 'groupName': cfg.invgroups.Get(item.groupID).name,
                  'noOfModules': int(maxGroupFitted),
                  'noOfModulesFitted': len(modulesByGroup)})
 
@@ -1000,6 +1004,168 @@ class DogmaLocation(dogmax.BaseDogmaLocation):
             if godmaEffect.isActive:
                 return True
         return False
+
+
+
+    def GetDogmaItemWithWait(self, itemID):
+        startTime = blue.os.GetWallclockTime()
+        while blue.os.TimeDiffInMs(startTime, blue.os.GetWallclockTime()) < 2000:
+            if itemID in self.dogmaItems:
+                return self.dogmaItems[itemID]
+            self.LogInfo('GetDogmaItemWithWait::Item not ready, sleeping for 100ms')
+            blue.pyos.synchro.Sleep(100)
+
+        self.LogError('Failed to get dogmaItem in time', itemID)
+
+
+
+    def GetModifierString(self, itemID, attributeID):
+        dogmaItem = self.dogmaItems[itemID]
+        modifiers = self.GetModifiersOnAttribute(itemID, attributeID, dogmaItem.locationID, dogmaItem.groupID, dogmaItem.ownerID, dogmaItem.typeID)
+        baseValue = self.dogmaStaticMgr.GetTypeAttribute2(dogmaItem.typeID, attributeID)
+        GetFormatAndValue = sm.GetService('info').GetFormatAndValue
+        ret = 'Base Value: %s\n' % GetFormatAndValue(cfg.dgmattribs.Get(attributeID), baseValue)
+        if modifiers:
+            ret += 'modified by\n'
+            for (op, modifyingItemID, modifyingAttributeID,) in modifiers:
+                value = self.GetAttributeValue(modifyingItemID, modifyingAttributeID)
+                if op in (const.dgmAssPostMul,
+                 const.dgmAssPreMul,
+                 const.dgmAssPostDiv,
+                 const.dgmAssPreDiv) and value == 1.0:
+                    continue
+                elif op in (const.dgmAssPostPercent, const.dgmAssModAdd, const.dgmAssModAdd) and value == 0.0:
+                    continue
+                modifyingItem = self.dogmaItems[modifyingItemID]
+                modifyingAttribute = cfg.dgmattribs.Get(modifyingAttributeID)
+                value = GetFormatAndValue(modifyingAttribute, value)
+                ret += '  %s: %s\n' % (cfg.invtypes.Get(modifyingItem.typeID).typeName, value)
+
+        return ret
+
+
+
+    def GetDamageFromItem(self, itemID):
+        accDamage = 0
+        for attributeID in (const.attributeEmDamage,
+         const.attributeExplosiveDamage,
+         const.attributeKineticDamage,
+         const.attributeThermalDamage):
+            accDamage += self.GetAttributeValue(itemID, attributeID)
+
+        return accDamage
+
+
+
+    def GatherDroneInfo(self, shipDogmaItem):
+        dronesByTypeID = {}
+        for droneID in shipDogmaItem.drones:
+            damage = self.GetDamageFromItem(droneID)
+            if damage == 0:
+                continue
+            damageMultiplier = self.GetAttributeValue(droneID, const.attributeDamageMultiplier)
+            if damageMultiplier == 0:
+                continue
+            duration = self.GetAttributeValue(droneID, const.attributeRateOfFire)
+            droneDps = damage * damageMultiplier / duration
+            droneBandwidth = self.GetAttributeValue(droneID, const.attributeDroneBandwidthUsed)
+            droneDogmaItem = self.dogmaItems[droneID]
+            droneItem = self.GetItem(droneID)
+            if droneDogmaItem.typeID not in dronesByTypeID:
+                dronesByTypeID[droneItem.typeID] = [droneBandwidth, droneDps, droneItem.stacksize]
+            else:
+                dronesByTypeID[droneItem.typeID][-1] += droneItem.stacksize
+
+        drones = defaultdict(list)
+        for (typeID, (bw, dps, qty,),) in dronesByTypeID.iteritems():
+            bw = int(bw)
+            drones[bw].append((typeID,
+             bw,
+             qty,
+             dps))
+
+        for l in drones.itervalues():
+            l.sort(key=lambda vals: vals[-1], reverse=True)
+
+        return drones
+
+
+
+    def SimpleGetDroneDamageOutput(self, drones, bwLeft, dronesLeft):
+        dronesUsed = {}
+        totalDps = 0
+        for bw in sorted(drones.keys(), reverse=True):
+            if bw > bwLeft:
+                continue
+            for (typeID, bwNeeded, qty, dps,) in drones[bw]:
+                noOfDrones = min(int(bwLeft) / int(bwNeeded), qty, dronesLeft)
+                if noOfDrones == 0:
+                    break
+                dronesUsed[typeID] = noOfDrones
+                totalDps += dps * noOfDrones
+                dronesLeft -= noOfDrones
+                bwLeft -= noOfDrones * bwNeeded
+
+
+        return (totalDps, dronesUsed)
+
+
+
+    def GetOptimalDroneDamage(self, shipID):
+        shipDogmaItem = self.dogmaItems[shipID]
+        drones = self.GatherDroneInfo(shipDogmaItem)
+        self.LogInfo('Gathered drone info and found', len(drones), 'types of drones')
+        bandwidth = self.GetAttributeValue(shipID, const.attributeDroneBandwidth)
+        maxDrones = self.GetAttributeValue(shipDogmaItem.ownerID, const.attributeMaxActiveDrones)
+        self.startedKnapsack = blue.os.GetWallclockTime()
+        (dps, drones,) = self.SimpleGetDroneDamageOutput(drones, bandwidth, maxDrones)
+        return (dps * 1000, drones)
+
+
+
+    def GetTurretAndMissileDps(self, shipID):
+        shipDogmaItem = self.dogmaItems[shipID]
+        chargesByFlag = {}
+        turretsByFlag = {}
+        launchersByFlag = {}
+        IsTurret = lambda typeID: self.dogmaStaticMgr.TypeHasEffect(typeID, const.effectTurretFitted)
+        IsLauncher = lambda typeID: self.dogmaStaticMgr.TypeHasEffect(typeID, const.effectLauncherFitted)
+        for module in shipDogmaItem.GetFittedItems().itervalues():
+            if IsTurret(module.typeID):
+                if not module.IsOnline():
+                    continue
+                turretsByFlag[module.flagID] = module.itemID
+            elif IsLauncher(module.typeID):
+                if not module.IsOnline():
+                    continue
+                launchersByFlag[module.flagID] = module.itemID
+            elif module.categoryID == const.categoryCharge:
+                chargesByFlag[module.flagID] = module.itemID
+
+        turretDps = 0
+        for (flagID, itemID,) in turretsByFlag.iteritems():
+            chargeKey = chargesByFlag.get(flagID)
+            if chargeKey is not None:
+                damage = self.GetDamageFromItem(chargeKey)
+            else:
+                damage = self.GetDamageFromItem(itemID)
+            if abs(damage) > 0:
+                damageMultiplier = self.GetAttributeValue(itemID, const.attributeDamageMultiplier)
+                duration = self.GetAttributeValue(itemID, const.attributeRateOfFire)
+                if abs(duration) > 0:
+                    turretDps += damage * damageMultiplier / duration
+
+        missileDps = 0
+        for (flagID, itemID,) in launchersByFlag.iteritems():
+            chargeKey = chargesByFlag.get(flagID)
+            if chargeKey is None:
+                continue
+            damage = self.GetDamageFromItem(chargeKey)
+            duration = self.GetAttributeValue(itemID, const.attributeRateOfFire)
+            damageMultiplier = self.GetAttributeValue(shipDogmaItem.ownerID, const.attributeMissileDamageMultiplier)
+            missileDps += damage * damageMultiplier / duration
+
+        return (turretDps * 1000, missileDps * 1000)
 
 
 

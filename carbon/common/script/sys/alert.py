@@ -132,7 +132,7 @@ class Alert(Service):
                     server = '10.210.10.251'
                     self.LogInfo('Alert service using default BFC mailserver', server)
                 elif self.location == LOCATION_CCP:
-                    server = 'exchis.ccp.ad.local'
+                    server = 'rkv-it-exch.ccp.ad.local'
                     self.LogInfo('Alert service using default CCP mailserver', server)
                 if server:
                     if sys.version_info[:3] == (2, 2, 1):
@@ -149,9 +149,9 @@ class Alert(Service):
 
     def Alert(self, sender, subject, message, throttle = None, recipients = None, html = 0, sysinfo = 0, attachments = []):
         if throttle:
-            if sender in self.throttles and self.throttles[sender] > blue.os.GetTime():
+            if sender in self.throttles and self.throttles[sender] > blue.os.GetWallclockTime():
                 return self.throttles[sender]
-            self.throttles[sender] = blue.os.GetTime() + throttle
+            self.throttles[sender] = blue.os.GetWallclockTime() + throttle
         return self.SendSimpleEmailAlert(message=message, subject=subject, sysinfo=sysinfo, html=html, recipients=recipients, attachments=attachments)
 
 
@@ -164,7 +164,7 @@ class Alert(Service):
         kernel = li[hd.index('kernel')]
         user = li[hd.index('user')]
         cputime = kernel + user
-        uptime = blue.os.GetTime() - created
+        uptime = blue.os.GetWallclockTime() - created
         cpu = float(cputime) / uptime
         (hd, li,) = blue.pyos.ProbeStuff()
         hd = list(hd)
@@ -176,15 +176,15 @@ class Alert(Service):
          ('cpuid', env.get('PROCESSOR_IDENTIFIER', '?')),
          ('cpucount', env.get('NUMBER_OF_PROCESSORS', '?')),
          ('cpuspeed', '%s GHz' % round(blue.os.GetCycles()[1] / 1000000000.0, 1)),
-         ('starttime', util.FmtDate(created)),
-         ('uptime', util.FmtTime(uptime)),
-         ('cputime', util.FmtTime(cputime)),
-         ('kerneltime', util.FmtTime(kernel)),
-         ('usertime', util.FmtTime(user)),
+         ('starttime', util.FmtDateEng(created)),
+         ('uptime', util.FmtTimeEng(uptime)),
+         ('cputime', util.FmtTimeEng(cputime)),
+         ('kerneltime', util.FmtTimeEng(kernel)),
+         ('usertime', util.FmtTimeEng(user)),
          ('currentcpu', '%.1f%%' % (self.GetCPULoad(35) * 100.0)),
          ('ram', '%s MB' % ram),
-         ('memusage', '%s K' % util.FmtAmt(workingSetSize / 1024)),
-         ('vmsize', '%s K' % util.FmtAmt(pagefileUsage / 1024)),
+         ('memusage', '%s K' % util.FmtAmtEng(workingSetSize / 1024)),
+         ('vmsize', '%s K' % util.FmtAmtEng(pagefileUsage / 1024)),
          ('nodeid', sm.services['machoNet'].nodeID)]
         buildinfo = [('version', boot.version),
          ('build', boot.build),
@@ -208,13 +208,13 @@ class Alert(Service):
         for i in range(30):
             (errorID, logMode,) = self.stacktraceLogMode[stackIDHash]
             if errorID is None:
-                blue.pyos.synchro.Sleep(5000)
+                blue.pyos.synchro.SleepWallclock(5000)
                 continue
             break
 
         if errorID is not None:
             if logMode == LOGGING_BATCHED:
-                self.stacktracebeancounts[errorID] = (self.stacktracebeancounts.get(errorID, [0])[0] + 1, blue.os.GetTime())
+                self.stacktracebeancounts[errorID] = (self.stacktracebeancounts.get(errorID, [0])[0] + 1, blue.os.GetWallclockTime())
             else:
                 self.LogError('Invalid Bean Counting mode: ', logMode)
         return (errorID, logMode)
@@ -251,7 +251,7 @@ class Alert(Service):
                 continue
             for (userID, errorData,) in usersData.iteritems():
                 if errorID in self.stacktracebeancounts:
-                    self.stacktracebeancounts[errorID] = (self.stacktracebeancounts.get(errorID, [0])[0] + errorData[0], min(blue.os.GetTime(), max(self.stacktracebeancounts.get(errorID, [0])[1], errorData[1])))
+                    self.stacktracebeancounts[errorID] = (self.stacktracebeancounts.get(errorID, [0])[0] + errorData[0], min(blue.os.GetWallclockTime(), max(self.stacktracebeancounts.get(errorID, [0])[1], errorData[1])))
                 else:
                     self.stacktracebeancounts[errorID] = (errorData[0], errorData[1])
 
@@ -264,9 +264,9 @@ class Alert(Service):
 
 
     def CompressGroupBeans(self, groupBeans):
-        startTime = blue.os.GetTime()
+        startTime = blue.os.GetWallclockTime()
         res = zlib.compress(yaml.dump(groupBeans))
-        self.LogInfo('CompressGroupBeans ', blue.os.TimeDiffInMs(startTime), 'ms  ', len(str(groupBeans)), ' -> ', len(str(res)))
+        self.LogInfo('CompressGroupBeans ', blue.os.TimeDiffInMs(startTime, blue.os.GetWallclockTime()), 'ms  ', len(str(groupBeans)), ' -> ', len(str(res)))
         return res
 
 
@@ -274,19 +274,19 @@ class Alert(Service):
     def ExpandGroupBeans(self, compressedGroupBeans):
         if isinstance(compressedGroupBeans, dict):
             return compressedGroupBeans
-        startTime = blue.os.GetTime()
+        startTime = blue.os.GetWallclockTime()
         res = yaml.load(zlib.decompress(compressedGroupBeans))
-        self.LogInfo('ExpandGroupBeans ', blue.os.TimeDiffInMs(startTime), 'ms  ', len(str(compressedGroupBeans)), ' -> ', len(str(res)))
+        self.LogInfo('ExpandGroupBeans ', blue.os.TimeDiffInMs(startTime, blue.os.GetWallclockTime()), 'ms  ', len(str(compressedGroupBeans)), ' -> ', len(str(res)))
         return res
 
 
 
     def __BeanDeliveryBoy(self):
         while self.state == SERVICE_RUNNING:
-            blue.pyos.synchro.Sleep(BEAN_DELEVERY_TIME * 60000)
+            blue.pyos.synchro.SleepWallclock(BEAN_DELEVERY_TIME * 60000)
             try:
                 self.CheckAndExpireUserCounts()
-                startTime = blue.os.GetTime()
+                startTime = blue.os.GetWallclockTime()
                 if self.stacktracebeancounts or self.stacktracebeangroupcounts:
                     self.LogInfo(macho.mode, 'Delivering beans. been count', len(self.stacktracebeancounts), ' group bean count', len(self.stacktracebeangroupcounts))
                     if macho.mode == 'client':
@@ -351,7 +351,7 @@ class Alert(Service):
                         pass
                     else:
                         self.LogError('WTF??? ', macho.mode, '????')
-                    self.LogInfo('|', macho.mode, '| Delivery of beans #Bytes:', self.bytesSent, '# DB bean writes', self.beanServerWrites, '# DB group writes', self.groupBeanServerWrites, ' time (ms):', blue.os.TimeDiffInMs(startTime))
+                    self.LogInfo('|', macho.mode, '| Delivery of beans #Bytes:', self.bytesSent, '# DB bean writes', self.beanServerWrites, '# DB group writes', self.groupBeanServerWrites, ' time (ms):', blue.os.TimeDiffInMs(startTime, blue.os.GetWallclockTime()))
                     self.bytesSent = 0
                     self.bytesSent = 0
                     self.groupBeanServerWrites = 0
@@ -367,7 +367,7 @@ class Alert(Service):
         for (errorID, v,) in beans.iteritems():
             (c, l,) = v
             if errorID in self.stacktracebeancounts:
-                self.stacktracebeancounts[errorID] = (self.stacktracebeancounts.get(errorID, [0])[0] + c, min(blue.os.GetTime(), max(self.stacktracebeancounts.get(errorID, [0])[1], l)))
+                self.stacktracebeancounts[errorID] = (self.stacktracebeancounts.get(errorID, [0])[0] + c, min(blue.os.GetWallclockTime(), max(self.stacktracebeancounts.get(errorID, [0])[1], l)))
             else:
                 self.stacktracebeancounts[errorID] = v
 
@@ -383,7 +383,7 @@ class Alert(Service):
                 (cnt, tm, charID, locationID1, locationID2, argsStr, errNodeID,) = data
                 if userID in self.stacktracebeangroupcounts[errorID]:
                     currentCount = self.stacktracebeangroupcounts[errorID].get(userID, [0])[0]
-                    currentTime = min(blue.os.GetTime(), max(self.stacktracebeangroupcounts[errorID].get(userID, [0])[1], tm))
+                    currentTime = min(blue.os.GetWallclockTime(), max(self.stacktracebeangroupcounts[errorID].get(userID, [0])[1], tm))
                     self.stacktracebeangroupcounts[errorID][userID] = (currentCount + cnt,
                      currentTime,
                      charID,
@@ -403,7 +403,7 @@ class Alert(Service):
                     if errorID in self.stackTraceUserCount:
                         self.stackTraceUserCount[errorID].users.add(userID)
                     else:
-                        self.stackTraceUserCount[errorID] = util.KeyVal(timestamp=blue.os.GetTime(), users=set([userID]))
+                        self.stackTraceUserCount[errorID] = util.KeyVal(timestamp=blue.os.GetWallclockTime(), users=set([userID]))
                 blue.pyos.BeNice()
 
 
@@ -484,16 +484,16 @@ class Alert(Service):
                         (errorID, logMode,) = self.stacktraceLogMode[stackID[0]]
                         if errorID is None:
                             self.LogInfo(macho.mode, "we're already crossing the wire to acquire this dude's beancounting properties")
-                            blue.pyos.synchro.Sleep(5000)
+                            blue.pyos.synchro.SleepWallclock(5000)
                             continue
                         break
 
                     if errorID is None:
                         self.LogInfo(macho.mode, "Couldn't beancount it, so just bugger it.")
                     elif logMode == LOGGING_BATCHED:
-                        self.stacktracebeancounts[errorID] = (self.stacktracebeancounts.get(errorID, [0])[0] + 1, blue.os.GetTime())
+                        self.stacktracebeancounts[errorID] = (self.stacktracebeancounts.get(errorID, [0])[0] + 1, blue.os.GetWallclockTime())
                     elif logMode == LOGGING_DETAILS:
-                        self.stacktracebeancounts[errorID] = (self.stacktracebeancounts.get(errorID, [0])[0] + 1, blue.os.GetTime())
+                        self.stacktracebeancounts[errorID] = (self.stacktracebeancounts.get(errorID, [0])[0] + 1, blue.os.GetWallclockTime())
                         if errorID not in self.stacktracebeangroupcounts:
                             self.stacktracebeangroupcounts[errorID] = {}
                         (sessionUserID, charID, locationID1, locationID2,) = self._GetSessionInfo()
@@ -502,7 +502,7 @@ class Alert(Service):
                         argStr = GetArgumentsFromStackTrace(stackTrace)
                         if userID in self.stacktracebeangroupcounts[errorID]:
                             self.stacktracebeangroupcounts[errorID][userID] = (self.stacktracebeangroupcounts[errorID].get(userID, [0])[0] + 1,
-                             blue.os.GetTime(),
+                             blue.os.GetWallclockTime(),
                              charID,
                              locationID1,
                              locationID2,
@@ -510,7 +510,7 @@ class Alert(Service):
                              None)
                         else:
                             self.stacktracebeangroupcounts[errorID][userID] = (1,
-                             blue.os.GetTime(),
+                             blue.os.GetWallclockTime(),
                              charID,
                              locationID1,
                              locationID2,
@@ -541,7 +541,7 @@ class Alert(Service):
                             (errorID, logMode,) = self.stacktraceLogMode[stackID[0]]
                             if errorID is None:
                                 self.LogInfo(macho.mode, "we're already crossing the wire to acquire this dude's beancounting properties")
-                                blue.pyos.synchro.Sleep(5000)
+                                blue.pyos.synchro.SleepWallclock(5000)
                                 continue
                             break
 
@@ -549,17 +549,17 @@ class Alert(Service):
                             self.LogInfo(macho.mode, "Couldn't beancount it, so just bugger it.")
                         elif logMode == LOGGING_BATCHED:
                             self.LogInfo(macho.mode, 'Batched beancounting selected')
-                            self.stacktracebeancounts[errorID] = (self.stacktracebeancounts.get(errorID, [0])[0] + 1, blue.os.GetTime())
+                            self.stacktracebeancounts[errorID] = (self.stacktracebeancounts.get(errorID, [0])[0] + 1, blue.os.GetWallclockTime())
                         elif logMode == LOGGING_DETAILS:
                             self.LogInfo(macho.mode, 'Grouped beancounting selected')
-                            self.stacktracebeancounts[errorID] = (self.stacktracebeancounts.get(errorID, [0])[0] + 1, blue.os.GetTime())
+                            self.stacktracebeancounts[errorID] = (self.stacktracebeancounts.get(errorID, [0])[0] + 1, blue.os.GetWallclockTime())
                             argStr = GetArgumentsFromStackTrace(stackTrace)
                             ID = userID or 0
                             if errorID not in self.stacktracebeangroupcounts:
                                 self.stacktracebeangroupcounts[errorID] = {}
                             if ID in self.stacktracebeangroupcounts[errorID]:
                                 self.stacktracebeangroupcounts[errorID][ID] = (self.stacktracebeangroupcounts[errorID].get(ID, [0])[0] + 1,
-                                 blue.os.GetTime(),
+                                 blue.os.GetWallclockTime(),
                                  charID,
                                  nodeID,
                                  locationID1,
@@ -568,7 +568,7 @@ class Alert(Service):
                                  nodeID or self.machoNet.GetNodeID())
                             else:
                                 self.stacktracebeangroupcounts[errorID][ID] = (1,
-                                 blue.os.GetTime(),
+                                 blue.os.GetWallclockTime(),
                                  charID,
                                  nodeID,
                                  locationID1,
@@ -598,13 +598,13 @@ class Alert(Service):
             else:
                 (errorID, logMode,) = self.stacktraceLogMode[stackID[0]]
                 if logMode == LOGGING_BATCHED:
-                    self.BeanDelivery({errorID: (1, blue.os.GetTime())})
+                    self.BeanDelivery({errorID: (1, blue.os.GetWallclockTime())})
                 elif logMode == LOGGING_DETAILS:
-                    self.BeanDelivery({errorID: (1, blue.os.GetTime())})
+                    self.BeanDelivery({errorID: (1, blue.os.GetWallclockTime())})
                     argStr = GetArgumentsFromStackTrace(stackTrace)
                     ID = userID or 0
                     self.GroupBeanDelivery({errorID: {ID: (1,
-                                    blue.os.GetTime(),
+                                    blue.os.GetWallclockTime(),
                                     0,
                                     0,
                                     0,
@@ -638,7 +638,7 @@ class Alert(Service):
         if not recipients:
             self.LogInfo('Not sending alert, no recipient specified', subject)
             return 
-        timestamp = util.FmtDate(blue.os.GetTime(), 'ns')
+        timestamp = util.FmtDateEng(blue.os.GetWallclockTime(), 'ns')
         if subject is None:
             subject = 'Server Alert: Alert from node %s on %s at %s' % (sm.services['machoNet'].nodeID, self.computername, timestamp)
         elif subjectonly == 0:
@@ -724,7 +724,7 @@ class Alert(Service):
                         self.mail_queue.put((channel, args, kw))
                         self.LogWarn('Failed to send alert, SMTP server disconnected. Will try again in 1 minute. SMTP Error: %s' % str(e))
                         sys.exc_clear()
-                        blue.pyos.synchro.Sleep(60000)
+                        blue.pyos.synchro.SleepWallclock(60000)
                     except TaskletExit:
                         if 'channel' in locals() and channel is not None:
                             channel.send(False)
@@ -745,7 +745,7 @@ class Alert(Service):
 
 
     def GetCPULoad(self, seconds = 300):
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         then = now - seconds * const.SEC
         total = 0L
         lastTime = now
@@ -818,8 +818,8 @@ class Alert(Service):
 
     def CheckAndExpireUserCounts(self):
         for (errorID, userData,) in self.stackTraceUserCount.iteritems():
-            if blue.os.TimeDiffInMs(userData.timestamp) > const.HOUR / const.MSEC:
-                userData.timestamp = blue.os.GetTime()
+            if blue.os.TimeDiffInMs(userData.timestamp, blue.os.GetWallclockTime()) > const.HOUR / const.MSEC:
+                userData.timestamp = blue.os.GetWallclockTime()
                 userData.users = set()
 
 
@@ -848,7 +848,7 @@ class Alert(Service):
         while self.state == SERVICE_RUNNING and cnt < maxLoops:
             blue.pyos.BeNice()
             errorKey = '============ TEST EXCEPTION %d ============'
-            errorStack = '\n                            TEST EXCEPTION %d logged at  MM/DD/YYYY HH:MM:SS Unhandled exception in <TaskletExt object at 226a9588, abps=1001, ctxt=\'Tick::Sleep\'> \n                            Caught at: /common/lib/Fakebluepy.py(37) in CallWrapper \n                            Thrown at: /common/lib/Fakebluepy.py(24) in CallWrapper \n                                       /common/lib/Fakenasty.py(1344) in OnFileModified_ \n                                       /common/lib/Fakenasty.py(1595) in Bootstrap \n                                       /common/lib/Fakenasty.py(2295) in ImportFromFile \n                                       /common/lib/Fakenasty.py(468) in GetCode \n                                       /common/lib/Fakenasty.py(517) in Compile \n                                       /common/lib/Fakenasty.py(556) in Compile_int \n                                       Exception:     \n                                       File "D:/depot/games/EVE-DEV/eve/server/script/../../../carbon/common/script/sys/alert.py", line 329     \n\n                                       def SendStackTraceAlert(self, stackID, stackTrace, mode, **kw):       \n                                       ^    IndentationError: expected an indented block  \n                                       Arguments:    \n                                       self :  <nasty.Compilor object at 0x037D5F88>    \n                                       pathname :  \'script:/../../../carbon/common/script/sys/alert.py\' \n                                       Locals:     Lots! #%d\n                                       Thread Locals:   session was None  System Information:  Node ID: 1733 \n                                       | Node Name: RobertPC | Total CPU load: 0%% | Process memory in use: 420 MB | Physical memory left: 213 MB \n                         '
+            errorStack = '\n                            TEST EXCEPTION %d logged at  MM/DD/YYYY HH:MM:SS Unhandled exception in <TaskletExt object at 226a9588, abps=1001, ctxt=\'Tick:.SleepWallclock\'> \n                            Caught at: /common/lib/Fakebluepy.py(37) in CallWrapper \n                            Thrown at: /common/lib/Fakebluepy.py(24) in CallWrapper \n                                       /common/lib/Fakenasty.py(1344) in OnFileModified_ \n                                       /common/lib/Fakenasty.py(1595) in Bootstrap \n                                       /common/lib/Fakenasty.py(2295) in ImportFromFile \n                                       /common/lib/Fakenasty.py(468) in GetCode \n                                       /common/lib/Fakenasty.py(517) in Compile \n                                       /common/lib/Fakenasty.py(556) in Compile_int \n                                       Exception:     \n                                       File "D:/depot/games/EVE-DEV/eve/server/script/../../../carbon/common/script/sys/alert.py", line 329     \n\n\n                                       def SendStackTraceAlert(self, stackID, stackTrace, mode, **kw):       \n                                       ^    IndentationError: expected an indented block  \n                                       Arguments:    \n                                       self :  <nasty.Compilor object at 0x037D5F88>    \n                                       pathname :  \'script:/../../../carbon/common/script/sys/alert.py\' \n                                       Locals:     Lots! #%d\n                                       Thread Locals:   session was None  System Information:  Node ID: 1733 \n                                       | Node Name: RobertPC | Total CPU load: 0%% | Process memory in use: 420 MB | Physical memory left: 213 MB \n                         '
             testUserID = None
             cnt += 1
             if randomUser:

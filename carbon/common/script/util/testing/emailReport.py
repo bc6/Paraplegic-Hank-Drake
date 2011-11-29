@@ -8,7 +8,7 @@ from itertools import imap, ifilter
 ORCHESTRATOR_REPORTS_PATH = 'reports'
 ORCHESTRATOR_REPORTS_FILENAME_PREFIX = 'orchestratorReport'
 
-def SendSummaryMail(testResults, replyToAddress = 'orchestrator@ccpgames.com', sender = None, recipients = None, html = True, sendIfFailOnly = False, timeTaken = None, fileAttachments = [], logToDatabaseResults = {}):
+def SendSummaryMail(testResults, replyToAddress = 'orchestrator@ccpgames.com', sender = None, recipients = None, html = True, sendIfFailOnly = False, timeTaken = None, fileAttachments = [], logToDatabaseResults = {}, benchmarkResultsDict = {}):
     numTests = len(testResults)
     numTestsFailed = 0
     for testResult in testResults.itervalues():
@@ -38,7 +38,7 @@ def SendSummaryMail(testResults, replyToAddress = 'orchestrator@ccpgames.com', s
     else:
         revisionNumber = boot.build
     subject = _BuildEmailSubject(numTestsFailed, revisionNumber, computerName)
-    message = _BuildEmailMessage(numTestsFailed, testResults, revisionNumber, timeTaken, logToDatabaseResults)
+    message = _BuildEmailMessage(numTestsFailed, testResults, revisionNumber, timeTaken, logToDatabaseResults, benchmarkResultsDict)
     if getattr(__builtin__, 'SAVEEMAILTOFILE', None) is True:
         _WriteSummaryToFile(message, revisionNumber)
     _SendMail(subject, message, sender, recipients, html, fileAttachments, highImportance)
@@ -66,14 +66,14 @@ def _BuildEmailSubject(numTestsFailed, revisionNumber, computerName):
 
 
 
-def _BuildEmailMessage(numTestsFailed, testResults, revisionNumber, timeTaken, logToDatabaseResults = {}):
+def _BuildEmailMessage(numTestsFailed, testResults, revisionNumber, timeTaken, logToDatabaseResults = {}, benchmarkResultsDict = {}):
     message = _CreateOpeningHTML()
     if numTestsFailed:
         (headerText, headerSubtext,) = ('TEST FAILURE', 'Details:')
     else:
         (headerText, headerSubtext,) = ('All tests PASSED', 'No failures detected')
     if timeTaken:
-        message += '<p>Time taken to run tests: %s<br></p>' % str(util.FmtTimeInterval(timeTaken))
+        message += '<p>Time taken to run tests: %s<br></p>' % str(util.FmtTimeIntervalEng(timeTaken))
     numErrored = 0
     numFailed = 0
     numSkipped = 0
@@ -118,7 +118,7 @@ def _BuildEmailMessage(numTestsFailed, testResults, revisionNumber, timeTaken, l
                 message += '<font face=Arial>' + testName + '</font>'
 
         if nonGatingFailures > 0:
-            message += "<br>* This test marked as 'non-gating' indicating this failure will not prevent code distribution<br>"
+            message += "<br>* This test marked as 'KFAIL' indicating this failure is expected and probably not related to your check-in.<br>"
     message += '\n    <h3><font face=Arial>%s</font></h3>\n    <p align="left">\n    <table cellspacing="0" cellpadding="3" width="100%%" align="center" border="0">\n    <tr>\n    ' % headerSubtext
     for testName in testNames:
         testResult = testResults[testName]

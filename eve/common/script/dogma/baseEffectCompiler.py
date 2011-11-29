@@ -141,11 +141,11 @@ class BaseEffectCompiler(service.Service):
         else:
             ret += '# %s types have this effect.\n' % tnum
         nonModifiers = 0
-        preS = self.ParseExpression(dogma.expressions[effect.preExpression], '        ', topLevel=1)
+        preS = self.ParseExpression(cfg.dgmexpressions[effect.preExpression], '        ', topLevel=1)
         if effect.preExpression not in self.modifyingExpr:
             nonModifiers += 1
         if effect.postExpression:
-            postS = self.ParseExpression(dogma.expressions[effect.postExpression], '        ', topLevel=1)
+            postS = self.ParseExpression(cfg.dgmexpressions[effect.postExpression], '        ', topLevel=1)
             if effect.postExpression not in self.modifyingExpr:
                 nonModifiers += 1
         ret += '########################################################################################\n'
@@ -171,7 +171,7 @@ class BaseEffectCompiler(service.Service):
             ret += '    def Stop(self,env, dogmaLM, itemID, shipID, charID, otherID, targetID):\n'
             ret += postS
             ret += '\n\n'
-            ret += '    ########################################################################################\n    # %s: RestrictedStop() (expressionID: %s)\n    def RestrictedStop(self,env, dogmaLM, itemID, shipID, charID, otherID, targetID):\n' % (effect.effectName, effect.postExpression) + self.ParseExpression(dogma.expressions[effect.postExpression], '        ', restricted=1, topLevel=1)
+            ret += '    ########################################################################################\n    # %s: RestrictedStop() (expressionID: %s)\n    def RestrictedStop(self,env, dogmaLM, itemID, shipID, charID, otherID, targetID):\n' % (effect.effectName, effect.postExpression) + self.ParseExpression(cfg.dgmexpressions[effect.postExpression], '        ', restricted=1, topLevel=1)
             ret += '\n\n'
         else:
             ret += '    ########################################################################################\n    # %s has no post expression\n' % effect.effectName
@@ -196,9 +196,9 @@ class BaseEffectCompiler(service.Service):
                 if expression.operandID == const.operandUE:
                     a1 = a2 = None
                     if expression.arg1:
-                        a1 = self.ParseExpression(dogma.expressions[expression.arg1])
+                        a1 = self.ParseExpression(cfg.dgmexpressions[expression.arg1])
                     if expression.arg2:
-                        a2 = self.ParseExpression(dogma.expressions[expression.arg2])
+                        a2 = self.ParseExpression(cfg.dgmexpressions[expression.arg2])
                     return indent + 'dogma.UserError(env, ' + str(a1) + ', ' + str(a2) + ')'
                 if expression.operandID == const.operandDEFASSOCIATION:
                     if expression.expressionValue == '9':
@@ -220,23 +220,23 @@ class BaseEffectCompiler(service.Service):
                     if test == const.dgmEnvOther:
                         return 'otherID'
                 elif expression.operandID == const.operandAIM:
-                    arg1expression = dogma.expressions[expression.arg1]
-                    affectingAttribute = self.ParseExpression(dogma.expressions[expression.arg2])
-                    affectedStuffExpression = dogma.expressions[arg1expression.arg2]
-                    affectedModule = self.ParseExpression(dogma.expressions[affectedStuffExpression.arg1])
-                    affectedAttribute = self.ParseExpression(dogma.expressions[affectedStuffExpression.arg2])
-                    affectType = self.ParseExpression(dogma.expressions[arg1expression.arg1])
+                    arg1expression = cfg.dgmexpressions[expression.arg1]
+                    affectingAttribute = self.ParseExpression(cfg.dgmexpressions[expression.arg2])
+                    affectedStuffExpression = cfg.dgmexpressions[arg1expression.arg2]
+                    affectedModule = self.ParseExpression(cfg.dgmexpressions[affectedStuffExpression.arg1])
+                    affectedAttribute = self.ParseExpression(cfg.dgmexpressions[affectedStuffExpression.arg2])
+                    affectType = self.ParseExpression(cfg.dgmexpressions[arg1expression.arg1])
                     return indent + 'dogmaLM.AddModifier(%(aT)s, %(aM)s, %(aA)s, itemID, %(aA2)s)' % {'aT': affectType,
                      'aA': affectedAttribute,
                      'aM': affectedModule,
                      'aA2': affectingAttribute}
                 if expression.operandID == const.operandRIM:
-                    arg1expression = dogma.expressions[expression.arg1]
-                    affectingAttribute = self.ParseExpression(dogma.expressions[expression.arg2])
-                    affectedStuffExpression = dogma.expressions[arg1expression.arg2]
-                    affectedModule = self.ParseExpression(dogma.expressions[affectedStuffExpression.arg1])
-                    affectedAttribute = self.ParseExpression(dogma.expressions[affectedStuffExpression.arg2])
-                    affectType = self.ParseExpression(dogma.expressions[arg1expression.arg1])
+                    arg1expression = cfg.dgmexpressions[expression.arg1]
+                    affectingAttribute = self.ParseExpression(cfg.dgmexpressions[expression.arg2])
+                    affectedStuffExpression = cfg.dgmexpressions[arg1expression.arg2]
+                    affectedModule = self.ParseExpression(cfg.dgmexpressions[affectedStuffExpression.arg1])
+                    affectedAttribute = self.ParseExpression(cfg.dgmexpressions[affectedStuffExpression.arg2])
+                    affectType = self.ParseExpression(cfg.dgmexpressions[arg1expression.arg1])
                     return indent + 'dogmaLM.RemoveModifier(%(aT)s, %(aM)s, %(aA)s, itemID, %(aA2)s)' % {'aT': affectType,
                      'aA': affectedAttribute,
                      'aM': affectedModule,
@@ -261,50 +261,50 @@ class BaseEffectCompiler(service.Service):
                         if hasattr(const, typeName):
                             return str(getattr(const, typeName))
                 if expression.operandID == const.operandIF:
-                    arg1expression = dogma.expressions[expression.arg1]
-                    arg2expression = dogma.expressions[expression.arg2]
+                    arg1expression = cfg.dgmexpressions[expression.arg1]
+                    arg2expression = cfg.dgmexpressions[expression.arg2]
                     if arg1expression.operandID == const.operandRS and restricted:
                         ret = self.ParseExpression(arg2expression, restricted=restricted)
                     else:
                         ret = 'if %s:\n%s' % (self.ParseExpression(arg1expression, restricted=restricted), self.ParseExpression(arg2expression, '    ', restricted=restricted))
                 elif expression.operandID == const.operandINC:
-                    arg1expression = dogma.expressions[expression.arg1]
-                    arg2expression = dogma.expressions[expression.arg2]
+                    arg1expression = cfg.dgmexpressions[expression.arg1]
+                    arg2expression = cfg.dgmexpressions[expression.arg2]
                     ret = 'dogmaLM.IncreaseItemAttribute' + self.ParseExpression(arg1expression, restricted=restricted)[:-1] + ', itemID, ' + self.ParseExpression(arg2expression, restricted=restricted) + ')'
                 elif expression.operandID == const.operandINCN:
-                    arg1expression = dogma.expressions[expression.arg1]
-                    arg2expression = dogma.expressions[expression.arg2]
+                    arg1expression = cfg.dgmexpressions[expression.arg1]
+                    arg2expression = cfg.dgmexpressions[expression.arg2]
                     ret = 'dogmaLM.IncreaseItemAttributeEx' + self.ParseExpression(arg1expression, restricted=restricted)[:-1] + ', ' + self.ParseExpression(arg2expression, restricted=restricted) + ')'
                 elif expression.operandID == const.operandDEC:
-                    arg1expression = dogma.expressions[expression.arg1]
-                    arg2expression = dogma.expressions[expression.arg2]
+                    arg1expression = cfg.dgmexpressions[expression.arg1]
+                    arg2expression = cfg.dgmexpressions[expression.arg2]
                     ret = 'dogmaLM.DecreaseItemAttribute' + self.ParseExpression(arg1expression, restricted=restricted)[:-1] + ', itemID, ' + self.ParseExpression(arg2expression, restricted=restricted) + ')'
                 elif expression.operandID == const.operandDECN:
-                    arg1expression = dogma.expressions[expression.arg1]
-                    arg2expression = dogma.expressions[expression.arg2]
+                    arg1expression = cfg.dgmexpressions[expression.arg1]
+                    arg2expression = cfg.dgmexpressions[expression.arg2]
                     ret = 'dogmaLM.DecreaseItemAttributeEx' + self.ParseExpression(arg1expression, restricted=restricted)[:-1] + ', ' + self.ParseExpression(arg2expression, restricted=restricted) + ')'
                 elif expression.operandID == const.operandSET:
-                    arg1expression = dogma.expressions[expression.arg1]
-                    arg2expression = dogma.expressions[expression.arg2]
+                    arg1expression = cfg.dgmexpressions[expression.arg1]
+                    arg2expression = cfg.dgmexpressions[expression.arg2]
                     ret = 'dogmaLM.SetAttributeValue' + self.ParseExpression(arg1expression, restricted=restricted)[:-1] + ', ' + self.ParseExpression(arg2expression, restricted=restricted) + ')'
                 elif expression.operandID == const.operandOR:
-                    arg1expression = dogma.expressions[expression.arg1]
-                    arg2expression = dogma.expressions[expression.arg2]
+                    arg1expression = cfg.dgmexpressions[expression.arg1]
+                    arg2expression = cfg.dgmexpressions[expression.arg2]
                     if arg1expression.operandID == const.operandIF:
                         ret = self.ParseExpression(arg1expression, restricted=restricted) + '\nelse:\n' + self.ParseExpression(arg2expression, '    ', restricted=restricted)
                 elif expression.operandID == const.operandAND:
-                    arg1expression = dogma.expressions[expression.arg1]
-                    arg2expression = dogma.expressions[expression.arg2]
+                    arg1expression = cfg.dgmexpressions[expression.arg1]
+                    arg2expression = cfg.dgmexpressions[expression.arg2]
                     if arg1expression.operandID == const.operandSKILLCHECK:
                         ret = self.ParseExpression(arg1expression, restricted=restricted) + '\n' + self.ParseExpression(arg2expression, restricted=restricted)
                 if ret is None:
                     val = expression.expressionValue
                     if expression.arg1:
-                        arg1 = self.ParseExpression(dogma.expressions[expression.arg1], restricted=restricted)
+                        arg1 = self.ParseExpression(cfg.dgmexpressions[expression.arg1], restricted=restricted)
                     else:
                         arg1 = None
                     if expression.arg2:
-                        arg2 = self.ParseExpression(dogma.expressions[expression.arg2], restricted=restricted)
+                        arg2 = self.ParseExpression(cfg.dgmexpressions[expression.arg2], restricted=restricted)
                     else:
                         arg2 = None
                     if arg1 and '\n' not in arg1:
@@ -360,7 +360,7 @@ class BaseEffectCompiler(service.Service):
                     modifiersOnly = 0
                     for sExprID in (expression.arg1, expression.arg2):
                         if sExprID:
-                            sExpr = dogma.expressions[sExprID]
+                            sExpr = cfg.dgmexpressions[sExprID]
                             sModifierRating = self.approvedModifierOperands.get(sExpr.operandID, 0)
                             if sModifierRating == 1 or sModifierRating == 2 and self.modifyingExpr.get(sExprID, 0):
                                 modifiersOnly += 1
@@ -409,7 +409,7 @@ class BaseEffectCompiler(service.Service):
                 continue
             if self.IsEffectPythonOverridden(effectID):
                 continue
-            preExpression = self.dogma.expressions[effect.preExpression]
+            preExpression = cfg.dgmexpressions[effect.preExpression]
             if preExpression.arg1 is None or preExpression.arg2 is None:
                 self.LogError('Bad effect', effect.effectName, preExpression.operandKey, preExpression.arg1, preExpression.arg2)
                 continue
@@ -423,7 +423,7 @@ class BaseEffectCompiler(service.Service):
 
 
     def ParseExpressionForInfluences(self, expressionID):
-        expression = self.dogma.expressions[expressionID]
+        expression = cfg.dgmexpressions[expressionID]
         if expression.operandID == const.operandCOMBINE:
             return self.ParseExpressionForInfluences(expression.arg1) | self.ParseExpressionForInfluences(expression.arg2)
         if expression.operandID == const.operandAORSM:
@@ -432,22 +432,22 @@ class BaseEffectCompiler(service.Service):
             return const.dgmExprSkip
         if expression.operandID in [const.operandAGRSM, const.operandAGGM, const.operandAGIM]:
             return const.dgmExprShip
-        lExpr1 = self.dogma.expressions[expression.arg1]
+        lExpr1 = cfg.dgmexpressions[expression.arg1]
         if lExpr1.operandID != const.operandEFF:
             raise RuntimeError('UnexpectedInfluenceExpressionLHS', expressionID, expression.arg1)
-        rExpr2 = self.dogma.expressions[lExpr1.arg2]
+        rExpr2 = cfg.dgmexpressions[lExpr1.arg2]
         if rExpr2.operandID != const.operandATT:
             if not (rExpr2.operandID == const.operandRSA or expression.operandID == const.operandAGIM and rExpr2.operandID == const.operandIA):
                 raise RuntimeError('UnexpectedInfluence', expressionID, rExpr2.operandKey)
             return const.dgmExprSkip
-        lExpr3 = self.dogma.expressions[rExpr2.arg1]
+        lExpr3 = cfg.dgmexpressions[rExpr2.arg1]
         if lExpr3.operandID == const.operandDEFENVIDX:
             envExprID = rExpr2.arg1
         elif lExpr3.operandID in (const.operandLS, const.operandLG, const.operandGM):
             envExprID = lExpr3.arg1
         else:
             raise RuntimeError('UnexpectedInfluenceExpressionENVIDX2', expressionID, expression.arg1, lExpr1.arg2, rExpr2.arg1)
-        envExpr = self.dogma.expressions[envExprID]
+        envExpr = cfg.dgmexpressions[envExprID]
         if envExpr.operandID != const.operandDEFENVIDX:
             raise RuntimeError('UnexpectedInfluenceExpressionENVIDX1', expressionID, expression.arg1, lExpr1.arg2, rExpr2.arg1)
         if envExprID == 3:

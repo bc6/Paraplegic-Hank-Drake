@@ -218,7 +218,9 @@ def CreateObject(roomID, typeID, objectName, x, y, z, yaw, pitch, roll, radius):
         newObject = dungeon.Object.Create(roomID=roomID, typeID=typeID, objectName=objectName, x=x, y=y, z=z, yaw=yaw, pitch=pitch, roll=roll, radius=radius)
         newObjectID = newObject.objectID
     else:
-        newObjectID = sm.RemoteSvc('dungeon').AddObject(roomID, objectName, typeID, x, y, z, yaw, pitch, roll, radius)
+        (newObjectID, revisionID,) = sm.RemoteSvc('dungeon').AddObject(roomID, typeID, x, y, z, yaw, pitch, roll, radius)
+        if objectName:
+            sm.RemoteSvc('dungeon').EditObjectName(newObjectID, objectName)
     return newObjectID
 
 

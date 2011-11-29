@@ -8,16 +8,18 @@ import util
 import listentry
 import uicls
 import uiconst
+import localization
+import localizationUtil
 
 class ScannerFilterEditor(uicls.Window):
     __guid__ = 'form.ScannerFilterEditor'
-    __notifyevents__ = []
+    default_windowID = 'probeScannerFilterEditor'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.specialGroups = util.GetNPCGroups()
         self.scope = 'inflight'
-        self.SetCaption(mls.UI_GENERIC_SCANNER_FILTER_EDITOR)
+        self.SetCaption(localization.GetByLabel('UI/Inflight/Scanner/ScannerFilterEditor'))
         self.SetMinSize([300, 250])
         self.SetWndIcon()
         self.SetTopparentHeight(0)
@@ -25,11 +27,11 @@ class ScannerFilterEditor(uicls.Window):
         topParent = uicls.Container(name='topParent', parent=self.sr.main, height=64, align=uiconst.TOTOP)
         topParent.padRight = 6
         topParent.padLeft = 6
-        uicls.Label(text=mls.UI_GENERIC_FILTER_NAME, parent=topParent, letterspace=1, fontsize=9, state=uiconst.UI_DISABLED, uppercase=1, idx=0, top=2)
+        uicls.EveHeaderSmall(text=localization.GetByLabel('UI/Inflight/Scanner/FilterName'), parent=topParent, state=uiconst.UI_DISABLED, idx=0, top=2)
         nameEdit = uicls.SinglelineEdit(name='name', parent=topParent, setvalue=None, align=uiconst.TOTOP, maxLength=64)
         nameEdit.top = 16
         self.sr.nameEdit = nameEdit
-        hint = uicls.Label(text=mls.UI_GENERIC_SELECT_GROUPS_TO_FILTER, parent=topParent, align=uiconst.TOTOP, autowidth=0)
+        hint = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Inflight/Scanner/SelectGroupsToFilter'), parent=topParent, align=uiconst.TOTOP)
         hint.top = 4
         self.sr.topParent = topParent
         self.sr.scroll = uicls.Scroll(parent=self.sr.main, padding=(const.defaultPadding,
@@ -37,12 +39,12 @@ class ScannerFilterEditor(uicls.Window):
          const.defaultPadding,
          const.defaultPadding))
         self.sr.scroll.multiSelect = 0
-        self.DefineButtons(uiconst.OKCANCEL, okLabel=mls.UI_CMD_SAVE, okFunc=self.SaveChanges, cancelFunc=self.SelfDestruct)
-        self.scanGroupsNames = {const.probeScanGroupAnomalies: mls.UI_INFLIGHT_SCANCOSMICANOMALY,
-         const.probeScanGroupSignatures: mls.UI_INFLIGHT_SCANCOSMICSIGNATURE,
-         const.probeScanGroupShips: mls.UI_GENERIC_SHIP,
-         const.probeScanGroupStructures: mls.UI_GENERIC_STRUCTURE,
-         const.probeScanGroupDronesAndProbes: mls.UI_INFLIGHT_SCANDRONEANDPROBE}
+        self.DefineButtons(uiconst.OKCANCEL, okLabel=localization.GetByLabel('UI/Common/Buttons/Save'), okFunc=self.SaveChanges, cancelFunc=self.Close)
+        self.scanGroupsNames = {const.probeScanGroupAnomalies: localization.GetByLabel('UI/Inflight/Scanner/CosmicAnomaly'),
+         const.probeScanGroupSignatures: localization.GetByLabel('UI/Inflight/Scanner/CosmicSignature'),
+         const.probeScanGroupShips: localization.GetByLabel('UI/Inflight/Scanner/Ship'),
+         const.probeScanGroupStructures: localization.GetByLabel('UI/Inflight/Scanner/Structure'),
+         const.probeScanGroupDronesAndProbes: localization.GetByLabel('UI/Inflight/Scanner/DroneAndProbe')}
         self.Maximize()
         self.OnResizeUpdate()
 
@@ -69,15 +71,15 @@ class ScannerFilterEditor(uicls.Window):
     def SaveChanges(self, *args):
         name = self.sr.nameEdit.GetValue()
         if name is None or name == '':
-            eve.Message('CustomNotify', {'notify': mls.UI_GENERIC_PLEASE_NAME_FILTER})
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Inflight/Scanner/PleaseNameFilter')})
             self.sr.nameEdit.SetFocus()
             return 
-        if name.lower() == mls.UI_STATION_SHOWALL.lower():
-            eve.Message('CustomNotify', {'notify': mls.UI_GENERIC_CANNOTNAMEFILTER})
+        if name.lower() == localization.GetByLabel('UI/Common/Show all').lower():
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Inflight/Scanner/CannotNameFilter')})
             return 
         groups = [ key for (key, value,) in self.tempState.iteritems() if bool(value) ]
         if not groups:
-            eve.Message('CustomNotify', {'notify': mls.UI_GENERIC_SELECT_GROUPS_FOR_FILTER})
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Inflight/Scanner/SelectGroupsForFilter')})
             self.sr.scroll.SetFocus()
             return 
         current = settings.user.ui.Get('probeScannerFilters', {})
@@ -90,7 +92,7 @@ class ScannerFilterEditor(uicls.Window):
         settings.user.ui.Set('probeScannerFilters', current)
         settings.user.ui.Set('activeProbeScannerFilter', name)
         sm.ScatterEvent('OnNewScannerFilterSet', name, current[name])
-        self.SelfDestruct()
+        self.Close()
 
 
 
@@ -130,7 +132,7 @@ class ScannerFilterEditor(uicls.Window):
 
 
     def GetSubFolderMenu(self, node):
-        m = [None, (mls.UI_CMD_SELECTALL, self.SelectGroup, (node, True)), (mls.UI_CMD_DESELECTALL, self.SelectGroup, (node, False))]
+        m = [None, (localization.GetByLabel('UI/Common/SelectAll'), self.SelectGroup, (node, True)), (localization.GetByLabel('UI/Common/DeselectAll'), self.SelectGroup, (node, False))]
         return m
 
 
@@ -146,19 +148,36 @@ class ScannerFilterEditor(uicls.Window):
     def GetCatSubContent(self, nodedata, newitems = 0):
         scrolllist = []
         for (groupID, name,) in nodedata.groupItems:
-            name = cfg.invgroups.Get(groupID).groupName
-            checked = self.tempState.get(groupID, 0)
-            data = util.KeyVal()
-            data.label = name
-            data.checked = checked
-            data.cfgname = 'probeScannerFilters'
-            data.retval = groupID
-            data.OnChange = self.CheckBoxChange
-            data.sublevel = 0
-            scrolllist.append((name, listentry.Get('Checkbox', data=data)))
+            if groupID == const.groupCosmicSignature:
+                for signatureType in [const.attributeScanGravimetricStrength,
+                 const.attributeScanLadarStrength,
+                 const.attributeScanMagnetometricStrength,
+                 const.attributeScanRadarStrength,
+                 const.attributeScanAllStrength]:
+                    name = localization.GetByLabel(const.EXPLORATION_SITE_TYPES[signatureType])
+                    checked = self.tempState.get((groupID, signatureType), 0)
+                    data = util.KeyVal()
+                    data.label = name
+                    data.checked = checked
+                    data.cfgname = 'probeScannerFilters'
+                    data.retval = (groupID, signatureType)
+                    data.OnChange = self.CheckBoxChange
+                    data.sublevel = 0
+                    scrolllist.append(listentry.Get('Checkbox', data=data))
 
-        scrolllist = uiutil.SortListOfTuples(scrolllist)
-        return scrolllist
+            else:
+                name = cfg.invgroups.Get(groupID).groupName
+                checked = self.tempState.get(groupID, 0)
+                data = util.KeyVal()
+                data.label = name
+                data.checked = checked
+                data.cfgname = 'probeScannerFilters'
+                data.retval = groupID
+                data.OnChange = self.CheckBoxChange
+                data.sublevel = 0
+                scrolllist.append(listentry.Get('Checkbox', data=data))
+
+        return localizationUtil.Sort(scrolllist, key=lambda x: x.label)
 
 
 

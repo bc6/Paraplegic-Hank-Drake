@@ -11,8 +11,8 @@ class ProximityTriggerComponentView(cef.BaseComponentView):
     @classmethod
     def SetupInputs(cls):
         cls.RegisterComponent(cls)
-        cls._AddInput(cls.RADIUS, 0.0, cls.OPTIONAL, const.cef.COMPONENTDATA_FLOAT_TYPE)
-        cls._AddInput(cls.DIMENSIONS, None, cls.RUNTIME, const.cef.COMPONENTDATA_NON_PRIMITIVE_TYPE)
+        cls._AddInput(cls.RADIUS, 0.0, cls.RECIPE, const.cef.COMPONENTDATA_FLOAT_TYPE, displayName='Radius')
+        cls._AddInput(cls.DIMENSIONS, None, cls.RUNTIME, const.cef.COMPONENTDATA_NON_PRIMITIVE_TYPE, displayName='Dimensions')
 
 
 

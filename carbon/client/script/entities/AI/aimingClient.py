@@ -20,15 +20,6 @@ class AimingClient(AI.aimingCommon):
 
 
 
-    def PrepareComponent(self, sceneID, entityID, component):
-        if sceneID not in self.sceneManagers:
-            self.LogError('SceneID in prepare aiming component has no previous manager ', sceneID, entityID)
-            return 
-        component.entData = AI.AimingEntityData()
-        component.entData.entID = entityID
-
-
-
     def MakeAimingManager(self):
         return GameWorld.AimingManagerClient()
 

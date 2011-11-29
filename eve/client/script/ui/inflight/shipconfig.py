@@ -1,9 +1,6 @@
-import uiutil
 import listentry
-import form
-import draw
+import localization
 import util
-import string
 import moniker
 import uicls
 import uiconst
@@ -12,14 +9,14 @@ import uix
 class ShipConfig(uicls.Window):
     __guid__ = 'form.ShipConfig'
     __notifyevents__ = ['ProcessSessionChange', 'OnShipCloneJumpUpdate']
+    default_windowID = 'shipconfig'
     shipmodules = [('ShipMaintenanceBay', 'hasShipMaintenanceBay'), ('CloneFacility', 'canReceiveCloneJumps')]
-    jumpCloneFormatString = '%s: <b>%d/%d</b>'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.shipid = eve.session.shipid
         self.slimItem = self.GetSlimItem()
-        self.SetCaption(mls.UI_INFLIGHT_SHIPCONFIG)
+        self.SetCaption(localization.GetByLabel('UI/Ship/ShipConfig/ShipConfig'))
         self.SetTopparentHeight(72)
         self.SetWndIcon()
         self.SetMinSize([300, 200])
@@ -30,8 +27,8 @@ class ShipConfig(uicls.Window):
         icon = uicls.Icon(parent=self.sr.top, align=uiconst.TOLEFT, left=const.defaultPadding, size=64, state=uiconst.UI_NORMAL, typeID=self.slimItem.typeID)
         icon.GetMenu = self.ShipMenu
         uicls.Container(name='push', align=uiconst.TOLEFT, pos=(5, 0, 5, 0), parent=self.sr.top)
-        uicls.Label(name='label', text='<b>' + uiutil.UpperCase(cfg.evelocations.Get(self.shipid).name) + '</b>', parent=self.sr.top, align=uiconst.TOTOP, autoheight=1, letterspace=1, autowidth=False, state=uiconst.UI_NORMAL)
-        uicls.Label(name='label', text=cfg.invtypes.Get(self.slimItem.typeID).name, parent=self.sr.top, align=uiconst.TOTOP, autoheight=1, autowidth=False, state=uiconst.UI_NORMAL)
+        uicls.EveHeaderMedium(name='label', text=cfg.evelocations.Get(self.shipid).name, parent=self.sr.top, align=uiconst.TOTOP, bold=True, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(name='label', text=cfg.invtypes.Get(self.slimItem.typeID).name, parent=self.sr.top, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         self.ship = moniker.GetShipAccess()
         self.conf = self.ship.GetShipConfiguration()
         modules = self.GetShipModules()
@@ -45,11 +42,11 @@ class ShipConfig(uicls.Window):
         if tabs:
             self.sr.maintabs = uicls.TabGroup(name='tabparent', align=uiconst.TOTOP, height=18, parent=self.sr.main, idx=0, tabs=tabs, groupID='pospanel')
         else:
-            uicls.CaptionLabel(text=mls.UI_INFLIGHT_NOCONFIGURABLECOMODULES, parent=self.sr.main, size=18, uppercase=0, left=const.defaultPadding, width=const.defaultPadding, top=const.defaultPadding)
+            uicls.CaptionLabel(text=localization.GetByLabel('UI/Ship/ShipConfig/ShipConfig'), parent=self.sr.main, size=18, uppercase=0, left=const.defaultPadding, width=const.defaultPadding, top=const.defaultPadding)
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         self.shipid = None
         self.slimItem = None
         self.capacity = None
@@ -84,9 +81,11 @@ class ShipConfig(uicls.Window):
              'info': charinfo,
              'cloneID': each['jumpCloneID']}))
 
-        self.sr.clonescroll.Load(contentList=scrolllist, headers=[mls.UI_GENERIC_NAME])
-        self.sr.clonescroll.ShowHint([mls.UI_INFLIGHT_NOCLONESINSTALLED, None][bool(scrolllist)])
-        self.sr.cloneInfo.text = self.jumpCloneFormatString % (mls.UI_GENERIC_JUMPCLONES, len(cloneRS), getattr(godmaSM.GetItem(self.slimItem.itemID), 'maxJumpClones', 0))
+        self.sr.clonescroll.Load(contentList=scrolllist, headers=[localization.GetByLabel('UI/Common/Name')])
+        self.sr.clonescroll.ShowHint([localization.GetByLabel('UI/Ship/ShipConfig/NoClonesInstalledAtShip'), None][bool(scrolllist)])
+        numClones = int(len(cloneRS))
+        totalClones = int(getattr(godmaSM.GetItem(self.slimItem.itemID), 'maxJumpClones', 0))
+        self.sr.cloneInfo.text = localization.GetByLabel('UI/Ship/ShipConfig/NumJumpClones', numClones=numClones, totalClones=totalClones)
         self.panelsetup = 0
 
 
@@ -95,34 +94,37 @@ class ShipConfig(uicls.Window):
         godmaSM = sm.GetService('godma').GetStateManager()
         panel = self.sr.shipmaintenancebayPanel
         s = uicls.Container(parent=panel, align=uiconst.TOTOP, state=uiconst.UI_PICKCHILDREN, height=22)
-        self.sr.smballowfleet = uicls.Checkbox(text=mls.UI_INFLIGHT_ALLOWFLEETUSAGE, parent=s, configName='', retval='chkfleet', callback=self.AllowFleetChange, pos=(const.defaultPadding,
+        self.sr.smballowfleet = uicls.Checkbox(text=localization.GetByLabel('UI/Ship/ShipConfig/AllowFleetMemberUsage'), parent=s, configName='', retval='chkfleet', callback=self.AllowFleetChange, pos=(const.defaultPadding,
          3,
          250,
          0), align=uiconst.TOPLEFT)
-        edit = uicls.Edit(setvalue='', parent=panel, align=uiconst.TOALL, padding=(const.defaultPadding,
+        edit = uicls.EditPlainText(setvalue='', parent=panel, align=uiconst.TOALL, padding=(const.defaultPadding,
          0,
          const.defaultPadding,
          const.defaultPadding), hideBackground=0, readonly=1)
-        txt = mls.UI_INFLIGHT_MAXCONCURRENTACCESS % {'pilots': getattr(godmaSM.GetType(self.slimItem.typeID), 'maxOperationalUsers', 0),
-         'range': getattr(godmaSM.GetType(self.slimItem.typeID), 'maxOperationalDistance', 0)}
-        txt2 = '%s<br><font size=9><br>%s</font>' % (mls.UI_INFLIGHT_NOTETHISSETTINGS, txt)
-        edit.SetValue(txt2)
+        pilots = int(getattr(godmaSM.GetType(self.slimItem.typeID), 'maxOperationalUsers', 0))
+        opRange = int(getattr(godmaSM.GetType(self.slimItem.typeID), 'maxOperationalDistance', 0))
+        txt = localization.GetByLabel('UI/Ship/ShipConfig/ShipMaintenanceBaySettingText', pilots=pilots, range=opRange)
+        edit.SetValue(txt)
         self.smbinited = 1
 
 
 
     def InitCloneFacilityPanel(self):
         panel = self.sr.clonefacilityPanel
-        btns = [(mls.UI_CMD_INVITE,
+        btns = [(localization.GetByLabel('UI/Ship/ShipConfig/Invite'),
           self.InviteClone,
           (),
-          84), (mls.UI_CMD_DESTROY,
+          84), (localization.GetByLabel('UI/Ship/ShipConfig/Destroy'),
           self.DestroyClone,
           (),
           84)]
         uicls.ButtonGroup(btns=btns, parent=panel)
         cloneInfoContainer = uicls.Container(name='cloneinfo', align=uiconst.TOTOP, parent=panel, left=const.defaultPadding, top=const.defaultPadding, height=12)
-        self.sr.cloneInfo = uicls.Label(text=self.jumpCloneFormatString % (mls.UI_GENERIC_JUMPCLONES, 0, getattr(sm.GetService('godma').GetItem(self.slimItem.itemID), 'maxJumpClones', 0)), parent=cloneInfoContainer, align=uiconst.TOALL, fontsize=10, letterspace=2, left=20, state=uiconst.UI_NORMAL)
+        numClones = int(0)
+        totalClones = int(getattr(sm.GetService('godma').GetItem(self.slimItem.itemID), 'maxJumpClones', 0))
+        text = localization.GetByLabel('UI/Ship/ShipConfig/NumJumpClones', numClones=numClones, totalClones=totalClones)
+        self.sr.cloneInfo = uicls.EveLabelSmall(text=text, parent=cloneInfoContainer, align=uiconst.TOALL, left=20, state=uiconst.UI_NORMAL)
         self.sr.clonescroll = uicls.Scroll(name='clonescroll', parent=panel, padding=(const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding,
@@ -156,7 +158,7 @@ class ShipConfig(uicls.Window):
             char = cfg.eveowners.Get(charID)
             lst.append((char.name, charID, char.typeID))
 
-        chosen = uix.ListWnd(lst, 'character', mls.UI_CMD_SELECTPILOT, None, 1, minChoices=1, isModal=1)
+        chosen = uix.ListWnd(lst, 'character', localization.GetByLabel('UI/Ship/ShipConfig/SelectAPilot'), None, 1, minChoices=1, isModal=1)
         if chosen:
             sm.GetService('clonejump').OfferShipCloneInstallation(chosen[1])
 
@@ -184,9 +186,9 @@ class ShipConfig(uicls.Window):
             if getattr(godmaSM.GetType(typeID), module[1], 0):
                 nameString = ''
                 if module[0] == 'ShipMaintenanceBay':
-                    nameString = mls.UI_SHIPMAINTENANCEBAY
+                    nameString = localization.GetByLabel('UI/Ship/ShipConfig/ShipMaintenanceBay')
                 elif module[0] == 'CloneFacility':
-                    nameString = mls.UI_CLONEFACILITY
+                    nameString = localization.GetByLabel('UI/Ship/ShipConfig/CloneFacility')
                 hasModules[module[0]] = nameString
 
         return hasModules
@@ -200,9 +202,9 @@ class ShipConfig(uicls.Window):
 
     def ProcessSessionChange(self, isRemote, session, change):
         if session.shipid and 'shipid' in change:
-            self.CloseX()
+            self.CloseByUser()
         elif 'solarsystemid' in change:
-            self.CloseX()
+            self.CloseByUser()
 
 
 

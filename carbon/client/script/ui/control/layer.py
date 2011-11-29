@@ -1,10 +1,4 @@
 import uiconst
-import uiutil
-import uicls
-import blue
-import trinity
-import uiconst
-import uiutil
 import uicls
 import blue
 import trinity
@@ -62,11 +56,13 @@ class LayerCore(uicls.Container):
             return 
         if self.isopening:
             return 
-        self.isopening = 1
-        self.state = uiconst.UI_PICKCHILDREN
+        self.isopening = True
+        self.display = True
+        if getattr(self, '__notifyevents__', None):
+            sm.RegisterNotify(self)
         self.OnOpenView()
-        self.isopen = 1
-        self.isopening = 0
+        self.isopen = True
+        self.isopening = False
 
 
 
@@ -80,49 +76,54 @@ class LayerCore(uicls.Container):
 
 
 
-    def CloseView(self, *args):
+    def CloseView(self, recreate = True, *args):
         if not self.isopen:
             return 
         for l in self.children[:]:
             if hasattr(l, 'CloseView'):
-                l.CloseView()
-            else:
+                l.CloseView(recreate=True)
+            elif recreate:
                 l.Close()
 
         wasopen = self.isopen
         self.isopen = 0
         if wasopen:
             self.OnCloseView()
-        notifyevents = getattr(self, '__notifyevents__', None)
-        if notifyevents:
+        if getattr(self, '__notifyevents__', None):
             sm.UnregisterNotify(self)
-        parent = None
-        name = None
-        if self.parent:
-            parent = self.parent
-            name = self.name
-            idx = parent.children.index(self)
-        self.Close()
-        if parent is not None:
-            (decoClass, subLayers,) = uicore.layerData.get(name, (None, None))
-            parent.AddLayer(name, decoClass, subLayers, idx=idx)
+        uicore.uilib.ReleaseCapture()
+        if recreate:
+            parent = None
+            name = None
+            if self.parent:
+                parent = self.parent
+                name = self.name
+                idx = parent.children.index(self)
+            self.Close()
+            if parent is not None:
+                (decoClass, subLayers,) = uicore.layerData.get(name, (None, None))
+                parent.AddLayer(name, decoClass, subLayers, idx=idx)
+        else:
+            self.display = False
 
 
 
-    def AddLayer(self, name, decoClass = None, subLayers = None, idx = -1, loadLayerClass = False):
+    def AddLayer(self, name, decoClass = None, subLayers = None, idx = -1):
         if decoClass:
             layer = decoClass(parent=self, name=name, idx=idx, align=uiconst.TOALL, state=uiconst.UI_PICKCHILDREN)
         else:
             layer = uicls.LayerCore(parent=self, name=name, idx=idx, align=uiconst.TOALL, state=uiconst.UI_PICKCHILDREN)
-        layer.decoClass = decoClass
+        layer.decoClass = decoClass or uicls.LayerCore
         uicore.layerData[name] = (decoClass or uicls.LayerCore, subLayers)
         if name.startswith('l_'):
-            setattr(uicore.layer, name[2:].lower(), layer)
-        else:
-            setattr(uicore.layer, name.lower(), layer)
+            name = name[2:]
+        setattr(uicore.layer, name.lower(), layer)
         if subLayers is not None:
             for (_layerName, _decoClass, _subLayers,) in subLayers:
-                layer.AddLayer(_layerName, _decoClass, _subLayers)
+                subLayer = layer.AddLayer(_layerName, _decoClass, _subLayers)
+                if _layerName.startswith('l_'):
+                    _layerName = _layerName[2:]
+                setattr(layer, _layerName, subLayer)
 
         return layer
 

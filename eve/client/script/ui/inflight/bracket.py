@@ -18,15 +18,15 @@ import uicls
 import maputils
 import log
 import random
+import entities
+import localization
+import fontConst
 SHOWLABELS_NEVER = 0
 SHOWLABELS_ONMOUSEENTER = 1
 SHOWLABELS_ALWAYS = 2
 
-class BracketLabel(uicls.Label):
+class BracketLabel(uicls.EveLabelSmall):
     __guid__ = 'xtriui.BracketLabel'
-    default_letterspace = 1
-    default_fontsize = 9
-    default_uppercase = 1
     default_name = 'label'
 
     def Startup(self, bracket):
@@ -34,7 +34,11 @@ class BracketLabel(uicls.Label):
         cs = uicore.uilib.bracketCurveSet
         xBinding = trinity.CreateBinding(cs, bracket.GetRenderObject(), 'displayX', self.GetRenderObject(), 'displayX')
         yBinding = trinity.CreateBinding(cs, bracket.GetRenderObject(), 'displayY', self.GetRenderObject(), 'displayY')
-        yBinding.offset = (3, 0, 0, 0)
+        yOffset = getattr(self, 'yOffset', 3)
+        yBinding.offset = (yOffset,
+         0,
+         0,
+         0)
         self.bindings = (xBinding, yBinding)
         self.UpdateLabelAndOffset()
         self.updateTimer = base.AutoTimer(500, self.UpdateLabelAndOffset)
@@ -61,11 +65,14 @@ class BracketLabel(uicls.Label):
         else:
             self.Close()
             return 
-        newStr = bracket.displayName
-        if getattr(bracket, 'showDistance', 1):
-            distance = bracket.GetDistance()
-            if distance:
-                newStr += ' ' + util.FmtDist(distance)
+        if getattr(self, 'attrName', None) is None:
+            newStr = bracket.displayName
+            if getattr(bracket, 'showDistance', 1):
+                distance = bracket.GetDistance()
+                if distance:
+                    newStr += ' ' + util.FmtDist(distance)
+        else:
+            newStr = getattr(bracket, self.attrName, '')
         if newStr != self.text:
             self.text = newStr
         bracketRO = bracket.GetRenderObject()
@@ -135,17 +142,21 @@ class UpdateEntry(object):
                 self.sr.hostile_attacking = None
                 ha.Close()
             if self.sr.icon:
-                self.SetColor(1.0, 1.0, 1.0)
+                self.SetColor(*const.OVERVIEW_NORMAL_COLOR)
                 if slimItem.groupID == const.groupStargate and slimItem.jumps:
                     destinationPath = sm.GetService('starmap').GetDestinationPath()
                     if slimItem.jumps[0].locationID in destinationPath:
-                        self.SetColor(1.0, 1.0, 0.0)
+                        self.SetColor(*const.OVERVIEW_AUTO_PILOT_DESTINATION_COLOR)
                     if getattr(self, 'IsBracket', 0):
                         uiutil.SetOrder(self, 0)
+                if slimItem.groupID == const.groupStation:
+                    waypoints = sm.GetService('starmap').GetWaypoints()
+                    if waypoints and slimItem.itemID == waypoints[-1]:
+                        self.SetColor(*const.OVERVIEW_AUTO_PILOT_DESTINATION_COLOR)
                 if IsForbiddenContainer(slimItem):
-                    self.SetColor(1.0, 1.0, 0.0)
+                    self.SetColor(*const.OVERVIEW_FORBIDDEN_CONTAINER_COLOR)
                 elif IsAbandonedContainer(slimItem):
-                    self.SetColor(0.2, 0.5, 1.0)
+                    self.SetColor(*const.OVERVIEW_ABANDONED_CONTAINER_COLOR)
         uthread.worker('bracket.UpdateViewed', self.UpdateViewed, slimItem)
         uthread.worker('bracket.UpdateWreckEmpty', self.UpdateWreckEmpty, slimItem)
         uthread.worker('bracket.UpdateFleetBroadcasts', self.UpdateFleetBroadcasts, slimItem)
@@ -274,7 +285,7 @@ class UpdateEntry(object):
             self.sr.targetNo.Close()
             self.sr.targetNo = None
         if active:
-            self.sr.targetNo = uicls.Label(text=targetNo, parent=self, idx=0, left=15, top=-6, fontsize=14, state=uiconst.UI_DISABLED)
+            self.sr.targetNo = uicls.EveLabelLarge(text=targetNo, parent=self, idx=0, left=15, top=-6, state=uiconst.UI_DISABLED)
 
 
 
@@ -361,9 +372,9 @@ class UpdateEntry(object):
 
     def AnimateTargeting(self, item):
         while not item.destroyed and item.state != uiconst.UI_HIDDEN:
-            (start, ndt,) = (blue.os.GetTime(1), 0.0)
+            (start, ndt,) = (blue.os.GetSimTime(), 0.0)
             while ndt != 1.0:
-                ndt = max(ndt, min(blue.os.TimeDiffInMs(start) / 333.0, 1.0))
+                ndt = max(ndt, min(blue.os.TimeDiffInMs(start, blue.os.GetSimTime()) / 333.0, 1.0))
                 item.left = item.top = item.width = item.height = int(mathUtil.Lerp(-12, 10, ndt))
                 blue.pyos.synchro.Yield()
 
@@ -451,14 +462,47 @@ class UpdateEntry(object):
     def UpdateStructureState(self, slimItem):
         if not util.IsStructure(slimItem.categoryID):
             return 
-        self.lastPosEvent = blue.os.GetTime()
+        self.lastPosEvent = blue.os.GetWallclockTime()
         (stateName, stateTimestamp, stateDelay,) = sm.GetService('pwn').GetStructureState(slimItem)
         if self.sr.posStatus is None:
-            self.sr.posStatus = uicls.Label(text=getattr(mls, 'UI_GENERIC_' + stateName.upper()), parent=self, left=24, top=32, fontsize=9, letterspace=1, uppercase=1, linespace=14, state=uiconst.UI_NORMAL)
+            self.sr.posStatus = uicls.EveLabelSmall(text=entities.POS_STRUCTURE_STATE[stateName], parent=self, left=24, top=30, state=uiconst.UI_NORMAL)
         else:
-            self.sr.posStatus.text = getattr(mls, 'UI_GENERIC_' + stateName.upper())
+            self.sr.posStatus.text = entities.POS_STRUCTURE_STATE[stateName]
         if stateName in ('anchoring', 'onlining', 'unanchoring', 'reinforced', 'operating', 'incapacitated'):
             uthread.new(self.StructureProgress, self.lastPosEvent, stateName, stateTimestamp, stateDelay)
+
+
+
+    def UpdateOrbitalState(self, slimItem):
+        if not util.IsOrbital(slimItem.categoryID):
+            return 
+        self.lastOrbitalEvent = blue.os.GetWallclockTime()
+        if slimItem.orbitalState in (entities.STATE_ANCHORING, entities.STATE_ONLINING, entities.STATE_SHIELD_REINFORCE) or slimItem.groupID == const.groupOrbitalConstructionPlatforms:
+            statusString = entities.GetEntityStateString(slimItem.orbitalState)
+            if self.sr.orbitalStatus is None:
+                self.sr.orbitalStatus = uicls.EveLabelSmall(text=statusString, parent=self, left=24, top=30, state=uiconst.UI_NORMAL)
+            else:
+                self.sr.orbitalStatus.text = statusString
+        if slimItem.orbitalState in (entities.STATE_UNANCHORED, entities.STATE_IDLE, entities.STATE_ANCHORED) and slimItem.groupID != const.groupOrbitalConstructionPlatforms:
+            if self.sr.orbitalStatus is not None:
+                self.sr.orbitalStatus.Close()
+                self.sr.orbitalStatus = None
+        if slimItem.orbitalHackerID is not None:
+            if self.sr.orbitalHack is None:
+                self.sr.orbitalHack = uicls.HackingNumberGrid(parent=self, width=140, height=140, numCellRows=7, cellsPerRow=7, cellHeight=20, cellWidth=20, align=uiconst.CENTERTOP, top=-150)
+                self.sr.orbitalHack.BeginColorCycling()
+            progress = 0.0 if slimItem.orbitalHackerProgress is None else slimItem.orbitalHackerProgress
+            self.sr.orbitalHack.SetProgress(progress)
+        elif self.sr.orbitalHack is not None:
+            self.sr.orbitalHack.StopColorCycling()
+            self.children.remove(self.sr.orbitalHack)
+            self.sr.orbitalHack = None
+        if slimItem.orbitalState in (entities.STATE_ONLINING,
+         entities.STATE_OFFLINING,
+         entities.STATE_ANCHORING,
+         entities.STATE_UNANCHORING,
+         entities.STATE_SHIELD_REINFORCE):
+            uthread.new(self.OrbitalProgress, self.lastOrbitalEvent, slimItem)
 
 
 
@@ -469,9 +513,9 @@ class UpdateEntry(object):
                 uthread.new(self.ReinforcedProgress, slimItem.startTimestamp, endTime)
         elif slimItem.groupID == const.groupStation and hasattr(slimItem, 'structureState') and slimItem.structureState == pos.STRUCTURE_INVULNERABLE:
             if not hasattr(self, 'reinforcedTimeText'):
-                self.reinforcedTimeText = uicls.Label(text=' ', parent=self, left=-10, top=32, fontsize=9, letterspace=1, uppercase=1, linespace=14, state=uiconst.UI_NORMAL)
+                self.reinforcedTimeText = uicls.EveLabelSmall(text=' ', parent=self, left=-10, top=32, lineSpacing=0.2, state=uiconst.UI_NORMAL)
             timeText = self.reinforcedTimeText
-            timeText.text = mls.UI_GENERIC_INVULNERABLE
+            timeText.text = localization.GetByLabel('UI/Inflight/Brackets/OutpostInvulnerable')
             timeText.left = -32
             self.ChangeReinforcedState(uiconst.UI_NORMAL)
         elif oldSlimItem is not None and getattr(oldSlimItem, 'structureState', None) in [pos.STRUCTURE_SHIELD_REINFORCE, pos.STRUCTURE_ARMOR_REINFORCE] and getattr(slimItem, 'structureState', None) not in [pos.STRUCTURE_SHIELD_REINFORCE, pos.STRUCTURE_ARMOR_REINFORCE]:
@@ -491,7 +535,7 @@ class UpdateEntry(object):
             return 
         cnt = 0
         while slimItem.launchTime is None and cnt < 90:
-            blue.pyos.synchro.Sleep(1000)
+            blue.pyos.synchro.SleepWallclock(1000)
             cnt += 1
 
         if getattr(self, 'planetaryLaunchContainerThreadRunning', False) == False and slimItem.launchTime is not None:
@@ -516,13 +560,13 @@ class UpdateEntry(object):
                 self.burnupFill = uicls.Fill(parent=self, align=uiconst.RELATIVE, width=fillwidth, height=fillheight, left=fillleft, top=filltop, color=fillcolor)
             burnupFill = self.burnupFill
             if not hasattr(self, 'burnupTimeText'):
-                self.burnupTimeText = uicls.Label(text=' ', parent=self, left=-10, top=32, fontsize=9, letterspace=1, uppercase=1, linespace=14, state=uiconst.UI_NORMAL)
+                self.burnupTimeText = uicls.EveLabelSmall(text=' ', parent=self, left=-10, top=32, lineSpacing=0.2, state=uiconst.UI_NORMAL)
             timeText = self.burnupTimeText
             if not hasattr(self, 'burnupFrame'):
                 self.burnupFrame = uicls.Frame(parent=self, align=uiconst.RELATIVE, width=boxwidth, height=boxheight, left=boxleft, top=boxtop, color=boxcolor)
             frame = self.burnupFrame
             while not self.destroyed and self.planetaryLaunchContainerThreadRunning:
-                currentTime = blue.os.GetTime()
+                currentTime = blue.os.GetWallclockTime()
                 portion = float(currentTime - startTime) / (endTime - startTime)
                 if portion > 1.0:
                     break
@@ -532,10 +576,10 @@ class UpdateEntry(object):
                     burnupFill.width = width
                 newTimeText = util.FmtDate(endTime - currentTime, 'ss')
                 if timeText.text != newTimeText:
-                    textWidth = uix.GetTextWidth(newTimeText, fontsize=9, hspace=1, uppercase=1)
+                    textWidth = uix.GetTextWidth(newTimeText, fontsize=fontConst.EVE_SMALL_FONTSIZE, hspace=1, uppercase=1)
                     timeText.text = newTimeText
                     timeText.left = -32
-                blue.pyos.synchro.Sleep(1000)
+                blue.pyos.synchro.SleepWallclock(1000)
 
 
         finally:
@@ -571,14 +615,14 @@ class UpdateEntry(object):
                 self.reinforcedState = uicls.Fill(parent=self, align=uiconst.RELATIVE, width=fillwidth, height=fillheight, left=fillleft, top=filltop, color=fillcolor)
             p = self.reinforcedState
             if not hasattr(self, 'reinforcedTimeText'):
-                self.reinforcedTimeText = uicls.Label(text=' ', parent=self, left=-10, top=32, fontsize=9, letterspace=1, uppercase=1, linespace=14, state=uiconst.UI_NORMAL)
+                self.reinforcedTimeText = uicls.EveLabelSmall(text=' ', parent=self, left=-10, top=32, lineSpacing=0.2, state=uiconst.UI_NORMAL)
             timeText = self.reinforcedTimeText
             if not hasattr(self, 'reinforcedFrame'):
                 self.reinforcedFrame = uicls.Frame(parent=self, align=uiconst.RELATIVE, width=boxwidth, height=boxheight, left=boxleft, top=boxtop, color=boxcolor)
             frame = self.reinforcedFrame
             self.ChangeReinforcedState(uiconst.UI_NORMAL)
             while not self.destroyed and self.reinforcedProgressThreadRunning:
-                currentTime = blue.os.GetTime()
+                currentTime = blue.os.GetWallclockTime()
                 portion = float(currentTime - startTime) / (endTime - startTime)
                 if portion > 1.0:
                     break
@@ -586,12 +630,9 @@ class UpdateEntry(object):
                 width = fillwidth - abs(width)
                 if p.width != width:
                     p.width = width
-                newTimeText = util.FmtDate(endTime - currentTime, 'ss')
-                if timeText.text != newTimeText:
-                    textWidth = uix.GetTextWidth(newTimeText, fontsize=9, hspace=1, uppercase=1)
-                    timeText.text = mls.UI_GENERIC_REINFORCED + '... <br>' + newTimeText
-                    timeText.left = -32
-                blue.pyos.synchro.Sleep(250)
+                timeText.text = localization.GetByLabel('UI/Inflight/Brackets/RemainingReinforcedTime', timeRemaining=endTime - currentTime)
+                timeText.left = -32
+                blue.pyos.synchro.SleepWallclock(1000)
 
 
         finally:
@@ -616,6 +657,9 @@ class UpdateEntry(object):
 
 
     def CaptureProgress(self):
+        captureID = self.captureData.get('captureID', None)
+        if captureID is None:
+            return 
         self.captureTaskletRunning = True
         boxwidth = 82
         fillwidth = boxwidth - 2
@@ -633,28 +677,28 @@ class UpdateEntry(object):
         p = self.captureState
         texttop = boxtop + boxheight + 2
         if not hasattr(self, 'captureStateText'):
-            self.captureStateText = uicls.Label(text=' ', parent=self, left=boxleft, top=texttop, fontsize=9, letterspace=1, uppercase=1, state=uiconst.UI_NORMAL)
+            self.captureStateText = uicls.EveLabelSmall(text=' ', parent=self, left=boxleft, top=texttop, state=uiconst.UI_NORMAL)
         t = self.captureStateText
         if not hasattr(self, 'captureStateTimeText'):
-            self.captureStateTimeText = uicls.Label(text=' ', parent=self, left=-10, top=filltop + 1, fontsize=9, letterspace=1, uppercase=1, state=uiconst.UI_NORMAL)
+            self.captureStateTimeText = uicls.EveLabelSmall(text=' ', parent=self, left=-10, top=filltop + 1, state=uiconst.UI_NORMAL)
         timeText = self.captureStateTimeText
         portion = 0.0
-        captureID = self.captureData.get('captureID', None)
         while not self.destroyed and portion < 1.0:
             if self.captureData['captureID'] != 'contested':
                 totalTimeMs = self.captureData['captureTime'] * 60 * 1000
-                timeDiff = blue.os.TimeDiffInMs(self.captureData['lastIncident'])
+                timeDiff = blue.os.TimeDiffInMs(self.captureData['lastIncident'], blue.os.GetSimTime())
                 portion = float(timeDiff) / totalTimeMs
                 portion = portion + float(self.captureData['points']) / 100
                 width = min(int(portion * fillwidth), fillwidth)
                 width = abs(width)
                 if p.width != width:
                     p.width = width
-                if t.text != cfg.eveowners.Get(self.captureData['captureID']).name + ' ' + mls.UI_INFLIGHT_CAPTURING:
-                    t.text = cfg.eveowners.Get(self.captureData['captureID']).name + ' ' + mls.UI_INFLIGHT_CAPTURING
+                capText = localization.GetByLabel('UI/Inflight/Brackets/FacWarCapturing', ownerName=cfg.eveowners.Get(self.captureData['captureID']).name)
+                if t.text != capText:
+                    t.text = capText
                 newTimeText = self.GetCaptureTimeString(portion)
                 if timeText.text != newTimeText:
-                    textWidth = uix.GetTextWidth(newTimeText, fontsize=9, hspace=1, uppercase=1)
+                    textWidth = uix.GetTextWidth(newTimeText, fontsize=fontConst.EVE_SMALL_FONTSIZE, hspace=1, uppercase=1)
                     timeText.text = newTimeText
                     timeText.left = -8
                 if portion < 0.0:
@@ -668,9 +712,9 @@ class UpdateEntry(object):
                 width = abs(width)
                 if p.width != width:
                     p.width = width
-                t.text = mls.UI_INFLIGHT_CONTESTED
+                t.text = localization.GetByLabel('UI/Inflight/Brackets/SystemContested')
                 break
-            blue.pyos.synchro.Sleep(500)
+            blue.pyos.synchro.SleepWallclock(500)
 
         if self and not self.destroyed:
             timeText.text = self.GetCaptureTimeString(portion)
@@ -683,7 +727,7 @@ class UpdateEntry(object):
             return ' '
         timeScalar = 1 - portion
         if timeScalar <= 0:
-            return mls.UI_INFLIGHT_CAPTURED
+            return localization.GetByLabel('UI/Inflight/Brackets/FacWarCaptured')
         maxTime = self.captureData['captureTime']
         timeLeft = timeScalar * maxTime
         properTime = long(60000L * const.dgmTauConstant * timeLeft)
@@ -692,7 +736,7 @@ class UpdateEntry(object):
 
 
     def SetCaptureLogo(self, teamID):
-        if teamID == 'contested':
+        if teamID == 'contested' or teamID is None:
             return 
         if self.sr.Get('captureLogo'):
             if self.sr.captureLogo.name == cfg.eveowners.Get(teamID).name:
@@ -713,32 +757,32 @@ class UpdateEntry(object):
         t = self.sr.posStatus
         uicls.Frame(parent=self, align=uiconst.RELATIVE, width=82, height=13, left=18, top=30, color=(1.0, 1.0, 1.0, 0.5))
         p = uicls.Fill(parent=self, align=uiconst.RELATIVE, width=80, height=11, left=19, top=31, color=(1.0, 1.0, 1.0, 0.25))
-        startTime = blue.os.GetTime()
+        startTime = blue.os.GetWallclockTime()
         if stateDelay:
             stateDelay = float(stateDelay * const.MSEC)
-        doneStr = {'anchoring': mls.UI_INFLIGHT_ANCHORED.lower(),
-         'onlining': mls.UI_INFLIGHT_ONLINE.lower(),
-         'unanchoring': mls.UI_INFLIGHT_UNANCHORED.lower(),
-         'reinforced': mls.UI_INFLIGHT_ONLINE.lower(),
-         'operating': mls.UI_INFLIGHT_ONLINE.lower(),
-         'incapacitated': mls.UI_INFLIGHT_INCAPACITATED.lower()}.get(stateName, mls.UI_GENERIC_DONE)
+        doneStr = {'anchoring': localization.GetByLabel('Entities/States/Anchored'),
+         'onlining': localization.GetByLabel('Entities/States/Online'),
+         'unanchoring': localization.GetByLabel('Entities/States/Unanchored'),
+         'reinforced': localization.GetByLabel('Entities/States/Online'),
+         'operating': localization.GetByLabel('Entities/States/Operating'),
+         'incapacitated': localization.GetByLabel('Entities/States/Incapacitated')}.get(stateName, localization.GetByLabel('Entities/States/Done'))
         endTime = 0
         if stateDelay:
             endTime = stateTimestamp + stateDelay
         while 1 and endTime:
             if not self or self.destroyed or lastPosEvent != self.lastPosEvent:
                 return 
-            timeLeft = endTime - blue.os.GetTime()
+            timeLeft = endTime - blue.os.GetWallclockTime()
             portion = timeLeft / stateDelay
             timeLeftSec = timeLeft / 1000.0
             if timeLeft <= 0:
                 t.text = doneStr
                 break
-            t.text = getattr(mls, 'UI_GENERIC_' + stateName.upper()) + '...<br>' + util.FmtDate(long(timeLeft), 'ss')
+            t.text = localization.GetByLabel('UI/Inflight/Brackets/StructureProgress', stateName=entities.POS_STRUCTURE_STATE[stateName], timeRemaining=long(timeLeft))
             p.width = int(80 * portion)
-            blue.pyos.synchro.Yield()
+            blue.pyos.synchro.SleepWallclock(900)
 
-        blue.pyos.synchro.Sleep(250)
+        blue.pyos.synchro.SleepWallclock(250)
         if not self or self.destroyed:
             return 
         for each in self.children[-2:]:
@@ -748,18 +792,87 @@ class UpdateEntry(object):
         if lastPosEvent != self.lastPosEvent:
             return 
         t.text = ''
-        blue.pyos.synchro.Sleep(250)
+        blue.pyos.synchro.SleepWallclock(250)
         if not self or self.destroyed or lastPosEvent != self.lastPosEvent:
             return 
         t.text = doneStr
-        blue.pyos.synchro.Sleep(250)
+        blue.pyos.synchro.SleepWallclock(250)
         if not self or self.destroyed or lastPosEvent != self.lastPosEvent:
             return 
         t.text = ''
-        blue.pyos.synchro.Sleep(250)
+        blue.pyos.synchro.SleepWallclock(250)
         if not self or self.destroyed or lastPosEvent != self.lastPosEvent:
             return 
         t.text = doneStr
+
+
+
+    def OrbitalProgress(self, lastOrbitalEvent, slimItem):
+        if self.destroyed:
+            return 
+        t = self.sr.orbitalStatus
+        uicls.Frame(parent=self, align=uiconst.TOPLEFT, width=82, height=13, left=18, top=30, color=(1.0, 1.0, 1.0, 0.5))
+        p = uicls.Fill(parent=self, align=uiconst.TOPLEFT, width=80, height=11, left=19, top=31, color=(1.0, 1.0, 1.0, 0.25))
+        stateName = entities.GetEntityStateString(slimItem.orbitalState)
+        stateTimestamp = slimItem.orbitalTimestamp
+        stateDelay = None
+        doneText = localization.GetByLabel('Entities/States/Done')
+        godmaSM = sm.GetService('godma').GetStateManager()
+        if slimItem.orbitalState == entities.STATE_ANCHORING:
+            stateDelay = godmaSM.GetType(slimItem.typeID).anchoringDelay
+            doneText = entities.GetEntityStateString(entities.STATE_ANCHORED)
+        elif slimItem.orbitalState == entities.STATE_ONLINING:
+            stateName = localization.GetByLabel('Entities/States/Upgrading')
+            stateDelay = godmaSM.GetType(slimItem.typeID).onliningDelay
+            doneText = localization.GetByLabel('Entities/States/Online')
+        elif slimItem.orbitalState == entities.STATE_UNANCHORING:
+            stateDelay = godmaSM.GetType(slimItem.typeID).unanchoringDelay
+            doneText = entities.GetEntityStateString(entities.STATE_UNANCHORED)
+        elif slimItem.orbitalState == entities.STATE_SHIELD_REINFORCE:
+            doneText = entities.GetEntityStateString(entities.STATE_ANCHORED)
+        if stateDelay:
+            stateDelay = float(stateDelay * const.MSEC)
+        else:
+            stateDelay = const.DAY
+        timeLeft = stateTimestamp - blue.os.GetWallclockTime()
+        try:
+            while timeLeft > 0:
+                blue.pyos.synchro.SleepWallclock(900)
+                if not self or self.destroyed or lastOrbitalEvent != self.lastOrbitalEvent:
+                    return 
+                timeLeft = stateTimestamp - blue.os.GetWallclockTime()
+                portion = max(0.0, min(1.0, timeLeft / stateDelay))
+                t.text = localization.GetByLabel('UI/Inflight/Brackets/StructureProgress', stateName=stateName, timeRemaining=long(timeLeft))
+                p.width = int(80 * portion)
+
+            t.text = doneText
+            blue.pyos.synchro.SleepWallclock(250)
+            if not self or self.destroyed:
+                return 
+
+        finally:
+            if self and not self.destroyed:
+                t.text = doneText
+                for each in self.children[-2:]:
+                    if each is not None and not getattr(each, 'destroyed', 0):
+                        each.Close()
+
+
+        if lastOrbitalEvent != self.lastOrbitalEvent:
+            return 
+        t.text = ''
+        blue.pyos.synchro.SleepWallclock(250)
+        if not self or self.destroyed or lastOrbitalEvent != self.lastOrbitalEvent:
+            return 
+        t.text = doneText
+        blue.pyos.synchro.SleepWallclock(250)
+        if not self or self.destroyed or lastOrbitalEvent != self.lastOrbitalEvent:
+            return 
+        t.text = ''
+        blue.pyos.synchro.SleepWallclock(250)
+        if not self or self.destroyed or lastOrbitalEvent != self.lastOrbitalEvent:
+            return 
+        t.text = doneText
 
 
 
@@ -799,6 +912,35 @@ class UpdateEntry(object):
 
 
 
+    def UpdateHackProgress(self, hackProgress):
+        if self.sr.orbitalHackLocal is None:
+            return 
+        self.sr.orbitalHackLocal.SetValue(hackProgress)
+
+
+
+    def BeginHacking(self):
+        if self.sr.orbitalHackLocal is None:
+            self.sr.orbitalHackLocal = uicls.HackingProgressBar(parent=self, height=20, width=120, align=uiconst.CENTERBOTTOM, top=-50, color=(0.0, 0.8, 0.0, 1.0), backgroundColor=(0.25, 0.0, 0.0, 1.0))
+
+
+
+    def _StopHacking(self):
+        blue.pyos.synchro.SleepWallclock(5000)
+        if self and self.sr.orbitalHackLocal:
+            self.sr.orbitalHackLocal.state = uiconst.UI_HIDDEN
+            self.sr.orbitalHackLocal.Close()
+            self.sr.orbitalHackLocal = None
+
+
+
+    def StopHacking(self, success = False):
+        if self.sr.orbitalHackLocal is not None:
+            self.sr.orbitalHackLocal.Finalize(complete=success)
+            uthread.new(self._StopHacking)
+
+
+
 
 class BaseBracket(uicls.Bracket):
     __guid__ = 'xtriui.BaseBracket'
@@ -814,6 +956,7 @@ class BaseBracket(uicls.Bracket):
         self.groupID = None
         self.itemID = None
         self.displayName = ''
+        self.displaySubLabel = ''
         self.sr.icon = None
         self.sr.tempIcon = None
         self.sr.hitchhiker = None
@@ -823,10 +966,13 @@ class BaseBracket(uicls.Bracket):
         self.sr.hilite = None
         self.sr.selection = None
         self.sr.posStatus = None
+        self.sr.orbitalHack = None
+        self.sr.orbitalHackLocal = None
         self.slimItem = None
         self.ball = None
         self.stateItemID = None
         self.label = None
+        self.subLabel = None
         self.fadeColor = True
         self.iconNo = None
         self.iconXOffset = 0
@@ -837,7 +983,7 @@ class BaseBracket(uicls.Bracket):
 
 
     def Close(self, *args, **kw):
-        self.KillLabel()
+        self.KillLabel(closing=True)
         uicls.Bracket.Close(self, *args, **kw)
 
 
@@ -903,10 +1049,11 @@ class BaseBracket(uicls.Bracket):
 
 
 
-    def HideTempIcon(self):
-        lookingAt = sm.GetService('state').GetExclState(state.lookingAt)
-        if self.stateItemID == eve.session.shipid and lookingAt != eve.session.shipid:
-            return 
+    def HideTempIcon(self, closing = False):
+        if not closing:
+            lookingAt = sm.GetService('state').GetExclState(state.lookingAt)
+            if self.stateItemID == eve.session.shipid and lookingAt != eve.session.shipid:
+                return 
         if self.sr.tempIcon:
             self.sr.tempIcon.Close()
             self.sr.tempIcon = None
@@ -931,17 +1078,31 @@ class BaseBracket(uicls.Bracket):
             self.label.OnMouseHover = self.OnMouseHover
             self.label.OnClick = self.OnClick
             self.label.GetMenu = self.GetMenu
+        if not self.subLabel:
+            self.subLabel = BracketLabel(parent=self.parent, name='sublabelparent', align=uiconst.TOPLEFT, top=16, state=uiconst.UI_NORMAL)
+            self.subLabel.attrName = 'displaySubLabel'
+            self.subLabel.yOffset = 19
+            self.subLabel.Startup(self)
+            self.subLabel.OnMouseUp = self.OnMouseUp
+            self.subLabel.OnMouseDown = self.OnMouseDown
+            self.subLabel.OnMouseEnter = self.OnMouseEnter
+            self.subLabel.OnMouseExit = self.OnMouseExit
+            self.subLabel.OnMouseHover = self.OnMouseHover
+            self.subLabel.OnClick = self.OnClick
+            self.subLabel.GetMenu = self.GetMenu
         if getattr(self, 'showLabel', True) == SHOWLABELS_ONMOUSEENTER:
             self.ShowTempIcon()
 
 
 
-    def KillLabel(self):
-        if not sm.GetService('bracket').ShowingHidden():
-            self.HideTempIcon()
+    def KillLabel(self, closing = False):
+        self.HideTempIcon(closing)
         if getattr(self, 'label', None):
             self.label.Close()
+        if getattr(self, 'subLabel', None):
+            self.subLabel.Close()
         self.label = None
+        self.subLabel = None
 
 
 
@@ -972,7 +1133,7 @@ class BaseBracket(uicls.Bracket):
 
 
     def _ShowLabel(self):
-        blue.pyos.synchro.Sleep(50)
+        blue.pyos.synchro.SleepWallclock(50)
         if self.destroyed:
             return 
         over = uicore.uilib.mouseOver
@@ -1094,9 +1255,7 @@ class Bracket(BaseBracket, UpdateEntry):
         if getattr(self, 'slimItem', None):
             if sm.GetService('menu').TryExpandActionMenu(self.itemID, uicore.uilib.x, uicore.uilib.y, self):
                 return 
-        nav = uix.GetInflightNav(0)
-        if nav:
-            nav.looking = 1
+        sm.GetService('viewState').GetView('inflight').layer.looking = True
 
 
 
@@ -1134,7 +1293,7 @@ class Bracket(BaseBracket, UpdateEntry):
 
 
     def OnClick(self, *args):
-        if self.sr.clicktime and blue.os.TimeDiffInMs(self.sr.clicktime) < 1000.0:
+        if self.sr.clicktime and blue.os.TimeDiffInMs(self.sr.clicktime, blue.os.GetWallclockTime()) < 1000.0:
             cameraSvc = sm.StartService('camera')
             if cameraSvc.IsFreeLook():
                 cameraSvc.LookAt(self.itemID)
@@ -1142,20 +1301,17 @@ class Bracket(BaseBracket, UpdateEntry):
             sm.GetService('state').SetState(self.itemID, state.selected, 1)
             slimItem = getattr(self, 'slimItem', None)
             if slimItem:
+                if uicore.uilib.Key(uiconst.VK_CONTROL):
+                    return 
                 sm.GetService('menu').Activate(slimItem)
             self.sr.clicktime = None
         else:
             sm.GetService('state').SetState(self.itemID, state.selected, 1)
             if sm.GetService('target').IsTarget(self.itemID):
                 sm.GetService('state').SetState(self.itemID, state.activeTarget, 1)
-            elif uicore.uilib.Key(uiconst.VK_CONTROL):
-                if uicore.uilib.Key(uiconst.VK_SHIFT):
-                    sm.GetService('fleet').SendBroadcast_Target(self.itemID)
-                else:
-                    sm.GetService('target').TryLockTarget(self.itemID)
-            elif uicore.uilib.Key(uiconst.VK_MENU):
-                sm.GetService('menu').TryLookAt(self.itemID)
-            self.sr.clicktime = blue.os.GetTime()
+            elif uicore.uilib.Key(uiconst.VK_CONTROL) and uicore.uilib.Key(uiconst.VK_SHIFT):
+                sm.GetService('fleet').SendBroadcast_Target(self.itemID)
+            self.sr.clicktime = blue.os.GetWallclockTime()
         sm.GetService('menu').TacticalItemClicked(self.itemID)
 
 
@@ -1179,12 +1335,13 @@ class Bracket(BaseBracket, UpdateEntry):
         time = sm.GetService('bracket').GetScanSpeed(source, slimItem)
         if target:
             par = uicls.Container(parent=target, width=82, height=13, left=36, top=37, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED)
-            t = uicls.Label(text='', parent=par, width=200, autowidth=False, left=6, top=1, fontsize=9, letterspace=1, uppercase=1, state=uiconst.UI_NORMAL)
+            t = uicls.EveLabelSmall(text='', parent=par, width=200, left=6, state=uiconst.UI_NORMAL)
             p = uicls.Fill(parent=par, align=uiconst.RELATIVE, width=80, height=11, left=1, top=1, color=(1.0, 1.0, 1.0, 0.25))
             uicls.Frame(parent=par, color=(1.0, 1.0, 1.0, 0.5))
-            startTime = blue.os.GetTime()
+            startTime = blue.os.GetSimTime()
+            lockedText = localization.GetByLabel('UI/Inflight/Brackets/TargetLocked')
             while 1:
-                now = blue.os.GetTime()
+                now = blue.os.GetSimTime()
                 dt = blue.os.TimeDiffInMs(startTime, now)
                 if self.scanAttributeChangeFlag:
                     waitRatio = dt / float(time)
@@ -1194,30 +1351,30 @@ class Bracket(BaseBracket, UpdateEntry):
                     dt = blue.os.TimeDiffInMs(startTime, now)
                 if t.destroyed:
                     return 
-                t.text = '%.3f %s' % ((time - dt) / 1000.0, [mls.UI_GENERIC_SECONDSHORT, mls.UI_GENERIC_SECONDSSHORT][((time - dt) / 1000.0 > 2.0)])
+                t.text = localization.GetByLabel('UI/Inflight/Brackets/TargetingCountdownTimer', numSeconds=(time - dt) / 1000.0)
                 if dt > time:
-                    t.text = mls.UI_INFLIGHT_LOCKED
+                    t.text = lockedText
                     break
                 p.width = int(80 * ((time - dt) / time))
                 blue.pyos.synchro.Yield()
 
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
             if t.destroyed:
                 return 
             t.text = ''
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
             if t.destroyed:
                 return 
-            t.text = mls.UI_INFLIGHT_LOCKED
-            blue.pyos.synchro.Sleep(250)
+            t.text = lockedText
+            blue.pyos.synchro.SleepWallclock(250)
             if t.destroyed:
                 return 
             t.text = ''
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
             if t.destroyed:
                 return 
-            t.text = mls.UI_INFLIGHT_LOCKED
-            blue.pyos.synchro.Sleep(250)
+            t.text = lockedText
+            blue.pyos.synchro.SleepWallclock(250)
             par.Close()
 
 
@@ -1398,7 +1555,7 @@ class ActiveTarget(uicls.Container):
              NOTCHLEN))
 
         rotate = uicls.Transform(parent=self, name='rotate', pos=(-22, -22, 108, 108), align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL)
-        sm.GetService('ui').Rotate(rotate, 2.0)
+        sm.GetService('ui').Rotate(rotate, 2.0, timeFunc=blue.os.GetSimTime)
         arrowLeft = uicls.Sprite(parent=rotate, name='arrowLeft', width=9, height=18, align=uiconst.CENTERLEFT, texturePath='res:/UI/Texture/classes/ActiveTarget/arrows.png')
         arrowLeft.rectLeft = 9
         arrowLeft.rectWidth = 9

@@ -2,8 +2,11 @@ import blue
 import yaml
 import trinity
 import log
+import os
 METASHADER_PATH = 'res:/Graphics/Shaders/MetashaderLibrary.yaml'
+TEXPACKS_PATH = 'res:/Graphics/Shaders/Texpacks/'
 _gMetaShaderLibrary = None
+_gMetaShaderPacking = None
 ENABLE_P4 = True
 
 class MetaMaterialParam:
@@ -26,12 +29,12 @@ def FindAreaResByMeshAndIndex(materialRes, mesh, areaIdx):
     try:
         meshRes = materialRes.meshes[meshName]
     except KeyError:
-        print 'KeyError! Missing mesh %s in materialRes' % meshName
+        log.LogWarn('KeyError! Missing mesh %s in materialRes' % meshName)
         return None
     try:
         areaRes = meshRes.areas[areaName]
     except KeyError:
-        print 'KeyError! Missing area %s in meshRes %s' % (areaName, meshName)
+        log.LogWarn('KeyError! Missing area %s in meshRes %s' % (areaName, meshName))
         return None
     return areaRes
 
@@ -68,14 +71,14 @@ class MaterialApplier:
         try:
             meshRes = self.materialRes.meshes[meshName]
         except KeyError:
-            print '===== Did not find mesh %s in materialRes!' % meshName
+            log.LogWarn('===== Did not find mesh %s in materialRes!' % meshName)
             return 
         for areaIdx in xrange(geo.GetMeshAreaCount(meshIdx)):
             areaName = geo.GetMeshAreaName(meshIdx, areaIdx)
             try:
                 areaRes = meshRes.areas[areaName]
             except KeyError:
-                print '===== Did not find area %s in materialRes!' % areaName
+                log.LogWarn('===== Did not find area %s in materialRes!' % areaName)
                 continue
             ApplyAreaRes(areaRes, self.mesh, areaIdx)
 
@@ -123,7 +126,7 @@ def ApplyMaterialRes(ob, materialRes):
         try:
             meshRes = materialRes.meshes[mesh.name]
         except KeyError:
-            print '===== Did not find mesh %s in materialRes!' % mesh.name
+            log.LogWarn('===== Did not find mesh %s in materialRes!' % mesh.name)
             continue
         if mesh.geometry is None:
             continue
@@ -151,7 +154,6 @@ def LoadAndApplyMaterialRes(ob, materialRes = None, initialize = False):
 
 def SerializeMaterialStore(resPath, materialStore):
     import CCP_P4 as P4
-    import os
     p4path = blue.rot.PathToFilename(resPath)
     destFolder = os.path.dirname(p4path)
     if not os.path.exists(destFolder):
@@ -167,9 +169,8 @@ def SerializeMaterialStore(resPath, materialStore):
 
 def SerializeMaterialRes(ob, materialRes, p4c = None, path = None):
     import CCP_P4 as P4
-    import os
-    resPath = GetResPath(ob)
     if path is None:
+        resPath = GetResPath(ob)
         path = GetMaterialPathFromGeometryPath(resPath)
     if not path:
         return 
@@ -177,14 +178,18 @@ def SerializeMaterialRes(ob, materialRes, p4c = None, path = None):
     destFolder = os.path.dirname(p4path)
     if not os.path.exists(destFolder):
         os.makedirs(destFolder)
-    inDepot = P4.getRoot().lower() in os.path.abspath(path).lower()
+    p4Root = P4.getRoot().lower()
+    p4Root = p4Root.replace('/', '\\')
+    osPath = os.path.abspath(path).lower()
+    osPath = osPath.replace('/', '\\')
+    inDepot = p4Root in osPath
     if inDepot and ENABLE_P4 is True:
         if not P4.P4FileInDepot(p4path, p4c):
             P4.P4Add2(p4path, p4c)
         else:
             P4.P4Edit2(p4path, p4c)
     if not blue.os.SaveObject(materialRes, path):
-        print '===== SAVING FAILED for file %s =====' % p4path
+        log.LogWarn('===== SAVING FAILED for file %s =====' % p4path)
 
 
 
@@ -241,12 +246,12 @@ def SetAreaMetaShader(materialRes, mesh, areaIdx, metashader):
     try:
         meshRes = materialRes.meshes[meshName]
     except KeyError:
-        print 'Mesh not found!'
+        log.LogWarn('Mesh not found!')
         return 
     try:
         areaRes = meshRes.areas[areaName]
     except KeyError:
-        print 'Area not found!'
+        log.LogWarn('Area not found!')
         return 
     areaRes.metatype = str(metashader)
     ApplyAreaRes(areaRes, mesh, areaIdx)
@@ -256,13 +261,13 @@ def SetAreaMetaShader(materialRes, mesh, areaIdx, metashader):
 def ApplyAreaRes(areaRes, mesh, areaIdx):
     geo = mesh.geometry
     if not (geo.isPrepared and geo.isGood):
-        print 'FAILED TO PREPARE MESH %s' % mesh.name
+        log.LogWarn('FAILED TO PREPARE MESH %s' % mesh.name)
         return 
     metashaders = LoadMetaMaterialLibrary()
     try:
         currentShader = metashaders[str(areaRes.metatype)]
     except KeyError:
-        print 'Unknown MetaMaterial: %s' % areaRes.metatype
+        log.LogWarn('Unknown MetaMaterial: %s' % areaRes.metatype)
         return 
     for typeIdx in xrange(mesh.GetAreasCount()):
         areaList = mesh.GetAreas(typeIdx)
@@ -294,11 +299,13 @@ def ApplyAreaRes(areaRes, mesh, areaIdx):
 
 
 
-def LoadMetaMaterialLibrary(resourceFile = METASHADER_PATH):
+def LoadMetaMaterialFile(resourceFile = METASHADER_PATH, forceload = False):
     global _gMetaShaderLibrary
-    if _gMetaShaderLibrary is not None:
-        return _gMetaShaderLibrary
+    global _gMetaShaderPacking
+    if _gMetaShaderLibrary is not None and _gMetaShaderPacking is not None and forceload is False:
+        return (_gMetaShaderLibrary, _gMetaShaderPacking)
     _gMetaShaderLibrary = {}
+    _gMetaShaderPacking = {}
     rf = blue.ResFile()
     if rf.FileExists(resourceFile):
         rf.Open(resourceFile)
@@ -307,8 +314,36 @@ def LoadMetaMaterialLibrary(resourceFile = METASHADER_PATH):
         data = yaml.load(yamlStr)
         for metashader in data['metashaders']:
             _gMetaShaderLibrary[metashader['name']] = metashader['areas']
+            try:
+                _gMetaShaderPacking[metashader['name']] = metashader['texpacks']
+            except:
+                pass
 
-    return _gMetaShaderLibrary
+    return (_gMetaShaderLibrary, _gMetaShaderPacking)
+
+
+
+def LoadMetaMaterialLibrary(resourceFile = METASHADER_PATH, forceload = False):
+    (library, packing,) = LoadMetaMaterialFile(resourceFile, forceload)
+    return library
+
+
+
+def LoadMetaMaterialPacking(resourceFile = METASHADER_PATH, forceload = False):
+    global TEXPACKS_PATH
+    (library, packing,) = LoadMetaMaterialFile(resourceFile, forceload)
+    packingPaths = dict()
+    for (k, texpack,) in packing.items():
+        path = os.path.join(TEXPACKS_PATH, texpack) + '.texpack'
+        packingPaths[k] = path
+
+    return packingPaths
+
+
+
+def GetPackingPathFromMetashader(metaShaderName):
+    packings = LoadMetaMaterialPacking()
+    return packings[metaShaderName]
 
 
 
@@ -390,7 +425,7 @@ def GetResPath(ob):
             return ob.visualModel.geometryResPath
         if hasattr(ob, 'placeableResPath'):
             return ob.placeableResPath
-        print 'UNKNOWN RESPATH for object type %s' % type(ob)
+        log.LogWarn('UNKNOWN RESPATH for object type %s' % type(ob))
         return None
 
 
@@ -406,6 +441,8 @@ def GetMeshList(ob):
                 return ob.visualModel.meshes
             if hasattr(ob, 'placeableRes'):
                 return ob.placeableRes.visualModel.meshes
+            if hasattr(ob, 'model') and hasattr(ob.model, 'meshes'):
+                return ob.model.meshes
             return None
     except AttributeError:
         return None
@@ -417,6 +454,8 @@ exports = {'metaMaterials.BindObjectShaders': BindObjectShaders,
  'metaMaterials.LoadMaterialResFromObject': LoadMaterialResFromObject,
  'metaMaterials.LoadAndApplyMaterialRes': LoadAndApplyMaterialRes,
  'metaMaterials.LoadMetaMaterialLibrary': LoadMetaMaterialLibrary,
+ 'metaMaterials.LoadMetaMaterialPacking': LoadMetaMaterialPacking,
+ 'metaMaterials.GetPackingPathFromMetashader': GetPackingPathFromMetashader,
  'metaMaterials.FindAreaResByMeshAndIndex': FindAreaResByMeshAndIndex,
  'metaMaterials.SetAreaMetaShader': SetAreaMetaShader,
  'metaMaterials.SerializeMaterialRes': SerializeMaterialRes,

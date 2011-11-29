@@ -14,28 +14,13 @@ import log
 import geo2
 from collections import defaultdict
 import audio2
+import localization
 BLUETIME_TO_SECONDS = 10000000.0
 
 def _ProximityCallBack(tutorialID, entidList):
     if session.charid not in entidList:
         return 
     sm.GetService('tutorial').OpenTutorialSequence_Check(tutorialID)
-
-
-
-class TutorialWindow(form.VirtualBrowser):
-    __guid__ = 'form.TutorialWindow'
-    default_width = 350
-    default_height = 305
-
-    def default_left(self):
-        return uicore.desktop.width - self.default_width
-
-
-
-    def default_top(self):
-        return uicore.desktop.height - self.default_height
-
 
 
 
@@ -56,8 +41,6 @@ class TutorialSvc(service.Service):
         self.loadingTutorial = 0
         self.tutorials = None
         self.tutorialConnections = None
-        self.contexthelp = None
-        self.mappedcontexthelp = {}
         self.tutorialInfos = {}
         self.sequences = {}
         self.waiting = None
@@ -65,7 +48,7 @@ class TutorialSvc(service.Service):
         self.oldHeight = None
         self.waitingForWarpConfirm = False
         self.uiPointerSvc = None
-        self.pageTime = blue.os.GetTime()
+        self.pageTime = blue.os.GetWallclockTime()
         self.careerAgents = {}
         self.tutorialNoob = True
 
@@ -85,7 +68,7 @@ class TutorialSvc(service.Service):
             return 
         tutorialBrowser = self.GetTutorialBrowser(create=0)
         if tutorialBrowser:
-            tutorialBrowser.CloseX()
+            tutorialBrowser.CloseByUser()
         else:
             self.Cleanup()
         self.LogInfo('Stopping Tutorial Service')
@@ -156,7 +139,7 @@ class TutorialSvc(service.Service):
     def SetSequenceStatus(self, sequenceID, tutorialID, pageNo, status = None):
         tutorialBrowser = self.GetTutorialBrowser(create=0)
         if tutorialBrowser and hasattr(tutorialBrowser, 'startTime'):
-            time = (blue.os.GetTime() - tutorialBrowser.startTime) / 10000000
+            time = (blue.os.GetWallclockTime() - tutorialBrowser.startTime) / 10000000
         else:
             time = 0
         stat = settings.char.ui.Get('SequenceStatus', {})
@@ -167,7 +150,9 @@ class TutorialSvc(service.Service):
             if eve.session.solarsystemid2 and tutorialID != uix.tutorial:
                 sm.GetService('neocom').StopAllBlink()
             if eve.session.stationid:
-                sm.GetService('station').StopAllBlinkButtons()
+                lobby = form.Lobby.GetIfOpen()
+                if lobby:
+                    lobby.StopAllBlinkButtons()
             del stat[sequenceID]
         elif status == 'done':
             stat[sequenceID] = 'done'
@@ -260,13 +245,13 @@ class TutorialSvc(service.Service):
 
 
     def GetShipuiRookieFilter(self, buttonname):
-        return {mls.UI_CMD_ZOOMIN: 21,
-         mls.UI_CMD_RESETCAMERA: 21,
-         mls.UI_CMD_ZOOMOUT: 21,
-         mls.UI_GENERIC_AUTOPILOT: 35,
-         mls.UI_GENERIC_TACTICAL: 21,
-         mls.UI_GENERIC_SCANNER: 21,
-         mls.UI_GENERIC_CARGO: 21}.get(buttonname, 1000)
+        return {localization.GetByLabel('UI/Commands/ZoomIn'): 21,
+         localization.GetByLabel('UI/Commands/ResetCamera'): 21,
+         localization.GetByLabel('UI/Commands/ZoomOut'): 21,
+         localization.GetByLabel('UI/Generic/Autopilot'): 35,
+         localization.GetByLabel('UI/Generic/Tactical'): 21,
+         localization.GetByLabel('UI/Generic/Scanner'): 21,
+         localization.GetByLabel('UI/Generic/Cargo'): 21}.get(buttonname, 1000)
 
 
 
@@ -276,7 +261,8 @@ class TutorialSvc(service.Service):
         for (tutorialID, tutorialData,) in tutorials.iteritems():
             if tutorialData.categoryID not in byCategs:
                 byCategs[tutorialData.categoryID] = []
-            byCategs[tutorialData.categoryID].append((tutorialData.tutorialName, tutorialData))
+            tutorialName = localization.GetByMessageID(tutorialData.tutorialNameID)
+            byCategs[tutorialData.categoryID].append((tutorialName, tutorialData))
 
         for (k, v,) in byCategs.iteritems():
             byCategs[k] = uiutil.SortListOfTuples(v)
@@ -353,8 +339,10 @@ class TutorialSvc(service.Service):
 
 
 
-    def GetTutorialBrowser(self, id = 'aura9', create = 1):
-        tutorialBrowser = sm.GetService('window').GetWindow(id, decoClass=form.TutorialWindow, create=create)
+    def GetTutorialBrowser(self, create = 1):
+        tutorialBrowser = form.TutorialWindow.GetIfOpen()
+        if not tutorialBrowser and create:
+            tutorialBrowser = form.TutorialWindow.Open()
         if tutorialBrowser:
             tutorialBrowser.constrainScreen = True
             if tutorialBrowser.sr.stack is not None:
@@ -375,28 +363,27 @@ class TutorialSvc(service.Service):
             tutorialBrowser.MakeUnMinimizable()
             tutorialBrowser.MakeUnstackable()
             tutorialBrowser.SetMinSize([350, 220])
-            tutorialBrowser.OnClose_ = self.OnCloseWnd
+            tutorialBrowser._OnClose = self.OnCloseWnd
             tutorialBrowser.sr.imgpar = uicls.Container(name='imgpar', parent=uiutil.GetChild(tutorialBrowser, 'main'), align=uiconst.TOLEFT, width=64, idx=4, state=uiconst.UI_HIDDEN, clipChildren=1)
             imgparclipper = uicls.Container(name='imgparclipper', parent=tutorialBrowser.sr.imgpar, align=uiconst.TOALL, left=5, top=5, width=5, height=5, clipChildren=1)
             tutorialBrowser.sr.img = uicls.Sprite(parent=imgparclipper, align=uiconst.RELATIVE, left=1, top=1)
             uicls.Frame(parent=tutorialBrowser.sr.imgpar, color=(1.0, 1.0, 1.0, 0.25), padding=(4, 4, 4, 4))
             tutorialBrowser.sr.bottom = uicls.Container(name='bottom', parent=tutorialBrowser.sr.maincontainer, align=uiconst.TOBOTTOM, height=22, idx=0)
-            tutorialBrowser.sr.back = uicls.Button(parent=tutorialBrowser.sr.bottom, label=mls.UI_CMD_BACK, func=self.Back, pos=(3, 0, 0, 0))
+            tutorialBrowser.sr.back = uicls.Button(parent=tutorialBrowser.sr.bottom, label=localization.GetByLabel('UI/Commands/Back'), func=self.Back, pos=(3, 0, 0, 0))
             tutorialBrowser.sr.back.name = 'tutorialBackBtn'
-            tutorialBrowser.sr.next = uicls.Button(parent=tutorialBrowser.sr.bottom, label=mls.UI_CMD_NEXT, func=self.Next, align=uiconst.TOPRIGHT, pos=(3, 0, 0, 0), btn_default=1)
+            tutorialBrowser.sr.next = uicls.Button(parent=tutorialBrowser.sr.bottom, label=localization.GetByLabel('UI/Commands/Next'), func=self.Next, align=uiconst.TOPRIGHT, pos=(3, 0, 0, 0), btn_default=1)
             tutorialBrowser.Confirm = self.Next
             tutorialBrowser.sr.next.name = 'tutorialNextBtn'
-            tutorialBrowser.sr.text = uicls.Label(text='', parent=tutorialBrowser.sr.bottom, state=uiconst.UI_DISABLED, align=uiconst.CENTER)
+            tutorialBrowser.sr.text = uicls.EveLabelMedium(text='', parent=tutorialBrowser.sr.bottom, state=uiconst.UI_DISABLED, align=uiconst.CENTER)
             tutorialBrowser.sr.browser.sr.activeframe.SetRGB(1.0, 1.0, 1.0, 0.0)
             uicls.Frame(parent=tutorialBrowser.sr.browser, color=(1.0, 1.0, 1.0, 0.25), padding=(-1, -1, -1, -1))
             top = tutorialBrowser.sr.tTop = uicls.Container(name='tTop', parent=tutorialBrowser.sr.topParent, align=uiconst.TOALL, padding=(64, 0, 64, 0), idx=0)
-            tutorialBrowser.sr.captionText = uicls.Label(text='', parent=top, align=uiconst.TOTOP, fontsize=18, top=10, autowidth=False, state=uiconst.UI_DISABLED, uppercase=1)
+            tutorialBrowser.sr.captionText = uicls.Label(text='', parent=top, align=uiconst.TOTOP, fontsize=18, top=10, state=uiconst.UI_DISABLED, uppercase=1)
             tutorialBrowser.sr.captionText.mmbold = 0.75
             tutorialBrowser.sr.captionText.OnSizeChanged = self.CheckTopHeight
-            tutorialBrowser.sr.subcaption = uicls.Label(text='', parent=top, align=uiconst.TOTOP, fontsize=12, autowidth=False, state=uiconst.UI_DISABLED)
+            tutorialBrowser.sr.subcaption = uicls.EveLabelMedium(text='', parent=top, align=uiconst.TOTOP, state=uiconst.UI_DISABLED)
             tutorialBrowser.sr.browser.AllowResizeUpdates(1)
-            uiutil.Transplant(tutorialBrowser, uicore.layer.abovemain)
-            tutorialBrowser._CloseClick = self.AskClose
+            tutorialBrowser.SetParent(uicore.layer.abovemain)
         return tutorialBrowser
 
 
@@ -408,6 +395,8 @@ class TutorialSvc(service.Service):
                 categories = sm.RemoteSvc('tutorialSvc').GetCategories()
                 for category in categories:
                     self.categories[category.categoryID] = category
+                    self.categories[category.categoryID].categoryName = localization.GetByMessageID(category.categoryNameID)
+                    self.categories[category.categoryID].description = localization.GetByMessageID(category.descriptionID)
 
             except:
                 sys.exc_clear()
@@ -473,50 +462,6 @@ class TutorialSvc(service.Service):
 
 
 
-    def GetContextHelp(self):
-        if self.contexthelp is None:
-            try:
-                self.contexthelp = sm.RemoteSvc('tutorialSvc').GetContextHelp()
-            except:
-                sys.exc_clear()
-                return 
-        return self.contexthelp
-
-
-
-    def GetMappedContextHelp(self, helpkeys = []):
-        if session.languageID not in ('EN', 'IS'):
-            return 
-        if not self.mappedcontexthelp:
-            keymap = {}
-            ret = self.GetContextHelp()
-            if ret:
-                for row in ret:
-                    keywords = [ each.strip() for each in row.keywords.split(',') if mls.HasLabel(each.strip()) ]
-                    if not keywords:
-                        continue
-                    key = (str(row.contextID),) + tuple([ mls.GetLabel(k) for k in keywords ])
-                    if key not in keymap.keys():
-                        keymap[key] = row
-
-            self.mappedcontexthelp = keymap
-        haveit = []
-        rethelp = []
-        for helpkey in helpkeys:
-            for key in self.mappedcontexthelp.iterkeys():
-                helpData = self.mappedcontexthelp[key]
-                for keyword in key:
-                    if helpkey.lower().startswith(keyword.lower()) and helpData.contextID not in haveit:
-                        rethelp.append(((len(key) != 2, helpData.description), helpData))
-                        haveit.append(helpData.contextID)
-
-
-
-        rethelp = uiutil.SortListOfTuples(rethelp)
-        return rethelp
-
-
-
     def OnClearTutorialCache(self):
         self.tutorialInfos = {}
 
@@ -546,11 +491,11 @@ class TutorialSvc(service.Service):
             (oldCharID, newCharID,) = change['charid']
             if newCharID is not None:
                 self.GetCharacterTutorialState()
-        funnel = sm.StartService('window').GetWindow('careerFunnel', decoClass=CareerFunnelWindow, create=0, maximize=0)
+        funnel = form.CareerFunnelWindow.GetIfOpen()
         if funnel:
             if util.IsWormholeSystem(eve.session.solarsystemid):
                 eve.Message('NoAgentsInWormholes')
-                funnel.CloseX()
+                funnel.CloseByUser()
                 return 
             funnel.RefreshEntries()
 
@@ -559,7 +504,7 @@ class TutorialSvc(service.Service):
     def OnCloseApp(self):
         tutorialBrowser = self.GetTutorialBrowser(create=0)
         if tutorialBrowser and hasattr(tutorialBrowser, 'current') and hasattr(tutorialBrowser, 'startTime'):
-            time = (blue.os.GetTime() - tutorialBrowser.startTime) / 10000000
+            time = (blue.os.GetWallclockTime() - tutorialBrowser.startTime) / 10000000
             tutorialID = tutorialBrowser.current[0]
             pageNo = tutorialBrowser.current[1]
             if tutorialID is not None and pageNo is not None:
@@ -573,7 +518,7 @@ class TutorialSvc(service.Service):
             (tutorialID, pageNo, pageID, pageCount, sequenceID, VID, pageActionID,) = tutorialBrowser.current
             if sequenceID:
                 if hasattr(tutorialBrowser, 'startTime'):
-                    time = (blue.os.GetTime() - tutorialBrowser.startTime) / 10000000
+                    time = (blue.os.GetWallclockTime() - tutorialBrowser.startTime) / 10000000
                 else:
                     time = 0
                 if not getattr(tutorialBrowser, 'done', 0):
@@ -587,12 +532,12 @@ class TutorialSvc(service.Service):
                         self.SetSequenceStatus(sequenceID, tutorialID, pageNo, 'aborted')
                 else:
                     self.SetSequenceStatus(sequenceID, tutorialID, pageNo, 'done')
-        tutorialBrowser.SelfDestruct()
+        tutorialBrowser.Close()
         self.uiPointerSvc.ClearPointers()
 
 
 
-    def OnCloseWnd(self, tutorialBrowser, *args):
+    def OnCloseWnd(self, *args):
         uthread.new(self.Cleanup)
 
 
@@ -638,11 +583,11 @@ class TutorialSvc(service.Service):
             if pageNo is not None:
                 if self.LogPageCompletion is None:
                     self.LogPageCompletion = sm.GetService('infoGatheringSvc').GetEventIGSHandle(const.infoEventTutorialPageCompletion)
-                timeSpent = (blue.os.GetTime() - self.pageTime) / BLUETIME_TO_SECONDS
+                timeSpent = (blue.os.GetWallclockTime() - self.pageTime) / BLUETIME_TO_SECONDS
                 self.LogPageCompletion(itemID=eve.session.charid, itemID2=tutorialID, int_1=pageNo, float_1=timeSpent)
                 if pageNo == 1:
                     if tutorialBrowser and hasattr(tutorialBrowser, 'startTime'):
-                        time = (blue.os.GetTime() - tutorialBrowser.startTime) / 10000000
+                        time = (blue.os.GetWallclockTime() - tutorialBrowser.startTime) / 10000000
                     else:
                         time = 0
                     sm.RemoteSvc('tutorialSvc').LogStarted(tutorialID, pageNo, int(time))
@@ -653,7 +598,7 @@ class TutorialSvc(service.Service):
                         if nextTutorialID:
                             self.OpenTutorial(nextTutorialID, VID=VID, sequenceID=sequenceID)
                             return 
-                    tutorialBrowser.CloseX()
+                    tutorialBrowser.CloseByUser()
                     return 
                 self.ExecutePageAction(pageActionID)
                 pageNo += 1
@@ -662,11 +607,7 @@ class TutorialSvc(service.Service):
 
 
     def ShowCareerFunnel(self):
-        funnel = sm.GetService('window').GetWindow('careerFunnel', decoClass=CareerFunnelWindow, create=0)
-        if not funnel:
-            sm.GetService('window').GetWindow('careerFunnel', decoClass=CareerFunnelWindow, create=1, maximize=1)
-        else:
-            funnel.Maximize()
+        form.CareerFunnelWindow.Open()
 
 
 
@@ -730,7 +671,7 @@ class TutorialSvc(service.Service):
         self.waitingForWarpConfirm = True
         browser.sr.next.state = uiconst.UI_NORMAL
         browser.sr.next.OnClick = self.WarpToBallpark
-        browser.sr.next.SetLabel(mls.UI_CMD_WARPTO)
+        browser.sr.next.SetLabel(localization.GetByLabel('UI/Commands/WarpTo'))
         browser.sr.text.text = ''
 
 
@@ -749,7 +690,7 @@ class TutorialSvc(service.Service):
         browser = self.GetTutorialBrowser()
         browser.sr.next.state = uiconst.UI_NORMAL
         browser.sr.next.OnClick = self.Reload
-        browser.sr.next.SetLabel(mls.UI_CMD_NEXT)
+        browser.sr.next.SetLabel(localization.GetByLabel('UI/Commands/Next'))
         browser.sr.text.text = ''
 
 
@@ -760,7 +701,7 @@ class TutorialSvc(service.Service):
 
 
     def OpenTutorial(self, tutorialID = None, pageNo = None, pageID = None, sequenceID = None, force = 0, VID = None, skipCriteria = False, checkBack = 0, click = 0):
-        self.pageTime = blue.os.GetTime()
+        self.pageTime = blue.os.GetWallclockTime()
         tutorialBrowser = self.GetTutorialBrowser()
         if self.loadingTutorial and tutorialBrowser:
             return 
@@ -809,9 +750,9 @@ class TutorialSvc(service.Service):
                 caption.letterspace = 2
                 loop = 1
                 while 1:
-                    caption.text = Tr(tutData.tutorial[0].tutorialName, 'tutorial.tutorials.tutorialName', tutData.tutorial[0].dataID)
+                    caption.text = localization.GetByMessageID(tutData.tutorial[0].tutorialNameID)
                     if pageData and pageData.pageName:
-                        tutorialBrowser.sr.subcaption.text = Tr(pageData.pageName, 'tutorial.pages.pageName', pageData.dataID)
+                        tutorialBrowser.sr.subcaption.text = localization.GetByMessageID(pageData.pageNameID)
                         tutorialBrowser.sr.subcaption.state = uiconst.UI_DISABLED
                     else:
                         tutorialBrowser.sr.subcaption.state = uiconst.UI_HIDDEN
@@ -867,42 +808,41 @@ class TutorialSvc(service.Service):
                 if criteriaCheck:
                     if preRookieState:
                         eve.SetRookieState(preRookieState)
-                    body += '<br>' + Tr(criteriaCheck.messageText, 'tutorial.criterias.messageText', criteriaCheck.dataID)
+                    body += '<br>' + localization.GetByMessageID(criteriaCheck.messageTextID)
                     if pageNo > 1 or sequenceID and self.GetNextInSequence(tutorialID, sequenceID, -1):
                         tutorialBrowser.sr.back.state = uiconst.UI_NORMAL
                     if self.waitingForWarpConfirm == False:
                         tutorialBrowser.sr.next.state = uiconst.UI_NORMAL
                         tutorialBrowser.sr.next.OnClick = self.Reload
                         tutorialBrowser.Confirm = self.Reload
-                        tutorialBrowser.sr.next.SetLabel(mls.UI_CMD_NEXT)
+                        tutorialBrowser.sr.next.SetLabel(localization.GetByLabel('UI/Commands/Next'))
                         tutorialBrowser.sr.text.text = ''
                     tutorialBrowser.sr.back.OnClick = self.Back
                     if checkBack:
                         tutorialBrowser.reverseBack = 1
                 else:
                     self.ParseActions(actions)
-                    tutorialBrowser.sr.text.text = mls.UI_TUTORIAL_PAGEOF % {'num': dispPageNo,
-                     'total': dispPageCount}
+                    tutorialBrowser.sr.text.text = localization.GetByLabel('UI/Tutorial/PageOf', num=dispPageNo, total=dispPageCount)
                     if pageNo > 1 or sequenceID and self.GetNextInSequence(tutorialID, sequenceID, -1):
                         tutorialBrowser.sr.back.state = uiconst.UI_NORMAL
                     self.SetCriterias(check)
                     if pageData:
                         page = pageData
-                        body += '%s' % Tr(page.text, 'tutorial.pages.text', page.dataID)
+                        body += '%s' % localization.GetByMessageID(page.textID)
                         tutorialBrowser.sr.next.state = uiconst.UI_NORMAL
                         tutorialBrowser.sr.next.OnClick = self.Next
                         tutorialBrowser.Confirm = self.Next
                         tutorialBrowser.sr.back.OnClick = self.Back
                         if pageNo < pageCount or sequenceID and self.GetNextInSequence(tutorialID, sequenceID):
-                            tutorialBrowser.sr.next.SetLabel(mls.UI_CMD_NEXT)
+                            tutorialBrowser.sr.next.SetLabel(localization.GetByLabel('UI/Commands/Next'))
                         else:
-                            tutorialBrowser.sr.next.SetLabel(mls.UI_CMD_DONE)
+                            tutorialBrowser.sr.next.SetLabel(localization.GetByLabel('UI/Commands/Done'))
                             tutorialBrowser.done = 1
                         imagePath = page.imagePath
                 body += '\n                            Page %s was not found in this tutorial.\n                            ' % pageNo
             else:
-                tutorialBrowser.sr.captionText.text = mls.UI_TUTORIAL_EVETUTORIALS
-                body = '%s %s' % (mls.UI_TUTORIAL_UNKNOWNTUTORIAL, tutorialID)
+                tutorialBrowser.sr.captionText.text = localization.GetByLabel('UI/Tutorial/EveTutorials')
+                body = '%s %s' % (localization.GetByLabel('UI/Tutorial/UnknownTutorial'), tutorialID)
             body += '</body></html>'
             self.CheckTopHeight()
             tutorialBrowser.LoadHTML('', hideBackground=1, newThread=0)
@@ -919,9 +859,9 @@ class TutorialSvc(service.Service):
             if goodieHtml:
                 body += '<br>%s' % goodieHtml
             tutorialBrowser.LoadHTML(body, hideBackground=1, newThread=0)
-            tutorialBrowser.SetCaption(mls.UI_SHARED_TUTORIAL)
+            tutorialBrowser.SetCaption(localization.GetByLabel('UI/Tutorial/UnknownTutorial'))
             if not hasattr(tutorialBrowser, 'current') or tutorialBrowser.current[4] != sequenceID:
-                tutorialBrowser.startTime = blue.os.GetTime()
+                tutorialBrowser.startTime = blue.os.GetWallclockTime()
             tutorialBrowser.current = (tutorialID,
              pageNo,
              pageID,
@@ -940,7 +880,7 @@ class TutorialSvc(service.Service):
             for page in tutData.pages:
                 if page.pageID == pageID or page.pageNumber == pageNo:
                     if not criteriaCheck:
-                        translatedText = Tr(page.uiPointerText, 'tutorial.pages.uiPointerText', page.dataID)
+                        translatedText = localization.GetByMessageID(page.uiPointerTextID)
                         self.uiPointerSvc.PointTo(page.uiPointerID, translatedText)
                         found = True
                         break
@@ -982,14 +922,14 @@ class TutorialSvc(service.Service):
         goodieHtml = ''
         if len(goodies) != 0:
             if goodies[0] == -1:
-                goodieHtml += '\n                        <br>\n                        <font size=12>%s</font>\n                        <br><br>\n                ' % mls.UI_TUTORIAL_TUTORIALGOODIE_ALREADY_RECEIVED
+                goodieHtml += '\n                        <br>\n                        <font size=12>%s</font>\n                        <br><br>\n                ' % localization.GetByLabel('UI/Tutorial/TutorialGoodie/AlreadyReceived')
                 return goodieHtml
             for goodie in goodies:
                 type = cfg.invtypes.Get(goodie.invTypeID)
                 goodieHtml += '\n                        <hr>\n                        <p>\n                        <img style=margin-right:0;margin-bottom:0 src="typeicon:typeID=%s&bumped=1&showFitting=0" align=left>\n                        <font size=20 margin-left=20>%s</font>\n                        <a href=showinfo:%s><img style:vertical-align:bottom src="icon:38_208" size=16 alt="%s"></a>\n                        <br>\n                        <font size=12>%s</font>\n                        <br>\n                        </p>\n                    ' % (goodie.invTypeID,
                  type.typeName,
                  goodie.invTypeID,
-                 mls.UI_CMD_SHOWINFO,
+                 localization.GetByLabel('UI/Commands/ShowInfo'),
                  type.description)
 
             self.GiveGoodies(tutorialID, pageID, pageNo)
@@ -1050,7 +990,7 @@ class TutorialSvc(service.Service):
             if len(split_criteria) > 1:
                 key = split_criteria[1]
                 if self.Precondition_Checknameinballpark(key):
-                    info = Tr(self.nogateactivate.messageText, 'tutorial.criterias.messageText', self.nogateactivate.dataID)
+                    info = localization.GetByMessageID(self.nogateactivate.messageTextID)
                     eve.Message('CustomInfo', {'info': info})
                     return False
         return True
@@ -1071,7 +1011,7 @@ class TutorialSvc(service.Service):
                         currentTutorialID = tutorialID
                     (sequenceID, tutorialID,) = (int(sequenceID), int(tutorialID))
                     if sequenceID == currentSequenceID and not self.CheckTutorialDone(sequenceID, tutorialID):
-                        info = Tr(self.nowarpactive.messageText, 'tutorial.criterias.messageText', self.nowarpactive.dataID)
+                        info = localization.GetByMessageID(self.nowarpactive.messageTextID)
                         eve.Message('CustomInfo', {'info': info})
                         return False
         return True
@@ -1123,18 +1063,18 @@ class TutorialSvc(service.Service):
                         r = self._TutorialSvc__WarpToTutorial()
                         if r[0] in (0, 2):
                             if r[0] == 0:
-                                tutorialBrowser.CloseX()
+                                tutorialBrowser.CloseByUser()
                             if r[1] is not None:
                                 ret = eve.Message(r[1])
                 func = getattr(self, 'Precondition_%s' % funcName.capitalize(), None)
                 if func:
                     ok = func(key)
                     if not ok:
-                        if funcName.lower() in ('wndopen', 'wndclosed', 'session', 'stationsvc', 'checklocktarget', 'checkballpark', 'checknotinballpark', 'checkcomplex', 'checkactivemodule', 'checkcargo', 'checknotincargo', 'checkhangar', 'checknotinship', 'checknotinhangar', 'checkincargoorhangar', 'checknameinballpark', 'checknamenotinballpark', 'checkhasskill', 'checkskilltraining', 'checktutorialagent', 'checkdronebay', 'checknotindronebay', 'entitygeneratorproximity', 'inspaceorentitygeneratorproximity'):
+                        if funcName.lower() in ('wndopen', 'wndclosed', 'session', 'stationsvc', 'checklocktarget', 'checkballpark', 'checknotinballpark', 'checkcomplex', 'checkactivemodule', 'checkcargo', 'checknotincargo', 'checkhangar', 'checknotinship', 'checknotinhangar', 'checkincargoorhangar', 'checknameinballpark', 'checknamenotinballpark', 'checkhasskill', 'checkskilltraining', 'checktutorialagent', 'checkdronebay', 'checknotindronebay', 'entityspawnproximity', 'inspaceorentityspawnproximity'):
                             uthread.new(self.WaitForCriteria, key, func, tutorialBrowser)
                         if funcName == 'checkBallpark' and key == 'groupCloud' and not self.IsShipWarping():
                             self.ShowWarpToButton()
-                        if criteriaData.messageText:
+                        if criteriaData.messageTextID:
                             return criteriaData
                         raise RuntimeError('ParseCriterias: Missing Criteria message!!!<br>Criteraname: (%s)' % criteriaData.criteriaName)
                 else:
@@ -1146,7 +1086,7 @@ class TutorialSvc(service.Service):
     def WaitForCriteria(self, key, func, tutorialBrowser):
         self.waiting = tutorialBrowser
         while self.waiting and not self.waiting.destroyed and not func(key):
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
 
         if self.waiting and not self.waiting.destroyed:
             self.ReloadTutorialBrowser(self.waiting)
@@ -1288,18 +1228,18 @@ class TutorialSvc(service.Service):
         self.LogInfo('Precondition_Wndopen key:', key)
         key = key.lower()
         if key == 'map':
-            return bool(sm.GetService('map').ViewingStarMap() or sm.GetService('map').ViewingSystemMap())
+            return sm.GetService('viewState').IsViewActive('systemmap', 'starmap')
         if key == 'tacticaloverlay':
             return not not settings.user.overview.Get('viewTactical', 0)
         if key == 'ships':
-            key = 'shipHangar'
+            key = form.ShipHangar.default_windowID
         elif key == 'items':
-            key = 'hangarFloor'
+            key = form.ItemHangar.default_windowID
         elif key == 'cargo':
             key = 'shipCargo_%s' % eve.session.shipid
         elif key == 'dronebay':
             key = 'drones_%s' % eve.session.shipid
-        if bool(sm.GetService('window').GetWindow(key)):
+        if bool(uicls.Window.IsOpen(key)):
             return True
         if eve.session.stationid and sm.GetService('station').GetSvc(key) is not None:
             return True
@@ -1316,13 +1256,13 @@ class TutorialSvc(service.Service):
         self.LogInfo('Precondition_Stationsvc key:', key)
         key = key.lower()
         if eve.session.stationid:
-            while not sm.GetService('station').GetLobby():
-                blue.pyos.synchro.Sleep(1)
+            while not form.Lobby.GetIfOpen():
+                blue.pyos.synchro.SleepWallclock(1)
 
             if key == 'reprocessingplant':
                 return sm.GetService('reprocessing').IsVisible()
             if key == 'fitting':
-                wnd = sm.GetService('window').GetWindow('fitting')
+                wnd = form.FittingWindow.GetIfOpen()
                 if wnd:
                     wnd.Maximize()
                     return wnd
@@ -1401,7 +1341,7 @@ class TutorialSvc(service.Service):
             if not id:
                 log.LogWarn('%s Failed: %s not found in const' % (condname, key))
                 return False
-            inventory = eve.GetInventoryFromId(eve.session.shipid)
+            inventory = sm.GetService('invCache').GetInventoryFromId(eve.session.shipid)
             return self.IsInInventory(inventory, key, id, flags=uix.FittingFlags())
         return False
 
@@ -1418,7 +1358,7 @@ class TutorialSvc(service.Service):
             if not id:
                 log.LogWarn('%s Failed:, %s not found in const' % (condname, key))
                 return False
-            inventory = eve.GetInventory(const.containerHangar)
+            inventory = sm.GetService('invCache').GetInventory(const.containerHangar)
             return self.IsInInventory(inventory, key, id)
         return False
 
@@ -1435,7 +1375,7 @@ class TutorialSvc(service.Service):
             if not id:
                 log.LogWarn('%s Failed: %s not found in const' % (condname, key))
                 return False
-            inventory = eve.GetInventoryFromId(eve.session.shipid)
+            inventory = sm.GetService('invCache').GetInventoryFromId(eve.session.shipid)
             return self.IsInInventory(inventory, key, id, 'Cargo')
         return False
 
@@ -1452,7 +1392,7 @@ class TutorialSvc(service.Service):
             if not id:
                 log.LogWarn('%s Failed: %s not found in const' % (condname, key))
                 return False
-            inventory = eve.GetInventoryFromId(eve.session.shipid)
+            inventory = sm.GetService('invCache').GetInventoryFromId(eve.session.shipid)
             return self.IsInInventory(inventory, key, id, 'DroneBay')
         return False
 
@@ -1495,8 +1435,8 @@ class TutorialSvc(service.Service):
 
     def Precondition_Stationbtnblink(self, key):
         if eve.session.stationid:
-            while not sm.GetService('station').GetLobby():
-                blue.pyos.synchro.Sleep(1)
+            while not form.Lobby.GetIfOpen():
+                blue.pyos.synchro.SleepWallclock(1)
 
             sm.GetService('station').BlinkButton(key)
         return True
@@ -1519,7 +1459,7 @@ class TutorialSvc(service.Service):
 
     def Precondition_Activeitembtnblink(self, key):
         if eve.session.solarsystemid2:
-            selecteditem = sm.GetService('window').GetWindow('selecteditemview')
+            selecteditem = form.ActiveItem.GetIfOpen()
             if selecteditem:
                 selecteditem.BlinkBtn(key)
         return True
@@ -1578,8 +1518,8 @@ class TutorialSvc(service.Service):
 
 
     def Precondition_Agentdialogueopen(self, key):
-        for window in sm.GetService('window').GetValidWindows():
-            if type(window) is form.AgentDialogueWindow:
+        for window in uicore.registry.GetWindows():
+            if isinstance(window, form.AgentDialogueWindow):
                 return True
 
         return False
@@ -1597,29 +1537,33 @@ class TutorialSvc(service.Service):
         return False
 
 
+    entitySpawnDict = {1: {const.typeAmarrCaptainsQuarters: 2594,
+         const.typeCaldariCaptainsQuarters: 2596,
+         const.typeGallenteCaptainsQuarters: 2597,
+         const.typeMinmatarCaptainsQuarters: 4544}}
 
-    def Precondition_Entitygeneratorproximity(self, key):
+    def Precondition_Entityspawnproximity(self, key):
         if not session.worldspaceid:
             return False
-        (generatorID, distance,) = key.split(',')
-        generatorID = int(generatorID.split(':')[1])
-        distance = float(distance.split(':')[1])
-        for generatorRow in sm.GetService('entitySpawnClient').GetGenerators(session.worldspaceid):
-            if generatorRow.generatorID != generatorID:
-                continue
-            generatorPos = (generatorRow.spawnPointX, generatorRow.spawnPointY, generatorRow.spawnPointZ)
-            playerEnt = sm.GetService('entityClient').GetPlayerEntity()
-            playerPos = playerEnt.GetComponent('position').position
-            return geo2.Vec3Distance(playerPos, generatorPos) <= distance
+        (spawnIDType, distance,) = key.split(':')
+        spawnIDType = int(spawnIDType)
+        distance = float(distance)
+        worldspaceTypeID = sm.GetService('worldSpaceClient').GetWorldSpaceTypeIDFromWorldSpaceID(session.worldspaceid)
+        spawnID = self.entitySpawnDict.get(spawnIDType, {}).get(worldspaceTypeID, None)
+        if spawnID is None or spawnID not in cfg.entitySpawns:
+            return False
+        spawnRow = cfg.entitySpawns.Get(spawnID)
+        spawnPosition = (spawnRow.spawnPointX, spawnRow.spawnPointY, spawnRow.spawnPointZ)
+        playerEnt = sm.GetService('entityClient').GetPlayerEntity()
+        playerPos = playerEnt.GetComponent('position').position
+        return geo2.Vec3Distance(playerPos, spawnPosition) <= distance
 
-        return False
 
 
-
-    def Precondition_Inspaceorentitygeneratorproximity(self, key):
+    def Precondition_Inspaceorentityspawnproximity(self, key):
         if self.Precondition_Session('inflight'):
             return True
-        if self.Precondition_Entitygeneratorproximity(key):
+        if self.Precondition_Entityspawnproximity(key):
             return True
         return False
 
@@ -1648,7 +1592,7 @@ class TutorialSvc(service.Service):
     def _ActionWaitForCriteriaTasklet(self, criteria, actionData, func):
         waiting = self.GetTutorialBrowser(create=False)
         while True:
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
             if not waiting or waiting.destroyed or waiting is not self.GetTutorialBrowser(create=False):
                 return 
             for (preconditionFunc, key,) in criteria:
@@ -1723,7 +1667,7 @@ class TutorialSvc(service.Service):
 
 
     def GetCharacterTutorialState(self):
-        self.tutorialNoob = blue.os.GetTime() < sm.RemoteSvc('userSvc').GetCreateDate() + 14 * const.DAY
+        self.tutorialNoob = blue.os.GetWallclockTime() < sm.RemoteSvc('userSvc').GetCreateDate() + 14 * const.DAY
         showTutorials = settings.char.ui.Get('showTutorials', None)
         sequenceStatus = settings.char.ui.Get('SequenceStatus', None)
         sequenceDoneStatus = settings.char.ui.Get('SequenceDoneStatus', None)
@@ -1771,7 +1715,7 @@ class TutorialSvc(service.Service):
 
 
     def ChangeTutorialWndState(self, visible = 0):
-        tutorialWnd = sm.GetService('window').GetWindow('aura9', decoClass=form.TutorialWindow, create=0)
+        tutorialWnd = form.TutorialWindow.GetIfOpen()
         if tutorialWnd:
             state = settings.char.ui.Get('tutorialHiddenUIState', uiconst.UI_NORMAL)
             if visible:
@@ -1805,8 +1749,34 @@ class TutorialSvc(service.Service):
 
 
 
+class TutorialWindow(form.VirtualBrowser):
+    __guid__ = 'form.TutorialWindow'
+    default_windowID = 'aura9'
+    default_width = 350
+    default_height = 240
+
+    @staticmethod
+    def default_top(*args):
+        return uicore.desktop.height - 270
+
+
+
+    @staticmethod
+    def default_left(*args):
+        (leftpush, rightpush,) = sm.GetService('neocom').GetSideOffset()
+        return uicore.desktop.width - 360 - rightpush
+
+
+
+    def CloseByUser(self, *args):
+        sm.GetService('tutorial').AskClose()
+
+
+
+
 class CareerFunnelWindow(uicls.Window):
     __guid__ = 'form.CareerFunnelWindow'
+    default_windowID = 'careerFunnel'
     notifiers = None
 
     def ApplyAttributes(self, attributes):
@@ -1823,21 +1793,17 @@ class CareerFunnelWindow(uicls.Window):
         self.left += leftpush
         self.top = 0
         self.SetWndIcon('03_10', hidden=True)
-        self.SetCaption(mls.UI_TUTORIAL_CAREERFUNNEL)
+        self.SetCaption(localization.GetByLabel('UI/Tutorial/CareerFunnel'))
         self.height = 500
         self.SetMinSize([self.currWidth, self.height])
-        self.sr.headerContainer = uicls.Container(name='headerContainer', parent=self.sr.main, align=uiconst.TOTOP, height=28, left=0, top=0)
-        headerText = uicls.Label(text=mls.UI_TUTORIAL_CAREERFUNNELHEADER, parent=self.sr.headerContainer, left=8, top=4, align=uiconst.TOALL, fontsize=22, letterspace=1, uppercase=1, state=uiconst.UI_DISABLED)
-        self.sr.textContainer = uicls.Container(name='textContainer', align=uiconst.TOTOP, height=60, left=9, state=uiconst.UI_PICKCHILDREN, parent=self.sr.main)
-        text = '%s<br><color=0xffffff00>%s<br>' % (mls.UI_TUTORIAL_CAREERFUNNELINTRO, mls.UI_TUTORIAL_CAREERFUNNELINTRO2)
-        self.sr.textObject = uicls.Label(text=text, parent=self.sr.textContainer, left=8, top=2, state=uiconst.UI_DISABLED, fontsize=11, align=uiconst.TOALL, autoheight=False, autowidth=False)
-        uicls.Line(align=uiconst.TOBOTTOM, parent=self.sr.textContainer)
-        self.sr.contentContainer = contentContainer = uicls.Container(name='contentContainer', parent=self.sr.main, align=uiconst.TOALL)
-        self.sr.contentList = contentList = uicls.Scroll(parent=contentContainer, padding=(const.defaultPadding,
+        self.headerText = uicls.EveCaptionMedium(text=localization.GetByLabel('UI/Tutorial/CareerFunnelHeader'), parent=self.sr.main, align=uiconst.TOTOP, padding=const.defaultPadding * 2, state=uiconst.UI_DISABLED)
+        self.textObject = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Tutorial/CareerFunnelIntro'), parent=self.sr.main, padLeft=const.defaultPadding * 2, padRight=const.defaultPadding * 2, padBottom=const.defaultPadding, state=uiconst.UI_DISABLED, align=uiconst.TOTOP)
+        uicls.Line(align=uiconst.TOTOP, parent=self.sr.main)
+        self.sr.contentList = uicls.Scroll(parent=self.sr.main, padding=(const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding))
-        noContentHint = mls.UI_GENERIC_UNKNOWN
+        noContentHint = localization.GetByLabel('UI/Generic/Unknown')
         if not len(self.contentItemList):
             careerAgents = self.GetAgents()
             agentNodes = None
@@ -1858,13 +1824,16 @@ class CareerFunnelWindow(uicls.Window):
                      'agentStation': careerAgents[career]['station'][agentToUse]}
                     self.contentItemList.append(listentry.Get('CarrierAgentEntry', data))
                 else:
-                    noContentHint = mls.UI_GENERIC_NOROUTECANBEFOUND
+                    noContentHint = localization.GetByLabel('UI/Generic/NoRouteCanBeFound')
 
         self.sr.contentList.Startup()
         self.sr.contentList.ShowHint()
         self.sr.contentList.Load(None, self.contentItemList, headers=None, noContentHint=noContentHint)
+        height = self.headerText.textheight + self.headerText.padTop + self.headerText.padBottom
+        height += self.textObject.textheight + self.textObject.padTop + self.textObject.padBottom
+        height += 440
+        self.height = height
         self.inited = True
-        self.GetHeight(headerText)
 
 
 
@@ -1878,23 +1847,13 @@ class CareerFunnelWindow(uicls.Window):
             if content.panel is not None:
                 content.panel.Load(content)
 
-        self.sr.contentList.Load(None, self.contentItemList, headers=None, noContentHint=mls.UI_GENERIC_UNKNOWN)
+        self.sr.contentList.Load(None, self.contentItemList, headers=None, noContentHint=localization.GetByLabel('UI/Generic/Unknown'))
 
 
 
-    def GetHeight(self, headerText):
-        self.sr.headerContainer.height = headerText.textheight + headerText.top * 2
-        totalHeight = self.sr.headerContainer.height
-        self.sr.textContainer.height = self.sr.textObject.textheight + self.sr.textObject.top * 2
-        totalHeight += self.sr.textContainer.height + self.sr.textContainer.top + 2
-        totalHeight += 432
-        self.height = totalHeight
-
-
-
-    def CloseX(self, *args):
+    def CloseByUser(self, *args):
         if eve.Message('CareerFunnelClose', {}, uiconst.YESNO, suppress=uiconst.ID_YES) == uiconst.ID_YES:
-            uicls.WindowCore._CloseClick(self)
+            uicls.WindowCore.CloseByUser(self)
 
 
 
@@ -1915,7 +1874,6 @@ class CarrierAgentEntry(uicls.SE_BaseClassCore):
 
 
     def Load(self, node):
-        self.sr.node = node
         agent = node.agent
         agentID = agent.agentID
         career = node.career
@@ -1926,70 +1884,72 @@ class CarrierAgentEntry(uicls.SE_BaseClassCore):
         agentRegionID = sm.GetService('map').GetRegionForSolarSystem(agentSystemID)
         agentNameText = cfg.eveowners.Get(agentID).name
         uiutil.Flush(self.sr.agentContainer)
-        agentSprite = uicls.Sprite(name='AgentSprite', parent=self.sr.agentContainer, align=uiconst.RELATIVE, width=128, height=128, state=uiconst.UI_NORMAL, top=3)
+        agentSprite = uicls.Sprite(name='AgentSprite', parent=self.sr.agentContainer, align=uiconst.RELATIVE, width=128, height=128, state=uiconst.UI_NORMAL, top=6)
         agentTextContainer = uicls.Container(name='TextContainer', parent=self.sr.agentContainer, align=uiconst.TOPLEFT, width=190, height=77, left=140)
-        uicls.Label(text=agentNameText, parent=agentTextContainer, left=0, top=8, idx=2, state=uiconst.UI_DISABLED, fontsize=14, align=uiconst.TOALL, autoheight=False, autowidth=False)
+        uicls.EveLabelLarge(text=agentNameText, parent=agentTextContainer, state=uiconst.UI_DISABLED, align=uiconst.TOTOP, padTop=const.defaultPadding)
         self.photoSvc.GetPortrait(agentID, 128, agentSprite)
         menuContainer = agentSprite
         menuContainer.GetMenu = lambda *args: self.GetAgentMenu(agent, agentStation)
         menuContainer.id = agentID
         menuContainer.OnClick = self.TalkToAgent
         menuContainer.cursor = uiconst.UICURSOR_SELECT
-        linkContainer = uicls.Container(name='industryTextLinkContainer', align=uiconst.TOPLEFT, width=167, height=77, left=0, top=26, state=uiconst.UI_NORMAL, parent=agentTextContainer)
-        furtherInfo = '<url=showinfo:%d//%d>%s</url>' % (agentStation.stationTypeID, agentStationID, agentStation.stationName)
-        linkObject = uicls.Label(text=furtherInfo, parent=linkContainer, left=0, top=0, state=uiconst.UI_NORMAL, fontsize=11, align=uiconst.TOALL, autoheight=False, autowidth=False)
-        agentButton = uicls.Button(parent=self.sr.agentContainer, align=uiconst.TOPLEFT, label=mls.UI_GENERIC_UNKNOWN, pos=(130, 110, 0, 0), fixedwidth=196)
+        agentButton = uicls.Button(parent=self.sr.agentContainer, align=uiconst.BOTTOMRIGHT, label=localization.GetByLabel('UI/Generic/Unknown'), fixedwidth=196, left=const.defaultPadding, top=const.defaultPadding)
         agentButton.func = self.SetDestination
-        agentButton.args = (agentSystemID,)
-        agentButton.SetLabel(mls.UI_CMD_SETDESTINATION)
+        agentButton.args = (agentStationID,)
+        agentButton.SetLabel(localization.GetByLabel('UI/Commands/SetDestination'))
         agentButton.state = uiconst.UI_NORMAL
         if session.stationid is None and agentSystemID == session.solarsystemid:
-            linkObject.hint = menuContainer.hint = mls.UI_TUTORIAL_AGENTINSAMESYSTEM
+            hint = menuContainer.hint = localization.GetByLabel('UI/Tutorial/AgentInSameSystem')
             agentButton.func = self.DockAtStation
             agentButton.args = (agentStationID,)
-            agentButton.SetLabel(mls.UI_TUTORIAL_WAROTOAGENTSSTATION)
+            agentButton.SetLabel(localization.GetByLabel('UI/Tutorial/WarpToAgentStation'))
         elif session.stationid == agentStationID:
-            linkObject.hint = menuContainer.hint = mls.UI_TUTORIAL_AGENTINSAMESTATION
+            hint = menuContainer.hint = localization.GetByLabel('UI/Tutorial/AgentInSameStation')
             agentButton.func = self.TalkToAgent
             agentButton.args = (agentID,)
-            agentButton.SetLabel(mls.UI_CMD_STARTCONVERSATION)
+            agentButton.SetLabel(localization.GetByLabel('UI/Commands/StartConversation'))
         elif session.stationid is not None:
-            linkObject.hint = menuContainer.hint = mls.UI_TUTORIAL_YOUNEEDTOEXITTHESTATION
+            hint = menuContainer.hint = localization.GetByLabel('UI/Tutorial/YouNeedToExitTheStation')
         else:
-            linkObject.hint = mls.UI_TUTORIAL_THISSTATIONISINADIFFERENTSOLARSYSTEM
+            hint = localization.GetByLabel('UI/Tutorial/ThisStationIsInADifferentSolarSystem', setDestination=localization.GetByLabel('UI/Commands/SetDestination'))
             if session.constellationid == agentConstellationID:
-                menuContainer.hint = mls.UI_TUTORIAL_AGENTINSAMECONSTELLATION
+                menuContainer.hint = localization.GetByLabel('UI/Tutorial/AgentInSameConstellation')
             elif session.regionid == agentRegionID:
-                menuContainer.hint = mls.UI_TUTORIAL_AGENTINSAMEREGION
+                menuContainer.hint = localization.GetByLabel('UI/Tutorial/AgentInSameRegion')
             else:
-                menuContainer.hint = mls.UI_TUTORIAL_AGENTNOTINSAMEREGION
+                menuContainer.hint = localization.GetByLabel('UI/Tutorial/AgentNotInSameRegion')
+        linktext = "<url=showinfo:%d//%d alt='%s'>%s</url>" % (agentStation.stationTypeID,
+         agentStationID,
+         hint,
+         agentStation.stationName)
+        linkObject = uicls.EveLabelMedium(text=linktext, parent=agentTextContainer, state=uiconst.UI_NORMAL, align=uiconst.TOTOP, padTop=const.defaultPadding, lineSpacing=-0.2)
         uiutil.Flush(self.sr.careerContainer)
-        careerText = mls.UI_GENERIC_UNKNOWN
-        careerDesc = mls.UI_GENERIC_UNKNOWN
+        careerText = localization.GetByLabel('UI/Generic/Unknown')
+        careerDesc = localization.GetByLabel('UI/Generic/Unknown')
         if career == 'industry':
-            careerText = mls.UI_TUTORIAL_INDUSTRY
-            careerDesc = mls.UI_TUTORIAL_INDUSTRY_DESC
+            careerText = localization.GetByLabel('UI/Tutorial/Industry')
+            careerDesc = localization.GetByLabel('UI/Tutorial/IndustryDesc')
         elif career == 'business':
-            careerText = mls.UI_TUTORIAL_BUSINESS
-            careerDesc = mls.UI_TUTORIAL_BUSINESS_DESC
+            careerText = localization.GetByLabel('UI/Tutorial/Business')
+            careerDesc = localization.GetByLabel('UI/Tutorial/BusinessDesc')
         elif career == 'military':
-            careerText = mls.UI_TUTORIAL_MILITARY
-            careerDesc = mls.UI_TUTORIAL_MILITARY_DESC
+            careerText = localization.GetByLabel('UI/Tutorial/Military')
+            careerDesc = localization.GetByLabel('UI/Tutorial/MilitaryDesc')
         elif career == 'exploration':
-            careerText = mls.UI_TUTORIAL_EXPLORATION
-            careerDesc = mls.UI_TUTORIAL_EXPLORATION_DESC
+            careerText = localization.GetByLabel('UI/Tutorial/Exploration')
+            careerDesc = localization.GetByLabel('UI/Tutorial/ExplorationDesc')
         elif career == 'advMilitary':
-            careerText = mls.UI_TUTORIAL_ADVMILITARY
-            careerDesc = mls.UI_TUTORIAL_ADVMILITARY_DESC
-        titleContainer = uicls.Container(name='TitleContainer', parent=self.sr.careerContainer, align=uiconst.TOTOP, height=20)
-        uicls.Label(text=careerText, parent=titleContainer, top=0, state=uiconst.UI_DISABLED, fontsize=18, letterspace=1, uppercase=0, align=uiconst.TOALL, autoheight=False, autowidth=False)
-        uicls.Label(text=careerDesc, parent=self.sr.careerContainer, top=const.defaultPadding, state=uiconst.UI_DISABLED, fontsize=11, align=uiconst.TOALL, autoheight=False, autowidth=False)
+            careerText = localization.GetByLabel('UI/Tutorial/AdvMilitary')
+            careerDesc = localization.GetByLabel('UI/Tutorial/AdvMilitaryDesc')
+        titleContainer = uicls.Container(name='TitleContainer', parent=self.sr.careerContainer, align=uiconst.TOTOP, height=24)
+        uicls.EveCaptionMedium(text=careerText, parent=titleContainer, state=uiconst.UI_DISABLED)
+        uicls.EveLabelMedium(text=careerDesc, parent=self.sr.careerContainer, state=uiconst.UI_DISABLED, align=uiconst.TOTOP, lineSpacing=-0.2)
 
 
 
     def GetHeight(self, *args):
         (node, width,) = args
-        node.height = 136
+        node.height = 142
         return node.height
 
 
@@ -2004,14 +1964,14 @@ class CarrierAgentEntry(uicls.SE_BaseClassCore):
     def GetAgentMenu(self, agent, station):
         m = sm.StartService('menu').CharacterMenu(agent.agentID)
         char = cfg.eveowners.Get(agent.agentID)
-        m += [(mls.UI_CMD_SHOWINFO, sm.StartService('menu').ShowInfo, (int(char.Type()),
+        m += [(localization.GetByLabel('UI/Commands/ShowInfo'), sm.StartService('menu').ShowInfo, (int(char.Type()),
            agent.agentID,
            0,
            None,
            None))]
         if station.solarSystemID == session.solarsystemid:
             m += [None]
-            m += [(mls.UI_TUTORIAL_WAROTOAGENTSSTATION, self.DockAtStation, (station[0],))]
+            m += [(localization.GetByLabel('UI/Tutorial/WarpToAgentStation'), self.DockAtStation, (station[0],))]
         return m
 
 
@@ -2026,9 +1986,9 @@ class CarrierAgentEntry(uicls.SE_BaseClassCore):
 
 
 
-    def SetDestination(self, solarSystemID):
-        if solarSystemID is not None:
-            sm.StartService('starmap').SetWaypoint(solarSystemID, 1)
+    def SetDestination(self, stationID):
+        if stationID is not None:
+            sm.StartService('starmap').SetWaypoint(stationID, clearOtherWaypoints=True)
 
 
 
@@ -2041,7 +2001,7 @@ class GoodieInfoHelper():
 
 
     def GetMenu(self, *args):
-        return [(mls.UI_CMD_SHOWINFO, sm.StartService('info').ShowInfo, (self.itemID,))]
+        return [(localization.GetByLabel('UI/Commands/ShowInfo'), sm.StartService('info').ShowInfo, (self.itemID,))]
 
 
 

@@ -5,6 +5,7 @@ import base64
 import macho
 import uthread
 import log
+import bluepy
 Enter = blue.pyos.taskletTimer.EnterTasklet
 Leave = blue.pyos.taskletTimer.ReturnFromTasklet
 cryptoPack = boot.GetValue('cryptoPack', 'Placebo')
@@ -339,19 +340,18 @@ class Placebo_CryptoContext:
 args = blue.pyos.GetArg()
 if '/generatekeys' in args:
     try:
-        rot = blue.os.CreateInstance('blue.Rot')
-        commonFileName = rot.PathToFilename('script:/../../common/script/net/public_key.py')
-        serverFileName = rot.PathToFilename('script:/../../server/script/net/private_key.py')
+        commonFileName = blue.rot.PathToFilename('script:/../../common/script/net/public_key.py')
+        serverFileName = blue.rot.PathToFilename('script:/../../server/script/net/private_key.py')
         key = blue.crypto.CryptGenKey(CryptoAPI_GetCryptoContext(), blue.crypto.AT_KEYEXCHANGE, asymmetricKeyLength << 16 | blue.crypto.CRYPT_EXPORTABLE)
         public = blue.crypto.CryptExportKey(key, None, blue.crypto.PUBLICKEYBLOB, 0)
         private = blue.crypto.CryptExportKey(key, None, blue.crypto.PRIVATEKEYBLOB, 0)
-        privateKey = 'if boot.GetValue("cryptoPack","Placebo") == "CryptoAPI":\n    # -----------------------\n    # CryptoAPI Encryption\n    # -----------------------\n    import binascii\n    import blue\n    import blue.crypto\n    import macho\n\n    private  = blue.marshal.Load(binascii.a2b_hex("%(private)s") )\n    key      = blue.crypto.CryptImportKey(macho.GetCryptoContext(), private, None, 0)\n    version  = macho.CryptoHash( private )\n\n    exports = {\n       "macho.privateKey"        : key,\n       "macho.privateKeyVersion" : version,\n    }\n' % {'private': binascii.b2a_hex(blue.marshal.Save(private))}
-        publicKey = 'if boot.GetValue("cryptoPack","Placebo") == "CryptoAPI":\n    # -----------------------\n    # CryptoAPI Encryption\n    # -----------------------\n    import binascii\n    import blue\n    import blue.crypto\n    import macho\n\n    public   = blue.marshal.Load(binascii.a2b_hex("%(public)s") )\n    key      = blue.crypto.CryptImportKey(macho.GetCryptoContext(), public, None, 0)\n    version  = macho.CryptoHash( public )\n\n    exports = {\n       "macho.publicKey"        : key,\n       "macho.publicKeyVersion" : version\n    }\n' % {'public': binascii.b2a_hex(blue.marshal.Save(public))}
+        privateKey = 'if boot.GetValue("cryptoPack","Placebo") == "CryptoAPI":\n\n    # CryptoAPI Encryption\n   \n    import binascii\n    import blue\n    import blue.crypto\n    import macho\n\n    private  = blue.marshal.Load(binascii.a2b_hex("%(private)s") )\n    key      = blue.crypto.CryptImportKey(macho.GetCryptoContext(), private, None, 0)\n    version  = macho.CryptoHash(private)\n\n    exports = {\n       "macho.privateKey"        : key,\n       "macho.privateKeyVersion" : version,\n    }\n' % {'private': binascii.b2a_hex(blue.marshal.Save(private))}
+        publicKey = 'if boot.GetValue("cryptoPack","Placebo") == "CryptoAPI":\n\n    # CryptoAPI Encryption\n\n    import binascii\n    import blue\n    import blue.crypto\n    import macho\n\n    public   = blue.marshal.Load(binascii.a2b_hex("%(public)s") )\n    key      = blue.crypto.CryptImportKey(macho.GetCryptoContext(), public, None, 0)\n    version  = macho.CryptoHash(public)\n\n    exports = {\n       "macho.publicKey"        : key,\n       "macho.publicKeyVersion" : version\n    }\n' % {'public': binascii.b2a_hex(blue.marshal.Save(public))}
         blue.win32.AtomicFileWrite(serverFileName, privateKey.replace('\n', '\r\n'))
         blue.win32.AtomicFileWrite(commonFileName, publicKey.replace('\n', '\r\n'))
     except Exception:
         log.LogException()
-    blue.pyos.Quit('Key Generation complete')
+    bluepy.Terminate('Key Generation complete')
 if cryptoPack == 'CryptoAPI':
     exports = {'macho.GetCryptoContext': CryptoAPI_GetCryptoContext,
      'macho.CryptoHash': CryptoAPI_CryptoHash,

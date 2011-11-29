@@ -130,7 +130,7 @@ class ClientPlanet(planet.BasePlanet):
         if not self.isInEditMode:
             self.backupData = self.colony.colonyData.GetCopy()
             self.backupData.SetEventHandler(self)
-            self.enteredEditModeTime = blue.os.GetTime()
+            self.enteredEditModeTime = blue.os.GetWallclockTime()
             self.StopTicking()
             self.isInEditMode = True
             sm.GetService('planetUI').EnteredEditMode(self.planetID)
@@ -415,7 +415,7 @@ class ClientPlanet(planet.BasePlanet):
         if not commandPin or not commandPin.IsCommandCenter():
             raise UserError('CanOnlyLaunchFromCommandCenters')
         nextLaunchTime = commandPin.GetNextLaunchTime()
-        if nextLaunchTime is not None and nextLaunchTime > blue.os.GetTime():
+        if nextLaunchTime is not None and nextLaunchTime > blue.os.GetWallclockTime():
             raise UserError('CannotLaunchCommandPinNotReady')
         if not commandPin.CanLaunch(commoditiesToLaunch):
             raise UserError('CannotLaunchCommoditiesNotFound')
@@ -438,10 +438,8 @@ class ClientPlanet(planet.BasePlanet):
 
 
     def OpenTransferWindow(self, path):
-        currWindow = sm.GetService('window').GetWindow('createTransfer', decoClass=form.ExpeditedTransferManagementWindow)
-        if currWindow:
-            currWindow.CloseX()
-        sm.GetService('window').GetWindow('createTransfer', decoClass=form.ExpeditedTransferManagementWindow, maximize=1, create=1, planet=self, path=path)
+        form.ExpeditedTransferManagementWindow.CloseIfOpen()
+        form.ExpeditedTransferManagementWindow.Open(planet=self, path=path)
 
 
 
@@ -455,7 +453,7 @@ class ClientPlanet(planet.BasePlanet):
             raise UserError('CreateRouteTooShort')
         if len(commodities) < 1:
             raise UserError('CreateRouteWithoutCommodities')
-        runTime = blue.os.GetTime()
+        runTime = blue.os.GetWallclockTime()
         minBandwidth = colony.ValidateExpeditedTransfer(session.charid, path, commodities, runTime)
         oldData = colony.colonyData.GetCopy()
         try:
@@ -676,13 +674,13 @@ class ClientPlanet(planet.BasePlanet):
         typeOptions = [ (cfg.invtypes.Get(typeID).name, typeID) for typeID in resourceInfo.keys() ]
         format = [{'type': 'combo',
           'key': 'typeID',
-          'label': mls.UI_GENERIC_TYPE,
+          'label': 'Type',
           'options': typeOptions,
           'frame': 0,
           'labelwidth': 80},
          {'type': 'edit',
           'key': 'qtyPerCycle',
-          'label': mls.UI_PI_OUTPUTPERCYCLE,
+          'label': 'Output per cycle',
           'setvalue': '100',
           'frame': 0,
           'labelwidth': 140,
@@ -690,20 +688,20 @@ class ClientPlanet(planet.BasePlanet):
          {'type': 'btline'},
          {'type': 'edit',
           'key': 'cycleTime',
-          'label': '%s (%s)' % (mls.UI_PI_GENERIC_CYCLETIME, mls.UI_GENERIC_SECONDSHORTS),
+          'label': 'Cycle time (seconds)',
           'setvalue': '60',
           'frame': 0,
           'labelwidth': 140,
           'required': True},
          {'type': 'edit',
           'key': 'lifetime',
-          'label': '%s (%s)' % (mls.UI_PI_GENERIC_LIFETIME, mls.UI_GENERIC_HOURS),
+          'label': 'Lifetime (hours)',
           'setvalue': '24',
           'frame': 0,
           'labelwidth': 140,
           'required': True}]
         icon = 'ui_35_64_11'
-        retval = uix.HybridWnd(format, '%s: %s' % (mls.UI_PI_GM_DEPOSITDESIGNER, planetCommon.GetGenericPinName(pin.typeID, pin.id)), 1, None, uiconst.OKCANCEL, minW=300, minH=132, icon=icon)
+        retval = uix.HybridWnd(format, 'Deposit designer: %s' % planetCommon.GetGenericPinName(pin.typeID, pin.id), 1, None, uiconst.OKCANCEL, minW=300, minH=132, icon=icon)
         if retval is None:
             return 
         (typeID, qtyPerCycle, cycleTime, lifetimeHours,) = (retval['typeID'],
@@ -739,9 +737,9 @@ class ClientPlanet(planet.BasePlanet):
         (simulationDuration, remoteColonyData,) = self.remoteHandler.GMGetSynchedServerState(session.charid)
         simEndTime = remoteColonyData.currentSimTime
         colony = self.GetColony(session.charid)
-        startTime = blue.os.GetTime(1)
+        startTime = blue.os.GetWallclockTimeNow()
         colony.RunSimulation(runSimUntil=simEndTime)
-        clientSimulationRuntime = blue.os.GetTime(1) - startTime
+        clientSimulationRuntime = blue.os.GetWallclockTimeNow() - startTime
         pins = remoteColonyData.pins
         self.LogNotice('simulation ran for', clientSimulationRuntime, 'on client, ', simulationDuration, 'on server')
         for pin in pins:
@@ -797,12 +795,12 @@ class ClientPlanet(planet.BasePlanet):
             inRange = False
             eve.Message('PISkillLevelToLowForRemoteSensingDistance', {'systemDistance': info.systemDistance,
              'maxScanDistance': info.maxScanDistance})
-        elif info.newBand > entry.numBands or blue.os.GetTime() > entry.updateTime:
+        elif info.newBand > entry.numBands or blue.os.GetWallclockTime() > entry.updateTime:
             self.LogInfo('GetResourceData: refreshing data: newBand', info.newBand, 'currentBand', entry.numBands, 'updateTime', entry.updateTime)
             shData = self.remoteHandler.GetResourceData(info)
             if shData.data is not None:
                 entry.sh = builder.CreateSHFromBuffer(shData.data, shData.numBands)
-                entry.updateTime = blue.os.GetTime() + planetCommon.RESOURCE_CACHE_TIMEOUT
+                entry.updateTime = blue.os.GetWallclockTime() + planetCommon.RESOURCE_CACHE_TIMEOUT
                 entry.proximity = shData.proximity
                 entry.numBands = shData.numBands
                 self.LogInfo('GetResourceData: creating SH for ', resourceTypeID, 'upto band', shData.numBands)
@@ -894,8 +892,8 @@ class ClientPlanet(planet.BasePlanet):
         for pin in self.colony.colonyData.pins.itervalues():
             if pin.IsActive() or pin.CanActivate():
                 pinTickTime = pin.GetNextRunTime()
-                if pinTickTime is None or pinTickTime < blue.os.GetTime():
-                    nextTickTime = blue.os.GetTime()
+                if pinTickTime is None or pinTickTime < blue.os.GetWallclockTime():
+                    nextTickTime = blue.os.GetWallclockTime()
                     break
                 elif nextTickTime is None or pinTickTime < nextTickTime:
                     nextTickTime = pinTickTime
@@ -916,9 +914,9 @@ class ClientPlanet(planet.BasePlanet):
             if nextTime is None:
                 self.ticking = False
             else:
-                nextTime = max(SEC, nextTime - blue.os.GetTime() + 1L)
+                nextTime = max(SEC, nextTime - blue.os.GetWallclockTime() + 1L)
                 self.LogInfo(self.planetID, ': Active Client Tick: sleeping for', util.FmtTimeInterval(nextTime))
-                blue.pyos.synchro.Sleep(nextTime / const.MSEC)
+                blue.pyos.synchro.SleepWallclock(nextTime / const.MSEC)
 
         self.tickThread = None
 

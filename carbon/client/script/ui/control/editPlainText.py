@@ -3,6 +3,7 @@ import blue
 import bluepy
 import base
 import uthread
+import localization
 import log
 import fontConst
 import uiconst
@@ -17,17 +18,14 @@ WORD_BOUNDARIES = [' ',
  ':',
  ';']
 BOOLTAGS = [('b', 'bold'), ('i', 'italic'), ('u', 'underline')]
-VALUETAGS = [('fontsize', 'defaultFontSize'),
- ('color', 'defaultFontColor'),
- ('font', 'defaultFont'),
- ('url', None)]
+VALUETAGS = [('fontsize', 'defaultFontSize'), ('color', 'defaultFontColor'), ('url', None)]
 HTMLCONVERSION = {'fontsize': 'font size',
  '/fontsize': '/font',
  'color': 'font color',
  '/color': '/font',
  'url': 'a href',
  '/url': '/a'}
-HTMLFONTTAG = {('fontsize', 'size'), ('color', 'color')}
+HTMLFONTTAG = (('fontsize', 'size'), ('color', 'color'))
 ENDLINKCHARS = u' ,'
 TEXTSIDEMARGIN = 6
 TEXTLINEMARGIN = 1
@@ -41,9 +39,11 @@ class EditPlainTextCore(uicls.Scroll):
     default_readonly = False
     default_showattributepanel = 0
     default_setvalue = ''
-    default_font = fontConst.DEFAULT_FONT
     default_fontsize = fontConst.DEFAULT_FONTSIZE
-    default_fontcolor = (1.0, 1.0, 1.0, 1.0)
+    default_fontStyle = None
+    default_fontFamily = None
+    default_fontPath = None
+    default_fontcolor = -1
 
     def ApplyAttributes(self, attributes):
         uicls.Scroll.ApplyAttributes(self, attributes)
@@ -61,9 +61,11 @@ class EditPlainTextCore(uicls.Scroll):
         self.OnReturn = None
         self.resizeTasklet = None
         self.updating = 0
-        self.readonly = 0
+        self.readonly = attributes.get('readonly', self.default_readonly)
         self.autoScrollToBottom = 0
-        self.defaultFont = attributes.get('font', self.default_font)
+        self.defaultFontStyle = attributes.get('fontStyle', self.default_fontStyle)
+        self.defaultFontFamily = attributes.get('fontFamily', self.default_fontFamily)
+        self.defaultFontPath = attributes.get('fontPath', self.default_fontPath)
         self.defaultFontSize = attributes.get('fontsize', self.default_fontsize)
         self.defaultFontColor = attributes.get('fontcolor', self.default_fontcolor)
         self.sr.content.GetMenu = self.GetMenuDelegate
@@ -83,7 +85,7 @@ class EditPlainTextCore(uicls.Scroll):
 
 
     def CreateNode(self):
-        entry = uicls.ScrollEntryNode(decoClass=uicls.SE_EditTextline, SelectionHandler=self, pos=0)
+        entry = uicls.ScrollEntryNode(decoClass=uicls.SE_EditTextline, SelectionHandler=self)
         return entry
 
 
@@ -116,10 +118,12 @@ class EditPlainTextCore(uicls.Scroll):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def SetValue(self, text, scrolltotop = 0, cursorPos = None, preformatted = 0, html = 1, fontColor = None):
         text = text or ''
         if not self.EnoughRoomFor(len(uiutil.StripTags(text))):
             return 
+        self.GetAbsolute()
         self._activeParams = None
         newGS = uicore.font.GetGlyphString()
         self.sr.paragraphs = [newGS]
@@ -134,6 +138,7 @@ class EditPlainTextCore(uicls.Scroll):
         for (paramName, defaultAttrName,) in VALUETAGS:
             setattr(self, 'tagStack_%s' % paramName, [])
 
+        self._activeParams = None
         scrollTo = None
         if scrolltotop:
             scrollTo = 0.0
@@ -152,12 +157,18 @@ class EditPlainTextCore(uicls.Scroll):
         text = text or ''
         if not uiutil.StripTags(text):
             text = ''
-        text = text.replace('\t', '    ').replace('\n', '').replace('\r', '<br>')
+        if text.find('<h') != -1:
+            text = text.replace('<h1>', '<br><fontsize=28><b>').replace('</h1>', '</b></fontsize><br>')
+            text = text.replace('<h2>', '<br><fontsize=24><b>').replace('</h2>', '</b></fontsize><br>')
+            text = text.replace('<h3>', '<br><fontsize=20><b>').replace('</h3>', '</b></fontsize><br>')
+            text = text.replace('<h4>', '<br><fontsize=18><b>').replace('</h4>', '</b></fontsize><br>')
+            text = text.replace('<h5>', '<br><fontsize=16><b>').replace('</h5>', '</b></fontsize><br>')
+            text = text.replace('<h6>', '<br><fontsize=14><b>').replace('</h6>', '</b></fontsize><br>')
+        text = text.replace('\t', '    ').replace('\n', '').replace('\r', '<br>').replace('<br />', '<br>').replace('<br/>', '<br>')
         lines = text.split('<br>')
         node = self.GetActiveNode()
         if node is None:
             return 
-        self._fontTagStack = []
         initCursor = self.globalCursorPos
         advance = 0
         stackCursorIndex = self.globalCursorPos - node.startCursorIndex + node.stackCursorIndex
@@ -171,7 +182,8 @@ class EditPlainTextCore(uicls.Scroll):
                         (text, tag,) = (self.Encode(texttag[0]), None)
                     else:
                         (text, tag,) = (self.Encode(texttag[0]), texttag[1])
-                    self.InsertToGlyphString(glyphString, self.GetFontParams(), text, stackCursorIndex)
+                    params = self.GetFontParams()
+                    self.InsertToGlyphString(glyphString, params, text, stackCursorIndex)
                     stackCursorIndex += len(text)
                     advance += len(text)
                     if tag:
@@ -182,14 +194,11 @@ class EditPlainTextCore(uicls.Scroll):
                 self.InsertToGlyphString(glyphString, self.GetFontParams(), text, stackCursorIndex)
                 stackCursorIndex += len(text)
                 advance += len(text)
-            self.UpdateGlyphString(glyphString, 0, 0)
+            gsNodes = self.UpdateGlyphString(glyphString, 0, 0)
             if lineIdx != len(lines) - 1:
                 newGS = uicore.font.GetGlyphString()
-                newGS += glyphString[stackCursorIndex:]
-                glyphString.FlushFromIndex(stackCursorIndex)
-                self.UpdateGlyphString(glyphString)
-                self.InsertNewGlyphString(newGS, glyphString)
-                self.SetCursorPos(self.globalCursorPos + 1, updateActiveParams=False)
+                gsIndex = self.GetGlyphStringIndex(glyphString)
+                self.InsertNewGlyphString(newGS, gsIndex + 1, gsNodes[-1].idx + 1)
                 glyphString = newGS
                 stackCursorIndex = len(newGS)
                 advance += 1
@@ -226,7 +235,7 @@ class EditPlainTextCore(uicls.Scroll):
             tagStack.append(tag)
             setattr(self, 'tagStack_font', tagStack)
             return 
-        if tag.startswith('/font'):
+        if tag == '/font':
             tagStack = getattr(self, 'tagStack_font', [])
             if tagStack:
                 closeFontTag = tagStack.pop()
@@ -237,7 +246,7 @@ class EditPlainTextCore(uicls.Scroll):
                 if fontsize:
                     self.ParseTag('/fontsize')
             return 
-        tag = tag.replace('a href=', 'url=').replace('/a', '/url')
+        tag = tag.replace('a href=', 'url=').replace('/a', '/url').replace('bold', 'b').replace('/bold', '/b').replace('italic', 'i').replace('/italic', '/i')
         if tag[0] == '/':
             stackName = tag[1:]
         elif '=' in tag:
@@ -251,22 +260,20 @@ class EditPlainTextCore(uicls.Scroll):
         elif tag.startswith(u'color='):
             colorSyntax = tag[6:]
             color = uiutil.StringColorToHex(colorSyntax)
-            if color is None:
+            if color:
+                col = mathUtil.LtoI(long(color, 0))
+                tagStack.append(col)
+            else:
                 hexColor = colorSyntax.replace('#', '0x')
                 try:
                     col = mathUtil.LtoI(long(hexColor, 0))
                     tagStack.append(col)
                 except ValueError:
-                    try:
-                        (r, g, b, a,) = self.defaultFontColor
-                        defaultHex = '0x%02x%02x%02x%02x' % (a * 255,
-                         r * 255,
-                         g * 255,
-                         b * 255)
-                        col = mathUtil.LtoI(long(defaultHex, 0))
-                        tagStack.append(col)
-                    except ValueError:
+                    if type(self.defaultFontColor) is types.IntType:
                         tagStack.append(-1)
+                    else:
+                        c = trinity.TriColor(*self.defaultFontColor)
+                        tagStack.append(c.AsInt())
         elif '=' in tag:
             value = orgtag.split('=')
             value = '='.join(value[1:])
@@ -305,8 +312,6 @@ class EditPlainTextCore(uicls.Scroll):
              c.g,
              c.b,
              c.a)
-        else:
-            color = color
         if html:
             colorString = '"#%02x%02x%02x%02x"' % (color[3] * 255,
              color[0] * 255,
@@ -509,14 +514,15 @@ class EditPlainTextCore(uicls.Scroll):
 
 
     def GetMenuDelegate(self, node = None):
-        m = [(mls.UI_CMD_COPYALL, self.CopyAll)]
+        m = []
+        m.append((localization.GetByLabel('/Carbon/UI/Controls/Common/CopyAll'), self.CopyAll))
         if self.HasSelection():
-            m.append((mls.UI_CMD_COPYSELECTED, self.Copy))
+            m.append((localization.GetByLabel('/Carbon/UI/Controls/Common/CopySelected'), self.Copy))
             if not self.readonly:
-                m.append((mls.UI_CMD_CUTSELECTED, self.Cut))
+                m.append((localization.GetByLabel('/Carbon/UI/Controls/Common/CutSelected'), self.Cut))
         clipboard = uiutil.GetClipboardData()
         if clipboard and not self.readonly:
-            m.append((mls.UI_CMD_PASTE, self.Paste, (clipboard,)))
+            m.append((localization.GetByLabel('/Carbon/UI/Controls/Common/Paste'), self.Paste, (clipboard,)))
         return m
 
 
@@ -531,8 +537,11 @@ class EditPlainTextCore(uicls.Scroll):
 
 
     def FindWordBoundariesFromGlobalCursor(self):
-        text = ''.join(self.words)
+        text = self.GetAllText(newLineStr='\n')
         boundaries = uiutil.FindTextBoundaries(text, regexObject=uiconst.WORD_BOUNDARY_REGEX)
+        self.words = boundaries
+        i = 0
+        wordLength = 0
         totalWordLength = 0
         for (i, wordLength,) in enumerate([ len(word) for word in boundaries ]):
             totalWordLength += wordLength
@@ -559,10 +568,13 @@ class EditPlainTextCore(uicls.Scroll):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def SetSelectionRange(self, fromCharIndex, toCharIndex, updateCursor = True):
         if fromCharIndex == toCharIndex:
             (fromCharIndex, toCharIndex,) = (None, None)
-        self.globalSelectionRange = (fromCharIndex, toCharIndex)
+        globalSelectionRange = [fromCharIndex, toCharIndex]
+        globalSelectionRange.sort()
+        self.globalSelectionRange = globalSelectionRange
         if fromCharIndex is None or toCharIndex is None:
             self.SetSelectionInitPos(self.globalCursorPos)
         if updateCursor:
@@ -570,6 +582,7 @@ class EditPlainTextCore(uicls.Scroll):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def SetCursorPos(self, globalIndex, updateActiveParams = True):
         if globalIndex == -1:
             globalIndex = self._maxGlobalCursorIndex
@@ -594,7 +607,7 @@ class EditPlainTextCore(uicls.Scroll):
         globalCursorIndex = 0
         stackCursor = 0
         (fromIdx, toIdx,) = self.globalSelectionRange
-        for node in self.GetNodes():
+        for node in self.sr.nodes:
             if not issubclass(node.decoClass, uicls.SE_EditTextlineCore):
                 continue
             if node._endIndex is None:
@@ -641,6 +654,7 @@ class EditPlainTextCore(uicls.Scroll):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def GetActiveNode(self):
         ret = getattr(self, '_activeNode', None)
         if ret is None:
@@ -649,6 +663,7 @@ class EditPlainTextCore(uicls.Scroll):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def GetSelectedText(self):
         ret = ''
         selectedData = self.GetSeletedCharData()
@@ -664,25 +679,14 @@ class EditPlainTextCore(uicls.Scroll):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def GetAllText(self, newLineStr = '\r\n'):
         ret = ''
         for glyphString in self.sr.paragraphs:
-            for (advance, align, color, sbit, char, asc, des, params,) in glyphString:
-                ret += char
-
+            ret += glyphString.GetText()
             ret += newLineStr
 
         return ret[:(-len(newLineStr))]
-
-
-
-    def PrintGS(self, gs):
-        t = ''
-        for (advance, align, color, sbit, char, asc, des, params,) in gs:
-            t += ' %s %s' % (params.italic, char)
-
-        print 'GS',
-        print repr(t)
 
 
 
@@ -1108,7 +1112,6 @@ class EditPlainTextCore(uicls.Scroll):
         else:
             std.color = self.defaultFontColor
             std.fontsize = self.defaultFontSize
-        std.font = self.defaultFont
         for (tag, paramName,) in BOOLTAGS:
             tagStack = getattr(self, 'tagStack_%s' % tag, [])
             std.Set(paramName, bool(tagStack))
@@ -1118,16 +1121,18 @@ class EditPlainTextCore(uicls.Scroll):
             if tagStack:
                 std.Set(paramName, tagStack[-1])
 
+        std.fontStyle = self.defaultFontStyle
+        std.fontFamily = self.defaultFontFamily
+        std.fontPath = self.defaultFontPath
         return std
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def CheckLineWrap(self, glyphString):
-        text = ''.join([ charData[4] for charData in glyphString ])
+        text = glyphString.GetText()
         if not text:
             return [(0, 0, 0, 12, 12)]
-        self.words = uiutil.FindTextBoundaries(self.GetAllText(newLineStr='\n'), regexObject=uiconst.WORD_BOUNDARY_REGEX)
         words = uiutil.FindTextBoundaries(text, regexObject=uiconst.LINE_BREAK_BOUNDARY_REGEX)
         wordBoundaries = []
         wordWidths = []
@@ -1140,6 +1145,7 @@ class EditPlainTextCore(uicls.Scroll):
         maxWidth = self.GetContentWidth() - TEXTSIDEMARGIN * 2
         if maxWidth < 0:
             return [(0, 0, 0, 12, 12)]
+        maxWidth = self.ScaleDpi(maxWidth)
         while max(wordWidths) > maxWidth:
             for (wordIndex, wordWidth,) in enumerate(wordWidths):
                 if wordWidth > maxWidth:
@@ -1192,28 +1198,40 @@ class EditPlainTextCore(uicls.Scroll):
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def UpdateGlyphString(self, glyphString, advance = None, stackCursorIndex = None):
-        allNodesInStack = []
-        for _node in self.GetNodes():
-            if _node.glyphString is glyphString:
-                allNodesInStack.append(_node)
+    def GetNodesWithGlyphString(self, glyphString):
+        ret = []
+        glyphStringID = id(glyphString)
+        for node in self.sr.nodes:
+            if id(node.glyphString) == glyphStringID:
+                ret.append(node)
+            elif ret:
+                break
 
+        return ret
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def UpdateGlyphString(self, glyphString, advance = None, stackCursorIndex = None):
+        allNodesUsingGlyphString = self.GetNodesWithGlyphString(glyphString)
         lineIndexes = self.CheckLineWrap(glyphString)
         if stackCursorIndex is not None:
-            r = max(len(allNodesInStack), len(lineIndexes))
-            if allNodesInStack:
-                insertAt = allNodesInStack[0].idx
+            if allNodesUsingGlyphString:
+                insertAt = allNodesUsingGlyphString[0].idx
             else:
                 insertAt = 0
             lenNew = len(lineIndexes)
-            lenOld = len(allNodesInStack)
+            lenOld = len(allNodesUsingGlyphString)
             if lenNew < lenOld:
-                rem = allNodesInStack[(-(lenOld - lenNew)):]
+                rem = allNodesUsingGlyphString[(-(lenOld - lenNew)):]
+                for each in rem:
+                    allNodesUsingGlyphString.remove(each)
+
                 self.RemoveNodesRaw(rem)
             elif lenNew > lenOld:
                 newNodes = []
-                if allNodesInStack:
-                    startAt = allNodesInStack[-1].idx + 1
+                if allNodesUsingGlyphString:
+                    startAt = allNodesUsingGlyphString[-1].idx + 1
                 else:
                     startAt = 0
                 for x in xrange(lenNew - lenOld):
@@ -1222,15 +1240,15 @@ class EditPlainTextCore(uicls.Scroll):
                     newNode._startIndex = 0
                     newNode._endIndex = 0
                     newNode._width = 0
-                    newNode._baseHeight = 12
+                    newNode._baseHeight = self.ScaleDpi(12)
                     newNode._baseLine = 12
                     newNodes.append(newNode)
 
                 self.InsertNodesRaw(startAt, newNodes)
-                allNodesInStack += newNodes
+                allNodesUsingGlyphString += newNodes
             updateCount = 0
             for (i, lineData,) in enumerate(lineIndexes):
-                old = allNodesInStack[i]
+                old = allNodesUsingGlyphString[i]
                 (startIdx, endIdx, width, baseLine, baseHeight,) = lineData
                 addAdv = 0
                 if stackCursorIndex <= endIdx:
@@ -1249,9 +1267,9 @@ class EditPlainTextCore(uicls.Scroll):
                         old.panel.Load(old)
                     updateCount += 1
 
-        elif allNodesInStack:
-            insertAt = allNodesInStack[0].idx
-            self.RemoveNodesRaw(allNodesInStack)
+        elif allNodesUsingGlyphString:
+            insertAt = allNodesUsingGlyphString[0].idx
+            self.RemoveNodesRaw(allNodesUsingGlyphString)
         else:
             insertAt = 0
         newNodes = []
@@ -1266,18 +1284,37 @@ class EditPlainTextCore(uicls.Scroll):
             newNodes.append(newNode)
 
         self.InsertNodesRaw(insertAt, newNodes)
+        self.RefreshNodeIndexes()
+        return allNodesUsingGlyphString
 
 
 
-    def InsertNewGlyphString(self, glyphString, afterGS):
-        afterIdx = self.GetGlyphStringIndex(afterGS)
-        self.sr.paragraphs.insert(afterIdx + 1, glyphString)
-        allNodesInStack = []
-        for _node in self.GetNodes():
-            if _node.glyphString is afterGS:
-                allNodesInStack.append(_node)
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def RemoveNodesRaw(self, nodes):
+        for node in nodes:
+            if node.panel:
+                node.panel.Close()
+            if node in self.sr.nodes:
+                self.sr.nodes.remove(node)
 
-        insertAt = allNodesInStack[-1].idx + 1
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def InsertNodesRaw(self, fromIdx, nodesData):
+        if fromIdx == -1:
+            fromIdx = len(self.sr.nodes)
+        idx = fromIdx
+        for data in nodesData:
+            newnode = self.AddNode(idx, data)
+            idx += 1
+
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def InsertNewGlyphString(self, glyphString, glyphStringIndex, nodeIndex):
+        self.sr.paragraphs.insert(glyphStringIndex, glyphString)
         lineIndexes = self.CheckLineWrap(glyphString)
         newNodes = []
         for (startIdx, endIdx, width, baseLine, baseHeight,) in lineIndexes:
@@ -1290,16 +1327,13 @@ class EditPlainTextCore(uicls.Scroll):
             newNode._baseLine = baseLine
             newNodes.append(newNode)
 
-        self.InsertNodesRaw(insertAt, newNodes)
+        self.InsertNodesRaw(nodeIndex, newNodes)
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def RemoveGlyphString(self, glyphString):
-        allNodesInStack = []
-        for _node in self.GetNodes():
-            if _node.glyphString is glyphString:
-                allNodesInStack.append(_node)
-
+        allNodesInStack = self.GetNodesWithGlyphString(glyphString)
         if allNodesInStack:
             self.RemoveNodesRaw(allNodesInStack)
         gsIdx = self.GetGlyphStringIndex(glyphString)
@@ -1308,6 +1342,7 @@ class EditPlainTextCore(uicls.Scroll):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def GetGlyphStringIndex(self, glyphString):
         for (glyphStringIndex, _glyphString,) in enumerate(self.sr.paragraphs):
             if _glyphString is glyphString:
@@ -1333,8 +1368,10 @@ class EditPlainTextCore(uicls.Scroll):
             newGS = uicore.font.GetGlyphString()
             newGS += glyphString[stackCursorIndex:]
             glyphString.FlushFromIndex(stackCursorIndex)
-            self.UpdateGlyphString(glyphString)
-            self.InsertNewGlyphString(newGS, glyphString)
+            gsNodes = self.UpdateGlyphString(glyphString)
+            gsIndex = self.GetGlyphStringIndex(glyphString)
+            self.InsertNewGlyphString(newGS, gsIndex + 1, gsNodes[-1].idx + 1)
+            self.RefreshNodes()
             cursorAdvance = 1
         elif char == 127:
             if stackCursorIndex == len(glyphString):
@@ -1362,6 +1399,14 @@ class EditPlainTextCore(uicls.Scroll):
         else:
             currentParams = self._activeParams.Copy()
             unichar = unichr(char)
+            isLatinBased = uicore.font.IsLatinBased(unichar)
+            if isLatinBased:
+                keyboardLanguageID = uiconst.LANG_ENGLISH
+            else:
+                keyboardLanguageID = uicore.ime.GetKeyboardLanguageID()
+            fontFamily = uicore.font.GetFontFamilyBasedOnWindowsLanguageID(keyboardLanguageID)
+            currentParams.fontFamily = fontFamily
+            uicore.font.ResolveFontFamily(currentParams)
             if currentParams.url:
                 if unichar in ENDLINKCHARS:
                     nextParams = self.GetNextParams(glyphString, stackCursorIndex)
@@ -1372,6 +1417,7 @@ class EditPlainTextCore(uicls.Scroll):
             self.InsertToGlyphString(glyphString, currentParams, unichar, stackCursorIndex)
             self.UpdateGlyphString(glyphString, advance=1, stackCursorIndex=stackCursorIndex)
             cursorAdvance = 1
+        self.UpdatePosition()
         self.OnChange()
         self.SetCursorPos(self.globalCursorPos + cursorAdvance)
         self.SetSelectionInitPos(self.globalCursorPos)
@@ -1384,15 +1430,28 @@ class EditPlainTextCore(uicls.Scroll):
 
 
 
+    def ResetUrlParams(self, param):
+        if 'priorUrlColor' in param:
+            param.color = param.priorUrlColor
+        if 'priorUrlBold' in param:
+            param.bold = param.priorUrlBold
+        if 'priorUrlItalic' in param:
+            param.italic = param.priorUrlItalic
+        if 'priorUrlUnderline' in param:
+            param.underline = param.priorUrlUnderline
+        return param
+
+
+
     def GetPriorParams(self, glyphString, stackCursorIndex):
         if len(glyphString):
             paramsInFront = glyphString[max(0, min(len(glyphString) - 1, stackCursorIndex - 1))][-1]
-            return paramsInFront
+            return self.ResetUrlParams(paramsInFront)
         glyphStringIndex = self.GetGlyphStringIndex(glyphString)
         while glyphStringIndex > 0:
             glyphString = self.sr.paragraphs[(glyphStringIndex - 1)]
             if len(glyphString):
-                return glyphString[-1][-1]
+                return self.ResetUrlParams(glyphString[-1][-1])
             glyphStringIndex = self.GetGlyphStringIndex(glyphString)
 
 
@@ -1401,12 +1460,12 @@ class EditPlainTextCore(uicls.Scroll):
     def GetNextParams(self, glyphString, stackCursorIndex):
         if len(glyphString) > stackCursorIndex:
             paramsBehind = glyphString[stackCursorIndex][-1]
-            return paramsBehind
+            return self.ResetUrlParams(paramsBehind)
         while glyphString is not self.sr.paragraphs[-1]:
             glyphStringIndex = self.GetGlyphStringIndex(glyphString)
             glyphString = self.sr.paragraphs[(glyphStringIndex + 1)]
             if len(glyphString):
-                return glyphString[0][-1]
+                return self.ResetUrlParams(glyphString[0][-1])
 
 
 
@@ -1421,52 +1480,15 @@ class EditPlainTextCore(uicls.Scroll):
 
 
     def RemoveFromGlyphString(self, glyphString, startIdx, endIdx):
-        for i in xrange(startIdx, endIdx):
-            glyphString.pop(startIdx)
-
+        glyphString.Remove(startIdx, endIdx)
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def InsertToGlyphString(self, glyphString, params, text, idx):
-        letterspace = params.letterspace or 0
-        color = params.color or -1
-        if type(color) != types.IntType:
-            tricol = trinity.TriColor(*color)
-            color = tricol.AsInt()
-        last = (None, 0)
-        lastURange = -1
-        for char in text:
-            unicodeRange = uicore.font.GetUnicodeRange(ord(char))
-            params = uicore.font.AlterParams(params, unicodeRange, formatLinks=True)
-            if char == u'\xa0':
-                rchar = u' '
-            else:
-                rchar = char
-            fgi = glyphString.cmc.LookupFB(params.face, ord(rchar), uicore.font.GetFallbackFonts())
-            if fgi[0] != last[0] or glyphString.scaler.height != params.fontsize:
-                glyphString.imageType.width = glyphString.imageType.height = glyphString.scaler.width = glyphString.scaler.height = params.fontsize
-                glyphString.imageType.flags = params.flags
-                glyphString.imageType.face_id = fgi[0]
-                glyphString.GetMetrics(fgi[0])
-                glyphString.baseLine = max(glyphString.baseLine, glyphString.asc)
-                glyphString.baseHeight = max(glyphString.baseHeight, glyphString.asc - glyphString.des)
-                kern = 0
-            else:
-                kern = glyphString.cm.LookupKerningXP(glyphString.scaler, last[1], fgi[1])
-            last = fgi
-            sbit = glyphString.sbc.Lookup(glyphString.imageType, fgi[1])
-            advance = sbit.xadvance + (letterspace or 0) + kern
-            glyphString.insert(idx, (advance,
-             0,
-             color,
-             sbit,
-             char,
-             glyphString.asc,
-             glyphString.des,
-             params.Copy()))
-            idx += 1
-
+        if params.url:
+            uicls.BaseLink().FormatLinkParams(params)
+        glyphString.Insert(params, text, idx)
 
 
 
@@ -1532,12 +1554,13 @@ class EditPlainTextCore(uicls.Scroll):
         for glyphString in rmCompletely:
             self.RemoveGlyphString(glyphString)
 
-        if not self.GetNodes():
+        if not self.sr.nodes:
             self.SetValue('')
         else:
             self.SetSelectionRange(None, None, updateCursor=False)
             self.SetCursorPos(fromIdx)
             self.SetSelectionInitPos(self.globalCursorPos)
+        self.UpdatePosition()
         return 1
 
 
@@ -1652,6 +1675,7 @@ class EditPlainTextCore(uicls.Scroll):
             self.SetSelectionInitPos(self.globalCursorPos)
             self.RemoveAnchor()
         self.RefreshCursorAndSelection(updateActiveParams=False)
+        self.UpdatePosition()
 
 
 
@@ -1692,7 +1716,7 @@ class EditPlainTextCore(uicls.Scroll):
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def DoSizeUpdateDelayed(self):
-        if not self.GetNodes():
+        if not self.sr.nodes:
             return 
         try:
             self._DoSizeUpdateDelayed()
@@ -1720,6 +1744,7 @@ class EditPlainTextCore(uicls.Scroll):
         for glyphString in self.sr.paragraphs:
             self.UpdateGlyphString(glyphString, 0, 0)
 
+        self.RefreshNodes()
         if self.autoScrollToBottom and self.GetScrollProportion() == 0.0:
             self.ScrollToProportion(1.0)
         else:
@@ -1727,6 +1752,27 @@ class EditPlainTextCore(uicls.Scroll):
         self.RefreshCursorAndSelection()
         self.resizeTasklet = None
         self.resizing = 1
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def RefreshNodeIndexes(self, fromWhere = None):
+        if self.destroyed:
+            return 
+        for (nodeidx, node,) in enumerate(self.sr.nodes):
+            node.idx = nodeidx
+
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetNodeHeight(self, node, clipperWidth):
+        if node.idx == 0:
+            xtraHeight = TEXTSIDEMARGIN
+        else:
+            xtraHeight = TEXTLINEMARGIN
+        node.height = self.ReverseScaleDpi(node._baseHeight) + xtraHeight
+        return node.height
 
 
 
@@ -1798,8 +1844,8 @@ class SE_EditTextlineCore(uicls.SE_BaseClassCore, uicls.BaseLink):
         self.sr.textcursor = None
         self.sr.cursortimer = None
         self.sr.textselection = None
-        self.sr.links = uicls.Container(name='links', parent=self)
         trinity.device.RegisterResource(self)
+        uicore.textObjects.add(self)
 
 
 
@@ -1808,14 +1854,14 @@ class SE_EditTextlineCore(uicls.SE_BaseClassCore, uicls.BaseLink):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def Load(self, node):
-        self.sr.links.Flush()
         self.RenderLine()
         if node.idx == 0:
             xtraHeight = TEXTSIDEMARGIN
         else:
             xtraHeight = TEXTLINEMARGIN
-        if self.height != node._baseHeight + xtraHeight:
+        if self.height != self.ReverseScaleDpi(node._baseHeight) + xtraHeight:
             node.height = None
             node.scroll.UpdatePosition()
         self.UpdateSelectionHilite()
@@ -1838,7 +1884,10 @@ class SE_EditTextlineCore(uicls.SE_BaseClassCore, uicls.BaseLink):
 
 
 
-    def RenderLine(self):
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def RenderLine(self, createLinks = True):
+        if createLinks and self.sr.links:
+            self.sr.links.Flush()
         node = self.sr.node
         if node.idx == 0:
             xtraHeight = TEXTSIDEMARGIN
@@ -1858,99 +1907,75 @@ class SE_EditTextlineCore(uicls.SE_BaseClassCore, uicls.BaseLink):
         k = surf.LockBuffer(None, False)
         try:
             buf = uicls.SE_TextlineCore.TexResBuf(k)
-            uicore.font.Clear_Buffer(buf.data, buf.width, buf.height, buf.pitch)
-            self.DrawLine(node.glyphString, buf, 0, node._baseHeight - node._baseLine, startIdx=node._startIndex, endIdx=node._endIndex)
+            trinity.fontMan.ClearBuffer(buf.data, buf.width, buf.height, buf.pitch)
+            self.DrawLine(node.glyphString, buf, 0, node._baseHeight - node._baseLine, startIdx=node._startIndex, endIdx=node._endIndex, createLinks=createLinks)
 
         finally:
             surf.UnlockBuffer()
 
-        sprite.SetSize(node._width, node._baseHeight)
         sprite.state = uiconst.UI_DISABLED
 
 
 
-    def DrawLine(self, glyphString, buf, bx0, by0, startIdx, endIdx):
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def DrawLine(self, glyphString, buf, bx0, by0, startIdx, endIdx, createLinks = True):
         sprite = self.GetSprite()
         x = 0
         self.advanceByIndex.append(x)
         openLink = None
         lastParams = None
-        activeUnderline = None
         for t in glyphString[startIdx:endIdx]:
             (advance, align, color, sbit, char, asc, des, params,) = t
             if lastParams and lastParams.url != params.url:
                 openLink = None
             if params.url:
-                underline = True
-                color = -23040
-                if not lastParams or lastParams.url != params.url:
+                if createLinks and (not lastParams or lastParams.url != params.url):
                     openLink = self.CreateLink(params.url)
-                    openLink.left = x + sprite.left
-                    openLink.height = sprite.height
+                    openLink.left = uicore.ReverseScaleDpi(x) + sprite.left
+                    openLink.height = self.height
                     openLink.top = sprite.top
-            else:
-                underline = bool(params.underline)
-                color = params.color or -1
+                if self.sr.node.hiliteLink == params.url:
+                    linkState = uiconst.LINK_HOVER
+                else:
+                    linkState = uiconst.LINK_IDLE
+                params = params.Copy()
+                uicls.BaseLink().FormatLinkParams(params, linkState)
+            color = params.color or -1
             if type(color) != types.IntType:
                 tricol = trinity.TriColor(*color)
                 color = tricol.AsInt()
-            sbit.ToBuffer(buf.data, buf.width, buf.height, buf.pitch, x + bx0, by0, color)
-            if underline:
-                if activeUnderline and activeUnderline[-1] != (params.face,
-                 params.fontsize,
-                 color,
-                 params.flags):
-                    glyphString.DrawUnderline(buf, activeUnderline)
-                    activeUnderline = None
-                if activeUnderline:
-                    activeUnderline[1] = x + bx0 + advance
-                else:
-                    activeUnderline = [x + bx0,
-                     x + bx0 + advance,
-                     by0,
-                     buf.pitch,
-                     asc,
-                     des,
-                     (params.face,
-                      params.fontsize,
-                      color,
-                      params.flags)]
-            elif activeUnderline:
-                glyphString.DrawUnderline(buf, activeUnderline)
-                activeUnderline = None
+            if params.underline:
+                extraSpace = advance - sbit.xadvance
+                sbit.ToBufferWithUnderline(buf.data, buf.width, buf.height, buf.pitch, x + bx0, by0, color, extraSpace)
+            else:
+                sbit.ToBuffer(buf.data, buf.width, buf.height, buf.pitch, x + bx0, by0, color)
             if openLink:
-                openLink.width += advance
+                openLink.width = uicore.ReverseScaleDpi(x + advance) - openLink.left + sprite.left
             lastParams = params
             x += advance
-            self.advanceByIndex.append(x)
+            self.advanceByIndex.append(self.ReverseScaleDpi(x))
 
         self._currentWidth = x
-        if activeUnderline:
-            glyphString.DrawUnderline(buf, activeUnderline)
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def GetSurface(self, width, height):
         sprite = self.GetSprite()
-        if sprite.texture:
-            textureSize = (sprite.texture.srcWidth, sprite.texture.srcHeight)
+        if sprite.texture and sprite.texture.atlasTexture:
+            textureSize = (sprite.texture.atlasTexture.width, sprite.texture.atlasTexture.height)
         else:
             textureSize = (0, 0)
+        sprite.useSizeFromTexture = True
         surf = None
         try:
             if textureSize != (width, height):
                 texturePrimary = trinity.Tr2Sprite2dTexture()
-                texturePrimary.atlasTexture = trinity.textureAtlasMan.atlases[0].CreateTexture(width, height)
-                texturePrimary.srcX = 0.0
-                texturePrimary.srcY = 0.0
-                texturePrimary.srcWidth = int(width)
-                texturePrimary.srcHeight = int(height)
+                texturePrimary.atlasTexture = uicore.uilib.CreateTexture(width, height)
                 sprite.texture = texturePrimary
                 surf = texturePrimary.atlasTexture
             else:
                 surf = sprite.texture.atlasTexture
-            sprite.width = width
-            sprite.height = height
             return (sprite, surf)
         except Exception as e:
             log.LogWarn('Failed to create surface', e)
@@ -1960,6 +1985,8 @@ class SE_EditTextlineCore(uicls.SE_BaseClassCore, uicls.BaseLink):
 
 
     def CreateLink(self, url):
+        if not self.sr.links:
+            self.sr.links = uicls.Container(name='links', parent=self)
         link = uicls.BaseLink(parent=self.sr.links, align=uiconst.RELATIVE, state=uiconst.UI_NORMAL)
         link.OnDblClick = self.OnDblClick
         link.OnMouseEnter = (self.LinkEnter, link)
@@ -1970,12 +1997,13 @@ class SE_EditTextlineCore(uicls.SE_BaseClassCore, uicls.BaseLink):
         link.url = url
         link.name = 'textlink'
         link.URLHandler = self.sr.node.Get('URLHandler', None)
+        link.hint = link.GetStandardLinkHint(url)
         return link
 
 
 
     def LinkDown(self, link, *args):
-        self.ResetLinks()
+        self.HiliteLink(link.url)
 
 
 
@@ -1989,28 +2017,7 @@ class SE_EditTextlineCore(uicls.SE_BaseClassCore, uicls.BaseLink):
         browser = uiutil.GetBrowser(self)
         if browser and browser.sr.window and hasattr(browser.sr.window, 'ShowHint'):
             browser.sr.window.ShowHint(link.hint or link.url)
-        self.ResetLinks()
-        for entry in self.sr.node.scroll.GetNodes():
-            if not entry.panel:
-                continue
-            if entry.panel.sr.Get('links', None):
-                for item in entry.panel.sr.links.children:
-                    if item.name == 'textlink' and item.url == link.url:
-                        self.HiliteLink(item)
-
-
-
-
-
-    def ResetLinks(self):
-        for entry in self.sr.node.scroll.GetNodes():
-            if not entry.panel:
-                continue
-            if entry.panel.sr.Get('links', None):
-                for item in entry.panel.sr.links.children:
-                    item.Flush()
-
-
+        self.HiliteLink(link.url)
 
 
 
@@ -2018,13 +2025,18 @@ class SE_EditTextlineCore(uicls.SE_BaseClassCore, uicls.BaseLink):
         browser = uiutil.GetBrowser(self)
         if browser and browser.sr.window and hasattr(browser.sr.window, 'ShowHint'):
             browser.sr.window.ShowHint('')
-        self.ResetLinks()
+        self.HiliteLink()
 
 
 
-    def HiliteLink(self, link):
-        if not len(link.children):
-            uicls.Fill(parent=link, color=(1.0, 0.65, 0.0, 0.33), pos=(-2, 0, -2, 0))
+    def HiliteLink(self, linkUrl = None):
+        for entry in self.sr.node.scroll.sr.nodes:
+            entry.hiliteLink = linkUrl
+            if not entry.panel:
+                continue
+            if entry.panel.sr.Get('links', None):
+                entry.panel.RenderLine(createLinks=False)
+
 
 
 
@@ -2100,6 +2112,7 @@ class SE_EditTextlineCore(uicls.SE_BaseClassCore, uicls.BaseLink):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateSelectionHilite(self):
         if not self.sr.node:
             return 
@@ -2142,7 +2155,7 @@ class SE_EditTextlineCore(uicls.SE_BaseClassCore, uicls.BaseLink):
         w = 0
         for charData in self.sr.node.glyphString[self.sr.node.stackCursorIndex:(self.sr.node.stackCursorIndex + self.sr.node.letterCountInLine)]:
             adv = charData[0]
-            if w + adv > toCursorPos:
+            if uicore.ReverseScaleDpi(w + adv) >= toCursorPos:
                 break
             w += adv
             idx += 1
@@ -2151,6 +2164,7 @@ class SE_EditTextlineCore(uicls.SE_BaseClassCore, uicls.BaseLink):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateCursor(self):
         if self.sr.node.globalCursorPos is not None:
             sprite = self.GetSprite()
@@ -2189,7 +2203,7 @@ class SE_EditTextlineCore(uicls.SE_BaseClassCore, uicls.BaseLink):
 
     def CursorBlink(self):
         f = uicore.registry.GetFocus()
-        if f is uicore.desktop or not blue.rot.GetInstance('app:/App').IsActive():
+        if f is uicore.desktop or not trinity.app.IsActive():
             if self.sr.textcursor:
                 self.sr.textcursor.state = uiconst.UI_HIDDEN
             self.sr.cursortimer = None
@@ -2212,18 +2226,9 @@ class SE_EditTextlineCore(uicls.SE_BaseClassCore, uicls.BaseLink):
     def GetText(self, node):
         if node.rawText:
             return node.rawText
-        text = ''.join([ glyphData[4] for glyphData in self.sr.node.glyphString[self.sr.node.stackCursorIndex:(self.sr.node.stackCursorIndex + self.sr.node.letterCountInLine)] if glyphData[4] != None ])
+        text = ''.join([ glyphData[4] for glyphData in self.sr.node.glyphString[self.sr.node.stackCursorIndex:(self.sr.node.stackCursorIndex + self.sr.node.letterCountInLine)] ])
         node.rawText = text
         return text
-
-
-
-    def GetDynamicHeight(node, width):
-        if node.idx == 0:
-            xtraHeight = TEXTSIDEMARGIN
-        else:
-            xtraHeight = TEXTLINEMARGIN
-        return node._baseHeight + xtraHeight
 
 
 

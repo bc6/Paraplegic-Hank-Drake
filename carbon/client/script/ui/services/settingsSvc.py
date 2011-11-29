@@ -5,6 +5,7 @@ import uiutil
 class SettingsSvc(service.Service):
     __guid__ = 'svc.settings'
     __dependencies__ = []
+    __notifyevents__ = ['ProcessShutdown']
 
     def __init__(self):
         service.Service.__init__(self)
@@ -18,6 +19,11 @@ class SettingsSvc(service.Service):
 
 
 
+    def ProcessShutdown(self):
+        self.SaveSettings()
+
+
+
     def LoadSettings(self):
         import __builtin__
         self.SaveSettings()
@@ -27,8 +33,8 @@ class SettingsSvc(service.Service):
         for (sectionName, identifier,) in settingSections:
             key = '%s%s' % (sectionName, identifier)
             if key not in self.loadedSettings:
-                filePath = blue.os.settingspath + 'core_%s_%s.dat' % (sectionName, identifier or '_')
-                section = uiutil.SettingSection(sectionName, filePath, 62)
+                filePath = blue.os.ResolvePathForWriting(u'settings:/core_%s_%s.dat' % (sectionName, identifier or '_'))
+                section = uiutil.SettingSection(sectionName, filePath, 62, service=self)
                 __builtin__.settings.Set(sectionName, section)
                 self.loadedSettings.append(key)
 

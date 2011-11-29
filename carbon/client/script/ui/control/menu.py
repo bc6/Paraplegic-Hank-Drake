@@ -188,9 +188,17 @@ class MenuEntryViewCore(uicls.Container):
     LABELVERTICALPADDING = 2
     LABELHORIZONTALPADDING = 8
     default_hiliteColor = (0.0, 0.0, 0.0, 0.25)
+    default_fontsize = 10
+    default_fontStyle = None
+    default_fontFamily = None
+    default_fontPath = None
 
     def ApplyAttributes(self, attributes):
         uicls.Container.ApplyAttributes(self, attributes)
+        self.fontStyle = attributes.get('fontStyle', self.default_fontStyle)
+        self.fontFamily = attributes.get('fontFamily', self.default_fontFamily)
+        self.fontPath = attributes.get('fontPath', self.default_fontPath)
+        self.fontsize = attributes.get('fontsize', self.default_fontsize)
         self.cursor = 1
         self.clicked = 0
         self.submenu = None
@@ -213,7 +221,7 @@ class MenuEntryViewCore(uicls.Container):
 
 
     def Prepare_Label_(self, *args):
-        label = uicls.Label(parent=self, text='', pos=(8, 1, 0, 0), align=uiconst.CENTERLEFT, autoWidth=1, autoHeight=1, letterspace=1, fontsize=10, state=uiconst.UI_DISABLED)
+        label = uicls.Label(parent=self, pos=(8, 1, 0, 0), align=uiconst.CENTERLEFT, letterspace=1, fontStyle=self.fontStyle, fontFamily=self.fontFamily, fontPath=self.fontPath, fontsize=self.fontsize, state=uiconst.UI_DISABLED)
         self.sr.label = label
 
 
@@ -226,8 +234,11 @@ class MenuEntryViewCore(uicls.Container):
     def Setup(self, entry, size, menu, identifier):
         text = entry.caption
         if size == 10:
-            text = uiutil.UpperCase(text)
+            uppercase = True
+        else:
+            uppercase = False
         self.sr.label.fontsize = size
+        self.sr.label.uppercase = uppercase
         self.sr.label.text = text
         self.menu = menu
         menuIconSize = menu.iconSize
@@ -244,7 +255,7 @@ class MenuEntryViewCore(uicls.Container):
             if icon:
                 icon.SetAlpha(0.5)
             self.sr.label.SetRGB(1.0, 1.0, 1.0, 0.5)
-            if type(entry.value) in types.StringTypes:
+            if isinstance(entry.value, basestring):
                 self.sr.label.text += ' (' + entry.value + ')'
         self.width = self.sr.label.textwidth + self.sr.label.left + self.LABELHORIZONTALPADDING
         self.height = max(menuIconSize, self.sr.label.textheight + self.LABELVERTICALPADDING)

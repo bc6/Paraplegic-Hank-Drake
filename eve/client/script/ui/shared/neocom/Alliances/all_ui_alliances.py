@@ -11,6 +11,7 @@ import uicls
 import uiconst
 import uiutil
 import log
+import localization
 
 class FormAlliances(uicls.Container):
     __guid__ = 'form.Alliances'
@@ -24,7 +25,8 @@ class FormAlliances(uicls.Container):
 
 
     def Load(self, key):
-        sm.GetService('corpui').LoadTop('ui_7_64_6', mls.UI_GENERIC_ALLIANCES)
+        alliancesLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Alliances')
+        sm.GetService('corpui').LoadTop('ui_7_64_6', alliancesLabel)
         if not self.sr.Get('inited', 0):
             self.sr.inited = 1
             self.sr.wndViewParent = uicls.Container(name='wndViewParent', align=uiconst.TOALL, pos=(0, 0, 0, 0), parent=self)
@@ -36,28 +38,34 @@ class FormAlliances(uicls.Container):
                  const.defaultPadding,
                  const.defaultPadding,
                  const.defaultPadding))
-            tabs = [[mls.UI_CORP_HOME,
+            homeLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Home')
+            rnksLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Rankings')
+            apliLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications')
+            mbrsLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Members')
+            cntcLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/AllianceContacts')
+            tabs = [[homeLabel,
               self.sr.wndViewParent,
               self,
               'alliances_home'],
-             [mls.UI_CORP_RANKINGS,
+             [rnksLabel,
               self.sr.wndViewParent,
               self,
               'alliances_rankings'],
-             [mls.UI_CORP_APPLICATIONS,
+             [apliLabel,
               self.sr.wndViewParent,
               self,
               'alliances_applications'],
-             [mls.UI_CORP_MEMBERS,
+             [mbrsLabel,
               self.sr.wndViewParent,
               self,
               'alliances_members'],
-             [mls.UI_CONTACTS_ALLIANCECONTACTS,
+             [cntcLabel,
               self.sr.contacts,
               self,
               'alliancecontact']]
             if session.allianceid is not None:
-                tabs.insert(0, [mls.UI_CORP_BULLETINS,
+                bulletinsLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Bulletins')
+                tabs.insert(0, [bulletinsLabel,
                  self.sr.wndViewParent,
                  self,
                  'alliances_bulletins'])
@@ -77,10 +85,11 @@ class FormAlliances(uicls.Container):
                 tabName = self.sr.tabs.GetSelectedArgs()
         if visibleTab and visibleTab.name == 'alliancecontactsform':
             if session.allianceid:
-                sm.GetService('addressbook').ShowContacts('alliancecontact', self.sr.contacts)
+                self.sr.contacts.LoadContactsForm('alliancecontact')
                 return 
             else:
-                self.sr.contacts.Load(fixedEntryHeight=19, contentList=[], noContentHint=mls.UI_CORP_OWNERNOTINANYALLIANCE % {'owner': cfg.eveowners.Get(eve.session.corpid).ownerName})
+                corpNotInAllianceLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/CorpNotInAlliance', corpName=cfg.eveowners.Get(eve.session.corpid).ownerName)
+                self.sr.contacts.Load(fixedEntryHeight=19, contentList=[], noContentHint=corpNotInAllianceLabel)
                 return 
         self.sr.contacts.state = uiconst.UI_HIDDEN
         if tabName == 'alliances_home':

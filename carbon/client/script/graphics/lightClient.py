@@ -1,10 +1,6 @@
 import service
-import graphicWrappers
-import blue
 import collections
 import geo2
-import trinity
-import uthread
 
 class LightClient(service.Service):
     __guid__ = 'graphics.LightClient'
@@ -37,6 +33,10 @@ class LightClient(service.Service):
             component.renderObject.position = positionComponent.position
             if hasattr(component.renderObject, 'SetRotationYawPitchRoll'):
                 component.renderObject.SetRotationYawPitchRoll(geo2.QuaternionRotationGetYawPitchRoll(positionComponent.rotation))
+        if component.useBoundingBox:
+            rotQuat = geo2.QuaternionRotationSetYawPitchRoll(component.bbRot[1], component.bbRot[0], component.bbRot[2])
+            mat = geo2.MatrixTransformation(None, None, component.bbScale, None, rotQuat, component.bbPos)
+            component.renderObject.boundingBox.transform = mat
         self.ApplyShadowCasterType(entity)
         self.ApplyPerformanceLevelLightDisable(entity)
 
@@ -45,8 +45,6 @@ class LightClient(service.Service):
     def PrepareComponent(self, sceneID, entityID, component):
         if component.renderObject is None:
             return 
-        if hasattr(component.renderObject, 'name'):
-            component.renderObject.name = str(entityID)
         scene = self.graphicClient.GetScene(sceneID)
         scene.AddLightSource(component.renderObject)
 
@@ -74,6 +72,11 @@ class LightClient(service.Service):
             self.ApplyShadowCasterType(entity)
             self.ApplyPerformanceLevelLightDisable(entity)
 
+
+
+
+    def GetName(self, spawnID):
+        return str(cfg.recipes.Get(cfg.entitySpawns.Get(spawnID).recipeID).recipeName)
 
 
 

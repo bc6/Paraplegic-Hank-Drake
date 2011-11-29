@@ -19,13 +19,13 @@ class TotalProfiler:
 
 
     def Start(self):
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         datestr = util.FmtDate(now, 'sl')
         datestr = datestr.replace('.', '')
         datestr = datestr.replace(':', '')
         datestr = datestr.replace(' ', '')
         import os
-        self.file = file(os.path.join(blue.os.cachepath, 'prfl' + datestr + '.txt'), 'w')
+        self.file = file(os.path.join(blue.os.ResolvePath(u'cache:/'), 'prfl' + datestr + '.txt'), 'w')
         self.file.write('<profiling>\r\n')
         self.file.write('<data name="time" type="int">' + datestr[-6:] + '</data>\r\n')
         self.file.write('<data name="date" type="int">' + datestr[:-6] + '</data>\r\n')
@@ -75,7 +75,7 @@ class TotalProfiler:
 
     def EndSnapshot(self, key):
         snapshot = self.snapshotDict[key]
-        snapshot.end = blue.os.GetTime(1)
+        snapshot.end = blue.os.GetWallclockTimeNow()
         tasklets = blue.pyos.taskletTimer.GetTasklets().values()
         snapshot.taskletEnd = map(lambda i: (str(i.context), i.switches, i.time), filter(lambda i: i.context != 'Idle Thread' and i.time, tasklets))
         snapshot.memoryEnd = blue.pyos.ProbeStuff()[1][7]
@@ -112,7 +112,7 @@ class FPSProfiler:
         self.num = 0
         self.accum = 0.0
         self.run = 1
-        self.start = blue.os.GetTime(1)
+        self.start = blue.os.GetWallclockTimeNow()
         self.endtimer = base.AutoTimer(ms, self.Finish, file)
         uthread.new(self.Start_thread).context = 'profiling.FPSProfiler.Start'
 
@@ -134,7 +134,7 @@ class FPSProfiler:
     def Finish(self, file):
         self.endtimer = None
         self.run = 0
-        end = blue.os.GetTime(1)
+        end = blue.os.GetWallclockTimeNow()
         totTime = blue.os.TimeDiffInMs(self.start, end)
         FPS = self.num * 1000.0 / totTime
         file.write('<FPS>\r\n')
@@ -197,7 +197,7 @@ class Snapshot:
         self.taskletEnd = None
         self.memoryStart = 0
         self.memoryEnd = 0
-        self.start = blue.os.GetTime(1)
+        self.start = blue.os.GetWallclockTimeNow()
         self.end = self.start
         self.name = name
 
@@ -289,7 +289,7 @@ class ProfilingScheduler(service.Service):
             self.channel.receive()
         self.LogInfo('Ready to run')
         self.LogInfo('Verifying locations')
-        blue.pyos.synchro.Sleep(2000)
+        blue.pyos.synchro.SleepWallclock(2000)
         for location in locationList:
             inPark = sm.GetService('michelle').GetBall(location)
             if not inPark:
@@ -316,21 +316,21 @@ class ProfilingScheduler(service.Service):
             self.channel.receive()
             self.LogInfo('Warping finished')
             self.LogInfo('Wait while we gather information, and allow for interupts')
-            start = blue.os.GetTime(1)
-            blue.pyos.synchro.Sleep(1000)
+            start = blue.os.GetWallclockTimeNow()
+            blue.pyos.synchro.SleepWallclock(1000)
             timer = base.AutoTimer(60000, self.ShuntEvents)
             self.keepAlive.Wait()
             timer = None
-            end = blue.os.GetTime(1)
+            end = blue.os.GetWallclockTimeNow()
             self.LogInfo('We waited for ', blue.os.TimeDiffInMs(start, end), ' ms')
             self.totalProfiler.ProcessSnapshots()
             self.dispatchProfiler.Flush(self.totalProfiler.file)
             self.LogInfo('Sleeping for good measure')
-            blue.pyos.synchro.Sleep(2000)
+            blue.pyos.synchro.SleepWallclock(2000)
             FPStime = 10000
             self.LogInfo('FPS profiling for ', FPStime, ' ms')
             self.FPSProfiler.Start(self.totalProfiler.file, FPStime)
-            blue.pyos.synchro.Sleep(FPStime + 500)
+            blue.pyos.synchro.SleepWallclock(FPStime + 500)
             self.LogInfo(location, ' done.')
 
 
@@ -347,7 +347,7 @@ class ProfilingScheduler(service.Service):
             raise RuntimeError('No park found')
         ix = 10
         while not sm.GetService('space').CanWarp():
-            blue.pyos.synchro.Sleep(1000)
+            blue.pyos.synchro.SleepWallclock(1000)
             ix -= 1
             if ix <= 0:
                 raise RuntimeError("couldn't warp")
@@ -431,7 +431,7 @@ class NonniEvent:
             self.primed -= 1
             self.channel.receive()
 
-        blue.pyos.synchro.Sleep(self.sleepingTime)
+        blue.pyos.synchro.SleepWallclock(self.sleepingTime)
         self.Wait()
 
 

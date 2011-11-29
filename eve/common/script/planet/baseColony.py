@@ -9,6 +9,7 @@ import util
 import blue.heapq as heapq
 import types
 import math
+import localization
 from PlanetResources import builder
 
 class BaseColony:
@@ -153,7 +154,7 @@ class BaseColony:
 
     def RecalculateCurrentSimTime(self):
         if self.colonyData is None or len(self.colonyData.pins) < 1:
-            self.currentSimTime = blue.os.GetTime()
+            self.currentSimTime = blue.os.GetWallclockTime()
             return 
         for pin in self.colonyData.pins.itervalues():
             if not pin.IsStorage() and pin.lastRunTime is not None:
@@ -163,7 +164,7 @@ class BaseColony:
                     self.currentSimTime = pin.lastRunTime
 
         if self.currentSimTime is None:
-            self.currentSimTime = blue.os.GetTime()
+            self.currentSimTime = blue.os.GetWallclockTime()
 
 
 
@@ -181,7 +182,7 @@ class BaseColony:
                 self.RecalculateCurrentSimTime()
             if self.currentSimTime is None:
                 raise RuntimeError('CurrentSimTime is none for character', self.ownerID, '. This is a fatal error that can cause infinite looping.')
-            simEndTime = runSimUntil if runSimUntil is not None else blue.os.GetTime()
+            simEndTime = runSimUntil if runSimUntil is not None else blue.os.GetWallclockTime()
             with bluepy.Timer('BaseColony::PrimeSimulation'):
                 self.PrimeSimulation(simEndTime)
             with bluepy.Timer('BaseColony::RunSimulation'):
@@ -779,9 +780,9 @@ class BaseColony:
         cpuDelta = pin.GetCpuUsage(numHeads=len(pin.heads) + 1) - pin.GetCpuUsage()
         powerDelta = pin.GetPowerUsage(numHeads=len(pin.heads) + 1) - pin.GetPowerUsage()
         if cpuDelta + self.colonyData.GetColonyCpuUsage() > self.colonyData.GetColonyCpuSupply():
-            raise UserError('CannotAddToColonyCPUUsageExceeded', {'typeName': mls.UI_PI_EXTRACTORHEAD})
+            raise UserError('CannotAddToColonyCPUUsageExceeded', {'typeName': (const.UE_LOC, 'UI/PI/Common/ExtractorHead')})
         if powerDelta + self.colonyData.GetColonyPowerUsage() > self.colonyData.GetColonyPowerSupply():
-            raise UserError('CannotAddToColonyPowerUsageExceeded', {'typeName': mls.UI_PI_EXTRACTORHEAD})
+            raise UserError('CannotAddToColonyPowerUsageExceeded', {'typeName': (const.UE_LOC, 'UI/PI/Common/ExtractorHead')})
         spA = SurfacePoint(radius=self.GetPlanetRadius(), theta=pin.longitude, phi=pin.latitude)
         spB = SurfacePoint(radius=self.GetPlanetRadius(), theta=longitude, phi=latitude)
         angleBetween = spA.GetAngleBetween(spB)

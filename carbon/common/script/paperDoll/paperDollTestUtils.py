@@ -21,7 +21,7 @@ class RandomModifierManager(object):
             print 'Modifier chosen is %s' % modifier.name
             self.pdc.doll.Update(self.pdc.factory, self.pdc.avatar)
             while self.pdc.doll.busyUpdating:
-                blue.synchro.Yield()
+                PD.Yield()
 
         else:
             raise Exception('Candidates are empty!')
@@ -43,7 +43,7 @@ class RandomModifierManager(object):
 
 
     def UndressDress(self):
-        blue.synchro.Sleep(1000)
+        blue.synchro.SleepWallclock(1000)
         removedCount = 0
         while removedCount < len(self.modifiers):
             print 'Removing random modifier'

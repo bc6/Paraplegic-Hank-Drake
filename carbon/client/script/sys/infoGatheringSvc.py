@@ -63,7 +63,7 @@ class InformationGatheringSvc(service.Service):
                 if eventTypeID in self.logTypeAggregates:
                     if itemID2 is not None:
                         itemID2 = long(itemID2)
-                    ln = [util.FmtDate(blue.os.GetTime(), 'ss'),
+                    ln = [util.FmtDate(blue.os.GetWallclockTime(), 'ss'),
                      long(itemID),
                      itemID2,
                      int_1,
@@ -107,7 +107,7 @@ class InformationGatheringSvc(service.Service):
                                 log.LogException('IGS received data of unhandled datatype!')
 
                 else:
-                    self.loggedEvents[eventTypeID].append([util.FmtDate(blue.os.GetTime(), 'ss'),
+                    self.loggedEvents[eventTypeID].append([util.FmtDate(blue.os.GetWallclockTime(), 'ss'),
                      itemID,
                      itemID2,
                      int_1,
@@ -148,7 +148,7 @@ class InformationGatheringSvc(service.Service):
             except Exception:
                 log.LogException('Error while shipping data to server...')
                 sys.exc_clear()
-            blue.pyos.synchro.Sleep(self.clientWorkerInterval)
+            blue.pyos.synchro.SleepWallclock(self.clientWorkerInterval)
 
 
 

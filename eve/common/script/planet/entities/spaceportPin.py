@@ -41,7 +41,7 @@ class SpaceportPin(planet.StoragePin):
 
         lt = launchTime
         if launchTime is None:
-            lt = blue.os.GetTime()
+            lt = blue.os.GetWallclockTime()
         nextLaunchTime = self.GetNextLaunchTime()
         if nextLaunchTime is None or nextLaunchTime <= lt:
             return True
@@ -75,33 +75,25 @@ class SpaceportPin(planet.StoragePin):
 
 
 
-    def GetImportTax(self, commodities):
+    def GetImportTax(self, commodities, taxRate = 0.05):
         importTaxRate = self.eventHandler.GetTypeAttribute(self.typeID, const.attributeImportTax)
         totalTax = 0.0
         for (typeID, qty,) in commodities.iteritems():
-            multiplier = 1.0
-            for attribute in cfg.dgmtypeattribs.get(typeID, []):
-                if attribute.attributeID == const.attributeImportTaxMultiplier:
-                    multiplier = attribute.value
+            multiplier = self.eventHandler.GetTypeAttribute(typeID, const.attributeImportTaxMultiplier)
+            totalTax += qty * importTaxRate * multiplier
 
-            totalTax += qty * cfg.invtypes.Get(typeID).volume * importTaxRate * multiplier
-
-        return totalTax
+        return totalTax * taxRate
 
 
 
-    def GetExportTax(self, commodities):
+    def GetExportTax(self, commodities, taxRate = 0.05):
         exportTaxRate = self.eventHandler.GetTypeAttribute(self.typeID, const.attributeExportTax)
         totalTax = 0.0
         for (typeID, qty,) in commodities.iteritems():
-            multiplier = 1.0
-            for attribute in cfg.dgmtypeattribs.get(typeID, []):
-                if attribute.attributeID == const.attributeExportTaxMultiplier:
-                    multiplier = attribute.value
+            multiplier = self.eventHandler.GetTypeAttribute(typeID, const.attributeImportTaxMultiplier)
+            totalTax += qty * exportTaxRate * multiplier
 
-            totalTax += qty * cfg.invtypes.Get(typeID).volume * exportTaxRate * multiplier
-
-        return totalTax
+        return totalTax * taxRate
 
 
 

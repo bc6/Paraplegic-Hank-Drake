@@ -1,10 +1,11 @@
-import xtriui
-import uix
-import uthread
 import form
-import dbg
+import localization
 import log
+import uicls
+import uiconst
 import uiutil
+import uthread
+import util
 
 class ShipCargoView(form.VirtualInvWindow):
     __guid__ = 'form.ShipCargoView'
@@ -20,7 +21,7 @@ class ShipCargoView(form.VirtualInvWindow):
         try:
             return self.GetShell().ListCargo()
         except UserError:
-            self.SelfDestruct()
+            self.Close()
             if self.sr.Get('cookie', None):
                 sm.GetService('inv').Unregister(self.sr.cookie)
             raise 
@@ -36,7 +37,7 @@ class ShipCargoView(form.VirtualInvWindow):
         try:
             return sm.GetService('invCache').GetInventoryFromId(self.itemID, locationID=session.stationid2)
         except UserError:
-            self.SelfDestruct()
+            self.Close()
             if self.sr.Get('cookie', None):
                 sm.GetService('inv').Unregister(self.sr.cookie)
             raise 
@@ -62,7 +63,7 @@ class DockedCargoView(ShipCargoView):
 
     def Startup(self, id_, name):
         self.itemID = id_
-        self.displayName = mls.UI_SHARED_SOMEONESCARGOHOLD2 % {'name': uix.Possessive(name)}
+        self.displayName = localization.GetByLabel('UI/Cargo/SomeonesCargoHoldLabel', possessiveName=name)
         self.scope = 'station'
         ShipCargoView.Startup(self)
 
@@ -74,7 +75,7 @@ class InflightCargoView(ShipCargoView):
 
     def ApplyAttributes(self, attributes):
         ShipCargoView.ApplyAttributes(self, attributes)
-        self.displayName = mls.UI_SHARED_MYCARGO
+        self.displayName = localization.GetByLabel('UI/Cargo/MyCargoLabel')
         self.scope = 'inflight'
         self.itemID = eve.session.shipid
         ShipCargoView.Startup(self)
@@ -118,11 +119,38 @@ class LootCargoView(form.VirtualInvWindow):
         self.hasCapacity = hasCapacity
         self.locationFlag = locationFlag
         form.VirtualInvWindow.Startup(self)
+        bp = sm.GetService('michelle').GetBallpark()
+        item = bp.GetInvItem(self.itemID) if bp else None
+        if item and item.groupID in (const.groupWreck,
+         const.groupCargoContainer,
+         const.groupSecureCargoContainer,
+         const.groupAuditLogSecureContainer,
+         const.groupFreightContainer,
+         const.groupSpawnContainer):
+            lootAllBtnGrp = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Inventory/LootAll'),
+              self.LootAll,
+              (),
+              None]], parent=self.GetMainArea(), align=uiconst.CENTERBOTTOM, idx=0)
+            self.sr.scroll.padBottom = lootAllBtnGrp.height + 4
+            self.SetMinSize((256, 200))
 
 
 
     def DoGetShell(self):
-        return eve.GetInventoryFromId(self.itemID)
+        return sm.GetService('invCache').GetInventoryFromId(self.itemID)
+
+
+
+    def LootAll(self, *args):
+        thisInv = sm.GetService('invCache').GetInventoryFromId(self.itemID)
+        shipInv = sm.GetService('invCache').GetInventoryFromId(session.shipid)
+        items = thisInv.List()
+        if len(items) > 0 and sm.GetService('consider').ConfirmTakeFromContainer(self.itemID):
+            if sm.GetService('consider').ConfirmTakeIllicitGoods(items):
+                if len(items) > 1:
+                    shipInv.MultiAdd([ item.itemID for item in items ], self.itemID, flag=const.flagCargo)
+                else:
+                    shipInv.Add(items[0].itemID, self.itemID, flag=const.flagCargo)
 
 
 
@@ -132,7 +160,7 @@ class LootCargoView(form.VirtualInvWindow):
         except UserError:
             if self.sr.Get('cookie', None):
                 sm.GetService('inv').Unregister(self.sr.cookie)
-            self.SelfDestruct()
+            self.Close()
             raise 
         if self.isWreck:
             sm.GetService('wreck').MarkViewed(self.id, True)
@@ -156,35 +184,36 @@ class LootCargoView(form.VirtualInvWindow):
             return 
         if ball:
             log.LogInfo('DoBallRemove::lootcargoview', ball.id)
-        if slimItem.itemID == self.itemID:
-            uthread.new(self.CloseX)
+        if slimItem.itemID == self.itemID and slimItem.itemID != util.GetActiveShip():
+            uthread.new(self.CloseByUser)
 
 
     DoBallRemove = uiutil.ParanoidDecoMethod(DoBallRemove, ('sr',))
 
     def DoBallClear(self, solitem):
-        uthread.new(self.CloseX)
+        if self.itemID != util.GetActiveShip() or self.locationFlag != const.flagShipHangar:
+            uthread.new(self.CloseByUser)
 
 
     DoBallClear = uiutil.ParanoidDecoMethod(DoBallClear, ('sr',))
 
     def OnSlimItemChange(self, oldItem, newItem):
         if oldItem.itemID == self.itemID and newItem.isEmpty and not oldItem.isEmpty:
-            self.CloseX()
+            self.CloseByUser()
 
 
     OnSlimItemChange = uiutil.ParanoidDecoMethod(OnSlimItemChange, ('sr',))
 
     def OnItemChange(self, item, change):
         if item.itemID == self.itemID and item.stacksize == 0:
-            self.CloseX()
+            self.CloseByUser()
 
 
     OnItemChange = uiutil.ParanoidDecoMethod(OnItemChange, ('sr',))
 
     def DBLessLimitationsCheck(self, errorName, item):
         if errorName in ('NotEnoughCargoSpace', 'NotEnoughCargoSpaceOverload'):
-            eve.Message('ItemMoveGoesThroughFullCargoHold', {'itemType': cfg.invtypes.Get(item.typeID).name})
+            eve.Message('ItemMoveGoesThroughFullCargoHold', {'itemType': item.typeID})
             return True
         return False
 
@@ -217,16 +246,14 @@ class DroneBay(form.VirtualInvWindow):
 
     def Startup(self, id_, name):
         self.itemID = id_
-        if name != 'My':
-            name = '%s' % uix.Possessive(name)
-        self.displayName = mls.UI_SHARED_SOMEONESDRONEBAY % {'name': name}
+        self.displayName = localization.GetByLabel('UI/Cargo/SomeonesDroneBayLabel', possessiveName=name)
         self.scope = 'station'
         form.VirtualInvWindow.Startup(self)
 
 
 
     def DoGetShell(self):
-        return eve.GetInventoryFromId(self.itemID)
+        return sm.GetService('invCache').GetInventoryFromId(self.itemID)
 
 
 
@@ -260,68 +287,12 @@ class SpecialCargoBay(form.VirtualInvWindow):
 
 
     def DoGetShell(self):
-        return eve.GetInventoryFromId(self.itemID)
+        return sm.GetService('invCache').GetInventoryFromId(self.itemID)
 
 
 
     def IsMine(self, rec):
         return rec.locationID == self.itemID and rec.flagID == self.locationFlag
-
-
-
-
-class PlanetInventory(form.VirtualInvWindow):
-    __guid__ = 'form.PlanetInventory'
-    __notifyevents__ = ['OnBallparkCall']
-
-    def ApplyAttributes(self, attributes):
-        form.VirtualInvWindow.ApplyAttributes(self, attributes)
-        _id = attributes._id
-        name = attributes.displayName
-        self.locationFlag = None
-        self.hasCapacity = 1
-        self.Startup(_id, name)
-
-
-
-    def Startup(self, id_, name):
-        self.id = self.itemID = id_
-        self.displayName = name
-        self.locationFlag = None
-        self.scope = 'inflight'
-        form.VirtualInvWindow.Startup(self)
-
-
-
-    def List(self):
-        try:
-            ret = self.GetShell().List()
-        except UserError:
-            if self.sr.Get('cookie', None):
-                sm.GetService('inv').Unregister(self.sr.cookie)
-            self.SelfDestruct()
-            raise 
-        return ret
-
-
-
-    def DoGetShell(self):
-        return eve.GetInventoryFromId(self.itemID)
-
-
-
-    def IsMine(self, rec):
-        return rec.locationID == self.itemID and rec.ownerID == session.charid
-
-
-
-    def OnBallparkCall(self, functionName, args):
-        if self is None or self.destroyed:
-            return 
-        if functionName == 'WarpTo':
-            warpingObjectID = args[0]
-            if warpingObjectID == session.shipid:
-                self.SelfDestruct()
 
 
 

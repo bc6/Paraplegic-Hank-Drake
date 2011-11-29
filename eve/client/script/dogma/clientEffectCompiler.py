@@ -15,7 +15,7 @@ class EffectDict(dict):
         try:
             return dict.__getitem__(self, effectID)
         except KeyError:
-            effect = sm.GetService('baseDogmaStaticSvc').effects[effectID]
+            effect = sm.GetService('clientDogmaStaticSvc').effects[effectID]
             flags = self.effectCompiler.ParseExpressionForInfluences(effect.preExpression)
             self.effectCompiler.flagsByEffect[effectID] = flags
             codez = self.effectCompiler.ParseEffect(effectID)
@@ -34,7 +34,6 @@ class ClientEffectCompiler(svc.baseEffectCompiler):
 
     def Run(self, *args):
         self.dogma = sm.GetService('dogma')
-        self.dogma.LoadExpressions()
         svc.baseEffectCompiler.Run(self, *args)
         self.effects = EffectDict(self)
         self.SetupEffects()
@@ -45,7 +44,7 @@ class ClientEffectCompiler(svc.baseEffectCompiler):
 
 
     def GetDogmaStaticMgr(self):
-        return sm.GetService('baseDogmaStaticSvc')
+        return sm.GetService('clientDogmaStaticSvc')
 
 
 

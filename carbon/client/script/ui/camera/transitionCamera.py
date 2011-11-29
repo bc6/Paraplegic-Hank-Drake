@@ -35,6 +35,7 @@ class TransitionCamera(cameras.BasicCamera):
 
     def DoneTransitioning(self):
         camClient = sm.GetService('cameraClient')
+        camClient.transition = False
         if self.pushing:
             camClient.PopAndPush(self.toCamera)
         else:

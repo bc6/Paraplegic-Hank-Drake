@@ -17,6 +17,7 @@ import bluepy
 import uicls
 import uiconst
 import bitmapjob
+import paperDoll
 
 class SceneContainer(uicls.Base):
     __guid__ = 'form.SceneContainer'
@@ -62,16 +63,16 @@ class SceneContainer(uicls.Base):
 
 
 
-    def PrepareInteriorScene(self):
+    def PrepareInteriorScene(self, addShadowStep = False):
         self.scene = trinity.Load('res:/Graphics/Interior/characterCreation/Preview.red')
-        self.frontClip = 0.01
-        self.backClip = 100.0
+        self.frontClip = 0.1
+        self.backClip = 10.0
         self.fieldOfView = 0.3
         self.minPitch = -0.6
         self.maxPitch = 0.6
         self.SetupCamera()
         blue.resMan.Wait()
-        self.DisplayScene(addClearStep=True, addBitmapStep=True)
+        self.DisplayScene(addClearStep=True, addBitmapStep=True, addShadowStep=addShadowStep)
 
 
 
@@ -93,13 +94,15 @@ class SceneContainer(uicls.Base):
 
 
 
-    def DisplayScene(self, addClearStep = False, addBitmapStep = False):
+    def DisplayScene(self, addClearStep = False, addBitmapStep = False, addShadowStep = False):
         self.renderJob = trinity.CreateRenderJob('SceneInScene')
         self.renderJob.SetViewport(self.viewport)
         self.projection.PerspectiveFov(self.fieldOfView, self.viewport.GetAspectRatio(), self.frontClip, self.backClip)
         self.renderJob.SetProjection(self.projection)
         self.renderJob.SetView(None, self.camera, self.cameraParent)
         self.renderJob.Update(self.scene)
+        if addShadowStep:
+            paperDoll.SkinSpotLightShadows.CreateShadowStep(self.renderJob)
         if addClearStep:
             self.renderJob.Clear((0.2, 0.2, 0.2, 1.0), 1.0)
         if addBitmapStep:
@@ -121,19 +124,19 @@ class SceneContainer(uicls.Base):
 
 
     def AddToScene(self, model, clear = 1):
-        if model == None:
+        if model == None or self.scene == None:
             return 
         if clear:
             del self.scene.objects[:]
             self.scene.objects.append(model)
-        self.scene.UpdateScene(blue.os.GetTime(1))
+        self.scene.UpdateScene(blue.os.GetSimTime())
         self.cameraParent.translationCurve.parent = model
         self.camera.rotationOfInterest.SetIdentity()
 
 
 
     def ClearScene(self):
-        self.scene.UpdateScene(blue.os.GetTime(1))
+        self.scene.UpdateScene(blue.os.GetSimTime())
         del self.scene.objects[:]
 
 
@@ -147,10 +150,10 @@ class SceneContainer(uicls.Base):
         (l, t, w, h,) = self.GetAbsolute()
         if not w and not h:
             return 
-        self.viewport.x = l
-        self.viewport.y = t
-        self.viewport.width = w
-        self.viewport.height = h
+        self.viewport.x = uicore.ScaleDpi(l)
+        self.viewport.y = uicore.ScaleDpi(t)
+        self.viewport.width = uicore.ScaleDpi(w)
+        self.viewport.height = uicore.ScaleDpi(h)
         self.projection.PerspectiveFov(self.fieldOfView, self.viewport.GetAspectRatio(), self.frontClip, self.backClip)
 
 
@@ -162,6 +165,11 @@ class SceneContainer(uicls.Base):
 
     def _OnClose(self, *args):
         self.clearStep = None
+        self.viewport = None
+        self.projection = None
+        self.renderJob = None
+        self.camera = None
+        self.cameraParent = None
         self.scene = None
 
 
@@ -232,6 +240,8 @@ class SceneContainerBaseNavigation(uicls.Container):
 
 
     def OnMouseMove(self, *args):
+        if self.destroyed:
+            return 
         lib = uicore.uilib
         dx = lib.dx
         dy = lib.dy

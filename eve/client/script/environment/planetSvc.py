@@ -54,10 +54,10 @@ class PlanetService(service.Service):
         if planetID not in self.foreignColoniesByPlanet:
             self.foreignColoniesByPlanet[planetID] = {}
         colonyData = self.foreignColoniesByPlanet[planetID].get(characterID, None)
-        if colonyData is None or colonyData.timestamp + planetCommon.PLANET_CACHE_TIMEOUT < blue.os.GetTime():
+        if colonyData is None or colonyData.timestamp + planetCommon.PLANET_CACHE_TIMEOUT < blue.os.GetWallclockTime():
             self.LogInfo('GetColonyForCharacter :: Fetching fresh data due to lack of colony or expired timestamp for planet', planetID, 'character', characterID)
             remotePlanet = moniker.GetPlanet(planetID)
-            colonyData = util.KeyVal(timestamp=blue.os.GetTime())
+            colonyData = util.KeyVal(timestamp=blue.os.GetWallclockTime())
             colonyData.data = remotePlanet.GetFullNetworkForOwner(planetID, characterID)
             self.foreignColoniesByPlanet[planetID][characterID] = colonyData
         return colonyData.data
@@ -66,10 +66,10 @@ class PlanetService(service.Service):
 
     def GetPlanetCommandPins(self, planetID):
         pinData = self.commandPinsByPlanet.get(planetID, None)
-        if pinData is None or pinData.timestamp + planetCommon.PLANET_CACHE_TIMEOUT < blue.os.GetTime():
+        if pinData is None or pinData.timestamp + planetCommon.PLANET_CACHE_TIMEOUT < blue.os.GetWallclockTime():
             self.LogInfo('GetPlanetCommandPins :: Fetching fresh data due to lack of data or expired timestamp for planet', planetID)
             remotePlanet = moniker.GetPlanet(planetID)
-            pinData = util.KeyVal(timestamp=blue.os.GetTime())
+            pinData = util.KeyVal(timestamp=blue.os.GetWallclockTime())
             pinData.data = remotePlanet.GetCommandPinsForPlanet(planetID)
             self.commandPinsByPlanet[planetID] = pinData
         return pinData.data
@@ -78,10 +78,10 @@ class PlanetService(service.Service):
 
     def GetExtractorsForPlanet(self, planetID):
         extractorData = self.extractorsByPlanet.get(planetID, None)
-        if extractorData is None or extractorData.timestamp + planetCommon.PLANET_CACHE_TIMEOUT < blue.os.GetTime():
+        if extractorData is None or extractorData.timestamp + planetCommon.PLANET_CACHE_TIMEOUT < blue.os.GetWallclockTime():
             self.LogInfo('GetPlanetExtractors :: Fetching fresh data due to lack of data or expired timestamp for planet', planetID)
             remotePlanet = moniker.GetPlanet(planetID)
-            extractorData = util.KeyVal(timestamp=blue.os.GetTime())
+            extractorData = util.KeyVal(timestamp=blue.os.GetWallclockTime())
             extractorData.data = remotePlanet.GetExtractorsForPlanet(planetID)
             self.extractorsByPlanet[planetID] = extractorData
         return extractorData.data

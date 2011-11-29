@@ -1,9 +1,9 @@
-import uix
 import uiconst
 import planet
 import uicls
 import planetCommon
 import util
+import localization
 EDITMODECONTAINER_HEIGHT = 110
 
 class PlanetModeContainer(uicls.NeocomContainer):
@@ -29,15 +29,15 @@ class PlanetModeContainer(uicls.NeocomContainer):
         uicls.Frame(parent=self.editModeContainer, color=util.Color.GetGrayRGBA(0.0, 0.2))
         self.tabButtonContainer = uicls.Container(parent=self.content, name='tabButtonContainer', align=uiconst.TOTOP, pos=(0, 0, 0, 28))
         self.tabPanelContainer = uicls.Container(parent=self.content, name='tabPanelContainer', align=uiconst.TOALL, padTop=4)
-        self.heading = uicls.Label(text=mls.UI_PI_VIEWING_PLANET, name='heading', parent=self.headerContainer, align=uiconst.TOPLEFT, height=14, state=uiconst.UI_DISABLED)
-        self.planetName = uicls.CaptionLabel(text='', align=uiconst.RELATIVE, fontsize=14, parent=self.headerContainer, top=self.heading.textheight, letterspace=5)
+        self.heading = uicls.EveLabelMedium(text=localization.GetByLabel('UI/PI/Common/ViewingPlanet'), name='heading', parent=self.headerContainer, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED)
+        self.planetName = uicls.EveHeaderLarge(parent=self.headerContainer, top=self.heading.textheight, state=uiconst.UI_NORMAL)
         self.resourceControllerTab = planet.ui.ResourceController(parent=self.tabPanelContainer)
         self.editModeTab = planet.ui.PlanetEditModeContainer(parent=self.tabPanelContainer)
-        tabs = [[mls.UI_CMD_BUILD,
+        tabs = [[localization.GetByLabel('UI/Common/Build'),
           self.editModeTab,
           self,
           None,
-          'editModeTab'], [mls.UI_PI_SCAN,
+          'editModeTab'], [localization.GetByLabel('UI/PI/Common/Scan'),
           self.resourceControllerTab,
           self,
           None,
@@ -45,16 +45,20 @@ class PlanetModeContainer(uicls.NeocomContainer):
         self.modeButtonGroup = uicls.FlatButtonGroup(parent=self.tabButtonContainer, align=uiconst.TOTOP, height=28, toggleEnabled=False)
         self.modeButtonGroup.Startup(tabs, selectedArgs=['editModeTab'])
         BTNSIZE = 24
-        exitBtn = uicls.Button(parent=self, label=mls.UI_PI_CMD_EXIT, align=uiconst.TOPRIGHT, pos=(-6,
-         -4,
+        exitBtn = uicls.Button(parent=self.content, align=uiconst.TOPRIGHT, pos=(0,
+         0,
          BTNSIZE,
-         BTNSIZE), icon='ui_73_16_45', iconSize=16, func=self.ExitPlanetMode, alwaysLite=True, color=util.Color.RED)
-        exitBtn.hint = mls.UI_PI_EXIT_PLANET_MODE
-        homeBtn = uicls.Button(parent=self, label=mls.UI_PI_CMD_HOME, align=uiconst.TOPRIGHT, pos=(exitBtn.width - 10,
-         -4,
+         BTNSIZE), icon='ui_73_16_45', iconSize=16, func=self.ExitPlanetMode, alwaysLite=True, color=util.Color.RED, hint=localization.GetByLabel('UI/PI/Common/ExitPlanetMode'))
+        homeBtn = uicls.Button(parent=self.content, align=uiconst.TOPRIGHT, pos=(exitBtn.left + exitBtn.width + 2,
+         0,
          BTNSIZE,
-         BTNSIZE), icon='ui_73_16_46', iconSize=16, func=self.ViewCommandCenter, alwaysLite=True)
-        homeBtn.hint = mls.UI_PI_CMD_HOMEHINT
+         BTNSIZE), icon='ui_73_16_46', iconSize=16, func=self.ViewCommandCenter, alwaysLite=True, hint=localization.GetByLabel('UI/PI/Common/ViewPlanetaryCommandCenter'))
+        if sm.GetService('machoNet').GetClientConfigVals().get('enableDustLink'):
+            dustViewBtn = uicls.Button(parent=self.content, align=uiconst.TOPRIGHT, pos=(homeBtn.left + homeBtn.width + 2,
+             0,
+             BTNSIZE,
+             BTNSIZE), icon='ui_73_16_44', iconSize=16, func=self.ChangeToDustView, alwaysLite=True)
+            dustViewBtn.hint = localization.GetByLabel('UI/PI/Common/DustView')
         self.sr.homeBtn = homeBtn
         self.UpdatePlanetText()
         self.UpdateHomeButton()
@@ -65,7 +69,8 @@ class PlanetModeContainer(uicls.NeocomContainer):
     def UpdatePlanetText(self):
         planetUI = sm.GetService('planetUI')
         planetID = planetUI.planetID
-        self.planetName.text = '<b>%s</b>' % cfg.evelocations.Get(planetID).locationName.upper()
+        planetData = sm.GetService('map').GetPlanetInfo(planetID)
+        self.planetName.text = '<url=showinfo:%s//%s>%s</url>' % (planetData.typeID, planetID, cfg.evelocations.Get(planetID).locationName)
 
 
 
@@ -77,7 +82,7 @@ class PlanetModeContainer(uicls.NeocomContainer):
 
 
     def ExitPlanetMode(self, *args):
-        sm.GetService('planetUI').Close()
+        sm.GetService('viewState').CloseSecondaryView('planet')
 
 
 
@@ -86,19 +91,7 @@ class PlanetModeContainer(uicls.NeocomContainer):
 
 
 
-    def OnEditModeBuiltOrDestroyed(self, *args):
-        self.UpdateHomeButton()
-
-
-
     def OnPlanetCommandCenterDeployedOrRemoved(self, *args):
-        self.UpdateHomeButton()
-
-
-
-    def OnEditModeChanged(self, *args):
-        if not self or self.destroyed:
-            return 
         self.UpdateHomeButton()
 
 
@@ -112,14 +105,14 @@ class PlanetModeContainer(uicls.NeocomContainer):
 
 
     def CreateEditModeContainer(self):
-        uicls.Label(parent=self.editModeContent, text=mls.UI_PI_EDITSPENDING, align=uiconst.RELATIVE, fontsize=14, uppercase=True, letterspace=1)
-        self.powerGauge = uicls.Gauge(parent=self.editModeContent, pos=(0, 22, 125, 34), color=planetCommon.PLANET_COLOR_POWER, label=mls.UI_PI_POWERUSAGE)
-        self.cpuGauge = uicls.Gauge(parent=self.editModeContent, pos=(140, 22, 125, 34), color=planetCommon.PLANET_COLOR_CPU, label=mls.UI_PI_CPUUSAGE)
+        uicls.EveHeaderLarge(parent=self.editModeContent, text=localization.GetByLabel('UI/PI/Common/EditsPending'), align=uiconst.RELATIVE)
+        self.powerGauge = uicls.Gauge(parent=self.editModeContent, pos=(0, 22, 125, 34), color=planetCommon.PLANET_COLOR_POWER, label=localization.GetByLabel('UI/PI/Common/PowerUsage'))
+        self.cpuGauge = uicls.Gauge(parent=self.editModeContent, pos=(140, 22, 125, 34), color=planetCommon.PLANET_COLOR_CPU, label=localization.GetByLabel('UI/PI/Common/CpuUsage'))
         self.UpdatePowerAndCPUGauges()
-        btns = [[mls.UI_CMD_SUBMIT, self.Submit, ()], [mls.UI_CMD_CANCEL, self.Cancel, ()]]
+        btns = [[localization.GetByLabel('UI/Common/Submit'), self.Submit, ()], [localization.GetByLabel('UI/Common/Cancel'), self.Cancel, ()]]
         bottom = uicls.Container(parent=self.editModeContent, align=uiconst.TOBOTTOM, pos=(0, 0, 0, 40))
         btns = uicls.ButtonGroup(btns=btns, subalign=uiconst.CENTERRIGHT, parent=bottom, line=False, alwaysLite=True)
-        self.costText = planet.ui.CaptionAndSubtext(parent=bottom, align=uiconst.TOPLEFT, top=13, caption=mls.UI_GENERIC_COST, subtext='')
+        self.costText = planet.ui.CaptionAndSubtext(parent=bottom, align=uiconst.TOPLEFT, top=13, caption=localization.GetByLabel('UI/Common/Cost'), subtext='')
 
 
 
@@ -140,26 +133,22 @@ class PlanetModeContainer(uicls.NeocomContainer):
         power = colony.colonyData.GetColonyPowerUsage()
         cpuDiff = cpu - origCpu
         powerDiff = power - origPower
-        cpuUnit = mls.UI_GENERIC_TERAFLOPSSHORT
-        powerUnit = mls.UI_GENERIC_MEGAWATTSHORT
         self.cpuGauge.SetValue(cpu / cpuOutput if cpuOutput > 0 else 0)
         self.cpuGauge.HideAllMarkers()
         self.cpuGauge.ShowMarker(origCpu / cpuOutput if cpuOutput > 0 else 0)
         self.powerGauge.SetValue(power / powerOutput if powerOutput > 0 else 0)
         self.powerGauge.HideAllMarkers()
         self.powerGauge.ShowMarker(origPower / powerOutput if powerOutput > 0 else 0)
-        sign = ['', '+'][(cpuDiff >= 0)]
-        self.cpuGauge.SetSubText('%s%4.2f %s' % (sign, cpuDiff, cpuUnit))
-        sign = ['', '+'][(powerDiff >= 0)]
-        self.powerGauge.SetSubText('%s%4.2f %s' % (sign, powerDiff, powerUnit))
-        self.cpuGauge.hint = mls.UI_PI_EDITATTRIBUTEDIFF % {'current': origCpu,
-         'after': cpu,
-         'maximum': cpuOutput,
-         'unit': cpuUnit}
-        self.powerGauge.hint = mls.UI_PI_EDITATTRIBUTEDIFF % {'current': origPower,
-         'after': power,
-         'maximum': powerOutput,
-         'unit': powerUnit}
+        if cpuDiff >= 0:
+            localization.GetByLabel('UI/PI/Common/TeraFlopsAmountIncrease', amount=cpuDiff)
+        else:
+            localization.GetByLabel('UI/PI/Common/TeraFlopsAmount', amount=cpuDiff)
+        if powerDiff >= 0:
+            localization.GetByLabel('UI/PI/Common/MegaWattsAmountIncrease', amount=powerDiff)
+        else:
+            localization.GetByLabel('UI/PI/Common/MegaWattsAmount', amount=powerDiff)
+        self.cpuGauge.hint = localization.GetByLabel('UI/PI/Common/TeraFlopsDiff', current=origCpu, after=cpu, maximum=cpuOutput)
+        self.powerGauge.hint = localization.GetByLabel('UI/PI/Common/MegaWattsDiff', current=origPower, after=power, maximum=powerOutput)
 
 
 
@@ -218,6 +207,12 @@ class PlanetModeContainer(uicls.NeocomContainer):
             self.inEditMode = True
         self.UpdatePowerAndCPUGauges()
         self.UpdateCostOfCurrentChanges()
+
+
+
+    def ChangeToDustView(self, *args, **kwargs):
+        if sm.GetService('machoNet').GetClientConfigVals().get('enableDustLink'):
+            sm.GetService('planetUI').ChangeToDustView()
 
 
 

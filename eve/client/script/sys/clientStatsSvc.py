@@ -10,7 +10,10 @@ from clientStatsCommon import *
 
 class ClientStatsSvc(service.Service):
     __guid__ = 'svc.clientStatsSvc'
-    __notifyevents__ = ['OnClientReady', 'OnDisconnect', 'ProcessLoginProgress']
+    __notifyevents__ = ['OnClientReady',
+     'OnDisconnect',
+     'OnProcessLoginProgress',
+     'ProcessShutdown']
     __displayname__ = 'Client Statistics Service'
     __dependencies__ = ['machoNet']
 
@@ -24,7 +27,7 @@ class ClientStatsSvc(service.Service):
         self.hasEnteredGame = 0
         self.hasProcessedExit = False
         self.fileStarted = False
-        self.filename = os.path.join(blue.os.cachepath, u'clientStats.dat')
+        self.filename = os.path.join(blue.os.ResolvePathForWriting(u'cache:/clientStats.dat'))
         if os.path.exists(self.filename):
             setattr(self, 'prevContents', self.ReadFile(self.filename))
         else:
@@ -206,7 +209,7 @@ class ClientStatsSvc(service.Service):
 
 
 
-    def ProcessLoginProgress(self, *args):
+    def OnProcessLoginProgress(self, *args):
         if args[0] == 'loginprogress::gettingbulkdata' and STATE_BULKDATASTARTED not in self.entries:
             self.SampleStats(STATE_BULKDATASTARTED)
         elif args[0] == 'loginprogress::gettingbulkdata' and STATE_BULKDATASTARTED in self.entries and args[2] == args[3]:
@@ -215,6 +218,11 @@ class ClientStatsSvc(service.Service):
             self.SampleStats(STATE_LOGINDONE)
         elif args[0] == 'loginprogress::connecting':
             self.SampleStats(STATE_LOGINSTARTED)
+
+
+
+    def ProcessShutdown(self):
+        self.OnProcessExit()
 
 
 

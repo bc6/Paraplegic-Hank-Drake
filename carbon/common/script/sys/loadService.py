@@ -73,7 +73,7 @@ class LoadService(Service):
 
     def RemainingTime(self):
         if self.duration is not None:
-            return self.duration - (blue.os.GetTime() * 1e-07 - self.startTime)
+            return self.duration - (blue.os.GetWallclockTime() * 1e-07 - self.startTime)
 
 
 
@@ -95,7 +95,7 @@ class LoadService(Service):
 
             finally:
                 self.nTasklets -= 1
-                blue.pyos.synchro.Sleep(0)
+                blue.pyos.synchro.SleepWallclock(0)
 
 
 
@@ -116,7 +116,7 @@ class LoadService(Service):
         for t in range(self.netTasklets):
             uthread.worker('loadServiceService::NetworkTraffic::%s' % t, self.TaskletWrap(self.Network))
 
-        self.startTime = blue.os.GetTime() * 1e-07
+        self.startTime = blue.os.GetWallclockTime() * 1e-07
         self.duration = duration
         if duration:
             uthread.worker('loadServiceService::ShutdownCounter', self.ShutdownCounter, duration)
@@ -124,7 +124,7 @@ class LoadService(Service):
 
 
     def ShutdownCounter(self, duration):
-        blue.pyos.synchro.Sleep(int(duration * 1000))
+        blue.pyos.synchro.SleepWallclock(int(duration * 1000))
         self.StopLoad()
 
 
@@ -167,7 +167,7 @@ class LoadService(Service):
                 when = i.next()
                 ms = int((when - now) * 1000)
                 if ms > 0:
-                    blue.pyos.synchro.Sleep(ms)
+                    blue.pyos.synchro.SleepWallclock(ms)
                     now = clock()
                 if now > when + interval:
                     slowCount += 1
@@ -192,9 +192,9 @@ class LoadService(Service):
 
 
     def Calibrate(self, duration = 2):
-        startTime = blue.os.GetTime(1)
+        startTime = blue.os.GetWallclockTimeNow()
         stepCount = 0
-        while blue.os.GetTime(1) - startTime < duration * 10000000:
+        while blue.os.GetWallclockTimeNow() - startTime < duration * 10000000:
             stepCount += 1
             pystones(self.pyStonesPerUnit)
 
@@ -206,7 +206,7 @@ class LoadService(Service):
         taskletLoad = float(self.pyStonesPerSec) / self.pyStoneTasklets
         interval = 1.0 / (taskletLoad / self.pyStonesPerUnit)
         self.LogInfo('CPU Tasklet. Will run %s pyStones every %ss' % (self.pyStonesPerUnit, interval))
-        blue.pyos.synchro.Sleep(int(random.random() * interval * 1000))
+        blue.pyos.synchro.SleepWallclock(int(random.random() * interval * 1000))
 
         def CpuWork():
             pystones(self.pyStonesPerUnit)
@@ -257,9 +257,9 @@ class LoadService(Service):
         except StopIteration:
             self.LogWarn('No nodes returned from randomNodes')
             return 
-        packetSendTime = blue.os.GetTime(1)
+        packetSendTime = blue.os.GetWallclockTimeNow()
         conn.Ping(packet)
-        packetReceiveTime = blue.os.GetTime(1)
+        packetReceiveTime = blue.os.GetWallclockTimeNow()
         self.UpdateNetworkStats(node, packetReceiveTime - packetSendTime)
 
 

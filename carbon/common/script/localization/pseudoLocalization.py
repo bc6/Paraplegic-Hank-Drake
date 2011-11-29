@@ -1,5 +1,6 @@
 import localization
 import localizationUtil
+import localizationInternalUtil
 import __builtin__
 import random
 import blue
@@ -28,12 +29,12 @@ TEXT_EXPANSION_AMOUNTS = {localization.NO_REPLACEMENT: {1: 1.0,
                                      4: 1.333,
                                      5: 1.333,
                                      6: 1.0},
- localization.DOUBLE_BYTE_REPLACEMENT: {1: 1.0,
-                                        2: 1.0,
-                                        3: 1.0,
-                                        4: 1.0,
-                                        5: 1.0,
-                                        6: 1.0}}
+ localization.FULL_WIDTH_REPLACEMENT: {1: 1.0,
+                                       2: 1.0,
+                                       3: 1.0,
+                                       4: 1.0,
+                                       5: 1.0,
+                                       6: 1.0}}
 DIACRITIC_REPLACEMENT_MAP = {'A': u'\xc0\xc1\xc2\xc3\xc4\xc5',
  'B': u'\xdf',
  'C': u'\xc7',
@@ -112,7 +113,7 @@ CYRILLIC_REPLACEMENT_MAP = {'A': u'\u0410\u0414',
  'x': u'\u0436\u0445',
  'y': u'\u0443',
  'z': u'\u04e1'}
-DOUBLE_BYTE_REPLACEMENT_MAP = {'A': u'\uff21',
+FULL_WIDTH_REPLACEMENT_MAP = {'A': u'\uff21',
  'B': u'\uff22',
  'C': u'\uff23',
  'D': u'\uff24',
@@ -167,75 +168,29 @@ DOUBLE_BYTE_REPLACEMENT_MAP = {'A': u'\uff21',
 PSEUDOLOCALIZATION_MAP = {localization.NO_REPLACEMENT: {},
  localization.DIACRITIC_REPLACEMENT: DIACRITIC_REPLACEMENT_MAP,
  localization.CYRILLIC_REPLACEMENT: CYRILLIC_REPLACEMENT_MAP,
- localization.DOUBLE_BYTE_REPLACEMENT: DOUBLE_BYTE_REPLACEMENT_MAP}
+ localization.FULL_WIDTH_REPLACEMENT: FULL_WIDTH_REPLACEMENT_MAP}
 
 def Pseudolocalize(englishString):
-    if boot.role != 'client':
+    if not englishString:
         return englishString
-    else:
+    if boot.role == 'client':
         if not hasattr(__builtin__, 'settings'):
             characterReplacementMethod = localization.DIACRITIC_REPLACEMENT
-            showMessageID = False
-            enableBoundaryMarkers = True
-            enableTextExpansion = False
             textExpansionAmount = 0.0
         else:
             characterReplacementMethod = settings.user.localization.Get('characterReplacementMethod', localization.DIACRITIC_REPLACEMENT)
-            showMessageID = settings.user.localization.Get('showMessageID', 0)
-            enableBoundaryMarkers = settings.user.localization.Get('enableBoundaryMarkers', 0)
-            enableTextExpansion = settings.user.localization.Get('enableTextExpansion', 0)
-            textExpansionAmount = settings.user.localization.Get('textExpansionAmount', 0.0)
-        messageID = None
-        if isinstance(englishString, localizationUtil.LocalizationSafeString):
-            pseudolocalizedString = unicode(englishString)
-            messageID = englishString.messageID
-        else:
-            pseudolocalizedString = unicode(englishString)
-        if enableTextExpansion:
-            pseudolocalizedString = _PerformTextExpansion(pseudolocalizedString, textExpansionAmount, characterReplacementMethod)
-        pseudolocalizedString = _PerformCharacterReplacement(pseudolocalizedString, characterReplacementMethod)
-        if showMessageID:
-            pseudolocalizedString = _AddMessageID(pseudolocalizedString, messageID=messageID)
-        if enableBoundaryMarkers:
-            pseudolocalizedString = _AddBoundaryMarkers(pseudolocalizedString)
-        if isinstance(englishString, localizationUtil.LocalizationSafeString):
-            return localizationUtil.LocalizationSafeString(pseudolocalizedString, messageID=messageID)
-        return pseudolocalizedString
-
-
-
-def _IsLocalizable(englishString):
-    if not englishString:
-        return False
-    if not isinstance(englishString, str) and not isinstance(englishString, unicode):
-        return False
-    htmlTagFound = False
-    for character in englishString:
-        if character == '<':
-            htmlTagFound = True
-        if htmlTagFound is True and character == '>':
-            htmlTagFound = False
-        elif htmlTagFound is True:
-            continue
-        else:
-            if htmlTagFound is False and character.isalpha():
-                return True
-
-    return False
-
-
-
-def _AddBoundaryMarkers(englishString):
-    return '[' + englishString + ']'
-
-
-
-def _AddMessageID(englishString, messageID = None):
-    return '<color=0xaaff0000>[%d]</color>%s' % (messageID or -1, englishString)
+            textExpansionAmount = settings.user.localization.Get('enableTextExpansion', 0) * settings.user.localization.Get('textExpansionAmount', 0.0)
+    else:
+        return englishString
+    pseudolocalizedString = _PerformTextExpansion(unicode(englishString), textExpansionAmount, characterReplacementMethod)
+    pseudolocalizedString = _PerformCharacterReplacement(pseudolocalizedString, characterReplacementMethod)
+    return pseudolocalizedString
 
 
 
 def _PerformTextExpansion(englishString, textExpansionAmount, characterReplacementMethod):
+    if not textExpansionAmount:
+        return englishString
     sanitizedEnglishString = re.sub('<[^>]*?>', '', englishString)
     sanitizedEnglishString = re.sub('^[0-9]+', '', sanitizedEnglishString)
     sanitizedEnglishString = sanitizedEnglishString.replace(' ', '')

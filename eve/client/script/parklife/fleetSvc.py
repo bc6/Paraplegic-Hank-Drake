@@ -14,6 +14,7 @@ import types
 import chat
 import log
 import uiconst
+import localization
 from fleetcommon import BROADCAST_ALL, BROADCAST_NONE, BROADCAST_DOWN, BROADCAST_UP
 from fleetcommon import MAX_NAME_LENGTH, FLEET_NONEID, MAX_DAMAGE_SENDERS, ALL_BROADCASTS, RECONNECT_TIMEOUT
 from fleetcommon import CHANNELSTATE_NONE, CHANNELSTATE_LISTENING, CHANNELSTATE_SPEAKING, CHANNELSTATE_MAYSPEAK
@@ -63,7 +64,9 @@ class FleetSvc(service.Service):
      'OnJoinRequestUpdate',
      'OnContactChange',
      'OnSpeakingEvent',
-     'OnFleetLootEvent']
+     'OnFleetLootEvent',
+     'OnFleetMotdChanged',
+     'ProcessShutdown']
     __exportedcalls__ = {'Invite': [],
      'LeaveFleet': [],
      'IsMember': [],
@@ -150,6 +153,7 @@ class FleetSvc(service.Service):
         self.fleetComposition = None
         self.fleetCompositionTimestamp = 0
         self.expectingInvite = None
+        self.motd = None
 
 
 
@@ -160,18 +164,13 @@ class FleetSvc(service.Service):
 
 
 
-    def Stop(self, *etc):
-        service.Service.Stop(self, *etc)
+    def ProcessShutdown(self):
         if session.fleetid and len(self.members) > 0:
-            self.LogInfo('I will attempt to reconnect to this fleet', session.fleetid, ' when the client starts up again')
-            settings.char.ui.Set('fleetReconnect', (session.fleetid, blue.os.GetTime()))
-        self.Clear()
-        self.leader = None
-        self.members = None
-        self.fleetTags = None
-        self.fleetState = None
-        self.activeBeacon = None
-        self.activeBridge = None
+            self.LogNotice('I will attempt to reconnect to this fleet', session.fleetid, ' when the client starts up again')
+            settings.char.ui.Set('fleetReconnect', (session.fleetid, blue.os.GetWallclockTime()))
+            settingsSvc = sm.GetServiceIfRunning('settings')
+            if settingsSvc:
+                settingsSvc.SaveSettings()
 
 
 
@@ -257,6 +256,7 @@ class FleetSvc(service.Service):
         self.options = initState.options
         self.isMutedByLeader = initState.isMutedByLeader
         self.isExcludedFromMuting = initState.isExcludedFromMuting
+        self.motd = initState.motd
         cfg.eveowners.Prime(self.members.keys())
         self.fleetMemberLocations = {}
         if oldOptions != self.options:
@@ -270,7 +270,7 @@ class FleetSvc(service.Service):
         supp = settings.user.suppress.Get('suppress.' + suppressID, None)
         if supp is not None and not uicore.uilib.Key(uiconst.VK_SHIFT):
             return supp
-        (ret, block,) = sm.GetService('gameui').RadioButtonMessageBox(text=body, title=title, buttons=uiconst.OKCANCEL, icon=triui.QUESTION, radioOptions=choices, height=210, width=300, suppText=mls.UI_SHARED_SUPPRESS5)
+        (ret, block,) = sm.GetService('gameui').RadioButtonMessageBox(text=body, title=title, buttons=uiconst.OKCANCEL, icon=triui.QUESTION, radioOptions=choices, height=210, width=300, suppText=localization.GetByLabel('UI/Common/SuppressionShowMessageRemember'))
         if ret[0] in [uiconst.ID_CANCEL, uiconst.ID_CLOSE]:
             return 
         retNum = 1
@@ -319,7 +319,7 @@ class FleetSvc(service.Service):
                 break
             self.LogInfo('Waiting for LSC channel to quit fleet')
             loopCount += 1
-            blue.pyos.synchro.Sleep(500)
+            blue.pyos.synchro.SleepWallclock(500)
 
         setattr(self, 'leavingFleet', False)
         self.LeaveFleetNoCheck()
@@ -381,7 +381,7 @@ class FleetSvc(service.Service):
         if self.fleet is None:
             return 
         name = ''
-        ret = uix.NamePopup(mls.UI_FLEET_CHANGEWINGNAME, mls.UI_SHARED_TYPEINNAME, name, maxLength=MAX_NAME_LENGTH)
+        ret = uix.NamePopup(localization.GetByLabel('UI/Fleet/ChangeWingName'), localization.GetByLabel('UI/Common/Name/TypeInName'), name, maxLength=MAX_NAME_LENGTH)
         if ret is not None:
             self.fleet.ChangeWingName(wingID, ret['name'][:MAX_NAME_LENGTH])
 
@@ -391,7 +391,7 @@ class FleetSvc(service.Service):
         if self.fleet is None:
             return 
         name = ''
-        ret = uix.NamePopup(mls.UI_FLEET_CHANGESQUADNAME, mls.UI_SHARED_TYPEINNAME, name, maxLength=MAX_NAME_LENGTH)
+        ret = uix.NamePopup(localization.GetByLabel('UI/Fleet/ChangeSquadName'), localization.GetByLabel('UI/Common/Name/TypeInName'), name, maxLength=MAX_NAME_LENGTH)
         if ret is not None:
             self.fleet.ChangeSquadName(squadID, ret['name'][:MAX_NAME_LENGTH])
 
@@ -728,9 +728,7 @@ class FleetSvc(service.Service):
             self.favorites.append(charID)
             self.RegisterForDamageUpdates()
             sm.ScatterEvent('OnFleetFavoriteAdded', charID)
-        wnd = sm.GetService('window').GetWindow('watchlistpanel')
-        if wnd is None:
-            wnd = sm.GetService('window').GetWindow('watchlistpanel', decoClass=form.WatchListPanel, maximize=1, create=1, panelID='watchlistpanel', showActions=False, panelName=mls.UI_FLEET_WATCHLIST)
+        wnd = form.WatchListPanel.Open(showActions=False, panelName=localization.GetByLabel('UI/Fleet/WatchList'))
         wnd.OnFleetFavoriteAdded(charID)
 
 
@@ -760,9 +758,7 @@ class FleetSvc(service.Service):
 
 
     def CloseWatchlistWindow(self):
-        wnd = sm.GetService('window').GetWindow('watchlistpanel')
-        if wnd:
-            wnd.SelfDestruct()
+        form.WatchListPanel.CloseIfOpen()
 
 
 
@@ -796,32 +792,21 @@ class FleetSvc(service.Service):
         wing = self.wings.get(member.wingID, None)
         wingName = squadName = ''
         if wing:
-            wingName = wing.name
+            if wing.name:
+                wingName = wing.name
+            else:
+                wingName = localization.GetByLabel('UI/Fleet/DefaultWingName', wingNumber=wingNo)
             squad = wing.squads.get(member.squadID, None)
             if squad:
-                squadName = squad.name
-            if squadName == '':
-                squadName = '%s %s' % (mls.UI_FLEET_SQUAD, squadNo)
-        if wingName == '':
-            wingName = '%s %s' % (mls.UI_FLEET_WING, wingNo)
+                if squad.name:
+                    squadName = squad.name
+                else:
+                    squadName = localization.GetByLabel('UI/Fleet/DefaultSquadName', squadNumber=squadNo)
         jobName = ''
         if member.job & const.fleetJobCreator:
-            jobName += '%s' % mls.UI_FLEET_ABBREV_JOBCREATOR
-        boosterName = ''
-        if member.roleBooster == const.fleetBoosterFleet:
-            boosterName = mls.UI_FLEET_FLEET + ' ' + mls.UI_GENERIC_BOOSTER
-        elif member.roleBooster == const.fleetBoosterWing:
-            boosterName = mls.UI_FLEET_WING + ' ' + mls.UI_GENERIC_BOOSTER
-        elif member.roleBooster == const.fleetBoosterSquad:
-            boosterName = mls.UI_FLEET_SQUAD + ' ' + mls.UI_GENERIC_BOOSTER
-        roleName = ''
-        if member.role in (const.fleetRoleLeader, const.fleetRoleWingCmdr, const.fleetRoleSquadCmdr):
-            pre = {const.fleetRoleLeader: mls.UI_FLEET_FLEET,
-             const.fleetRoleWingCmdr: mls.UI_FLEET_WING,
-             const.fleetRoleSquadCmdr: mls.UI_FLEET_SQUAD}[member.role]
-            roleName = '%s %s' % (pre, mls.UI_FLEET_COMMANDER)
-        else:
-            roleName = mls.UI_FLEET_SQUADMEMBER
+            jobName = localization.GetByLabel('UI/Fleet/Ranks/Boss')
+        boosterName = fleetbr.GetBoosterName(member.roleBooster)
+        roleName = fleetbr.GetRankName(member)
         ret = util.KeyVal(charID=charID, charName=cfg.eveowners.Get(charID).name, wingID=member.wingID, wingName=wingName, squadID=member.squadID, squadName=squadName, role=member.role, roleName=roleName, job=member.job, jobName=jobName, booster=member.roleBooster, boosterName=boosterName)
         return ret
 
@@ -905,7 +890,7 @@ class FleetSvc(service.Service):
     def GetFleetComposition(self):
         if self.fleet is None:
             return 
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         if self.fleetCompositionTimestamp < now:
             self.LogInfo('Fetching fleet composition')
             self.fleetComposition = self.fleet.GetFleetComposition()
@@ -995,12 +980,12 @@ class FleetSvc(service.Service):
 
 
     def BroadcastTimeRestriction(self, name):
-        if self.lastBroadcast.name == name and self.lastBroadcast.timestamp + MIN_BROADCAST_TIME * SEC > blue.os.GetTime() or self.lastBroadcast.timestamp + int(float(MIN_BROADCAST_TIME) / 3.0 * float(SEC)) > blue.os.GetTime():
+        if self.lastBroadcast.name == name and self.lastBroadcast.timestamp + MIN_BROADCAST_TIME * SEC > blue.os.GetWallclockTime() or self.lastBroadcast.timestamp + int(float(MIN_BROADCAST_TIME) / 3.0 * float(SEC)) > blue.os.GetWallclockTime():
             self.LogInfo('Will not send broadcast', name, 'as not enough time has passed since the last one')
             return True
         else:
             self.lastBroadcast.name = name
-            self.lastBroadcast.timestamp = blue.os.GetTime()
+            self.lastBroadcast.timestamp = blue.os.GetWallclockTime()
             return False
 
 
@@ -1171,7 +1156,7 @@ class FleetSvc(service.Service):
             sm.GetService('tactical').InvalidateFlags()
         else:
             self.members[member.charID] = member
-            self.AddToMemberHistory(member.charID, mls.UI_FLEET_MEMBERHISTORY_MEMBERJOINED % {'rank': fleetbr.GetRankName(self.members[member.charID])})
+            self.AddToMemberHistory(member.charID, localization.GetByLabel('UI/Fleet/FleetBroadcast/MemberHistoryJoined', charID=member.charID, role=fleetbr.GetRankName(member)))
             self.UpdateFleetInfo()
             sm.GetService('tactical').InvalidateFlagsExtraLimited(member.charID)
         sm.ScatterEvent('OnFleetJoin_Local', member)
@@ -1180,16 +1165,18 @@ class FleetSvc(service.Service):
 
 
 
-    def OnFleetJoinReject(self, memberID, reason):
-        msg = mls.UI_FLEET_INVITEREJECTED % {'name': cfg.eveowners.Get(memberID).name}
-        if reason:
-            msg += mls.UI_FLEET_REASON % {'reason': reason}
+    def OnFleetJoinReject(self, memberID, reasonCode):
+        if reasonCode and reasonCode in const.fleetRejectionReasons:
+            reason = localization.GetByLabel(const.fleetRejectionReasons[reasonCode])
+            msg = localization.GetByLabel('UI/Fleet/InviteRejectedWithReason', charID=memberID, reason=reason)
+        else:
+            msg = localization.GetByLabel('UI/Fleet/InviteRejected', charID=memberID)
         eve.Message('CustomNotify', {'notify': msg})
 
 
 
     def OnFleetLeave(self, charID):
-        self.AddToMemberHistory(charID, mls.UI_FLEET_MEMBERHISTORY_MEMBERLEFT)
+        self.AddToMemberHistory(charID, localization.GetByLabel('UI/Fleet/FleetBroadcast/MemberHistoryLeft', charID=charID))
         if charID == eve.session.charid:
             self.Clear()
         if charID in self.members:
@@ -1224,12 +1211,12 @@ class FleetSvc(service.Service):
         self.members[charID].roleBooster = newBooster
         sm.ScatterEvent('OnFleetMemberChanged_Local', charID, fleetID, oldWingID, oldSquadID, oldRole, oldJob, oldBooster, newWingID, newSquadID, newRole, newJob, newBooster)
         if oldRole != newRole:
-            self.AddToMemberHistory(charID, mls.UI_FLEET_BROADCAST_FLEETMEMBERCHANGED % {'role': fleetbr.GetRoleName(newRole)})
+            self.AddToMemberHistory(charID, localization.GetByLabel('UI/Fleet/FleetBroadcast/MemberHistoryChangedRole', charID=charID, role=fleetbr.GetRoleName(newRole)))
         if oldJob != newJob:
             if newJob & const.fleetJobCreator:
-                self.AddToMemberHistory(charID, mls.UI_FLEET_MEMBERHISTORY_ISBOSS)
+                self.AddToMemberHistory(charID, localization.GetByLabel('UI/Fleet/FleetBroadcast/MemberHistoryIsBoss', charID=charID))
             else:
-                self.AddToMemberHistory(charID, mls.UI_FLEET_MEMBERHISTORY_ISNOLONGERBOSS)
+                self.AddToMemberHistory(charID, localization.GetByLabel('UI/Fleet/FleetBroadcast/MemberHistoryIsNotBoss', charID=charID))
         if newRole not in (None, -1):
             self.UpdateTargetBroadcasts(charID)
         if charID == eve.session.charid:
@@ -1250,9 +1237,9 @@ class FleetSvc(service.Service):
 
     def OnFleetMoveFailed(self, charID, isKicked):
         if isKicked:
-            eve.Message('CustomNotify', {'notify': mls.UI_FLEET_MOVEFAILED_KICKED % {'name': cfg.eveowners.Get(charID).name}})
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Fleet/MoveFailedKicked', charID=charID)})
         else:
-            eve.Message('CustomNotify', {'notify': mls.UI_FLEET_MOVEFAILED % {'name': cfg.eveowners.Get(charID).name}})
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Fleet/MoveFailed', charID=charID)})
 
 
 
@@ -1353,11 +1340,11 @@ class FleetSvc(service.Service):
         if self.options.isRegistered != oldOptions.isRegistered:
             sm.ScatterEvent('OnFleetFinderAdvertChanged')
             if self.options.isRegistered:
-                self.AddBroadcast('FleetFinderAdvertAdded', BROADCAST_NONE, self.GetBossID(), broadcastName=mls.UI_FLEET_BROADCAST_FLEETFINDERADVERTADDED)
+                self.AddBroadcast('FleetFinderAdvertAdded', BROADCAST_NONE, self.GetBossID(), broadcastName=localization.GetByLabel('UI/Fleet/FleetBroadcast/FleetFinderAdvertAdded'))
         if options.isFreeMove != oldOptions.isFreeMove:
-            self.AddBroadcast('FleetOptionsChanged', BROADCAST_NONE, self.GetBossID(), broadcastName=[mls.UI_FLEET_FREEMOVEUNSET, mls.UI_FLEET_FREEMOVESET][options.isFreeMove])
+            self.AddBroadcast('FleetOptionsChanged', BROADCAST_NONE, self.GetBossID(), broadcastName=[localization.GetByLabel('UI/Fleet/FleetBroadcast/FreeMoveUnset'), localization.GetByLabel('UI/Fleet/FleetBroadcast/FreeMoveSet')][options.isFreeMove])
         if options.isVoiceEnabled != oldOptions.isVoiceEnabled:
-            self.AddBroadcast('FleetOptionsChanged', BROADCAST_NONE, self.GetBossID(), broadcastName=[mls.UI_FLEET_VOICEENABLEDUNSET, mls.UI_FLEET_VOICEENABLEDSET][options.isVoiceEnabled])
+            self.AddBroadcast('FleetOptionsChanged', BROADCAST_NONE, self.GetBossID(), broadcastName=[localization.GetByLabel('UI/Fleet/FleetBroadcast/VoiceEnableUnset'), localization.GetByLabel('UI/Fleet/FleetBroadcast/VoiceEnableSet')][options.isVoiceEnabled])
         sm.ScatterEvent('OnFleetOptionsChanged_Local', oldOptions, options)
 
 
@@ -1403,34 +1390,28 @@ class FleetSvc(service.Service):
 
     def OpenJoinRequestWindow(self):
         self.CloseJoinRequestWindow()
-        wnd = sm.GetService('window').GetWindow('FleetJoinRequestWindow', create=1, decoClass=form.FleetJoinRequestWindow, maximize=1)
+        form.FleetJoinRequestWindow.Open()
 
 
 
     def CloseJoinRequestWindow(self):
-        wnd = sm.GetService('window').GetWindow('FleetJoinRequestWindow')
-        if wnd:
-            wnd.CloseX()
+        form.FleetJoinRequestWindow.CloseIfOpen()
 
 
 
     def OpenFleetCompositionWindow(self):
         self.CloseFleetCompositionWindow()
-        wnd = sm.GetService('window').GetWindow('FleetComposition', create=1, decoClass=form.FleetComposition, maximize=1)
+        form.FleetComposition.Open()
 
 
 
     def CloseFleetCompositionWindow(self):
-        wnd = sm.GetService('window').GetWindow('FleetComposition')
-        if wnd:
-            wnd.CloseX()
+        form.FleetComposition.CloseIfOpen()
 
 
 
     def CloseFleetBroadcastWindow(self):
-        wnd = sm.GetService('window').GetWindow('broadcastsettings')
-        if wnd:
-            wnd.CloseX()
+        form.BroadcastSettings.CloseIfOpen()
 
 
 
@@ -1442,58 +1423,75 @@ class FleetSvc(service.Service):
         if session.userType == const.userTypeTrial:
             if info is not None:
                 return 
-            raise UserError('TrialAccountRestriction', {'what': mls.UI_FLEET_TRIALCANTADDADVERT})
+            raise UserError('TrialAccountRestriction', {'what': localization.GetByLabel('UI/Fleet/TrialCannotAddAdvert')})
         if info is None and self.options.isRegistered:
             info = self.GetMyFleetFinderAdvert()
         self.CloseRegisterFleetWindow()
-        wnd = sm.GetService('window').GetWindow('RegisterFleetWindow', create=1, decoClass=form.RegisterFleetWindow, fleetInfo=info)
+        form.RegisterFleetWindow.Open(fleetInfo=info)
 
 
 
     def CloseRegisterFleetWindow(self):
-        wnd = sm.GetService('window').GetWindow('RegisterFleetWindow')
-        if wnd:
-            wnd.CloseX()
+        form.RegisterFleetWindow.CloseIfOpen()
 
 
 
     def RefreshFleetWindow(self):
         self.InitFleet()
         self.CloseFleetWindow()
-        wnd = sm.GetService('window').GetWindow('fleetwindow', create=1, decoClass=form.FleetWindow, maximize=1, tabIdx=0)
+        form.FleetWindow.Open(tabIdx=0)
 
 
 
     def CloseFleetWindow(self):
-        wnd = sm.GetService('window').GetWindow('fleetwindow')
-        if wnd:
-            wnd.CloseX()
+        form.FleetWindow.CloseIfOpen()
 
 
 
     def AddBroadcast(self, name, scope, charID, solarSystemID = None, itemID = None, broadcastName = None):
-        time = blue.os.GetTime()
-        charName = cfg.eveowners.Get(charID).name
-        if broadcastName is None:
-            if name in ('WarpTo', 'AlignTo', 'JumpTo', 'FleetEvent', 'JumpBeacon', 'Target', 'TravelTo'):
-                broadcastName = '%s' % getattr(mls, 'UI_FLEET_BROADCAST_%s' % name.upper())
-            else:
-                broadcastName = '%s %s' % (charName, getattr(mls, 'UI_FLEET_BROADCAST_%s' % name.upper()))
-        broadcastExtra = None
-        if name in ('InPosition', 'WarpTo', 'AlignTo', 'JumpTo'):
-            broadcastExtra = cfg.evelocations.Get(itemID).name
-        elif name in ('TravelTo',):
-            broadcastExtra = cfg.evelocations.Get(itemID).name
-        elif name in ('Location',):
-            broadcastExtra = cfg.evelocations.Get(solarSystemID).name
-        elif name in ('Target',):
+        time = blue.os.GetWallclockTime()
+        if name == 'EnemySpotted':
+            label = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventEnemySpotted', charID=charID)
+        elif name == 'NeedBackup':
+            label = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventNeedBackup', charID=charID)
+        elif name == 'HealArmor':
+            label = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventHealArmor', charID=charID)
+        elif name == 'HealShield':
+            label = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventHealShield', charID=charID)
+        elif name == 'HealCapacitor':
+            label = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventHealCapacitor', charID=charID)
+        elif name == 'InPosition':
+            label = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventInPosition', charID=charID, locationID=itemID)
+        elif name == 'HoldPosition':
+            label = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventHoldPosition', charID=charID)
+        elif name == 'JumpBeacon':
+            label = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventJumpToBeacon', charID=charID)
+        elif name == 'Location':
+            label = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventLocation', charID=charID, solarsystemID=solarSystemID)
+        elif name == 'WarpTo':
+            label = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventWarpTo', charID=charID, locationID=itemID)
+        elif name == 'AlignTo':
+            label = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventAlignTo', charID=charID, locationID=itemID)
+        elif name == 'JumpTo':
+            label = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventJumpTo', charID=charID, locationID=itemID)
+        elif name == 'TravelTo':
+            label = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventTravelTo', charID=charID, locationID=itemID)
+        elif name == 'Target':
             m = sm.GetService('michelle')
             bp = m.GetBallpark()
             slimItem = bp.GetInvItem(itemID)
             if slimItem is not None:
-                broadcastExtra = cfg.invtypes.Get(slimItem.typeID).name
+                targetTypeNam = cfg.invtypes.Get(slimItem.typeID).name
+                label = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventTargetWithType', charID=charID, targetTypeID=slimItem.typeID)
+            else:
+                label = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventTarget', charID=charID)
+        elif broadcastName is not None:
+            label = broadcastName
+        else:
+            log.LogTraceback('Unknown broadcast label:%s' % name)
+            label = 'Unknown broadcast label:%s' % name
         where = fleetbr.GetBroadcastWhere(name)
-        broadcast = util.KeyVal(name=name, charID=charID, solarSystemID=solarSystemID, itemID=itemID, time=time, charName=charName, broadcastName=broadcastName, broadcastExtra=broadcastExtra, scope=scope, where=where)
+        broadcast = util.KeyVal(name=name, charID=charID, solarSystemID=solarSystemID, itemID=itemID, time=time, broadcastLabel=label, scope=scope, where=where)
         self.broadcastHistory.insert(0, broadcast)
         if len(self.broadcastHistory) > MAX_NUM_BROADCASTS:
             self.broadcastHistory.pop()
@@ -1503,7 +1501,7 @@ class FleetSvc(service.Service):
 
 
     def WantBroadcast(self, name):
-        if name not in fleetbr.types.keys():
+        if name not in fleetbr.types:
             name = 'Event'
         if settings.user.ui.Get('listenBroadcast_%s' % name, True):
             return True
@@ -1532,7 +1530,7 @@ class FleetSvc(service.Service):
         gbID = self.NewFleetBroadcastID()
         self.currentBroadcastOnItem[itemID] = (gbID, brState, data)
         sm.GetService('state').SetState(itemID, brState, True, gbID, *data)
-        blue.pyos.synchro.Sleep(FLEETBROADCASTTIMEOUT * 1000)
+        blue.pyos.synchro.SleepWallclock(FLEETBROADCASTTIMEOUT * 1000)
         (savedgbid, savedgbtype, saveddata,) = self.currentBroadcastOnItem.get(itemID, (None, None, None))
         if savedgbid == gbID:
             sm.GetService('state').SetState(itemID, brState, False, gbID, *data)
@@ -1556,12 +1554,12 @@ class FleetSvc(service.Service):
     def OnSpeakingEvent(self, charID, channelID, isSpeaking):
         if not isSpeaking:
             return 
-        time = blue.os.GetTime()
+        time = blue.os.GetWallclockTime()
         charName = cfg.eveowners.Get(charID).name
         channelName = chat.GetDisplayName(channelID)
         if type(channelID) is types.TupleType:
             if channelID[0].startswith('inst'):
-                channelName = mls.UI_FLEET_INSTANT
+                channelName = localization.GetByLabel('UI/Fleet/Private')
         data = util.KeyVal(channelID=channelID, charID=charID, time=time, charName=charName, channelName=channelName)
         self.voiceHistory = [ each for each in self.voiceHistory if not (each.charID == charID and each.channelID == channelID) ]
         self.voiceHistory.insert(0, data)
@@ -1576,7 +1574,7 @@ class FleetSvc(service.Service):
 
     def OnFleetLootEvent(self, lootEvents):
         for (k, v,) in lootEvents.iteritems():
-            loot = util.KeyVal(charID=k[0], solarSystemID=session.solarsystemid2, typeID=k[1], quantity=v, time=blue.os.GetTime())
+            loot = util.KeyVal(charID=k[0], solarSystemID=session.solarsystemid2, typeID=k[1], quantity=v, time=blue.os.GetWallclockTime())
             for (i, l,) in enumerate(self.lootHistory):
                 if (l.typeID, l.charID, l.solarSystemID) == (loot.typeID, loot.charID, loot.solarSystemID):
                     self.lootHistory[i].quantity += loot.quantity
@@ -1604,7 +1602,7 @@ class FleetSvc(service.Service):
 
 
     def AddToMemberHistory(self, charID, event):
-        self.memberHistory.insert(0, util.KeyVal(charID=charID, event=event, time=blue.os.GetTime()))
+        self.memberHistory.insert(0, util.KeyVal(charID=charID, event=event, time=blue.os.GetWallclockTime()))
         if len(self.memberHistory) > MAX_NUM_BROADCASTS:
             self.memberHistory.pop()
 
@@ -1625,26 +1623,25 @@ class FleetSvc(service.Service):
                 self.targetBroadcasts[charID].remove(itemID)
 
 
-        initial = self.FleetLeaderInitial(self.members[charID].role)
+        role = self.members[charID].role
         for (i, id_,) in enumerate(self.targetBroadcasts.get(charID, [])):
             (gbID, gbType, data,) = self.currentBroadcastOnItem.get(id_, (None, None, None))
             if gbType == state.gbTarget:
                 (prevCharID, number,) = data
                 if self.IsSuperior(charID, prevCharID):
                     continue
-            uthread.pool('FleetSvc::UpdateTargetBroadcasts', BroadcastWithLabel, id_, '%s%i' % (initial, i + 1))
+            if role == const.fleetRoleSquadCmdr:
+                label = localization.GetByLabel('UI/Fleet/FleetBroadcast/TargetCodeFleet', targetID=i + 1)
+            elif role == const.fleetRoleSquadCmdr:
+                label = localization.GetByLabel('UI/Fleet/FleetBroadcast/TargetCodeWing', targetID=i + 1)
+            elif role == const.fleetRoleSquadCmdr:
+                label = localization.GetByLabel('UI/Fleet/FleetBroadcast/TargetCodeSquad', targetID=i + 1)
+            else:
+                label = localization.GetByLabel('UI/Fleet/FleetBroadcast/TargetCodeMember', targetID=i + 1)
+            uthread.pool('FleetSvc::UpdateTargetBroadcasts', BroadcastWithLabel, id_, label)
 
 
 
-
-    def FleetLeaderInitial(self, role):
-        return {const.fleetRoleMember: '',
-         const.fleetRoleSquadCmdr: mls.UI_FLEET_SQUADINITIAL,
-         const.fleetRoleWingCmdr: mls.UI_FLEET_WINGINITIAL,
-         const.fleetRoleLeader: mls.UI_FLEET_FLEETINITIAL}[role]
-
-
-    FleetLeaderInitial = util.Memoized(FleetLeaderInitial)
 
     def GetRankOrder(self):
         return [const.fleetRoleMember,
@@ -1720,16 +1717,19 @@ class FleetSvc(service.Service):
 
 
     def AttemptReconnectLazy(self):
-        blue.pyos.synchro.Sleep(RECONNECT_DELAY * 1000)
+        blue.pyos.synchro.SleepSim(RECONNECT_DELAY * 1000)
         try:
             try:
                 if session.fleetid is not None or session.charid is None:
                     return 
                 fleetReconnect = settings.char.ui.Get('fleetReconnect', None)
-                if fleetReconnect and fleetReconnect[1] > blue.os.GetTime() - RECONNECT_TIMEOUT * const.MIN:
-                    self.LogInfo('I will try to reconnect to a lost fleet', fleetReconnect[0])
-                    fleet = moniker.GetFleet(fleetReconnect[0])
-                    fleet.Reconnect()
+                if fleetReconnect:
+                    if fleetReconnect[1] > blue.os.GetWallclockTime() - RECONNECT_TIMEOUT * const.MIN:
+                        self.LogNotice('I will try to reconnect to a lost fleet', fleetReconnect[0])
+                        fleet = moniker.GetFleet(fleetReconnect[0])
+                        fleet.Reconnect()
+                    else:
+                        self.LogInfo('Reconnect request', fleetReconnect, ' out of date')
             except Exception as e:
                 self.LogWarn('Unable to reconnect. Error =', e)
 
@@ -1749,7 +1749,7 @@ class FleetSvc(service.Service):
         try:
             self.LogInfo('Starting UpdateFleetInfoThread...')
             self.updateThreadRunning = True
-            blue.pyos.synchro.Sleep(UPDATEFLEETFINDERDELAY * 1000)
+            blue.pyos.synchro.SleepWallclock(UPDATEFLEETFINDERDELAY * 1000)
             if session.fleetid is None:
                 return 
             if self.IsBoss() and self.options.isRegistered:
@@ -1782,11 +1782,11 @@ class FleetSvc(service.Service):
 
     def PerformSelectiveSessionChange(self, reason, func, *args, **keywords):
         violateSafetyTimer = 0
-        if session.nextSessionChange is not None and session.nextSessionChange > blue.os.GetTime():
+        if session.nextSessionChange is not None and session.nextSessionChange > blue.os.GetSimTime():
             if session.sessionChangeReason.startswith('fleet.'):
                 violateSafetyTimer = 1
         if violateSafetyTimer > 0:
-            print 'I will perform a session change even though I should wait %d more seconds' % ((session.nextSessionChange - blue.os.GetTime()) / SEC)
+            print 'I will perform a session change even though I should wait %d more seconds' % ((session.nextSessionChange - blue.os.GetSimTime()) / SEC)
         kw2 = copy.copy(keywords)
         kw2['violateSafetyTimer'] = violateSafetyTimer
         kw2['wait'] = 1
@@ -1891,7 +1891,7 @@ class FleetSvc(service.Service):
 
 
     def SetListenBroadcast(self, name, isit):
-        if name not in fleetbr.types.keys():
+        if name not in fleetbr.types:
             name = 'Event'
         settings.user.ui.Set('listenBroadcast_%s' % name, isit)
         sm.ScatterEvent('OnFleetBroadcastFilterChange')
@@ -1903,6 +1903,32 @@ class FleetSvc(service.Service):
         if session.shipid and session.solarsystemid:
             shipTypeID = sm.GetService('godma').GetItem(session.shipid).typeID
         return shipTypeID
+
+
+
+    def SetRemoteMotd(self, motd):
+        self.CheckIsInFleet()
+        self.fleet.SetMotdEx(motd)
+
+
+
+    def GetMotd(self):
+        self.CheckIsInFleet()
+        if self.motd is None:
+            self.motd = self.fleet.GetMotd()
+        return self.motd
+
+
+
+    def OnFleetMotdChanged(self, motd):
+        self.LogInfo('OnFleetMotdChanged', motd, session.fleetid)
+        self.CheckIsInFleet()
+        self.motd = motd
+        channelWindow = sm.GetService('LSC').GetChannelWindow((('fleetid', session.fleetid),))
+        if channelWindow is not None:
+            channelWindow.SpeakMOTD()
+        else:
+            self.LogError('OnFleetMotdChanged could not find fleet chat window', session.fleetid)
 
 
 

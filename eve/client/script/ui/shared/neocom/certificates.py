@@ -1,5 +1,4 @@
 import blue
-import draw
 import uix
 import uiutil
 import util
@@ -11,6 +10,7 @@ import math
 import uthread
 import uicls
 import uiconst
+import localization
 INFOWIDTH = 170
 TREEWIDTH = 420
 EXPANDERWIDTH = 16
@@ -35,10 +35,17 @@ RED = 0
 YELLOW = 1
 GREEN = 2
 BLUE = 3
+GRADE_NOT_FOUND = 'UI/Certificates/CertificateGrades/Grade1'
+CERTIFICATE_MESSAGES_BY_GRADE = {1: 'UI/Certificates/CertificateGrades/Grade1',
+ 2: 'UI/Certificates/CertificateGrades/Grade2',
+ 3: 'UI/Certificates/CertificateGrades/Grade3',
+ 4: 'UI/Certificates/CertificateGrades/Grade4',
+ 5: 'UI/Certificates/CertificateGrades/Grade5'}
 
 class CertificateWindow(uicls.Window):
     __guid__ = 'form.certificateWindow'
     __notifyevents__ = ['OnCertificateIssued', 'OnGodmaSkillTrained', 'OnGodmaSkillStartTraining']
+    default_windowID = 'CertificateWindow'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -48,13 +55,15 @@ class CertificateWindow(uicls.Window):
         self.actualMinSize = 650
         self.SetMinSize([self.actualMinSize, 460])
         self.MakeUnstackable()
-        self.SetCaption(mls.UI_SHARED_CERTPLANNER)
+        self.SetCaption(localization.GetByLabel('UI/Certificates/PlannerWindow/WindowTitle'))
         self.SetTopparentHeight(0)
         self.SetWndIcon('ui_79_64_1')
+        self.goBackBtn = uicls.Icon(parent=self.sr.main, align=uiconst.TOPRIGHT, icon='ui_38_16_223', pos=(12, 0, 16, 16), hint=localization.GetByLabel('UI/Control/EveWindow/Previous'))
+        self.goForwardBtn = uicls.Icon(parent=self.sr.main, align=uiconst.TOPRIGHT, icon='ui_38_16_224', pos=(-2, 0, 16, 16), hint=localization.GetByLabel('UI/Control/EveWindow/Next'))
         self.sr.leftframe = uicls.Container(name='leftframe', align=uiconst.TOLEFT, parent=self.sr.main, width=200, top=0, clipChildren=1)
         top = uicls.Container(name='top', parent=self.sr.leftframe, align=uiconst.TOTOP, height=44)
         top.state = uiconst.UI_DISABLED
-        uicls.CaptionLabel(text=mls.UI_SHARED_CERTPLANNER, parent=top, align=uiconst.TOALL, linespace=16, left=8, top=4, uppercase=0, letterspace=0, autowidth=0, autoheight=0)
+        uicls.EveCaptionMedium(text=localization.GetByLabel('UI/Certificates/PlannerWindow/WindowTitle'), parent=top, align=uiconst.TOALL, left=8, top=4)
         divider = xtriui.Divider(name='divider', align=uiconst.TOLEFT, width=const.defaultPadding, parent=self.sr.main, state=uiconst.UI_NORMAL)
         divider.Startup(self.sr.leftframe, 'width', 'x', 200, 350)
         uicls.Line(parent=divider, align=uiconst.TORIGHT)
@@ -68,7 +77,7 @@ class CertificateWindow(uicls.Window):
          const.defaultPadding,
          const.defaultPadding), align=uiconst.TOALL)
         self.sr.buttonPar = uicls.Container(name='buttonParent', align=uiconst.TOBOTTOM, height=20, parent=self.sr.leftframe)
-        self.sr.btns = btns = [(mls.UI_SHARED_CERT_APPLYFORALL,
+        self.sr.btns = btns = [(localization.GetByLabel('UI/Certificates/PlannerWindow/ClaimAllButtonText'),
           self.ApplyForAllCerts,
           (),
           84)]
@@ -80,10 +89,10 @@ class CertificateWindow(uicls.Window):
         self.sr.scroll.multiSelect = 0
         self.sr.scroll.OnSelectionChange = self.CheckTypeScrollSelection
         tabs = uicls.TabGroup(name='tabparent', parent=self.sr.leftframe, idx=0)
-        tabs.Startup([[mls.UI_SHARED_CERTIFICATES,
+        tabs.Startup([[localization.GetByLabel('UI/Certificates/PlannerWindow/CertificatesTabTitle'),
           self.sr.scroll,
           self,
-          'cert_groups'], [mls.UI_GENERIC_SETTINGS,
+          'cert_groups'], [localization.GetByLabel('UI/Certificates/PlannerWindow/CertificateSettings'),
           self.sr.scroll,
           self,
           'cert_settings']], 'cs_certs', autoselecttab=1)
@@ -123,16 +132,16 @@ class CertificateWindow(uicls.Window):
     def LoadInfoSection(self):
         uicls.Line(parent=self.sr.infoframe, align=uiconst.TORIGHT)
         self.sr.captionCont = uicls.Container(name='captionCont', align=uiconst.TOTOP, parent=self.sr.infoframe, left=0, top=12, height=0)
-        self.sr.caption = uicls.CaptionLabel(text='', parent=self.sr.captionCont, align=uiconst.TOALL, fontsize=16, left=0, autoheight=0, autowidth=0)
+        self.sr.caption = uicls.EveCaptionMedium(text='', parent=self.sr.captionCont, align=uiconst.TOALL)
         self.sr.gradeCont = uicls.Container(name='gradeCont', align=uiconst.TOTOP, parent=self.sr.infoframe, left=0, height=0)
-        self.sr.gradeText = uicls.Label(text='', parent=self.sr.gradeCont, left=0, top=0, align=uiconst.TOALL, fontsize=9, letterspace=2, state=uiconst.UI_DISABLED, uppercase=1, autowidth=False, autoheight=False)
+        self.sr.gradeText = uicls.EveLabelSmall(text='', parent=self.sr.gradeCont, left=0, top=0, align=uiconst.TOALL, state=uiconst.UI_DISABLED, bold=True)
         self.sr.subcaptionCont = uicls.Container(name='subcaptionCont', align=uiconst.TOTOP, parent=self.sr.infoframe, left=0, height=0)
-        self.sr.subcaption = uicls.Label(text='', parent=self.sr.subcaptionCont, left=0, top=0, align=uiconst.TOALL, state=uiconst.UI_DISABLED, autowidth=False, autoheight=False)
-        self.sr.descCont = uicls.Container(name='descCont', align=uiconst.TOTOP, parent=self.sr.infoframe, left=0, height=220)
-        uicls.Container(name='push', parent=self.sr.descCont, align=uiconst.TORIGHT, width=const.defaultPadding)
-        self.sr.desc = uicls.Edit(parent=self.sr.descCont, padRight=0, readonly=1, hideBackground=1)
+        self.sr.subcaption = uicls.EveLabelMedium(text='', parent=self.sr.subcaptionCont, left=0, top=0, align=uiconst.TOALL, state=uiconst.UI_DISABLED)
+        self.sr.desc = uicls.EditPlainText(parent=self.sr.infoframe, padRight=const.defaultPadding, padLeft=-7, readonly=1, align=uiconst.TOTOP, height=220)
+        self.sr.desc.HideBackground()
+        self.sr.desc.RemoveActiveFrame()
         self.sr.caption2Cont = uicls.Container(name='captionCont', align=uiconst.TOTOP, parent=self.sr.infoframe, left=0, top=12, height=16)
-        self.sr.caption2 = uicls.Label(text='%s:' % mls.UI_SHARED_CERT_RECOMMENDEDFOR, parent=self.sr.caption2Cont, left=0, top=0, align=uiconst.TOALL, fontsize=9, letterspace=2, state=uiconst.UI_DISABLED, uppercase=1, mousehilite=1, autowidth=False, autoheight=False)
+        self.sr.caption2 = uicls.EveHeaderSmall(text=localization.GetByLabel('UI/Certificates/PlannerWindow/RecommendedForLabel'), parent=self.sr.caption2Cont, left=0, top=0, align=uiconst.TOALL, state=uiconst.UI_DISABLED, mousehilite=1)
         uicls.Container(name='push', parent=self.sr.infoframe, align=uiconst.TOBOTTOM, height=const.defaultPadding)
         self.sr.recommendedCont = uicls.Container(name='recommendedCont', align=uiconst.TOALL, parent=self.sr.infoframe, pos=(0, 0, 0, 0))
         self.sr.recommended = uicls.Scroll(name='recommendedScroll', parent=self.sr.recommendedCont, padding=(4, 0, 4, 0))
@@ -206,7 +215,7 @@ class CertificateWindow(uicls.Window):
             focusSlot = xtriui.CertSlot(name='%s' % entry.label, parent=self.sr.focusSlotCont, align=uiconst.CENTER, width=200, height=focusSlotHeight, state=uiconst.UI_NORMAL)
             focusSlot.Startup(entry.label, 'ui_7_64_3', entry.label, entry)
             if sm.StartService('certificates').HasPrerequisites(self.certID) and not sm.StartService('certificates').HaveCertificate(self.certID):
-                btn = uicls.Button(parent=focusSlot, label=mls.UI_CMD_CLAIM, func=self.ApplyForCert, args=(certID,), pos=(2, 2, 0, 0), idx=1, alwaysLite=True, align=uiconst.BOTTOMRIGHT)
+                btn = uicls.Button(parent=focusSlot, label=localization.GetByLabel('UI/Certificates/PlannerWindow/ClaimButtonLabel'), func=self.ApplyForCert, args=(certID,), pos=(2, 2, 0, 0), idx=1, alwaysLite=True, align=uiconst.BOTTOMRIGHT)
                 btn.name = 'certificatesPlannerClaimCertificateBtn'
         self.HideGoBack()
         self.HideGoForward()
@@ -222,14 +231,38 @@ class CertificateWindow(uicls.Window):
         if len(self.sr.history) > 1:
             if historyIdx != 0:
                 if historyIdx:
-                    self.GoBack = (self.Browse, self.sr.history[(historyIdx - 1)], self)
+                    self.goBackBtn.OnClick = lambda *args: self.Browse(self.sr.history[(historyIdx - 1)], self)
                 else:
-                    self.GoBack = (self.Browse, self.sr.history[-2], self)
+                    self.goBackBtn.OnClick = lambda *args: self.Browse(self.sr.history[-2], self)
                 self.ShowGoBack()
             if historyIdx is not None and historyIdx != len(self.sr.history) - 1:
-                self.GoForward = (self.Browse, self.sr.history[(historyIdx + 1)], self)
+                self.goForwardBtn.OnClick = lambda *args: self.Browse(self.sr.history[(historyIdx + 1)], self)
                 self.ShowGoForward()
         self.ShowHeaderButtons(1)
+
+
+
+    def ShowGoBack(self):
+        self.goBackBtn.opacity = 1.0
+        self.goBackBtn.Enable()
+
+
+
+    def HideGoBack(self):
+        self.goBackBtn.opacity = 0.25
+        self.goBackBtn.Disable()
+
+
+
+    def ShowGoForward(self):
+        self.goForwardBtn.opacity = 1.0
+        self.goForwardBtn.Enable()
+
+
+
+    def HideGoForward(self):
+        self.goForwardBtn.opacity = 0.25
+        self.goForwardBtn.Disable()
 
 
 
@@ -298,7 +331,7 @@ class CertificateWindow(uicls.Window):
         scrolllist = []
         for (category, value,) in allCategories.iteritems():
             categoryObj = categoryData[category]
-            label = Tr(categoryObj.categoryName, 'cert.categories.categoryName', categoryObj.dataID)
+            label = localization.GetByMessageID(categoryObj.categoryNameID)
             data = {'GetSubContent': self.GetSubContent,
              'label': label,
              'groupItems': value,
@@ -314,7 +347,7 @@ class CertificateWindow(uicls.Window):
 
         if not scrolllist:
             self.sr.scroll.Load(contentList=[])
-            self.sr.scroll.ShowHint(mls.UI_RMR_TEXT10)
+            self.sr.scroll.ShowHint(localization.GetByLabel('UI/Certificates/PlannerWindow/FilterNoResults'))
         else:
             scrolllist = uiutil.SortListOfTuples(scrolllist)
             self.sr.scroll.Load(contentList=scrolllist, headers=[])
@@ -326,7 +359,7 @@ class CertificateWindow(uicls.Window):
         grades = sm.StartService('certificates').GetGrades(dataX.groupItems)
         toggleGroups = settings.user.ui.Get('certWnd_toggleOneCertGroupAtATime', 1)
         if toggleGroups:
-            dataWnd = sm.StartService('window').GetWindow(unicode(dataX.id), create=0)
+            dataWnd = uicls.Window.GetIfOpen(unicode(dataX.id))
             if not dataWnd:
                 for entry in self.sr.scroll.GetNodes():
                     if entry.__guid__ != 'listentry.Group' or entry.id == dataX.id:
@@ -340,7 +373,7 @@ class CertificateWindow(uicls.Window):
 
         for (grade, value,) in grades.iteritems():
             id = ('certGroups_grades', '%s_%s' % (dataX.cat, grade))
-            label = getattr(mls, 'UI_SHARED_CERTGRADE%s' % grade, 'Basic')
+            label = localization.GetByLabel(CERTIFICATE_MESSAGES_BY_GRADE.get(grade, GRADE_NOT_FOUND))
             data = {'GetSubContent': self.GetEntries,
              'label': label,
              'groupItems': value,
@@ -377,7 +410,7 @@ class CertificateWindow(uicls.Window):
             hasPrerequisites = sm.StartService('certificates').HasPrerequisites(certID)
             if not hasPrerequisites:
                 inProgress = self.IsInProgress(certID)
-        (label, grade, descr,) = uix.GetCertificateLabel(certID)
+        (label, grade, descr,) = sm.GetService('certificates').GetCertificateLabel(certID)
         entry = {'line': 1,
          'text': label,
          'indent': 3,
@@ -415,27 +448,27 @@ class CertificateWindow(uicls.Window):
         scrolllist = []
         for (cfgname, value, label, checked, group,) in [['certWnd_showCert',
           'current',
-          mls.UI_SHARED_CERT_SHOWCURRENT,
+          localization.GetByLabel('UI/Certificates/PlannerWindow/ShowCurrentMessage'),
           settings.user.ui.Get('certWnd_showCert', 'allCerts') == 'current',
           'certWnd_group'],
          ['certWnd_showCert',
           'haveSome',
-          mls.UI_SHARED_CERT_SHOWOWNPREREQ,
+          localization.GetByLabel('UI/Certificates/PlannerWindow/ShowOwnPrerequisites'),
           settings.user.ui.Get('certWnd_showCert', 'allCerts') == 'haveSome',
           'certWnd_group'],
          ['certWnd_showCert',
           'readyCerts',
-          mls.UI_SHARED_CERT_SHOWALLPREREQ,
+          localization.GetByLabel('UI/Certificates/PlannerWindow/ShowAllPrereqMessage'),
           settings.user.ui.Get('certWnd_showCert', 'allCerts') == 'readyCerts',
           'certWnd_group'],
          ['certWnd_showCert',
           'allCerts',
-          mls.UI_SHARED_SHOWALLCERTS,
+          localization.GetByLabel('UI/Certificates/PlannerWindow/ShowAllMessage'),
           settings.user.ui.Get('certWnd_showCert', 'allCerts') == 'allCerts',
           'certWnd_group'],
          ['certWnd_toggleOneCertGroupAtATime',
           None,
-          mls.UI_SHARED_TOGGLEONECERTGROUP,
+          localization.GetByLabel('UI/Certificates/PlannerWindow/ToggleGroup'),
           settings.user.ui.Get('certWnd_toggleOneCertGroupAtATime', 1),
           None]]:
             data = util.KeyVal()
@@ -464,7 +497,7 @@ class CertificateWindow(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         settings.user.ui.Set('cert_infoExpanded', self.expanded)
 
 
@@ -526,7 +559,7 @@ class CertificateWindow(uicls.Window):
             self.RotateIcon(self.sr.expanderIcon, -90)
             self.expanded = 0
             rotation = -1
-        blue.pyos.synchro.Sleep(100)
+        blue.pyos.synchro.SleepWallclock(100)
         infoWidth = [INFOWIDTH, 0][bool(infoframeWidth)]
         minWidth = self.sr.leftframe.width + infoWidth + TREEWIDTH + EXPANDERWIDTH
         self.SetMinSize([minWidth, MINHEIGHT])
@@ -536,15 +569,15 @@ class CertificateWindow(uicls.Window):
     def SetInfoText(self, certID = None, recommendedFor = {}):
         if not certID:
             return 
-        (label, grade, descr,) = uix.GetCertificateLabel(certID)
+        (label, grade, descr,) = sm.GetService('certificates').GetCertificateLabel(certID)
         certInfo = cfg.certificates.Get(certID)
         self.sr.caption.text = label
         self.sr.captionCont.height = self.sr.caption.textheight
         self.sr.gradeText.text = grade
         self.sr.gradeCont.height = self.sr.gradeText.textheight
-        self.sr.subcaption.text = mls.UI_SHARED_ISSUEDVIA % {'corpName': cfg.eveowners.Get(certInfo.corpID).ownerName}
+        self.sr.subcaption.text = localization.GetByLabel('UI/Certificates/PlannerWindow/IssuedViaCorp', corpName=cfg.eveowners.Get(certInfo.corpID).ownerName)
         self.sr.subcaptionCont.height = self.sr.subcaption.textheight
-        self.sr.desc.LoadHTML('<body>%s</body>' % descr, newThread=0)
+        self.sr.desc.SetValue(descr)
         if not recommendedFor:
             self.sr.caption2.state = uiconst.UI_HIDDEN
             self.sr.recommended.Load(contentList=[])
@@ -558,7 +591,7 @@ class CertificateWindow(uicls.Window):
 
             if len(shipsString) > 4:
                 shipsString = shipsString[:-4]
-            label = '%s - [%s]' % (mls.UI_SHARED_LIST % {'item': cfg.invgroups.Get(key).name}, len(value))
+            label = localization.GetByLabel('UI/Certificates/PlannerWindow/ItemList', itemName=cfg.invgroups.Get(key).name, howManyShips=len(value))
             entry = util.KeyVal()
             entry.hideLines = 1
             entry.label = label
@@ -576,7 +609,7 @@ class CertificateWindow(uicls.Window):
 
     def ShowInfoOnRecommendedFor(self, certID, *args):
         wnd = self.ShowInfo(certID, cfg.certificates.Get(certID).grade)
-        uthread.pool('CertificateWindow::ShowPanel', wnd.sr.maintabs.ShowPanelByName, mls.UI_SHARED_CERT_RECOMMENDED)
+        uthread.pool('CertificateWindow::ShowPanel', wnd.sr.maintabs.ShowPanelByName, localization.GetByLabel('UI/Certificates/PlannerWindow/RecommendedLabel'))
 
 
 
@@ -603,7 +636,7 @@ class CertificateWindow(uicls.Window):
                     entry.color = BLUE
                 elif sm.StartService('certificates').IsInProgress(each):
                     entry.color = YELLOW
-                (label, grade, descr,) = uix.GetCertificateLabel(each)
+                (label, grade, descr,) = sm.GetService('certificates').GetCertificateLabel(each)
                 entry.label = label
                 entry.descr = descr
                 certInfo = cfg.certificates.Get(each)
@@ -623,7 +656,7 @@ class CertificateWindow(uicls.Window):
                 entry.iconID = skillInfo.iconID
                 entry.grade = level
                 if skillStatus.status == YELLOW:
-                    entry.extra = mls.UI_SHARED_CERT_CURRENTLEVEL % {'currentLevel': skillStatus.current}
+                    entry.extra = localization.GetByLabel('UI/Certificates/PlannerWindow/CurrentLevelLabel', currentLevel=skillStatus.current)
             entry.width = 180
             entry.height = 40
             ret.append(entry)
@@ -654,45 +687,45 @@ class CertificateWindow(uicls.Window):
         if self.applying:
             return 
         certificateSvc = sm.StartService('certificates')
-        sm.GetService('loading').ProgressWnd(mls.UI_SHARED_CERT_AWARDING, mls.UI_SHARED_CERT_COLLECTING, 1, 4)
+        sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Certificates/PlannerWindow/AwardingText'), localization.GetByLabel('UI/Certificates/PlannerWindow/CollectingText'), 1, 4)
         msgProgress = ''
         msgNotify = ''
         awardedList = []
         try:
             self.applying = 1
-            button = self.sr.buttonWnd.GetBtnByLabel(mls.UI_SHARED_CERT_APPLYFORALL)
+            button = self.sr.buttonWnd.GetBtnByLabel(localization.GetByLabel('UI/Certificates/PlannerWindow/ClaimAllButtonText'))
             if button:
                 uthread.new(self.EnableButtonTimer, button)
                 button.Disable()
             readyDict = certificateSvc.FindAvailableCerts(showProgress=1)
             readyList = readyDict.keys()
             if readyList:
-                sm.GetService('loading').ProgressWnd(mls.UI_SHARED_CERT_AWARDING, mls.UI_SHARED_CERT_REQUESTING, 3, 4)
+                sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Certificates/PlannerWindow/AwardingText'), localization.GetByLabel('UI/Certificates/PlannerWindow/ReqCertificatesMessage'), 3, 4)
                 certificateSvc.GrantAllCertificates(readyDict.keys())
-                msgProgress = mls.UI_SHARED_CERT_AWARDEDALL % {'numCert': len(readyList)}
+                msgProgress = localization.GetByLabel('UI/Certificates/PlannerWindow/AwardedAllLabel', numCert=len(readyList))
                 for certID in readyList:
-                    (label, grade, descr,) = uix.GetCertificateLabel(certID)
+                    (label, grade, descr,) = sm.GetService('certificates').GetCertificateLabel(certID)
                     gradeNumber = cfg.certificates.Get(certID).grade
                     awardedList.append(('%s%s' % (label, gradeNumber), ('%s - %s' % (label, grade), certID)))
 
             else:
-                msgNotify = mls.UI_SHARED_CERT_AWARDEDNONE
-                msgProgress = mls.UI_GENERIC_DONE
+                msgNotify = localization.GetByLabel('UI/Certificates/PlannerWindow/AwardedNoneText')
+                msgProgress = localization.GetByLabel('UI/Generic/Done')
             self.applying = 0
 
         finally:
-            sm.GetService('loading').ProgressWnd(mls.UI_SHARED_CERT_AWARDING, msgProgress, 4, 4)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Certificates/PlannerWindow/AwardingText'), msgProgress, 4, 4)
 
         if awardedList:
             awardedList = uiutil.SortListOfTuples(awardedList)
-            uix.ListWnd(awardedList, listtype='generic', caption=mls.UI_SHARED_CERT_AWARDEDHEADER, hint=mls.UI_SHARED_CERT_AWARDED, minChoices=0, isModal=0)
+            uix.ListWnd(awardedList, listtype='generic', caption=localization.GetByLabel('UI/Certificates/PlannerWindow/AwardedHeader'), hint=localization.GetByLabel('UI/Certificates/PlannerWindow/ListAwardedPromptText'), minChoices=0, isModal=0)
         elif msgNotify:
             eve.Message('CustomNotify', {'notify': msgNotify})
 
 
 
     def EnableButtonTimer(self, button):
-        blue.pyos.synchro.Sleep(60000)
+        blue.pyos.synchro.SleepWallclock(60000)
         try:
             self.applying = 0
             button.Enable()
@@ -891,9 +924,9 @@ class CertEntry(uicls.SE_BaseClassCore):
         for i in xrange(5):
             uicls.Fill(parent=self.sr.levels, name='level%d' % i, align=uiconst.RELATIVE, color=(1.0, 1.0, 1.0, 0.5), left=2 + i * 9, top=2, width=8, height=6)
 
-        self.sr.visibilityLabel = uicls.Label(text='', parent=self.sr.levelParent, left=6, top=16, state=uiconst.UI_DISABLED, align=uiconst.TOPRIGHT)
-        self.sr.gradeLabel = uicls.Label(text='', parent=self.sr.levelHeaderParent, left=10, top=5, letterspace=2, fontsize=9, state=uiconst.UI_DISABLED, uppercase=1, idx=0, align=uiconst.TOPRIGHT)
-        self.sr.label = uicls.Label(text='', parent=sub, left=3, top=2, align=uiconst.TOALL, state=uiconst.UI_DISABLED, autowidth=False, autoheight=False)
+        self.sr.visibilityLabel = uicls.EveLabelSmall(text='', parent=self.sr.levelParent, left=6, top=16, state=uiconst.UI_DISABLED, align=uiconst.TOPRIGHT)
+        self.sr.gradeLabel = uicls.EveLabelSmall(text='', parent=self.sr.levelHeaderParent, left=2, top=5, state=uiconst.UI_DISABLED, idx=0, align=uiconst.TOPRIGHT)
+        self.sr.label = uicls.EveLabelSmall(text='', parent=sub, top=4, left=3, align=uiconst.TOTOP, state=uiconst.UI_DISABLED, lineSpacing=-0.2, height=24, padLeft=2)
         uicls.Line(parent=self, align=uiconst.TOBOTTOM)
         self.sr.infoicon = uicls.InfoIcon(size=16, left=2, top=2, parent=sub, idx=0, align=uiconst.TOPRIGHT)
         self.sr.infoicon.OnClick = self.ShowInfo
@@ -904,16 +937,16 @@ class CertEntry(uicls.SE_BaseClassCore):
         self.sr.node = node
         data = node
         self.certID = data.certID
-        (label, grade, descr,) = uix.GetCertificateLabel(self.certID)
-        self.sr.label.top = 2
+        (label, grade, descr,) = sm.GetService('certificates').GetCertificateLabel(self.certID)
         self.sr.label.text = label
+        self.hint = label
         grade = data.grade
         self.grade = grade
-        self.sr.gradeLabel.text = getattr(mls, 'UI_SHARED_CERTGRADE%s' % grade, '')
+        self.sr.gradeLabel.text = localization.GetByLabel(CERTIFICATE_MESSAGES_BY_GRADE.get(grade, GRADE_NOT_FOUND))
         if data.Get('icon', None):
             self.sr.icon.LoadIcon(data.icon, ignoreSize=True)
             self.sr.icon.SetSize(32, 32)
-        self.sr.visibilityLabel.text = mls.UI_GENERIC_PUBLIC if data.visibility else mls.UI_GENERIC_PRIVATE
+        self.sr.visibilityLabel.text = localization.GetByLabel('UI/Generic/Public') if data.visibility else localization.GetByLabel('UI/Generic/Private')
         if data.Get('hideBar', None):
             self.sr.levelParent.state = uiconst.UI_HIDDEN
         else:
@@ -939,9 +972,9 @@ class CertEntry(uicls.SE_BaseClassCore):
 
     def GetMenu(self):
         m = []
-        m += [(mls.UI_CMD_SHOWINFO, self.ShowInfo, (self.certID,))]
+        m += [(localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo, (self.certID,))]
         if session.charid:
-            m += [(mls.UI_CMD_OPENCERTIFICATEPLANNER, sm.StartService('certificates').OpenCertificateWindow, (self.certID,))]
+            m += [(localization.GetByLabel('UI/Commands/OpenCertPlanner'), sm.StartService('certificates').OpenCertificateWindow, (self.certID,))]
         return m
 
 
@@ -981,16 +1014,16 @@ class CertTreeEntry(listentry.Text):
         self.grade = data.grade
         if data.haveCert:
             self.sr.have.LoadIcon('ui_38_16_193')
-            self.sr.have.hint = mls.UI_SHARED_CERTHINT1
+            self.sr.have.hint = localization.GetByLabel('UI/Certificates/PlannerWindow/HaveCertHint')
         elif data.hasPrereqs:
             self.sr.have.LoadIcon('ui_38_16_177')
-            self.sr.have.hint = mls.UI_SHARED_CERTHINT4
+            self.sr.have.hint = localization.GetByLabel('UI/Certificates/PlannerWindow/HaveAllPrereqHint')
         elif data.inProgress:
             self.sr.have.LoadIcon('ui_38_16_195')
-            self.sr.have.hint = mls.UI_SHARED_CERTHINT2
+            self.sr.have.hint = localization.GetByLabel('UI/Certificates/PlannerWindow/HaveOnePrereqHint')
         else:
             self.sr.have.LoadIcon('ui_38_16_194')
-            self.sr.have.hint = mls.UI_SHARED_CERTHINT3
+            self.sr.have.hint = localization.GetByLabel('UI/Certificates/PlannerWindow/HaveNoPrereqHint')
         self.sr.have.left = 15 * data.indent - 11
         self.sr.text.left = 15 * data.indent + 5
         if self.sr.node.Get('selected', 0):
@@ -1057,25 +1090,26 @@ class CertSlot(xtriui.Slots):
         self.sr.textCont.left = 28
         self.sr.textCont.width = self.width - 44
         self.sr.text.text = label
-        statusTop = 16
+        statusTop = 18
         if self.sr.text._numLines > 1:
             self.sr.text.top = 2
-            statusTop = 20
+            statusTop = 22
         if data.certID:
-            self.sr.status2 = uicls.Label(text=getattr(mls, 'UI_SHARED_CERTGRADE%s' % data.grade, ''), parent=self.sr.textCont, width=self.width - 32, color=None, autowidth=False, top=statusTop, left=8, state=uiconst.UI_DISABLED, idx=5)
-            hint = [mls.UI_SHARED_CERTHINT3,
-             mls.UI_SHARED_CERTHINT2,
-             mls.UI_SHARED_CERTHINT1,
-             mls.UI_SHARED_CERTHINT4][data.color]
+            self.sr.status2 = uicls.EveLabelSmall(text=localization.GetByLabel(CERTIFICATE_MESSAGES_BY_GRADE.get(data.grade, GRADE_NOT_FOUND)), parent=self.sr.textCont, width=self.width - 32, color=None, top=statusTop, left=8, state=uiconst.UI_DISABLED, idx=5)
+            hint = [localization.GetByLabel('UI/Certificates/PlannerWindow/HaveNoPrereqHint'),
+             localization.GetByLabel('UI/Certificates/PlannerWindow/HaveOnePrereqHint'),
+             localization.GetByLabel('UI/Certificates/PlannerWindow/HaveCertHint'),
+             localization.GetByLabel('UI/Certificates/PlannerWindow/HaveAllPrereqHint')][data.color]
         else:
-            self.sr.status2 = uicls.Label(text=mls.UI_SHARED_CERTLEVEL % {'level': data.grade}, parent=self.sr.textCont, width=self.width - 32, color=None, autowidth=False, top=statusTop, left=8, state=uiconst.UI_DISABLED, idx=5)
-            hint = [mls.UI_SHARED_TRAINEDBUTNOT,
-             mls.UI_SHARED_TRAINEDBUTNOTREQLEVEL,
-             mls.UI_SHARED_TRAINEDANDOFREQLEVEL,
-             mls.UI_SHARED_CERTHINT4][data.color]
+            hint = [localization.GetByLabel('UI/Certificates/PlannerWindow/TrainedButNot'),
+             localization.GetByLabel('UI/Certificates/PlannerWindow/TrainedButNotReqLevel'),
+             localization.GetByLabel('UI/Certificates/PlannerWindow/TrainedAndOfReqLevel'),
+             localization.GetByLabel('UI/Certificates/PlannerWindow/HaveAllPrereqHint')][data.color]
             extra = data.Get('extra', None)
+            label = localization.GetByLabel('UI/SkillQueue/Skills/SkillLevelWordAndValue', skillLevel=data.grade)
             if extra:
-                self.sr.status2.text += ' (%s)' % extra
+                label = localization.GetByLabel('UI/SkillQueue/Skills/SkillLevelWordAndValue', skillLevel=data.grade, extra=extra)
+            self.sr.status2 = uicls.EveLabelSmall(text=label, parent=self.sr.textCont, width=self.width - 32, color=None, top=statusTop, left=8, state=uiconst.UI_DISABLED, idx=5)
         self.sr.icon.top = 2
         iconID = data.Get('iconID', None)
         icon = data.Get('icon', None)
@@ -1125,8 +1159,8 @@ class CertSlot(xtriui.Slots):
             if data.typeID is not None:
                 m += sm.StartService('menu').GetMenuFormItemIDTypeID(None, data.typeID, ignoreMarketDetails=0)
         elif data.color == 3:
-            m += [(mls.UI_CMD_CLAIMCERTIFICATE, self.ApplyForCert, (data.certID,))]
-        m += [(mls.UI_CMD_SHOWINFO, self.ShowInfo, (data.certID, data.grade))]
+            m += [(localization.GetByLabel('UI/Certificates/PlannerWindow/ClaimCertText'), self.ApplyForCert, (data.certID,))]
+        m += [(localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo, (data.certID, data.grade))]
         return m
 
 
@@ -1236,7 +1270,7 @@ class PermissionEntry(listentry.Generic):
 
     def GetHeight(self, *args):
         (node, width,) = args
-        node.height = max(19, uix.GetTextHeight(node.label, autoWidth=1, singleLine=1) + 4)
+        node.height = max(19, uix.GetTextHeight(node.label, singleLine=1) + 4)
         return node.height
 
 

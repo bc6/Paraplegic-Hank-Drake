@@ -26,7 +26,7 @@ class SovereigntyInfrastructueHub(spaceObject.PlayerOwnedStructure):
 
     def OnSlimItemUpdated(self, slimItem):
         posState = getattr(slimItem, 'posState', None)
-        posTime = getattr(slimItem, 'posTimestamp', blue.os.GetTime())
+        posTime = getattr(slimItem, 'posTimestamp', blue.os.GetWallclockTime())
         posDelay = getattr(slimItem, 'posDelayTime', 0)
         self.HandleStateChange(posState, posTime, posDelay)
 

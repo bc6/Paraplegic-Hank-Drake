@@ -5,19 +5,14 @@ import uthread
 
 class BasicOrbital(spaceObject.PlayerOwnedStructure):
 
-    def GetStaticDirection(self):
-        return self.FindClosestPlanetDir()
-
-
-
     def Assemble(self):
-        self.SetStaticDirection()
+        self.SetStaticRotation()
 
 
 
     def OnSlimItemUpdated(self, slimItem):
         orbitalState = getattr(slimItem, 'orbitalState', None)
-        orbitalTimestamp = getattr(slimItem, 'orbitalTimestamp', blue.os.GetTime())
+        orbitalTimestamp = getattr(slimItem, 'orbitalTimestamp', blue.os.GetSimTime())
         fxSequencer = sm.GetService('FxSequencer')
         if not hasattr(self, 'orbitalState'):
             if orbitalState in (entities.STATE_ANCHORING, entities.STATE_ANCHORED):

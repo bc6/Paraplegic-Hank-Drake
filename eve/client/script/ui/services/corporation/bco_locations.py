@@ -1,7 +1,8 @@
 import util
 import corpObject
-import moniker
+import uicls
 import uthread
+import form
 
 class LocationsO(corpObject.base):
     __guid__ = 'corpObject.locations'
@@ -31,7 +32,7 @@ class LocationsO(corpObject.base):
 
 
     def DoSessionChanging(self, isRemote, session, change):
-        if 'stationid' in change:
+        if 'stationid2' in change:
             self.itemIDOfficeFolderIDByCorporationID = None
             self.offices = None
         if 'corpid' in change:
@@ -50,7 +51,7 @@ class LocationsO(corpObject.base):
 
 
     def PrimeStationOffices(self):
-        if not eve.session.stationid:
+        if not session.stationid2:
             return 
         if self.offices is not None:
             return 
@@ -111,7 +112,7 @@ class LocationsO(corpObject.base):
 
 
     def GetOffice(self, corpID = None):
-        if not eve.session.stationid:
+        if not session.stationid2:
             return 
         if self.itemIDOfficeFolderIDByCorporationID is None:
             self.itemIDOfficeFolderIDByCorporationID = util.IndexRowset(['corporationID', 'itemID', 'officeFolderID'], [], 'corporationID')
@@ -169,23 +170,24 @@ class LocationsO(corpObject.base):
             self.AddOffice(corporationID, officeID, folderID)
         else:
             self.RemoveOffice(corporationID, officeID, folderID)
-        lobby = sm.GetService('station').GetLobby()
-        if lobby is not None:
-            if lobby.sr and lobby.sr.lobbytabs and lobby.sr.lobbytabs.GetSelectedArgs() == 'lobby_offices':
-                lobby.ShowOffices()
+        lobby = form.Lobby.GetIfOpen()
+        if lobby:
+            lobby.ReloadOfficesIfVisible()
+            if officeID is None:
+                lobby.LoadButtons()
         if corporationID != eve.session.corpid:
             return 
         if oldOfficeID is not None:
-            wnd = sm.GetService('window').GetWindow('corpHangar_%s' % oldOfficeID)
-            if wnd is not None and not wnd.destroyed:
-                wnd.SelfDestruct()
-        if officeID is not None and sm.GetService('window').GetWndState('corpHangar_%s' % officeID, 'open'):
-            sm.GetService('window').OpenCorpHangar(officeID, folderID)
+            wnd = uicls.Window.GetIfOpen(windowID='corpHangar_%s' % oldOfficeID)
+            if officeID is None and wnd is not None:
+                wnd.CloseByUser()
+            elif officeID is not None and wnd is not None:
+                sm.GetService('window').OpenCorpHangar(officeID, folderID, isMinimized=wnd.IsMinimized())
 
 
 
     def DoesCharactersCorpOwnThisStation(self):
-        if not eve.session.stationid:
+        if not session.stationid2:
             return 
         return not util.IsNPC(eve.session.corpid) and eve.session.corpid == eve.stationItem.ownerID
 

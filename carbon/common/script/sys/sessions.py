@@ -3,6 +3,7 @@ import blue
 import bluepy
 import uthread
 import weakref
+import localization
 import log
 import copy
 import types
@@ -16,29 +17,71 @@ import uuid
 from collections import deque
 from service import *
 SESSIONCHANGEDELAY = 30 * const.SEC
-
-def GetSessionChangeTimer(role):
-    delay = SESSIONCHANGEDELAY
-    if role and role & ROLE_GML > 0 and macho.mode == 'client' and prefs.GetValue('sessionChangeTimer', 0) > 0:
-        delay = min(max(prefs.GetValue('sessionChangeTimer', 0), 5), 60)
-        delay *= const.SEC
-    return delay
-
-
 allObjectConnections = weakref.WeakKeyDictionary({})
 allConnectedObjects = weakref.WeakKeyDictionary({})
+
+def ThrottlePerMinute(max = 1, message = 'GenericStopSpamming'):
+
+    def Helper(f):
+
+        def Wrapper(*args, **kwargs):
+            if session is not None and session.role & ROLE_PLAYER == ROLE_PLAYER:
+                session.Throttle(f.__name__, max, const.MIN, 'min', message)
+            return f(*args, **kwargs)
+
+
+        return Wrapper
+
+
+    return Helper
+
+
+
+def ThrottlePer5Minutes(max = 1, message = 'GenericStopSpamming'):
+
+    def Helper(f):
+
+        def Wrapper(*args, **kwargs):
+            if session is not None and session.role & ROLE_PLAYER == ROLE_PLAYER:
+                session.Throttle(f.__name__, max, 5 * const.MIN, 'min', message)
+            return f(*args, **kwargs)
+
+
+        return Wrapper
+
+
+    return Helper
+
+
+
+def ThrottlePerSecond(max = 1, message = 'GenericStopSpamming'):
+
+    def Helper(f):
+
+        def Wrapper(*args, **kwargs):
+            if session is not None and session.role & ROLE_PLAYER == ROLE_PLAYER:
+                session.Throttle(f.__name__, max, const.SEC, 'sec', message)
+            return f(*args, **kwargs)
+
+
+        return Wrapper
+
+
+    return Helper
+
+
 dyingObjects = deque()
 
 def ObjectKillah():
     n = 0
     while 1:
         maxNumObjects = prefs.GetValue('objectKillahMaxObjects', -1)
-        sleepTime = prefs.GetValue('objectKillahSleepTime', 30)
+        sleepTime = prefs.GetValue('objectKilla.SleepWallclockTime', 30)
         if dyingObjects and (maxNumObjects <= 0 or n < maxNumObjects):
-            delay = (dyingObjects[0][0] - blue.os.GetTime()) / SEC
+            delay = (dyingObjects[0][0] - blue.os.GetWallclockTime()) / SEC
             delay = min(delay, 30)
             if delay > 0:
-                blue.pyos.synchro.Sleep(1000 * delay)
+                blue.pyos.synchro.SleepWallclock(1000 * delay)
             else:
                 (dietime, diediedie,) = dyingObjects.popleft()
                 try:
@@ -58,7 +101,7 @@ def ObjectKillah():
                 else:
                     log.general.Log('ObjectKillah killed %d objects for this round. Sleeping for %d seconds' % (n, sleepTime), log.LGINFO)
             n = 0
-            blue.pyos.synchro.Sleep(1000 * sleepTime)
+            blue.pyos.synchro.SleepWallclock(1000 * sleepTime)
 
 
 
@@ -166,6 +209,7 @@ serviceCallTimes = {}
 webCallTimes = {}
 userCallTimes = {}
 outstandingCallTimers = []
+methodCallHistory = deque(maxlen=1000)
 
 class RealCallTimer():
 
@@ -177,16 +221,16 @@ class RealCallTimer():
             self.mask = GetServiceSession('DefaultCallTimer').Masquerade()
         else:
             self.mask = None
-        self.start = blue.os.GetTime(1)
+        self.start = blue.os.GetWallclockTimeNow()
         outstandingCallTimers.append((k, self.start))
 
 
 
     def Done(self):
-        stop = blue.os.GetTime(1)
+        stop = blue.os.GetWallclockTimeNow()
         t = stop - self.start
         if t < 0:
-            log.general.Log('blue.os.GetTime(1) is running backwards... now=%s, start=%s' % (stop, self.start), 2, 1)
+            log.general.Log('blue.os.GetWallclockTimeNow() is running backwards... now=%s, start=%s' % (stop, self.start), 2, 1)
             t = 0
         if session and not session.role & ROLE_SERVICE:
             if getattr(session, 'clientID', 0):
@@ -215,6 +259,9 @@ class RealCallTimer():
 
         if self.mask:
             self.mask.UnMask()
+        if macho.mode == 'client':
+            k = (self.key, self.start, t)
+            methodCallHistory.append(k)
         try:
             outstandingCallTimers.remove((self.key, self.start))
         except:
@@ -290,10 +337,11 @@ class CoreSession():
     __nonpersistvars__ = ['sid',
      'c2ooid',
      'connectedObjects',
-     'clientID']
+     'clientID',
+     'localSID']
     __attributesWithDefaultValueOfZero__ = []
 
-    def __init__(self, sid, role, defaultVarList = []):
+    def __init__(self, sid, localSID, role, defaultVarList = []):
         d = self.__dict__
         d['additionalNoSetAttributes'] = []
         defaultVarList = self.__persistvars__ + defaultVarList
@@ -302,6 +350,7 @@ class CoreSession():
 
         d['version'] = 1
         d['sid'] = sid
+        d['localSID'] = localSID
         d['role'] = None
         d['c2ooid'] = 1
         d['connectedObjects'] = {}
@@ -310,7 +359,7 @@ class CoreSession():
         d['machoObjectsByID'] = {}
         d['machoObjectConnectionsByObjectID'] = {}
         d['sessionVariables'] = {}
-        d['lastRemoteCall'] = blue.os.GetTime()
+        d['lastRemoteCall'] = blue.os.GetWallclockTime()
         d['nextSessionChange'] = None
         d['sessionChangeReason'] = 'Initial State'
         d['rwlock'] = uthread.RWLock(('sessions', sid))
@@ -323,8 +372,35 @@ class CoreSession():
         d['longAttributes'] = []
         d['additionalAttributesToPrint'] = []
         d['additionalHexAttributes'] = []
+        d['callThrottling'] = {}
         self._CoreSession__ChangeAttribute('role', role)
         self.LogSessionHistory('Session created')
+
+
+
+    def Throttle(self, key, throttleTimes, throttleInterval, remainingTimeCutoff, userErrorMessage, userErrorParams = None):
+        lastKeyTimes = self.callThrottling.get(key, [])
+        now = blue.os.GetWallclockTime()
+        if len(lastKeyTimes) >= throttleTimes:
+            temp = []
+            earliestTime = None
+            for time in lastKeyTimes:
+                if now - time < throttleInterval:
+                    temp.append(time)
+                    if earliestTime is None or time < earliestTime:
+                        earliestTime = time
+
+            if len(temp) >= throttleTimes:
+                self.callThrottling[key] = temp
+                remainingTime = earliestTime + throttleInterval - now if earliestTime is not None else throttleInterval
+                mergedErrorParams = {'remainingTime': util.FmtTimeInterval(max(0L, remainingTime), remainingTimeCutoff)}
+                if userErrorParams is not None:
+                    mergedErrorParams.update(userErrorParams)
+                raise UserError(userErrorMessage, mergedErrorParams)
+            else:
+                lastKeyTimes = temp
+        lastKeyTimes.append(now)
+        self.callThrottling[key] = lastKeyTimes
 
 
 
@@ -353,7 +429,7 @@ class CoreSession():
             return 
         timeWaited = 0
         while timeWaited <= 30000 and not session.IsItSafe():
-            blue.pyos.synchro.Sleep(100)
+            blue.pyos.synchro.SleepWallclock(100)
             timeWaited += 100
 
         if not session.IsItSafe():
@@ -434,7 +510,7 @@ class CoreSession():
         log.general.Log(prefix + ':  ' + reason + ".  It's history is as follows:", 1, 2)
         lastEntry = ''
         for eachHistoryRecord in self.sessionhist:
-            header = prefix + ':  ' + util.FmtDate(eachHistoryRecord[0], 'll') + ': '
+            header = prefix + ':  ' + util.FmtDateEng(eachHistoryRecord[0], 'll') + ': '
             lines = eachHistoryRecord[1].split('\n')
             tmp = eachHistoryRecord[2]
             if tmp == lastEntry:
@@ -491,7 +567,7 @@ class CoreSession():
                 details = 'session=' + details[:-2]
             else:
                 details = 'info=' + strx(details)
-            self.__dict__['sessionhist'].append((blue.os.GetTime(), strx(reason)[:255], strx(details)[:255]))
+            self.__dict__['sessionhist'].append((blue.os.GetWallclockTime(), strx(reason)[:255], strx(details)[:255]))
             if len(self.__dict__['sessionhist']) > 120:
                 self.__dict__['sessionhist'] = self.__dict__['sessionhist'][70:]
             if not noBlather and log.general.IsOpen(1):
@@ -514,7 +590,7 @@ class CoreSession():
         if log.general.IsOpen(how):
             log.general.Log('A session related error has occurred.  Session history:', how, 2)
             for eachHistoryRecord in self.sessionhist:
-                s = ''.join(map(strx, util.FmtDate(eachHistoryRecord[0], 'll') + ': ' + eachHistoryRecord[1] + ', ' + eachHistoryRecord[2]))
+                s = ''.join(map(strx, util.FmtDateEng(eachHistoryRecord[0], 'll') + ': ' + eachHistoryRecord[1] + ', ' + eachHistoryRecord[2]))
                 if len(s) > 5000:
                     s = s[:5000]
                 while len(s) > 255:
@@ -671,7 +747,7 @@ class CoreSession():
 
 
     def __ChangeAttribute(self, attr, towhat):
-        self.__dict__['nextSessionChange'] = blue.os.GetTime() + GetSessionChangeTimer(self.role)
+        self.__dict__['nextSessionChange'] = blue.os.GetSimTime() + base.sessionChangeDelay
         if getattr(self, 'clearing_session', 0):
             self.__dict__[attr] = towhat
         else:
@@ -1081,7 +1157,7 @@ class CoreSession():
             else:
                 theID = self.clientID
                 idtype = 'clientID'
-        elif not self.role & ROLE_SERVICE and macho.mode != 'client':
+        elif not self.role & ROLE_SERVICE and macho.mode != 'client' and not IsInClientContext():
             log.LogTraceback()
             raise RuntimeError('You cannot cross the wire except in the context of a service')
         if currentcall:
@@ -1096,14 +1172,14 @@ class CoreSession():
 
 
     def ConnectToAllServices(self, svc, batchInterval = 0):
-        if not self.role & ROLE_SERVICE and macho.mode != 'client':
+        if not self.role & ROLE_SERVICE and macho.mode != 'client' and not IsInClientContext():
             raise RuntimeError('You cannot cross the wire except in the context of a service')
         return sm.services['machoNet'].ConnectToAllServices(svc, self, batchInterval=batchInterval)
 
 
 
     def ConnectToRemoteService(self, svc, nodeID = None):
-        if not self.role & ROLE_SERVICE and macho.mode != 'client':
+        if not self.role & ROLE_SERVICE and macho.mode != 'client' and not IsInClientContext():
             raise RuntimeError('You cannot cross the wire except in the context of a service')
         if macho.mode == 'server' and nodeID is None:
             nodeID = sm.GetService(svc).MachoResolve(self)
@@ -1118,7 +1194,7 @@ class CoreSession():
 
 
     def ConnectToSolServerService(self, svc, nodeID = None):
-        if not self.role & ROLE_SERVICE and macho.mode != 'client':
+        if not self.role & ROLE_SERVICE and macho.mode != 'client' and not IsInClientContext():
             raise RuntimeError('You cannot cross the wire except in the context of a service')
         if macho.mode == 'server' and nodeID is None:
             nodeID = sm.GetService(svc).MachoResolve(self)
@@ -1134,7 +1210,7 @@ class CoreSession():
 
 
     def ConnectToProxyServerService(self, svc, nodeID = None):
-        if not self.role & ROLE_SERVICE and macho.mode != 'client':
+        if not self.role & ROLE_SERVICE and macho.mode != 'client' and not IsInClientContext():
             raise RuntimeError('You cannot cross the wire except in the context of a service')
         if macho.mode == 'proxy' and (nodeID is None or nodeID == sm.services['machoNet'].GetNodeID()):
             return self.ConnectToService(svc)
@@ -1144,7 +1220,7 @@ class CoreSession():
 
 
     def ConnectToAnyService(self, svc):
-        if not self.role & ROLE_SERVICE and macho.mode != 'client':
+        if not self.role & ROLE_SERVICE and macho.mode != 'client' and not IsInClientContext():
             raise RuntimeError('You cannot cross the wire except in the context of a service')
         if svc in sm.services:
             return self.ConnectToService(svc)
@@ -1154,14 +1230,14 @@ class CoreSession():
 
 
     def ConnectToAllNeighboringServices(self, svc, batchInterval = 0):
-        if not self.role & ROLE_SERVICE and macho.mode != 'client':
+        if not self.role & ROLE_SERVICE and macho.mode != 'client' and not IsInClientContext():
             raise RuntimeError('You cannot cross the wire except in the context of a service')
         return sm.services['machoNet'].ConnectToAllNeighboringServices(svc, self, batchInterval=batchInterval)
 
 
 
     def ConnectToAllProxyServerServices(self, svc, batchInterval = 0):
-        if not self.role & ROLE_SERVICE and macho.mode != 'client':
+        if not self.role & ROLE_SERVICE and macho.mode != 'client' and not IsInClientContext():
             raise RuntimeError('You cannot cross the wire except in the context of a service')
         if macho.mode == 'proxy':
             return sm.services['machoNet'].ConnectToAllSiblingServices(svc, self, batchInterval=batchInterval)
@@ -1171,7 +1247,7 @@ class CoreSession():
 
 
     def ConnectToAllSolServerServices(self, svc, batchInterval = 0):
-        if not self.role & ROLE_SERVICE and macho.mode != 'client':
+        if not self.role & ROLE_SERVICE and macho.mode != 'client' and not IsInClientContext():
             raise RuntimeError('You cannot cross the wire except in the context of a service')
         if macho.mode == 'server':
             return sm.services['machoNet'].ConnectToAllSiblingServices(svc, self, batchInterval=batchInterval)
@@ -1186,7 +1262,7 @@ class CoreSession():
 
 
     def RemoteServiceCallWithoutTheStars(self, dest, service, method, *args, **keywords):
-        if not self.role & ROLE_SERVICE and macho.mode != 'client':
+        if not self.role & ROLE_SERVICE and macho.mode != 'client' and not IsInClientContext():
             raise RuntimeError('You cannot cross the wire except in the context of a service')
         return sm.services['machoNet'].RemoteServiceCallWithoutTheStars(self, dest, service, method, args, keywords)
 
@@ -1198,14 +1274,14 @@ class CoreSession():
 
 
     def RemoteServiceNotifyWithoutTheStars(self, dest, service, method, args, keywords):
-        if not self.role & ROLE_SERVICE and macho.mode != 'client':
+        if not self.role & ROLE_SERVICE and macho.mode != 'client' and not IsInClientContext():
             raise RuntimeError('You cannot cross the wire except in the context of a service')
         sm.services['machoNet'].RemoteServiceNotifyWithoutTheStars(self, args, keywords)
 
 
 
     def ResetSessionChangeTimer(self, reason):
-        sm.GetService('sessionMgr').LogInfo("Resetting next legal session change timer, reason='", reason, "', was ", util.FmtDate(self.nextSessionChange or blue.os.GetTime()))
+        sm.GetService('sessionMgr').LogInfo("Resetting next legal session change timer, reason='", reason, "', was ", util.FmtDateEng(self.nextSessionChange or blue.os.GetSimTime()))
         self.nextSessionChange = None
 
 
@@ -1223,7 +1299,7 @@ class ObjectConnection():
         if object is None:
             sess.LogSessionError('Establishing an object connection to None')
             log.LogTraceback()
-        self.__dict__['__last_used__'] = blue.os.GetTime()
+        self.__dict__['__last_used__'] = blue.os.GetWallclockTime()
         self.__dict__['__constructing__'] = 1
         self.__dict__['__deleting__'] = 0
         self.__dict__['__machoObjectUUID__'] = GetObjectUUID(object)
@@ -1242,7 +1318,7 @@ class ObjectConnection():
         if not hasattr(object, 'sessionConnections'):
             object.sessionConnections = weakref.WeakValueDictionary({})
         if not hasattr(object, 'machoInstanceID'):
-            object.machoInstanceID = blue.os.GetTime(1)
+            object.machoInstanceID = blue.os.GetWallclockTimeNow()
         try:
             lock = None
             if not object.sessionConnections:
@@ -1316,7 +1392,7 @@ class ObjectConnection():
 
 
     def PseudoMethodCall(self, object, method, *args, **keywords):
-        self.__dict__['__last_used__'] = blue.os.GetTime()
+        self.__dict__['__last_used__'] = blue.os.GetWallclockTime()
         if hasattr(object, method):
             try:
                 if hasattr(object, '__guid__'):
@@ -1444,7 +1520,7 @@ class ObjectConnection():
     def DisconnectObject(self, delaySecs = 0):
         if delaySecs:
             if not self.__pendingDisconnect__:
-                dyingObjects.append((blue.os.GetTime() + delaySecs * SEC, self))
+                dyingObjects.append((blue.os.GetWallclockTime() + delaySecs * SEC, self))
                 self.__pendingDisconnect__ = 1
             else:
                 self.__pendingDisconnect__ += 1
@@ -1544,7 +1620,7 @@ class ObjectConnection():
             self.__session__.LogSessionHistory('Object no longer live:  c2ooid=' + strx(self.__c2ooid__) + ', serviceName=' + strx(self.__serviceName__) + ', bindParams=' + strx(self.__bindParams__) + ', uuid=' + strx(self.__machoObjectUUID__), None, 1)
             self.__session__.LogSessionError('This object connection is no longer live')
             raise RuntimeError('This object connection is no longer live')
-        self.__dict__['__last_used__'] = blue.os.GetTime()
+        self.__dict__['__last_used__'] = blue.os.GetWallclockTime()
         if self.__session__.role & (ROLE_SERVICE | ROLE_REMOTESERVICE) == ROLE_SERVICE:
             if method.endswith('_Ex'):
                 return service.FastCallWrapper(self.__session__, self.__object__, method[:-3], self)
@@ -1668,6 +1744,7 @@ class ServiceConnection():
 
 
 service_sessions = {}
+local_sid = 0
 sessionsByAttribute = {'userid': {},
  'userType': {},
  'charid': {},
@@ -1691,12 +1768,14 @@ def GetSessionMaps():
 
 
 def CreateSession(role = ROLE_LOGIN, sid = None):
+    global local_sid
+    local_sid += 1
     if sid is None:
         sid = GetNewSid()
     if sid in sessionsBySID:
         log.general.Log('Session SID collision!', log.LGERR)
         log.general.Log('Local session being broken %s' % (sessionsBySID[sid],), log.LGERR)
-    s = base.Session(sid, role)
+    s = base.Session(sid, local_sid, role)
     sessionsBySID[sid] = s
     allSessionsBySID[sid] = s
     return s
@@ -1767,6 +1846,8 @@ def FindSessions(attr, val):
             log.LogTraceback()
             raise 
 
+    if len(ret) > 1 and attr in ('charid', 'userid'):
+        return sorted(ret, key=lambda s: s.localSID, reverse=True)
     return ret
 
 
@@ -2047,7 +2128,10 @@ class SessionMgr(service.Service):
      'GetSessionDetails': [ROLE_SERVICE],
      'TerminateClientConnections': [ROLE_SERVICE | ROLE_ADMIN]}
     __dependencies__ = []
-    __notifyevents__ = ['ProcessSessionChange', 'DoSessionChanging']
+    __notifyevents__ = ['ProcessSessionChange',
+     'DoSessionChanging',
+     'DoSimClockRebase',
+     'OnClientConfigValsChanged']
 
     def __init__(self):
         service.Service.__init__(self)
@@ -2082,7 +2166,7 @@ class SessionMgr(service.Service):
 
 
     def GetReason(self, oldReason, newReason, timeLeft):
-        return mls.COMMON_SESSIONS_RAISEPSCIP_BASEREASON
+        return localization.GetByLabel('/Carbon/UI/Sessions/SessionChangeInProgressBase')
 
 
 
@@ -2123,17 +2207,17 @@ class SessionMgr(service.Service):
         if macho.mode == 'client':
             sess = session
             if not violateSafetyTimer and hostile in (0, 1) and sess.charid:
-                if sess.nextSessionChange is not None and sess.nextSessionChange > blue.os.GetTime():
+                if sess.nextSessionChange is not None and sess.nextSessionChange > blue.os.GetSimTime():
                     if wait > 0:
-                        t = 1000 * (2 + (session.nextSessionChange - blue.os.GetTime()) / const.SEC)
+                        t = 1000 * (2 + (session.nextSessionChange - blue.os.GetSimTime()) / const.SEC)
                         self.LogInfo('PerformSessionChange is sleeping for %s ms' % t)
-                        blue.pyos.synchro.Sleep(t)
-                if sess.nextSessionChange is not None and sess.nextSessionChange > blue.os.GetTime():
+                        blue.pyos.synchro.SleepWallclock(t)
+                if sess.nextSessionChange is not None and sess.nextSessionChange > blue.os.GetSimTime():
                     self.LogError("Too frequent session change attempts.  You'll just get yourself stuck doing this.  Ignoring.")
                     self.LogError('func=', func, ', args=', args, ', keywords=', keywords)
                     if sessionChangeReason in self.sessionChangeShortCircuitReasons:
                         return 
-                    self._SessionMgr__RaisePSCIP(sess.sessionChangeReason, sessionChangeReason, sess.nextSessionChange - blue.os.GetTime())
+                    self._SessionMgr__RaisePSCIP(sess.sessionChangeReason, sessionChangeReason, sess.nextSessionChange - blue.os.GetSimTime())
             else:
                 self.LogInfo('Passing session change stuck prevention speedbump.  hostile=', hostile)
         else:
@@ -2154,18 +2238,18 @@ class SessionMgr(service.Service):
             if hostile == 0:
                 prev = sess.nextSessionChange
                 if not violateSafetyTimer:
-                    sess.nextSessionChange = blue.os.GetTime() + GetSessionChangeTimer(session.role)
+                    sess.nextSessionChange = blue.os.GetSimTime() + base.sessionChangeDelay
                 localNextSessionChange = sess.nextSessionChange
-                self.LogInfo('Pre-op updating next legal session change to ', util.FmtDate(sess.nextSessionChange))
+                self.LogInfo('Pre-op updating next legal session change to ', util.FmtDateEng(sess.nextSessionChange))
                 self.LogInfo('Executing the session modification method')
                 try:
                     return apply(func, args, kw2)
                 except:
                     if localNextSessionChange >= sess.nextSessionChange:
                         sess.nextSessionChange = prev
-                        self.LogInfo('post-op exception handler reverting next legal session change to ', util.FmtDate(sess.nextSessionChange))
+                        self.LogInfo('post-op exception handler reverting next legal session change to ', util.FmtDateEng(sess.nextSessionChange))
                     else:
-                        self.LogInfo("post-op exception handler - Someone else has modified nextSessionChange, so DON'T revert it - modified value is ", util.FmtDate(sess.nextSessionChange))
+                        self.LogInfo("post-op exception handler - Someone else has modified nextSessionChange, so DON'T revert it - modified value is ", util.FmtDateEng(sess.nextSessionChange))
                     raise 
             elif hostile in (1, 3):
                 self.LogInfo('Initiating Remote Mutation (local state change only), args=', args, ', keywords=', kw2)
@@ -2173,7 +2257,7 @@ class SessionMgr(service.Service):
                 self.LogInfo('Finalizing Remote Mutation (local state change only), args=', args, ', keywords=', kw2)
 
         finally:
-            self.LogInfo('Post-op updating next legal session change to ', util.FmtDate(sess.nextSessionChange))
+            self.LogInfo('Post-op updating next legal session change to ', util.FmtDateEng(sess.nextSessionChange))
             if hostile not in (1, 3):
                 self.LogInfo('Decrementing the session mutation flag')
                 sess.mutating -= 1
@@ -2219,13 +2303,13 @@ class SessionMgr(service.Service):
                 clientID = None
                 if theID in self.clientIDs:
                     (clientID, lastTime,) = self.clientIDs[theID]
-                    if blue.os.GetTime() - lastTime > const.SEC:
+                    if blue.os.GetWallclockTime() - lastTime > const.SEC:
                         clientID = None
                 if clientID is None:
                     client = self.dbzcluster.Cluster_ClientCharacter(theID)
                     if len(client) and client[0].clientID:
                         clientID = client[0].clientID
-                self.clientIDs[theID] = (clientID, blue.os.GetTime())
+                self.clientIDs[theID] = (clientID, blue.os.GetWallclockTime())
             else:
                 log.LogTraceback('Thou shall only use GetClientIDFromID for player characters', show_locals=1)
                 clientID = None
@@ -2256,6 +2340,21 @@ class SessionMgr(service.Service):
             del self.sessionClientIDCache['charid'][change['charid'][0]]
         if macho.mode == 'proxy':
             return -1
+
+
+
+    def DoSimClockRebase(self, times):
+        (oldSimTime, newSimTime,) = times
+        try:
+            session.nextSessionChange += newSimTime - oldSimTime
+        except:
+            log.LogException('Exception while trying to rebase the session change timer')
+
+
+
+    def OnClientConfigValsChanged(self, configVals):
+        if 'sessionChangeDelay' in configVals:
+            base.sessionChangeDelay = int(configVals['sessionChangeDelay']) * const.SEC
 
 
 
@@ -2497,7 +2596,7 @@ class SessionMgr(service.Service):
         connectedObjects = []
         hd = ['ObjectID', 'References', 'Object']
         for (k, v,) in s.machoObjectsByID.iteritems():
-            tmp = [k, '%s.%s' % (util.FmtDate(v[0]), v[0] % const.SEC), htmlwriter.Swing(str(v[1]))]
+            tmp = [k, '%s.%s' % (util.FmtDateEng(v[0]), v[0] % const.SEC), htmlwriter.Swing(str(v[1]))]
             if isinstance(v[1], ObjectConnection):
                 tmp[2] = str(tmp[2]) + ' (c2ooid=%s)' % str(v[1].__dict__['__c2ooid__'])
                 if v[1].__dict__['__c2ooid__'] not in s.connectedObjects:
@@ -2542,6 +2641,40 @@ class SessionMgr(service.Service):
 
 
 
+
+def IsInClientContext():
+    return 'base.ClientContext' in GetLocalStorage()
+
+
+
+class ClientContext(UpdatedLocalStorage):
+
+    def __init__(self):
+        self.u = {'base.ClientContext': True}
+
+
+
+
+class MethodCachingContext(UpdatedLocalStorage):
+
+    def __init__(self, methodCachingScope):
+        self.u = {'base.MethodCachingContext': methodCachingScope}
+
+
+
+
+def CachedMethodCalled(cacheKey, details):
+    try:
+        cacheScope = GetLocalStorage()['base.MethodCachingContext']
+        if details:
+            clientTimes = details['versionCheck']
+            if clientTimes:
+                clientTime = clientTimes[0]
+                cacheScope[cacheKey] = (sm.GetService('objectCaching').__versionchecktimes__[clientTime], 'sessionInfo' in details)
+    except KeyError:
+        pass
+
+
 exports = {'base.CreateUserSession': CreateSession,
  'base.CreateSession': CreateSession,
  'base.SessionMgr': SessionMgr,
@@ -2571,5 +2704,13 @@ exports = {'base.CreateUserSession': CreateSession,
  'base.allSessionsBySID': allSessionsBySID,
  'base.sessionsByAttribute': sessionsByAttribute,
  'base.outstandingCallTimers': outstandingCallTimers,
- 'base.dyingObjects': dyingObjects}
+ 'base.dyingObjects': dyingObjects,
+ 'base.methodCallHistory': methodCallHistory,
+ 'base.IsInClientContext': IsInClientContext,
+ 'base.ClientContext': ClientContext,
+ 'base.MethodCachingContext': MethodCachingContext,
+ 'base.CachedMethodCalled': CachedMethodCalled,
+ 'base.ThrottlePerMinute': ThrottlePerMinute,
+ 'base.ThrottlePer5Minutes': ThrottlePer5Minutes,
+ 'base.ThrottlePerSecond': ThrottlePerSecond}
 

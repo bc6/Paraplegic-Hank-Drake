@@ -1,22 +1,43 @@
-import xtriui
-import uiutil
 import uiconst
 import const
 import listentry
-import base
 import blue
 import uix
-import planet
 import uthread
 import util
 import uicls
 import planetCommon
+import localization
+import moniker
+import log
+import form
 
-class DraggableItem(listentry.Item):
-    __guid__ = 'listentry.DraggableItem'
+class CustomsItem(listentry.Item):
+    __guid__ = 'listentry.CustomsItem'
+
+    def Startup(self, *args):
+        listentry.Item.Startup(self, *args)
+        self.sr.selectedEntry = uicls.Fill(parent=self, padTop=1, padBottom=1, color=(0.0, 1.0, 0.0, 0.25))
+        self.sr.selectedEntry.state = uiconst.UI_HIDDEN
+        if self.sr.node.isItemTransfer:
+            self.sr.selectedEntry.state = uiconst.UI_PICKCHILDREN
+
+
 
     def GetDragData(self, *args):
-        return self.sr.node.scroll.GetSelectedNodes(self.sr.node)
+        ret = []
+        for node in self.sr.node.scroll.GetSelectedNodes(self.sr.node):
+            if node.item is not None:
+                item = uix.GetItemData(node.item, 'icon')
+                item.scroll = node.scroll
+                item.itemID = node.itemID
+                item.typeID = node.typeID
+                item.quantity = node.quantity
+                ret.append(item)
+            else:
+                ret.append(node)
+
+        return ret
 
 
 
@@ -27,181 +48,323 @@ class PlanetaryImportExportUI(uicls.Window):
      'OnPlanetPinsChanged',
      'OnBallparkCall',
      'OnRefreshPins']
+    default_windowID = 'PlanetaryImportExportUI'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
-        cargoLinkID = attributes.cargoLinkID
-        spaceportPinID = attributes.spaceportPinID
-        exportMode = attributes.exportMode or False
-        self.id = self.cargoLinkID = cargoLinkID
-        self.cargoLink = eve.GetInventoryFromId(cargoLinkID)
-        if not self.cargoLink:
-            raise RuntimeError('PlanetaryImportExportUI::Cannot find cargo link with ID', cargoLinkID)
+        self.spaceportPinID = attributes.spaceportPinID
+        self.customsOfficeID = attributes.customsOfficeID
+        self.id = self.customsOfficeID
+        self.customsOffice = sm.GetService('invCache').GetInventoryFromId(self.customsOfficeID)
+        if not self.customsOffice:
+            raise RuntimeError('PlanetaryImportExportUI::Cannot find cargo link with ID %s' % str(self.customsOfficeID))
         bp = sm.GetService('michelle').GetBallpark()
-        if cargoLinkID not in bp.slimItems:
-            raise RuntimeError('OpenPlanetCargoLinkImportWindow::Failed to get cargo link data for link ID', cargoLinkID)
-        cargoLinkItem = bp.slimItems[cargoLinkID]
-        self.planetID = planetID = cargoLinkItem.planetID
-        self.cargoLinkLevel = cargoLinkItem.level
-        self.planet = sm.GetService('planetSvc').GetPlanet(planetID)
-        self.sourceContents = {}
-        self.transferContents = {}
-        self.exportMode = exportMode
-        self.spaceportPinID = spaceportPinID
-        self.SetCaption(mls.UI_PI_IMEX_PLANETARYCUSTOMS % {'planet': cfg.evelocations.Get(self.planet.planetID).name})
-        self.SetMinSize([720, 400])
-        self.SetWndIcon('53_11')
-        self.MakeUnstackable()
-        uicls.WndCaptionLabel(text=mls.UI_PI_IMEX_PLANETARYCUSTOMS % {'planet': cfg.evelocations.Get(self.planet.planetID).name}, subcaption=mls.UI_PI_IMEX_CUSTOMS_SUBCAPTION, parent=self.sr.topParent, align=uiconst.RELATIVE)
-        self.ConstructLayout()
+        if self.customsOfficeID not in bp.slimItems:
+            raise RuntimeError('OpenPlanetCustomsOfficeImportWindow::Failed to get cargo link data for link ID %s' % str(self.customsOfficeID))
+        self.customsOfficeItem = bp.slimItems[self.customsOfficeID]
+        self.customsOfficeLevel = self.customsOfficeItem.level
+        if self.customsOfficeItem.planetID is None:
+            raise RuntimeError('OpenPlanetCustomsOfficeImportWindow::Customs office slim item has no planetID set, most likely failed to startup correctly %s' % str(self.customsOfficeItem))
+        self.planet = sm.GetService('planetSvc').GetPlanet(self.customsOfficeItem.planetID)
         self.scope = 'inflight'
         sm.GetService('inv').Register(self)
-        self.ResetContents()
-        self.SetImportOrExportMode(exportMode)
         blue.pyos.synchro.Yield()
+        self.Layout()
         self._OnResize()
+        self.ResetContents()
 
 
 
-    def ConstructLayout(self):
+    def Layout(self):
+        self.SetMinSize([560, 400])
+        self.SetWndIcon('53_11')
+        self.SetTopparentHeight(56)
+        self.MakeUnstackable()
+        checkIsMyCorps = self.customsOfficeItem.ownerID == session.corpid
+        checkIsStationManager = session.corprole & const.corpRoleStationManager == const.corpRoleStationManager
+        if checkIsMyCorps and checkIsStationManager:
+            self.SetHeaderIcon()
+            self.settingsIcon = self.sr.headerIcon
+            self.settingsIcon.state = uiconst.UI_NORMAL
+            self.settingsIcon.GetMenu = self.GetSettingsMenu
+            self.settingsIcon.expandOnLeft = 1
+            self.settingsIcon.hint = localization.GetByLabel('UI/DustLink/ConfigureOrbital')
+        self.windowCaption = uicls.WndCaptionLabel(text=localization.GetByLabel('UI/PI/Common/PlanetaryCustomsOfficeName', planetName=cfg.evelocations.Get(self.planet.planetID).name), subcaption=localization.GetByLabel('UI/PI/Common/ImportExportSubHeading'), parent=self.sr.topParent, align=uiconst.RELATIVE)
+        self.SetCaption(localization.GetByLabel('UI/PI/Common/PlanetaryCustomsOfficeName', planetName=cfg.evelocations.Get(self.planet.planetID).name))
         pad = const.defaultPadding
-        self.sr.footer = uicls.Container(name='footer', parent=self.sr.main, align=uiconst.TOBOTTOM, pos=(0, 0, 0, 25), padding=(pad,
+        self.sr.footer = uicls.Container(name='footer', parent=self.sr.main, align=uiconst.TOBOTTOM, pos=(0, 0, 0, 25), padding=(pad * 2,
+         0,
          pad,
-         pad,
-         pad))
-        self.sr.cols = uicls.Container(name='colums', parent=self.sr.main, align=uiconst.TOALL)
+         2))
+        self.sr.cols = uicls.Container(name='colums', parent=self.sr.main, align=uiconst.TOALL, padding=(pad,
+         0,
+         0,
+         0))
         uicls.Line(parent=self.sr.cols, align=uiconst.TOTOP)
         uicls.Line(parent=self.sr.cols, align=uiconst.TOBOTTOM)
-        self.sr.col1 = uicls.Container(name='col1', parent=self.sr.cols, align=uiconst.TOLEFT, padding=(pad,
+        self.sr.leftColumn = uicls.Container(name='leftColumn', parent=self.sr.cols, align=uiconst.TOLEFT, padding=(pad,
          pad,
          pad,
          pad), clipChildren=True)
-        self.sr.col2 = uicls.Container(name='col2', parent=self.sr.cols, align=uiconst.TOLEFT, padding=(pad,
+        self.sr.rightColumn = uicls.Container(name='rightColumn', parent=self.sr.cols, align=uiconst.TOLEFT, padding=(pad,
          pad,
          pad,
          pad), clipChildren=True)
-        uicls.Line(parent=self.sr.cols, align=uiconst.TOLEFT)
-        self.sr.col3 = uicls.Container(name='col3', parent=self.sr.cols, align=uiconst.TOLEFT, padding=(pad,
-         pad,
-         pad,
-         pad), clipChildren=True)
-        self.sr.radioBtns = uicls.Container(name='radioBtns', parent=self.sr.topParent, align=uiconst.TOPRIGHT, pos=(0, 10, 70, 50))
-        importBox = uicls.Checkbox(text=mls.UI_CMD_IMPORT, parent=self.sr.radioBtns, configName='import', retval=0, checked=not self.exportMode, groupname='radioGroup', callback=self.OnImportExportRadiobuttonsChanged)
-        exportBox = uicls.Checkbox(text=mls.UI_CMD_EXPORT, parent=self.sr.radioBtns, configName='export', retval=1, checked=self.exportMode, groupname='radioGroup', callback=self.OnImportExportRadiobuttonsChanged)
-        colTopHeight = 60
-        self.sr.sourceHeader = uicls.Container(name='sourceHeader', parent=self.sr.col1, align=uiconst.TOTOP, padding=(pad,
+        colTopHeight = 45
+        self.sr.customsHeader = uicls.Container(name='customsHeader', parent=self.sr.leftColumn, align=uiconst.TOTOP, padding=(pad,
          0,
          pad,
          pad), pos=(0,
          0,
          0,
          colTopHeight))
-        self.sr.sourceList = uicls.Container(name='sourceList', parent=self.sr.col1, align=uiconst.TOALL, state=uiconst.UI_PICKCHILDREN)
-        self.sr.transferHeader = uicls.Container(name='transferHeader', parent=self.sr.col2, align=uiconst.TOTOP, padding=(pad,
+        self.sr.customsList = uicls.Container(name='customsList', parent=self.sr.leftColumn, align=uiconst.TOALL, state=uiconst.UI_PICKCHILDREN)
+        self.sr.customsHeaderTitle = uicls.Label(text=localization.GetByLabel('UI/PI/Common/PlanetaryCustomsOffice'), parent=self.sr.customsHeader, align=uiconst.TOPLEFT, fontsize=16, state=uiconst.UI_NORMAL)
+        self.sr.customsGauge = uicls.Gauge(parent=self.sr.customsHeader, value=0.0, color=planetCommon.PLANET_COLOR_STORAGE, left=0, top=13, state=uiconst.UI_HIDDEN, align=uiconst.TOPLEFT)
+        self.sr.spaceportHeader = uicls.Container(name='spaceportHeader', parent=self.sr.rightColumn, align=uiconst.TOTOP, padding=(pad,
          0,
          pad,
          pad), pos=(0,
          0,
          0,
          colTopHeight))
-        self.sr.transferList = uicls.Container(name='transferList', parent=self.sr.col2, align=uiconst.TOALL, state=uiconst.UI_PICKCHILDREN)
-        self.sr.destHeader = uicls.Container(name='destHeader', parent=self.sr.col3, align=uiconst.TOTOP, padding=(pad,
-         0,
-         pad,
-         pad), pos=(0,
-         0,
-         0,
-         colTopHeight))
-        self.sr.destList = uicls.Container(name='destList', parent=self.sr.col3, align=uiconst.TOALL, state=uiconst.UI_PICKCHILDREN)
-        self.sr.footerLeft = uicls.Container(name='footerLeft', parent=self.sr.footer, align=uiconst.TOLEFT)
-        self.sr.footerRight = uicls.Container(name='footerRight', parent=self.sr.footer, align=uiconst.TORIGHT)
-        btns = [(mls.UI_PI_EXPORTFROMPLANET,
-          self.GoForTransfer,
+        self.sr.spaceportList = uicls.Container(name='spaceportList', parent=self.sr.rightColumn, align=uiconst.TOALL, state=uiconst.UI_PICKCHILDREN)
+        self.sr.spaceportGauge = uicls.Gauge(parent=self.sr.spaceportHeader, value=0.0, color=planetCommon.PLANET_COLOR_STORAGE, left=0, top=13, state=uiconst.UI_HIDDEN, align=uiconst.TOPRIGHT)
+        self.sr.spaceportCombo = uicls.Combo(label=None, parent=self.sr.spaceportHeader, options=[], name='imex_import_select', callback=self.OnSpaceportComboChanged, width=70, align=uiconst.TOTOP)
+        self.sr.transferCostLabel = uicls.EveLabelSmall(parent=self.sr.footer, state=uiconst.UI_NORMAL, top=7)
+        btns = [(localization.GetByLabel('UI/PI/Common/CustomsOfficeTransfer'),
+          self.ConfirmCommodityTransfer,
           (),
           None)]
-        btns = uicls.ButtonGroup(btns=btns, parent=self.sr.footerRight, line=0)
+        btns = uicls.ButtonGroup(btns=btns, parent=self.sr.footer, line=0, align=uiconst.TOPRIGHT)
         self.transferBtn = btns.GetBtnByIdx(0)
-        self.SetTransferBtnText()
-        self.sr.footerText = uicls.Label(text='', parent=self.sr.transferHeader, fontsize=10, letterspace=1, top=20, state=uiconst.UI_NORMAL)
-        btns = [(mls.UI_GENERIC_ADD,
-          self.AddBtnClicked,
-          (),
-          None), (mls.UI_PI_TRANSFER_CMDREMOVE,
-          self.RemoveBtnClicked,
-          (),
-          None)]
-        btns = uicls.ButtonGroup(btns=btns, parent=self.sr.footerLeft, line=0)
-        for b in btns.children[0].children:
-            b.SetHint(mls.UI_PI_HINT_HOLDSHIFTTOSPLIT)
-
         self._PlanetaryImportExportUI__OnResizeUpdate()
-        self.sr.sourceListScroll = uicls.Scroll(parent=self.sr.sourceList, name='sourceList')
-        content = self.sr.sourceListScroll.sr.content
-        content.OnDropData = self.OnSourceScrollDropData
-        self.sr.transferHeaderText = uicls.Label(text=mls.UI_PI_TRANSFER_TRANSFERCONTENTS, parent=self.sr.transferHeader, align=uiconst.TOPLEFT, fontsize=16, state=uiconst.UI_NORMAL)
-        self.sr.transferListScroll = uicls.Scroll(parent=self.sr.transferList, name='transferList')
-        content = self.sr.transferListScroll.sr.content
-        content.OnDropData = self.OnTransferScrollDropData
-        self.sr.destListScroll = uicls.Scroll(parent=self.sr.destList)
-        self.DrawSourceAndDestHeaders()
-        if self.exportMode:
-            uicore.registry.SetFocus(exportBox)
-        else:
-            uicore.registry.SetFocus(importBox)
+        self.sr.customsListScroll = uicls.Scroll(parent=self.sr.customsList, name='customsList')
+        self.sr.spaceportListScroll = uicls.Scroll(parent=self.sr.spaceportList, name='spaceportList')
 
 
 
-    def DrawSourceAndDestHeaders(self):
-        self.sr.sourceHeader.Flush()
-        self.sr.destHeader.Flush()
-        if self.exportMode:
-            spaceportCont = self.sr.sourceHeader
-            cargoLinkCont = self.sr.destHeader
-        else:
-            spaceportCont = self.sr.destHeader
-            cargoLinkCont = self.sr.sourceHeader
-        self.sr.cargoLinkHeader = uicls.Label(text='', parent=cargoLinkCont, align=uiconst.TOPLEFT, fontsize=16, state=uiconst.UI_NORMAL)
-        self.sr.cargoLinkHeader.text = mls.UI_PI_IMEX_CUSTOMSHANGAR
-        self.sr.spaceportGauge = uicls.Gauge(parent=spaceportCont, value=0.0, color=planetCommon.PLANET_COLOR_STORAGE, label='%s:' % mls.UI_GENERIC_CAPACITY, left=0, top=22, state=uiconst.UI_HIDDEN)
-        self.sr.destCombo = uicls.Combo(label=None, parent=spaceportCont, options=[], name='imex_import_select', callback=self.OnSpaceportComboChanged, width=70, align=uiconst.TOTOP)
+    def ResetContents(self):
+        self.LoadDestComboOptions()
+        self.SetCustomsOfficeContent()
+        self.SetSpaceportContent()
+        self.importContents = {}
+        self.exportContents = {}
+        self.UpdateTaxRate()
+        self.RefreshLists()
+
+
+
+    def RefreshLists(self, *args):
+        self.LoadContentToScroll(self.customsOfficeContents, self.exportContents, self.sr.customsListScroll, self.OnCustomsScrollDropData)
+        self.LoadContentToScroll(self.spaceportContents, self.importContents, self.sr.spaceportListScroll, self.OnSpaceportScrollDropData)
+        self.RefreshHeaderInfo()
+
+
+
+    def GetSettingsMenu(self, *args):
+        return [(localization.GetByLabel('UI/DustLink/ConfigureOrbital'), self.OpenConfiguration, ())]
+
+
+
+    def OpenConfiguration(self):
+        form.OrbitalConfigurationWindow.Open(slimItem=self.customsOfficeItem)
 
 
 
     def LoadDestComboOptions(self):
         colony = self.planet.GetColony(session.charid)
         if colony is None:
-            return [(mls.UI_PI_IMEX_NOSPACEPORTS, None)]
+            self.sr.spaceportCombo.LoadOptions([(localization.GetByLabel('UI/PI/Common/NoDestinationsFound'), None)])
+            return 
         self.endpoints = colony.GetImportEndpoints()
         if len(self.endpoints) < 1:
-            return [(mls.UI_PI_IMEX_NOSPACEPORTS, None)]
+            self.sr.spaceportCombo.LoadOptions([(localization.GetByLabel('UI/PI/Common/NoDestinationsFound'), None)])
+            return 
         options = []
         for endpoint in self.endpoints:
             pin = self.planet.GetPin(endpoint.id)
             options.append((planetCommon.GetGenericPinName(pin.typeID, pin.id), endpoint.id))
 
-        if not self.spaceportPinID:
+        if self.spaceportPinID is None:
             self.spaceportPinID = options[0][1]
-        self.sr.destCombo.LoadOptions(options, select=self.spaceportPinID)
+        self.sr.spaceportCombo.LoadOptions(options, select=self.spaceportPinID)
 
 
 
-    def SetTransferBtnText(self):
-        if self.exportMode:
-            self.transferBtn.SetLabel(mls.UI_PI_EXPORTFROMPLANET)
+    def SetCustomsOfficeContent(self):
+        self.customsOfficeContents = {}
+        for item in self.customsOffice.List():
+            if item.flagID != const.flagHangar:
+                continue
+            self.customsOfficeContents[(item.itemID, item.typeID)] = util.KeyVal(itemID=item.itemID, typeID=item.typeID, quantity=item.stacksize, name=cfg.invtypes.Get(item.typeID).name, item=getattr(item, 'item', item))
+
+
+
+
+    def SetSpaceportContent(self):
+        self.spaceportContents = {}
+        if self.spaceportPinID is None:
+            return 
+        if self.planet.GetColony(session.charid) is None:
+            log.LogWarn('Unable to update spaceport contents, colony not yet loaded')
+            return 
+        pin = self.planet.GetPin(self.spaceportPinID)
+        if pin is None:
+            raise UserError('CannotImportEndpointNotFound')
+        for (typeID, qty,) in pin.GetContents().iteritems():
+            name = cfg.invtypes.Get(typeID).name
+            self.spaceportContents[(None, typeID)] = util.KeyVal(itemID=None, typeID=typeID, quantity=qty, name=name)
+
+
+
+
+    def LoadContentToScroll(self, contentList, transferList, scroll, onDropDataCallback):
+        scroll.sr.content.OnDropData = onDropDataCallback
+        scrollHeaders = ['', localization.GetByLabel('UI/Common/Commodity'), localization.GetByLabel('UI/Common/Quantity')]
+        scrollContents = []
+        scrollNoContentText = localization.GetByLabel('UI/PI/Common/NoItemsFound')
+        for item in contentList.values():
+            data = util.KeyVal()
+            data.label = '<t>%s<t>%d' % (item.name, item.quantity)
+            data.quantity = item.quantity
+            data.typeID = item.typeID
+            data.itemID = item.itemID
+            data.getIcon = 1
+            data.hint = item.name
+            data.item = getattr(item, 'item', None)
+            data.isItemTransfer = (item.itemID, item.typeID) in transferList
+            data.OnDropData = onDropDataCallback
+            scrollContents.append(listentry.Get('CustomsItem', data=data))
+
+        sortBy = scroll.GetSortBy()
+        if sortBy is None:
+            sortBy = localization.GetByLabel('UI/Common/Commodity')
+        scroll.LoadContent(contentList=scrollContents, headers=scrollHeaders, noContentHint=scrollNoContentText, sortby=sortBy)
+        scroll.RefreshSort()
+
+
+
+    def GetCustomsCapacity(self):
+        capacity = self.customsOffice.GetCapacity().used
+        for item in self.exportContents.values():
+            capacity += cfg.GetTypeVolume(item.typeID, item.quantity)
+
+        return capacity
+
+
+
+    def CheckAvailableSpaceInCustoms(self, commodities = None):
+        used = self.GetCustomsCapacity()
+        available = self.customsOffice.GetCapacity().capacity
+        required = 0
+        for (key, item,) in commodities.iteritems():
+            if key not in self.importContents:
+                required += cfg.GetTypeVolume(key[1], item.quantity)
+
+        if required + used - available > 1e-05:
+            raise UserError('NotEnoughSpace', {'volume': required,
+             'available': available})
+
+
+
+    def GetSpaceportCapacity(self):
+        pin = self.planet.GetPin(self.spaceportPinID)
+        if not pin:
+            return 0
+        capacity = pin.capacityUsed
+        for item in self.importContents.values():
+            capacity += cfg.GetTypeVolume(item.typeID, item.quantity)
+
+        return capacity
+
+
+
+    def CheckAvailableSpaceInSpaceport(self, commodities = None):
+        pin = self.planet.GetPin(self.spaceportPinID)
+        if not pin:
+            return 
+        used = self.GetSpaceportCapacity()
+        available = pin.GetCapacity()
+        required = 0
+        for (key, item,) in commodities.iteritems():
+            if key not in self.exportContents:
+                required += cfg.GetTypeVolume(key[1], item.quantity)
+
+        if required + used - available > 1e-05:
+            raise UserError('NotEnoughSpace', {'volume': required,
+             'available': available})
+
+
+
+    def RefreshHeaderInfo(self):
+        self.sr.spaceportGauge.state = uiconst.UI_HIDDEN
+        if self.spaceportPinID is not None:
+            pin = self.planet.GetPin(self.spaceportPinID)
+            if not pin:
+                return 
+            capacityUsed = self.GetSpaceportCapacity()
+            capacityMax = pin.GetCapacity()
+            self.sr.spaceportGauge.state = uiconst.UI_DISABLED
+            self.sr.spaceportGauge.SetSubText(localization.GetByLabel('UI/PI/Common/StorageUsed', capacityUsed=capacityUsed, capacityMax=capacityMax))
+            self.sr.spaceportGauge.SetValue(capacityUsed / capacityMax)
+        self.sr.customsGauge.state = uiconst.UI_HIDDEN
+        if self.customsOffice is not None:
+            capacityUsed = self.GetCustomsCapacity()
+            capacityMax = self.customsOffice.GetCapacity().capacity
+            self.sr.customsGauge.state = uiconst.UI_DISABLED
+            self.sr.customsGauge.SetSubText(localization.GetByLabel('UI/PI/Common/StorageUsed', capacityUsed=capacityUsed, capacityMax=capacityMax))
+            self.sr.customsGauge.SetValue(capacityUsed / capacityMax)
+        self.RefreshCostText()
+
+
+
+    def GetCommodities(self, source):
+        commods = {}
+        for itemVoucher in source.itervalues():
+            if itemVoucher.typeID not in commods:
+                commods[itemVoucher.typeID] = itemVoucher.quantity
+            else:
+                commods[itemVoucher.typeID] += itemVoucher.quantity
+
+        return commods
+
+
+
+    def GetCost(self):
+        cost = None
+        pin = self.planet.GetPin(self.spaceportPinID)
+        if pin is not None and self.taxRate is not None:
+            cost = pin.GetExportTax(self.GetCommodities(self.exportContents), self.taxRate)
+            cost += pin.GetImportTax(self.GetCommodities(self.importContents), self.taxRate)
+        return cost
+
+
+
+    def RefreshCostText(self):
+        cost = self.GetCost()
+        if cost is not None:
+            costStr = util.FmtISK(cost)
+            if cost > 0:
+                costStr = '<color=red>%s</color>' % costStr
+            self.sr.transferCostLabel.text = localization.GetByLabel('UI/PI/Common/TransferCost', iskAmount=costStr)
+        if self.taxRate is not None:
+            self.windowCaption.SetSubcaption(localization.GetByLabel('UI/PI/Common/CustomsOfficeTaxRate', taxRate=self.taxRate * 100))
         else:
-            self.transferBtn.SetLabel(mls.UI_PI_IMPORTTOPLANET)
+            self.windowCaption.SetSubcaption(localization.GetByLabel('UI/PI/Common/CustomsOfficeAccessDenied'))
 
 
 
-    def OnTransferScrollDropData(self, dragObj, nodes, *args):
-        if nodes[0].scroll.name == 'sourceList':
-            self.AddCommodity(nodes)
+    def UpdateTaxRate(self):
+        self.taxRate = moniker.GetPlanetOrbitalRegistry(session.solarsystemid).GetTaxRate(self.id)
+        self.RefreshCostText()
 
 
 
-    def OnSourceScrollDropData(self, dragObj, nodes, *args):
-        if nodes[0].scroll.name == 'transferList':
-            self.RemoveCommodity(nodes)
+    def OnSpaceportComboChanged(self, comboItem, spaceportName, spaceportPinID, *args):
+        if self.spaceportPinID != spaceportPinID:
+            self.spaceportPinID = spaceportPinID
+            self.ResetContents()
 
 
 
@@ -209,9 +372,7 @@ class PlanetaryImportExportUI(uicls.Window):
         locationIdx = const.ixLocationID
         if self.id not in (item[locationIdx], change.get(locationIdx, 'No location change')):
             return 
-        self.SetCargoLinkContent()
-        self.transferContents = {}
-        self.RefreshLists()
+        self.ResetContents()
 
 
 
@@ -227,29 +388,10 @@ class PlanetaryImportExportUI(uicls.Window):
         if self.planet.planetID == planetID:
             for endpoint in self.endpoints:
                 if not self.planet.GetPin(endpoint.id):
-                    self.CloseX()
+                    self.CloseByUser()
                     return 
 
             self.ResetContents()
-
-
-
-    def OnImportExportRadiobuttonsChanged(self, radioButton):
-        isExport = radioButton.data['value']
-        self.SetImportOrExportMode(isExport)
-
-
-
-    def SetImportOrExportMode(self, isExport):
-        if isExport:
-            self.exportMode = True
-            self.sourceContents = self.spaceportContents
-        else:
-            self.exportMode = False
-            self.sourceContents = self.cargoLinkContents
-        self.DrawSourceAndDestHeaders()
-        self.ResetContents()
-        self.SetTransferBtnText()
 
 
 
@@ -261,221 +403,140 @@ class PlanetaryImportExportUI(uicls.Window):
 
 
     def __OnResizeUpdate(self):
-        if not self.sr.col1:
+        if not self.sr.leftColumn:
             return 
         (width, height,) = self.GetAbsoluteSize()
-        desiredWidth = (width - 25) / 3
-        self.sr.col1.width = desiredWidth
-        self.sr.col2.width = desiredWidth
-        self.sr.col3.width = desiredWidth
-        self.sr.footerLeft.width = 2 * desiredWidth + 3 * const.defaultPadding
-        self.sr.footerRight.width = desiredWidth + const.defaultPadding
+        desiredWidth = (width - 25) / 2
+        self.sr.leftColumn.width = desiredWidth
+        self.sr.rightColumn.width = desiredWidth
 
 
 
-    def AddBtnClicked(self, *args):
-        selected = self.sr.sourceListScroll.GetSelected()
-        self.AddCommodity(selected)
+    def OnCustomsScrollDropData(self, dragObj, nodes, *args):
+        if nodes[0].scroll.name == 'spaceportList':
+            self.ExportCommodity(nodes)
+        elif nodes[0].scroll.name != 'customsList':
+            self.MoveFromInventory(nodes)
 
 
 
-    def RemoveBtnClicked(self, *args):
-        selected = self.sr.transferListScroll.GetSelected()
-        self.RemoveCommodity(selected)
+    def OnSpaceportScrollDropData(self, dragObj, nodes, *args):
+        if nodes[0].scroll.name == 'customsList':
+            self.ImportCommodity(nodes)
+        else:
+            raise UserError('CannotDropItemsOntoSpaceport')
 
 
 
-    def AddCommodity(self, commodities):
+    def ImportCommodity(self, nodes):
+        if not self.spaceportPinID:
+            raise UserError('NoSpaceportsAvailable')
+        if self.taxRate is None:
+            raise UserError('PortStandingCheckFail', {'corpName': (const.UE_OWNERID, self.customsOfficeItem.ownerID)})
+        items = self.CommoditiesToTransfer(nodes)
+        for (key, item,) in items.iteritems():
+            self.CheckAvailableSpaceInSpaceport(items)
+            self.RemoveStuff(key, item, self.customsOfficeContents)
+            self.AddStuff(key, item, self.spaceportContents)
+            if key in self.exportContents:
+                self.RemoveStuff(key, item, self.exportContents)
+            else:
+                self.AddStuff(key, item, self.importContents)
+
+        self.RefreshLists()
+
+
+
+    def ExportCommodity(self, nodes):
+        if self.taxRate is None:
+            raise UserError('PortStandingCheckFail', {'corpName': (const.UE_OWNERID, self.customsOfficeItem.ownerID)})
+        items = self.CommoditiesToTransfer(nodes)
+        for (key, item,) in items.iteritems():
+            self.CheckAvailableSpaceInCustoms(items)
+            self.RemoveStuff(key, item, self.spaceportContents)
+            self.AddStuff(key, item, self.customsOfficeContents)
+            if key in self.importContents:
+                self.RemoveStuff(key, item, self.importContents)
+            else:
+                self.AddStuff(key, item, self.exportContents)
+
+        self.RefreshLists()
+
+
+
+    def CommoditiesToTransfer(self, commodities):
         toMove = {}
+        for item in commodities:
+            toMove[(item.itemID, item.typeID)] = util.KeyVal(name=cfg.invtypes.Get(item.typeID).name, itemID=item.itemID, typeID=item.typeID, quantity=item.quantity, item=getattr(item, 'item', item))
+
         if len(commodities) == 1 and uicore.uilib.Key(uiconst.VK_SHIFT):
             selectedItem = commodities[0]
+            itemID = selectedItem.itemID
             typeID = selectedItem.typeID
-            itemID = selectedItem.itemID
-            typeName = cfg.invtypes.Get(selectedItem.typeID).name
-            ret = uix.QtyPopup(selectedItem.quantity, 1, selectedItem.quantity, None, mls.UI_PI_TRANSFER_SELECTQUANTITYTOTRANSFER % {'typeName': typeName})
+            typeName = cfg.invtypes.Get(typeID).name
+            ret = uix.QtyPopup(selectedItem.quantity, 1, selectedItem.quantity, None, localization.GetByLabel('UI/PI/Common/QuantityToTransfer', typeName=typeName))
             if ret and 'qty' in ret:
-                toMove[(itemID, typeID)] = min(selectedItem.quantity, max(1, ret['qty']))
+                toMove[(itemID, typeID)].quantity = min(selectedItem.quantity, max(1, ret['qty']))
+            else:
+                return {}
+        return toMove
+
+
+
+    def AddStuff(self, key, item, toDict):
+        if key not in toDict:
+            toDict[key] = util.KeyVal(itemID=item.itemID, typeID=item.typeID, quantity=item.quantity, name=item.name, item=item.item)
         else:
-            for entry in commodities:
-                toMove[(entry.itemID, entry.typeID)] = entry.quantity
-
-        for (id, qty,) in toMove.iteritems():
-            self._MoveStuff(id, qty, self.sourceContents, self.transferContents)
-
-        self.RefreshLists()
+            toDict[key].quantity += item.quantity
 
 
 
-    def RemoveCommodity(self, commodities):
-        toMove = {}
-        if len(commodities) == 1 and uicore.uilib.Key(uiconst.VK_SHIFT):
-            selectedItem = commodities[0]
-            itemID = selectedItem.itemID
-            typeName = cfg.invtypes.Get(selectedItem.typeID).name
-            ret = uix.QtyPopup(selectedItem.quantity, 1, selectedItem.quantity, None, mls.UI_PI_TRANSFER_SELECTQUANTITYTOREMOVE % {'typeName': typeName})
-            if ret and 'qty' in ret:
-                toMove[(itemID, selectedItem.typeID)] = min(selectedItem.quantity, max(1, ret['qty']))
-        else:
-            for entry in commodities:
-                toMove[(entry.itemID, entry.typeID)] = entry.quantity
-
-        for (id, qty,) in toMove.iteritems():
-            self._MoveStuff(id, qty, self.transferContents, self.sourceContents)
-
-        self.RefreshLists()
+    def RemoveStuff(self, key, item, fromDict):
+        if key in fromDict:
+            fromDict[key].quantity -= item.quantity
+            if fromDict[key].quantity <= 0:
+                del fromDict[key]
 
 
 
-    def _MoveStuff(self, id, quantity, fromDict, toDict):
-        fromDict[id].quantity -= quantity
-        if id not in toDict:
-            name = cfg.invtypes.Get(id[1]).name
-            toDict[id] = util.KeyVal(itemID=fromDict[id].itemID, typeID=fromDict[id].typeID, quantity=quantity, name=name)
-        else:
-            toDict[id].quantity += quantity
-        if fromDict[id].quantity <= 0:
-            del fromDict[id]
+    def MoveFromInventory(self, nodes):
+        allowableSources = ('xtriui.InvItem', 'listentry.InvItem')
+        items = [ item for item in nodes if item.Get('__guid__', None) in allowableSources ]
+        if len(items) > 0:
+            sourceLocation = items[0].rec.locationID
+            if self.customsOffice.GetItemID() != sourceLocation and not sm.GetService('consider').ConfirmTakeFromContainer(sourceLocation):
+                return 
+            items = self.CommoditiesToTransfer([ item.item for item in items ])
+            for (key, item,) in items.iteritems():
+                self.customsOffice.Add(key[0], sourceLocation, qty=item.quantity)
 
 
 
-    def GoForTransfer(self, *args):
-        if len(self.transferContents) < 1:
-            raise UserError('PleaseSelectCommoditiesToImport')
+
+    def ConfirmCommodityTransfer(self, *args):
         if self.spaceportPinID is None:
             raise UserError('CannotImportEndpointNotFound')
-        planetUI = sm.GetService('planetUI')
-        planet = planetUI.GetCurrentPlanet()
+        planet = sm.GetService('planetUI').GetCurrentPlanet()
         if planet is not None and planet.IsInEditMode():
             raise UserError('CannotImportExportInEditMode')
-        if self.exportMode:
-            transferOrder = {}
-            for itemVoucher in self.transferContents.itervalues():
-                transferOrder[itemVoucher.typeID] = itemVoucher.quantity
-
-            try:
-                cargoLinkInv = eve.GetInventoryFromId(self.cargoLinkID)
-                cargoLinkInv.ExportFromPlanet(self.spaceportPinID, transferOrder)
-
-            finally:
-                if self and not self.destroyed:
-                    self.HideLoad()
-
-        else:
-            transferOrder = {}
-            for itemVoucher in self.transferContents.itervalues():
-                transferOrder[itemVoucher.itemID] = itemVoucher.quantity
-
-            try:
-                cargoLinkInv = eve.GetInventoryFromId(self.cargoLinkID)
-                cargoLinkInv.ImportToPlanet(self.spaceportPinID, transferOrder)
-
-            finally:
-                if self and not self.destroyed:
-                    self.HideLoad()
-
-
-
-
-    def SetCargoLinkContent(self):
-        self.cargoLinkContents = {}
-        for item in self.cargoLink.List():
-            name = cfg.invtypes.Get(item.typeID).name
-            self.cargoLinkContents[(item.itemID, item.typeID)] = util.KeyVal(itemID=item.itemID, typeID=item.typeID, quantity=item.stacksize, name=name)
-
-
-
-
-    def SetSpaceportContent(self, spaceportID):
-        self.spaceportContents = {}
-        if not spaceportID:
-            return 
-        pin = self.planet.GetPin(spaceportID)
-        if not pin:
-            raise UserError('CannotImportEndpointNotFound')
-        for (typeID, qty,) in pin.GetContents().iteritems():
-            name = cfg.invtypes.Get(typeID).name
-            self.spaceportContents[(None, typeID)] = util.KeyVal(itemID=None, typeID=typeID, quantity=qty, name=name)
-
-
-
-
-    def LoadContentToScroll(self, contentList, scroll, OnDropDataCallback = None):
-        scrollHeaders = ['', mls.UI_GENERIC_COMMODITY, mls.UI_GENERIC_QUANTITY]
-        scrollContents = []
-        scrollNoContentText = mls.UI_GENERIC_NOITEMSFOUND
-        for item in contentList.values():
-            lbl = '<t>%s<t>%d' % (item.name, item.quantity)
-            data = util.KeyVal(label=lbl, typeID=item.typeID, itemID=item.itemID, quantity=item.quantity, getIcon=1)
-            if OnDropDataCallback:
-                data.OnDropData = OnDropDataCallback
-            scrollContents.append(listentry.Get('DraggableItem', data=data))
-
-        sortBy = scroll.GetSortBy()
-        if sortBy is None:
-            sortBy = mls.UI_GENERIC_COMMODITY
-        scroll.LoadContent(contentList=scrollContents, headers=scrollHeaders, noContentHint=scrollNoContentText, sortby=sortBy)
-        scroll.RefreshSort()
-
-
-
-    def ResetContents(self):
-        self.SetCargoLinkContent()
-        self.SetSpaceportContent(self.spaceportPinID)
-        self.transferContents = {}
-        self.RefreshLists()
-        self.LoadDestComboOptions()
-
-
-
-    def RefreshLists(self, *args):
-        if self.exportMode:
-            dest = self.cargoLinkContents
-            self.sourceContents = self.spaceportContents
-        else:
-            dest = self.spaceportContents
-            self.sourceContents = self.cargoLinkContents
-        self.LoadContentToScroll(self.sourceContents, self.sr.sourceListScroll, self.OnSourceScrollDropData)
-        self.LoadContentToScroll(dest, self.sr.destListScroll)
-        self.LoadContentToScroll(self.transferContents, self.sr.transferListScroll, self.OnTransferScrollDropData)
-        self.RefreshHeaderInfo()
-
-
-
-    def RefreshHeaderInfo(self):
-        self.sr.spaceportGauge.state = uiconst.UI_HIDDEN
-        if self.spaceportPinID is not None:
-            pin = self.planet.GetPin(self.spaceportPinID)
-            if not pin:
-                return 
-            self.sr.spaceportGauge.state = uiconst.UI_DISABLED
-            self.sr.spaceportGauge.SetText(mls.UI_GENERIC_CAPACITY)
-            self.sr.spaceportGauge.SetSubText('%.1f / %.1f (%3.2f%%)' % (pin.capacityUsed, pin.GetCapacity(), pin.capacityUsed / pin.GetCapacity() * 100.0))
-            self.sr.spaceportGauge.SetValue(pin.capacityUsed / pin.GetCapacity())
-        self.RefreshCostText()
-
-
-
-    def OnSpaceportComboChanged(self, comboItem, spaceportName, spaceportPinID, *args):
-        if self.spaceportPinID != spaceportPinID:
-            self.spaceportPinID = spaceportPinID
-            self.ResetContents()
-
-
-
-    def RefreshCostText(self):
-        commods = {}
-        for itemVoucher in self.transferContents.itervalues():
-            if itemVoucher.typeID not in commods:
-                commods[itemVoucher.typeID] = itemVoucher.quantity
+        if len(self.importContents) + len(self.exportContents) < 1:
+            raise UserError('PleaseSelectCommoditiesToImport')
+        importData = {key[0]:value.quantity for (key, value,) in self.importContents.iteritems()}
+        exportData = {key[1]:value.quantity for (key, value,) in self.exportContents.iteritems()}
+        try:
+            customsOfficeInventory = sm.GetService('invCache').GetInventoryFromId(self.customsOfficeID)
+            customsOfficeInventory.ImportExportWithPlanet(self.spaceportPinID, importData, exportData, self.taxRate)
+        except UserError as e:
+            if e.msg != 'TaxChanged':
+                raise 
+            self.UpdateTaxRate()
+            if self.taxRate is None:
+                self.ResetContents()
+                raise UserError('PortStandingCheckFail', {'corpName': (const.UE_OWNERID, self.customsOfficeItem.ownerID)})
+            if eve.Message('CustomsOfficeTaxRateChanged', {'cost': self.GetCost()}, uiconst.YESNO) == uiconst.ID_YES:
+                customsOfficeInventory.ImportExportWithPlanet(self.spaceportPinID, importData, exportData, self.taxRate)
             else:
-                commods[itemVoucher.typeID] += itemVoucher.quantity
-
-        pin = self.planet.GetPin(self.spaceportPinID)
-        if pin is not None:
-            if self.exportMode:
-                self.sr.footerText.text = mls.UI_PI_IMEX_IMPORTTAX % {'amount': util.FmtISK(pin.GetExportTax(commods))}
-            else:
-                self.sr.footerText.text = mls.UI_PI_IMEX_IMPORTTAX % {'amount': util.FmtISK(pin.GetImportTax(commods))}
+                self.ResetContents()
 
 
 

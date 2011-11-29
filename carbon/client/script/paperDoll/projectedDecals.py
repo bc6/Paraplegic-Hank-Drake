@@ -40,10 +40,11 @@ class DecalBaker(object):
         self.factory = factory
         self._DecalBaker__avatar = None
         self._gender = None
-        self.isReady = True
         self.bakeScene = None
         self.size = None
-        self.isPrepared = False
+        self.isReady = False
+        self.doingAvatar = False
+        self.doingDecal = False
         self.bakingTasklet = None
         self.avatarShaderSettingTasklet = None
         self.decalSettingTasklet = None
@@ -58,6 +59,17 @@ class DecalBaker(object):
 
 
 
+    def Initialize(self):
+        self.doingAvatar = False
+        self.doingDecal = False
+
+
+
+    def HasAvatar(self):
+        return self._DecalBaker__avatar is not None and type(self._DecalBaker__avatar) is trinity.Tr2IntSkinnedObject
+
+
+
     def GetBindPose(self, resPath):
         updater = trinity.Tr2GrannyAnimation()
         updater.resPath = resPath
@@ -69,12 +81,11 @@ class DecalBaker(object):
         if not (type(size) is tuple or type(size) is list) and len(size) == 2:
             raise TypeError('DecalBaker::SetSize - Size is not a tuple or list of length 2!')
         self.size = size
-        self.isPrepared = False
 
 
 
     def __DoBlendShapes(self, doll):
-        self.factory.ApplyMorphTargetsToMeshes(self._DecalBaker__avatar.visualModel.meshes, doll.GetMorphTargets())
+        self.factory.ApplyMorphTargetsToMeshes(self._DecalBaker__avatar.visualModel.meshes, doll.buildDataManager.GetMorphTargets())
 
 
 
@@ -84,22 +95,24 @@ class DecalBaker(object):
         else:
             genderPath = self.malePath
         self._gender = doll.gender
-        options = self.factory.GetOptionsByGender(doll.gender)
         avatar = trinity.Tr2IntSkinnedObject()
         avatar.visualModel = self.factory.CreateVisualModel(doll.gender)
+        avatar.name = 'TattooBakingAvatar'
         bodyParts = []
         for nudePartModularPath in PD.DEFAULT_NUDE_PARTS:
             bodyPartTuple = None
             if PD.DOLL_PARTS.HEAD in nudePartModularPath:
-                headMod = doll.buildDataManager.GetModifiersByCategory(PD.DOLL_PARTS.HEAD)[0]
-                if headMod.redfile:
-                    bodyPartTuple = (headMod.name, blue.os.LoadObject(headMod.redfile))
+                headMods = doll.buildDataManager.GetModifiersByCategory(PD.DOLL_PARTS.HEAD)
+                if headMods:
+                    headMod = doll.buildDataManager.GetModifiersByCategory(PD.DOLL_PARTS.HEAD)[0]
+                    if headMod.redfile:
+                        bodyPartTuple = (headMod.name, blue.os.LoadObject(headMod.redfile))
             if not bodyPartTuple:
-                mod = self.factory.CollectBuildData(nudePartModularPath, options)
+                mod = self.factory.CollectBuildData(self._gender, nudePartModularPath)
                 bodyPartTuple = (mod.name, blue.os.LoadObject(mod.redfile))
             bodyParts.append(bodyPartTuple)
 
-        blue.pyos.BeNice()
+        PD.BeFrameNice()
         for bodyPartTuple in bodyParts:
             (modname, bodyPart,) = bodyPartTuple
             if bodyPart:
@@ -124,16 +137,22 @@ class DecalBaker(object):
         avatar.animationUpdater = bindPose
         clip = bindPose.grannyRes.GetAnimationName(0)
         bindPose.PlayAnimationEx(clip, 0, 0, 0)
+        avatar.ResetAnimationBindings()
         bindPose.EndAnimation()
 
 
 
     def CreateTargetAvatarFromDoll(self, doll):
-        self.isPrepared = False
+        self.doingAvatar = True
         self._DecalBaker__CreateNudeAvatar(doll)
 
         def PrepareAvatar_t():
-            self.SetShader_t(self._DecalBaker__avatar, [], BK_SHADERRES, False)
+            try:
+                self.SetShader_t(self._DecalBaker__avatar, [], BK_SHADERRES, False)
+
+            finally:
+                self.doingAvatar = False
+
 
 
         self.avatarShaderSettingTasklet = uthread.new(PrepareAvatar_t)
@@ -156,40 +175,41 @@ class DecalBaker(object):
 
 
         def checkCreateTargets(usage, pool):
-            if modifier.decalData.bodyEnabled and not validateTarget(modifier.mapD.get(PD.DOLL_PARTS.BODY), self.size[0] / 2, self.size[1]):
+            if modifier.decalData.bodyEnabled:
                 modifier.mapD[PD.DOLL_PARTS.BODY] = trinity.device.CreateTexture(self.size[0] / 2, self.size[1], 1, usage, format, pool)
-            if modifier.decalData.headEnabled and not validateTarget(modifier.mapD.get(PD.DOLL_PARTS.HEAD), self.size[0] / 2, self.size[1] / 2):
+            if modifier.decalData.headEnabled:
                 modifier.mapD[PD.DOLL_PARTS.HEAD] = trinity.device.CreateTexture(self.size[0] / 2, self.size[1] / 2, 1, usage, format, pool)
 
 
         if asRenderTargets:
             checkCreateTargets(trinity.TRIUSAGE_RENDERTARGET, trinity.TRIPOOL_DEFAULT)
         else:
-            checkCreateTargets(0, trinity.TRIPOOL_MANAGED)
+            checkCreateTargets(trinity.TRIUSAGE_DYNAMIC if trinity.device.UsingEXDevice() else 0, trinity.TRIPOOL_DEFAULT if trinity.device.UsingEXDevice() else trinity.TRIPOOL_MANAGED)
 
 
 
     def BakeDecalToModifier(self, decal, projectedDecalModifier):
+        while self.doingAvatar:
+            PD.Yield(frameNice=False)
+
         if type(self._DecalBaker__avatar) is not trinity.Tr2IntSkinnedObject:
             raise TypeError('DecalBaker::DoPrepare - Avatar is not set!')
         if type(decal) is not ProjectedDecal:
             raise TypeError('DecalBaker::BakeDecalToModifier - decal is not an instance of PaperDoll::ProjectedDecal!')
         self.isReady = False
+        self.doingDecal = False
         if projectedDecalModifier.decalData != decal:
             projectedDecalModifier.decalData = decal
 
         def PrepareDecal_t():
-            while self.avatarShaderSettingTasklet.alive:
-                blue.synchro.Yield()
-
-            self.SetDecal_t(self._DecalBaker__avatar, decal, True, True, True)
+            self.doingDecal = True
+            self.SetDecal_t(self._DecalBaker__avatar, decal, True, True)
+            self.doingDecal = False
 
 
         self.decalSettingTasklet = uthread.new(PrepareDecal_t)
-        uthread.schedule(self.decalSettingTasklet)
         self.CreateTargetsOnModifier(projectedDecalModifier)
         self.bakingTasklet = uthread.new(self.DoBake_t, projectedDecalModifier)
-        uthread.schedule(self.bakingTasklet)
 
 
 
@@ -199,7 +219,7 @@ class DecalBaker(object):
         fx = trinity.Tr2Effect()
         fx.effectFilePath = EO_SHADERRES
         while eoMaskRes.isLoading or fx.effectResource.isLoading:
-            blue.synchro.Yield()
+            PD.Yield()
 
         tex = trinity.TriTexture2DParameter()
         tex.name = 'Mask'
@@ -213,13 +233,14 @@ class DecalBaker(object):
         tex.name = 'Texture'
         tex.SetResource(targetTex)
         fx.resources.append(tex)
+        v = trinity.Tr2Vector2Parameter()
+        v.name = 'gTextureSize'
+        v.value = (targetTex.width, targetTex.height)
+        fx.parameters.append(v)
+        fx.RebuildCachedData()
         vp = trinity.TriViewport()
         vp.width = targetTex.width
         vp.height = targetTex.height
-        v = trinity.Tr2Vector2Parameter()
-        v.name = 'gTextureSize'
-        v.value = (vp.width, vp.height)
-        fx.parameters.append(v)
         useTargetTexAsRenderTarget = targetTex.GetSurfaceLevel(0).usage == trinity.TRIUSAGE_RENDERTARGET
         renderTarget = None
         if useTargetTexAsRenderTarget:
@@ -246,43 +267,24 @@ class DecalBaker(object):
 
 
 
-    def _GenerateCutoutTexture(self, targetTex, uv):
-        fx = trinity.Tr2Effect()
-        fx.effectFilePath = 'res:/Graphics/Effect/Utility/Compositing/Copyblit.fx'
-        while fx.effectResource.isLoading:
-            blue.synchro.Yield()
-
-        v = trinity.Tr2Vector4Parameter()
-        v.name = 'SourceUVs'
-        fx.parameters.append(v)
-        v.value = uv
-        tex = trinity.TriTexture2DParameter()
-        tex.name = 'Texture'
-        tex.SetResource(self.sourceTexture)
-        fx.resources.append(tex)
-        vp = trinity.TriViewport()
-        vp.width = targetTex.width
-        vp.height = targetTex.height
-        useTargetTexAsRenderTarget = targetTex.GetSurfaceLevel(0).usage == trinity.TRIUSAGE_RENDERTARGET
-        renderTarget = None
-        if useTargetTexAsRenderTarget:
-            renderTarget = targetTex.GetSurfaceLevel(0)
-        else:
-            renderTarget = trinity.TriSurfaceManaged(trinity.device.CreateRenderTarget, vp.width, vp.height, trinity.TRIFMT_A8R8G8B8, trinity.TRIMULTISAMPLE_NONE, 0, 1)
-        rj = trinity.CreateRenderJob('Cutting from source decal texture')
-        rj.PushRenderTarget(renderTarget)
+    def _Bake(self, targetTex, transform):
+        self.SetShaderValue(self._DecalBaker__avatar, 'TattooVSUVTransform', transform)
+        size = (targetTex.width, targetTex.height)
+        rt = trinity.TriSurfaceManaged(trinity.device.CreateRenderTarget, size[0], size[1], trinity.TRIFMT_A8R8G8B8, trinity.TRIMULTISAMPLE_NONE, 0, 1)
+        sourceVP = trinity.TriViewport()
+        sourceVP.width = size[0]
+        sourceVP.height = size[1]
+        rj = trinity.CreateRenderJob('Baking out source decal texture')
+        rj.PushRenderTarget(rt)
         rj.SetProjection(trinity.TriProjection())
         rj.SetView(trinity.TriView())
-        rj.SetViewport(vp)
+        rj.SetViewport(sourceVP)
         rj.SetDepthStencil(None)
-        rj.Clear((0.0, 0.0, 0.0, 0.0))
+        rj.Clear((0.0, 0.0, 0.0, 0.0), None)
         rj.SetStdRndStates(trinity.RM_FULLSCREEN)
-        rj.SetRenderState(trinity.D3DRS_SEPARATEALPHABLENDENABLE, 1)
-        rj.SetRenderState(trinity.D3DRS_SRCBLENDALPHA, trinity.TRIBLEND_ONE)
-        rj.SetRenderState(trinity.D3DRS_DESTBLENDALPHA, trinity.TRIBLEND_ZERO)
-        rj.RenderEffect(fx)
-        if not useTargetTexAsRenderTarget:
-            rj.CopyRtToTexture(targetTex)
+        rj.Update(self.bakeScene)
+        rj.RenderScene(self.bakeScene)
+        rj.CopyRtToTexture(targetTex)
         rj.PopRenderTarget()
         rj.ScheduleChained()
         rj.WaitForFinish()
@@ -290,101 +292,93 @@ class DecalBaker(object):
 
 
     def DoBake_t(self, projectedDecalModifier):
-        with lock:
-            while self.decalSettingTasklet.alive:
-                blue.synchro.Yield()
+        while self.doingDecal or self.doingAvatar:
+            PD.Yield()
 
-            self.bakeScene = trinity.WodBakingScene()
-            self.bakeScene.Avatar = self._DecalBaker__avatar
-            format = trinity.TRIFMT_A8R8G8B8
-            self.sourceTexture = trinity.device.CreateTexture(self.size[0], self.size[1], 1, trinity.TRIUSAGE_RENDERTARGET, format, trinity.TRIPOOL_DEFAULT)
-            sourceVP = trinity.TriViewport()
-            sourceVP.width = self.size[0]
-            sourceVP.height = self.size[1]
-            rj = trinity.CreateRenderJob('Baking out source decal texture')
-            rj.PushRenderTarget(self.sourceTexture.GetSurfaceLevel(0))
-            rj.SetProjection(trinity.TriProjection())
-            rj.SetView(trinity.TriView())
-            rj.SetViewport(sourceVP)
-            rj.SetDepthStencil(None)
-            rj.Clear((0.0, 0.0, 0.0, 0.0), None)
-            rj.SetStdRndStates(trinity.RM_FULLSCREEN)
-            rj.Update(self.bakeScene)
-            rj.RenderScene(self.bakeScene)
-            rj.PopRenderTarget()
-            rj.ScheduleChained()
-            rj.WaitForFinish()
-            if projectedDecalModifier.decalData.bodyEnabled:
-                self._GenerateCutoutTexture(projectedDecalModifier.mapD[PD.DOLL_PARTS.BODY], (0, 0, 0.5, 1))
-                self._ExpandOpaque(PD.DOLL_PARTS.BODY, projectedDecalModifier.mapD[PD.DOLL_PARTS.BODY])
-            elif projectedDecalModifier.mapD.get(PD.DOLL_PARTS.BODY):
-                del projectedDecalModifier.mapD[PD.DOLL_PARTS.BODY]
-            if projectedDecalModifier.decalData.headEnabled:
-                self._GenerateCutoutTexture(projectedDecalModifier.mapD[PD.DOLL_PARTS.HEAD], (0.5, 0, 1.0, 0.5))
-                self._ExpandOpaque(PD.DOLL_PARTS.HEAD, projectedDecalModifier.mapD[PD.DOLL_PARTS.HEAD])
-            elif projectedDecalModifier.mapD.get(PD.DOLL_PARTS.HEAD):
-                del projectedDecalModifier.mapD[PD.DOLL_PARTS.HEAD]
-            self.bakeScene = None
-            if hasattr(self, 'sourceTexture'):
-                del self.sourceTexture
-            self.isReady = True
+        self.bakeScene = trinity.WodBakingScene()
+        self.bakeScene.Avatar = self._DecalBaker__avatar
+        if projectedDecalModifier.decalData.bodyEnabled:
+            while not projectedDecalModifier.mapD[PD.DOLL_PARTS.BODY].isPrepared:
+                PD.Yield(frameNice=False)
+
+            bodyTex = projectedDecalModifier.mapD[PD.DOLL_PARTS.BODY]
+            self._Bake(bodyTex, (0.0, 0.0, 2.0, 1.0))
+            self._ExpandOpaque(PD.DOLL_PARTS.BODY, bodyTex)
+        elif projectedDecalModifier.mapD.get(PD.DOLL_PARTS.BODY):
+            del projectedDecalModifier.mapD[PD.DOLL_PARTS.BODY]
+        if projectedDecalModifier.decalData.headEnabled:
+            while not projectedDecalModifier.mapD[PD.DOLL_PARTS.HEAD].isPrepared:
+                PD.Yield(frameNice=False)
+
+            headTex = projectedDecalModifier.mapD[PD.DOLL_PARTS.HEAD]
+            self._Bake(headTex, (-0.5, 0.0, 2.0, 2.0))
+            self._ExpandOpaque(PD.DOLL_PARTS.HEAD, headTex)
+        elif projectedDecalModifier.mapD.get(PD.DOLL_PARTS.HEAD):
+            del projectedDecalModifier.mapD[PD.DOLL_PARTS.HEAD]
+        self.bakeScene = None
+        self.isReady = True
 
 
 
     def SetShader_t(self, avatar, targetsToIgnore, shaderres, allTargets = False):
-        effect = trinity.Tr2Effect()
-        effect.effectFilePath = shaderres
-        while effect.effectResource.isLoading:
-            blue.synchro.Yield()
+        try:
+            effect = trinity.Tr2Effect()
+            effect.effectFilePath = shaderres
+            while effect.effectResource.isLoading:
+                PD.Yield()
 
-        effect.PopulateParameters()
-        effect.RebuildCachedData()
-        for mesh in avatar.visualModel.meshes:
-            areasList = [mesh.opaqueAreas, mesh.decalAreas, mesh.transparentAreas]
-            if allTargets or mesh.name not in targetsToIgnore:
-                for areas in areasList:
-                    for area in areas:
-                        transformUV = None
-                        for p in area.effect.parameters:
-                            if p.name == 'TransformUV0':
-                                transformUV = p.value
-                                break
+            for mesh in avatar.visualModel.meshes:
+                areasList = [mesh.opaqueAreas, mesh.decalAreas, mesh.transparentAreas]
+                if allTargets or mesh.name not in targetsToIgnore:
+                    for areas in areasList:
+                        for area in areas:
+                            transformUV = None
+                            for p in area.effect.parameters:
+                                if p.name == 'TransformUV0':
+                                    transformUV = p.value
+                                    break
 
-                        area.effect = effect.CopyTo()
-                        for p in area.effect.parameters:
-                            if p.name == 'TransformUV0':
-                                p.value = transformUV
-                                break
-
-
-
+                            area.effect.effectFilePath = shaderres
+                            area.effect.PopulateParameters()
+                            area.effect.RebuildCachedData()
+                            for p in area.effect.parameters:
+                                if p.name == 'TransformUV0':
+                                    p.value = transformUV
+                                    break
 
 
 
 
-    def SetShaderValue_t(self, avatar, ignoreTargets, name, value, allTargets = False):
+        except TaskletExit:
+            raise 
+
+
+
+    def SetShaderValue(self, avatar, name, value):
         for mesh in avatar.visualModel.meshes:
             for effect in PD.GetEffectsFromMesh(mesh):
-                if allTargets or mesh.name not in ignoreTargets:
-                    for p in effect.parameters:
-                        if p.name == name:
-                            p.value = value
+                effect.StartUpdate()
+                for p in effect.parameters:
+                    if p.name == name:
+                        p.value = value
+                        break
 
                 effect.RebuildCachedData()
+                effect.EndUpdate()
 
 
 
 
 
-    def SetDecal_t(self, avatar, decal, setTexture, setMask, forceReload = False):
+    def SetDecal_t(self, avatar, decal, setTexture, setMask):
         if decal is None:
             return 
-        while decal.BusyLoading():
-            blue.synchro.Yield()
+        while self.doingAvatar or decal.BusyLoading():
+            PD.Yield(frameNice=False)
 
         for mesh in iter(avatar.visualModel.meshes):
             for effect in PD.GetEffectsFromMesh(mesh):
-                layer = decal.layer
+                effect.StartUpdate()
                 for p in effect.parameters:
                     valuesToSet = None
                     if p.name == 'TattooYawPitchRoll':
@@ -408,15 +402,17 @@ class DecalBaker(object):
 
                 resourceNameFound = False
                 if setTexture:
-                    resourceNameFound = self.SetTexture_t('TattooTextureMap', layer, decal.textureResource, effect, forceReload)
+                    resourceNameFound = self.SetTexture_t('TattooTextureMap', decal.textureResource, effect)
                 if setMask and resourceNameFound:
-                    resourceNameFound = self.SetTexture_t('TattooTextureMask', layer, decal.maskResource, effect, forceReload)
+                    resourceNameFound = self.SetTexture_t('TattooTextureMask', decal.maskResource, effect)
+                effect.RebuildCachedData()
+                effect.EndUpdate()
 
 
 
 
 
-    def SetTexture_t(self, name, layer, texture, effect, forceReload = False):
+    def SetTexture_t(self, name, texture, effect):
         for (i, r,) in enumerate(effect.resources):
             if r.name == name:
                 r.SetResource(texture)
@@ -614,7 +610,7 @@ class ProjectedDecal(object):
     @staticmethod
     def Load(source):
         inst = source
-        if type(source) in types.StringTypes:
+        if isinstance(source, basestring):
             inst = PD.LoadYamlFileNicely(source)
         projectedDecal = PD.ProjectedDecal()
         for (key, val,) in inst.__dict__.iteritems():

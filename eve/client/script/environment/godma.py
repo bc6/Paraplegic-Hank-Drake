@@ -14,6 +14,7 @@ import sys
 from timerstuff import ClockThis
 import inventoryFlagsCommon
 import log
+import localization
 
 def remDups(x, y):
     if x[-1] != y:
@@ -53,7 +54,8 @@ class Godma(service.Service):
      'OnGodmaFlushLocation',
      'OnGodmaFlushLocationProfile',
      'OnJumpCloneTransitionCompleted',
-     'OnSystemEffectStarted']
+     'OnSystemEffectStarted',
+     'DoSimClockRebase']
     __dependencies__ = ['invCache']
     __startupdependencies__ = ['settings']
 
@@ -317,7 +319,125 @@ class Godma(service.Service):
 
 
 
+    def DamageMessageGrouped(self, turretSets, hitQuality):
+        if hitQuality <= 0:
+            for t in turretSets:
+                t.SetShotMissed(True)
+
+        elif hitQuality >= 3:
+            for t in turretSets:
+                t.SetShotMissed(False)
+
+        else:
+            turretCount = len(turretSets)
+            missPct = [0.5, 0.25][(hitQuality - 1)]
+            missed = math.floor(missPct * turretCount)
+            random.shuffle(turretSets)
+            for (i, t,) in enumerate(turretSets):
+                t.SetShotMissed(i < missed)
+
+
+
+
+    def DamageMessageTurretPropogation(self, shipID, ship, hitQuality, args, banked):
+        weaponID = args.get('weapon', 0)
+        canGetBanks = banked and shipID == session.shipid
+        if getattr(ship, 'modules', None):
+            minQueue = None
+            minTime = None
+            minTimeID = None
+            minTimeTurrets = []
+            shotTimeVariance = 0.0
+            for (modID, module,) in ship.modules.iteritems():
+                if hasattr(module, 'GetTurretSets'):
+                    turretSets = module.GetTurretSets()
+                    shooting = module.isShooting
+                    targetMatch = shooting
+                    shotTimeVariance = max(shotTimeVariance, turretSets[0].GetShotTimeVariance())
+                    if shooting and args.has_key('target'):
+                        targetMatch = module.targetID == args['target']
+                    typeMatch = shooting
+                    if shooting and weaponID is not 0:
+                        typeMatch = module.turretTypeID == weaponID
+                    if shooting and targetMatch and typeMatch:
+                        queueSize = turretSets[0].MissQueueSize()
+                        shotTime = turretSets[0].GetLastShotTime()
+                        turretID = modID
+                        if canGetBanks:
+                            turretID = self.GetStateManager().dogmaLocation.IsInWeaponBank(shipID, modID) or modID
+                            if turretID == minTimeID:
+                                minTimeTurrets.append(module)
+                            elif minQueue is None or queueSize < minQueue:
+                                minQueue = queueSize
+                                minTime = shotTime
+                                minTimeID = turretID
+                                minTimeTurrets = [module]
+                            elif queueSize == minQueue and (minTime is None or shotTime < minTime):
+                                minTime = shotTime
+                                minTimeID = turretID
+                                minTimeTurrets = [module]
+                        elif banked:
+                            if minTime is None or shotTime < minTime + shotTimeVariance:
+                                if minTime is None:
+                                    minTime = shotTime
+                                else:
+                                    minTime = min(shotTime, minTime)
+                                minTimeID = turretID
+                                minTimeTurrets.append(module)
+                        elif minQueue is None or queueSize < minQueue:
+                            minQueue = queueSize
+                            minTime = shotTime
+                            minTimeTurrets = [module]
+                        elif queueSize == minQueue and (minTime is None or shotTime < minTime):
+                            minTime = shotTime
+                            minTimeTurrets = [module]
+
+            allTurretSets = []
+            for turret in minTimeTurrets:
+                for turretSet in turret.GetTurretSets():
+                    if canGetBanks or minTime + shotTimeVariance >= turretSet.GetLastShotTime():
+                        allTurretSets.append(turretSet)
+
+
+            self.DamageMessageGrouped(allTurretSets, hitQuality)
+
+
+
     def OnDamageMessage(self, msgKey, args):
+        try:
+            michelle = sm.GetService('michelle')
+            hitQuality = 0
+            if msgKey.startswith('AttackHit'):
+                try:
+                    hitQuality = int(msgKey[9])
+                except ValueError as e:
+                    hitQuality = 5
+            banked = msgKey.find('Banked') > 0
+            if args.has_key('target'):
+                ship = michelle.GetBall(session.shipid)
+                if ship and hasattr(ship, 'turrets'):
+                    self.DamageMessageTurretPropogation(session.shipid, ship, hitQuality, args, banked)
+            elif args.has_key('owner'):
+                (ownerData, ownerID,) = args['owner']
+                targetSvc = sm.GetService('target')
+                ship = None
+                shipID = targetSvc.ownerToShipIDCache.get(ownerID, None)
+                if shipID is not None:
+                    ship = michelle.GetBall(shipID)
+                else:
+                    self.LogWarn('Turret hit/miss - failed to find shipID for ownerID ' + str(ownerID))
+                if shipID and ship:
+                    self.DamageMessageTurretPropogation(shipID, ship, hitQuality, args, banked)
+            elif args.has_key('source'):
+                shipID = args['source']
+                ship = michelle.GetBall(shipID)
+                if hasattr(ship, 'turrets'):
+                    self.DamageMessageTurretPropogation(shipID, ship, hitQuality, args, banked)
+                elif hasattr(ship, 'GetModel') and hasattr(ship.GetModel(), 'turretSets'):
+                    self.DamageMessageGrouped(ship.GetModel().turretSets, hitQuality)
+        except Exception as e:
+            self.LogError('Error setting hit/miss state on a turret: %s %s' % (msgKey, str(args)))
+            self.LogError(str(e) + ' ' + str(e.args))
         if not settings.user.ui.Get('damageMessages', 1):
             return 
         if args.has_key('damage') and args['damage'] == 0.0 and not settings.user.ui.Get('damageMessagesNoDamage', 1):
@@ -529,9 +649,14 @@ class Godma(service.Service):
             if len(body) > 0:
                 body += '<br><br>'
             type = cfg.invtypes.Get(typeID)
-            body += Tr(type.description, 'inventory.types.description', type.dataID)
+            body += type.description
 
         eve.Message('CustomNotify', {'notify': body})
+
+
+
+    def DoSimClockRebase(self, times):
+        self.stateManager.DoSimClockRebase(times)
 
 
 
@@ -652,11 +777,6 @@ class ItemWrapper():
 
 
 
-    def __eq__(self, compare):
-        return id(self) == id(compare)
-
-
-
     def __str__(self):
         try:
             tname = self.type.name
@@ -695,10 +815,7 @@ class ItemWrapper():
         if self.__class__.__dict__.has_key(attribute):
             return self.__class__.__dict__[attribute]
         if attribute.startswith('__') and attribute.endswith('__'):
-            import operator
-            if hasattr(operator, attribute):
-                return getattr(operator, attribute)
-            raise AttributeError('ItemWrapper cant find %s' % attribute)
+            raise AttributeError('ItemWrapper has no %s' % attribute)
         else:
             if attribute == 'inventory':
                 return d['statemanager'].invByID.get(self.itemID, None)
@@ -761,7 +878,7 @@ class ItemWrapper():
                 if self.statemanager.invByID.has_key(self.itemID):
                     inv = self.statemanager.invByID[self.itemID]
                 elif self.statemanager.godma.invCache.IsInventoryPrimedAndListed(self.itemID):
-                    inv = eve.GetInventoryFromId(self.itemID)
+                    inv = sm.GetService('invCache').GetInventoryFromId(self.itemID)
                 contents = inv.List(flag)
                 capacity = self.shipMaintenanceBayCapacity
             elif flag in (const.flagHangar,
@@ -774,7 +891,7 @@ class ItemWrapper():
                 if self.statemanager.invByID.has_key(self.itemID):
                     inv = self.statemanager.invByID[self.itemID]
                 elif self.statemanager.godma.invCache.IsInventoryPrimedAndListed(self.itemID):
-                    inv = eve.GetInventoryFromId(self.itemID)
+                    inv = sm.GetService('invCache').GetInventoryFromId(self.itemID)
                 contents = [ item for item in inv.List() if item.flagID in (const.flagHangar,
                  const.flagCorpSAG2,
                  const.flagCorpSAG3,
@@ -788,7 +905,7 @@ class ItemWrapper():
                 if self.statemanager.invByID.has_key(self.itemID):
                     inv = self.statemanager.invByID[self.itemID]
                 elif self.statemanager.godma.invCache.IsInventoryPrimedAndListed(self.itemID):
-                    inv = eve.GetInventoryFromId(self.itemID)
+                    inv = sm.GetService('invCache').GetInventoryFromId(self.itemID)
                 contents = [ item for item in inv.List() if item.flagID == flag ]
             else:
                 raise RuntimeError('BadSlotForCapacity', flag)
@@ -797,7 +914,7 @@ class ItemWrapper():
             if self.groupID in (const.groupMobileMissileSentry, const.groupMobileProjectileSentry, const.groupMobileHybridSentry):
                 contents = self.sublocations
             else:
-                contents = eve.GetInventoryFromId(self.itemID).List(flag)
+                contents = sm.GetService('invCache').GetInventoryFromId(self.itemID).List(flag)
         if used is None:
             used = 0
             for item in contents:
@@ -1018,7 +1135,7 @@ class StateManager():
 
     def ProcessSessionChange(self, isRemote, session, change):
         if session.charid:
-            if 'stationid' in change or 'solarsystemid' in change or 'shipid' in change or 'charid' in change:
+            if 'stationid2' in change or 'solarsystemid' in change or 'shipid' in change or 'charid' in change:
                 self.priming = True
                 sm.ChainEvent('ProcessUIGodmaClearingState')
                 self.PurgeInventories([session.charid, session.shipid], skipCapacityEvent=True)
@@ -1298,7 +1415,7 @@ class StateManager():
                             return 
                         if self.released:
                             return 
-                        passedMs = blue.os.TimeDiffInMs(self.lastStopTime)
+                        passedMs = blue.os.TimeDiffInMs(self.lastStopTime, blue.os.GetSimTime())
                         if passedMs < 0:
                             waitMs = int(-passedMs + self.duration)
                         else:
@@ -1310,8 +1427,8 @@ class StateManager():
                                 sm.ScatterEvent('OnEwarStart', self.sourceID, self.itemID, self.targetID, self.ewarType)
                             else:
                                 sm.ScatterEvent('OnEwarEnd', self.sourceID, self.itemID, self.targetID, self.ewarType)
-                        blue.pyos.synchro.Sleep(waitMs)
-                        self.lastStopTime = blue.os.GetTime(1)
+                        blue.pyos.synchro.SleepSim(waitMs)
+                        self.lastStopTime = blue.os.GetSimTime()
                         self.BroadcastStop()
                         if self.effect.isDeactivating:
                             self.broker.godma.LogInfo(id(self), 'EW DEACTIVATE EXIT', self.itemID, self.effectID)
@@ -1455,10 +1572,10 @@ class StateManager():
 
     def ActualStopEffect(self, itemID, effectID, stopTime, effectState):
         if not effectState.start and stopTime is not None:
-            timeDiffInMs = (stopTime - blue.os.GetTime()) / const.MSEC
+            timeDiffInMs = (stopTime - blue.os.GetSimTime()) / const.MSEC
             if timeDiffInMs > 0:
                 self.godma.LogInfo('ActualStopEffect::Sleeping for', timeDiffInMs)
-                blue.pyos.synchro.Sleep(timeDiffInMs)
+                blue.pyos.synchro.SleepSim(timeDiffInMs)
         sm.ChainEvent('ProcessShipEffect', self, effectState)
 
 
@@ -1710,7 +1827,7 @@ class StateManager():
     def UpdateAttribute(self, itemID, attributes, time):
         self.attributesByItemAttribute[itemID] = attributes
         if time is None:
-            time = blue.os.GetTime(1)
+            time = blue.os.GetSimTime()
         for k in attributes.iterkeys():
             if k in self.heatAttributes.values():
                 if not self.overloadedAttributes.has_key(k):
@@ -1805,7 +1922,7 @@ class StateManager():
         if type(itemID) is tuple:
             return self.GetSubLocation(itemID[0], itemID[1], waitForPrime)
         while self.priming:
-            blue.pyos.synchro.Sleep(1000)
+            blue.pyos.synchro.SleepWallclock(1000)
 
         if self.invitems.has_key(itemID):
             return self.invitems[itemID]
@@ -1817,7 +1934,7 @@ class StateManager():
 
     def GetSubLocation(self, locationID, flag, waitForPrime = False):
         while self.priming:
-            blue.pyos.synchro.Sleep(1000)
+            blue.pyos.synchro.SleepWallclock(1000)
 
         if self.sublocationsByLocationFlag.has_key(locationID) and self.sublocationsByLocationFlag[locationID].has_key(flag):
             return self.sublocationsByLocationFlag[locationID][flag]
@@ -2066,10 +2183,11 @@ class StateManager():
 
 
 
-    def GetChargeValue(self, oldVal, oldTime, tau, Ec):
+    def GetChargeValue(self, oldVal, oldTime, tau, Ec, newTime = None):
         if Ec == 0:
             return 0
-        newTime = blue.os.GetTime(1)
+        if newTime is None:
+            newTime = blue.os.GetSimTime()
         sq = math.sqrt(oldVal / Ec)
         timePassed = (oldTime - newTime) / float(const.dgmTauConstant)
         exp = math.exp(timePassed / tau)
@@ -2160,7 +2278,7 @@ class StateManager():
 
 
     def RepairModule(self, itemID):
-        time = blue.os.GetTime(1)
+        time = blue.os.GetSimTime()
         res = self.GetDogmaLM().InitiateModuleRepair(itemID)
         if res == False:
             return False
@@ -2179,7 +2297,7 @@ class StateManager():
         rateOfRepair = self.GetAttribute(owner, 'moduleRepairRate')
         timeToSleep = dmg / rateOfRepair
         timeToSleepMs = int(timeToSleep * 60 * 1000)
-        blue.pyos.synchro.Sleep(timeToSleepMs + 1000)
+        blue.pyos.synchro.SleepSim(timeToSleepMs + 1000)
         if self.modulesBeingRepaired.has_key(itemID) and self.modulesBeingRepaired[itemID] == instanceID:
             self.StopRepairModule(itemID)
 
@@ -2254,9 +2372,10 @@ class StateManager():
         getCharInfo = False
         if not self.invByID.has_key(session.charid):
             getCharInfo = True
-        charInv = eve.GetInventoryFromId(session.charid, 1)
+        invCache = sm.GetService('invCache')
+        charInv = invCache.GetInventoryFromId(session.charid, 1)
         if shipID is not None:
-            shipInv = eve.GetInventoryFromId(shipID, 1)
+            shipInv = invCache.GetInventoryFromId(shipID, 1)
         else:
             shipInv = None
         if getCharInfo or getShipInfo:
@@ -2495,7 +2614,7 @@ class StateManager():
             if newValue == 0 and oldValue == 1:
                 if item.online.isActive:
                     self.godma.LogWarn('Module put offline silently, faking event', itemKey)
-                    self.OnGodmaShipEffect(itemKey, const.effectOnline, blue.os.GetTime(), 0, 0, [itemKey,
+                    self.OnGodmaShipEffect(itemKey, const.effectOnline, blue.os.GetSimTime(), 0, 0, [itemKey,
                      item.ownerID,
                      item.locationID,
                      None,
@@ -2580,7 +2699,7 @@ class StateManager():
 
 
     def OnMultipleSkillsTrained_thread(self, skillTypeIDs):
-        blue.pyos.synchro.Sleep(10000)
+        blue.pyos.synchro.SleepWallclock(10000)
         sm.ScatterEvent('OnGodmaMultipleSkillsTrained', skillTypeIDs)
 
 
@@ -2597,7 +2716,7 @@ class StateManager():
     def GetTimeForTraining(self, skillID):
         item = self.GetItem(skillID)
         if self.endOfTraining.has_key(skillID):
-            return (self.endOfTraining[skillID] - blue.os.GetTime()) / 600000000L
+            return (self.endOfTraining[skillID] - blue.os.GetWallclockTime()) / 600000000L
         return (item.spHi - item.skillPoints) / item.spm
 
 
@@ -2648,7 +2767,7 @@ class StateManager():
                     heatDissipationRate = 'heatDissipationRateLow'
                 H0 = self.GetAttribute(shipID, 'heatCapacityHi')
                 dissipationRate = self.GetAttribute(shipID, heatDissipationRate)
-                timeDiff = (blue.os.GetTime(1) - oldTime) / float(const.dgmTauConstant)
+                timeDiff = (blue.os.GetSimTime() - oldTime) / float(const.dgmTauConstant)
                 if oldtau < 5e-08:
                     return oldVal * math.exp(-timeDiff / 1000 * dissipationRate)
                 else:
@@ -2689,7 +2808,7 @@ class StateManager():
 
 
     def DelayedOnlineAttempt(self, shipID, moduleID, delay = 500):
-        blue.pyos.synchro.Sleep(delay)
+        blue.pyos.synchro.SleepSim(delay)
         if shipID != session.shipid:
             return 
         module = self.GetItem(moduleID)
@@ -2804,6 +2923,25 @@ class StateManager():
 
     def GetAmmoTypeForModule(self, moduleID):
         return self.chargeTypeByModule.get(moduleID, None)
+
+
+
+    def DoSimClockRebase(self, times):
+        uthread.new(self.ResetChargedAttributes)
+        self.lastAttributeChange = {}
+
+
+
+    def ResetChargedAttributes(self):
+        if session.shipid:
+            newAttributes = self.GetDogmaLM().GetUpdatedChargeAttributes()
+            for (itemID, attributeID, value,) in newAttributes:
+                attributeName = self.attributesByID[attributeID].attributeName
+                try:
+                    self.chargedAttributesByItemAttribute[itemID][attributeName] = value
+                except KeyError:
+                    self.LogError('ResetChargedAttributes - charged attribute not found', itemID, attributeName)
+
 
 
 

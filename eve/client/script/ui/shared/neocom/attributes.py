@@ -4,28 +4,30 @@ import xtriui
 import util
 import uix
 import uiutil
-import draw
 import form
 import uthread
 import listentry
 import uicls
 import uiconst
 import log
+import localization
+import localizationUtil
 
 class AttributeRespecWindow(uicls.Window):
     __guid__ = 'form.attributeRespecWindow'
     __notifyevents__ = ['OnSessionChanged']
+    default_windowID = 'attributerespecification'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.readOnly = attributes.readOnly
         self.SetMinSize([500, 440])
         self.MakeUnResizeable()
-        self.SetCaption(mls.UI_GENERIC_ATTRIBUTES)
+        self.SetCaption(localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/NavScroll/Attributes'))
         self.SetWndIcon('ui_2_64_16')
         self.godma = sm.StartService('godma')
         self.skillHandler = self.godma.GetSkillHandler()
-        uicls.WndCaptionLabel(text=mls.UI_SHARED_DNAMODIFICATION, subcaption=mls.UI_SHARED_DNAMODIFICATIONTAGLINE, parent=self.sr.topParent, align=uiconst.RELATIVE)
+        uicls.WndCaptionLabel(text=localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/NeuralRemapping'), subcaption=localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/NeuralRemappingTagline'), parent=self.sr.topParent, align=uiconst.RELATIVE)
         self.attributes = [const.attributeIntelligence,
          const.attributePerception,
          const.attributeCharisma,
@@ -41,11 +43,11 @@ class AttributeRespecWindow(uicls.Window):
          'ui_22_32_1',
          'ui_22_32_2',
          'ui_22_32_4']
-        self.attributeLabels = [mls.GENERIC_INTELLIGENCE,
-         mls.GENERIC_PERCEPTION_LOWER,
-         mls.GENERIC_CHARISMA_LOWER,
-         mls.GENERIC_WILLPOWER,
-         mls.GENERIC_MEMORY]
+        self.attributeLabels = [localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/AttributeIntelligence'),
+         localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/AttributePerception'),
+         localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/AttributeCharisma'),
+         localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/AttributeWillpower'),
+         localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/AttributeMemory')]
         self.currentAttributes = {}
         self.implantModifier = {}
         self.unspentPts = 0
@@ -83,20 +85,22 @@ class AttributeRespecWindow(uicls.Window):
                 if categoryID == const.categoryImplant:
                     implantBonus += value
 
-            self.totalLabels[x].text = '<right>%s</right>' % int(self.currentAttributes[attr] + implantBonus)
+            totalAttributesText = localizationUtil.FormatNumeric(int(self.currentAttributes[attr]) + implantBonus, decimalPlaces=0)
+            self.totalLabels[x].text = '<right>%s</right>' % totalAttributesText
             self.implantModifier[x] = implantBonus
             (label, icon,) = self.implantLabels[x]
             if implantBonus == 0:
                 icon.SetAlpha(0.5)
-                label.text = ' <b>0</b>'
+                label.text = localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/ImplantBonusZero')
                 label.SetAlpha(0.5)
             else:
-                label.text = '+<b>%s</b>' % int(implantBonus)
+                label.text = localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/ImplantBonus', implantBonus=int(implantBonus))
 
         if not self.readOnly:
             self.unspentPts = unspentPts
             self.sr.unassignedBar.SetValue(unspentPts)
-            self.availableLabel.text = '<right>%s</right>' % self.unspentPts
+            unspentPtsText = localizationUtil.FormatNumeric(self.unspentPts, decimalPlaces=0)
+            self.availableLabel.text = '<right>%s</right>' % unspentPtsText
             if self.unspentPts <= 0:
                 self.sr.saveWarningText.state = uiconst.UI_HIDDEN
             else:
@@ -107,7 +111,7 @@ class AttributeRespecWindow(uicls.Window):
     def ConstructLayout(self):
         self.sr.topPar = uicls.Container(name='topPar', align=uiconst.TOTOP, parent=self.sr.main, height=64, top=0)
         headingPar = uicls.Container(name='headingPar', align=uiconst.TOBOTTOM, parent=self.sr.topPar, height=14, top=2)
-        self.sr.topText = uicls.Label(text=mls.UI_SHARED_RESPECHEADER, parent=self.sr.topPar, left=9, width=490, autowidth=False, singleLine=0, state=uiconst.UI_NORMAL, autoheight=True, top=4)
+        self.sr.topText = uicls.EveLabelMedium(text=localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/CharacterRespecMessage'), parent=self.sr.topPar, left=9, width=485, singleLine=0, state=uiconst.UI_NORMAL, top=4)
         self.sr.topPar.height = 28 + self.sr.topText.textheight
         barColor = (0.5, 0.5, 0.5, 0.75)
         c = uicls.Container(name='', align=uiconst.TOTOP, parent=self.sr.main, height=2, top=0)
@@ -137,23 +141,24 @@ class AttributeRespecWindow(uicls.Window):
         leftMargin += iconsize + 3
         self.totalLabels = []
         maxTextWidth = 10
-        attributeLabel = uicls.Label(text=mls.UI_GENERIC_ATTRIBUTES, parent=headingPar, uppercase=1, singleline=1, autowidth=True, autoheight=True, left=leftMargin - iconsize / 2)
+        attributeLabel = uicls.EveLabelMedium(text=localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/NavScroll/Attributes'), parent=headingPar, singleline=1, left=leftMargin - iconsize / 2)
         for x in xrange(0, 5):
-            label1 = uicls.Label(text=self.attributeLabels[x], parent=self.attributePars[x], uppercase=1, singleline=1, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT, left=leftMargin, autowidth=True, autoheight=True)
+            label1 = uicls.EveLabelMedium(text=self.attributeLabels[x], parent=self.attributePars[x], singleline=1, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT, left=leftMargin)
             maxTextWidth = max(label1.textwidth, maxTextWidth)
 
         leftMargin += maxTextWidth + 20
-        baseLabel = uicls.Label(text=mls.UI_CHAR_BASEPOINTS, parent=headingPar, left=leftMargin, uppercase=1, singleline=1, autowidth=True, autoheight=True)
+        baseLabel = uicls.EveLabelMedium(text=localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/BaseStatPoints'), parent=headingPar, left=leftMargin, singleline=1)
         for x in xrange(0, 5):
-            label2 = uicls.Label(text=const.respecMinimumAttributeValue, parent=self.attributePars[x], width=20, autowidth=False, uppercase=0, singleline=1, state=uiconst.UI_DISABLED, left=leftMargin + baseLabel.textwidth / 2 - 10, top=10, autoheight=True)
+            minText = localizationUtil.FormatNumeric(const.respecMinimumAttributeValue, decimalPlaces=0)
+            label2 = uicls.EveLabelMedium(text=minText, parent=self.attributePars[x], width=20, singleline=1, state=uiconst.UI_DISABLED, left=leftMargin + baseLabel.textwidth / 2 - 10, top=10)
             label2.bold = 1
 
         leftMargin += baseLabel.textwidth + 20
-        implantLabel = uicls.Label(text=mls.UI_GENERIC_IMPLANTS, parent=headingPar, left=leftMargin, uppercase=1, singleline=1, autowidth=True, autoheight=True)
+        implantLabel = uicls.EveLabelMedium(text=localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/CharacterImplants'), parent=headingPar, left=leftMargin, singleline=1)
         self.implantLabels = []
         for x in xrange(0, 5):
             icon = uicls.Icon(parent=self.attributePars[x], width=32, height=32, size=32, icon=util.IconFile(cfg.invtypes.Get(self.implantTypes[x]).iconID), left=leftMargin - 4, align=uiconst.TOPLEFT, ignoreSize=True)
-            label2 = uicls.Label(text='', parent=self.attributePars[x], uppercase=0, singleline=1, left=leftMargin + 28, top=10, autowidth=True, autoheight=True)
+            label2 = uicls.EveLabelMedium(text='', parent=self.attributePars[x], singleline=1, left=leftMargin + 28, top=10)
             self.implantLabels.append((label2, icon))
 
         boxWidth = 6
@@ -167,7 +172,8 @@ class AttributeRespecWindow(uicls.Window):
         buttonSize = 24
         if not self.readOnly:
             for x in xrange(0, 5):
-                uicls.Button(parent=self.attributePars[x], label='-', fixedwidth=buttonSize, pos=(leftMargin,
+                minusText = localization.GetByLabel('UI/Common/Buttons/Minus')
+                uicls.Button(parent=self.attributePars[x], label=minusText, fixedwidth=buttonSize, pos=(leftMargin,
                  4,
                  0,
                  0), func=self.DecreaseAttribute, args=(x,))
@@ -175,7 +181,7 @@ class AttributeRespecWindow(uicls.Window):
         leftMargin += buttonSize + 4
         numBoxes = const.respecMaximumAttributeValue - const.respecMinimumAttributeValue
         barWidth = numBoxes * boxSpacing + 2 * boxMargin + numBoxes * boxWidth - 1
-        remappableLabel = uicls.Label(text=mls.UI_SHARED_REMAPPABLE, parent=headingPar, left=leftMargin, uppercase=1, singleline=1, autowidth=True, autoheight=True)
+        remappableLabel = uicls.EveLabelMedium(text=localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/RemappableStat'), parent=headingPar, left=leftMargin, singleline=1)
         remappableLabel.left = remappableLabel.left - remappableLabel.textwidth / 2 + barWidth / 2
         colorDict = {uicls.ClickableBoxBar.COLOR_UNSELECTED: (0.2, 0.2, 0.2, 1.0),
          uicls.ClickableBoxBar.COLOR_SELECTED: (0.2, 0.8, 0.2, 1.0)}
@@ -191,7 +197,8 @@ class AttributeRespecWindow(uicls.Window):
         leftMargin += barWidth + 4
         if not self.readOnly:
             for x in xrange(0, 5):
-                uicls.Button(parent=self.attributePars[x], label='+', fixedwidth=24, pos=(leftMargin,
+                plusText = localization.GetByLabel('UI/Common/Buttons/Plus')
+                uicls.Button(parent=self.attributePars[x], label=plusText, fixedwidth=24, pos=(leftMargin,
                  4,
                  0,
                  0), func=self.IncreaseAttribute, args=(x,))
@@ -199,29 +206,29 @@ class AttributeRespecWindow(uicls.Window):
         barEnd = leftMargin
         leftMargin += buttonSize + 20
         leftMargin = 450
-        totalLabel = uicls.Label(text=mls.UI_GENERIC_TOTAL, parent=headingPar, left=leftMargin, uppercase=1, singleline=1, autowidth=True, autoheight=True)
+        totalLabel = uicls.EveLabelMedium(text=localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/StatTotal'), parent=headingPar, left=leftMargin, singleline=1)
         totalLabelPos = leftMargin + totalLabel.textwidth / 2 - 15
         for x in xrange(0, 5):
-            label3 = uicls.Label(name='', parent=self.attributePars[x], width=20, autowidth=False, singleline=1, left=totalLabelPos, top=10, autoheight=True)
+            label3 = uicls.EveLabelMedium(name='', parent=self.attributePars[x], width=20, singleline=1, left=totalLabelPos, top=10)
             label3.bold = 1
             self.totalLabels.append(label3)
 
         if not self.readOnly:
-            textObj = uicls.Label(text=mls.UI_GENERIC_UNASSIGNEDATTRIBUTEPOINTS, parent=self.sr.bottomPar, left=16, top=0, autowidth=True, autoheight=True)
+            textObj = uicls.EveLabelMedium(text=localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/UnassignedAttributePoints'), parent=self.sr.bottomPar, left=16)
             numBoxes = const.respecTotalRespecPoints - const.respecMinimumAttributeValue * 5
             barWidth = numBoxes * boxSpacing + 2 * boxMargin + numBoxes * boxWidth - 1
             colorDict = {uicls.ClickableBoxBar.COLOR_UNSELECTED: (0.2, 0.2, 0.2, 1.0),
              uicls.ClickableBoxBar.COLOR_SELECTED: (0.2, 0.8, 0.2, 1.0)}
             self.sr.unassignedBar = uicls.Container(parent=self.sr.bottomPar, align=uiconst.TOPLEFT, left=barEnd - barWidth + 24, top=0, width=barWidth, height=barHeight)
             self.sr.unassignedBar.state = uiconst.UI_PICKCHILDREN
-            self.sr.unassignedBar = uicls.ClickableBoxBar(parent=self.sr.unassignedBar, numBoxes=numBoxes, boxWidth=boxWidth, boxHeight=boxHeight, boxMargin=boxMargin, boxSpacing=boxSpacing, backgroundColor=backgroundColor, colorDict=colorDict, readonly=True, hintFormat=mls.UI_SHARED_UNASSIGNEDPOINTSHINT)
-            self.availableLabel = uicls.Label(text='', parent=self.sr.bottomPar, width=20, autowidth=False, singleline=1, left=totalLabelPos, autoheight=True)
-            self.sr.saveWarningText = uicls.Label(text=mls.UI_SHARED_CANNOTSAVEUNASSIGNEDPOINTS, parent=self.sr.bottomPar, left=16, top=16, autowidth=True, color=(1.0, 0.0, 0.0, 0.9), autoheight=True)
-            btns = uicls.ButtonGroup(btns=[[mls.UI_CMD_SAVECHANGES,
+            self.sr.unassignedBar = uicls.ClickableBoxBar(parent=self.sr.unassignedBar, numBoxes=numBoxes, boxWidth=boxWidth, boxHeight=boxHeight, boxMargin=boxMargin, boxSpacing=boxSpacing, backgroundColor=backgroundColor, colorDict=colorDict, readonly=True, hintFormat='UI/CharacterSheet/CharacterSheetWindow/Attributes/UnassignedPointsHint')
+            self.availableLabel = uicls.EveLabelMedium(text='', parent=self.sr.bottomPar, width=20, singleline=1, left=totalLabelPos)
+            self.sr.saveWarningText = uicls.EveLabelMedium(text=localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/CannotSaveUnassignedPoints'), parent=self.sr.bottomPar, left=16, top=16, color=(1.0, 0.0, 0.0, 0.9))
+            btns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/SaveStatChanges'),
               self.SaveChanges,
               (),
-              None], [mls.UI_CMD_CANCEL,
-              self.CloseX,
+              None], [localization.GetByLabel('UI/Common/Buttons/Cancel'),
+              self.CloseByUser,
               (),
               None]], parent=self.sr.main, idx=0)
         heightTotal = self.sr.topParent.height + self.sr.headerParent.height
@@ -264,7 +271,7 @@ class AttributeRespecWindow(uicls.Window):
             elif eve.Message('ConfirmRespec2', {'months': int(const.respecTimeInterval / MONTH)}, uiconst.YESNO) != uiconst.ID_YES:
                 return 
             self.skillHandler.RespecCharacter(newAttributes[const.attributeCharisma], newAttributes[const.attributeIntelligence], newAttributes[const.attributeMemory], newAttributes[const.attributePerception], newAttributes[const.attributeWillpower])
-        self.CloseX()
+        self.CloseByUser()
 
 
 
@@ -304,10 +311,12 @@ class AttributeRespecWindow(uicls.Window):
             return 
         self.unspentPts -= newValue - oldValue
         self.sr.unassignedBar.SetValue(self.unspentPts)
-        self.availableLabel.text = '<right>%s</right>' % self.unspentPts
+        unspentPtsText = localizationUtil.FormatNumeric(self.unspentPts, decimalPlaces=0)
+        self.availableLabel.text = '<right>%s</right>' % unspentPtsText
         for x in xrange(0, 5):
             totalPts = const.respecMinimumAttributeValue + self.respecBar[x].GetValue() + self.implantModifier[x]
-            self.totalLabels[x].text = '<right>%s</right>' % int(totalPts)
+            totalPtsText = localizationUtil.FormatNumeric(int(totalPts), decimalPlaces=0)
+            self.totalLabels[x].text = '<right>%s</right>' % totalPtsText
 
         if self.unspentPts <= 0:
             self.sr.saveWarningText.state = uiconst.UI_HIDDEN
@@ -323,10 +332,10 @@ class AttributeRespecEntry(uicls.SE_BaseClassCore):
         self.sr.selection = None
         self.sr.hilite = None
         self.OnSelectCallback = None
-        self.sr.label = uicls.Label(text=mls.UI_SHARED_NEXTDNAMODIFICATION, parent=self, left=8, top=4, singleline=1, fontsize=10, letterspace=1, uppercase=1, autowidth=True, autoheight=True)
-        self.sr.respecTime = uicls.Label(text='', parent=self, left=8, top=18, singleline=1, autowidth=True, autoheight=True)
-        self.sr.respecButton = uicls.Button(parent=self, label=mls.UI_CMD_MODIFYDNA, align=uiconst.TOPRIGHT, pos=(2, 16, 0, 0), func=self.OpenRespecWindow, args=(False,))
-        self.hint = mls.UI_SHARED_CHARSHEETRESPECHINT
+        self.sr.label = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Neocom/NextDNAModification'), parent=self, left=8, top=4, singleline=1)
+        self.sr.respecTime = uicls.EveLabelMedium(text='', parent=self, left=8, top=18, singleline=1)
+        self.sr.respecButton = uicls.Button(parent=self, label=localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/RemapStatsNow'), align=uiconst.TOPRIGHT, pos=(2, 16, 0, 0), func=self.OpenRespecWindow, args=(False,))
+        self.hint = localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/CharacterSheetHint')
 
 
 
@@ -336,43 +345,43 @@ class AttributeRespecEntry(uicls.SE_BaseClassCore):
         freeRespecs = node.Get('freeRespecs', 0)
         if freeRespecs > 1:
             respecsLeft = node.freeRespecs
-            self.sr.respecTime.text = mls.UI_SHARED_NUMBEROFREMAPS % {'remap': util.FmtAmt(respecsLeft)}
-            self.hint = mls.UI_SHARED_CHARSHEETRESPECHINT_FREE
-        elif freeRespecs > 0 or node.time < blue.os.GetTime():
-            self.sr.respecTime.text = mls.UI_GENERIC_NOW
+            self.sr.respecTime.text = localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/NumberOfRemaps', remap=respecsLeft)
+            self.hint = localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/CharacterSheetHintFree')
+        elif freeRespecs > 0 or node.time < blue.os.GetWallclockTime():
+            self.sr.respecTime.text = localization.GetByLabel('UI/Generic/Now')
         else:
             self.sr.respecTime.text = util.FmtDate(node.time)
-            self.sr.respecButton.SetLabel(mls.UI_CHARCREA_ATTRIBUTESOVERVIEW)
+            self.sr.respecButton.SetLabel(localization.GetByLabel('UI/CharacterSheet/CharacterSheetWindow/Attributes/AttributesOverview'))
             self.sr.respecButton.args = (True,)
             self.refreshThread = uthread.new(self.RefreshThread)
 
 
 
     def OpenRespecWindow(self, readOnly, *args):
-        wnd = sm.GetService('window').GetWindow('attributerespecification', create=0, decoClass=form.attributeRespecWindow, readOnly=readOnly)
+        wnd = form.attributeRespecWindow.GetIfOpen()
         if wnd is not None and not wnd.destroyed:
             wnd.Maximize()
         else:
-            sm.GetService('window').GetWindow('attributerespecification', create=1, decoClass=form.attributeRespecWindow, readOnly=readOnly)
+            form.attributeRespecWindow.Open(readOnly=readOnly)
 
 
 
     def RefreshThread(self):
         if not self or self.destroyed:
             return 
-        sleepMsec = max(self.sr.node.time - blue.os.GetTime(), 0) / 10000L
+        sleepMsec = max(self.sr.node.time - blue.os.GetWallclockTime(), 0) / 10000L
         sleepMsec = min(sleepMsec, 60000)
         while sleepMsec > 0:
-            blue.pyos.synchro.Sleep(sleepMsec)
+            blue.pyos.synchro.SleepWallclock(sleepMsec)
             if not self or self.destroyed:
                 return 
-            sleepMsec = max(self.sr.node.time - blue.os.GetTime(), 0) / 10000L
+            sleepMsec = max(self.sr.node.time - blue.os.GetWallclockTime(), 0) / 10000L
             sleepMsec = min(sleepMsec, 60000)
 
         if not self or self.destroyed:
             return 
         self.sr.respecButton.state = uiconst.UI_NORMAL
-        self.sr.respecTime.text = mls.UI_GENERIC_NOW
+        self.sr.respecTime.text = localization.GetByLabel('UI/Generic/Now')
 
 
 

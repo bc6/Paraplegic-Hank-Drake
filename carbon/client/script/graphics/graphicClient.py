@@ -1,13 +1,10 @@
 import service
 import graphicWrappers
-import blue
 import trinity
-import world
 
 class GraphicClient(service.Service):
     __guid__ = 'svc.graphicClient'
     __dependencies__ = ['worldSpaceClient']
-    __notifyevents__ = ['OnSessionChanged']
 
     def __init__(self):
         service.Service.__init__(self)
@@ -25,7 +22,10 @@ class GraphicClient(service.Service):
     def OnLoadEntityScene(self, sceneID):
         worldSpaceTypeID = self.worldSpaceClient.GetWorldSpaceTypeIDFromWorldSpaceID(sceneID)
         worldSpaceRow = cfg.worldspaces.Get(worldSpaceTypeID)
-        sceneType = const.world.INTERIOR_SCENE
+        if worldSpaceRow.isInterior:
+            sceneType = const.world.INTERIOR_SCENE
+        else:
+            sceneType = const.world.EXTERIOR_SCENE
         self.CreateScene(sceneID, sceneType)
         if sceneID == session.worldspaceid or session.worldspaceid == 0:
             self._AppSetRenderingScene(self.scenes[sceneID])
@@ -47,7 +47,7 @@ class GraphicClient(service.Service):
             raise RuntimeError('Trinity Scene Already Exists %d' % sceneID)
         if sceneType == const.world.INTERIOR_SCENE:
             self.scenes[sceneID] = trinity.Tr2InteriorScene()
-        elif sceneType == const.world.EXTERIOR_FM_SCENE:
+        elif sceneType == const.world.EXTERIOR_SCENE:
             self.scenes[sceneID] = trinity.WodExteriorScene()
         else:
             raise RuntimeError('Trying to create a nonexistent type of scene')
@@ -87,6 +87,12 @@ class GraphicClient(service.Service):
 
 
 
+    def GetGraphicName(self, graphicID):
+        if graphicID in cfg.graphics:
+            return cfg.graphics.Get(graphicID).graphicName
+
+
+
     def IsCollidable(self, graphicID):
         if graphicID in cfg.graphics:
             return cfg.graphics.Get(graphicID).collidable
@@ -120,12 +126,6 @@ class GraphicClient(service.Service):
         graphicRow = cfg.graphics.Get(graphicID) if graphicID in cfg.graphics else None
         if graphicRow and graphicRow.graphicMinX is not None:
             return ((graphicRow.graphicMinX, graphicRow.graphicMinY, graphicRow.graphicMinZ), (graphicRow.graphicMaxX, graphicRow.graphicMaxY, graphicRow.graphicMaxZ))
-
-
-
-    def OnSessionChanged(self, isRemote, sess, change):
-        if 'worldspaceid' in change and sess.worldspaceid in self.scenes:
-            self._AppSetRenderingScene(self.scenes[sess.worldspaceid])
 
 
 

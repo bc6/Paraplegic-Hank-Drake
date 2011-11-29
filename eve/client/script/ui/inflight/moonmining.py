@@ -3,7 +3,6 @@ import uthread
 import uix
 import xtriui
 import listentry
-import form
 import util
 import base
 import math
@@ -13,7 +12,16 @@ import state
 import uiutil
 import uicls
 import uiconst
+import entities
 import log
+import localization
+import localizationUtil
+import fontConst
+structProgressMap = {const.pwnStructureStateAnchoring: const.pwnStructureStateAnchored,
+ const.pwnStructureStateOnlining: const.pwnStructureStateOnline,
+ const.pwnStructureStateUnanchoring: const.pwnStructureStateUnanchored,
+ const.pwnStructureStateReinforced: const.pwnStructureStateOnline,
+ const.pwnStructureStateOperating: const.pwnStructureStateOnline}
 
 class MoonMining(uicls.Window):
     __guid__ = 'form.MoonMining'
@@ -23,6 +31,7 @@ class MoonMining(uicls.Window):
      'DoBallClear',
      'OnMoonProcessChange',
      'OnBallparkCall']
+    default_windowID = 'moon'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -31,7 +40,7 @@ class MoonMining(uicls.Window):
         settingsIcon.state = uiconst.UI_NORMAL
         settingsIcon.GetMenu = self.TowerMenu
         settingsIcon.expandOnLeft = 1
-        settingsIcon.hint = mls.UI_GENERIC_ACTIONS
+        settingsIcon.hint = localization.GetByLabel('UI/Inflight/MoonMining/Actions')
         slimItem = attributes.slimItem
         try:
             self.SetWndIcon()
@@ -43,7 +52,7 @@ class MoonMining(uicls.Window):
             self.moon = None
             if slimItem:
                 if slimItem.ownerID != eve.session.corpid:
-                    self.CloseX()
+                    self.CloseByUser()
                     return 
                 self.slimItem = slimItem
                 self.sr.name = uix.GetSlimItemName(self.slimItem)
@@ -74,36 +83,38 @@ class MoonMining(uicls.Window):
             uicls.Container(name='push', align=uiconst.TOTOP, height=2, parent=self.sr.top)
             r = uicls.Container(name='rightstats', parent=self.sr.top, align=uiconst.TORIGHT, width=100)
             h = uicls.Container(name='info', parent=self.sr.top, align=uiconst.TOALL, pos=(0, 0, 0, 0))
-            self.sr.status = uicls.Label(text='', parent=r, top=20, left=8, autowidth=False, uppercase=1, width=100, state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
-            title = uicls.Label(text='<b>%s</b>' % uiutil.UpperCase(self.sr.name), parent=h, letterspace=1, singleline=1, state=uiconst.UI_NORMAL)
+            self.sr.status = uicls.EveLabelMedium(text='', parent=r, top=20, left=8, width=100, state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
+            title = uicls.EveLabelMediumBold(text=self.sr.name, parent=h, singleline=1, state=uiconst.UI_NORMAL, bold=True)
             top = title.textheight
-            self.sr.locationtext = uicls.Label(text='%s:' % mls.UI_GENERIC_LOCATION, parent=h, top=top, fontsize=9, uppercase=1, letterspace=2, state=uiconst.UI_NORMAL)
+            towerLocationLabel = localization.GetByLabel('UI/Inflight/MoonMining/TowerLocation')
+            self.sr.locationtext = uicls.EveLabelSmallBold(text=towerLocationLabel, parent=h, top=top, state=uiconst.UI_NORMAL)
             top += self.sr.locationtext.textheight - 2
-            t = uicls.Label(text='%s:' % mls.UI_GENERIC_OWNER, parent=h, top=top, fontsize=9, uppercase=1, letterspace=2, state=uiconst.UI_NORMAL)
-            t = uicls.Label(text='<b>%s</b>' % self.sr.owner, parent=h, left=55, top=top, fontsize=9, letterspace=1, state=uiconst.UI_NORMAL)
+            towerOwnerLabel = localization.GetByLabel('UI/Inflight/MoonMining/TowerOwner')
+            t = uicls.EveLabelSmallBold(text=towerOwnerLabel, parent=h, top=top, state=uiconst.UI_NORMAL)
+            t = uicls.EveLabelSmall(text=self.sr.owner, parent=h, left=55, top=top, state=uiconst.UI_NORMAL, bold=True)
             top += t.textheight + 2
             icontop = top
             gaugeLeft = 60
             textLeft = 130
-            t = uicls.Label(text='%s:' % mls.UI_GENERIC_SHIELD, parent=h, left=0, top=top, fontsize=9, letterspace=2, uppercase=1)
+            t = uicls.EveLabelSmallBold(text=localization.GetByLabel('UI/Inflight/MoonMining/TowerShield'), parent=h, left=0, top=top)
             self.sr.shieldgauge = self.GetGauge(h, gaugeLeft, top + 1, (0.8, 0.8, 1.0, 0.5))
-            self.sr.shieldtext = uicls.Label(text='', parent=h, left=textLeft, top=top, fontsize=9, letterspace=1)
+            self.sr.shieldtext = uicls.EveLabelSmall(text='', parent=h, left=textLeft, top=top)
             top += t.textheight - 2
-            t = uicls.Label(text='%s:' % mls.UI_GENERIC_ARMOR, parent=h, left=0, top=top, fontsize=9, letterspace=2, uppercase=1)
+            t = uicls.EveLabelSmallBold(text=localization.GetByLabel('UI/Inflight/MoonMining/TowerArmor'), parent=h, left=0, top=top)
             self.sr.armorgauge = self.GetGauge(h, gaugeLeft, top + 1, (0.6, 0.6, 1.0, 0.5))
-            self.sr.armortext = uicls.Label(text='', parent=h, left=textLeft, top=top, fontsize=9, letterspace=1)
+            self.sr.armortext = uicls.EveLabelSmall(text='', parent=h, left=textLeft, top=top)
             top += t.textheight - 2
-            t = uicls.Label(text='%s:' % mls.UI_GENERIC_STRUCTURE, parent=h, left=0, top=top, fontsize=9, letterspace=1, uppercase=1)
+            t = uicls.EveLabelSmallBold(text=localization.GetByLabel('UI/Inflight/MoonMining/TowerStructure'), parent=h, left=0, top=top)
             self.sr.structuregauge = self.GetGauge(h, gaugeLeft, top + 1, (0.4, 0.4, 1.0, 0.5))
-            self.sr.structuretext = uicls.Label(text='', parent=h, left=textLeft, top=top, fontsize=9, letterspace=1)
+            self.sr.structuretext = uicls.EveLabelSmall(text='', parent=h, left=textLeft, top=top)
             top += t.textheight - 2
-            t = uicls.Label(text='%s:' % mls.UI_GENERIC_POWER, parent=h, left=0, top=top, fontsize=9, letterspace=1, uppercase=1)
+            t = uicls.EveLabelSmallBold(text=localization.GetByLabel('UI/Inflight/MoonMining/TowerPower'), parent=h, left=0, top=top)
             self.sr.powergauge = self.GetGauge(h, gaugeLeft, top + 1, (1.0, 1.0, 0.0, 0.5))
-            self.sr.powertext = uicls.Label(text='', parent=h, left=textLeft, top=top, fontsize=9, letterspace=1)
+            self.sr.powertext = uicls.EveLabelSmall(text='', parent=h, left=textLeft, top=top)
             top += t.textheight - 2
-            t = uicls.Label(text='%s:' % mls.UI_GENERIC_CPU, parent=h, left=0, top=top, fontsize=9, letterspace=1, uppercase=1)
+            t = uicls.EveLabelSmallBold(text=localization.GetByLabel('UI/Inflight/MoonMining/TowerCPU'), parent=h, left=0, top=top)
             self.sr.cpugauge = self.GetGauge(h, gaugeLeft, top + 1, (0.0, 0.0, 1.0, 0.5))
-            self.sr.cputext = uicls.Label(text='', parent=h, left=textLeft, top=top, fontsize=9, letterspace=1)
+            self.sr.cputext = uicls.EveLabelSmall(text='', parent=h, left=textLeft, top=top)
             top += t.textheight
             self.sr.top.height = top
             iconsize = 24
@@ -123,56 +134,56 @@ class MoonMining(uicls.Window):
              icontop + 15,
              iconsize,
              iconsize), hint=cfg.dgmattribs.Get(const.attributeShieldThermalDamageResonance).displayName, ignoreSize=True)
-            self.sr.emkinText = uicls.Label(text='', parent=r, left=20, top=icontop, width=100, autowidth=False, fontsize=9, letterspace=1, tabs=[50], state=uiconst.UI_DISABLED)
+            self.sr.emkinText = uicls.EveLabelSmall(text='', parent=r, left=20, top=icontop, width=100, tabs=[50], state=uiconst.UI_DISABLED)
             self.sr.emkinText._tabMargin = 0
-            self.sr.expthermText = uicls.Label(text='', parent=r, left=20, top=icontop + 20, width=100, autowidth=False, fontsize=9, letterspace=1, tabs=[50], state=uiconst.UI_DISABLED)
+            self.sr.expthermText = uicls.EveLabelSmall(text='', parent=r, left=20, top=icontop + 20, width=100, tabs=[50], state=uiconst.UI_DISABLED)
             self.sr.expthermText._tabMargin = 0
             blue.pyos.synchro.Yield()
-            btns = [(mls.UI_CMD_ANCHOR,
+            btns = [(localization.GetByLabel('UI/Inflight/POS/AnchorObject'),
               self.Anchor,
               (),
               84),
-             (mls.UI_CMD_UNANCHOR,
+             (localization.GetByLabel('UI/Inflight/MoonMining/Structures/Unanchor'),
               self.Unanchor,
               (),
               84),
-             (mls.UI_INFLIGHT_PUTONLINE,
+             (localization.GetByLabel('UI/Inflight/MoonMining/PutOnline'),
               self.Online,
               (),
               84),
-             (mls.UI_INFLIGHT_PUTOFFLINE,
+             (localization.GetByLabel('UI/Inflight/MoonMining/PutOffline'),
               self.Offline,
               (),
               84)]
             self.sr.structuresbuttons = uicls.ButtonGroup(btns=btns, parent=self.sr.main)
             self.sr.structuresbuttons.state = uiconst.UI_HIDDEN
-            btns = [(mls.UI_GENERIC_APPLY,
+            btns = [(localization.GetByLabel('UI/Common/Buttons/Apply'),
               self.ProdApply,
               (),
-              84), (mls.UI_GENERIC_RELOAD,
+              84), (localization.GetByLabel('UI/Inflight/MoonMining/Processes/Reload'),
               self.ProdReload,
               (),
-              84), (mls.UI_GENERIC_CLEARLINKS,
+              84), (localization.GetByLabel('UI/Inflight/MoonMining/Processes/ClearLinks'),
               self.ProdClearLinks,
               (),
               84)]
             if eve.session.role & service.ROLE_GML:
-                btns.append((mls.UI_INFLIGHT_RUNCYCLE,
+                btns.append((localization.GetByLabel('UI/Inflight/MoonMining/Processes/RunCycle'),
                  self.RunProcessCycle,
                  (),
                  84))
             self.sr.productionbuttons = uicls.ButtonGroup(btns=btns, parent=self.sr.main)
             self.sr.productionbuttons.state = uiconst.UI_HIDDEN
-            btns = [(mls.UI_CMD_OPEN,
+            btns = [(localization.GetByLabel('UI/Inflight/MoonMining/Processes/Open'),
               self.OpenResources,
               (),
               84)]
             self.sr.fuelbuttons = uicls.ButtonGroup(btns=btns, parent=self.sr.main)
             self.sr.fuelbuttons.state = uiconst.UI_HIDDEN
-            btns = [(mls.UI_INFLIGHT_ASSUMECONTROL,
+            btns = [(localization.GetByLabel('UI/Inflight/POS/AssumeStructureControl'),
               self.AssumeControl,
               (),
-              84), (mls.UI_INFLIGHT_RELINQUISHCONTROL,
+              84), (localization.GetByLabel('UI/Inflight/POS/RelinquishPOSControl'),
               self.RelinquishControl,
               (),
               84)]
@@ -195,55 +206,67 @@ class MoonMining(uicls.Window):
             structuretabs = []
             processtabs = []
             if eve.session.corprole & const.corpRoleStarbaseConfig:
-                tabs = [[mls.UI_INFLIGHT_FORCEFIELD,
+                forceFieldLabel = localization.GetByLabel('UI/Inflight/MoonMining/ForceField/ForceField')
+                defenseLabel = localization.GetByLabel('UI/Inflight/MoonMining/Defense/Defense')
+                tabs = [[forceFieldLabel,
                   self.sr.forcefieldpanel,
                   self,
-                  ('force', None)], [mls.UI_INFLIGHT_DEFENSE,
+                  ('force', None)], [defenseLabel,
                   self.sr.standingspanel,
                   self,
                   ('standings', None)]]
             if (const.corpRoleStarbaseConfig | const.corpRoleStarbaseCaretaker | const.corpRoleInfrastructureTacticalOfficer) & eve.session.corprole:
-                tabs.extend([[mls.UI_INFLIGHT_STRUCTURES,
+                structuresLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/Structures')
+                tabs.extend([[structuresLabel,
                   self.sr.structurepanel,
                   self,
                   ('structures', None)]])
                 if (const.corpRoleStarbaseConfig | const.corpRoleStarbaseCaretaker) & eve.session.corprole:
-                    tabs.extend([[mls.UI_GENERIC_PROCESSES,
+                    processesLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/Processes')
+                    tabs.extend([[processesLabel,
                       self.sr.processpanel,
                       self,
                       ('process', None)]])
-                    structuretabs.extend([[mls.UI_INFLIGHT_STRUCTURES,
+                    jumpBridgesLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/JumpBridges')
+                    structuretabs.extend([[structuresLabel,
                       self.sr.scroll,
                       self,
                       ('structures_structures', 'structures'),
-                      self.sr.structuresbuttons], [mls.UI_GENERIC_JUMPBRIDGES,
+                      self.sr.structuresbuttons], [jumpBridgesLabel,
                       self.sr.scroll,
                       self,
                       ('structures_jumpbridges', 'jumpbridges')]])
                     if const.corpRoleStarbaseConfig & eve.session.corprole:
-                        structuretabs.extend([[mls.UI_INFLIGHT_OTHERSTARBASES,
+                        controlTowersLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/ControlTowers')
+                        noOtherStructuresLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/NoOtherNamedStructures')
+                        cachedFor5MinLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/CachedFor5Min')
+                        structuretabs.extend([[controlTowersLabel,
                           self.sr.scroll,
                           self,
                           ('structures_othertowers', 'othertowers'),
                           None,
-                          '%s<br><br>%s' % (mls.UI_INFLIGHT_NOTERENAMESTRUCTURES, mls.UI_SHARED_CACHEDFOR5MIN)]])
-                    processtabs.extend([[mls.UI_INFLIGHT_FUEL,
+                          noOtherStructuresLabel + '<br><br>' + cachedFor5MinLabel]])
+                    fuelLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/Fuel')
+                    productionLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/Production')
+                    processtabs.extend([[fuelLabel,
                       self.sr.scroll,
                       self,
                       ('process_fuel', 'fuel'),
-                      self.sr.fuelbuttons], [mls.UI_INFLIGHT_PRODUCTION,
+                      self.sr.fuelbuttons], [productionLabel,
                       self.sr.scroll,
                       self,
                       ('process_production', 'production'),
                       self.sr.productionbuttons]])
                 if eve.session.corprole & const.corpRoleStarbaseConfig:
-                    structuretabs.insert(1, [mls.UI_INFLIGHT_ACCESS,
+                    accessLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/Access')
+                    structuretabs.insert(1, [accessLabel,
                      self.sr.scroll,
                      self,
                      ('structures_access', 'access'),
                      self.sr.accesspanel])
                 if eve.session.corprole & const.corpRoleInfrastructureTacticalOfficer:
-                    structuretabs.insert(2, [mls.UI_GENERIC_CONTROL,
+                    label = localization.GetByLabel('UI/Inflight/MoonMining/Structures/Control')
+                    structuretabs.insert(2, [label,
                      self.sr.scroll,
                      self,
                      ('structures_control', 'control'),
@@ -267,7 +290,7 @@ class MoonMining(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         self.godma = None
         self.posMgr = None
         self.slimItem = None
@@ -371,7 +394,7 @@ class MoonMining(uicls.Window):
 
             scrolllist = self.GetJumpbridgeEntries(aconnect, uconnect, structureConnections)
             if not len(scrolllist):
-                self.sr.scroll.ShowHint(mls.UI_INFLIGHT_NOJUMPBRIDGES)
+                self.sr.scroll.ShowHint(localization.GetByLabel('UI/Inflight/MoonMining/Structures/NoJumpBridges'))
             self.sr.scroll.state = uiconst.UI_NORMAL
             self.sr.scroll.sr.id = 'moonmining_jumpbridges'
             self.sr.scroll.Load(contentList=scrolllist)
@@ -381,12 +404,13 @@ class MoonMining(uicls.Window):
 
     def GetJumpbridgeEntries(self, aconnect, uconnect, structureConnections):
         myShip = sm.services['godma'].GetItem(eve.session.shipid)
-        ul = [mls.UI_GENERIC_LINKED, mls.UI_GENERIC_UNLINKED]
+        ul = [localization.GetByLabel('UI/Inflight/MoonMining/Structures/Linked'), localization.GetByLabel('UI/Inflight/MoonMining/Structures/Unlinked')]
         gid = ['ui_22_32_57', 'ui_22_32_58']
         scrolllist = []
         i = 0
         if aconnect or uconnect:
-            scrolllist.append(listentry.Get('Text', {'text': mls.UI_SHARED_CACHEDFOR5MIN,
+            cachedFor5MinLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/CachedFor5Min')
+            scrolllist.append(listentry.Get('Text', {'text': cachedFor5MinLabel,
              'line': 1}))
             scrolllist.append(listentry.Get('Divider'))
         for entrylist in (aconnect, uconnect):
@@ -407,18 +431,15 @@ class MoonMining(uicls.Window):
                     if solarSystemData and fromStructure not in structureConnections:
                         continue
                     if solarSystemData:
-                        label = mls.UI_INFOWND_FROMTO % {'from': '<b>%s</b>' % fromSystem.name,
-                         'to': '<b>%s</b>' % toSystem.name}
+                        label = localization.GetByLabel('UI/Inflight/MoonMining/Structures/JumpBridgeLinkedState', source=fromSystem.name, destination=toSystem.name)
                         requiredQty = 0
                         if eve.session.shipid and toStructureType:
                             (requiredQty, requiredType,) = sm.GetService('menu').GetFuelConsumptionOfJumpBridgeForMyShip(fromSystem, toSystem, toStructureType)
-                        text = mls.UI_INFLIGHT_JUMPBRIDGEDISTANCECONSUMPTION % {'dist': '%.2f' % uix.GetLightYearDistance(fromSystem, toSystem, False),
-                         'consumption': util.FmtAmt(requiredQty),
-                         'type': cfg.invtypes.Get(requiredType).name or mls.UI_GENERIC_UNKNOWN}
-                        hint = text + '<br><br>' + mls.UI_INFLIGHT_JUMPBRIDGECONSUMPTIONFORSHIP % {'type': '<b>%s</b>' % cfg.invtypes.Get(myShip.typeID).name}
+                        text = localization.GetByLabel('UI/Inflight/MoonMining/Structures/JumpBridgeDistanceConsumption', distance=uix.GetLightYearDistance(fromSystem, toSystem, False), amount=int(requiredQty), fuelTypeID=int(requiredType))
+                        hint = localization.GetByLabel('UI/Inflight/MoonMining/Structures/JumpBridgeConsumptionForShip', distanceConsumption=text, shipTypeID=myShip.typeID)
                     else:
                         label = fromSystem.name
-                        text = mls.UI_INFLIGHT_JUMPBRIDGEUNLINKEDDISTANCE % {'dist': uix.GetLightYearDistance(cfg.evelocations.Get(eve.session.solarsystemid), fromSystem)}
+                        text = localization.GetByLabel('UI/Inflight/MoonMining/Structures/JumpBridgeUnlinkedState', distance=uix.GetLightYearDistance(cfg.evelocations.Get(eve.session.solarsystemid), fromSystem))
                     data.itemID = fromSystem.locationID
                     data.typeID = const.typeSolarSystem
                     data.label = label
@@ -456,24 +477,22 @@ class MoonMining(uicls.Window):
             if sollist:
                 for (solarSystemID, structureIDs,) in sollist.iteritems():
                     jumps = int(sm.GetService('pathfinder').GetJumpCountFromCurrent(solarSystemID))
-                    posttext = ' - %s' % (uix.Plural(jumps, 'UI_SHARED_NUM_JUMP') % {'num': jumps})
-                    label = cfg.evelocations.Get(solarSystemID).name
+                    label = localization.GetByLabel('UI/Inflight/MoonMining/Structures/SolarSystemNameAndJumps', solarsystemID=solarSystemID, structureQuantity=len(structureIDs), jumps=jumps)
                     data = {'GetSubContent': self.GetTowerGroupSubContent,
                      'label': label,
                      'id': ('TowerSel', solarSystemID),
                      'groupItems': structureIDs,
                      'toSystem': solarSystemID,
                      'iconMargin': 2,
-                     'showlen': 1,
-                     'posttext': posttext,
+                     'showlen': 0,
                      'sublevel': 0,
                      'state': 'locked'}
-                    scrolllist.append((label, listentry.Get('Group', data)))
+                    scrolllist.append(listentry.Get('Group', data))
 
-                scrolllist = uiutil.SortListOfTuples(scrolllist)
-            headers = [mls.UI_GENERIC_NAME, mls.UI_GENERIC_TYPE, mls.UI_GENERIC_DISTANCE]
+                scrolllist = localizationUtil.Sort(scrolllist, key=lambda x: x.label)
+            headers = [localization.GetByLabel('UI/Common/Name'), localization.GetByLabel('UI/Common/Type'), localization.GetByLabel('UI/Common/Distance')]
             if not len(scrolllist):
-                self.sr.scroll.ShowHint(mls.UI_INFLIGHT_NOOTHERCONTROLTOWERS)
+                self.sr.scroll.ShowHint(localization.GetByLabel('UI/Inflight/MoonMining/Structures/NoOtherControlTowers'))
                 headers = []
             self.sr.scroll.state = uiconst.UI_NORMAL
             self.sr.scroll.sr.id = 'moonmining_othertowers'
@@ -491,20 +510,20 @@ class MoonMining(uicls.Window):
             invType = cfg.invtypes.Get(typeID)
             locName = cfg.evelocations.Get(itemID).name
             lbl = invType.name
+            distanceInLightYearsLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/DistanceInLightYears', distance=dist)
             data = util.KeyVal()
-            data.label = '%s<t>%s<t>%s ly' % (locName or lbl, lbl, dist)
+            data.label = '%s<t>%s<t>%s' % (locName or lbl, lbl, distanceInLightYearsLabel)
             data.listvalue = typeID
             data.id = ('TowerSel', itemID)
             data.typeID = const.typeSolarSystem
             data.itemID = nodedata.toSystem
             data.sublevel = 1
-            data.Set('sort_%s' % mls.UI_GENERIC_NAME, locName or lbl)
-            data.Set('sort_%s' % mls.UI_GENERIC_TYPE, lbl)
-            data.Set('sort_%s' % mls.UI_GENERIC_DISTANCE, dist)
-            scrolllist.append((invType.name, listentry.Get('Generic', data=data)))
+            data.Set('sort_%s' % localization.GetByLabel('UI/Common/Name'), locName or lbl)
+            data.Set('sort_%s' % localization.GetByLabel('UI/Common/Type'), lbl)
+            data.Set('sort_%s' % localization.GetByLabel('UI/Common/Distance'), dist)
+            scrolllist.append(listentry.Get('Generic', data=data))
 
-        scrolllist = uiutil.SortListOfTuples(scrolllist)
-        return scrolllist
+        return localizationUtil.Sort(scrolllist, key=lambda x: x.label)
 
 
 
@@ -518,7 +537,11 @@ class MoonMining(uicls.Window):
             if controllable:
                 (controllerID, controllerName,) = sm.GetService('pwn').GetControllerIDName(structure.itemID)
                 state = sm.GetService('pwn').GetStructureState(structure)
-                data = {'label': '%s<t>%s<t>%s' % (uix.GetSlimItemName(structure), getattr(mls, 'UI_GENERIC_' + state[0].replace(' - ', '').replace(' ', '').upper(), state[0]), controllerName),
+                data = {'label': [uix.GetSlimItemName(structure),
+                           '<t>',
+                           entities.POS_STRUCTURE_STATE[state[0]],
+                           '<t>',
+                           controllerName],
                  'rec': structure,
                  'state': state[0],
                  'GetMenu': self.GetStructureMenu,
@@ -527,10 +550,13 @@ class MoonMining(uicls.Window):
                 scrolllist.append(listentry.Get('StructureControl', data))
 
         if not len(scrolllist):
-            self.sr.scroll.ShowHint(mls.UI_INFLIGHT_NOOTHERSTRUCTURESINRANGE)
+            self.sr.scroll.ShowHint(localization.GetByLabel('UI/Inflight/MoonMining/Structures/NoOtherStructuresInRange'))
         self.sr.scroll.sr.ignoreTabTrimming = False
         self.sr.scroll.sr.id = 'moonmining_control'
-        self.sr.scroll.Load(contentList=scrolllist, headers=[mls.UI_GENERIC_NAME, mls.UI_GENERIC_STATE, mls.UI_GENERIC_CONTROL])
+        nameLabel = localization.GetByLabel('UI/Common/Name')
+        structureStateLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/StructureState')
+        controlLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/Control')
+        self.sr.scroll.Load(contentList=scrolllist, headers=[nameLabel, structureStateLabel, controlLabel])
         self.sr.showing = 'control'
 
 
@@ -547,30 +573,32 @@ class MoonMining(uicls.Window):
                 cpu = self.godma.GetType(structure.typeID).cpu
                 power = self.godma.GetType(structure.typeID).power
                 data = util.KeyVal()
-                data.label = '%s<t>%s<t><right>%s %s<t><right>%s %s' % (uix.GetSlimItemName(structure),
-                 getattr(mls, 'UI_GENERIC_' + state[0].replace(' - ', '').replace(' ', '').upper(), state[0]),
-                 power,
-                 mls.UI_GENERIC_MEGAWATTSHORT,
-                 cpu,
-                 mls.UI_GENERIC_TERAFLOPSSHORT)
+                data.label = '%s<t>%s<t><right>%s<t><right>%s' % (uix.GetSlimItemName(structure),
+                 entities.POS_STRUCTURE_STATE[state[0]],
+                 localization.GetByLabel('UI/Inflight/MoonMining/Structures/DisplayPowerUsage', powerUsage=power),
+                 localization.GetByLabel('UI/Inflight/MoonMining/Structures/DisplayCPUUsage', cpuUsage=cpu))
                 data.rec = structure
                 data.state = state[0]
                 data.GetMenu = self.GetStructureMenu
                 data.StructureProgress = self.StructureProgress
                 data.power = power
                 data.cpu = cpu
-                data.Set('sort_%s' % mls.UI_GENERIC_POWER, power)
-                data.Set('sort_%s' % mls.UI_GENERIC_CPU, cpu)
+                data.Set('sort_%s' % localization.GetByLabel('UI/Common/Power'), power)
+                data.Set('sort_%s' % localization.GetByLabel('UI/Common/Cpu'), cpu)
                 scrolllist.append(listentry.Get('Structure', data=data))
 
             if not len(scrolllist):
-                self.sr.scroll.ShowHint(mls.UI_INFLIGHT_NOOTHERSTRUCTURESINRANGE)
+                self.sr.scroll.ShowHint(localization.GetByLabel('UI/Inflight/MoonMining/Structures/NoOtherStructuresInRange'))
             self.sr.scroll.sr.ignoreTabTrimming = False
             self.sr.scroll.sr.id = 'moonmining_structures'
-            self.sr.scroll.Load(contentList=scrolllist, headers=[mls.UI_GENERIC_NAME,
-             mls.UI_GENERIC_STATE,
-             mls.UI_GENERIC_POWER,
-             mls.UI_GENERIC_CPU])
+            nameLabel = localization.GetByLabel('UI/Common/Name')
+            structureStateLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/StructureState')
+            powerLabel = localization.GetByLabel('UI/Common/Power')
+            cpuLabel = localization.GetByLabel('UI/Common/Cpu')
+            self.sr.scroll.Load(contentList=scrolllist, headers=[nameLabel,
+             structureStateLabel,
+             powerLabel,
+             cpuLabel])
         for entry in self.sr.scroll.GetNodes():
             for rec in structures:
                 if rec.itemID == entry.rec.itemID and rec != entry.rec:
@@ -587,15 +615,9 @@ class MoonMining(uicls.Window):
     def ShowProduction(self, force = 0):
         cycle = self.godma.GetType(self.slimItem.typeID).posControlTowerPeriod
         scrolllist = []
-        scrolllist.append(listentry.Get('Header', {'label': mls.UI_INFLIGHT_MOONPRODUCES}))
+        scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Inflight/MoonMining/Processes/MoonProduces')}))
         for (typeID, quantity,) in self.res.iteritems():
-            if quantity == 1:
-                batchText = mls.UI_INFLIGHT_PRODUCTIONLABEL1_ONE
-            else:
-                batchText = mls.UI_INFLIGHT_PRODUCTIONLABEL1_MANY % {'qty': quantity}
-            rateText = mls.UI_INFLIGHT_PRODUCTIONLABEL2 % {'moonMiningAmount': self.godma.GetType(typeID).moonMiningAmount,
-             'rate': str(cycle / 60000)}
-            label = '%s - %s %s' % (cfg.invtypes.Get(typeID).name, batchText, rateText)
+            label = localization.GetByLabel('UI/Inflight/MoonMining/Processes/MoonProduct', itemTypeID=typeID, quantity=quantity, unitsProduced=self.godma.GetType(typeID).moonMiningAmount, cycleTime=cycle / 60000)
             data = {'label': label,
              'typeID': typeID,
              'GetMenu': self.GetTypeMenu}
@@ -603,12 +625,14 @@ class MoonMining(uicls.Window):
 
         if len(scrolllist) == 1:
             if sm.GetService('pwn').GetStructureState(self.slimItem)[0].startswith('online'):
-                scrolllist.append(listentry.Get('Generic', {'label': mls.UI_INFLIGHT_NOHARVESTABLERESOURCES,
+                noHarvestableResourcesLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/NoHarvestableResources')
+                scrolllist.append(listentry.Get('Generic', {'label': noHarvestableResourcesLabel,
                  'height': 24}))
             else:
-                scrolllist.append(listentry.Get('Generic', {'label': mls.UI_INFLIGHT_MINERALSCANIMPOSSIBLE,
+                mineralScanImpossibleLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/MineralScanImpossible')
+                scrolllist.append(listentry.Get('Generic', {'label': mineralScanImpossibleLabel,
                  'height': 24}))
-        scrolllist.append(listentry.Get('Header', {'label': mls.UI_INFLIGHT_PROCESSCONTROL}))
+        scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Inflight/MoonMining/Processes/ProcessControl')}))
         structures = self.GetProductionStructures(force)
         self.EvalStructureConnections()
         keys = structures.keys()
@@ -617,7 +641,8 @@ class MoonMining(uicls.Window):
          const.groupSilo: 3}
         keys.sort(lambda x, y: s[structures[x].rec.groupID] - s[structures[y].rec.groupID])
         if not len(keys):
-            scrolllist.append(listentry.Get('Generic', {'label': mls.UI_INFLIGHT_NOANCHOREDSTRUCTURESFOUND}))
+            noAnchoredStructuresFoundLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/NoAnchoredStructuresFound')
+            scrolllist.append(listentry.Get('Generic', {'label': noAnchoredStructuresFoundLabel}))
         for itemID in keys:
             structure = structures[itemID]
             r = {}
@@ -764,9 +789,9 @@ class MoonMining(uicls.Window):
         ball = bp.GetBall(forcefield.itemID)
         log.LogInfo('Forcefield harmonic', ball.harmonic)
         if ball.harmonic not in (0, -1):
-            self.sr.forcefieldtext1.text = mls.UI_INFLIGHT_FORCEFIELDACTIVE
+            self.sr.forcefieldtext1.text = localization.GetByLabel('UI/Inflight/MoonMining/ForceField/ForceFieldActive')
         else:
-            self.sr.forcefieldtext1.text = mls.UI_INFLIGHT_FORCEFIELDINACTIVE
+            self.sr.forcefieldtext1.text = localization.GetByLabel('UI/Inflight/MoonMining/ForceField/ForceFieldInactive')
         self.sr.forcefieldcheckbox1.SetChecked([0, 1][(ball.corporationID != -1)], 0)
         self.sr.forcefieldcheckbox2.SetChecked([0, 1][(ball.allianceID != -1)], 0)
 
@@ -801,10 +826,10 @@ class MoonMining(uicls.Window):
                     res[row.typeID] = row.stacksize
 
             state = sm.GetService('pwn').GetStructureState(self.slimItem)[0]
-            l = [(1, mls.UI_GENERIC_ONLINE),
-             (2, mls.UI_GENERIC_POWER),
-             (3, mls.UI_GENERIC_CPU),
-             (4, mls.UI_GENERIC_REINFORCED)]
+            l = [(1, localization.GetByLabel('Entities/States/Online')),
+             (2, localization.GetByLabel('UI/Common/Power')),
+             (3, localization.GetByLabel('UI/Common/Cpu')),
+             (4, localization.GetByLabel('Entities/States/Reinforced'))]
             rs = sm.RemoteSvc('posMgr').GetControlTowerFuelRequirements()
             controlTowerResourcesByTypePurpose = {}
             for entry in rs:
@@ -820,9 +845,9 @@ class MoonMining(uicls.Window):
                     if controlTowerResourcesByTypePurpose[self.slimItem.typeID].has_key(purposeID):
                         tempList = []
                         for each in controlTowerResourcesByTypePurpose[self.slimItem.typeID][purposeID]:
-                            tempList.append((cfg.invtypes.Get(each.resourceTypeID).name, each))
+                            tempList.append(each)
 
-                        tempList = uiutil.SortListOfTuples(tempList)
+                        tempList = localizationUtil.Sort(tempList, key=lambda x: cfg.invtypes.Get(x.resourceTypeID).name)
                         for row in tempList:
                             typeID = row.resourceTypeID
                             if row.factionID is not None and row.factionID != factionID:
@@ -835,16 +860,16 @@ class MoonMining(uicls.Window):
                                 self.sr.restypes[typeID] = {'label': cfg.invtypes.Get(row.resourceTypeID).name,
                                  'volume': self.godma.GetType(row.resourceTypeID).volume}
                             factor = 0.0
-                            if caption == mls.UI_GENERIC_ONLINE:
+                            if caption == localization.GetByLabel('Entities/States/Online'):
                                 factor = 1.0
-                            if caption == mls.UI_GENERIC_REINFORCED:
+                            if caption == localization.GetByLabel('Entities/States/Reinforced'):
                                 factor = 1.0
                                 capacityToUse = self.capacitySecondary
                             else:
                                 capacityToUse = self.capacity
-                            if caption == mls.UI_GENERIC_POWER and self.sr.powerSupply != 0:
+                            if caption == localization.GetByLabel('UI/Common/Power') and self.sr.powerSupply != 0:
                                 factor = 1.0 * self.sr.powerConsumption / self.sr.powerSupply
-                            elif caption == mls.UI_GENERIC_CPU and self.sr.cpuSupply != 0:
+                            elif caption == localization.GetByLabel('UI/Common/Cpu') and self.sr.cpuSupply != 0:
                                 factor = 1.0 * self.sr.cpuConsumption / self.sr.cpuSupply
                             label = self.sr.restypes[typeID]['label']
                             text = int(math.ceil(row.quantity * factor * consumefactor))
@@ -855,10 +880,10 @@ class MoonMining(uicls.Window):
                             data = util.KeyVal()
                             quantity2 = max(text, 1.0)
                             if factor == 0.0:
-                                cyclestext = mls.UI_GENERIC_UNUSED
+                                cyclestext = localization.GetByLabel('UI/Inflight/MoonMining/Processes/UnusedFuel')
                             else:
                                 cyclestext = long(int(quantity / quantity2) * cycle * 10000L)
-                                data.Set('sort_%s' % mls.UI_GENERIC_TIMELEFT, cyclestext)
+                                data.Set('sort_%s' % localization.GetByLabel('UI/Inflight/MoonMining/Processes/TimeLeft'), cyclestext)
                                 cyclestext = util.FmtDate(cyclestext, 'ss')
                             label = '%s<t>%s<t><right>%s<t><right>%s<t><right>%s' % (caption,
                              label,
@@ -870,11 +895,16 @@ class MoonMining(uicls.Window):
                             data.typeID = typeid
                             data.OnDropData = self.OnTowerDropData
                             le = listentry.Get('Generic', data=data)
-                            headers = [mls.UI_GENERIC_PURPOSE,
-                             mls.UI_GENERIC_NAME,
-                             mls.HD_QTYPERCYCLE,
-                             mls.HD_QTYPRESENT,
-                             mls.UI_GENERIC_TIMELEFT]
+                            fuelPurposeLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/FuelPurpose')
+                            nameLabel = localization.GetByLabel('UI/Common/Name')
+                            quantityPerCycleLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/QuantityPerCycle')
+                            quantityPresentLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/QuantityPresent')
+                            timeLeftLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/TimeLeft')
+                            headers = [fuelPurposeLabel,
+                             nameLabel,
+                             quantityPerCycleLabel,
+                             quantityPresentLabel,
+                             timeLeftLabel]
                             headers = [ each.replace('(', '<br>(') for each in headers ]
                             scrolllist.append(le)
 
@@ -883,7 +913,7 @@ class MoonMining(uicls.Window):
             sys.exc_clear()
         self.sr.scroll.ShowHint()
         if not len(scrolllist):
-            self.sr.scroll.ShowHint(mls.UI_INFLIGHT_TOOFARAWAYFROMCONTROLTOWER)
+            self.sr.scroll.ShowHint(localization.GetByLabel('UI/Inflight/MoonMining/Processes/TooFarAwayFromControlTower'))
             headers = []
         self.sr.scroll.sr.id = 'moonmining_fuel'
         self.sr.scroll.Load(contentList=scrolllist, headers=headers)
@@ -893,24 +923,24 @@ class MoonMining(uicls.Window):
 
     def ShowAccess(self):
         if not len(self.sr.accesspanel.children):
-            options = [(mls.UI_CORP_CONFIGMANAGER, 0),
-             (mls.UI_CORP_CARETAKER, 3),
-             (mls.UI_GENERIC_CORPORATION, 1),
-             (mls.UI_GENERIC_ALLIANCE, 2)]
+            options = [(localization.GetByLabel('UI/Inflight/MoonMining/Structures/RoleConfigStarbaseEquipment'), 0),
+             (localization.GetByLabel('UI/Inflight/MoonMining/Structures/RoleStarbaseFuelTechnician'), 3),
+             (localization.GetByLabel('UI/Common/Corporation'), 1),
+             (localization.GetByLabel('UI/Common/Alliance'), 2)]
             self.sr.accessconfig = {}
             i = 5
             for config in ['anchor',
              'unanchor',
              'online',
              'offline']:
-                self.sr.accessconfig[config] = uicls.Combo(label=getattr(mls, 'UI_INFLIGHT_%s' % config.upper()), parent=self.sr.accesspanel, options=options, name=config, pos=(i + 5,
+                self.sr.accessconfig[config] = uicls.Combo(label=entities.POS_STRUCTURE_STATE[config], parent=self.sr.accesspanel, options=options, name=config, pos=(i + 5,
                  10,
                  0,
                  0), align=uiconst.TOPLEFT)
                 self.sr.accessconfig[config].width = 110
                 i += 120
 
-            btns = [(mls.UI_CMD_APPLY,
+            btns = [(localization.GetByLabel('UI/Common/Buttons/Apply'),
               self.SaveAccess,
               (),
               84)]
@@ -925,9 +955,12 @@ class MoonMining(uicls.Window):
          'offline']:
             self.sr.accessconfig[key].SelectItemByValue(deployFlags[key])
 
-        self.sr.scroll.sr.fixedColumns = {mls.UI_GENERIC_VIEW: 105,
-         mls.UI_GENERIC_TAKE: 105,
-         mls.UI_GENERIC_USE: 105}
+        viewAccessLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/ViewAccess')
+        takeAccessLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/TakeAccess')
+        useAccessLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/UseAccess')
+        self.sr.scroll.sr.fixedColumns = {viewAccessLabel: 105,
+         takeAccessLabel: 105,
+         useAccessLabel: 105}
         self.sr.scroll.OnColumnChanged = self.OnAccessColumnChanged
         if self.sr.Get('showing', '') != 'access':
             bp = sm.GetService('michelle').GetBallpark()
@@ -940,13 +973,17 @@ class MoonMining(uicls.Window):
                     scrolllist.append(listentry.Get('StructureAccess', data))
 
             if not len(scrolllist):
-                self.sr.scroll.ShowHint(mls.UI_INFLIGHT_NOOTHERSTRUCTURESINRANGE)
+                self.sr.scroll.ShowHint(localization.GetByLabel('UI/Inflight/MoonMining/Structures/NoOtherStructuresInRange'))
             self.sr.scroll.sr.ignoreTabTrimming = False
             self.sr.scroll.sr.id = 'moonmining_access'
-            self.sr.scroll.Load(contentList=scrolllist, headers=[mls.UI_GENERIC_NAME,
-             mls.UI_GENERIC_VIEW,
-             mls.UI_GENERIC_TAKE,
-             mls.UI_GENERIC_USE])
+            nameLabel = localization.GetByLabel('UI/Common/Name')
+            viewAccessLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/ViewAccess')
+            takeAccessLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/TakeAccess')
+            useAccessLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/UseAccess')
+            self.sr.scroll.Load(contentList=scrolllist, headers=[nameLabel,
+             viewAccessLabel,
+             takeAccessLabel,
+             useAccessLabel])
             self.OnAccessColumnChanged()
         self.sr.showing = 'access'
 
@@ -971,28 +1008,23 @@ class MoonMining(uicls.Window):
 
 
 
-    def StructureProgress(self, where, stateName, stateTimestamp, stateDelay, name, parenttext = None, xoffset = 2, top = 3):
+    def StructureProgress(self, where, label, stateTimestamp, stateDelay, parenttext = None, xoffset = 2, top = 3):
         sub = uicls.Container(name='progresscontainer', parent=where, align=uiconst.TOPRIGHT, width=82, height=12, left=xoffset, top=top)
         uicls.Frame(parent=sub, color=(1.0, 1.0, 1.0, 0.5))
-        te = uicls.Label(text='xxx', parent=sub, width=80, left=6, top=0, autowidth=False, fontsize=9, letterspace=1)
+        te = uicls.EveLabelSmall(text='xxx', parent=sub, width=80, left=6, top=0)
         p = uicls.Fill(parent=sub, align=uiconst.TOPLEFT, width=80, height=10, left=0, top=1, color=(1.0, 1.0, 1.0, 0.25))
-        startTime = blue.os.GetTime()
+        startTime = blue.os.GetWallclockTime()
         if stateDelay:
             stateDelay = float(stateDelay * 10000L)
-        doneStr = name % {'anchoring': mls.UI_INFLIGHT_ANCHORED,
-         'onlining': mls.UI_INFLIGHT_ONLINE,
-         'unanchoring': mls.UI_INFLIGHT_UNANCHORED,
-         'reinforced': mls.UI_INFLIGHT_ONLINE,
-         'operating': mls.UI_INFLIGHT_ONLINE}.get(stateName, mls.UI_GENERIC_DONE)
         endTime = 0
         if stateDelay:
             endTime = stateTimestamp + stateDelay
         while 1 and endTime:
-            timeLeft = endTime - blue.os.GetTime()
+            timeLeft = endTime - blue.os.GetWallclockTime()
             portion = timeLeft / stateDelay
             timeLeftSec = timeLeft / 1000.0
             if timeLeft <= 0:
-                parenttext.text = doneStr
+                parenttext.text = label
                 break
             te.text = util.FmtDate(long(timeLeft), 'ss')
             p.width = int(80 * portion)
@@ -1000,24 +1032,24 @@ class MoonMining(uicls.Window):
             if parenttext.destroyed:
                 return 
 
-        blue.pyos.synchro.Sleep(250)
+        blue.pyos.synchro.SleepWallclock(250)
         uix.Flush(sub)
         del where.children[-1]
         if parenttext.destroyed:
             return 
         parenttext.text = ''
-        blue.pyos.synchro.Sleep(250)
+        blue.pyos.synchro.SleepWallclock(250)
         if parenttext.destroyed:
             return 
-        parenttext.text = doneStr
-        blue.pyos.synchro.Sleep(250)
+        parenttext.text = label
+        blue.pyos.synchro.SleepWallclock(250)
         if parenttext.destroyed:
             return 
         parenttext.text = ''
-        blue.pyos.synchro.Sleep(250)
+        blue.pyos.synchro.SleepWallclock(250)
         if parenttext.destroyed:
             return 
-        parenttext.text = doneStr
+        parenttext.text = label
 
 
 
@@ -1025,7 +1057,7 @@ class MoonMining(uicls.Window):
         selected = self.sr.scroll.GetSelected()
         if not len(selected) > 0:
             return 
-        if sm.GetService('planetUI').IsOpen():
+        if sm.GetService('viewState').IsViewActive('planet'):
             raise UserError('StructureNotControllablePlanetMode')
         structures = []
         for sel in selected:
@@ -1057,7 +1089,10 @@ class MoonMining(uicls.Window):
 
 
 
-    def GetGauge(self, where = None, left = 0, top = 0, color = (1.0, 1.0, 1.0, 0.25)):
+    def GetGauge(self, where = None, left = 0, top = 0, color = (1.0,
+ 1.0,
+ 1.0,
+ 0.25)):
         g = uicls.Container(name='gauge', align=uiconst.TOPLEFT, width=64, height=9, left=left, top=top, parent=where)
         uicls.Container(name='push', parent=g, align=uiconst.TOBOTTOM, height=2)
         g.name = ''
@@ -1075,22 +1110,34 @@ class MoonMining(uicls.Window):
         if not self or self.destroyed or not self.slimItem:
             return 
         state = self.pwn.GetStructureState(self.slimItem)
-        statusText = getattr(mls, 'UI_GENERIC_' + state[0].replace(' - ', '').replace(' ', '').upper(), state[0])
+        statusText = entities.POS_STRUCTURE_STATE[state[0]]
         color = ''
-        if statusText == mls.UI_GENERIC_ONLINE:
+        if statusText == localization.GetByLabel('Entities/States/Online'):
             color = '<color=0xff65c212>'
-        elif statusText == mls.UI_GENERIC_OFFLINE:
+        elif statusText == localization.GetByLabel('UI/Inflight/MoonMining/Offline'):
             color = '<color=0xffd0371d>'
-        self.sr.status.text = '%s: %s <b>%s</b>' % (mls.UI_GENERIC_STATUS, color, statusText)
+        self.sr.status.text = localization.GetByLabel('UI/Inflight/MoonMining/TowerStatus', colorCode=color, currentStatus=statusText)
         if self.moonID is not None:
             moonstr = cfg.evelocations.Get(self.moonID).name
         else:
-            moonstr = cfg.evelocations.Get(eve.session.locationid).name + ' ' + mls.UI_INFLIGHT_NOTATTACHEDTOMOON
-        self.sr.locationtext.text = '%s: <b>%s</b>' % (mls.UI_GENERIC_LOCATION, moonstr)
+            moonstr = localization.GetByLabel('UI/Inflight/MoonMining/NotAttachedToMoon', locationID=eve.session.locationid)
+        self.sr.locationtext.text = localization.GetByLabel('UI/Inflight/MoonMining/TowerLocated', moonLocation=moonstr)
         if state[0] == 'online' and len(self.res) == 0:
             self.GetMoon()
-        if state[0] in ('anchoring', 'onlining', 'unanchoring', 'reinforced'):
-            uthread.new(self.StructureProgress, self.sr.locationtext.parent, getattr(mls, 'UI_GENERIC_' + state[0].upper(), state[0]), state[1], state[2], mls.UI_GENERIC_STATUS + ': %s', self.sr.status, -78, self.sr.status.top - 12)
+        allowedState = (const.pwnStructureStateAnchoring,
+         const.pwnStructureStateOnlining,
+         const.pwnStructureStateUnanchoring,
+         const.pwnStructureStateReinforced)
+        if state[0] in allowedState:
+            displayState = structProgressMap.get(state[0], None)
+            if displayState:
+                labelMap = {const.pwnStructureStateAnchored: localization.GetByLabel('Entities/States/StatusCaptionAnchored'),
+                 const.pwnStructureStateUnanchored: localization.GetByLabel('Entities/States/StatusCaptionUnanchored'),
+                 const.pwnStructureStateOnline: localization.GetByLabel('Entities/States/StatusCaptionOnline')}
+                label = labelMap[displayState]
+            else:
+                label = localization.GetByLabel('Entities/States/StatusCaptionDone')
+            uthread.new(self.StructureProgress, self.sr.locationtext.parent, label, state[1], state[2], self.sr.status, -78, self.sr.status.top - 12)
         self.UpdateDamage()
         bp = sm.GetService('michelle').GetBallpark()
         t = self.godma.GetType(self.slimItem.typeID)
@@ -1106,8 +1153,12 @@ class MoonMining(uicls.Window):
             kiRes *= getattr(s, 'kineticDamageResonanceMultiplier', 1.0)
             thRes *= getattr(s, 'thermalDamageResonanceMultiplier', 1.0)
 
-        self.sr.emkinText.text = '%d%%<t>%d%%' % (100 * (1.0 - emRes), 100 * (1.0 - kiRes))
-        self.sr.expthermText.text = '%d%%<t>%d%%' % (100 * (1.0 - exRes), 100 * (1.0 - thRes))
+        emPercentageLabel = localization.GetByLabel('UI/Inflight/MoonMining/DisplayPercentage', percent=int(100 * (1.0 - emRes)))
+        kiPercentageLabel = localization.GetByLabel('UI/Inflight/MoonMining/DisplayPercentage', percent=int(100 * (1.0 - kiRes)))
+        exPercentageLabel = localization.GetByLabel('UI/Inflight/MoonMining/DisplayPercentage', percent=int(100 * (1.0 - exRes)))
+        thPercentageLabel = localization.GetByLabel('UI/Inflight/MoonMining/DisplayPercentage', percent=int(100 * (1.0 - thRes)))
+        self.sr.emkinText.text = '%s<t>%s' % (emPercentageLabel, kiPercentageLabel)
+        self.sr.expthermText.text = '%s<t>%s' % (exPercentageLabel, thPercentageLabel)
         powerSupply = 0
         cpuSupply = 0
         powerConsumption = 0
@@ -1127,8 +1178,8 @@ class MoonMining(uicls.Window):
             self.sr.cpugauge.sr.bar.width = 0
         else:
             self.sr.cpugauge.sr.bar.width = int((self.sr.cpugauge.width - 2) * cpuConsumption / cpuSupply)
-        self.sr.powertext.text = '%s/%s %s' % (powerConsumption, powerSupply, mls.UI_GENERIC_MEGAWATTSHORT)
-        self.sr.cputext.text = '%s/%s %s' % (cpuConsumption, cpuSupply, mls.UI_GENERIC_TERAFLOPSSHORT)
+        self.sr.powertext.text = localization.GetByLabel('UI/Inflight/MoonMining/TowerPowerUsage', currentValue=powerConsumption, totalPower=powerSupply)
+        self.sr.cputext.text = localization.GetByLabel('UI/Inflight/MoonMining/TowerCPUUsage', currentValue=cpuConsumption, totalCPU=cpuSupply)
         self.sr.powerSupply = powerSupply
         self.sr.cpuSupply = cpuSupply
         self.sr.powerConsumption = powerConsumption
@@ -1150,15 +1201,15 @@ class MoonMining(uicls.Window):
         if shield is None:
             (barcolor.r, barcolor.g, barcolor.b,) = (1.0, 1.0, 0.1)
             self.sr.shieldgauge.sr.bar.width = int(self.sr.powergauge.width - 2)
-            self.sr.shieldtext.text = '<color=0xffff0000>%s</color>' % uiutil.UpperCase(mls.UI_GENERIC_REINFORCED_SHORT)
+            self.sr.shieldtext.text = '<color=0xffff0000>' + localization.GetByLabel('UI/Inflight/MoonMining/Reinforced') + '</color>'
         else:
             (barcolor.r, barcolor.g, barcolor.b,) = (0.8, 0.8, 1.0)
             self.sr.shieldgauge.sr.bar.width = int(round((self.sr.powergauge.width - 2) * (shield or 0.0)))
-            self.sr.shieldtext.text = '%.0f%%' % (shield * 100)
+            self.sr.shieldtext.text = localization.GetByLabel('UI/Inflight/MoonMining/DisplayPercentage', percent=int(shield * 100))
         self.sr.armorgauge.sr.bar.width = int(round((self.sr.powergauge.width - 2) * armor))
-        self.sr.armortext.text = '%.0f%%' % (armor * 100)
+        self.sr.armortext.text = localization.GetByLabel('UI/Inflight/MoonMining/DisplayPercentage', percent=int(armor * 100))
         self.sr.structuregauge.sr.bar.width = int(round((self.sr.powergauge.width - 2) * structure))
-        self.sr.structuretext.text = '%.0f%%' % (structure * 100)
+        self.sr.structuretext.text = localization.GetByLabel('UI/Inflight/MoonMining/DisplayPercentage', percent=structure * 100)
 
 
 
@@ -1189,7 +1240,7 @@ class MoonMining(uicls.Window):
 
     def GetTypeMenu(self, entry):
         data = entry.sr.node
-        return [(mls.UI_CMD_SHOWINFO, self.ShowInfo, (data.typeID,))]
+        return [(localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo, (data.typeID,))]
 
 
 
@@ -1205,7 +1256,7 @@ class MoonMining(uicls.Window):
 
 
     def OpenResources(self):
-        sm.GetService('menu').OpenStructure(self.slimItem.itemID, mls.UI_INFLIGHT_FUEL)
+        sm.GetService('menu').OpenStructure(self.slimItem.itemID, localization.GetByLabel('UI/Inflight/MoonMining/Processes/Fuel'))
 
 
 
@@ -1296,23 +1347,26 @@ class MoonMining(uicls.Window):
          const.defaultPadding + 2,
          const.defaultPadding + 2))
         uicls.Frame(parent=cont, idx=0)
-        uix.GetContainerHeader(mls.UI_INFLIGHT_SENTRYGUNSETTINGS, cont, 0)
+        uix.GetContainerHeader(localization.GetByLabel('UI/Inflight/MoonMining/Defense/SentryGunSettings'), cont, 0)
         uicls.Container(name='push', align=uiconst.TOLEFT, width=6, parent=cont)
         uicls.Container(name='push', align=uiconst.TOLEFT, width=6, parent=cont)
         s3a = uicls.Container(parent=cont, align=uiconst.TOTOP)
-        self.sr.alliancestandingcheckbox = uicls.Checkbox(text=mls.UI_GENERIC_USEALLIANCESTANDINGS, parent=s3a, configName='', retval='chkusealliancecontroltower')
+        useAllianceStandingsLabel = localization.GetByLabel('UI/Inflight/MoonMining/Defense/UseAllianceStandings')
+        self.sr.alliancestandingcheckbox = uicls.Checkbox(text=useAllianceStandingsLabel, parent=s3a, configName='', retval='chkusealliancecontroltower')
         s3a.height = self.sr.alliancestandingcheckbox.height + 4
         if not session.allianceid:
             s3a.state = uiconst.UI_HIDDEN
         s1 = uicls.Container(parent=cont, align=uiconst.TOTOP, top=const.defaultPadding)
-        self.sr.standingcheckbox1 = uicls.Checkbox(text=mls.UI_INFLIGHT_ATTACKIFSTANDINGLOWERTHEN, parent=s1, configName='', retval='chkstanding', align=uiconst.TOPLEFT, pos=(0, 0, 250, 0))
+        attackIfStandingLowerThanLabel = localization.GetByLabel('UI/Inflight/MoonMining/Defense/AttackIfStandingLowerThan')
+        self.sr.standingcheckbox1 = uicls.Checkbox(text=attackIfStandingLowerThanLabel, parent=s1, configName='', retval='chkstanding', align=uiconst.TOPLEFT, pos=(0, 0, 250, 0))
         self.sr.standingedit1 = uicls.SinglelineEdit(name='standing', parent=s1, setvalue=None, pos=(255, 0, 80, 0), floats=(-10, 10))
         s1.height = max(self.sr.standingcheckbox1.height, self.sr.standingedit1.height)
         s2 = uicls.Container(parent=cont, align=uiconst.TOTOP, top=const.defaultPadding)
-        self.sr.standingcheckbox2 = uicls.Checkbox(text=mls.UI_INFLIGHT_ATTACKIFSECURITYSTATUSBELOW, parent=s2, configName='', retval='chkstatus', align=uiconst.TOPLEFT, pos=(0, 0, 250, 0))
+        securityStatusBelowLabel = localization.GetByLabel('UI/Inflight/MoonMining/Defense/AttackIfSecurityStatusBelow')
+        self.sr.standingcheckbox2 = uicls.Checkbox(text=securityStatusBelowLabel, parent=s2, configName='', retval='chkstatus', align=uiconst.TOPLEFT, pos=(0, 0, 250, 0))
         self.sr.standingedit2 = uicls.SinglelineEdit(name='status', parent=s2, setvalue=None, pos=(255, 0, 80, 0), floats=(-10, 10))
         s2.height = max(self.sr.standingcheckbox2.height, self.sr.standingedit2.height)
-        checkboxes = [(mls.UI_INFLIGHT_ATTACKIFOTHERSTANDINGISDROPPING, 4, 'chkourstatus'), (mls.UI_INFLIGHT_ATTACKIFAGGRESSION, 5, 'chkotherstanding'), (mls.UI_INFLIGHT_ATTACKIFATWAR, 6, 'chkwar')]
+        checkboxes = [(localization.GetByLabel('UI/Inflight/MoonMining/Defense/AttackIfSecurityStatusIsDropping'), 4, 'chkourstatus'), (localization.GetByLabel('UI/Inflight/MoonMining/Defense/AttackIfAggression'), 5, 'chkotherstanding'), (localization.GetByLabel('UI/Inflight/MoonMining/Defense/AttackIfAtWar'), 6, 'chkwar')]
         for (label, key, name,) in checkboxes:
             s = uicls.Container(parent=cont, align=uiconst.TOTOP, top=const.defaultPadding)
             cb = uicls.Checkbox(text=label, parent=s, configName='', retval=name)
@@ -1320,7 +1374,8 @@ class MoonMining(uicls.Window):
             s.height = cb.height
 
         self.sr.standingsinited = 1
-        b = uicls.Button(parent=cont, label=mls.UI_GENERIC_APPLY, align=uiconst.BOTTOMRIGHT, pos=(5, 5, 0, 0), func=self.SaveStandings)
+        applyLabel = localization.GetByLabel('UI/Common/Buttons/Apply')
+        b = uicls.Button(parent=cont, label=applyLabel, align=uiconst.BOTTOMRIGHT, pos=(5, 5, 0, 0), func=self.SaveStandings)
         if sm.GetService('map').GetSecurityClass(eve.session.solarsystemid2) == const.securityClassHighSec:
             s1.state = uiconst.UI_HIDDEN
             s2.state = uiconst.UI_HIDDEN
@@ -1352,36 +1407,43 @@ class MoonMining(uicls.Window):
          const.defaultPadding + 2,
          const.defaultPadding + 2))
         uicls.Frame(parent=cont, idx=0)
-        uix.GetContainerHeader(mls.UI_INFLIGHT_FORCEFIELDHARMONICSETTINGS, cont, 0)
+        uix.GetContainerHeader(localization.GetByLabel('UI/Inflight/MoonMining/ForceField/ForceFieldHarmonicSettings'), cont, 0)
         uicls.Container(name='push', align=uiconst.TOLEFT, width=6, parent=cont)
         uicls.Container(name='push', align=uiconst.TORIGHT, width=6, parent=cont)
         s0 = uicls.Container(parent=cont, align=uiconst.TOTOP)
-        statusText = uicls.Label(text='%s:' % mls.UI_GENERIC_STATUS, parent=s0, fontsize=9, letterspace=2, uppercase=1, top=5)
-        self.sr.forcefieldtext1 = uicls.Label(text=mls.UI_INFLIGHT_NOPASSWORDSET, parent=s0, left=80, top=3, width=200, height=32, autoheight=False, autowidth=False)
+        forceFieldStatusLabel = localization.GetByLabel('UI/Inflight/MoonMining/ForceField/ForceFieldStatus')
+        statusText = uicls.EveLabelSmall(text=forceFieldStatusLabel, parent=s0, top=5)
+        noPasswordSetLabel = localization.GetByLabel('UI/Inflight/MoonMining/ForceField/NoPasswordSet')
+        self.sr.forcefieldtext1 = uicls.EveLabelMedium(text=noPasswordSetLabel, parent=s0, left=80, top=3, width=200, height=32)
         s0.height = max(statusText.textheight, self.sr.forcefieldtext1.textheight)
         uicls.Container(name='push', align=uiconst.TOTOP, height=6, parent=cont)
-        uix.GetContainerHeader(mls.UI_GENERIC_PASSWORD, cont, xmargin=-6)
+        uix.GetContainerHeader(localization.GetByLabel('UI/Inflight/MoonMining/ForceField/PasswordHeader'), cont, xmargin=-6)
         uicls.Container(name='push', align=uiconst.TOTOP, height=6, parent=cont)
         s1 = uicls.Container(parent=cont, align=uiconst.TOTOP)
-        passwordText = uicls.Label(text='%s:' % mls.UI_GENERIC_PASSWORD, parent=s1, left=0, top=4, width=80, autowidth=False, fontsize=9, letterspace=2, uppercase=1)
+        passwordLabel = localization.GetByLabel('UI/Inflight/MoonMining/ForceField/PasswordLabel')
+        passwordText = uicls.EveLabelSmall(text=passwordLabel, parent=s1, left=0, top=4, width=80)
         self.sr.forcefieldedit1 = uicls.SinglelineEdit(name='password', parent=s1, setvalue=None, pos=(80, 0, 200, 0))
-        self.sr.forcefieldedit1.SetPasswordChar('\x95')
+        self.sr.forcefieldedit1.SetPasswordChar(u'\u2022')
         s1.height = max(passwordText.textheight, self.sr.forcefieldedit1.height) + 4
         s2 = uicls.Container(parent=cont, align=uiconst.TOTOP)
-        confirmText = uicls.Label(text='%s:' % mls.UI_GENERIC_CONFIRM, parent=s2, left=0, top=4, width=80, autowidth=False, fontsize=9, letterspace=2, uppercase=1)
+        confirmPasswordLabel = localization.GetByLabel('UI/Inflight/MoonMining/ForceField/ConfirmPassword')
+        confirmText = uicls.EveLabelSmall(text=confirmPasswordLabel, parent=s2, left=0, top=4, width=80)
         self.sr.forcefieldedit2 = uicls.SinglelineEdit(name='confirm', parent=s2, setvalue=None, left=80, top=0, width=200)
-        self.sr.forcefieldedit2.SetPasswordChar('\x95')
+        self.sr.forcefieldedit2.SetPasswordChar(u'\u2022')
         s2.height = max(confirmText.textheight, self.sr.forcefieldedit2.height) + 4
         uicls.Container(name='push', align=uiconst.TOTOP, height=6, parent=cont)
-        uix.GetContainerHeader(mls.UI_RMR_RESTRICTIONMASKS, cont, xmargin=-6)
+        uix.GetContainerHeader(localization.GetByLabel('UI/Inflight/MoonMining/ForceField/RestrictionMasks'), cont, xmargin=-6)
         uicls.Container(name='push', align=uiconst.TOTOP, height=6, parent=cont)
         s3 = uicls.Container(parent=cont, align=uiconst.TOTOP)
-        self.sr.forcefieldcheckbox1 = uicls.Checkbox(text=mls.UI_RMR_ALLOWCORPMEMBERUSAGE, parent=s3, configName='', retval='chkcorpentrance')
+        corporationMemberUsageLabel = localization.GetByLabel('UI/Inflight/MoonMining/ForceField/AllowCorporationMemberUsage')
+        self.sr.forcefieldcheckbox1 = uicls.Checkbox(text=corporationMemberUsageLabel, parent=s3, configName='', retval='chkcorpentrance')
         s3.height = self.sr.forcefieldcheckbox1.height + 4
         s4 = uicls.Container(parent=cont, align=uiconst.TOTOP)
-        self.sr.forcefieldcheckbox2 = uicls.Checkbox(text=mls.UI_RMR_ALLOWALLIANCEMEMBERUSAGE, parent=s4, configName='', retval='chkallianceentrance')
+        allianceMemberUsageLabel = localization.GetByLabel('UI/Inflight/MoonMining/ForceField/AllowAllianceMemberUsage')
+        self.sr.forcefieldcheckbox2 = uicls.Checkbox(text=allianceMemberUsageLabel, parent=s4, configName='', retval='chkallianceentrance')
         s4.height = self.sr.forcefieldcheckbox2.height + 4
-        b = uicls.Button(parent=cont, label=mls.UI_GENERIC_APPLY, pos=(5, 5, 0, 0), func=self.SaveForcefield, align=uiconst.BOTTOMRIGHT)
+        applyLabel = localization.GetByLabel('UI/Common/Buttons/Apply')
+        b = uicls.Button(parent=cont, label=applyLabel, pos=(5, 5, 0, 0), func=self.SaveForcefield, align=uiconst.BOTTOMRIGHT)
         par = uicls.Container(name='line', align=uiconst.TOBOTTOM, height=1, parent=cont, top=b.height + 10)
         uicls.Fill(parent=par, padLeft=-5, padRight=-5)
         self.sr.forcefieldinited = 1
@@ -1395,7 +1457,7 @@ class MoonMining(uicls.Window):
         allowCorp = [False, True][self.sr.forcefieldcheckbox1.GetValue()]
         allowAlliance = [False, True][self.sr.forcefieldcheckbox2.GetValue()]
         if password != confirm:
-            self.sr.forcefieldtext1.text = mls.UI_INFLIGHT_PASSWANDCONFIRMNOTMATCH
+            self.sr.forcefieldtext1.text = localization.GetByLabel('UI/Inflight/MoonMining/ForceField/PasswordAndConfirmMismatch')
             return 
         if not len(password):
             if not forceField or forceField == self.slimItem:
@@ -1408,7 +1470,7 @@ class MoonMining(uicls.Window):
 
 
     def GetShell(self, itemID):
-        tower = eve.GetInventoryFromId(itemID)
+        tower = sm.GetService('invCache').GetInventoryFromId(itemID)
         return tower
 
 
@@ -1419,7 +1481,7 @@ class MoonMining(uicls.Window):
             try:
                 self.moon = self.posMgr.GetMoonForTower(self.slimItem.itemID)
             except UserError as e:
-                self.CloseX()
+                self.CloseByUser()
                 raise 
         self.moonID = self.moon[0]
         if self.moon[1] is not None:
@@ -1646,7 +1708,7 @@ class MoonMining(uicls.Window):
                     tmp[t.groupID].append(t.typeID)
 
             import form
-            wnd = sm.GetService('window').GetWindow('SelectSiloType', create=1, decoClass=form.SelectSiloType, ignoreCurrent=1, list=tmp)
+            wnd = form.SelectSiloType.Open(list=tmp)
             if wnd.ShowModal() == uiconst.ID_OK:
                 chosen = wnd.result
             else:
@@ -1655,13 +1717,14 @@ class MoonMining(uicls.Window):
             rec = sm.GetService('michelle').GetBallpark().slimItems[itemID]
             quality = self.godma.GetType(rec.typeID).harvesterQuality
             used = [ structure.supplies.keys()[0] for structure in self.sr.structures.values() if len(structure.supplies) if structure.rec.groupID == const.groupMoonMining ]
-            tmplist = [(mls.UI_GENERIC_NONE, 0, 0)]
+            tmplist = [(localization.GetByLabel('UI/Inflight/MoonMining/Processes/HarvestNone'), 0, 0)]
             for (t, q,) in self.res.iteritems():
                 if t not in used:
-                    str = '%s (%s %s)' % (cfg.invtypes.Get(t).name, min(quality, q), uix.Plural(min(quality, q), 'UI_GENERIC_UNIT'))
-                    tmplist.append((str, t, t))
+                    harvestType = localization.GetByLabel('UI/Inflight/MoonMining/Processes/HarvestType', mineralID=t, amount=min(quality, q))
+                    tmplist.append((harvestType, t, t))
 
-            chosen = uix.ListWnd(tmplist, None, mls.UI_INFLIGHT_SELECTMOONMAT, None, 1, minChoices=1, isModal=1)
+            selectMoonMaterialLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/SelectMoonMaterial')
+            chosen = uix.ListWnd(tmplist, None, selectMoonMaterialLabel, None, 1, minChoices=1, isModal=1)
             if chosen is not None:
                 chosen = chosen[1]
         if chosen is not None:
@@ -1736,7 +1799,7 @@ class MoonMining(uicls.Window):
 
 
     def StateChangeFinished(self, rec, state):
-        blue.pyos.synchro.Sleep(state[2])
+        blue.pyos.synchro.SleepWallclock(state[2])
         if self and not self.destroyed:
             self.UpdateStructures(rec)
 
@@ -1789,7 +1852,7 @@ class MoonMining(uicls.Window):
         if ball:
             log.LogInfo('DoBallRemove::moonmining', ball.id)
         if slimItem.itemID == self.slimItem.itemID:
-            self.CloseX()
+            self.CloseByUser()
             return 
         if slimItem.categoryID == const.categoryStructure:
             uthread.new(self.UpdateStructures)
@@ -1799,7 +1862,7 @@ class MoonMining(uicls.Window):
     def DoBallClear(self, solitem):
         if not self or self.destroyed:
             return 
-        self.CloseX()
+        self.CloseByUser()
 
 
 
@@ -1818,7 +1881,7 @@ class SelectSiloType(uicls.Window):
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         list = attributes.list
-        self.SetCaption(mls.UI_INFLIGHT_SELECTSILOTYPE)
+        self.SetCaption(localization.GetByLabel('UI/Inflight/MoonMining/Processes/SelectSiloType'))
         self.SetMinSize([256, 256])
         self.DefineButtons(uiconst.OKCANCEL)
         self.SetWndIcon()
@@ -1839,9 +1902,9 @@ class SelectSiloType(uicls.Window):
              'showlen': 1,
              'sublevel': 1,
              'state': 'locked'}
-            scrolllist.append((label, listentry.Get('Group', data)))
+            scrolllist.append(listentry.Get('Group', data))
 
-        scrolllist = uiutil.SortListOfTuples(scrolllist)
+        scrolllist = localizationUtil.Sort(scrolllist, key=lambda x: x.label)
         self.scroll.state = uiconst.UI_NORMAL
         self.scroll.Load(contentList=scrolllist)
 
@@ -1857,10 +1920,9 @@ class SelectSiloType(uicls.Window):
             data.listvalue = typeID
             data.id = ('TypeSel', typeID)
             data.OnDblClick = self.DblClickEntry
-            scrolllist.append((label, listentry.Get('Generic', data=data)))
+            scrolllist.append(listentry.Get('Generic', data=data))
 
-        scrolllist = uiutil.SortListOfTuples(scrolllist)
-        return scrolllist
+        return localizationUtil.Sort(scrolllist, key=lambda x: x.label)
 
 
 
@@ -1877,7 +1939,7 @@ class SelectSiloType(uicls.Window):
     def Confirm(self, *etc):
         self.result = [ entry.listvalue for entry in self.scroll.GetSelected() ]
         if not self.result:
-            info = mls.UI_GENERIC_PICKERROR2_1CHOICE
+            info = localization.GetByLabel('UI/Inflight/MoonMining/Processes/MustSelectOne')
             raise UserError('CustomInfo', {'info': info})
         self.result = self.result[0]
         self.SetModalResult(uiconst.ID_OK)
@@ -1915,16 +1977,16 @@ class BaseStructure(uicls.SE_BaseClassCore):
         self.sr.textcol1 = uicls.Container(name='textcol1', align=uiconst.TOLEFT, width=150, parent=self.sr.textcont)
         self.sr.textcol3 = uicls.Container(name='textcol3', align=uiconst.TORIGHT, width=75, parent=self.sr.textcont)
         self.sr.textcol2 = uicls.Container(name='textcol2', align=uiconst.TOALL, parent=self.sr.textcont, clipChildren=1, pos=(0, 0, 0, 0))
-        self.sr.label = uicls.Label(text='', parent=self.sr.textcol1, left=4, top=4, autoheight=False, height=12, state=uiconst.UI_DISABLED, letterspace=1)
-        self.sr.label2 = uicls.Label(text='', parent=self.sr.textcol1, left=4, top=4, autoheight=False, height=12, state=uiconst.UI_DISABLED, letterspace=1)
-        self.sr.cycles = uicls.Label(text='1 cycle', parent=self.sr.textcol1, left=5, top=18, width=128, height=12, state=uiconst.UI_DISABLED, letterspace=2, fontsize=9)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=self.sr.textcol1, left=4, top=4, state=uiconst.UI_DISABLED)
+        self.sr.label2 = uicls.EveLabelMedium(text='', parent=self.sr.textcol1, left=4, top=4, state=uiconst.UI_DISABLED)
+        self.sr.cycles = uicls.EveLabelSmall(text='1 cycle', parent=self.sr.textcol1, left=5, top=18, width=128, state=uiconst.UI_DISABLED)
         self.sr.actionparent = uicls.Container(name='actionparent', align=uiconst.TORIGHT, left=2, width=82, parent=self.sr.textcol3)
-        self.sr.onlinebutton = uicls.Container(name='onlinebutton', parent=self.sr.actionparent, top=5, left=14, width=65, height=10, align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL)
-        self.sr.onlinebuttonText = uicls.Label(text='', parent=self.sr.onlinebutton, uppercase=1, autowidth=True, autoheight=True, align=uiconst.TOALL, fontsize=9, state=uiconst.UI_NORMAL)
+        self.sr.onlinebutton = uicls.Container(name='onlinebutton', parent=self.sr.actionparent, top=2, left=14, width=65, height=13, align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL)
+        self.sr.onlinebuttonText = uicls.EveLabelSmall(text='', parent=self.sr.onlinebutton, align=uiconst.TOALL, state=uiconst.UI_NORMAL)
         self.sr.onlinebuttonText.OnClick = self.Online
         uicls.Frame(parent=self.sr.onlinebutton)
-        self.sr.changebutton = uicls.Container(name='changebutton', parent=self.sr.actionparent, left=14, top=17, width=65, height=10, align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL)
-        self.sr.changebuttonText = uicls.Label(text='<center>%s' % mls.UI_CMD_CHANGETYPE, parent=self.sr.changebutton, uppercase=1, autowidth=True, autoheight=True, align=uiconst.TOALL, fontsize=9, state=uiconst.UI_NORMAL)
+        self.sr.changebutton = uicls.Container(name='changebutton', parent=self.sr.actionparent, left=14, top=17, width=65, height=13, align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL)
+        self.sr.changebuttonText = uicls.EveLabelSmall(text='<center>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/ChangeType'), parent=self.sr.changebutton, align=uiconst.TOALL, state=uiconst.UI_NORMAL)
         uicls.Frame(parent=self.sr.changebutton)
 
 
@@ -1943,13 +2005,13 @@ class BaseStructure(uicls.SE_BaseClassCore):
             cycle = 1
         color = [(1.0, 1.0, 1.0, 1.0), (1.0, 0.0, 0.0, 1.0)][self.sr.node.Get('connected', 0)]
         self.sr.cycles.color.SetRGB(color[0], color[1], color[2])
-        self.sr.cycles.text = getattr(mls, 'UI_GENERIC_' + self.sr.node.state.replace(' - ', '').replace(' ', '').upper(), self.sr.node.state)
+        self.sr.cycles.text = entities.POS_STRUCTURE_STATE[self.sr.node.state]
         if self.sr.node.state.startswith('reinforced'):
             self.sr.onlinebutton.state = uiconst.UI_HIDDEN
         elif self.sr.node.state.startswith('onl'):
-            self.sr.onlinebuttonText.text = '<center>%s' % mls.UI_INFLIGHT_PUTOFFLINE
+            self.sr.onlinebuttonText.text = '<center>' + localization.GetByLabel('UI/Inflight/MoonMining/PutOffline')
         else:
-            self.sr.onlinebuttonText.text = '<center>%s' % mls.UI_INFLIGHT_PUTONLINE
+            self.sr.onlinebuttonText.text = '<center>' + localization.GetByLabel('UI/Inflight/MoonMining/PutOnline')
         self.sr.onlinebutton.state = uiconst.UI_NORMAL
         self.cycles = cycle
         self.LoadResourceIcons()
@@ -2056,14 +2118,15 @@ class Harvester(BaseStructure):
 
     def Startup(self, *args):
         BaseStructure.Startup(self, args)
-        self.sr.typetext = uicls.Label(text='', parent=self.sr.textcol2, left=4, top=19, state=uiconst.UI_DISABLED, letterspace=2, uppercase=1, fontsize=9, idx=0)
+        self.sr.typetext = uicls.EveLabelSmall(text='', parent=self.sr.textcol2, left=4, top=19, state=uiconst.UI_DISABLED, idx=0)
 
 
 
     def Load(self, node):
         BaseStructure.Load(self, node)
-        self.sr.label2.text = self.sr.node.Get('label2', None) or mls.UI_INFLIGHT_HARVESTER
-        self.sr.hint = self.sr.label2.text + '<br>%s: %s' % (mls.UI_INFLIGHT_CURRENTSTATUS, getattr(mls, 'UI_GENERIC_' + self.sr.node.state.replace(' - ', '').replace(' ', '').upper(), self.sr.node.state))
+        self.sr.label2.text = self.sr.node.Get('label2', None) or localization.GetByLabel('UI/Inflight/MoonMining/Processes/Harvester')
+        currentStatusLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/CurrentStatus', status=entities.POS_STRUCTURE_STATE[self.sr.node.state])
+        self.sr.hint = self.sr.label2.text + '<br>%s' % currentStatusLabel
         mat = None
         if len(self.sr.node.products):
             (k, v,) = self.sr.node.products.items()[0]
@@ -2071,35 +2134,30 @@ class Harvester(BaseStructure):
             if k is not None:
                 self.sr.typetext.text = cfg.invtypes.Get(k).name
             else:
-                self.sr.typetext.text = '<color=0xff0000ff>%s' % mls.UI_INFLIGHT_NOMATERIALSET
+                self.sr.typetext.text = localization.GetByLabel('UI/Inflight/MoonMining/Processes/NoMaterialSet')
         if self.sr.node.connected:
-            linktext = '<br><br>%s' % mls.UI_INFLIGHT_HARVESTERLOAD1
+            linktext = '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/HarvesterCorrectlyLinked')
         else:
-            linktext = '<br><br>%s' % mls.UI_INFLIGHT_HARVESTERLOAD2
+            linktext = '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/HarvesterNotLinked')
         if not self.sr.node.state.startswith('online'):
             if not mat:
-                self.sr.hint += '<br><br>%s' % mls.UI_INFLIGHT_HARVESTERLOAD3
-            elif len(self.sr.node.products) and mat[0]:
-                self.sr.hint += '<br><br>' + mls.UI_INFLIGHT_HARVESTERLOAD4 % {'units': mat[1] * sm.GetService('godma').GetType(mat[0]).moonMiningAmount,
-                 'type': cfg.invtypes.Get(mat[0]).name,
-                 'time': self.sr.node.cycle / 60000}
+                self.sr.hint += '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/HarvesterNoMaterial')
             else:
-                self.sr.hint += '<br><br>%s' % mls.UI_INFLIGHT_HARVESTERLOAD5
-            self.sr.hint += mls.UI_INFLIGHT_HARVESTERLOAD6 % {'min': self.sr.node.cycle / 60000}
-            self.sr.hint += linktext
+                harvesterOfflineLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/HarvesterOffline', cycleTime=self.sr.node.cycle / 60000)
+                if len(self.sr.node.products) and mat[0]:
+                    self.sr.hint += '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/HarvesterCycleInformation', amount=mat[1] * sm.GetService('godma').GetType(mat[0]).moonMiningAmount, mineralID=mat[0], cycleTime=self.sr.node.cycle / 60000, harvesterOffline=harvesterOfflineLabel)
+                else:
+                    self.sr.hint += '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/HarvesterNotConfigured', harvesterOffline=harvesterOfflineLabel)
+                self.sr.hint += linktext
         elif self.sr.node.state.startswith('online - start'):
             if mat:
-                self.sr.hint += '<br><br>' + mls.UI_INFLIGHT_HARVESTERLOAD7 % {'min': self.sr.node.cycle / 60000,
-                 'units': mat[2] * sm.GetService('godma').GetType(mat[0]).moonMiningAmount,
-                 'type': cfg.invtypes.Get(mat[0]).name,
-                 'min2': self.sr.node.cycle / 60000}
+                self.sr.hint += '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/HarvesterStarted', cycleTime=self.sr.node.cycle / 60000, amount=mat[2] * sm.GetService('godma').GetType(mat[0]).moonMiningAmount, mineralID=mat[0])
             else:
-                self.sr.hint += '<br><br>%s' % mls.UI_INFLIGHT_HARVESTERLOAD8
+                self.sr.hint += '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/HarvesterMustChangeType')
             self.sr.hint += linktext
         elif self.sr.node.state.startswith('online - active'):
-            self.sr.hint += '<br><br>' + mls.UI_INFLIGHT_HARVESTERLOAD9 % {'units': mat[2] * sm.GetService('godma').GetType(mat[0]).moonMiningAmount,
-             'type': cfg.invtypes.Get(mat[0]).name,
-             'min': self.sr.node.cycle / 60000}
+            harvesterActiveLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/HarvesterActive', miningAmount=mat[2] * sm.GetService('godma').GetType(mat[0]).moonMiningAmount, mineralID=mat[0], cycleTime=self.sr.node.cycle / 60000)
+            self.sr.hint += '<br><br>' + harvesterActiveLabel
             self.sr.hint += linktext
         self.sr.changebuttonText.OnClick = (self.sr.node.settype, self.sr.node.slimitem.itemID, self.sr.node.slimitem.groupID)
         self.sr.changebutton.state = [uiconst.UI_HIDDEN, uiconst.UI_NORMAL][(self.sr.node.state == 'anchored')]
@@ -2116,8 +2174,9 @@ class Harvester(BaseStructure):
 
 
     def GetMenu(self):
+        changeHarvestedMaterialLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/ChangeHarvestedMaterial')
         m = BaseStructure.GetMenu(self)
-        m += [(mls.UI_CMD_CHANGEHARVESTEDMAT, self.sr.node.settype, (self.sr.node.slimitem.itemID, self.sr.node.slimitem.groupID))]
+        m += [(changeHarvestedMaterialLabel, self.sr.node.settype, (self.sr.node.slimitem.itemID, self.sr.node.slimitem.groupID))]
         return m
 
 
@@ -2138,15 +2197,16 @@ class Silo(BaseStructure):
         g.sr.bar = uicls.Fill(parent=g, align=uiconst.TOLEFT, color=(1.0, 1.0, 1.0, 0.25))
         uicls.Fill(parent=g, color=(1.0, 1.0, 1.0, 0.0))
         self.sr.gauge = g
-        self.sr.gaugetext = uicls.Label(text='', parent=self.sr.textcol2, left=g.left + g.width + 5, top=5, width=300, height=12, state=uiconst.UI_DISABLED, letterspace=2, fontsize=9, idx=0, autoheight=False, autowidth=False)
-        self.sr.typetext = uicls.Label(text='', parent=self.sr.textcol2, left=4, top=19, state=uiconst.UI_DISABLED, letterspace=2, uppercase=1, fontsize=9, idx=0)
+        self.sr.gaugetext = uicls.EveLabelSmall(text='', parent=self.sr.textcol2, left=g.left + g.width + 5, top=5, width=300, state=uiconst.UI_DISABLED, idx=0)
+        self.sr.typetext = uicls.EveLabelSmall(text='', parent=self.sr.textcol2, left=4, top=19, state=uiconst.UI_DISABLED, idx=0)
 
 
 
     def Load(self, node):
         BaseStructure.Load(self, node)
-        self.sr.label2.text = self.sr.node.Get('label2', None) or mls.UI_GENERIC_SILO
-        self.sr.hint = self.sr.label2.text + '<br>%s: %s' % (mls.UI_INFLIGHT_CURRENTSTATUS, getattr(mls, 'UI_GENERIC_' + self.sr.node.state.replace(' - ', '').replace(' ', '').upper(), self.sr.node.state))
+        self.sr.label2.text = self.sr.node.Get('label2', None) or localization.GetByLabel('UI/Inflight/MoonMining/Processes/Silo')
+        currentStatusLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/CurrentStatus', status=entities.POS_STRUCTURE_STATE[self.sr.node.state])
+        self.sr.hint = self.sr.label2.text + '<br>%s' % currentStatusLabel
         used2 = used1 = 0
         if len(self.sr.node.resources):
             (k, v,) = self.sr.node.resources.items()[0]
@@ -2154,19 +2214,17 @@ class Silo(BaseStructure):
             if self.sr.node.Get('reaction', None):
                 used1 = self.sr.node.reaction[1]
                 used2 = self.sr.node.reaction[0]
-            self.sr.gaugetext.text = '%s/%s' % (max(used2, 0), max(used1, 0))
+            self.sr.gaugetext.text = localization.GetByLabel('UI/Inflight/MoonMining/Processes/CapacityGauge', currentCapacity=max(round(used2, 1), 0), maxCapacity=max(round(used1, 1), 0))
             self.sr.typetext.text = cfg.invtypes.Get(k).name
             self.sr.gauge.sr.bar.width = int((self.sr.gauge.width - 2) * max(used2, 0) / max(used1, 1))
             if not self.sr.node.state.startswith('online'):
-                self.sr.hint += '<br><br>' + mls.UI_INFLIGHT_SILOLOAD1 % {'units': max(used1, 0),
-                 'type': cfg.invtypes.Get(k).name}
-                self.sr.hint += '<br><br>%s' % mls.UI_INFLIGHT_SILOLOAD2
+                self.sr.hint += '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/SiloOffline', capacity=max(used1, 0), mineralID=k)
+                self.sr.hint += '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/SiloOfflineAccess')
             else:
-                self.sr.hint += '<br><br>' + mls.UI_INFLIGHT_SILOLOAD3 % {'units': max(used1, 0),
-                 'type': cfg.invtypes.Get(k).name}
-            self.sr.hint += '<br><br>%s' % mls.UI_INFLIGHT_SILOLOAD4
+                self.sr.hint += '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/SiloOnline', capacity=max(used1, 0), mineralID=k)
+            self.sr.hint += '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/SiloOnlineAccess')
         else:
-            self.sr.hint += '<br><br>%s' % mls.UI_INFLIGHT_SILOLOAD5
+            self.sr.hint += '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/SiloNoStorageSet')
             self.sr.gaugetext.text = ''
             self.sr.typetext.text = ''
         self.sr.changebuttonText.OnClick = (self.sr.node.settype, self.sr.node.slimitem.itemID, self.sr.node.slimitem.groupID)
@@ -2175,8 +2233,9 @@ class Silo(BaseStructure):
 
 
     def GetMenu(self):
+        changeSiloTypeLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/ChangeSiloType')
         m = BaseStructure.GetMenu(self)
-        m += [(mls.UI_CMD_CHANGESILOTYPE, self.sr.node.settype, (self.sr.node.slimitem.itemID, self.sr.node.slimitem.groupID))]
+        m += [(changeSiloTypeLabel, self.sr.node.settype, (self.sr.node.slimitem.itemID, self.sr.node.slimitem.groupID))]
         return m
 
 
@@ -2203,7 +2262,7 @@ class Reactor(BaseStructure):
         if self.destroyed:
             return 
         self.fetchingShell = 1
-        self.sr.reaction.SetShell(eve.GetInventoryFromId(itemID))
+        self.sr.reaction.SetShell(sm.GetService('invCache').GetInventoryFromId(itemID))
         if self.destroyed:
             return 
         if self.sr.node and self.sr.node.slimitem.itemID != itemID:
@@ -2215,8 +2274,9 @@ class Reactor(BaseStructure):
 
     def Load(self, node):
         BaseStructure.Load(self, node)
-        self.sr.label2.text = self.sr.node.Get('label2', None) or mls.UI_GENERIC_REACTOR
-        self.sr.hint = self.sr.label2.text + '<br>%s: %s' % (mls.UI_INFLIGHT_CURRENTSTATUS, getattr(mls, 'UI_GENERIC_' + self.sr.node.state.replace(' - ', '').replace(' ', '').upper(), self.sr.node.state))
+        self.sr.label2.text = self.sr.node.Get('label2', None) or localization.GetByLabel('UI/Inflight/MoonMining/Processes/Reactor')
+        currentStatusLabel = localization.GetByLabel('UI/Inflight/MoonMining/Processes/CurrentStatus', status=entities.POS_STRUCTURE_STATE[self.sr.node.state])
+        self.sr.hint = self.sr.label2.text + '<br>%s' % currentStatusLabel
         if not self.fetchingShell:
             uthread.new(self.SetupReactionShell, self.sr.node.slimitem.itemID)
         self.sr.reaction.SetLocation(self.sr.node.slimitem.itemID)
@@ -2234,23 +2294,21 @@ class Reactor(BaseStructure):
         else:
             mat = None
         if self.sr.node.connected:
-            linktext = '<br><br>%s' % mls.UI_INFLIGHT_REACTORLOAD1
+            linktext = '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/ReactorCorrectlyLinked')
         else:
-            linktext = '<br><br>%s' % mls.UI_INFLIGHT_REACTORLOAD2
+            linktext = '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/ReactorNotLinked')
         if not self.sr.node.state.startswith('online'):
-            self.sr.hint += '<br><br>%s' % mls.UI_INFLIGHT_REACTORLOAD3
+            self.sr.hint += '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/ReactorOfflineAccess')
             if not self.sr.node.reaction:
-                self.sr.hint += '<br><br>%s' % mls.UI_INFLIGHT_REACTORLOAD4
+                self.sr.hint += '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/ReactorNoReactionInstalled')
             else:
-                self.sr.hint += '<br><br>%s' % mls.UI_INFLIGHT_REACTORLOAD5
+                self.sr.hint += '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/ReactorOfflineWithReaction')
         elif self.sr.node.state.startswith('online - start'):
-            self.sr.hint += '<br><br>%s' % mls.UI_INFLIGHT_REACTORLOAD6
+            self.sr.hint += '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/ReactorStarted')
             self.sr.hint += linktext
         elif self.sr.node.state.startswith('online - active'):
             if mat is not None:
-                self.sr.hint += '<br><br>' + mls.UI_INFLIGHT_REACTORLOAD7 % {'units': mat[2] * sm.GetService('godma').GetType(mat[0]).moonMiningAmount,
-                 'type': cfg.invtypes.Get(mat[0]).name,
-                 'min': self.sr.node.cycle / 60000}
+                self.sr.hint += '<br><br>' + localization.GetByLabel('UI/Inflight/MoonMining/Processes/ReactorActive', reactionAmount=mat[2] * sm.GetService('godma').GetType(mat[0]).moonMiningAmount, reactionID=mat[0], cycleTime=self.sr.node.cycle / 60000)
             self.sr.hint += linktext
         else:
             self.sr.hint += linktext
@@ -2287,7 +2345,7 @@ class TypeIcon(uicls.Container):
         self.sr.color = uicls.Fill(parent=self, color=(0.0, 0.0, 0.0, 0.0))
         self.sr.highlight = uicls.Fill(parent=self, state=uiconst.UI_HIDDEN)
         countcont = uicls.Container(parent=self, align=uiconst.TOPLEFT, left=16, top=24, width=16, height=8, idx=0)
-        self.sr.quantity = uicls.Label(text='', parent=countcont, left=2, width=14, height=8, fontsize=9, letterspace=1, autoheight=False, autowidth=False)
+        self.sr.quantity = uicls.EveLabelSmall(text='', parent=countcont, left=2, width=14, height=8)
         uicls.Line(parent=countcont, align=uiconst.TOLEFT, color=(1.0, 1.0, 1.0, 0.5))
         uicls.Line(parent=countcont, align=uiconst.TOTOP, color=(1.0, 1.0, 1.0, 0.5))
         uicls.Fill(parent=countcont, color=(0.0, 0.0, 0.0, 1.0))
@@ -2326,7 +2384,7 @@ class TypeIcon(uicls.Container):
             self.sr.hint = cfg.invtypes.Get(self.typeID).name
         else:
             self.state = uiconst.UI_HIDDEN
-            self.sr.hint = mls.UI_INFLIGHT_NOTCONNECTED
+            self.sr.hint = localization.GetByLabel('UI/Inflight/MoonMining/Processes/NotConnected')
         self.Draggable_blockDrag = not drag
 
 
@@ -2398,9 +2456,9 @@ class TypeIcon(uicls.Container):
     def GetMenu(self):
         m = []
         if self.typeID:
-            m += [(mls.UI_CMD_SHOWINFO, self.ShowInfo)]
+            m += [(localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo)]
             if self.connectID:
-                m += [(mls.UI_CMD_REMOVECONNECTION, self.Unfit)]
+                m += [(localization.GetByLabel('UI/Inflight/MoonMining/Processes/RemoveConnection'), self.Unfit)]
         return m
 
 
@@ -2480,7 +2538,7 @@ class ReactionView(uicls.Container):
         uicls.Frame(parent=self, align=uiconst.RELATIVE, left=0, top=0, width=36, height=36)
         self.sr.highlight = uicls.Fill(parent=self, state=uiconst.UI_HIDDEN, align=uiconst.RELATIVE, left=2, top=2, width=32, height=32)
         self.sr.icon = uicls.Icon(parent=self, align=uiconst.RELATIVE, left=2, top=2, size=32, state=uiconst.UI_DISABLED, typeID=self.typeID)
-        self.sr.reactiontext = uicls.Label(text='', parent=self, left=40, top=2, width=70, height=32, state=uiconst.UI_DISABLED, letterspace=2, fontsize=9, autoheight=False, autowidth=False)
+        self.sr.reactiontext = uicls.EveLabelSmall(text='', parent=self, left=40, width=70, height=36, lineSpacing=-0.2, state=uiconst.UI_DISABLED)
         self.flag = flag
         sm.GetService('inv').Register(self)
         self.invReady = 1
@@ -2511,8 +2569,8 @@ class ReactionView(uicls.Container):
             self.itemID = None
             self.sr.icon.LoadIcon('ui_5_64_10', ignoreSize=True)
             self.sr.icon.SetSize(32, 32)
-            self.sr.reactiontext.text = mls.UI_INFLIGHT_NOREACTIONBP
-            self.sr.hint = mls.UI_INFLIGHT_NOREACTIONBP
+            self.sr.reactiontext.text = localization.GetByLabel('UI/Inflight/MoonMining/Processes/ReactorNoReaction')
+            self.sr.hint = localization.GetByLabel('UI/Inflight/MoonMining/Processes/ReactorNoReaction')
         self.Draggable_blockDrag = not rec
 
 
@@ -2542,7 +2600,7 @@ class ReactionView(uicls.Container):
         if self.itemID and self.typeID:
             if eve.session.role & (service.ROLE_GML | service.ROLE_WORLDMOD):
                 m += [(str(self.itemID), self.CopyItemIDToClipboard, (self.itemID,)), None]
-            m += [(mls.UI_CMD_SHOWINFO, self.ShowInfo), (mls.UI_CMD_REMOVEREACTIONBP, self.Unfit)]
+            m += [(localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo), (localization.GetByLabel('UI/Inflight/MoonMining/Processes/ReactorRemoveReaction'), self.Unfit)]
         return m
 
 
@@ -2558,7 +2616,7 @@ class ReactionView(uicls.Container):
 
 
     def Unfit(self):
-        eve.GetInventoryFromId(eve.session.shipid).Add(self.itemID, self.locationID, qty=None, flag=const.flagCargo)
+        sm.GetService('invCache').GetInventoryFromId(eve.session.shipid).Add(self.itemID, self.locationID, qty=None, flag=const.flagCargo)
 
 
 
@@ -2649,10 +2707,10 @@ class Gauge(uicls.SE_BaseClassCore):
     __params__ = ['label', 'text']
 
     def Startup(self, args):
-        self.sr.label = uicls.Label(text='', parent=self, left=8, top=2, width=175, autowidth=False, state=uiconst.UI_DISABLED, singleline=1)
-        self.sr.text = uicls.Label(text='', parent=self, left=180, top=5, width=20, autowidth=False, state=uiconst.UI_DISABLED, fontsize=9, letterspace=1)
-        self.sr.quantity = uicls.Label(text='', parent=self, left=220, top=5, width=30, autowidth=False, state=uiconst.UI_DISABLED, fontsize=9, letterspace=1)
-        self.sr.cycles = uicls.Label(text='', parent=self, left=330, top=5, width=100, autowidth=False, state=uiconst.UI_DISABLED, fontsize=9, letterspace=1)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=self, left=8, top=2, width=175, state=uiconst.UI_DISABLED, singleline=1)
+        self.sr.text = uicls.EveLabelSmall(text='', parent=self, left=180, top=5, width=20, state=uiconst.UI_DISABLED)
+        self.sr.quantity = uicls.EveLabelSmall(text='', parent=self, left=220, top=5, width=30, state=uiconst.UI_DISABLED)
+        self.sr.cycles = uicls.EveLabelSmall(text='', parent=self, left=330, top=5, width=100, state=uiconst.UI_DISABLED)
         self.sr.line = uicls.Line(parent=self, align=uiconst.TOBOTTOM)
         self.sr.line.state = uiconst.UI_HIDDEN
         g = uicls.Container(name='gauge', align=uiconst.TOPLEFT, width=64, height=9, left=260, top=6, parent=self)
@@ -2675,7 +2733,7 @@ class Gauge(uicls.SE_BaseClassCore):
         self.sr.text.text = '<right>%s' % data.text
         self.sr.quantity.text = '<right>%s' % data.quantity
         if data.factor == 0.0:
-            self.sr.cycles.text = mls.UI_GENERIC_UNUSED
+            self.sr.cycles.text = localization.GetByLabel('UI/Inflight/MoonMining/Unused')
         else:
             self.sr.cycles.text = util.FmtDate(long(int(data.quantity / quantity) * data.cycle * 10000L), 'ss')
         self.sr.gauge.sr.bar.width = int((self.sr.gauge.width - 2) * data.size * data.quantity / data.capacity)
@@ -2695,7 +2753,7 @@ class Gauge(uicls.SE_BaseClassCore):
 
     def GetHeight(self, *args):
         (node, width,) = args
-        node.height = uix.GetTextHeight(node.label, autoWidth=1, singleLine=1) + 6
+        node.height = uix.GetTextHeight(node.label, singleLine=1) + 6
         return node.height
 
 
@@ -2805,17 +2863,25 @@ class Structure(BaseTextStructure):
         if progressCont:
             progressCont.Close()
         if state[0] in ('anchoring', 'onlining', 'unanchoring', 'reinforced', 'operating'):
-            uthread.new(self.sr.node.StructureProgress, self, state[0], state[1], state[2], '%s<t>%%s<t>%s %s<t>%s %s' % (uix.GetSlimItemName(self.sr.node.rec),
-             self.sr.node.power,
-             mls.UI_GENERIC_MEGAWATTSHORT,
-             self.sr.node.cpu,
-             mls.UI_GENERIC_TERAFLOPSSHORT), self.sr.label)
-        self.sr.label.text = '%s<t>%s<t><right>%s %s<t><right>%s %s' % (uix.GetSlimItemName(self.sr.node.rec),
-         getattr(mls, 'UI_GENERIC_' + state[0].replace(' - ', '').replace(' ', '').upper(), state[0]),
-         self.sr.node.power,
-         mls.UI_GENERIC_MEGAWATTSHORT,
-         self.sr.node.cpu,
-         mls.UI_GENERIC_TERAFLOPSSHORT)
+            powerUsageLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/DisplayPowerUsage', powerUsage=self.sr.node.power)
+            cpuUsageLabel = localization.GetByLabel('UI/Inflight/MoonMining/Structures/DisplayCPUUsage', cpuUsage=self.sr.node.cpu)
+            displayState = structProgressMap.get(state[0], None)
+            if displayState:
+                stateLabel = entities.POS_STRUCTURE_STATE[displayState]
+            else:
+                stateLabel = localization.GetByLabel('UI/Generic/Done')
+            label = '%s<t>%s<t><right>%s<t><right>%s' % (uix.GetSlimItemName(self.sr.node.rec),
+             stateLabel,
+             powerUsageLabel,
+             cpuUsageLabel)
+            uthread.new(self.sr.node.StructureProgress, self, label, state[1], state[2], self.sr.label)
+        self.sr.label.text = [uix.GetSlimItemName(self.sr.node.rec),
+         '<t>',
+         entities.POS_STRUCTURE_STATE[state[0]],
+         '<t><right>',
+         localization.GetByLabel('UI/Inflight/MoonMining/Structures/DisplayPowerUsage', powerUsage=self.sr.node.power),
+         '<t><right>',
+         localization.GetByLabel('UI/Inflight/MoonMining/Structures/DisplayCPUUsage', cpuUsage=self.sr.node.cpu)]
 
 
 
@@ -2858,8 +2924,12 @@ class StructureControl(BaseTextStructure):
             progressCont.Close()
         (controllerID, controllerName,) = sm.GetService('pwn').GetControllerIDName(structureID)
         targetID = sm.GetService('pwn').GetCurrentTarget(structureID)
-        stateLabel = getattr(mls, 'UI_GENERIC_' + state[0].replace(' - ', '').replace(' ', '').upper(), state[0])
-        self.sr.label.text = '%s<t>%s<t>%s' % (uix.GetSlimItemName(self.sr.node.rec), stateLabel, controllerName)
+        stateLabel = entities.POS_STRUCTURE_STATE[state[0]]
+        self.sr.label.text = [uix.GetSlimItemName(self.sr.node.rec),
+         '<t>',
+         stateLabel,
+         '<t>',
+         controllerName]
         self.isupdating = 0
 
 
@@ -2871,10 +2941,10 @@ class StructureAccess(BaseTextStructure):
 
     def Startup(self, *args):
         listentry.BaseTextStructure.Startup(self, args)
-        options = [(mls.UI_CORP_CONFIGMANAGER, 0),
-         (mls.UI_CORP_CARETAKER, 3),
-         (mls.UI_GENERIC_CORPORATION, 1),
-         (mls.UI_GENERIC_ALLIANCE, 2)]
+        options = [(localization.GetByLabel('UI/Inflight/MoonMining/Structures/RoleConfigStarbaseEquipment'), 0),
+         (localization.GetByLabel('UI/Inflight/MoonMining/Structures/RoleStarbaseFuelTechnician'), 3),
+         (localization.GetByLabel('UI/Common/Corporation'), 1),
+         (localization.GetByLabel('UI/Common/Alliance'), 2)]
         i = 200
         self.sr.configs = {}
         self.configs = ['viewput', 'viewputtake', 'use']
@@ -2921,7 +2991,7 @@ class StructureAccess(BaseTextStructure):
 
     def GetHeight(self, *args):
         (node, width,) = args
-        comboHeight = uix.GetTextHeight('aA', autoWidth=1, fontsize=10, hspace=1, uppercase=1)
+        comboHeight = uix.GetTextHeight('aA', fontsize=fontConst.EVE_SMALL_FONTSIZE, hspace=1, uppercase=1)
         node.height = comboHeight + 10
         return node.height
 

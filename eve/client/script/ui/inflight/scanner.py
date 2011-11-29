@@ -20,8 +20,9 @@ from math import pi, cos, sin, sqrt
 from foo import Vector3
 from mapcommon import SYSTEMMAP_SCALE
 import functools
-import uiconst
 import uicls
+import localization
+import localizationUtil
 CIRCLE_SCALE = 0.01
 CIRCLE_COLOR = (1.0,
  0.0,
@@ -66,11 +67,6 @@ CURSOR_HIGHLIGHT_COLOR = (0.29411764705882354,
  0.996078431372549,
  1.0)
 LINESET_EFFECT = 'res:/Graphics/Effect/Managed/Space/SpecialFX/LinesAdditive.fx'
-EXPLORATION_SITE_TYPES = {const.attributeScanGravimetricStrength: 'UI_INFLIGHT_SCANGRAVIMETRIC',
- const.attributeScanLadarStrength: 'UI_INFLIGHT_SCANLADAR',
- const.attributeScanMagnetometricStrength: 'UI_INFLIGHT_SCANMAGNETOMETRIC',
- const.attributeScanRadarStrength: 'UI_INFLIGHT_SCANRADAR',
- const.attributeScanAllStrength: 'UI_GENERIC_UNKNOWN'}
 INTERSECTION_COLOR = (0.3,
  0.5,
  0.7,
@@ -149,15 +145,16 @@ class Scanner(uicls.Window):
      'OnRefreshScanResults',
      'OnReconnectToProbesAvailable',
      'OnModuleOnlineChange']
+    default_windowID = 'scanner'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.scanGroups = {}
-        self.scanGroups[const.probeScanGroupAnomalies] = mls.UI_INFLIGHT_SCANCOSMICANOMALY
-        self.scanGroups[const.probeScanGroupSignatures] = mls.UI_INFLIGHT_SCANCOSMICSIGNATURE
-        self.scanGroups[const.probeScanGroupShips] = mls.UI_GENERIC_SHIP
-        self.scanGroups[const.probeScanGroupStructures] = mls.UI_GENERIC_STRUCTURE
-        self.scanGroups[const.probeScanGroupDronesAndProbes] = mls.UI_INFLIGHT_SCANDRONEANDPROBE
+        self.scanGroups[const.probeScanGroupAnomalies] = localization.GetByLabel('UI/Inflight/Scanner/CosmicAnomaly')
+        self.scanGroups[const.probeScanGroupSignatures] = localization.GetByLabel('UI/Inflight/Scanner/CosmicSignature')
+        self.scanGroups[const.probeScanGroupShips] = localization.GetByLabel('UI/Inflight/Scanner/Ship')
+        self.scanGroups[const.probeScanGroupStructures] = localization.GetByLabel('UI/Inflight/Scanner/Structure')
+        self.scanGroups[const.probeScanGroupDronesAndProbes] = localization.GetByLabel('UI/Inflight/Scanner/DroneAndProbe')
         self._Scanner__disallowanalysisgroups = [const.groupSurveyProbe]
         self.busy = False
         self.scanresult = []
@@ -179,7 +176,7 @@ class Scanner(uicls.Window):
         self.sr.keyUpCookie = uicore.event.RegisterForTriuiEvents(uiconst.UI_KEYUP, self.OnGlobalKey)
         self.sr.keyDownCookie = uicore.event.RegisterForTriuiEvents(uiconst.UI_KEYDOWN, self.OnGlobalKey)
         self.scope = 'inflight'
-        self.SetCaption(mls.UI_GENERIC_SCANNER)
+        self.SetCaption(localization.GetByLabel('UI/Generic/Scanner'))
         self.SetMinSize([340, 320])
         self.SetTopparentHeight(0)
         self.SetWndIcon(None)
@@ -197,32 +194,32 @@ class Scanner(uicls.Window):
         self.sr.systemTopParent = topParent
         btn = uix.GetBigButton(32, topParent)
         btn.Click = self.Analyze
-        btn.hint = mls.UI_CMD_ANALYZE
+        btn.hint = localization.GetByLabel('UI/Inflight/Scanner/Analyze')
         btn.sr.icon.LoadIcon('77_57')
         self.sr.analyzeBtn = btn
         btn = uix.GetBigButton(32, topParent, left=44)
         btn.Click = self.RecoverActiveProbes
-        btn.hint = mls.UI_CMD_RECOVERACTIEVPROBES
+        btn.hint = localization.GetByLabel('UI/Inflight/Scanner/RecoverActiveProbes')
         btn.sr.icon.LoadIcon('77_58')
         self.sr.recoverBtn = btn
         btn = uix.GetBigButton(32, topParent, left=76)
         btn.Click = self.ReconnectToLostProbes
-        btn.hint = mls.UI_CMD_RECONNECTACTIEVPROBES
+        btn.hint = localization.GetByLabel('UI/Inflight/Scanner/ReconnectActiveProbes')
         btn.sr.icon.LoadIcon('77_59')
         self.sr.reconnectBtn = btn
         btn = uix.GetBigButton(32, topParent, left=108)
         btn.Click = self.DestroyActiveProbes
-        btn.hint = mls.UI_CMD_DESTROYACTIVEPROBES
+        btn.hint = localization.GetByLabel('UI/Inflight/Scanner/DestroyActiveProbes')
         btn.sr.icon.LoadIcon('77_60')
         self.sr.destroyBtn = btn
         btn = uix.GetBigButton(32, topParent)
         btn.SetAlign(align=uiconst.TOPRIGHT)
         btn.OnClick = self.OpenMap
-        btn.hint = mls.UI_SHARED_MAP
+        btn.hint = localization.GetByLabel('UI/Common/Map')
         btn.sr.icon.LoadIcon('7_4')
         probesHeaderParent = uicls.Container(parent=systemsParent, align=uiconst.TOTOP, state=uiconst.UI_NORMAL, height=24)
         probesHeaderParent.padBottom = 6
-        t = uicls.Label(text='<b>%s</b>' % mls.UI_GENERIC_PROBES_IN_SPACE, parent=probesHeaderParent, state=uiconst.UI_DISABLED, left=const.defaultPadding, align=uiconst.CENTERLEFT)
+        t = uicls.EveLabelMedium(text=['<b>', localization.GetByLabel('UI/Inflight/Scanner/ProbesInSpace'), '</b>'], parent=probesHeaderParent, state=uiconst.UI_DISABLED, left=const.defaultPadding, align=uiconst.CENTERLEFT)
         probesHeaderParent.height = max(20, t.textheight + 6)
         self.sr.probesHeaderParent = probesHeaderParent
         l = uicls.Line(parent=probesHeaderParent, align=uiconst.TOTOP, color=(0.0, 0.0, 0.0, 0.25))
@@ -243,7 +240,7 @@ class Scanner(uicls.Window):
         l = uicls.Line(parent=divider, align=uiconst.CENTER, width=6, height=1)
         self.sr.divider = divider
         resultHeaderParent = uicls.Container(parent=systemsParent, align=uiconst.TOTOP, state=uiconst.UI_NORMAL, height=24)
-        t = uicls.Label(text='<b>%s</b>' % mls.UI_GENERIC_SCAN_RESULTS, parent=resultHeaderParent, state=uiconst.UI_DISABLED, left=const.defaultPadding, align=uiconst.CENTERLEFT)
+        t = uicls.EveLabelMedium(text=['<b>', localization.GetByLabel('UI/Inflight/Scanner/ScanResults'), '</b>'], parent=resultHeaderParent, state=uiconst.UI_DISABLED, left=const.defaultPadding, align=uiconst.CENTERLEFT)
         resultHeaderParent.height = max(20, t.textheight + 6)
         self.sr.resultHeaderParent = resultHeaderParent
         l = uicls.Line(parent=resultHeaderParent, align=uiconst.TOTOP, color=(0.0, 0.0, 0.0, 0.25))
@@ -257,7 +254,7 @@ class Scanner(uicls.Window):
         resultClipper.padTop = 6
         self.sr.resultClipper = resultClipper
         hintContainer = uicls.Container(parent=resultClipper, align=uiconst.TOTOP, height=18)
-        t = uicls.Label(text=mls.UI_GENERIC_SCANRESULT_FILTER, parent=hintContainer, fontsize=9, left=26, letterspace=1, uppercase=1, state=uiconst.UI_DISABLED, align=uiconst.BOTTOMLEFT)
+        t = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Inflight/Scanner/ScanResultFilter'), parent=hintContainer, left=26, state=uiconst.UI_DISABLED, align=uiconst.BOTTOMLEFT)
         filterContainer = uicls.Container(parent=resultClipper, align=uiconst.TOTOP, height=18)
         filterContainer.padTop = 2
         filterContainer.padBottom = 4
@@ -275,15 +272,16 @@ class Scanner(uicls.Window):
         self.sr.resultscroll.OnSelectionChange = self.OnSelectionChange
         directionBox = uicls.Container(name='direction', parent=self.sr.main, align=uiconst.TOALL, left=const.defaultPadding, width=const.defaultPadding, top=const.defaultPadding, height=const.defaultPadding)
         directionSettingsBox = uicls.Container(name='direction', parent=directionBox, align=uiconst.TOTOP, height=60)
-        self.sr.useoverview = uicls.Checkbox(text=mls.UI_INFLIGHT_USEACTIVEOVERVIEWSETTINGS, parent=directionSettingsBox, configName='', retval=0, checked=settings.user.ui.Get('scannerusesoverviewsettings', 0), align=uiconst.TOPLEFT, callback=self.UseOverviewChanged, pos=(5, 4, 250, 18))
-        self.dir_rangeinput = uicls.SinglelineEdit(name='edit', parent=directionSettingsBox, ints=(1, None), align=uiconst.TOPLEFT, pos=(5, 36, 78, 0), maxLength=len(str(sys.maxint)) + 1)
+        self.sr.useoverview = uicls.Checkbox(text=localization.GetByLabel('UI/Inflight/Scanner/UseActiveOverviewSettings'), parent=directionSettingsBox, configName='', retval=0, checked=settings.user.ui.Get('scannerusesoverviewsettings', 0), align=uiconst.TOTOP, callback=self.UseOverviewChanged, pos=(5, 4, 0, 18))
+        self.dir_rangeinput = uicls.SinglelineEdit(name='edit', parent=directionSettingsBox, ints=(1, None), align=uiconst.TOPLEFT, pos=(5, 36, 85, 0), maxLength=len(str(sys.maxint)) + 1)
         self.dir_rangeinput.SetValue(settings.user.ui.Get('dir_scanrange', 1000))
         self.dir_rangeinput.OnReturn = self.DirectionSearch
-        uicls.Label(text=mls.UI_INFLIGHT_RANGEKM, parent=directionSettingsBox, width=240, autowidth=False, fontsize=9, left=12, letterspace=1, top=24, state=uiconst.UI_DISABLED)
-        uicls.Button(parent=directionSettingsBox, label=mls.UI_CMD_SCAN, pos=(180, 37, 0, 0), func=self.DirectionSearch)
-        slider = uix.GetSlider('slider', directionSettingsBox, 'scanangle', 5, 360, mls.UI_GENERIC_ANGLE, '', uiconst.RELATIVE, 90, 18, 90, 36, getvaluefunc=self.GetSliderValue, endsliderfunc=self.EndSetSliderValue, increments=(5, 15, 30, 60, 90, 180, 360), underlay=0)
+        uicls.EveLabelSmall(text=localization.GetByLabel('UI/Inflight/Scanner/RangeKm'), parent=directionSettingsBox, width=240, left=6, top=23, state=uiconst.UI_DISABLED)
+        uicls.Button(parent=directionSettingsBox, label=localization.GetByLabel('UI/Inflight/Scanner/Scan'), pos=(180, 37, 0, 0), func=self.DirectionSearch)
+        slider = uix.GetSlider('slider', directionSettingsBox, 'scanangle', 5, 360, localization.GetByLabel('UI/Inflight/Scanner/Angle'), '', uiconst.RELATIVE, 90, 18, 90, 36, getvaluefunc=self.GetSliderValue, endsliderfunc=self.EndSetSliderValue, gethintfunc=lambda idname, dname, value: localizationUtil.FormatNumeric(int(round(value))), increments=(5, 15, 30, 60, 90, 180, 360), underlay=0)
         lbl = uiutil.GetChild(slider, 'label')
-        lbl.top = -12
+        lbl.top = -13
+        lbl.left = 2
         lbl.state = uiconst.UI_DISABLED
         uiutil.SetOrder(slider, 0)
         self.sr.dirscroll = uicls.Scroll(name='scroll', parent=directionBox)
@@ -293,18 +291,16 @@ class Scanner(uicls.Window):
          const.defaultPadding,
          const.defaultPadding))
         self.sr.moonscanner.Startup()
-        self.sr.tabs = uicls.TabGroup(name='scannertabs', height=18, align=uiconst.TOTOP, parent=self.sr.main, idx=0, tabs=[[mls.UI_INFLIGHT_SYSTEMSCANNER,
+        self.sr.tabs = uicls.TabGroup(name='scannertabs', height=18, align=uiconst.TOTOP, parent=self.sr.main, idx=0, tabs=[[localization.GetByLabel('UI/Inflight/Scanner/SystemScanner'),
           systemsParent,
           self,
-          'system'], [mls.UI_INFLIGHT_DIRECTIONALSCAN,
+          'system'], [localization.GetByLabel('UI/Inflight/Scanner/DirectionalScan'),
           directionBox,
           self,
-          'directionalscan'], [mls.UI_INFLIGHT_MOONANALYSIS,
+          'directionalscan'], [localization.GetByLabel('UI/Inflight/Scanner/MoonAnalysis'),
           self.sr.moonscanner,
           self,
           'moon']], groupID='scannertabs', autoselecttab=1)
-        if not sm.GetService('map').ViewingSystemMap():
-            uicore.layer.systemmap.state = uiconst.UI_HIDDEN
         systemMapSvc = sm.GetService('systemmap')
         systemMapSvc.LoadProbesAndScanResult()
         systemMapSvc.LoadSolarsystemBrackets(True)
@@ -316,7 +312,7 @@ class Scanner(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         self.Cleanup()
         self.SetMapAngle(0)
         systemMap = sm.GetService('systemmap')
@@ -442,7 +438,7 @@ class Scanner(uicls.Window):
 
     def Cleanup(self):
         self.sr.probeSpheresByID = {}
-        bracketWnd = uicore.layer.systemmap
+        bracketWnd = uicore.layer.systemMapBrackets
         for each in bracketWnd.children[:]:
             if each.name in ('__probeSphereBracket', '__pointResultBracket'):
                 each.trackTransform = None
@@ -472,38 +468,35 @@ class Scanner(uicls.Window):
     def SetEntries(self, entries):
         self.sr.moonscanner.SetEntries(entries)
         if self.sr.tabs.GetSelectedArgs() != 'moon':
-            self.sr.tabs.BlinkPanelByName(mls.UI_INFLIGHT_MOONANALYSIS, blink=1)
+            self.sr.tabs.BlinkPanelByName(localization.GetByLabel('UI/Inflight/Scanner/MoonAnalysis'), blink=1)
 
 
 
     def ClearMoons(self):
         self.sr.moonscanner.Clear()
         if self.sr.tabs.GetSelectedArgs() != 'moon':
-            self.sr.tabs.BlinkPanelByName(mls.UI_INFLIGHT_MOONANALYSIS, blink=1)
+            self.sr.tabs.BlinkPanelByName(localization.GetByLabel('UI/Inflight/Scanner/MoonAnalysis'), blink=1)
 
 
 
     def OpenMap(self, *args):
-        if sm.GetService('map').ViewingSystemMap():
-            sm.GetService('map').Close()
-        else:
-            sm.GetService('map').OpenSystemMap()
+        sm.GetService('viewState').ToggleSecondaryView('systemmap')
 
 
 
     def GetFilterMenu(self, *args):
         filterName = self.sr.filterCombo.GetKey()
         filterData = self.sr.filterCombo.GetValue()
-        m = [(mls.UI_GENERIC_CREATE_NEW_FILTER, self.AddFilter)]
+        m = [(localization.GetByLabel('UI/Inflight/Scanner/CreateNewFilter'), self.AddFilter)]
         if filterName and filterData:
-            m.append((mls.UI_GENERIC_EDIT_CURRENT_FILTER, self.EditCurrentFilter))
-            m.append((mls.UI_GENERIC_DELETE_CURRENT_FILTER, self.DeleteCurrentFilter))
+            m.append((localization.GetByLabel('UI/Inflight/Scanner/EditCurrentFilter'), self.EditCurrentFilter))
+            m.append((localization.GetByLabel('UI/Inflight/Scanner/DeleteCurrentFilter'), self.DeleteCurrentFilter))
         scanSvc = sm.GetService('scanSvc')
         if len(scanSvc.resultsIgnored) > 0:
             m.append(None)
-            m.append((mls.UI_CMD_CLEAR_ALL_IGNORED_SCAN_RESULTS, scanSvc.ClearIgnoredResults))
+            m.append((localization.GetByLabel('UI/Inflight/Scanner/ClearAllIgnoredResults'), scanSvc.ClearIgnoredResults))
             ids = sorted(scanSvc.resultsIgnored)
-            m.append((mls.UI_CMD_CLEAR_IGNORED_SCAN_RESULT, [ (id, scanSvc.ShowIgnoredResult, (id,)) for id in ids ]))
+            m.append((localization.GetByLabel('UI/Inflight/Scanner/ClearIgnoredResult'), [ (id, scanSvc.ShowIgnoredResult, (id,)) for id in ids ]))
         return m
 
 
@@ -515,7 +508,7 @@ class Scanner(uicls.Window):
             activeFilter = None
         k = currentFilters.keys()
         k.sort(key=unicode.lower)
-        filterOps = [(mls.UI_STATION_SHOWALL, False)]
+        filterOps = [(localization.GetByLabel('UI/Common/Show all'), False)]
         for label in k:
             filterOps.append((label, True))
 
@@ -523,11 +516,13 @@ class Scanner(uicls.Window):
         if activeFilter is not None:
             self.sr.filterCombo.SelectItemByLabel(activeFilter)
         else:
-            self.sr.filterCombo.SelectItemByLabel(mls.UI_STATION_SHOWALL)
+            self.sr.filterCombo.SelectItemByLabel(localization.GetByLabel('UI/Common/Show all'))
         self.currentFilter = currentFilters.get(activeFilter, [])
         self.activeScanGroupInFilter = set()
         for groupID in self.currentFilter:
             for (scanGroupID, scanGroup,) in const.probeScanGroups.iteritems():
+                if isinstance(groupID, tuple):
+                    groupID = groupID[0]
                 if groupID in scanGroup:
                     self.activeScanGroupInFilter.add(scanGroupID)
 
@@ -537,14 +532,14 @@ class Scanner(uicls.Window):
 
 
     def AddFilter(self, *args):
-        editor = sm.GetService('window').GetWindow('probeScannerFilterEditor', create=1, decoClass=form.ScannerFilterEditor)
+        editor = form.ScannerFilterEditor.Open()
         editor.LoadData(None)
 
 
 
     def EditCurrentFilter(self, *args):
         activeFilter = settings.user.ui.Get('activeProbeScannerFilter', None)
-        editor = sm.GetService('window').GetWindow('probeScannerFilterEditor', create=1, decoClass=form.ScannerFilterEditor)
+        editor = form.ScannerFilterEditor.Open()
         editor.LoadData(activeFilter)
 
 
@@ -703,7 +698,7 @@ class Scanner(uicls.Window):
                 dist = 0
                 if slimItem:
                     typeinfo = cfg.invtypes.Get(slimItem.typeID)
-                    entryname = hint = uix.GetSlimItemName(slimItem)
+                    entryname = uix.GetSlimItemName(slimItem)
                     itemID = slimItem.itemID
                     typeID = slimItem.typeID
                     if not entryname:
@@ -711,13 +706,13 @@ class Scanner(uicls.Window):
                 elif celestialRec:
                     typeinfo = cfg.invtypes.Get(celestialRec.typeID)
                     if typeinfo.groupID == const.groupHarvestableCloud:
-                        entryname = hint = '%s (%s)' % (mls.UI_GENERIC_HARVESTABLE_CLOUD, typeinfo.name)
+                        entryname = localization.GetByLabel('UI/Inventory/SlimItemNames/SlimHarvestableCloud', typeinfo.name)
                     elif typeinfo.categoryID == const.categoryAsteroid:
-                        entryname = hint = '%s (%s)' % (mls.UI_GENERIC_ASTEROID, typeinfo.name)
+                        entryname = localization.GetByLabel('UI/Inventory/SlimItemNames/SlimAsteroid', typeinfo.name)
                     else:
-                        entryname = hint = cfg.evelocations.Get(celestialRec.id).name
+                        entryname = cfg.evelocations.Get(celestialRec.id).name
                     if not entryname:
-                        entryname = hint = typeinfo.name
+                        entryname = typeinfo.name
                     itemID = celestialRec.id
                     typeID = celestialRec.typeID
                 else:
@@ -732,10 +727,9 @@ class Scanner(uicls.Window):
                 if not eve.session.role & (service.ROLE_GML | service.ROLE_WORLDMOD):
                     if groupID == const.groupCloud:
                         continue
-                hint = entryname
                 data = util.KeyVal()
                 data.label = '%s<t>%s<t>%s' % (entryname, typeinfo.name, diststr)
-                data.Set('sort_%s' % mls.UI_GENERIC_DISTANCESHORT, dist)
+                data.Set('sort_%s' % localization.GetByLabel('UI/Common/Distance'), dist)
                 data.columnID = 'directionalResultGroupColumn'
                 data.result = result
                 data.itemID = itemID
@@ -746,12 +740,12 @@ class Scanner(uicls.Window):
 
         if not len(scrolllist):
             data = util.KeyVal()
-            data.label = mls.UI_GENERIC_SCAN_DIRECTIONAL_NORESULT
+            data.label = localization.GetByLabel('UI/Inflight/Scanner/DirectionalNoResult')
             data.hideLines = 1
             scrolllist.append(listentry.Get('Generic', data=data))
             headers = []
         else:
-            headers = [mls.UI_GENERIC_NAME, mls.UI_GENERIC_TYPE, mls.UI_GENERIC_DISTANCESHORT]
+            headers = [localization.GetByLabel('UI/Common/Name'), localization.GetByLabel('UI/Common/Type'), localization.GetByLabel('UI/Common/Distance')]
         self.sr.dirscroll.Load(contentList=scrolllist, headers=headers)
 
 
@@ -772,7 +766,7 @@ class Scanner(uicls.Window):
     def SetMapAngle(self, angle):
         if angle is not None:
             self.scanangle = angle
-        wnd = sm.GetService('window').GetWindow('mapbrowser')
+        wnd = form.MapBrowserWnd.GetIfOpen()
         if wnd:
             wnd.SetTempAngle(angle)
 
@@ -799,15 +793,15 @@ class Scanner(uicls.Window):
             return 
         self.CleanupResultShapes()
         resultlist = []
-        if currentScan and blue.os.TimeDiffInMs(currentScan.startTime) < currentScan.duration:
+        if currentScan and blue.os.TimeDiffInMs(currentScan.startTime, blue.os.GetSimTime()) < currentScan.duration:
             data = util.KeyVal()
-            data.header = mls.UI_GENERIC_ANALYZING
+            data.header = localization.GetByLabel('UI/Inflight/Scanner/Analyzing')
             data.startTime = currentScan.startTime
             data.duration = currentScan.duration
             resultlist.append(listentry.Get('Progress', data=data))
         elif scanningProbes and session.shipid not in scanningProbes:
             data = util.KeyVal()
-            data.label = mls.UI_GENERIC_SCAN_WAITING_FOR_PROBES
+            data.label = localization.GetByLabel('UI/Inflight/Scanner/WaitingForProbes')
             data.hideLines = 1
             resultlist.append(listentry.Get('Generic', data=data))
         elif results:
@@ -821,7 +815,10 @@ class Scanner(uicls.Window):
                     continue
                 if self.currentFilter is not None and len(self.currentFilter) > 0:
                     if result.certainty >= const.probeResultGood:
-                        if result.groupID not in self.currentFilter:
+                        if result.groupID == const.groupCosmicSignature:
+                            if (result.groupID, result.strengthAttributeID) not in self.currentFilter:
+                                continue
+                        elif result.groupID not in self.currentFilter:
                             continue
                     elif result.scanGroupID not in self.activeScanGroupInFilter:
                         continue
@@ -855,7 +852,7 @@ class Scanner(uicls.Window):
                  result.scanGroupName,
                  result.groupName or '',
                  result.typeName or '',
-                 '%1.2f' % (min(1.0, certainty) * 100) + '%',
+                 localization.GetByLabel('UI/Inflight/Scanner/SignalStrengthPercentage', signalStrength=min(1.0, certainty) * 100),
                  util.FmtDist(dist)]
                 sortdata = [result.id,
                  result.scanGroupName,
@@ -873,12 +870,12 @@ class Scanner(uicls.Window):
 
             resultlist = listentry.SortColumnEntries(resultlist, 'probeResultGroupColumn')
             data = util.KeyVal()
-            data.texts = [mls.UI_GENERIC_ID,
-             mls.UI_GENERIC_SCAN_GROUP,
-             mls.UI_GENERIC_GROUP,
-             mls.UI_GENERIC_TYPE,
-             mls.UI_GENERIC_SIGNALSTRENGTH,
-             mls.UI_GENERIC_DISTANCE]
+            data.texts = [localization.GetByLabel('UI/Common/ID'),
+             localization.GetByLabel('UI/Inflight/Scanner/ScanGroup'),
+             localization.GetByLabel('UI/Inventory/ItemGroup'),
+             localization.GetByLabel('UI/Common/Type'),
+             localization.GetByLabel('UI/Inflight/Scanner/SignalStrength'),
+             localization.GetByLabel('UI/Common/Distance')]
             data.columnID = 'probeResultGroupColumn'
             data.editable = True
             data.showBottomLine = True
@@ -888,7 +885,7 @@ class Scanner(uicls.Window):
             listentry.InitCustomTabstops(data.columnID, resultlist)
         if not resultlist:
             data = util.KeyVal()
-            data.label = mls.UI_GENERIC_NO_SCAN_RESULT
+            data.label = localization.GetByLabel('UI/Inflight/Scanner/NoScanResult')
             data.hideLines = 1
             resultlist.append(listentry.Get('Generic', data=data))
         resultlist.append(listentry.Get('Line', data=util.KeyVal(height=1)))
@@ -900,7 +897,7 @@ class Scanner(uicls.Window):
 
     def ClearScanResult(self, *args):
         data = util.KeyVal()
-        data.label = mls.UI_GENERIC_NO_SCAN_RESULT
+        data.label = localization.GetByLabel('UI/Inflight/Scanner/NoScanResult')
         data.hideLines = 1
         self.sr.resultscroll.Load(contentList=[listentry.Get('Generic', data=data)])
         self.sr.resultscroll.ShowHint('')
@@ -919,11 +916,11 @@ class Scanner(uicls.Window):
         data.scanRangeSteps = sm.GetService('scanSvc').GetScanRangeStepsByTypeID(probe.typeID)
         iconPar = uicls.Container(name='iconParent', parent=None, align=uiconst.TOPLEFT, width=36, height=16, state=uiconst.UI_PICKCHILDREN)
         icon1 = uicls.Icon(parent=iconPar, icon='ui_38_16_181', pos=(0, 0, 16, 16), align=uiconst.RELATIVE)
-        icon1.hint = mls.UI_CMD_RECOVER_PROBE
+        icon1.hint = localization.GetByLabel('UI/Inflight/Scanner/RecoverProbe')
         icon1.probeID = probe.probeID
         icon1.OnClick = (self.RecoverProbeClick, icon1)
         icon2 = uicls.Icon(parent=iconPar, icon='ui_38_16_182', pos=(20, 0, 16, 16), align=uiconst.RELATIVE)
-        icon2.hint = mls.UI_CMD_DESTROYPROBE
+        icon2.hint = localization.GetByLabel('UI/Inflight/Scanner/DestroyProbe')
         icon2.probeID = probe.probeID
         icon2.OnClick = (self.DestroyProbeClick, icon2)
         data.overlay = iconPar
@@ -945,16 +942,16 @@ class Scanner(uicls.Window):
         scrolllist = listentry.SortColumnEntries(scrolllist, 'probeGroupColumn')
         if not len(scrolllist):
             data = util.KeyVal()
-            data.label = mls.UI_GENERIC_ONBOARDSCANNER
+            data.label = localization.GetByLabel('UI/Inflight/Scanner/OnBoardScanner')
             data.hideLines = 1
             scrolllist.append(listentry.Get('Generic', data=data))
         else:
             data = util.KeyVal()
-            data.texts = [mls.UI_GENERIC_ID,
-             mls.UI_GENERIC_RANGE,
-             mls.UI_GENERIC_EXPIRESIN,
-             mls.UI_GENERIC_STATUS,
-             mls.UI_GENERIC_ACTIVE]
+            data.texts = [localization.GetByLabel('UI/Common/ID'),
+             localization.GetByLabel('UI/Inflight/Scanner/Range'),
+             localization.GetByLabel('UI/Inflight/Scanner/ExpiresIn'),
+             localization.GetByLabel('UI/Inflight/Scanner/Status'),
+             localization.GetByLabel('UI/Inflight/Scanner/Active')]
             data.columnID = 'probeGroupColumn'
             data.editable = True
             data.showBottomLine = True
@@ -974,11 +971,11 @@ class Scanner(uicls.Window):
 
     def GetProbeLabelAndSortData(self, probe, entry = None):
         if probe.expiry is None:
-            expiryText = mls.UI_GENERIC_NONE
+            expiryText = localization.GetByLabel('UI/Generic/None')
         else:
-            expiry = max(0L, long(probe.expiry) - blue.os.GetTime(1))
+            expiry = max(0L, long(probe.expiry) - blue.os.GetSimTime())
             if expiry <= 0:
-                expiryText = mls.UI_GENERIC_EXPIRED
+                expiryText = localization.GetByLabel('UI/Inflight/Scanner/Expired')
             else:
                 expiryText = util.FmtDate(expiry, 'ss')
         scanSvc = sm.GetService('scanSvc')
@@ -1004,8 +1001,8 @@ class Scanner(uicls.Window):
              probe.expiry,
              probeStateSortText,
              isActive]
-            checkBox = uicls.Checkbox(text=None, parent=None, configName='probeactive', retval=probe.probeID, checked=isActive, callback=self.OnProbeCheckboxChange, align=uiconst.CENTER)
-            checkBox.hint = mls.UI_CMD_MAKEACTIVE
+            checkBox = uicls.Checkbox(text='', parent=None, configName='probeactive', retval=probe.probeID, checked=isActive, callback=self.OnProbeCheckboxChange, align=uiconst.CENTER)
+            checkBox.hint = localization.GetByLabel('UI/Inflight/Scanner/MakeActive')
             texts = [label,
              util.FmtDist(probe.scanRange),
              expiryText,
@@ -1034,7 +1031,7 @@ class Scanner(uicls.Window):
             self.sr.updateProbes = None
             return 
         bracketsByProbeID = {}
-        for each in uicore.layer.systemmap.children[:]:
+        for each in uicore.layer.systemMapBrackets.children[:]:
             probe = getattr(each, 'probe', None)
             if probe is None:
                 continue
@@ -1055,7 +1052,7 @@ class Scanner(uicls.Window):
             probeEntries.append(entry)
             bracket = bracketsByProbeID.get(probe.probeID, None)
             if bracket:
-                bracket.displayName = '%s (%s) %s' % (newtexts[0], newtexts[3], newtexts[1])
+                bracket.displayName = localization.GetByLabel('UI/Inflight/Scanner/ProbeBracket', probeLabel=newtexts[0], probeStatus=newtexts[3], probeRange=newtexts[1])
 
         self.sr.scroll.state = uiconst.UI_DISABLED
         self.UpdateColumnSort(probeEntries, 'probeGroupColumn')
@@ -1130,7 +1127,7 @@ class Scanner(uicls.Window):
 
     def GetShipScannerEntry(self):
         scanRange = 5
-        label = '%s<t>%s<t>%s' % (mls.UI_GENERIC_ONBOARDSCANNER, util.FmtDist(scanRange * const.AU), '')
+        label = '%s<t>%s<t>%s' % (localization.GetByLabel('UI/Inflight/Scanner/OnBoardScanner'), util.FmtDist(scanRange * const.AU), '')
         data = util.KeyVal()
         data.label = label
         data.probe = None
@@ -1218,7 +1215,7 @@ class Scanner(uicls.Window):
             self.isUpdatingProbeSpheres = True
             scanSvc = sm.GetService('scanSvc')
             bp = sm.GetService('michelle').GetBallpark()
-            if not bp or eve.session.shipid not in bp.balls or not sm.GetService('map').ViewingSystemMap():
+            if not bp or eve.session.shipid not in bp.balls or not sm.GetService('viewState').IsViewActive('systemmap'):
                 self.Cleanup()
                 return 
             parent = self.GetSystemParent()
@@ -1227,7 +1224,7 @@ class Scanner(uicls.Window):
             for probeID in probeIDs:
                 if probeID not in probeData or probeData[probeID].state == const.probeStateInactive:
                     probeControl = self.sr.probeSpheresByID[probeID]
-                    for bracket in uicore.layer.systemmap.children[:]:
+                    for bracket in uicore.layer.systemMapBrackets.children[:]:
                         if getattr(bracket, 'probeID', None) == probeID:
                             bracket.trackTransform = None
                             bracket.Close()
@@ -1386,17 +1383,17 @@ class Scanner(uicls.Window):
     def FadeActiveIntersections(self, activePairs):
         if self.sr.distanceRings and self.sr.distanceRings.probeID:
             return 
-        start = blue.os.GetTime()
+        start = blue.os.GetWallclockTime()
         ndt = 0.0
         while ndt != 1.0:
-            ndt = max(0.0, min(blue.os.TimeDiffInMs(start) / 500.0, 1.0))
+            ndt = max(0.0, min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / 500.0, 1.0))
             colorRatio = mathUtil.Lerp(INTERSECTION_ACTIVE, INTERSECTION_FADED, ndt)
             for pair in activePairs:
                 if pair in self.sr.probeIntersectionsByPair:
                     intersection = self.sr.probeIntersectionsByPair[pair]
                     self.SetIntersectionColor(intersection, colorRatio)
 
-            blue.pyos.synchro.Sleep(50)
+            blue.pyos.synchro.SleepWallclock(50)
             if self.destroyed:
                 return 
 
@@ -1406,15 +1403,15 @@ class Scanner(uicls.Window):
 
     def DeactivateIntersections(self):
         self.sr.deactivatingIntersections = True
-        start = blue.os.GetTime()
+        start = blue.os.GetWallclockTime()
         ndt = 0.0
         while self.sr.deactivatingIntersections and ndt != 1.0:
-            ndt = max(0.0, min(blue.os.TimeDiffInMs(start) / 2000.0, 1.0))
+            ndt = max(0.0, min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / 2000.0, 1.0))
             colorRatio = mathUtil.Lerp(INTERSECTION_FADED, INTERSECTION_INACTIVE, ndt)
             for intersection in self.sr.probeIntersectionsByPair.itervalues():
                 self.SetIntersectionColor(intersection, colorRatio)
 
-            blue.pyos.synchro.Sleep(100)
+            blue.pyos.synchro.SleepWallclock(100)
             if self.destroyed:
                 return 
 
@@ -1550,7 +1547,7 @@ class Scanner(uicls.Window):
 
         self.HighlightProbeIntersections()
         self.lastScaleUpdate = (probeControl.probeID, pos)
-        probeControl.bracket.displayName = '%s: %s (%s)' % (mls.UI_GENERIC_RANGE, util.FmtDist(s), util.FmtDist(closest))
+        probeControl.bracket.displayName = localization.GetByLabel('UI/Inflight/Scanner/ProbeRange', curDist=util.FmtDist(s), maxDist=util.FmtDist(closest))
         if getattr(probeControl.bracket, 'label', None):
             probeControl.bracket.label.UpdateLabelAndOffset()
         sm.GetService('systemmap').HighlightItemsWithinProbeRange()
@@ -1748,7 +1745,7 @@ class Scanner(uicls.Window):
                 menu += sm.GetService('menu').SolarsystemScanMenu(result.id)
             menu.append(None)
             bookmarkData = util.KeyVal(id=result.id, position=result.data, name=result.typeName)
-            menu.append((mls.UI_CMD_BOOKMARKLOCATION, sm.GetService('addressbook').BookmarkLocationPopup, (eve.session.solarsystemid,
+            menu.append((localization.GetByLabel('UI/Inflight/BookmarkLocation'), sm.GetService('addressbook').BookmarkLocationPopup, (eve.session.solarsystemid,
               None,
               None,
               None,
@@ -1756,9 +1753,9 @@ class Scanner(uicls.Window):
             menu.append(None)
         nodes = self.sr.resultscroll.GetSelected()
         idList = tuple(set([ n.result.id for n in nodes if hasattr(n.result, 'id') ]))
-        menu.append((mls.UI_CMD_IGNORE_SCAN_RESULT, scanSvc.IgnoreResult, idList))
-        menu.append((mls.UI_CMD_IGNORE_OTHER_SCAN_RESULTS, scanSvc.IgnoreOtherResults, idList))
-        menu.append((mls.UI_CMD_SCANNER_CLEAR_RESULT, scanSvc.ClearResults, idList))
+        menu.append((localization.GetByLabel('UI/Inflight/Scanner/IngoreResult'), scanSvc.IgnoreResult, idList))
+        menu.append((localization.GetByLabel('UI/Inflight/Scanner/IgnoreOtherResults'), scanSvc.IgnoreOtherResults, idList))
+        menu.append((localization.GetByLabel('UI/Inflight/Scanner/ClearResult'), scanSvc.ClearResults, idList))
         return menu
 
 
@@ -1932,7 +1929,7 @@ class Scanner(uicls.Window):
         (iconNo, color,) = self.GetIconBasedOnQuality(categoryID, groupID, typeID, result.certainty)
         resultBracket.Startup(('result', result.id), groupID, categoryID, iconNo)
         resultBracket.sr.icon.color.SetRGB(*color)
-        uicore.layer.systemmap.children.insert(0, resultBracket)
+        uicore.layer.systemMapBrackets.children.insert(0, resultBracket)
         parent = self.GetSystemParent()
         parent.children.append(pointLocator)
         self.sr.resultObjectsByID[result] = resultBracket
@@ -1964,7 +1961,7 @@ class Scanner(uicls.Window):
             systemParent = trinity.EveTransform()
             systemParent.name = 'systemParent_%d' % session.solarsystemid2
             self.sr.systemParent = systemParent
-        if sm.GetService('map').ViewingSystemMap():
+        if sm.GetService('viewState').IsViewActive('systemmap'):
             currentSystem = sm.GetService('systemmap').GetCurrentSolarSystem()
             if self.sr.systemParent not in currentSystem.children:
                 currentSystem.children.append(self.sr.systemParent)
@@ -1973,7 +1970,7 @@ class Scanner(uicls.Window):
 
 
     def CleanupResultShapes(self):
-        bracketWnd = uicore.layer.systemmap
+        bracketWnd = uicore.layer.systemMapBrackets
         for bracket in bracketWnd.children[:]:
             if bracket.name == '__pointResultBracket':
                 bracket.trackTransform = None
@@ -2030,8 +2027,8 @@ class Scanner(uicls.Window):
 
 
     def GetExplorationSiteType(self, attributeID):
-        label = EXPLORATION_SITE_TYPES[attributeID]
-        return mls.GetLabelIfExists(label) or ''
+        label = const.EXPLORATION_SITE_TYPES[attributeID]
+        return localization.GetByLabel(label)
 
 
 
@@ -2057,15 +2054,15 @@ class WarpableResultBracket(xtriui.BaseBracket):
         else:
             menu = []
         bookmarkData = util.KeyVal(id=self.result.id, position=self.result.data, name=self.result.typeName)
-        menu.append((mls.UI_CMD_BOOKMARKLOCATION, sm.GetService('addressbook').BookmarkLocationPopup, (eve.session.solarsystemid,
+        menu.append((localization.GetByLabel('UI/Inflight/BookmarkLocation'), sm.GetService('addressbook').BookmarkLocationPopup, (eve.session.solarsystemid,
           None,
           None,
           None,
           bookmarkData)))
         menu.append(None)
-        menu.append((mls.UI_CMD_IGNORE_SCAN_RESULT, scanSvc.IgnoreResult, (self.result.id,)))
-        menu.append((mls.UI_CMD_IGNORE_OTHER_SCAN_RESULTS, scanSvc.IgnoreOtherResults, (self.result.id,)))
-        menu.append((mls.UI_CMD_SCANNER_CLEAR_RESULT, scanSvc.ClearResults, (self.result.id,)))
+        menu.append((localization.GetByLabel('UI/Inflight/Scanner/IngoreResult'), scanSvc.IgnoreResult, (self.result.id,)))
+        menu.append((localization.GetByLabel('UI/Inflight/Scanner/IgnoreOtherResults'), scanSvc.IgnoreOtherResults, (self.result.id,)))
+        menu.append((localization.GetByLabel('UI/Inflight/Scanner/ClearResult'), scanSvc.ClearResults, (self.result.id,)))
         return menu
 
 
@@ -2113,13 +2110,15 @@ class ProbeControl(object):
         sphereBracket.trackTransform = locator
         sphereBracket.probeID = probeID
         sphereBracket.positionProbeID = probeID
-        uicore.layer.systemmap.children.insert(0, sphereBracket)
+        uicore.layer.systemMapBrackets.children.insert(0, sphereBracket)
         sphere = trinity.Load('res:/dx9/model/UI/Scanbubble.red')
         sphere.name = 'Scanbubble'
         sphere.children[0].scaling = (2.0, 2.0, 2.0)
         sphere.children[0].children[0].scaling = (-50.0, 50.0, 50.0)
         sphere.children[0].children[1].scaling = (50.0, 50.0, 50.0)
         sphere.children[0].children[2].scaling = (50.0, 50.0, 50.0)
+        sphere.children[0].curveSets[1].curves[0].keys[1].time = 0.0625
+        sphere.children[0].curveSets[1].curves[0].Sort()
         locator.children.append(sphere)
         cal = trinity.EveTransform()
         cal.name = 'cameraAlignedLocation'
@@ -2151,7 +2150,7 @@ class ProbeControl(object):
         bracket.noIcon = True
         bracket.Startup(probeID, probe.typeID, None)
         bracket.trackTransform = tracker
-        uicore.layer.systemmap.children.insert(0, bracket)
+        uicore.layer.systemMapBrackets.children.insert(0, bracket)
         bracket.ShowLabel()
         shadow = trinity.Load('res:/Model/UI/probeShadow.red')
         locator.children.append(shadow)

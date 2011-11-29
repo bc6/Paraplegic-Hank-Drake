@@ -6,12 +6,24 @@ class InfoComponent:
 
     def __init__(self, state):
         self.name = ''
+        self.gender = None
+        self.spawnID = None
+        self.recipeID = None
         name = state.get('name', None)
         if name is not None:
-            if type(name) is tuple:
-                self.name = Tr(*name)
+            if type(name) is tuple and boot.appname == 'WOD':
+                self.name = name[0]
             else:
                 self.name = name
+        gender = state.get('gender', None)
+        if gender is not None:
+            self.gender = gender
+        spawnID = state.get('_spawnID', None)
+        if spawnID is not None:
+            self.spawnID = spawnID
+        recipeID = state.get('_recipeID', None)
+        if recipeID is not None:
+            self.recipeID = recipeID
 
 
 
@@ -30,6 +42,9 @@ class InfoClient(service.Service):
     def ReportState(self, component, entity):
         report = collections.OrderedDict()
         report['Name'] = component.name
+        report['Gender'] = component.gender
+        report['SpawnID'] = component.spawnID
+        report['RecipeID'] = component.recipeID
         return report
 
 

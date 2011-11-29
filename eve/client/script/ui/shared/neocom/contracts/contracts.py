@@ -16,6 +16,8 @@ import copy
 import log
 from collections import defaultdict
 from contractutils import *
+import localization
+import localizationUtil
 RESULTS_PER_PAGE = 100
 BCancel = 0
 BAccept = 1
@@ -34,9 +36,9 @@ MAX_IGNORED = 1000
 CACHE_TIME = 10
 
 def GetSecurityClassText(securityClass):
-    txt = {const.securityClassZeroSec: '<color=0xffbb0000>%s</color>' % mls.UI_GENERIC_NULLSEC,
-     const.securityClassLowSec: '<color=0xffbbbb00>%s</color>' % mls.UI_GENERIC_LOWSEC,
-     const.securityClassHighSec: '<color=0xff00bb00>%s</color>' % mls.UI_GENERIC_HIGHSEC}.get(securityClass, mls.UI_GENERIC_UNKNOWN)
+    txt = {const.securityClassZeroSec: '<color=0xffbb0000>%s</color>' % localization.GetByLabel('UI/Common/NullSec'),
+     const.securityClassLowSec: '<color=0xffbbbb00>%s</color>' % localization.GetByLabel('UI/Common/LowSec'),
+     const.securityClassHighSec: '<color=0xff00bb00>%s</color>' % localization.GetByLabel('UI/Common/HighSec')}.get(securityClass, localization.GetByLabel('UI/Contracts/ContractsWindow/UnknownSystem'))
     return txt
 
 
@@ -101,9 +103,7 @@ class ContractsSvc(service.Service):
 
 
     def Stop(self, memStream = None):
-        wnd = sm.GetService('window').GetWindow('contracts')
-        if wnd is not None:
-            wnd.CloseX()
+        form.ContractsWindow.CloseIfOpen()
 
 
 
@@ -124,7 +124,7 @@ class ContractsSvc(service.Service):
         stationsPickup = set()
         stationsDropoff = set()
         for (contractID, contract,) in self.contractsInProgress.iteritems():
-            if contract[-1] < blue.os.GetTime():
+            if contract[-1] < blue.os.GetWallclockTime():
                 continue
             if sm.GetService('ui').GetStation(contract[0]).solarSystemID == session.solarsystemid2:
                 stationsPickup.add(contract[0])
@@ -132,7 +132,8 @@ class ContractsSvc(service.Service):
                 stationsDropoff.add(contract[1])
 
         for stationID in stationsPickup:
-            contractsMenu.append((mls.UI_CONTRACTS_COURIERPICKUP % {'station': cfg.evelocations.Get(stationID).name}, ('isDynamic', sm.GetService('menu').CelestialMenu, (stationID,
+            pickupLabel = localization.GetByLabel('UI/Contracts/ContractsService/CourierPickup', station=stationID)
+            contractsMenu.append((pickupLabel, ('isDynamic', sm.GetService('menu').CelestialMenu, (stationID,
                None,
                None,
                0,
@@ -141,7 +142,8 @@ class ContractsSvc(service.Service):
                None))))
 
         for stationID in stationsDropoff:
-            contractsMenu.append((mls.UI_CONTRACTS_COURIERDELIVERY % {'station': cfg.evelocations.Get(stationID).name}, ('isDynamic', sm.GetService('menu').CelestialMenu, (stationID,
+            dropoffLabel = localization.GetByLabel('UI/Contracts/ContractsService/CourierDeliver', station=stationID)
+            contractsMenu.append((dropoffLabel, ('isDynamic', sm.GetService('menu').CelestialMenu, (stationID,
                None,
                None,
                0,
@@ -165,7 +167,7 @@ class ContractsSvc(service.Service):
         startConstellationID = sm.GetService('map').GetItem(contract.startSolarSystemID).locationID
         if typeID and contract.type != const.conTypeCourier:
             itemType = cfg.invtypes.Get(typeID)
-            m += [(mls.UI_CONTRACTS_RELATED_SAMETYPE, self.FindRelated, (typeID,
+            m += [(localization.GetByLabel('UI/Contracts/ContractsWindow/SameType'), self.FindRelated, (typeID,
                None,
                None,
                None,
@@ -173,7 +175,7 @@ class ContractsSvc(service.Service):
                None,
                contract.type,
                reset))]
-            m += [(mls.UI_CONTRACTS_RELATED_SAMEGROUP, self.FindRelated, (None,
+            m += [(localization.GetByLabel('UI/Contracts/ContractsWindow/SameGroup'), self.FindRelated, (None,
                itemType.groupID,
                None,
                None,
@@ -181,7 +183,7 @@ class ContractsSvc(service.Service):
                None,
                contract.type,
                reset))]
-            m += [(mls.UI_CONTRACTS_RELATED_SAMECATEGORY, self.FindRelated, (None,
+            m += [(localization.GetByLabel('UI/Contracts/ContractsWindow/SameCategory'), self.FindRelated, (None,
                None,
                itemType.Group().categoryID,
                None,
@@ -190,7 +192,7 @@ class ContractsSvc(service.Service):
                contract.type,
                reset))]
             m += [None]
-        m += [(mls.UI_CONTRACTS_RELATED_FROMSAMEISSUER, self.FindRelated, (None,
+        m += [(localization.GetByLabel('UI/Contracts/ContractsWindow/FromSameIssuer'), self.FindRelated, (None,
            None,
            None,
            contract.issuerCorpID if contract.forCorp else contract.issuerID,
@@ -199,7 +201,7 @@ class ContractsSvc(service.Service):
            contract.type,
            reset))]
         m += [None]
-        m += [(mls.UI_CONTRACTS_RELATED_FROMSAMESOLARSYSTEM, self.FindRelated, (None,
+        m += [(localization.GetByLabel('UI/Contracts/ContractsWindow/FromSameSolarSystem'), self.FindRelated, (None,
            None,
            None,
            None,
@@ -207,7 +209,7 @@ class ContractsSvc(service.Service):
            None,
            contract.type,
            reset))]
-        m += [(mls.UI_CONTRACTS_RELATED_FROMSAMECONSTELLATION, self.FindRelated, (None,
+        m += [(localization.GetByLabel('UI/Contracts/ContractsWindow/FromSameConstellation'), self.FindRelated, (None,
            None,
            None,
            None,
@@ -215,7 +217,7 @@ class ContractsSvc(service.Service):
            None,
            contract.type,
            reset))]
-        m += [(mls.UI_CONTRACTS_RELATED_FROMSAMEREGION, self.FindRelated, (None,
+        m += [(localization.GetByLabel('UI/Contracts/ContractsWindow/FromSameRegion'), self.FindRelated, (None,
            None,
            None,
            None,
@@ -226,7 +228,7 @@ class ContractsSvc(service.Service):
         if contract.type == const.conTypeCourier:
             endConstellationID = sm.GetService('map').GetItem(contract.endSolarSystemID).locationID
             m += [None]
-            m += [(mls.UI_CONTRACTS_RELATED_TOSAMESOLARSYSTEM, self.FindRelated, (None,
+            m += [(localization.GetByLabel('UI/Contracts/ContractsWindow/ToSameSolarSystem'), self.FindRelated, (None,
                None,
                None,
                None,
@@ -234,7 +236,7 @@ class ContractsSvc(service.Service):
                contract.endSolarSystemID,
                contract.type,
                reset))]
-            m += [(mls.UI_CONTRACTS_RELATED_TOSAMECONSTELLATION, self.FindRelated, (None,
+            m += [(localization.GetByLabel('UI/Contracts/ContractsWindow/ToSameConstellation'), self.FindRelated, (None,
                None,
                None,
                None,
@@ -242,7 +244,7 @@ class ContractsSvc(service.Service):
                endConstellationID,
                contract.type,
                reset))]
-            m += [(mls.UI_CONTRACTS_RELATED_TOSAMEREGION, self.FindRelated, (None,
+            m += [(localization.GetByLabel('UI/Contracts/ContractsWindow/ToSameRegion'), self.FindRelated, (None,
                None,
                None,
                None,
@@ -265,26 +267,26 @@ class ContractsSvc(service.Service):
                 assignedToMe.append(contract.contractID)
 
         if len(assignedToMe) > 0:
-            sm.GetService('neocom').Blink('contracts', mls.UI_CONTRACTS_CONTRACTSREQUIREYOURATTENTION, blinkcount=10)
+            sm.GetService('neocom').Blink('contracts', localization.GetByLabel('UI/Contracts/ContractsWindow/ContractsRequireAttention'), blinkcount=10)
             if len(assignedToMe) == 1:
-                txt1 = mls.UI_CONTRACTS_ACONTRACTISASSIGNEDTOYOU
-                func = lambda x: self.ShowContract(assignedToMe[0])
+                txt1 = localization.GetByLabel('UI/Contracts/ContractsWindow/ContractAssignedToYou')
+                func = lambda *args: self.ShowContract(assignedToMe[0])
             else:
-                txt1 = mls.UI_CONTRACTS_CONTRACTSASSIGNEDTOYOU % {'num': len(assignedToMe)}
+                txt1 = localization.GetByLabel('UI/Contracts/ContractsService/ContractsAssignedToYou', numContracts=len(assignedToMe))
             func = self.ShowAssignedTo
         if len(kv.needsAttention) > 0:
-            sm.GetService('neocom').Blink('journal', mls.UI_CONTRACTS_CONTRACTSREQUIREYOURATTENTION, blinkcount=10)
+            sm.GetService('neocom').Blink(form.Journal.default_windowID, localization.GetByLabel('UI/Contracts/ContractsWindow/ContractsRequireAttention'), blinkcount=10)
             if len(kv.needsAttention) == 1:
-                txt2 = mls.UI_CONTRACTS_CONTRACTNEEDATTENTION
+                txt2 = localization.GetByLabel('UI/Contracts/ContractsWindow/ContractNeedsAttention')
                 contractID = kv.needsAttention[0].contractID
-                func = lambda x: self.ShowContract(contractID)
+                func = lambda *args: self.ShowContract(contractID)
             else:
-                txt2 = mls.UI_CONTRACTS_CONTRACTSNEEDATTENTION % {'num': len(kv.needsAttention)}
-            func = lambda x: self.OpenJournal(0, kv.needsAttention[0][1])
+                txt2 = localization.GetByLabel('UI/Contracts/ContractsService/ContractsNeedAttention', numContracts=len(kv.needsAttention))
+            func = lambda *args: self.OpenJournal(0, kv.needsAttention[0][1])
         if txt1 and txt2:
-            func = lambda x: self.Show(None, 0)
+            func = lambda *args: self.Show(None, 0)
         if txt1 or txt2:
-            icon = sm.GetService('mailSvc').ShowMailNotification(mls.UI_CONTRACTS_CONTRACTS, txt1, txt2)
+            icon = sm.GetService('mailSvc').ShowMailNotification(localization.GetByLabel('UI/Contracts/ContractsWindow/Contracts'), txt1, txt2)
             icon.OnClick = func
             icon.sr.icon.LoadIcon('ui_64_64_10', ignoreSize=True)
             icon.sr.icon.width = 48
@@ -312,49 +314,48 @@ class ContractsSvc(service.Service):
         ignoreList = settings.user.ui.Get('contracts_ignorelist', [])
         if issuerID in ignoreList:
             return 
-        self.ContractNotify(mls.UI_CONTRACTS_MESSAGE_ASSIGNED, contractID)
+        self.ContractNotify('UI/Contracts/ContractsService/ContractMessageAssigned', contractID)
 
 
 
     def OnContractCompleted(self, contractID):
-        self.ContractNotify(mls.UI_CONTRACTS_MESSAGE_COMPLETED, contractID)
+        self.ContractNotify('UI/Contracts/ContractsService/ContractMessageCompleted', contractID)
 
 
 
     def OnContractAccepted(self, contractID):
-        self.ContractNotify(mls.UI_CONTRACTS_MESSAGE_ACCEPTED, contractID)
+        self.ContractNotify('UI/Contracts/ContractsService/ContractMessageAccepted', contractID)
 
 
 
     def OnContractRejected(self, contractID):
-        self.ContractNotify(mls.UI_CONTRACTS_MESSAGE_REJECTED, contractID)
+        self.ContractNotify('UI/Contracts/ContractsService/ContractMessageRejected', contractID)
 
 
 
     def OnContractFailed(self, contractID):
-        self.ContractNotify(mls.UI_CONTRACTS_MESSAGE_FAILED, contractID)
+        self.ContractNotify('UI/Contracts/ContractsService/ContractMessageFailed', contractID)
 
 
 
     def OnContractOutbid(self, contractID):
-        self.ContractNotify(mls.UI_CONTRACTS_MESSAGE_OUTBID, contractID)
+        self.ContractNotify('UI/Contracts/ContractsService/ContractMessageOutbid', contractID)
 
 
 
     def OnContractBuyout(self, contractID):
-        self.ContractNotify(mls.UI_CONTRACTS_MESSAGE_BUYOUT, contractID)
+        self.ContractNotify('UI/Contracts/ContractsService/ContractMessageBuyout', contractID)
 
 
 
-    def ContractNotify(self, msg, contractID):
+    def ContractNotify(self, cerberusLabel, contractID):
+        MAX_NUM_MESSAGES = 5
         contract = self.GetContract(contractID, force=False)
         c = contract.contract
         title = GetContractTitle(c, contract.items)
-        title = '<a href="contract:%s//%s">%s</a>' % (c.startSolarSystemID, contractID, title)
-        msg = msg % {'title': title}
-        msg = '[%s] %s' % (util.FmtDate(blue.os.GetTime(), 'ls'), msg)
-        self.messages.append(msg)
-        MAX_NUM_MESSAGES = 5
+        link = '<a href="contract:%d//%d">%s</a>' % (c.startSolarSystemID, contractID, title)
+        message = localization.GetByLabel(cerberusLabel, timeStamp=util.FmtDate(blue.os.GetWallclockTime(), 'ls'), contractLink=link)
+        self.messages.append(message)
         if len(self.messages) > MAX_NUM_MESSAGES:
             self.messages.pop(0)
         self.Blink()
@@ -363,7 +364,7 @@ class ContractsSvc(service.Service):
 
 
     def Blink(self):
-        sm.GetService('neocom').Blink('contracts', mls.UI_CONTRACTS_CONTRACTSREQUIREYOURATTENTION, blinkcount=10)
+        sm.GetService('neocom').Blink('contracts', localization.GetByLabel('UI/Contracts/ContractsWindow/ContractsRequireAttention'), blinkcount=10)
 
 
 
@@ -374,14 +375,8 @@ class ContractsSvc(service.Service):
 
 
     def Show(self, lookup = None, idx = None):
-        sm.GetService('tutorial').OpenTutorialSequence_Check(uix.tutorialInformativeContracts)
-        wnd = sm.GetService('window').GetWindow('contracts')
-        if wnd is None:
-            wnd = sm.GetService('window').GetWindow('contracts', 1, decoClass=form.ContractsWindow, lookup=lookup, idx=idx)
-        if wnd is not None and not wnd.destroyed:
-            wnd.Maximize()
-        if wnd is not None and lookup:
-            wnd.LookupOwner(lookup)
+        form.ContractsWindow.CloseIfOpen()
+        form.ContractsWindow.Open(lookup=lookup, idx=idx)
 
 
 
@@ -390,31 +385,29 @@ class ContractsSvc(service.Service):
         path = sm.GetService('pathfinder').GetPathBetween(startSolarSystemID, endSolarSystemID)
         txt = ''
         if not path:
-            txt = '<color=0xffbb0000>%s</color>' % mls.UI_GENERIC_UNREACHABLE.upper()
+            txt = '<color=0xffbb0000>%s</color>' % localization.GetByLabel('UI/Common/unreachable').upper()
         else:
             mySecurityClass = mapSvc.GetSecurityClass(session.solarsystemid2)
             pathClasses = set()
             for solarSystemID in path:
                 pathClasses.add(mapSvc.GetSecurityClass(solarSystemID))
 
-            classTxt = ''
+            securityClassList = []
             for p in pathClasses:
                 if p != mySecurityClass:
-                    classTxt += '%s, ' % GetSecurityClassText(p)
+                    securityClassList.append(GetSecurityClassText(p))
 
-            if classTxt:
-                classTxt = classTxt[:-3]
-                txt = mls.UI_CONTRACTS_ROUTEWILLTAKEYOUTHROUGH % {'sec': classTxt}
+            securityClassString = localizationUtil.FormatGenericList(securityClassList)
+            if len(securityClassList) > 0:
+                txt = localization.GetByLabel('UI/Contracts/ContractsService/RouteWillTakeYouThrough', listOfSecurityRatings=securityClassString)
         return txt
 
 
 
     def ShowContract(self, contractID):
         self.contractID = contractID
-        wnd = sm.GetService('window').GetWindow('contractdetails')
-        if wnd:
-            wnd.SelfDestruct()
-        wnd = sm.GetService('window').GetWindow('contractdetails', create=True, maximize=True, decoClass=form.ContractDetailsWindow, contractID=contractID)
+        form.ContractDetailsWindow.CloseIfOpen()
+        form.ContractDetailsWindow.Open(contractID=contractID)
 
 
 
@@ -422,12 +415,12 @@ class ContractsSvc(service.Service):
         v = self.contracts.get(contractID, None)
         diff = 0
         if v:
-            diff = blue.os.GetTime() - v.time
+            diff = blue.os.GetWallclockTime() - v.time
         if contractID not in self.contracts or force or diff > 5 * MIN and not force:
             self.LogInfo('Fetching contract %s from the server' % contractID)
             contract = self.contractSvc.GetContract(contractID)
             v = util.KeyVal()
-            v.time = blue.os.GetTime()
+            v.time = blue.os.GetWallclockTime()
             v.contract = contract
             self.contracts[contractID] = v
         else:
@@ -452,9 +445,11 @@ class ContractsSvc(service.Service):
             if eve.Message('ConConfirmNotReachable', {}, uiconst.YESNO) != uiconst.ID_YES:
                 return False
         wallet = sm.GetService('corp').GetMyCorpAccountName()
-        args = {'youoryourcorp': {False: mls.UI_GENERIC_YOU,
-                           True: mls.UI_CONTRACTS_YOURCORP_NAME2 % {'corpname': cfg.eveowners.Get(eve.session.corpid).name,
-                                  'wallet': wallet}}[forCorp]}
+        args = {}
+        if forCorp:
+            args['youoryourcorp'] = localization.GetByLabel('UI/Contracts/ContractsService/YouOnBehalfOfYourCorp', corpName=cfg.eveowners.Get(eve.session.corpid).name, wallet=wallet)
+        else:
+            args['youoryourcorp'] = localization.GetByLabel('UI/Common/You')
         args['contractname'] = GetContractTitle(c, contract.items)
         if c.type == const.conTypeAuction:
             raise RuntimeError('You cannot accept an auction')
@@ -468,40 +463,40 @@ class ContractsSvc(service.Service):
                     reportPay += '<t>%s.<br>' % cfg.FormatConvert(TYPEIDANDQUANTITY, item.itemTypeID, max(1, item.quantity)).capitalize()
 
             if reportGet != '':
-                reportGet = mls.UI_CONTRACTS_CONFIRMACCEPT_ITEMSGET % {'items': reportGet}
+                reportGet = localization.GetByLabel('UI/Contracts/ContractsService/ConfirmItemsGet', items=reportGet)
             if reportPay != '':
-                reportPay = mls.UI_CONTRACTS_CONFIRMACCEPT_ITEMSPAY % {'items': reportPay}
+                reportPay = localization.GetByLabel('UI/Contracts/ContractsService/ConfirmAcceptItemsPay', items=reportPay)
             if reportGet == '' and c.reward == 0 and (reportPay != '' or c.price > 0):
-                msg += mls.UI_CONTRACTS_GIFT
+                msg = 'ConConfirmAcceptItemExchangeGift'
             if reportPay != '' and forCorp:
-                reportPay += mls.UI_CONTRACTS_CONFIRMACCEPTCORPITEMS
+                reportPay += localization.GetByLabel('UI/Contracts/ContractsWindow/ConfirmAcceptCorpItems')
             args['itemsget'] = reportGet
             args['itemspay'] = reportPay
             payorgetmoney = ''
             if c.price > 0:
-                payorgetmoney = mls.UI_CONTRACTS_CONFIRMACCEPT_PAYMONEY % {'money': FmtISKWithDescription(c.price)}
+                payorgetmoney = localization.GetByLabel('UI/Contracts/ContractsService/ConfirmAcceptPayMoney', numISK=FmtISKWithDescription(c.price))
             elif c.reward > 0:
-                payorgetmoney = mls.UI_CONTRACTS_CONFIRMACCEPT_GETMONEY % {'money': FmtISKWithDescription(c.reward)}
+                payorgetmoney = localization.GetByLabel('UI/Contracts/ContractsService/ConfirmAcceptGetMoney', numISK=FmtISKWithDescription(c.reward))
             args['payorgetmoney'] = payorgetmoney
         elif c.type == const.conTypeCourier:
             if c.volume > const_conCourierWarningVolume:
-                if eve.Message('ConNeedFreighter', {'vol': util.FmtAmt(c.volume, showFraction=3)}, uiconst.YESNO, suppress=uiconst.ID_YES) != uiconst.ID_YES:
+                if eve.Message('ConNeedFreighter', {'vol': c.volume}, uiconst.YESNO, suppress=uiconst.ID_YES) != uiconst.ID_YES:
                     return False
             if c.volume <= const_conCourierWarningVolume:
                 ship = sm.GetService('godma').GetItem(eve.session.shipid)
                 if ship:
                     maxVolume = ship.GetCapacity().capacity
                     if maxVolume < c.volume:
-                        if eve.Message('ConCourierDoesNotFit', {'max': util.FmtAmt(maxVolume, showFraction=3),
-                         'vol': util.FmtAmt(c.volume, showFraction=3)}, uiconst.YESNO, suppress=uiconst.ID_YES) != uiconst.ID_YES:
+                        if eve.Message('ConCourierDoesNotFit', {'shipCapacity': maxVolume,
+                         'packageVolume': c.volume}, uiconst.YESNO, suppress=uiconst.ID_YES) != uiconst.ID_YES:
                             return False
             msg = 'ConConfirmAcceptCourier'
             args['numdays'] = c.numDays
-            args['destination'] = cfg.evelocations.Get(c.endStationID).name
+            args['destination'] = c.endStationID
             args['volume'] = c.volume
             collateral = ''
             if c.collateral > 0:
-                collateral = mls.UI_CONTRACTS_YOUWILLHAVETOPROVIDECOLLATERAL_AMOUNT % {'collateral': FmtISKWithDescription(c.collateral)}
+                collateral = localization.GetByLabel('UI/Contracts/ContractsService/YouWillHaveToProvideCollateralAmount', numISK=FmtISKWithDescription(c.collateral))
             args['collateral'] = collateral
         else:
             raise RuntimeError('Invalid contract type')
@@ -521,7 +516,7 @@ class ContractsSvc(service.Service):
         if not contract:
             raise UserError('ConContractNotFound')
         c = contract.contract
-        if c.dateExpired >= blue.os.GetTime() and c.status != const.conStatusRejected:
+        if c.dateExpired >= blue.os.GetWallclockTime() and c.status != const.conStatusRejected:
             args = {}
             args['contractname'] = GetContractTitle(c, contract.items)
             msg = 'ConConfirmDeleteContract'
@@ -557,10 +552,10 @@ class ContractsSvc(service.Service):
         args['contractname'] = GetContractTitle(c, contract.items)
         if c.acceptorID == eve.session.charid or c.acceptorID == eve.session.corpid:
             msg = 'ConConfirmFailContractAcceptor'
-            args['collateral'] = mls.UI_CONTRACTS_CONFIRMFAIL_LOSECOLLATERAL % {'collateral': FmtISKWithDescription(c.collateral)}
-        elif blue.os.GetTime() > c.dateAccepted + DAY * c.numDays and c.status == const.conStatusInProgress:
+            args['collateral'] = localization.GetByLabel('UI/Contracts/ContractsService/ConfirmFailLoseCollateral', numISK=FmtISKWithDescription(c.collateral))
+        elif blue.os.GetWallclockTime() > c.dateAccepted + DAY * c.numDays and c.status == const.conStatusInProgress:
             msg = 'ConConfirmFailContractIssuerOverdue'
-            args['timeoverdue'] = util.FmtDate(blue.os.GetTime() - (c.dateAccepted + c.numDays), 'ls')
+            args['timeoverdue'] = util.FmtDate(blue.os.GetWallclockTime() - (c.dateAccepted + c.numDays), 'ls')
         else:
             msg = 'ConConfirmFailContractIssuerFinishedAcceptor'
         args['acceptor'] = cfg.eveowners.Get(c.acceptorID).name
@@ -630,24 +625,29 @@ class ContractsSvc(service.Service):
                 if c.collateral > 0:
                     collateral = FmtISKWithDescription(c.collateral)
                 else:
-                    collateral = mls.UI_CONTRACTS_NOBUYOUTPRICE
+                    collateral = localization.GetByLabel('UI/Contracts/ContractEntry/NoBuyoutPrice')
+                biddingOnLabel = localization.GetByLabel('UI/Contracts/ContractsService/BiddingOnName', contractName=GetContractTitle(c, contract.items))
+                startingBidLabel = localization.GetByLabel('UI/Contracts/ContractsWindow/StartingBid')
+                buyoutLabel = localization.GetByLabel('UI/Contracts/ContractsWindow/BuyoutPrice')
+                currentLabel = localization.GetByLabel('UI/Contracts/ContractsWindow/CurrentBid')
+                yourBidLabel = localization.GetByLabel('UI/Contracts/ContractsWindow/YourBid')
                 format = [{'type': 'btline'},
                  {'type': 'text',
-                  'text': mls.UI_CONTRACTS_BIDDINGON_NAME % {'name': GetContractTitle(c, contract.items)},
+                  'text': biddingOnLabel,
                   'frame': 1,
                   'labelwidth': 100},
                  {'type': 'labeltext',
-                  'label': mls.UI_CONTRACTS_STARTINGBID,
+                  'label': startingBidLabel,
                   'text': FmtISKWithDescription(c.price),
                   'frame': 1,
                   'labelwidth': 100},
                  {'type': 'labeltext',
-                  'label': mls.UI_CONTRACTS_BUYOUTPRICE,
+                  'label': buyoutLabel,
                   'text': collateral,
                   'frame': 1,
                   'labelwidth': 100},
                  {'type': 'labeltext',
-                  'label': mls.UI_CONTRACTS_CURRENTBID,
+                  'label': currentLabel,
                   'text': FmtISKWithDescription(currentBid),
                   'frame': 1,
                   'labelwidth': 100},
@@ -657,7 +657,7 @@ class ContractsSvc(service.Service):
                   'setvalue': minBid,
                   'key': 'bid',
                   'labelwidth': 100,
-                  'label': mls.UI_CONTRACTS_YOURBID,
+                  'label': yourBidLabel,
                   'required': 1,
                   'frame': 1,
                   'setfocus': 1}]
@@ -668,7 +668,7 @@ class ContractsSvc(service.Service):
                      'setvalue': 0,
                      'key': 'forCorp',
                      'label': '',
-                     'text': mls.UI_CONTRACTS_PLACEBIDONBEHALFOFCORP,
+                     'text': localization.GetByLabel('UI/Contracts/ContractsWindow/PlaceBidForCorp'),
                      'frame': 1})
                 if c.collateral > 0:
                     format.append({'type': 'checkbox',
@@ -677,13 +677,13 @@ class ContractsSvc(service.Service):
                      'setvalue': 0,
                      'key': 'buyout',
                      'label': '',
-                     'text': mls.UI_CONTRACTS_BUYOUT,
+                     'text': localization.GetByLabel('UI/Contracts/ContractsWindow/Buyout'),
                      'frame': 1,
                      'onchange': self.PlaceBidBuyoutCallback})
                 format.append({'type': 'push',
                  'frame': 1})
                 format.append({'type': 'bbline'})
-                retval = uix.HybridWnd(format, mls.UI_CONTRACTS_BIDDING_ON_CONTRACT, 1, buttons=uiconst.OKCANCEL, minW=340, minH=100, icon='07_12')
+                retval = uix.HybridWnd(format, localization.GetByLabel('UI/Contracts/ContractsWindow/BiddingOnContract'), 1, buttons=uiconst.OKCANCEL, minW=340, minH=100, icon='07_12')
                 if retval:
                     forCorp = not not retval.get('forCorp', False)
                     buyout = not not retval.get('buyout', False)
@@ -734,9 +734,11 @@ class ContractsSvc(service.Service):
         if not contract:
             raise UserError('ConContractNotFound')
         wallet = sm.GetService('corp').GetMyCorpAccountName()
-        args = {'youoryourcorp': {False: mls.UI_GENERIC_YOU,
-                           True: mls.UI_CONTRACTS_YOURCORP_NAME2 % {'corpname': cfg.eveowners.Get(eve.session.corpid).name,
-                                  'wallet': wallet}}[forCorp]}
+        args = {}
+        if forCorp:
+            args['youoryourcorp'] = localization.GetByLabel('UI/Contracts/ContractsService/YouOnBehalfOfYourCorp', corpName=cfg.eveowners.Get(eve.session.corpid).name, wallet=wallet)
+        else:
+            args['youoryourcorp'] = localization.GetByLabel('UI/Common/You')
         args['contractname'] = GetContractTitle(c, contract.items)
         args['amount'] = FmtISKWithDescription(bid)
         reportGet = ''
@@ -745,7 +747,7 @@ class ContractsSvc(service.Service):
                 reportGet += '<t>%s.<br>' % cfg.FormatConvert(TYPEIDANDQUANTITY, item.itemTypeID, max(1, item.quantity)).capitalize()
 
         if reportGet != '':
-            reportGet = mls.UI_CONTRACTS_CONFIRMACCEPT_ITEMSGET % {'items': reportGet}
+            reportGet = localization.GetByLabel('UI/Contracts/ContractsService/ConfirmItemsGet', items=reportGet)
         args['itemsget'] = reportGet
         msg = 'ConConfirmPlaceBid'
         if eve.Message(msg, args, uiconst.YESNO, suppress=uiconst.ID_YES) != uiconst.ID_YES:
@@ -779,7 +781,7 @@ class ContractsSvc(service.Service):
         self.LogInfo('Splitting stack of item %s, qty=%s%s' % (itemID, qty, ['', ' (for corp)'][forCorp]))
         ret = self.contractSvc.SplitStack(stationID, itemID, qty, forCorp, flag)
         if ret:
-            wnd = sm.GetService('window').GetWindow('createcontract')
+            wnd = form.CreateContract.GetIfOpen()
             if wnd is not None and not wnd.destroyed:
                 wnd.OnItemSplit(itemID, qty)
                 wnd.Refresh()
@@ -805,7 +807,7 @@ class ContractsSvc(service.Service):
 
     def CollectMyPageInfo(self, force = False):
         mpi = util.KeyVal()
-        if self.myPageInfo is None or self.myPageInfo.timeout < blue.os.GetTime() or force:
+        if self.myPageInfo is None or self.myPageInfo.timeout < blue.os.GetWallclockTime() or force:
             mpi = self.contractSvc.CollectMyPageInfo()
             skill = sm.GetService('skills').HasSkill(const.typeContracting)
             if skill is None:
@@ -823,7 +825,7 @@ class ContractsSvc(service.Service):
             mpi.numContractsLeftForCorp = maxNumContractsCorp - mpi.numOutstandingContractsForCorp
             mpi.numContractsTotal = maxNumContracts
             mpi.numContractsLeftInCorp = MAX_NUM_CONTRACTS - mpi.numOutstandingContracts
-            mpi.timeout = blue.os.GetTime() + CACHE_TIME * MINUTE
+            mpi.timeout = blue.os.GetWallclockTime() + CACHE_TIME * MINUTE
             self.myPageInfo = mpi
         else:
             self.LogInfo('CollectMyPageInfo returning cached result')
@@ -834,11 +836,11 @@ class ContractsSvc(service.Service):
 
     def GetMyExpiredContractList(self):
         l = None
-        if self.myExpiredContractList is None or self.myExpiredContractList.timeout < blue.os.GetTime():
+        if self.myExpiredContractList is None or self.myExpiredContractList.timeout < blue.os.GetWallclockTime():
             l = util.KeyVal(mySelf=None, myCorp=None, expires=0)
             l.mySelf = sm.ProxySvc('contractProxy').GetMyExpiredContractList(False)
             l.myCorp = sm.ProxySvc('contractProxy').GetMyExpiredContractList(True)
-            l.timeout = blue.os.GetTime() + CACHE_TIME * MINUTE
+            l.timeout = blue.os.GetWallclockTime() + CACHE_TIME * MINUTE
             self.myExpiredContractList = l
         else:
             self.LogInfo('GetMyExpiredContractList returning cached result')
@@ -850,10 +852,10 @@ class ContractsSvc(service.Service):
     def GetMyBids(self, forCorp):
         l = None
         val = getattr(self, 'myBids_%s' % forCorp, None)
-        if val is None or val.timeout < blue.os.GetTime():
+        if val is None or val.timeout < blue.os.GetWallclockTime():
             l = util.KeyVal(mySelf=None, myCorp=None, expires=0)
             l.list = sm.ProxySvc('contractProxy').GetMyBids(forCorp)
-            l.timeout = blue.os.GetTime() + CACHE_TIME * MINUTE
+            l.timeout = blue.os.GetWallclockTime() + CACHE_TIME * MINUTE
             setattr(self, 'myBids_%s' % forCorp, l)
         else:
             self.LogInfo('GetMyBids(', forCorp, ') returning cached result')
@@ -865,10 +867,10 @@ class ContractsSvc(service.Service):
     def GetMyCurrentContractList(self, isAccepted, forCorp):
         l = None
         val = getattr(self, 'myCurrentList_%s_%s' % (isAccepted, forCorp), None)
-        if val is None or val.timeout < blue.os.GetTime():
+        if val is None or val.timeout < blue.os.GetWallclockTime():
             l = util.KeyVal(mySelf=None, myCorp=None, expires=0)
             l.list = sm.ProxySvc('contractProxy').GetMyCurrentContractList(isAccepted, forCorp)
-            l.timeout = blue.os.GetTime() + CACHE_TIME * MINUTE
+            l.timeout = blue.os.GetWallclockTime() + CACHE_TIME * MINUTE
             setattr(self, 'myCurrentList_%s_%s' % (isAccepted, forCorp), l)
         else:
             self.LogInfo('GetMyCurrentContractList(', isAccepted, forCorp, ') returning cached result')
@@ -892,30 +894,26 @@ class ContractsSvc(service.Service):
 
     def OpenJournal(self, status = 0, forCorp = 0):
         settings.user.tabgroups.Set('journalmaintabs', 2)
-        sm.GetService('journal').Show()
+        sm.GetService('journal').GetWnd(new=True)
         wnd = util.KeyVal(forCorp=forCorp)
         sm.GetService('journal').ShowContracts(wnd, status)
 
 
 
     def OpenCreateContract(self, items = None, contract = None):
-        wnd = sm.GetService('window').GetWindow('createcontract')
-        if wnd:
-            wnd.SelfDestruct()
-        sm.GetService('window').GetWindow('createcontract', 1, decoClass=form.CreateContract, recipientID=None, contractItems=items, copyContract=contract)
+        form.CreateContract.CloseIfOpen()
+        form.CreateContract.Open(recipientID=None, contractItems=items, copyContract=contract)
 
 
 
     def OpenCreateContractFromIGB(self, contractType = None, stationID = None, itemIDs = None):
-        wnd = sm.GetService('window').GetWindow('createcontract')
-        if wnd:
-            wnd.SelfDestruct()
-        sm.GetService('window').GetWindow('createcontract', 1, decoClass=form.CreateContract, recipientID=None, contractItems=None, copyContract=None, contractType=contractType, stationID=stationID, itemIDs=itemIDs)
+        form.CreateContract.CloseIfOpen()
+        form.CreateContract.Open(recipientID=None, contractItems=None, copyContract=None, contractType=contractType, stationID=stationID, itemIDs=itemIDs)
 
 
 
     def OpenAvailableTab(self, view, reset = False, typeID = None, contractType = CONTYPE_AUCTIONANDITEMECHANGE):
-        wnd = sm.GetService('window').GetWindow('contracts')
+        wnd = form.ContractsWindow.GetIfOpen()
         if wnd is not None:
             assigneeID = {3: const.conAvailMyself,
              4: const.conAvailMyCorp}.get(view, const.conAvailPublic)
@@ -924,14 +922,10 @@ class ContractsSvc(service.Service):
 
 
     def OpenSearchTab(self, *args):
-        wnd = sm.GetService('window').GetWindow('contracts')
-        if wnd is None:
-            wnd = sm.GetService('window').GetWindow('contracts', 1, decoClass=form.ContractsWindow)
-        if wnd is not None:
-            wnd.Maximize()
-            blue.pyos.synchro.Sleep(10)
-            wnd.sr.maintabs.SelectByIdx(2)
-            wnd.sr.contractSearchContent.FindRelated(*args)
+        wnd = form.ContractsWindow.Open()
+        blue.pyos.synchro.SleepWallclock(10)
+        wnd.sr.maintabs.SelectByIdx(2)
+        wnd.sr.contractSearchContent.FindRelated(*args)
 
 
 
@@ -948,10 +942,8 @@ class ContractsSvc(service.Service):
 
 
     def OpenIgnoreList(self):
-        wnd = sm.GetService('window').GetWindow('contractignorelist')
-        if wnd is not None:
-            wnd.SelfDestruct()
-        sm.GetService('window').GetWindow('contractignorelist', 1, decoClass=form.IgnoreListWindow)
+        form.IgnoreListWindow.CloseIfOpen()
+        form.IgnoreListWindow.Open()
 
 
 
@@ -993,12 +985,10 @@ class ContractsSvc(service.Service):
         s1 = s2 = ''
         if self.IsStationInaccessible(c.startStationID):
             station = sm.GetService('ui').GetStation(c.startStationID)
-            s1 = mls.UI_CONTRACTS_STARTSTATIONPOSINFO % {'name': cfg.evelocations.Get(c.startStationID).name,
-             'owner': cfg.eveowners.Get(station.ownerID).name}
+            s1 = localization.GetByLabel('UI/Contracts/ContractsService/StartStationPositionInfo', startStation=c.startStationID, ownerName=cfg.eveowners.Get(station.ownerID).name)
         if c.type == const.conTypeCourier and self.IsStationInaccessible(c.endStationID):
             station = sm.GetService('ui').GetStation(c.endStationID)
-            s2 = mls.UI_CONTRACTS_ENDSTATIONPOSINFO % {'name': cfg.evelocations.Get(c.endStationID).name,
-             'owner': cfg.eveowners.Get(station.ownerID).name}
+            s2 = localization.GetByLabel('UI/Contracts/ContractsService/EndStationPositionInfo', endStation=c.endStationID, ownerName=cfg.eveowners.Get(station.ownerID).name)
         if s1 != '' or s2 != '':
             if eve.Message(msg, {'s1': s1,
              's2': s2}, uiconst.YESNO, suppress=uiconst.ID_YES) != uiconst.ID_YES:
@@ -1011,7 +1001,7 @@ class ContractsSvc(service.Service):
         (sec, col,) = util.FmtSystemSecStatus(sm.GetService('map').GetSecurityStatus(solarSystemID), 1)
         col.a = 1.0
         colString = hex(col.AsInt() & 4294967295L)
-        return '<color=%s>\x95</color>' % colString
+        return u'<color=%s>\u2022</color>' % colString
 
 
 
@@ -1021,13 +1011,14 @@ class ContractsWindow(uicls.Window):
     __notifyevents__ = ['OnDeleteContract', 'OnAddIgnore']
     default_width = 630
     default_height = 500
+    default_windowID = 'contracts'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         lookup = attributes.lookup
         idx = attributes.idx
         self.scope = 'all'
-        self.SetCaption(mls.UI_CONTRACTS_CONTRACTS)
+        self.SetCaption(localization.GetByLabel('UI/Contracts/ContractsWindow/Contracts'))
         self.SetWndIcon(GetContractIcon(const.conTypeNothing), mainTop=-10)
         self.SetMinSize([700, 560])
         self.SetTopparentHeight(0)
@@ -1042,12 +1033,14 @@ class ContractsWindow(uicls.Window):
         self.fetching = 0
         btns = []
         btns.append(['createContractButton',
-         mls.UI_CONTRACTS_CREATECONTRACT,
+         localization.GetByLabel('UI/Inventory/ItemActions/CreateContract'),
          self.OpenCreateContract,
          None,
          None])
         uicls.ButtonGroup(btns=btns, parent=self.sr.main, line=1, unisize=1, forcedButtonNames=True)
         self.LoadTabs(lookup, idx)
+        if lookup:
+            self.LookupOwner(lookup)
 
 
 
@@ -1088,13 +1081,13 @@ class ContractsWindow(uicls.Window):
         self.sr.contractSearchContent = form.ContractSearchWindow(parent=self.sr.contractSearchParent, name='contractsearch', pos=(0, 0, 0, 0))
         self.sr.privateContractsParent = uicls.Container(name='privateContractsParent', parent=self.sr.main, align=uiconst.TOALL, pos=(0, 0, 0, 0), state=uiconst.UI_HIDDEN, idx=1)
         tabs = uicls.TabGroup(name='contractsTabs', parent=self.sr.main, idx=0)
-        tabList = [[mls.UI_CONTRACTS_STARTPAGE,
+        tabList = [[localization.GetByLabel('UI/Contracts/ContractsWindow/StartPage'),
           self.sr.startPageParent,
           self,
-          'startPage'], [mls.UI_CONTRACTS_MYCONTRACTS,
+          'startPage'], [localization.GetByLabel('UI/Contracts/ContractsWindow/MyContracts'),
           self.sr.myContractsParent,
           self,
-          'myContracts'], [mls.UI_CONTRACTS_AVAILABLECONTRACTS,
+          'myContracts'], [localization.GetByLabel('UI/Contracts/ContractsWindow/AvailableContracts'),
           self.sr.contractSearchParent,
           self,
           'contractSearch']]
@@ -1195,27 +1188,29 @@ class StartPagePanel(uicls.Container):
 
 
     def Init(self):
+        scrollEntries = []
 
-        def AddItem(icon, header, text, url, isSmall = False):
-            if isSmall:
-                return '\n                <tr><td width=1%% align=center valign=top><img src="icon:%s" size=16></td><td><a href="localsvc:service=contracts&%s">%s</a><br>%s</td></tr>\n                ' % (icon,
-                 url,
-                 header,
-                 text)
+        def AddItem(icon, header, text, url = None, isSmall = False):
+            if url:
+                header = '<url=localsvc:service=contracts&%s>%s</url>' % (url, header.rstrip('\n'))
             else:
-                return '\n                <tr><td width=1%%><img style:vertical-align:top src="icon:%s" size=32></td><td><h6><a href="localsvc:service=contracts&%s">%s</a></h6>%s<br></td></tr>\n                ' % (icon,
-                 url,
-                 header,
-                 text)
+                header = header.rstrip('\n')
+            text = text.rstrip('\n')
+            scrollEntries.append(listentry.Get('ContractStartPageEntry', {'header': header,
+             'text': text,
+             'icon': icon,
+             'isSmall': isSmall}))
 
 
-        if not self.inited:
-            descParent = uicls.Container(name='desc', parent=self, align=uiconst.TOALL, pos=(const.defaultPadding,
-             const.defaultPadding,
+        if not getattr(self, 'startPageScroll', None):
+            header = uicls.EveCaptionLarge(text=localization.GetByLabel('UI/Contracts/ContractEntry/MyStartPage'), parent=self, left=const.defaultPadding * 2, top=const.defaultPadding)
+            self.startPageScroll = uicls.Scroll(parent=self, align=uiconst.TOALL, padding=(const.defaultPadding,
+             header.textheight + const.defaultPadding * 2,
              const.defaultPadding,
              const.defaultPadding))
-            self.mypagedesc = uicls.Edit(parent=descParent, readonly=1, hideBackground=1)
-            uicls.Frame(parent=self.mypagedesc, color=(1.0, 1.0, 1.0, 0.2))
+            self.startPageScroll.HideBackground()
+            self.startPageScroll.RemoveActiveFrame()
+            uicls.Frame(parent=self.startPageScroll, color=(1.0, 1.0, 1.0, 0.2))
             self.inited = 1
             sm.RegisterNotify(self)
         mpi = sm.GetService('contracts').CollectMyPageInfo()
@@ -1223,15 +1218,13 @@ class StartPagePanel(uicls.Container):
         ntot = mpi.numContractsTotal
         np = mpi.numContractsLeftInCorp
         nforcorp = mpi.numContractsLeftForCorp
-        html = '<html><body>\n        <h3>%s</h3>\n        <table width=100%%>\n            <tr><td colspan=2><hr></td></tr>' % mls.UI_CONTRACTS_MYSTARTPAGE
-        desc = mls.UI_CONTRACTS_MYPAGE_YOUCANCREATE_DESC1NEW % {'n1': ntot}
+        desc = localization.GetByLabel('UI/Contracts/ContractsService/YouCanCreateNew', numContracts=ntot)
         if not util.IsNPC(eve.session.corpid):
-            desc += '<br>' + mls.UI_CONTRACTS_MYPAGE_YOUCANCREATE_DESC2 % {'n': np}
+            desc += '<br>' + localization.GetByLabel('UI/Contracts/ContractsService/YouCanCreateForCorp', numContracts=np)
         if eve.session.corprole & const.corpRoleContractManager == const.corpRoleContractManager:
-            desc += '<br>' + mls.UI_CONTRACTS_MYPAGE_YOUCANCREATE_DESC3 % {'n': nforcorp}
-        html += AddItem('64_10', mls.UI_CONTRACTS_MYPAGE_YOUCANCREATE % {'n': n}, desc, 'method=OpenCreateContract')
-        html += '<tr><td colspan=2><hr></td></tr>'
-        html2 = ''
+            desc += '<br>' + localization.GetByLabel('UI/Contracts/ContractsService/YouCanCreateOnBehalfOfCorp', numContracts=nforcorp)
+        createLabel = localization.GetByLabel('UI/Contracts/ContractsService/YouCanCreate', numContracts=n)
+        AddItem('64_10', createLabel, desc, 'method=OpenCreateContract')
         ignoreList = set(settings.user.ui.Get('contracts_ignorelist', []))
         numAssignedToMeAuctionItemExchange = 0
         numAssignedToMeCourier = 0
@@ -1255,51 +1248,65 @@ class StartPagePanel(uicls.Container):
                     numAssignedToMyCorpAuctionItemExchange += 1
 
         if mpi.numRequiresAttention > 0:
-            html2 += AddItem('ui_9_64_11', mls.UI_CONTRACTS_MYPAGE_REQATT % {'n': mpi.numRequiresAttention}, mls.UI_CONTRACTS_MYPAGE_REQATT_DESC, 'method=OpenJournal&status=0&forCorp=0')
+            attentionReqLabel = localization.GetByLabel('UI/Contracts/ContractsService/RequireAttention', numContracts=mpi.numRequiresAttention)
+            attentionReqDescLabel = localization.GetByLabel('UI/Contracts/ContractsService/RequiresAttentionDesc')
+            AddItem('ui_9_64_11', attentionReqLabel, attentionReqDescLabel, 'method=OpenJournal&status=0&forCorp=0')
         if mpi.numRequiresAttentionCorp > 0:
-            html2 += AddItem('ui_9_64_11', mls.UI_CONTRACTS_MYPAGE_REQATTCORP % {'n': mpi.numRequiresAttentionCorp}, mls.UI_CONTRACTS_MYPAGE_REQATTCORP_DESC, 'method=OpenJournal&forCorp=1')
+            attentionReqCorpLabel = localization.GetByLabel('UI/Contracts/ContractsService/RequireAttentionCorp', numContracts=mpi.numRequiresAttentionCorp)
+            attentionReqCorpDescLabel = localization.GetByLabel('UI/Contracts/ContractsService/RequireAttentionCorpDesc')
+            AddItem('ui_9_64_11', attentionReqCorpLabel, attentionReqCorpDescLabel, 'method=OpenJournal&forCorp=1')
         if numAssignedToMeAuctionItemExchange > 0 or numAssignedToMeCourier > 0:
-            html2 += '<tr>\n                        <td width=1%% align=center valign=top><img src="icon:%s" size=32></td>\n                        <td><h6>%s</h6>\n                        ' % ('ui_9_64_9', mls.UI_CONTRACTS_MYPAGE_ASSIGNED % {'n': numAssignedToMeAuctionItemExchange + numAssignedToMeCourier})
+            assignedLabel = localization.GetByLabel('UI/Contracts/ContractsService/AssignedPersonal', numContracts=numAssignedToMeAuctionItemExchange + numAssignedToMeCourier)
+            subText = ''
             if numAssignedToMeAuctionItemExchange > 0:
-                html2 += ' - <a href="localsvc:service=contracts&%s">%s</a><br>' % ('method=OpenAvailableTab&view=3&reset=1&contractType=%s' % CONTYPE_AUCTIONANDITEMECHANGE, mls.UI_CONTRACTS_MYPAGE_ASSIGNED_AUCTIONITEMEXCHANGE % {'n': numAssignedToMeAuctionItemExchange})
+                auctionLabel = localization.GetByLabel('UI/Contracts/ContractsService/AuctionItemExchange', numContracts=numAssignedToMeAuctionItemExchange)
+                method = 'method=OpenAvailableTab&view=3&reset=1&contractType=%s' % CONTYPE_AUCTIONANDITEMECHANGE
+                subText += ' - <a href="localsvc:service=contracts&%s">%s</a><br>' % (method, auctionLabel)
             if numAssignedToMeCourier > 0:
-                html2 += ' - <a href="localsvc:service=contracts&%s">%s</a><br>' % ('method=OpenAvailableTab&view=3&reset=1&contractType=%s' % const.conTypeCourier, mls.UI_CONTRACTS_MYPAGE_ASSIGNED_COURIER % {'n': numAssignedToMeCourier})
+                assignedCourierLabel = localization.GetByLabel('UI/Contracts/ContractsService/AssignedCourier', numContracts=numAssignedToMeCourier)
+                method = 'method=OpenAvailableTab&view=3&reset=1&contractType=%s' % const.conTypeCourier
+                subText += '  - <a href="localsvc:service=contracts&%s">%s</a><br>' % (method, assignedCourierLabel)
+            AddItem('ui_9_64_9', assignedLabel, subText)
         if numAssignedToMyCorpAuctionItemExchange > 0 or numAssignedToMyCorpCourier > 0:
-            html2 += '<tr>\n                        <td width=1%% align=center valign=top><img src="icon:%s" size=32></td>\n                        <td><h6>%s</h6>\n                        ' % ('ui_9_64_9', mls.UI_CONTRACTS_MYPAGE_ASSIGNEDCORP % {'n': numAssignedToMyCorpAuctionItemExchange + numAssignedToMyCorpCourier})
+            numContracts = numAssignedToMyCorpAuctionItemExchange + numAssignedToMyCorpCourier
+            corpAssignedLabel = localization.GetByLabel('UI/Contracts/ContractsService/AssignedCorp', numContracts=numContracts)
+            subText = ''
             if numAssignedToMyCorpAuctionItemExchange > 0:
-                html2 += ' - <a href="localsvc:service=contracts&%s">%s</a><br>' % ('method=OpenAvailableTab&view=4&reset=1&contractType=%s' % CONTYPE_AUCTIONANDITEMECHANGE, mls.UI_CONTRACTS_MYPAGE_ASSIGNEDCORP_AUCTIONITEMEXCHANGE % {'n': numAssignedToMyCorpAuctionItemExchange})
+                corpExchangeLabel = localization.GetByLabel('UI/Contracts/ContractsService/AssignedCorpAuctionItemExchange', numContracts=numAssignedToMyCorpAuctionItemExchange)
+                method = 'method=OpenAvailableTab&view=4&reset=1&contractType=%s' % CONTYPE_AUCTIONANDITEMECHANGE
+                subText += ' - <a href="localsvc:service=contracts&%s">%s</a><br>' % (method, corpExchangeLabel)
             if numAssignedToMyCorpCourier > 0:
-                html2 += ' - <a href="localsvc:service=contracts&%s">%s</a><br>' % ('method=OpenAvailableTab&view=4&reset=1&contractType=%s' % const.conTypeCourier, mls.UI_CONTRACTS_MYPAGE_ASSIGNEDCORP_COURIER % {'n': numAssignedToMyCorpCourier})
+                corpCourierLabel = localization.GetByLabel('UI/Contracts/ContractsService/AssignedCorpCourier', numContracts=numAssignedToMyCorpCourier)
+                method = 'method=OpenAvailableTab&view=4&reset=1&contractType=%s' % const.conTypeCourier
+                subText += ' - <a href="localsvc:service=contracts&%s">%s</a><br>' % (method, corpCourierLabel)
+            AddItem('ui_9_64_9', corpAssignedLabel, subText)
         if mpi.numBiddingOn > 0:
-            html2 += AddItem('64_16', mls.UI_CONTRACTS_MYPAGE_BIDDINGON % {'n': mpi.numBiddingOn}, mls.UI_CONTRACTS_MYPAGE_BIDDINGON_DESC, 'method=OpenJournal&status=3&forCorp=0')
+            activeLabel = localization.GetByLabel('UI/Contracts/ContractsService/BiddingOn', numAuctions=mpi.numBiddingOn)
+            activeDescLabel = localization.GetByLabel('UI/Contracts/ContractsService/BiddingOnDesc')
+            AddItem('64_16', activeLabel, activeDescLabel, 'method=OpenJournal&status=3&forCorp=0')
         if mpi.numInProgress > 0:
-            html2 += AddItem('ui_9_64_9', mls.UI_CONTRACTS_MYPAGE_INPROGRESS % {'n': mpi.numInProgress}, mls.UI_CONTRACTS_MYPAGE_INPROGRESS_DESC, 'method=OpenJournal&status=2&forCorp=0')
+            progressLabel = localization.GetByLabel('UI/Contracts/ContractsService/InProgress', numContracts=mpi.numInProgress)
+            progressDescLabel = localization.GetByLabel('UI/Contracts/ContractsService/InProgressDesc')
+            AddItem('ui_9_64_9', progressLabel, progressDescLabel, 'method=OpenJournal&status=2&forCorp=0')
         if mpi.numBiddingOnCorp > 0:
-            html2 += AddItem('64_16', mls.UI_CONTRACTS_MYPAGE_BIDDINGONCORP % {'n': mpi.numBiddingOnCorp}, mls.UI_CONTRACTS_MYPAGE_BIDDINGONCORP_DESC, 'method=OpenJournal&status=3&forCorp=1')
+            biddingOnLabel = localization.GetByLabel('UI/Contracts/ContractsService/BiddingOnCorp', numAuctions=mpi.numBiddingOnCorp)
+            biddingOnDescLabel = localization.GetByLabel('UI/Contracts/ContractsService/BiddingOnCorpDesc')
+            AddItem('64_16', biddingOnLabel, biddingOnDescLabel, 'method=OpenJournal&status=3&forCorp=1')
         if mpi.numInProgressCorp > 0:
-            html2 += AddItem('ui_9_64_9', mls.UI_CONTRACTS_MYPAGE_INPROGRESSCORP % {'n': mpi.numInProgressCorp}, mls.UI_CONTRACTS_MYPAGE_INPROGRESSCORP_DESC, 'method=OpenJournal&status=2&forCorp=1')
+            inProgressCorpLabel = localization.GetByLabel('UI/Contracts/ContractsService/InProgressCorp', numContracts=mpi.numInProgressCorp)
+            inProgressCorpDescLabel = localization.GetByLabel('UI/Contracts/ContractsService/InProgressCorpDesc')
+            AddItem('ui_9_64_9', inProgressCorpLabel, inProgressCorpDescLabel, 'method=OpenJournal&status=2&forCorp=1')
         ignoreList = settings.user.ui.Get('contracts_ignorelist', [])
-        if html2 != '':
-            html2 += '<tr><td colspan=2><hr></td></tr>'
-        html += html2
         l = len(ignoreList)
         if l > 0:
-            html += AddItem('ui_38_16_208', mls.UI_CONTRACTS_MYPAGE_IGNORING % {'n': l}, mls.UI_CONTRACTS_MYPAGE_IGNORING_DESC % {'n': MAX_IGNORED}, 'method=OpenIgnoreList', isSmall=True)
-            html += '<tr><td colspan=2><hr></td></tr>'
-        html2 = ''
+            ignoreLabel = localization.GetByLabel('UI/Contracts/ContractsService/Ignoring', numIssuers=l)
+            ignoreDescLabel = localization.GetByLabel('UI/Contracts/ContractsService/IngoringDesc', numIssuers=MAX_IGNORED)
+            AddItem('ui_38_16_208', ignoreLabel, ignoreDescLabel, 'method=OpenIgnoreList', isSmall=True)
         mess = sm.GetService('contracts').GetMessages()
-        if len(mess) > 0:
-            for i in mess:
-                html2 = '<tr><td width=1%% align=center valign=middle><img src="icon:%s" size=16></td><td>%s</td></tr>' % ('ui_38_16_208', i) + html2
+        for i in mess:
+            AddItem('ui_38_16_208', '', i, isSmall=True)
 
-        html += html2
-        html += '</table></body></html>'
-        uthread.new(self.LoadStartPage, html)
-
-
-
-    def LoadStartPage(self, html):
-        self.mypagedesc.SetValue(html)
+        self.startPageScroll.LoadContent(contentList=scrollEntries)
 
 
 
@@ -1345,7 +1352,7 @@ class MyContractsPanel(uicls.Container):
              const.defaultPadding), parent=self)
             self.sr.contractlist = contractlist = uicls.Scroll(parent=contractlistParent, name='mycontractlist')
             contractlist.sr.id = 'mycontractlist'
-            contractlist.ShowHint(mls.UI_CONTRACTS_CONTRACTLISTHINT_CLICKGETCONTRACTS)
+            contractlist.ShowHint(localization.GetByLabel('UI/Contracts/ContractsWindow/ClickGetContracts'))
             contractlist.multiSelect = 0
             contractlistParent.top = 5
             self.currPage = 0
@@ -1359,8 +1366,8 @@ class MyContractsPanel(uicls.Container):
         self.sr.filters = filters = uicls.Container(name='filters', parent=self, height=34, align=uiconst.TOTOP)
         top = 16
         left = 5
-        options = [(mls.UI_CONTRACTS_ISSUEDTOBY, None), (mls.UI_CONTRACTS_ISSUEDBY, False), (mls.UI_CONTRACTS_ISSUEDTO, True)]
-        c = self.sr.fltToFrom = uicls.Combo(label=mls.UI_GENERIC_ACTION, parent=filters, options=options, name='tofrom', select=settings.user.ui.Get('mycontracts_filter_tofrom', None), callback=self.OnComboChange, pos=(left,
+        options = [(localization.GetByLabel('UI/Contracts/ContractsWindow/IssuedToBy'), None), (localization.GetByLabel('UI/Contracts/ContractsWindow/IssuedBy'), False), (localization.GetByLabel('UI/Contracts/ContractsWindow/IssuedTo'), True)]
+        c = self.sr.fltToFrom = uicls.Combo(label=localization.GetByLabel('UI/Contracts/ContractsWindow/Action'), parent=filters, options=options, name='tofrom', select=settings.user.ui.Get('mycontracts_filter_tofrom', None), callback=self.OnComboChange, pos=(left,
          top,
          0,
          0))
@@ -1370,28 +1377,28 @@ class MyContractsPanel(uicls.Container):
         val = getattr(self, 'lookup', None)
         if not val:
             val = settings.char.ui.Get('mycontracts_filter_owner', charName)
-        self.sr.fltOwner = c = uicls.SinglelineEdit(name='edit', parent=filters, width=120, label=mls.UI_GENERIC_OWNER, setvalue=val, left=left, top=top)
+        self.sr.fltOwner = c = uicls.SinglelineEdit(name='edit', parent=filters, width=120, label=localization.GetByLabel('UI/Contracts/ContractsWindow/Owner'), setvalue=val, left=left, top=top)
         left += c.width + 5
         ops = [(charName, charName), (corpName, corpName)]
         c.LoadCombo('usernamecombo', ops, self.OnComboChange)
-        self.status = [(mls.UI_CONTRACTS_OUTSTANDING, const.conStatusOutstanding), (mls.UI_CONTRACTS_INPROGRESS, const.conStatusInProgress), (mls.UI_CONTRACTS_FINISHED, const.conStatusFinished)]
-        c = self.sr.fltStatus = uicls.Combo(label=mls.UI_GENERIC_STATUS, parent=filters, options=self.status, name='status', select=settings.user.ui.Get('mycontracts_filter_status', None), callback=self.OnComboChange, pos=(left,
+        self.status = [(localization.GetByLabel('UI/Contracts/ContractEntry/Outstanding'), const.conStatusOutstanding), (localization.GetByLabel('UI/Contracts/ContractsWindow/InProgress'), const.conStatusInProgress), (localization.GetByLabel('UI/Contracts/ContractsWindow/Finished'), const.conStatusFinished)]
+        c = self.sr.fltStatus = uicls.Combo(label=localization.GetByLabel('UI/Contracts/ContractsWindow/Status'), parent=filters, options=self.status, name='status', select=settings.user.ui.Get('mycontracts_filter_status', None), callback=self.OnComboChange, pos=(left,
          top,
          0,
          0))
         left += c.width + 5
         mrk = '----------'
-        fltTypeOptions = [(mls.UI_GENERIC_ALL, None),
+        fltTypeOptions = [(localization.GetByLabel('UI/Common/All'), None),
          (mrk, -1),
-         (mls.UI_CONTRACTS_AUCTION, const.conTypeAuction),
-         (mls.UI_CONTRACTS_ITEMEXCHANGE, const.conTypeItemExchange),
-         (mls.UI_CONTRACTS_COURIER, const.conTypeCourier)]
-        self.sr.fltType = c = uicls.Combo(label=mls.UI_CONTRACTS_TYPE, parent=filters, options=fltTypeOptions, name='types', select=settings.user.ui.Get('mycontracts_filter_type', None), callback=self.OnComboChange, pos=(left,
+         (localization.GetByLabel('UI/Contracts/Auction'), const.conTypeAuction),
+         (localization.GetByLabel('UI/Contracts/ContractsWindow/ItemExchange'), const.conTypeItemExchange),
+         (localization.GetByLabel('UI/Contracts/ContractsWindow/Courier'), const.conTypeCourier)]
+        self.sr.fltType = c = uicls.Combo(label=localization.GetByLabel('UI/Contracts/ContractsWindow/ContractType'), parent=filters, options=fltTypeOptions, name='types', select=settings.user.ui.Get('mycontracts_filter_type', None), callback=self.OnComboChange, pos=(left,
          top,
          0,
          0))
         left += c.width + 5
-        self.sr.submitBtn = submit = uicls.Button(parent=filters, label=mls.UI_CONTRACTS_GETCONTRACTS, func=self.FetchContracts, pos=(const.defaultPadding,
+        self.sr.submitBtn = submit = uicls.Button(parent=filters, label=localization.GetByLabel('UI/Contracts/ContractsWindow/GetContracts'), func=self.FetchContracts, pos=(const.defaultPadding,
          top,
          0,
          0), align=uiconst.TOPRIGHT)
@@ -1399,13 +1406,13 @@ class MyContractsPanel(uicls.Container):
         btn = uix.GetBigButton(24, sidepar, 4, 6)
         btn.state = uiconst.UI_HIDDEN
         btn.OnClick = (self.BrowseMyContracts, -1)
-        btn.hint = mls.UI_GENERIC_PREVIOUS
+        btn.hint = localization.GetByLabel('UI/Common/Previous')
         btn.sr.icon.LoadIcon('ui_23_64_1')
         self.sr.transMyBackBtn = btn
         btn = uix.GetBigButton(24, sidepar, 28, 6)
         btn.state = uiconst.UI_HIDDEN
         btn.OnClick = (self.BrowseMyContracts, 1)
-        btn.hint = mls.UI_GENERIC_VIEWMORE
+        btn.hint = localization.GetByLabel('UI/Common/ViewMore')
         btn.sr.icon.LoadIcon('ui_23_64_2')
         self.sr.transMyFwdBtn = btn
         sidepar.left = submit.width + const.defaultPadding
@@ -1421,8 +1428,7 @@ class MyContractsPanel(uicls.Container):
     def FetchContracts(self, *args):
         if self.fetchingContracts:
             return 
-        self.sr.submitBtn.state = uiconst.UI_DISABLED
-        self.sr.submitBtn.SetLabel('<color=gray>' + self.sr.submitBtn.text + '</color>')
+        self.sr.submitBtn.Disable()
         self.fetchingContracts = 1
         uthread.new(self.EnableButtonTimer)
         self.currPage = 0
@@ -1432,11 +1438,10 @@ class MyContractsPanel(uicls.Container):
 
 
     def EnableButtonTimer(self):
-        blue.pyos.synchro.Sleep(5000)
+        blue.pyos.synchro.SleepWallclock(5000)
         try:
             self.fetchingContracts = 0
-            self.sr.submitBtn.state = uiconst.UI_NORMAL
-            self.sr.submitBtn.SetLabel(mls.UI_CONTRACTS_GETCONTRACTS)
+            self.sr.submitBtn.Enable()
         except:
             pass
 
@@ -1444,7 +1449,7 @@ class MyContractsPanel(uicls.Container):
 
     def DoFetchContracts(self):
         self.sr.contractlist.Load(contentList=[])
-        self.sr.contractlist.ShowHint(mls.UI_RMR_FETCHINGDATA)
+        self.sr.contractlist.ShowHint(localization.GetByLabel('UI/Contracts/ContractsWindow/FetchingData'))
         try:
             if self.currPage == 0:
                 self.sr.transMyBackBtn.state = uiconst.UI_HIDDEN
@@ -1466,23 +1471,25 @@ class MyContractsPanel(uicls.Container):
             startContractID = self.pages.get(self.currPage, None)
             _contracts = sm.ProxySvc('contractProxy').GetContractListForOwner(ownerID, filtStatus, contractType, isAccepted, num=RESULTS_PER_PAGE, startContractID=startContractID)
             contracts = _contracts.contracts
-            ownerIDs = {}
+            ownerIDs = set()
             for r in contracts:
-                ownerIDs[r.issuerID] = 1
-                ownerIDs[r.issuerCorpID] = 1
-                ownerIDs[r.acceptorID] = 1
-                ownerIDs[r.assigneeID] = 1
+                ownerIDs.add(r.issuerID)
+                ownerIDs.add(r.issuerCorpID)
+                ownerIDs.add(r.acceptorID)
+                ownerIDs.add(r.assigneeID)
 
-            cfg.eveowners.Prime(ownerIDs.keys())
+            if 0 in ownerIDs:
+                ownerIDs.remove(0)
+            cfg.eveowners.Prime(ownerIDs)
             scrolllist = []
             for c in contracts:
                 additionalColumns = ''
                 if filtStatus == const.conStatusOutstanding:
                     issued = {False: util.FmtDate(c.dateIssued, 'ss'),
                      True: '-'}[(c.type == const.conTypeAuction and c.issuerID != eve.session.charid)]
-                    additionalColumns = '<t>%s<t>%s' % (issued, ConFmtDate(c.dateExpired - blue.os.GetTime(), c.type == const.conTypeAuction))
+                    additionalColumns = '<t>%s<t>%s' % (issued, ConFmtDate(c.dateExpired - blue.os.GetWallclockTime(), c.type == const.conTypeAuction))
                 elif filtStatus == const.conStatusInProgress:
-                    additionalColumns = '<t>%s<t>%s' % (util.FmtDate(c.dateAccepted, 'ss'), ConFmtDate(c.dateAccepted + DAY * c.numDays - blue.os.GetTime(), c.type == const.conTypeAuction))
+                    additionalColumns = '<t>%s<t>%s' % (util.FmtDate(c.dateAccepted, 'ss'), ConFmtDate(c.dateAccepted + DAY * c.numDays - blue.os.GetWallclockTime(), c.type == const.conTypeAuction))
                 else:
                     additionalColumns = '<t>%s<t>%s' % (GetColoredContractStatusText(c.status), util.FmtDate(c.dateCompleted, 'ss'))
                 text = '...'
@@ -1493,25 +1500,25 @@ class MyContractsPanel(uicls.Container):
                  'label': text,
                  'additionalColumns': additionalColumns,
                  'callback': self.OnSelectContract,
-                 'sort_%s' % mls.UI_CONTRACTS_CONTRACT: -c.contractID,
-                 'sort_%s' % mls.UI_CONTRACTS_DATECOMPLETED: -c.dateCompleted,
-                 'sort_%s' % mls.UI_CONTRACTS_TIMELEFT: -c.dateExpired}
+                 'sort_%s' % localization.GetByLabel('UI/Common/Contract'): -c.contractID,
+                 'sort_%s' % localization.GetByLabel('UI/Contracts/ContractsWindow/DateCompleted'): -c.dateCompleted,
+                 'sort_%s' % localization.GetByLabel('UI/Contracts/ContractsWindow/TimeLeft'): -c.dateExpired}
                 scrolllist.append(listentry.Get('ContractEntrySmall', data))
 
-            headers = [mls.UI_CONTRACTS_CONTRACT,
-             mls.UI_GENERIC_TYPE,
-             mls.UI_GENERIC_FROM,
-             mls.UI_GENERIC_TO]
+            headers = [localization.GetByLabel('UI/Common/Contract'),
+             localization.GetByLabel('UI/Common/Type'),
+             localization.GetByLabel('UI/Common/From'),
+             localization.GetByLabel('UI/Common/To')]
             if filtStatus == const.conStatusOutstanding:
-                headers.extend([mls.UI_CONTRACTS_DATEISSUED, mls.UI_CONTRACTS_TIMELEFT])
+                headers.extend([localization.GetByLabel('UI/Contracts/ContractsWindow/DateIssued'), localization.GetByLabel('UI/Contracts/ContractsWindow/TimeLeft')])
             elif filtStatus == const.conStatusInProgress:
-                headers.extend([mls.UI_CONTRACTS_DATEACCEPTED, mls.UI_CONTRACTS_TIMELEFT])
+                headers.extend([localization.GetByLabel('UI/Contracts/ContractsWindow/DateAccepted'), localization.GetByLabel('UI/Contracts/ContractsWindow/TimeLeft')])
             else:
-                headers.extend([mls.UI_GENERIC_STATUS, mls.UI_CONTRACTS_DATECOMPLETED])
+                headers.extend([localization.GetByLabel('UI/Contracts/ContractsWindow/Status'), localization.GetByLabel('UI/Contracts/ContractsWindow/DateCompleted')])
             self.sr.contractlist.ShowHint()
             self.sr.contractlist.Load(contentList=scrolllist, headers=headers)
             if len(scrolllist) == 0:
-                self.sr.contractlist.ShowHint(mls.UI_CONTRACTS_NOCONTRACTSFOUND)
+                self.sr.contractlist.ShowHint(localization.GetByLabel('UI/Contracts/ContractEntry/NoContractsFound'))
             if len(contracts) >= 2:
                 self.pages[self.currPage] = contracts[0].contractID
                 self.pages[self.currPage + 1] = contracts[-1].contractID
@@ -1520,7 +1527,7 @@ class MyContractsPanel(uicls.Container):
             else:
                 self.sr.transMyFwdBtn.state = uiconst.UI_NORMAL
         except UserError:
-            self.sr.contractlist.ShowHint(mls.UI_CONTRACTS_NOCONTRACTSFOUND)
+            self.sr.contractlist.ShowHint(localization.GetByLabel('UI/Contracts/ContractEntry/NoContractsFound'))
             raise 
 
 
@@ -1540,6 +1547,7 @@ class MyContractsPanel(uicls.Container):
 class CreateContract(uicls.Window):
     __guid__ = 'form.CreateContract'
     __notifyevents__ = ['OnDeleteContract']
+    default_windowID = 'createcontract'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -1576,26 +1584,26 @@ class CreateContract(uicls.Window):
 
         self.currPage = 0
         self.NUM_STEPS = 4
-        self.CREATECONTRACT_TITLES = {const.conTypeNothing: [mls.UI_CONTRACTS_SELECTCONTRACTTYPE,
+        self.CREATECONTRACT_TITLES = {const.conTypeNothing: [localization.GetByLabel('UI/Contracts/ContractsWindow/SelectContractType'),
                                 '',
                                 '',
                                 ''],
-         const.conTypeAuction: [mls.UI_CONTRACTS_SELECTCONTRACTTYPE,
-                                mls.UI_CONTRACTS_PICKITEMS,
-                                mls.UI_CONTRACTS_SELECTOPTIONS,
-                                mls.UI_CONTRACTS_CONFIRM],
-         const.conTypeItemExchange: [mls.UI_CONTRACTS_SELECTCONTRACTTYPE,
-                                     mls.UI_CONTRACTS_PICKITEMS,
-                                     mls.UI_CONTRACTS_SELECTOPTIONS,
-                                     mls.UI_CONTRACTS_CONFIRM],
-         const.conTypeCourier: [mls.UI_CONTRACTS_SELECTCONTRACTTYPE,
-                                mls.UI_CONTRACTS_PICKITEMS,
-                                mls.UI_CONTRACTS_SELECTOPTIONS,
-                                mls.UI_CONTRACTS_CONFIRM]}
+         const.conTypeAuction: [localization.GetByLabel('UI/Contracts/ContractsWindow/SelectContractType'),
+                                localization.GetByLabel('UI/Contracts/ContractsWindow/PickItems'),
+                                localization.GetByLabel('UI/Contracts/ContractsWindow/SelectOptions'),
+                                localization.GetByLabel('UI/Common/Confirm')],
+         const.conTypeItemExchange: [localization.GetByLabel('UI/Contracts/ContractsWindow/SelectContractType'),
+                                     localization.GetByLabel('UI/Contracts/ContractsWindow/PickItems'),
+                                     localization.GetByLabel('UI/Contracts/ContractsWindow/SelectOptions'),
+                                     localization.GetByLabel('UI/Common/Confirm')],
+         const.conTypeCourier: [localization.GetByLabel('UI/Contracts/ContractsWindow/SelectContractType'),
+                                localization.GetByLabel('UI/Contracts/ContractsWindow/PickItems'),
+                                localization.GetByLabel('UI/Contracts/ContractsWindow/SelectOptions'),
+                                localization.GetByLabel('UI/Common/Confirm')]}
         self.isContractMgr = eve.session.corprole & const.corpRoleContractManager == const.corpRoleContractManager
         self.SetWndIcon(GetContractIcon(const.conTypeNothing), mainTop=-10)
-        self.SetCaption(mls.UI_CONTRACTS_CREATECONTRACT)
-        self.SetMinSize([400, 330])
+        self.SetCaption(localization.GetByLabel('UI/Inventory/ItemActions/CreateContract'))
+        self.SetMinSize([400, 345])
         self.NoSeeThrough()
         self.SetScope('all')
         main = self.sr.main
@@ -1621,13 +1629,13 @@ class CreateContract(uicls.Window):
                 elif item.ownerID != session.charid:
                     raise RuntimeError('Not your item!')
 
-        self.buttons = [(mls.UI_CMD_CANCEL,
+        self.buttons = [(localization.GetByLabel('UI/Common/Cancel'),
           self.OnCancel,
           (),
-          84), (mls.UI_CMD_PREVIOUS,
+          84), (localization.GetByLabel('UI/Common/Previous'),
           self.OnStepChange,
           -1,
-          84), (mls.UI_CMD_NEXT,
+          84), (localization.GetByLabel('UI/Common/Next'),
           self.OnStepChange,
           1,
           84)]
@@ -1723,7 +1731,8 @@ class CreateContract(uicls.Window):
                 if notFound:
                     types = ''
                     for (t, q,) in notFound:
-                        types += '<li>%s x %s</li>' % (cfg.invtypes.Get(t).name, q)
+                        typeXquantityLabel = localization.GetByLabel('UI/Contracts/ContractsService/NameXQuantity', typeID=t, quantity=q)
+                        types += u'  \u2022' + typeXquantityLabel + '<br>'
 
                     uthread.new(eve.Message, 'ConCopyContractMissingItems', {'types': types})
                 if foundItems:
@@ -1736,7 +1745,7 @@ class CreateContract(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         self.UnlockItems()
 
 
@@ -1752,10 +1761,10 @@ class CreateContract(uicls.Window):
 
 
     def SetTitle(self):
-        title = self.CREATECONTRACT_TITLES[self.data.type][self.currPage]
-        title += ' (%s/%s)' % (self.currPage + 1, self.NUM_STEPS)
+        titleLabel = localization.GetByLabel('UI/Contracts/ContractsService/PageOfTotal', pageTitle=self.CREATECONTRACT_TITLES[self.data.type][self.currPage], pageNum=self.currPage + 1, numPages=self.NUM_STEPS)
+        title = titleLabel
         if self.sr.Get('windowCaption', None) is None:
-            self.sr.windowCaption = uicls.CaptionLabel(text=title, parent=self.sr.topParent, align=uiconst.RELATIVE, left=60, top=18, state=uiconst.UI_DISABLED, fontsize=18)
+            self.sr.windowCaption = uicls.EveCaptionMedium(text=title, parent=self.sr.topParent, align=uiconst.RELATIVE, left=60, top=18, state=uiconst.UI_DISABLED)
             uiutil.Update(self)
         else:
             self.sr.windowCaption.text = title
@@ -1774,8 +1783,8 @@ class CreateContract(uicls.Window):
         for i in itemIDs.iterkeys():
             item = itemIDs[i]
             self.lockedItems[i] = i
-            sm.StartService('invCache').TryLockItem(i, 'lockItemContractFunction', {'itemType': TypeName(item[0]),
-             'action': mls.UI_CONTRACTS_CREATINGCONTRACT.lower()}, 1)
+            sm.StartService('invCache').TryLockItem(i, 'lockItemContractFunction', {'typeID': item[0],
+             'action': localization.GetByLabel('UI/Contracts/ContractsWindow/CreatingContract').lower()}, 1)
 
 
 
@@ -1793,7 +1802,7 @@ class CreateContract(uicls.Window):
             uix.Flush(self.formWnd)
             format = []
             self.form = retfields = reqresult = errorcheck = []
-            self.sr.buttonNext.SetLabel(mls.UI_CMD_NEXT)
+            self.sr.buttonNext.SetLabel(localization.GetByLabel('/Carbon/UI/Common/Next'))
             self.sr.buttonPrev.state = uiconst.UI_NORMAL
             if self.data.type != const.conTypeNothing:
                 self.SetWndIcon(GetContractIcon(self.data.type), mainTop=-10)
@@ -1811,11 +1820,11 @@ class CreateContract(uicls.Window):
                 if self.data.type == const.conTypeNothing:
                     s[const.conTypeItemExchange] = 1
                 format = [{'type': 'text',
-                  'text': mls.UI_CONTRACTS_CONTRACTTYPE},
+                  'text': localization.GetByLabel('UI/Contracts/ContractType')},
                  {'type': 'checkbox',
                   'label': '_hide',
                   'key': const.conTypeItemExchange,
-                  'text': ' ' + mls.UI_CONTRACTS_ITEMEXCHANGE,
+                  'text': localization.GetByLabel('UI/Contracts/ContractsWindow/ItemExchange'),
                   'required': 1,
                   'frame': 0,
                   'setvalue': s[const.conTypeItemExchange],
@@ -1823,7 +1832,7 @@ class CreateContract(uicls.Window):
                  {'type': 'checkbox',
                   'label': '_hide',
                   'key': const.conTypeAuction,
-                  'text': ' ' + mls.UI_CONTRACTS_AUCTION,
+                  'text': localization.GetByLabel('UI/Contracts/Auction'),
                   'required': 1,
                   'frame': 0,
                   'setvalue': s[const.conTypeAuction],
@@ -1831,7 +1840,7 @@ class CreateContract(uicls.Window):
                  {'type': 'checkbox',
                   'label': '_hide',
                   'key': const.conTypeCourier,
-                  'text': ' ' + mls.UI_CONTRACTS_COURIER,
+                  'text': localization.GetByLabel('UI/Contracts/ContractsWindow/Courier'),
                   'required': 1,
                   'frame': 0,
                   'setvalue': s[const.conTypeCourier],
@@ -1844,11 +1853,11 @@ class CreateContract(uicls.Window):
                 s[getattr(self.data, 'avail', 0)] = 1
                 n = getattr(self.data, 'name', '')
                 format.extend([{'type': 'text',
-                  'text': mls.UI_CONTRACTS_CONTRACTAVAILABILITY},
+                  'text': localization.GetByLabel('UI/Contracts/ContractsWindow/Availability')},
                  {'type': 'checkbox',
                   'label': '_hide',
                   'key': 0,
-                  'text': ' ' + mls.UI_CONTRACTS_PUBLIC,
+                  'text': localization.GetByLabel('UI/Generic/Public'),
                   'required': 1,
                   'frame': 0,
                   'setvalue': s[0],
@@ -1857,7 +1866,7 @@ class CreateContract(uicls.Window):
                  {'type': 'checkbox',
                   'label': '_hide',
                   'key': 1,
-                  'text': ' ' + mls.UI_CONTRACTS_PRIVATE,
+                  'text': localization.GetByLabel('UI/Generic/Private'),
                   'required': 1,
                   'frame': 0,
                   'setvalue': s[1],
@@ -1865,7 +1874,7 @@ class CreateContract(uicls.Window):
                   'onchange': self.OnAvailChange},
                  {'type': 'edit',
                   'width': 120,
-                  'label': '     ' + mls.UI_GENERIC_NAME_PERSON,
+                  'label': localization.GetByLabel('UI/Contracts/ContractsService/IndentedName'),
                   'key': 'name',
                   'required': 0,
                   'frame': 0,
@@ -1875,7 +1884,7 @@ class CreateContract(uicls.Window):
                     format.extend([{'type': 'checkbox',
                       'label': '_hide',
                       'key': 2,
-                      'text': ' ' + mls.UI_CONTRACTS_MYCORP,
+                      'text': localization.GetByLabel('UI/Contracts/ContractsWindow/MyCorporation'),
                       'required': 1,
                       'frame': 0,
                       'setvalue': s[2],
@@ -1885,7 +1894,7 @@ class CreateContract(uicls.Window):
                     format.extend([{'type': 'checkbox',
                       'label': '_hide',
                       'key': 3,
-                      'text': ' ' + mls.UI_CONTRACTS_MYALLIANCE,
+                      'text': localization.GetByLabel('UI/Contracts/ContractsWindow/MyAlliance'),
                       'required': 1,
                       'frame': 0,
                       'setvalue': s[3],
@@ -1893,11 +1902,12 @@ class CreateContract(uicls.Window):
                       'onchange': self.OnAvailChange}])
                 forCorp = getattr(self.data, 'forCorp', 0)
                 if self.isContractMgr:
+                    behalfLabel = localization.GetByLabel('UI/Contracts/ContractsService/OnBehalfOfCorp', corpName=cfg.eveowners.Get(eve.session.corpid).name, corpAccountName=sm.GetService('corp').GetMyCorpAccountName())
                     format.append({'type': 'btline'})
                     format.append({'type': 'checkbox',
                      'label': '_hide',
                      'key': 'forCorp',
-                     'text': ' ' + mls.UI_CONTRACTS_ONBEHALFOFCORP % {'corpname': cfg.eveowners.Get(eve.session.corpid).name} + ' (%s)' % sm.GetService('corp').GetMyCorpAccountName(),
+                     'text': behalfLabel,
                      'required': 1,
                      'frame': 0,
                      'setvalue': forCorp,
@@ -1909,11 +1919,13 @@ class CreateContract(uicls.Window):
                 uthread.new(self.WriteNumContractsAndLimitsLazy)
                 n = '?'
                 maxNumContracts = '?'
-                limitsParent = uicls.Container(name='limitsParent', parent=self.formWnd, align=uiconst.TOBOTTOM, height=12, idx=0)
-                self.limitTextWnd = uicls.Label(text='<color=0xff999999>%s: <b>%s / %s</b></color>' % (mls.UI_CONTRACTS_NUMBEROFOUTSTANDING, n, maxNumContracts), parent=limitsParent, autowidth=True, letterspace=1, fontsize=11, state=uiconst.UI_DISABLED, uppercase=0)
+                limitsParent = uicls.Container(name='limitsParent', parent=self.formWnd, align=uiconst.TOBOTTOM, height=10, idx=0)
+                outstandingContractsLabel = localization.GetByLabel('UI/Contracts/ContractsService/OutstandingContractsUnknown')
+                labelText = '<color=0xff999999>%s</color>' % outstandingContractsLabel
+                self.limitTextWnd = uicls.EveLabelSmall(text=labelText, parent=limitsParent, left=6, state=uiconst.UI_DISABLED)
                 (self.form, retfields, reqresult, self.panels, errorcheck, refresh,) = sm.GetService('form').GetForm(format, self.formWnd)
             elif n == 1:
-                self.WriteSelectItems(mls.UI_CONTRACTS_SELECTSTATIONTOGETITEMSFROM)
+                self.WriteSelectItems(localization.GetByLabel('UI/Contracts/ContractsWindow/SelectStationToGetItems'))
             elif n == 2:
                 expireTime = getattr(self.data, 'expiretime', None)
                 if expireTime is None:
@@ -1924,12 +1936,12 @@ class CreateContract(uicls.Window):
                 expireTimeOptions = []
                 for t in EXPIRE_TIMES:
                     num = numDays = t / 1440
-                    txt = [mls.GENERIC_DAY, mls.GENERIC_DAYS_LOWER][(numDays > 1)]
+                    txt = localization.GetByLabel('UI/Contracts/ContractsService/QuantityDays', numDays=num)
                     numWeeks = t / 10080
                     if numWeeks >= 1:
-                        txt = [mls.UI_GENERIC_WEEK, mls.UI_GENERIC_WEEKS][(numWeeks > 1)]
                         num = numWeeks
-                    expireTimeOptions.append(('%s %s' % (num, txt), t))
+                        txt = localization.GetByLabel('UI/Contracts/ContractsService/QuantityWeeks', numWeeks=num)
+                    expireTimeOptions.append((txt, t))
 
                 if self.data.type == const.conTypeAuction:
                     del expireTimeOptions[-1]
@@ -1937,7 +1949,7 @@ class CreateContract(uicls.Window):
                      {'type': 'edit',
                       'labelwidth': 150,
                       'width': 200,
-                      'label': mls.UI_CONTRACTS_STARTINGBID,
+                      'label': localization.GetByLabel('UI/Contracts/ContractsWindow/StartingBid'),
                       'key': 'price',
                       'autoselect': 1,
                       'required': 0,
@@ -1949,7 +1961,7 @@ class CreateContract(uicls.Window):
                      {'type': 'edit',
                       'labelwidth': 150,
                       'width': 120,
-                      'label': mls.UI_CONTRACTS_BUYOUTPRICEOPTIONAL,
+                      'label': localization.GetByLabel('UI/Contracts/ContractsWindow/BuyoutPriceOptional'),
                       'key': 'collateral',
                       'autoselect': 1,
                       'required': 0,
@@ -1961,7 +1973,7 @@ class CreateContract(uicls.Window):
                      {'type': 'combo',
                       'labelwidth': 150,
                       'width': 120,
-                      'label': mls.UI_CONTRACTS_AUCTIONTIME,
+                      'label': localization.GetByLabel('UI/Contracts/ContractsWindow/AuctionTime'),
                       'key': 'expiretime',
                       'options': expireTimeOptions,
                       'setvalue': getattr(self.data, 'expiretime', expireTime)},
@@ -1969,7 +1981,7 @@ class CreateContract(uicls.Window):
                      {'type': 'edit',
                       'labelwidth': 150,
                       'width': 220,
-                      'label': mls.UI_CONTRACTS_DECRIPTIONOPTIONAL,
+                      'label': localization.GetByLabel('UI/Contracts/ContractEntry/DescriptionOptional'),
                       'key': 'description',
                       'required': 0,
                       'frame': 0,
@@ -1977,14 +1989,14 @@ class CreateContract(uicls.Window):
                       'setvalue': getattr(self.data, 'description', '')}]
                     (self.form, retfields, reqresult, self.panels, errorcheck, refresh,) = sm.GetService('form').GetForm(format, self.formWnd)
                     btnparent = uicls.Container(name='btnparent', parent=self.formWnd.sr.price, align=uiconst.TORIGHT, width=76, idx=0, padLeft=const.defaultPadding)
-                    uicls.Button(parent=btnparent, label=mls.GD_TYPE_BASEPRICE, func=self.CalcBasePricePrice, btn_default=0)
+                    uicls.Button(parent=btnparent, label=localization.GetByLabel('UI/Contracts/ContractsWindow/BasePrice'), func=self.CalcBasePricePrice, btn_default=0)
                 elif self.data.type == const.conTypeItemExchange:
                     isRequestItems = not not self.data.reqItems
                     format = [{'type': 'push'},
                      {'type': 'edit',
                       'labelwidth': 150,
                       'width': 120,
-                      'label': mls.UI_CONTRACTS_IWILLPAY,
+                      'label': localization.GetByLabel('UI/Contracts/ContractEntry/IWillPay'),
                       'key': 'reward',
                       'autoselect': 1,
                       'required': 0,
@@ -1996,7 +2008,7 @@ class CreateContract(uicls.Window):
                      {'type': 'edit',
                       'labelwidth': 150,
                       'width': 200,
-                      'label': mls.UI_CONTRACTS_IWILLRECEIVE,
+                      'label': localization.GetByLabel('UI/Contracts/ContractEntry/IWillRecieve'),
                       'key': 'price',
                       'autoselect': 1,
                       'required': 0,
@@ -2008,7 +2020,7 @@ class CreateContract(uicls.Window):
                      {'type': 'combo',
                       'labelwidth': 150,
                       'width': 120,
-                      'label': mls.UI_CONTRACTS_EXPIRATION,
+                      'label': localization.GetByLabel('UI/Contracts/ContractsWindow/Expiration'),
                       'key': 'expiretime',
                       'options': expireTimeOptions,
                       'setvalue': getattr(self.data, 'expiretime', expireTime)},
@@ -2016,7 +2028,7 @@ class CreateContract(uicls.Window):
                      {'type': 'edit',
                       'labelwidth': 150,
                       'width': 220,
-                      'label': mls.UI_CONTRACTS_DECRIPTIONOPTIONAL,
+                      'label': localization.GetByLabel('UI/Contracts/ContractEntry/DescriptionOptional'),
                       'key': 'description',
                       'required': 0,
                       'frame': 0,
@@ -2031,23 +2043,23 @@ class CreateContract(uicls.Window):
                       'setvalue': isRequestItems,
                       'key': 'requestitems',
                       'label': '',
-                      'text': mls.UI_CONTRACTS_ALSOREQUESTITEMS,
+                      'text': localization.GetByLabel('UI/Contracts/ContractsWindow/AlsoReqItemsFromBuyer'),
                       'frame': 0,
                       'onchange': self.OnRequestItemsChange}]
                     (self.form, retfields, reqresult, self.panels, errorcheck, refresh,) = sm.GetService('form').GetForm(format, self.formWnd)
                     self.sr.reqItemsParent = reqItemsParent = uicls.Container(name='reqItemsParent', parent=self.formWnd, align=uiconst.TOALL, pos=(0, 0, 0, 0), idx=50)
                     left = const.defaultPadding + 3
                     top = 16
-                    self.reqItemTypeWnd = c = uicls.SinglelineEdit(name='itemtype', parent=reqItemsParent, label=mls.UI_CONTRACTS_ITEMTYPE, align=uiconst.TOPLEFT, width=248)
+                    self.reqItemTypeWnd = c = uicls.SinglelineEdit(name='itemtype', parent=reqItemsParent, label=localization.GetByLabel('UI/Contracts/ContractsWindow/ItemType'), align=uiconst.TOPLEFT, width=248)
                     c.OnFocusLost = self.ParseItemType
                     c.left = left
                     c.top = top
                     left += c.width + 5
-                    self.reqItemQtyWnd = c = uicls.SinglelineEdit(name='itemqty', parent=reqItemsParent, label=mls.UI_GENERIC_QUANTITY, align=uiconst.TOPLEFT, width=50, ints=[0], setvalue=1)
+                    self.reqItemQtyWnd = c = uicls.SinglelineEdit(name='itemqty', parent=reqItemsParent, label=localization.GetByLabel('UI/Inventory/ItemQuantity'), align=uiconst.TOPLEFT, width=50, ints=[0], setvalue=1)
                     c.left = left
                     c.top = top
                     left += c.width + 5
-                    c = uicls.Button(parent=reqItemsParent, label=mls.UI_GENERIC_ADDITEM, func=self.AddRequestItem, pos=(left,
+                    c = uicls.Button(parent=reqItemsParent, label=localization.GetByLabel('UI/Contracts/ContractEntry/AddItem'), func=self.AddRequestItem, pos=(left,
                      top,
                      0,
                      0), align=uiconst.TOPLEFT)
@@ -2059,7 +2071,7 @@ class CreateContract(uicls.Window):
                     self.reqItemScroll.sr.id = 'reqitemscroll'
                     self.PopulateReqItemScroll()
                     btnparent = uicls.Container(name='btnparent', parent=self.formWnd.sr.price, align=uiconst.TORIGHT, width=76, idx=0, padLeft=const.defaultPadding)
-                    uicls.Button(parent=btnparent, label=mls.GD_TYPE_BASEPRICE, func=self.CalcBasePricePrice, btn_default=0)
+                    uicls.Button(parent=btnparent, label=localization.GetByLabel('UI/Contracts/ContractsWindow/BasePrice'), func=self.CalcBasePricePrice, btn_default=0)
                     self.ToggleShowRequestItems(isRequestItems)
                 elif self.data.type == const.conTypeCourier:
                     stationName = ''
@@ -2067,7 +2079,7 @@ class CreateContract(uicls.Window):
                         stationName = cfg.evelocations.Get(self.data.items.keys()[0]).name.replace('>>', '')
                     format = [{'type': 'push'},
                      {'type': 'edit',
-                      'label': mls.UI_GENERIC_SHIPTO,
+                      'label': localization.GetByLabel('UI/Contracts/ContractsWindow/ShipTo'),
                       'labelwidth': 150,
                       'width': 200,
                       'key': 'endStationName',
@@ -2078,7 +2090,7 @@ class CreateContract(uicls.Window):
                      {'type': 'edit',
                       'labelwidth': 150,
                       'width': 120,
-                      'label': mls.UI_CONTRACTS_REWARD,
+                      'label': localization.GetByLabel('UI/Contracts/ContractsWindow/Reward'),
                       'key': 'reward',
                       'autoselect': 1,
                       'required': 0,
@@ -2090,7 +2102,7 @@ class CreateContract(uicls.Window):
                      {'type': 'edit',
                       'labelwidth': 150,
                       'width': 200,
-                      'label': mls.UI_CONTRACTS_COLLATERAL,
+                      'label': localization.GetByLabel('UI/Contracts/ContractsWindow/Collateral'),
                       'key': 'collateral',
                       'autoselect': 1,
                       'required': 0,
@@ -2102,7 +2114,7 @@ class CreateContract(uicls.Window):
                      {'type': 'combo',
                       'labelwidth': 150,
                       'width': 120,
-                      'label': mls.UI_CONTRACTS_EXPIRATION,
+                      'label': localization.GetByLabel('UI/Contracts/ContractsWindow/Expiration'),
                       'key': 'expiretime',
                       'options': expireTimeOptions,
                       'setvalue': expireTime},
@@ -2110,7 +2122,7 @@ class CreateContract(uicls.Window):
                      {'type': 'edit',
                       'labelwidth': 150,
                       'width': 32,
-                      'label': mls.UI_CONTRACTS_FREEFORMTIME,
+                      'label': localization.GetByLabel('UI/Contracts/ContractsWindow/DaysToComplete'),
                       'key': 'duration',
                       'autoselect': 1,
                       'required': 0,
@@ -2122,7 +2134,7 @@ class CreateContract(uicls.Window):
                      {'type': 'edit',
                       'labelwidth': 150,
                       'width': 220,
-                      'label': mls.UI_CONTRACTS_DECRIPTIONOPTIONAL,
+                      'label': localization.GetByLabel('UI/Contracts/ContractEntry/DescriptionOptional'),
                       'key': 'description',
                       'required': 0,
                       'frame': 0,
@@ -2130,18 +2142,19 @@ class CreateContract(uicls.Window):
                       'setvalue': getattr(self.data, 'description', '')}]
                     (self.form, retfields, reqresult, self.panels, errorcheck, refresh,) = sm.GetService('form').GetForm(format, self.formWnd)
                     btnparent = uicls.Container(name='btnparent', parent=self.formWnd.sr.endStationName, align=uiconst.TORIGHT, idx=0, padLeft=const.defaultPadding)
-                    btn = uicls.Button(parent=btnparent, label=mls.UI_CMD_SEARCH, func=self.SearchStationFromBtn, btn_default=0)
+                    btn = uicls.Button(parent=btnparent, label=localization.GetByLabel('UI/Common/Search'), func=self.SearchStationFromBtn, btn_default=0)
                     if self.data.endStation:
                         self.SearchStation(self.data.endStation)
+                    self.formWnd.sr.endStationName.OnFocusLost = self.SearchStationFromBtn
                     c = uicls.Container(name='push', parent=self.formWnd, align=uiconst.TOTOP, height=10)
                     uicls.Line(parent=c, align=uiconst.TOBOTTOM)
-                    c = uicls.Container(name='push', parent=self.formWnd, align=uiconst.TOTOP, height=5)
-                    self.sr.courierHint = uicls.Label(text='', align=uiconst.TOLEFT, parent=self.formWnd, autowidth=True, letterspace=1, fontsize=11, state=uiconst.UI_DISABLED, uppercase=0, left=6)
+                    c = uicls.Container(name='push', parent=self.formWnd, align=uiconst.TOTOP, height=2)
+                    self.sr.courierHint = uicls.EveLabelSmall(text='', align=uiconst.TOLEFT, parent=self.formWnd, width=self.width - 20, state=uiconst.UI_DISABLED, left=6, lineSpacing=-0.2)
                     self.UpdateCourierHint()
                     if not getattr(self, 'courierHint', None):
                         self.courierHint = base.AutoTimer(1000, self.UpdateCourierHint)
                     btnparent2 = uicls.Container(name='btnparent', parent=self.formWnd.sr.collateral, align=uiconst.TORIGHT, idx=0, padLeft=const.defaultPadding)
-                    btn2 = uicls.Button(parent=btnparent2, label=mls.GD_TYPE_BASEPRICE, func=self.CalcBasePriceCollateral, btn_default=0)
+                    btn2 = uicls.Button(parent=btnparent2, label=localization.GetByLabel('UI/Contracts/ContractsWindow/BasePrice'), func=self.CalcBasePriceCollateral, btn_default=0)
                     btnWidth = max(btn.width, btn2.width)
                     btnparent.width = btnWidth
                     btnparent2.width = btnWidth
@@ -2151,32 +2164,34 @@ class CreateContract(uicls.Window):
                 if hasattr(self.data, 'duration'):
                     settings.char.ui.Set('contracts_duration_%s' % self.data.type, self.data.duration)
                 rows = []
-                rows.append([mls.UI_CONTRACTS_CONTRACTTYPE, GetContractTypeText(self.data.type)])
+                rows.append([localization.GetByLabel('UI/Contracts/ContractType'), GetContractTypeText(self.data.type)])
                 desc = self.data.description
                 if desc == '':
-                    desc = mls.UI_CONTRACTS_NONE
-                rows.append([mls.UI_CONTRACTS_DESCRIPTION, desc])
+                    desc = localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen')
+                rows.append([localization.GetByLabel('UI/Contracts/ContractsWindow/Description'), desc])
                 avail = self.data.avail
-                a = mls.UI_CONTRACTS_PUBLIC
+                a = localization.GetByLabel('UI/Generic/Public')
                 if avail > 0:
-                    a = mls.UI_CONTRACTS_PRIVATE
+                    a = localization.GetByLabel('UI/Generic/Private')
                     assignee = cfg.eveowners.Get(self.data.assigneeID)
                     a += ' (<a href=showinfo:%s//%s>%s</a>)' % (assignee.typeID, self.data.assigneeID, assignee.name)
                 else:
-                    a += ' (%s: <b>%s</b>)' % (mls.UI_GENERIC_REGION, cfg.evelocations.Get(cfg.evelocations.Get(self.data.startStation).Station().regionID).name)
-                rows.append([mls.UI_CONTRACTS_AVAILABILITY, a])
-                loc = mls.UI_CONTRACTS_NONE
+                    regionLabel = localization.GetByLabel('UI/Contracts/ContractsService/RegionName', region=cfg.evelocations.Get(self.data.startStation).Station().regionID)
+                    a += regionLabel
+                rows.append([localization.GetByLabel('UI/Contracts/ContractsWindow/Availability'), a])
+                loc = localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen')
                 if self.data.startStation:
                     loc = cfg.evelocations.Get(self.data.startStation).name
                     startStationTypeID = sm.GetService('ui').GetStation(self.data.startStation).stationTypeID
                     loc = '<a href=showinfo:%s//%s>%s</a>' % (startStationTypeID, self.data.startStation, loc)
-                rows.append([mls.UI_CONTRACTS_LOCATION, loc])
-                rows.append([mls.UI_CONTRACTS_EXPIRATION, '%s (%s)' % (util.FmtDate(self.data.expiretime * MIN + blue.os.GetTime(), 'ss'), util.FmtDate(self.data.expiretime * MIN))])
+                rows.append([localization.GetByLabel('UI/Contracts/ContractsWindow/Location'), loc])
+                expireLabel = localization.GetByLabel('UI/Contracts/ContractsService/TimeLeftWithoutCaption', timeLeft=util.FmtDate(self.data.expiretime * MIN + blue.os.GetWallclockTime(), 'ss'), expireTime=util.FmtDate(self.data.expiretime * MIN))
+                rows.append([localization.GetByLabel('UI/Contracts/ContractsWindow/Expiration'), expireLabel])
                 salesTax = ''
                 brokersFee = ''
                 deposit = ''
                 if self.data.avail > 0:
-                    salesTax = mls.UI_CONTRACTS_NONE
+                    salesTax = localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen')
                     brokersFee = util.FmtISK(const_conBrokersFeeMinimum, 0)
                     deposit = util.FmtISK(0.0, 0)
                 else:
@@ -2184,18 +2199,18 @@ class CreateContract(uicls.Window):
                     skillLevels.brokerRelations = getattr(sm.GetService('skills').HasSkill(const.typeBrokerRelations), 'skillLevel', 0)
                     skillLevels.accounting = getattr(sm.GetService('skills').HasSkill(const.typeAccounting), 'skillLevel', 0)
                     ret = CalcContractFees(self.data.Get('price', 0), self.data.Get('reward', 0), self.data.type, self.data.expiretime, skillLevels)
-                    salesTax = '%s (%s%%)' % (util.FmtISK(ret.salesTaxAmt, 0), ret.salesTax * 100.0)
+                    salesTax = localization.GetByLabel('UI/Contracts/ContractsService/ISKFollowedByPercent', numISK=util.FmtISK(ret.salesTaxAmt, 0), percentage=ret.salesTax * 100.0)
                     if ret.brokersFeeAmt == const_conBrokersFeeMinimum:
-                        brokersFee = '%s (%s)' % (util.FmtISK(ret.brokersFeeAmt, 0), mls.UI_GENERIC_MINIMUM.lower())
+                        brokersFee = localization.GetByLabel('UI/Contracts/ContractsService/ISKMinimumQuantity', numISK=util.FmtISK(ret.brokersFeeAmt, 0))
                     else:
-                        brokersFee = '%s (%s%%)' % (util.FmtISK(ret.brokersFeeAmt, 0), ret.brokersFee * 100.0)
+                        brokersFee = localization.GetByLabel('UI/Contracts/ContractsService/ISKFollowedByPercent', numISK=util.FmtISK(ret.brokersFeeAmt, 0), percentage=ret.brokersFee * 100.0)
                     minDeposit = const_conDepositMinimum
                     if self.data.type == const.conTypeCourier:
                         minDeposit = minDeposit / 10
                     if ret.depositAmt == minDeposit:
-                        deposit = '%s (%s)' % (util.FmtISK(ret.depositAmt, 0), mls.UI_GENERIC_MINIMUM.lower())
+                        deposit = localization.GetByLabel('UI/Contracts/ContractsService/ISKMinimumQuantity', numISK=util.FmtISK(ret.depositAmt, 0))
                     else:
-                        deposit = '%s (%s%%)' % (util.FmtISK(ret.depositAmt, 0), ret.deposit * 100.0)
+                        deposit = localization.GetByLabel('UI/Contracts/ContractsService/ISKFollowedByPercent', numISK=util.FmtISK(ret.depositAmt, 0), percentage=ret.deposit * 100.0)
                     if self.data.type == const.conTypeAuction:
                         p = const_conSalesTax - float(skillLevels.accounting) * 0.001
                         buyout = self.data.collateral
@@ -2203,70 +2218,87 @@ class CreateContract(uicls.Window):
                             buyout = MAX_AMOUNT
                         ret2 = CalcContractFees(buyout, self.data.Get('reward', 0), self.data.type, self.data.expiretime, skillLevels)
                         maxSalesTax = ret2.salesTaxAmt
-                        salesTax = '%s%% %s (%s)' % (100.0 * p, mls.UI_CONTRACTS_OFSELLPRICE, mls.UI_CONTRACTS_MAXSALESTAX % {'amt': FmtISKWithDescription(maxSalesTax, True)})
+                        salesTax = localization.GetByLabel('UI/Contracts/ContractsService/PercentOfSalesPriceAtTax', percent=100.0 * p, formattedISKWithUnits=FmtISKWithDescription(maxSalesTax, True))
                     elif self.data.type == const.conTypeCourier:
-                        salesTax = mls.UI_CONTRACTS_NONE
-                rows.append([mls.UI_CONTRACTS_SALESTAX, salesTax])
-                rows.append([mls.UI_CONTRACTS_BROKERSFEE, brokersFee])
-                rows.append([mls.UI_CONTRACTS_DEPOSIT, deposit])
+                        salesTax = localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen')
+                rows.append([localization.GetByLabel('UI/Contracts/ContractsWindow/SalesTax'), salesTax])
+                rows.append([localization.GetByLabel('UI/Contracts/ContractsWindow/BrokersFee'), brokersFee])
+                rows.append([localization.GetByLabel('UI/Contracts/ContractsWindow/Deposit'), deposit])
                 rows.append([])
                 if self.data.type == const.conTypeAuction:
-                    rows.append([mls.UI_CONTRACTS_STARTINGBID, FmtISKWithDescription(self.data.price)])
-                    buyout = mls.UI_CONTRACTS_NONE
+                    rows.append([localization.GetByLabel('UI/Contracts/ContractsWindow/StartingBid'), FmtISKWithDescription(self.data.price)])
+                    buyout = localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen')
                     if self.data.collateral > 0:
                         buyout = FmtISKWithDescription(self.data.collateral)
-                    rows.append([mls.UI_CONTRACTS_BUYOUTPRICE, buyout])
-                    items = ''
+                    rows.append([localization.GetByLabel('UI/Contracts/ContractsWindow/BuyoutPrice'), buyout])
+                    itemList = []
                     for i in self.data.items:
-                        items += '%s x %s<br>' % (TypeName(self.data.items[i][0]), util.FmtAmt(self.data.items[i][1]))
+                        itemLabel = localization.GetByLabel('UI/Contracts/ContractsService/NameXQuantity', typeID=self.data.items[i][0], quantity=util.FmtAmt(self.data.items[i][1]))
+                        itemList.append(itemLabel)
                         chld = self.data.childItems.get(i, [])
                         for c in chld:
-                            items += ' - %s x %s<br>' % (TypeName(c[1]), c[2])
+                            childItemLabel = localization.GetByLabel('UI/Contracts/ContractsService/NameXQuantityChild', typeID=c[1], quantity=c[2])
+                            itemList.append(childItemLabel)
 
 
-                    rows.append([mls.UI_CONTRACTS_ITEMSFORSALE, items])
+                    items = '<br>'.join(itemList)
+                    rows.append([localization.GetByLabel('UI/Contracts/ContractEntry/ItemsForSale'), items])
                 elif self.data.type == const.conTypeItemExchange:
-                    rows.append([mls.UI_CONTRACTS_IWILLPAY, FmtISKWithDescription(self.data.reward)])
-                    rows.append([mls.UI_CONTRACTS_IWILLRECEIVE, FmtISKWithDescription(self.data.price)])
+                    rows.append([localization.GetByLabel('UI/Contracts/ContractEntry/IWillPay'), FmtISKWithDescription(self.data.reward)])
+                    rows.append([localization.GetByLabel('UI/Contracts/ContractEntry/IWillRecieve'), FmtISKWithDescription(self.data.price)])
                     items = ''
+                    itemList = []
                     for i in self.data.items:
-                        items += '%s x %s<br>' % (TypeName(self.data.items[i][0]), util.FmtCurrency(self.data.items[i][1], showFractionsAlways=0, currency=None))
+                        itemLabel = localization.GetByLabel('UI/Contracts/ContractsService/NameXQuantity', typeID=self.data.items[i][0], quantity=util.FmtAmt(self.data.items[i][1]))
+                        itemList.append(itemLabel)
                         chld = self.data.childItems.get(i, [])
                         for c in chld:
-                            items += ' - %s x %s<br>' % (TypeName(c[1]), c[2])
+                            childItemLabel = localization.GetByLabel('UI/Contracts/ContractsService/NameXQuantityChild', typeID=c[1], quantity=c[2])
+                            itemList.append(childItemLabel)
 
 
-                    rows.append([mls.UI_CONTRACTS_ITEMSFORSALE, items])
-                    itemStr = '<br>'.join([ '%s x %s' % (TypeName(typeID), util.FmtCurrency(qty, showFractionsAlways=0, currency=None)) for (typeID, qty,) in self.data.reqItems.iteritems() ])
-                    rows.append([mls.UI_CONTRACTS_ITEMSREQUIRED, itemStr])
+                    items = '<br>'.join(itemList)
+                    rows.append([localization.GetByLabel('UI/Contracts/ContractEntry/ItemsForSale'), items])
+                    listToJoin = []
+                    for (typeID, qty,) in self.data.reqItems.iteritems():
+                        labelToAppend = localization.GetByLabel('UI/Contracts/ContractsService/NameXQuantity', typeID=typeID, quantity=util.FmtAmt(qty))
+                        listToJoin.append(labelToAppend)
+
+                    itemStr = '<br>'.join(listToJoin)
+                    rows.append([localization.GetByLabel('UI/Contracts/ContractEntry/ItemsRequired'), itemStr])
                 elif self.data.type == const.conTypeCourier:
-                    rows.append([mls.UI_CONTRACTS_REWARD, FmtISKWithDescription(self.data.reward)])
-                    rows.append([mls.UI_CONTRACTS_COLLATERAL, FmtISKWithDescription(self.data.collateral)])
+                    rows.append([localization.GetByLabel('UI/Contracts/ContractsWindow/Reward'), FmtISKWithDescription(self.data.reward)])
+                    rows.append([localization.GetByLabel('UI/Contracts/ContractsWindow/Collateral'), FmtISKWithDescription(self.data.collateral)])
                     loc = ''
                     if self.data.startStation:
                         loc = cfg.evelocations.Get(self.data.endStation).name
                         typeID = sm.GetService('ui').GetStation(self.data.endStation).stationTypeID
                         loc = '<a href=showinfo:%s//%s>%s</a>' % (typeID, self.data.endStation, loc)
-                    rows.append([mls.UI_CONTRACTS_DESTINATION, loc])
-                    rows.append([mls.UI_CONTRACTS_FREEFORMTIME, self.data.duration])
+                    rows.append([localization.GetByLabel('UI/Common/Destination'), loc])
+                    rows.append([localization.GetByLabel('UI/Contracts/ContractsWindow/DaysToComplete'), self.data.duration])
                     volume = 0
                     for i in self.data.items:
                         volume += self.GetItemVolumeMaybe(self.data.items[i][2], int(self.data.items[i][1]))
 
-                    rows.append([mls.UI_CONTRACTS_VOLUME, '%s m\xb3' % util.FmtAmt(volume, showFraction=3)])
+                    volumeLabel = localization.GetByLabel('UI/Contracts/ContractsWindow/NumericVolume', volume=util.FmtAmt(volume, showFraction=3))
+                    rows.append([localization.GetByLabel('UI/Inventory/ItemVolume'), volumeLabel])
                     items = ''
+                    itemList = []
                     for i in self.data.items:
-                        items += '%s x %s<br>' % (TypeName(self.data.items[i][0]), util.FmtCurrency(self.data.items[i][1], showFractionsAlways=0, currency=None))
+                        itemLabel = localization.GetByLabel('UI/Contracts/ContractsService/NameXQuantity', typeID=self.data.items[i][0], quantity=util.FmtCurrency(self.data.items[i][1]))
+                        itemList.append(itemLabel)
                         chld = self.data.childItems.get(i, [])
                         for c in chld:
-                            items += ' - %s x %s<br>' % (TypeName(c[1]), c[2])
+                            childItemLabel = localization.GetByLabel('UI/Contracts/ContractsService/NameXQuantityChild', typeID=c[1], quantity=c[2])
+                            itemList.append(childItemLabel)
 
 
-                    rows.append([mls.UI_CONTRACTS_ITEMS, items])
+                    items = '<br>'.join(itemList)
+                    rows.append([localization.GetByLabel('UI/Contracts/ContractEntry/Items'), items])
                 else:
                     raise RuntimeError('Contract type not implemented!')
                 self.WriteConfirm(rows)
-                self.sr.buttonNext.SetLabel(mls.UI_CMD_FINISH)
+                self.sr.buttonNext.SetLabel(localization.GetByLabel('UI/Contracts/ContractsWindow/Finish'))
             self.formdata = [retfields, reqresult, errorcheck]
 
         finally:
@@ -2291,7 +2323,8 @@ class CreateContract(uicls.Window):
     def WriteNumContractsAndLimitsLazy(self):
         try:
             (n, maxNumContracts,) = self.GetNumContractsAndLimits(getattr(self.data, 'forCorp', 0), getattr(self.data, 'assigneeID', 0))
-            self.limitTextWnd.text = ' <color=0xff999999>%s: <b>%s / %s</b></color>' % (mls.UI_CONTRACTS_NUMBEROFOUTSTANDING, n, maxNumContracts)
+            outstandingLabel = localization.GetByLabel('UI/Contracts/ContractsService/OutstandingContractsDisplay', numContracts=n, maxContracts=maxNumContracts)
+            self.limitTextWnd.text = '<color=0xff999999>%s</color>' % outstandingLabel
         except:
             sys.exc_clear()
 
@@ -2317,14 +2350,15 @@ class CreateContract(uicls.Window):
         else:
             (n, maxNumContracts,) = self.GetNumContractsAndLimits(getattr(self.data, 'forCorp', 0), 0)
         try:
-            self.limitTextWnd.text = ' <color=0xff999999>%s: <b>%s / %s</b></color>' % (mls.UI_CONTRACTS_NUMBEROFOUTSTANDING, n, maxNumContracts)
+            outstandingLabel = localization.GetByLabel('UI/Contracts/ContractsService/OutstandingContractsDisplay', numContracts=n, maxContracts=maxNumContracts)
+            self.limitTextWnd.text = '<color=0xff999999>%s</color>' % outstandingLabel
         except:
             sys.exc_clear()
 
 
 
     def CreateContract(self):
-        sm.GetService('loading').ProgressWnd(mls.UI_CONTRACTS_CREATINGCONTRACT, '', 2, 10)
+        sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Contracts/ContractsWindow/CreatingContract'), '', 2, 10)
         try:
             self.state = uiconst.UI_HIDDEN
             type = getattr(self.data, 'type', const.conTypeNothing)
@@ -2378,13 +2412,13 @@ class CreateContract(uicls.Window):
                 locData = util.KeyVal(**{'locationID': startStationID,
                  'groupID': const.groupStation})
                 sm.GetService('contracts').ShowContract(contractID)
-                self.SelfDestruct()
+                self.Close()
             else:
                 self.state = uiconst.UI_NORMAL
 
         finally:
             self.state = uiconst.UI_NORMAL
-            sm.GetService('loading').ProgressWnd(mls.UI_CONTRACTS_CREATINGCONTRACT, '', 10, 10)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Contracts/ContractsWindow/CreatingContract'), '', 10, 10)
 
 
 
@@ -2395,7 +2429,8 @@ class CreateContract(uicls.Window):
             if r == []:
                 body += '<tr><td colspan=2><hr></td></tr>'
             else:
-                body += '<tr><td width=100 valign=top><b>%(key)s</b></td><td>%(val)s</td></tr>' % {'key': r[0],
+                boldKey = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=r[0])
+                body += '<tr><td width=100 valign=top>%(key)s</td><td>%(val)s</td></tr>' % {'key': boldKey,
                  'val': r[1]}
 
         message = '\n              <TABLE width="98%%">%s</TABLE>\n        ' % body
@@ -2458,7 +2493,7 @@ class CreateContract(uicls.Window):
         for (typeID, qty,) in self.data.reqItems.iteritems():
             typeName = TypeName(typeID)
             data = util.KeyVal()
-            data.label = '%s x %s' % (typeName, qty)
+            data.label = localization.GetByLabel('UI/Contracts/ContractsService/NameXQuantity', typeID=typeID, quantity=qty)
             data.typeID = typeID
             data.name = typeName
             data.OnDblClick = self.RemoveRequestItem
@@ -2467,7 +2502,7 @@ class CreateContract(uicls.Window):
 
         self.reqItemScroll.Load(contentList=scrolllist, headers=[])
         if scrolllist == []:
-            self.reqItemScroll.ShowHint(mls.UI_CONTRACTS_ADDITEMSABOVE)
+            self.reqItemScroll.ShowHint(localization.GetByLabel('UI/Contracts/ContractsWindow/AddItemsAbove'))
         else:
             self.reqItemScroll.ShowHint()
 
@@ -2475,7 +2510,7 @@ class CreateContract(uicls.Window):
 
     def GetReqItemMenu(self, wnd, *args):
         m = []
-        m.append((mls.UI_GENERIC_REMOVEITEM, self.RemoveRequestItem, (wnd,)))
+        m.append((localization.GetByLabel('UI/Generic/RemoveItem'), self.RemoveRequestItem, (wnd,)))
         return m
 
 
@@ -2489,7 +2524,7 @@ class CreateContract(uicls.Window):
         searchstr = self.form.sr.endStationName.GetValue().strip()
         if stationID is None and not IsSearchStringLongEnough(searchstr):
             return 
-        sm.GetService('loading').Cycle(mls.UI_GENERIC_SEARCHING, mls.UI_LOAD_SEARCHHINT2 % {'name': searchstr})
+        sm.GetService('loading').Cycle(localization.GetByLabel('UI/Common/Searching'), localization.GetByLabel('UI/Contracts/ContractsService/LoadingSearchHint', searchStr=searchstr))
         if stationID is None:
             stationID = uix.Search(searchstr.lower(), const.groupStation, searchWndName='contractSearchStationSearch')
         sm.GetService('loading').StopCycle()
@@ -2509,8 +2544,12 @@ class CreateContract(uicls.Window):
             perJump = 0
             perJump = self.formWnd.sr.reward.GetValue() / (numJumps or 1)
             sec = sm.GetService('contracts').GetRouteSecurityWarning(startSolarSystemID, endSolarSystemID)
-            hint = mls.UI_CONTRACTS_COURIERHINT % {'jumps': numJumps,
-             'amt': util.FmtAmt(perJump)}
+            if numJumps == 0:
+                hint = localization.GetByLabel('UI/Contracts/ContractsService/CourierHintNoJumps', numISK=util.FmtISK(perJump))
+            elif numJumps == 1:
+                hint = localization.GetByLabel('UI/Contracts/ContractsService/CourierHintOneJump', numISK=util.FmtISK(perJump))
+            else:
+                hint = localization.GetByLabel('UI/Contracts/ContractsService/CourierHintManyJumps', numJumps=numJumps, numISK=util.FmtISK(perJump))
             if sec:
                 hint += '<br>' + sec
             self.sr.courierHint.SetText(hint)
@@ -2577,22 +2616,25 @@ class CreateContract(uicls.Window):
                     if self.data.type == const.conTypeAuction:
                         owner = cfg.eveowners.Get(ownerID)
                         if owner.IsCharacter() or owner.IsCorporation() and ownerID != session.corpid:
-                            raise UserError('CustomInfo', {'info': mls.UI_CONTRACTS_CREATEWIZ_24})
+                            raise UserError('CustomInfo', {'info': localization.GetByLabel('UI/Contracts/ContractsService/UserErrorCannotCreatePrivateAuction')})
                 elif self.data.name != '':
-                    raise UserError('CustomInfo', {'info': mls.UI_CONTRACTS_CREATEWIZ_1})
+                    raise UserError('CustomInfo', {'info': localization.GetByLabel('UI/Contracts/ContractsService/UserErrorPrivateNameAndStateDontMatch')})
                 elif self.data.avail == 2:
                     ownerID = eve.session.corpid
                 elif self.data.avail == 3:
                     ownerID = eve.session.allianceid
                     if not ownerID:
-                        raise UserError('CustomInfo', {'info': mls.UI_CONTRACTS_CREATEWIZ_18})
+                        raise UserError('CustomInfo', {'info': localization.GetByLabel('UI/CapitalNavigation/CapitalNavigationWindow/CorporationNotInAllianceMessage')})
                 self.data.assigneeID = ownerID
                 forCorp = not not self.data.forCorp
                 (n, maxNumContracts,) = self.GetNumContractsAndLimits(forCorp, self.data.assigneeID)
                 if n >= maxNumContracts and maxNumContracts >= 0:
-                    info = mls.UI_CONTRACTS_CREATEWIZ_MAXNUMINFO_INCREASESKILL % {'skill': TypeName([const.typeContracting, const.typeCorporationContracting][forCorp])}
-                    raise UserError('CustomInfo', {'info': mls.UI_CONTRACTS_CREATEWIZ_17 % {'num': maxNumContracts,
-                              'info': info}})
+                    if forCorp is True:
+                        skillLabel = localization.GetByLabel('UI/Contracts/ContractsService/IncreaseSkillInfo', skillType=const.typeCorporationContracting)
+                    else:
+                        skillLabel = localization.GetByLabel('UI/Contracts/ContractsService/IncreaseSkillInfo', skillType=const.typeContracting)
+                    errorLabel = localization.GetByLabel('UI/Contracts/ContractsService/UserErrorMaxContractsReached', numContracts=maxNumContracts, skillInfo=skillLabel)
+                    raise UserError('CustomInfo', {'info': errorLabel})
             elif step == 1:
                 ILLEGAL_ITEMGROUPS = [const.groupCapsule]
                 self.data.childItems = {}
@@ -2622,7 +2664,7 @@ class CreateContract(uicls.Window):
                                 self.data.childItems[i].append(val)
                                 totalVolume += self.GetItemVolumeMaybe(l, l.stacksize)
 
-                            if eve.Message('ConNonEmptyContainer2', {'container': TypeName(type.typeID),
+                            if eve.Message('ConNonEmptyContainer2', {'container': type.typeID,
                              'items': lst,
                              'volume': totalVolume}, uiconst.YESNO) != uiconst.ID_YES:
                                 return False
@@ -2635,15 +2677,15 @@ class CreateContract(uicls.Window):
                         volume += self.GetItemVolumeMaybe(item, int(self.data.items[i][1]))
 
                     if volume > const_conCourierMaxVolume:
-                        raise UserError('ConExceedsMaxVolume', {'max': util.FmtAmt(const_conCourierMaxVolume, showFraction=3),
-                         'vol': util.FmtAmt(volume, showFraction=3)})
+                        raise UserError('ConExceedsMaxVolume', {'max': const_conCourierMaxVolume,
+                         'vol': volume})
                     elif volume > const_conCourierWarningVolume:
-                        if eve.Message('ConNeedFreighter', {'vol': util.FmtAmt(volume, showFraction=3)}, uiconst.YESNO, suppress=uiconst.ID_YES) != uiconst.ID_YES:
+                        if eve.Message('ConNeedFreighter', {'vol': volume}, uiconst.YESNO, suppress=uiconst.ID_YES) != uiconst.ID_YES:
                             return False
                 if not self.data.startStation or self.data.startStation == 0:
-                    raise UserError('CustomInfo', {'info': mls.UI_CONTRACTS_CREATEWIZ_3})
+                    raise UserError('CustomInfo', {'info': localization.GetByLabel('UI/Contracts/ContractsService/UserErrorSelectStartingPointForContract')})
                 elif self.data.type in [const.conTypeCourier, const.conTypeAuction] and len(self.data.items) == 0:
-                    raise UserError('CustomInfo', {'info': mls.UI_CONTRACTS_CREATEWIZ_4})
+                    raise UserError('CustomInfo', {'info': localization.GetByLabel('UI/Contracts/ContractsService/UserErrorSelectItemsForContract')})
                 if self.data.type in [const.conTypeAuction, const.conTypeItemExchange]:
                     div = 4
                     insuranceContracts = []
@@ -2656,7 +2698,7 @@ class CreateContract(uicls.Window):
                                 insuranceContracts.append([contract, item[0]])
 
                     for contract in insuranceContracts:
-                        example = (TYPEID, contract[1])
+                        example = contract[1]
                         if (contract[0].ownerID == eve.session.corpid or self.data.forCorp) and self.data.avail != const.conAvailPublic:
                             if eve.Message('ConInsuredShipCorp', {'example': example}, uiconst.YESNO) != uiconst.ID_YES:
                                 return False
@@ -2679,36 +2721,45 @@ class CreateContract(uicls.Window):
                 if hasattr(self.data, 'collateral'):
                     self.data.collateral = int(self.data.collateral)
                 if len(self.data.description) > MAX_TITLE_LENGTH:
-                    raise UserError('CustomInfo', {'info': mls.UI_CONTRACTS_CREATEWIZ_16 % {'len': len(self.data.description),
-                              'max': MAX_TITLE_LENGTH}})
+                    errorLabel = localization.GetByLabel('UI/Contracts/ContractsService/UserErrorContractTitleTooLong', length=len(self.data.description), maxLength=MAX_TITLE_LENGTH)
+                    raise UserError('CustomInfo', {'info': errorLabel})
                 if self.data.type == const.conTypeAuction:
                     if self.data.price < const_conBidMinimum and self.data.avail == 0:
-                        raise UserError('CustomInfo', {'info': mls.UI_CONTRACTS_CREATEWIZ_5 % {'min': util.FmtAmt(const_conBidMinimum)}})
+                        errorLabel = localization.GetByLabel('UI/Contracts/ContractsWindow/ErrorMinimumBidTooLow', minimumBid=const_conBidMinimum)
+                        raise UserError('CustomInfo', {'info': errorLabel})
                     elif self.data.price > self.data.collateral and self.data.collateral > 0:
-                        raise UserError('CustomInfo', {'info': mls.UI_CONTRACTS_CREATEWIZ_6})
+                        errorLabel = localization.GetByLabel('UI/Contracts/ContractsService/UserErrorCannotSpecifyBidOverBuyout')
+                        raise UserError('CustomInfo', {'info': errorLabel})
                 elif self.data.type == const.conTypeCourier:
                     if not self.data.endStation and len(self.form.sr.endStationName.GetValue()) > 0:
                         self.SearchStation()
                         if not self.data.endStation:
                             return False
                     if not self.data.endStation:
-                        raise UserError('CustomInfo', {'info': mls.UI_CONTRACTS_CREATEWIZ_7})
+                        errorLabel = localization.GetByLabel('UI/Contracts/ContractsService/UserErrorMustSpecifyContractDestination')
+                        raise UserError('CustomInfo', {'info': errorLabel})
                     if not self.data.assigneeID:
                         if self.data.reward < MIN_CONTRACT_MONEY:
-                            raise UserError('CustomInfo', {'info': mls.UI_CONTRACTS_CREATEWIZ_11})
+                            errorLabel = localization.GetByLabel('UI/Contracts/ContractsService/UserErrorMinimumRewardNotMet', minimum=MIN_CONTRACT_MONEY)
+                            raise UserError('CustomInfo', {'info': errorLabel})
                         if self.data.collateral < MIN_CONTRACT_MONEY:
-                            raise UserError('CustomInfo', {'info': mls.UI_CONTRACTS_CREATEWIZ_12})
+                            errorLabel = localization.GetByLabel('UI/Contracts/ContractsService/UserErrorMinimumCollateralNotMet', minimum=MIN_CONTRACT_MONEY)
+                            raise UserError('CustomInfo', {'info': errorLabel})
                 elif self.data.type == const.conTypeItemExchange:
                     if self.data.price != 0.0 and self.data.reward != 0.0:
-                        raise UserError('CustomInfo', {'info': mls.UI_CONTRACTS_CREATEWIZ_8})
+                        errorLabel = localization.GetByLabel('UI/Contracts/ContractsService/UserErrorCannotGiveAndReceiveISK')
+                        raise UserError('CustomInfo', {'info': errorLabel})
                     if not self.data.assigneeID:
                         if self.data.reqItems == {} and self.data.price < MIN_CONTRACT_MONEY:
-                            raise UserError('CustomInfo', {'info': mls.UI_CONTRACTS_CREATEWIZ_20})
+                            errorLabel = localization.GetByLabel('UI/Contracts/ContractsService/UserErrorExchangeContractRequestNotMet', minimum=MIN_CONTRACT_MONEY)
+                            raise UserError('CustomInfo', {'info': errorLabel})
                     if self.reqItemTypeWnd.GetValue() != '':
-                        raise UserError('CustomInfo', {'info': mls.UI_CONTRACTS_CREATEWIZ_19})
+                        errorLabel = localization.GetByLabel('UI/Contracts/ContractsService/UserErrorMustClickAddItem')
+                        raise UserError('CustomInfo', {'info': errorLabel})
                     if not self.data.assigneeID:
                         if (self.data.reqItems != {} or self.data.price > 0) and len(self.data.items) == 0 and self.data.reward == 0:
-                            raise UserError('CustomInfo', {'info': mls.UI_CONTRACTS_CREATEWIZ_23})
+                            errorLabel = localization.GetByLabel('UI/Contracts/ContractsService/UserErrorCannotCreateOneSidedExchangeContract')
+                            raise UserError('CustomInfo', {'info': errorLabel})
                 else:
                     raise RuntimeError('Not implemented!')
             else:
@@ -2757,7 +2808,7 @@ class CreateContract(uicls.Window):
 
     def OnCancel(self, *args):
         if eve.Message('ConAreYouSureYouWantToCancel', None, uiconst.YESNO, suppress=uiconst.ID_YES) == uiconst.ID_YES:
-            self.SelfDestruct()
+            self.Close()
 
 
 
@@ -2793,7 +2844,7 @@ class CreateContract(uicls.Window):
 
             ops = [(title, 0)] + uiutil.SortListOfTuples(sortops)
         else:
-            stations = eve.GetInventory(const.containerGlobal).ListStations()
+            stations = sm.GetService('invCache').GetInventory(const.containerGlobal).ListStations()
             primeloc = []
             for station in stations:
                 primeloc.append(station.stationID)
@@ -2803,7 +2854,8 @@ class CreateContract(uicls.Window):
             sortops = []
             for station in stations:
                 stationName = cfg.evelocations.Get(station.stationID).name
-                sortops.append((stationName.lower(), ('%s (%s %s)' % (stationName, station.itemCount, mls.UI_GENERIC_ITEMS), station.stationID)))
+                itemsInStationLabel = localization.GetByLabel('UI/Contracts/ContractsService/ItemsInStation', station=station.stationID, numItems=station.itemCount)
+                sortops.append((stationName.lower(), (itemsInStationLabel, station.stationID)))
 
             ops = [(title, 0)] + uiutil.SortListOfTuples(sortops)
         comboParent = uicls.Container(name='comboParent', parent=self.formWnd, align=uiconst.TOTOP, top=const.defaultPadding)
@@ -2813,7 +2865,7 @@ class CreateContract(uicls.Window):
         comboParent.height = 18
         nudge = 0
         if forCorp:
-            divs = [(mls.UI_GENERIC_SELECTDIVISION, 0)]
+            divs = [(localization.GetByLabel('UI/Contracts/ContractsWindow/SelectDivision'), 0)]
             paramsByDivision = {1: (const.flagHangar, const.corpRoleHangarCanQuery1, const.corpRoleHangarCanTake1),
              2: (const.flagCorpSAG2, const.corpRoleHangarCanQuery2, const.corpRoleHangarCanTake2),
              3: (const.flagCorpSAG3, const.corpRoleHangarCanQuery3, const.corpRoleHangarCanTake3),
@@ -2831,7 +2883,7 @@ class CreateContract(uicls.Window):
                 divs.append((divisionName, flag))
 
             if eve.session.corprole & deliveriesRoles > 0:
-                divs.append((mls.UI_CMD_DELIVERIES, const.flagCorpMarket))
+                divs.append((localization.GetByLabel('UI/Contracts/ContractsWindow/Deliveries'), const.flagCorpMarket))
             comboDiv = uicls.Combo(label='', parent=comboParent, options=divs, name='startStationDivision', select=None, callback=self.OnComboChange, align=uiconst.TORIGHT, width=100, pos=(1, 0, 0, 0), idx=0)
             uicls.Container(name='push', parent=comboParent, align=uiconst.TORIGHT, width=4, idx=1)
             nudge = 18
@@ -2853,23 +2905,23 @@ class CreateContract(uicls.Window):
                 i += 1
 
         c = uicls.Container(name='volume', parent=self.formWnd, align=uiconst.TOBOTTOM, width=6, height=20)
-        self.sr.volumeText = uicls.Label(text=mls.UI_CONTRACTS_NUMBEROFSELECTED % {'num': 0,
-         'vol': 0}, parent=c, letterspace=1, fontsize=12, state=uiconst.UI_DISABLED, uppercase=0, align=uiconst.CENTERRIGHT)
+        numVolLabel = localization.GetByLabel('UI/Contracts/ContractsService/NumberOfWithVolume', number=0, volume=0)
+        self.sr.volumeText = uicls.EveLabelMedium(text=numVolLabel, parent=c, state=uiconst.UI_DISABLED, align=uiconst.CENTERRIGHT)
         self.UpdateNumberOfItems()
         self.sr.itemsScroll = uicls.Scroll(parent=self.formWnd, padTop=const.defaultPadding, padBottom=const.defaultPadding)
         if forCorp:
             if not self.data.startStation:
-                self.sr.itemsScroll.ShowHint(mls.UI_MARKET_SELECTSTATION)
+                self.sr.itemsScroll.ShowHint(localization.GetByLabel('UI/Search/SelectStation'))
                 if self.data.startStationDivision == 0:
-                    self.sr.itemsScroll.ShowHint(mls.UI_GENERIC_SELECTSTATIONDIVISION)
+                    self.sr.itemsScroll.ShowHint(localization.GetByLabel('UI/Contracts/ContractEntry/SelectStationDivision'))
             elif self.data.startStationDivision == 0:
-                self.sr.itemsScroll.ShowHint(mls.UI_GENERIC_SELECTDIVISION)
+                self.sr.itemsScroll.ShowHint(localization.GetByLabel('UI/Contracts/ContractsWindow/SelectDivision'))
         if self.data.startStation and (not forCorp or self.data.startStationDivision):
-            self.sr.itemsScroll.Load(contentList=[], headers=[], noContentHint=mls.UI_GENERIC_NOITEMSFOUND)
-            self.sr.itemsScroll.sr.fixedColumns = {mls.UI_GENERIC_TYPE: 180,
-             mls.UI_GENERIC_QTY: 70,
-             mls.UI_GENERIC_NAME: 160}
-            self.sr.itemsScroll.ShowHint(mls.UI_CONTRACTS_GETTINGITEMS)
+            self.sr.itemsScroll.Load(contentList=[], headers=[], noContentHint=localization.GetByLabel('UI/Contracts/ContractsWindow/NoItemsFound'))
+            self.sr.itemsScroll.sr.fixedColumns = {localization.GetByLabel('UI/Common/Type'): 180,
+             localization.GetByLabel('UI/Inventory/ItemQuantityShort'): 70,
+             localization.GetByLabel('UI/Contracts/ContractsWindow/Name'): 160}
+            self.sr.itemsScroll.ShowHint(localization.GetByLabel('UI/Contracts/ContractsWindow/GettingItems'))
             items = sm.GetService('contracts').GetItemsInStation(self.data.startStation, forCorp)
             self.sr.itemsScroll.hiliteSorted = 0
             scrolllist = []
@@ -2880,7 +2932,7 @@ class CreateContract(uicls.Window):
                 ty = cfg.invtypes.Get(item.typeID)
                 volume = self.GetItemVolumeMaybe(item)
                 if item.typeID == const.typePlasticWrap:
-                    volume = mls.UI_GENERIC_UNKNOWN
+                    volume = localization.GetByLabel('UI/Contracts/ContractsWindow/UnknownSystem')
                 itemName = ''
                 isContainer = item.groupID in (const.groupCargoContainer,
                  const.groupSecureCargoContainer,
@@ -2919,10 +2971,10 @@ class CreateContract(uicls.Window):
                     self.sr.itemsScroll.ShowHint()
                 self.sr.itemsScroll.sr.id = 'itemsScroll'
                 self.sr.itemsScroll.sr.lastSelected = None
-                self.sr.itemsScroll.Load(contentList=scrolllist, headers=[mls.UI_GENERIC_TYPE,
-                 mls.UI_GENERIC_QTY,
-                 mls.UI_GENERIC_VOLUME,
-                 mls.UI_GENERIC_DETAILS])
+                self.sr.itemsScroll.Load(contentList=scrolllist, headers=[localization.GetByLabel('UI/Common/Type'),
+                 localization.GetByLabel('UI/Inventory/ItemQuantityShort'),
+                 localization.GetByLabel('UI/Common/Volume'),
+                 localization.GetByLabel('UI/Common/Details')])
 
 
 
@@ -2958,8 +3010,8 @@ class CreateContract(uicls.Window):
 
         if num > MAX_NUM_ITEMS:
             num = '<color=red>%s</color>' % num
-        self.sr.volumeText.text = mls.UI_CONTRACTS_NUMBEROFSELECTED % {'num': num,
-         'vol': util.FmtAmt(totalVolume)}
+        numVolLabel = localization.GetByLabel('UI/Contracts/ContractsService/NumberOfWithVolume', number=num, volume=util.FmtAmt(totalVolume))
+        self.sr.volumeText.text = numVolLabel
 
 
 
@@ -3022,6 +3074,7 @@ class ContractDraggableIcon(uicls.Container):
 
 class ContractDetailsWindow(uicls.Window):
     __guid__ = 'form.ContractDetailsWindow'
+    default_windowID = 'contractdetails'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -3032,7 +3085,7 @@ class ContractDetailsWindow(uicls.Window):
         self.contractID = contractID
         self.sr.main = uiutil.GetChild(self, 'main')
         self.scope = 'all'
-        self.SetCaption(mls.UI_CONTRACTS_CONTRACT % {'name': '-'})
+        self.SetCaption(localization.GetByLabel('UI/Common/Contract') % {'name': '-'})
         self.LoadTabs()
         self.SetWndIcon(GetContractIcon(const.conTypeNothing), mainTop=-5)
         self.SetMinSize([500, 200])
@@ -3047,7 +3100,8 @@ class ContractDetailsWindow(uicls.Window):
     def Init(self):
 
         def AddBasicInfoRow(key, val):
-            return '<b>%(key)s</b><t>%(val)s<br>' % {'key': key,
+            boldKey = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=key)
+            return '%(key)s<t>%(val)s<br>' % {'key': boldKey,
              'val': val}
 
 
@@ -3056,7 +3110,7 @@ class ContractDetailsWindow(uicls.Window):
         contract = sm.GetService('contracts').GetContract(self.contractID, force=True)
         if not contract:
             self.HistoryRemove(self.contractID)
-            self.SelfDestruct()
+            self.Close()
             raise UserError('ConContractNotFound')
         self.contract = contract
         c = contract.contract
@@ -3069,10 +3123,9 @@ class ContractDetailsWindow(uicls.Window):
         isIssuedByMe = c.issuerID == eve.session.charid or c.issuerCorpID == eve.session.corpid and c.forCorp and isContractMgr
         isIssuedByMePersonally = c.issuerID == eve.session.charid
         isCorpContract = c.forCorp
-        isExpired = c.dateExpired < blue.os.GetTime()
-        isOverdue = c.dateAccepted + DAY * c.numDays < blue.os.GetTime()
-        title = GetContractTitle(c, contract.items)
-        title += ' (%s)' % GetContractTypeText(c.type)
+        isExpired = c.dateExpired < blue.os.GetWallclockTime()
+        isOverdue = c.dateAccepted + DAY * c.numDays < blue.os.GetWallclockTime()
+        title = localization.GetByLabel('UI/Contracts/ContractsService/ContractTitleAndType', contractTitle=GetContractTitle(c, contract.items), contractType=GetContractTypeText(c.type))
         ic = GetContractIcon(c.type)
         self.SetWndIcon(ic, mainTop=-5)
         icon = xtriui.ContractDraggableIcon(name='theicon', align=uiconst.TOPLEFT, parent=self, height=64, width=64, left=0, top=11)
@@ -3080,105 +3133,105 @@ class ContractDetailsWindow(uicls.Window):
         icon.state = uiconst.UI_NORMAL
         uicls.Container(name='push', parent=self.sr.main, align=uiconst.TOLEFT, width=6)
         uicls.Container(name='push', parent=self.sr.main, align=uiconst.TORIGHT, width=6)
-        titleParent = uicls.Container(name='titleparent', parent=self.sr.topParent, align=uiconst.TOPLEFT, top=18, left=70, width=150)
-        l = uicls.Label(text=title, parent=titleParent, width=400, autowidth=False, letterspace=1, fontsize=14, state=uiconst.UI_DISABLED, uppercase=0)
-        titleParent.height = l.textheight
+        titleParent = uicls.Container(name='titleparent', parent=self.sr.topParent, align=uiconst.TOPLEFT, top=12, left=70, width=430)
+        l = uicls.EveLabelLarge(text=title, parent=titleParent, width=400, state=uiconst.UI_DISABLED)
+        titleParent.height = l.textheight + 2 * const.defaultPadding
         self.HistoryAdd(self.contractID, c.startSolarSystemID, title)
         text = ''
         desc = c.title
         if desc == '':
-            desc = mls.UI_CONTRACTS_NONE
-        text += AddBasicInfoRow(mls.UI_CONTRACTS_INFOBYISSUER, '<color=0xff999999>%s</color>' % desc)
-        text += AddBasicInfoRow(mls.UI_GENERIC_TYPE, GetContractTypeText(c.type))
-        issuerID = {False: c.issuerID,
-         True: c.issuerCorpID}[c.forCorp]
+            desc = localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen')
+        else:
+            desc = localization.GetByLabel('UI/Contracts/ContractsWindow/ContractDescription', description=desc)
+        text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsWindow/InfoByIssuer'), '<color=0xff999999>%s</color>' % desc)
+        text += AddBasicInfoRow(localization.GetByLabel('UI/Common/Type'), GetContractTypeText(c.type))
+        if c.forCorp:
+            issuerID = c.issuerCorpID
+        else:
+            issuerID = c.issuerID
         try:
             issuer = cfg.eveowners.Get(issuerID)
             issuerTypeID = issuer.typeID
             issuerName = issuer.ownerName
         except:
             issuerTypeID = cfg.eveowners.Get(session.charid).typeID
-            issuerName = mls.UNKNOWN
+            issuerName = localization.GetByLabel('UI/Contracts/ContractsWindow/UnknownSystem')
             log.LogException()
         more = ''
         if isIssuedByMe and isCorpContract:
-            more = ' (%s: %s)' % (mls.UI_CORP_WALLETDIVISION, sm.GetService('corp').GetCorpAccountName(c.issuerWalletKey))
-        text += AddBasicInfoRow(mls.UI_CONTRACTS_ISSUEDBY, '<url:showinfo:%(issuedByTypeID)s//%(issuedByID)s>%(issuedByName)s</url>%(more)s' % {'issuedByTypeID': issuerTypeID,
-         'issuedByID': issuerID,
-         'issuedByName': issuerName,
-         'more': more})
+            more = localization.GetByLabel('UI/Contracts/ContractsService/WalletDivisionAccountName', accountName=sm.GetService('corp').GetCorpAccountName(c.issuerWalletKey))
+        issuedByURL = localization.GetByLabel('UI/Contracts/ContractsWindow/ShowInfoLink', showInfoName=issuerName, info=('showinfo', issuerTypeID, issuerID))
+        issuedByLabel = localization.GetByLabel('UI/Contracts/ContractsWindow/IssuedBy')
+        text += AddBasicInfoRow(issuedByLabel, issuedByURL)
         isPrivate = not not c.availability
-        a = mls.UI_CONTRACTS_PUBLIC
-        if isPrivate:
-            a = mls.UI_CONTRACTS_PRIVATE
         if isPrivate:
             assignee = cfg.eveowners.Get(c.assigneeID)
-            a += ' (<url:showinfo:%s//%s>%s</url>)' % (assignee.typeID, c.assigneeID, assignee.name)
+            a = localization.GetByLabel('UI/Contracts/ContractsWindow/PrivateWithLink', showInfoName=assignee.name, info=('showinfo', assignee.typeID, c.assigneeID))
+        elif c.startRegionID == session.regionid:
+            reg = localization.GetByLabel('UI/Contracts/ContractsWindow/CurrentRegion')
         else:
-            reg = [mls.UI_CONTRACTS_OTHERREGION, mls.UI_CONTRACTS_CURRENTREGION][(c.startRegionID == session.regionid)]
-            a += ' - %s: <b>%s</b> (%s)' % (mls.UI_GENERIC_REGION, cfg.evelocations.Get(c.startRegionID).name, reg)
-        text += AddBasicInfoRow(mls.UI_CONTRACTS_AVAILABILITY, a)
+            reg = localization.GetByLabel('UI/Contracts/ContractEntry/OtherRegion')
+        a = localization.GetByLabel('UI/Contracts/ContractsService/RegionInfo', regionHeader=localization.GetByLabel('UI/Common/LocationTypes/Region'), region=c.startRegionID, currentOrOther=reg)
+        text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsWindow/Availability'), a)
         if c.acceptorID > 0 and (c.status != const.conStatusInProgress or c.issuerID == eve.session.charid or c.issuerCorpID == eve.session.corpid and c.forCorp or c.acceptorID == eve.session.charid or c.acceptorID == eve.session.corpid):
             acceptor = cfg.eveowners.Get(c.acceptorID)
             more = ''
             if c.acceptorID == eve.session.corpid and isContractMgr:
-                more = ' (%s: %s)' % (mls.UI_CORP_WALLETDIVISION, sm.GetService('corp').GetCorpAccountName(c.acceptorWalletKey))
-            text += AddBasicInfoRow(mls.UI_CONTRACTS_CONTRACTOR, '<url:showinfo:%(acceptorTypeID)s//%(acceptorID)s>%(acceptorName)s</url>%(more)s' % {'acceptorTypeID': acceptor.typeID,
-             'acceptorID': c.acceptorID,
-             'acceptorName': acceptor.ownerName,
-             'more': more})
+                more = localization.GetByLabel('UI/Contracts/ContractsService/WalletDivisionAccountName', accountName=sm.GetService('corp').GetCorpAccountName(c.acceptorWalletKey))
+            acceptorURL = localization.GetByLabel('UI/Contracts/ContractsWindow/ShowInfoLinkWithMore', showInfoName=acceptor.ownerName, info=('showinfo', acceptor.typeID, c.acceptorID), more=more)
+            contractorLabel = localization.GetByLabel('UI/Contracts/ContractsWindow/Contractor')
+            text += AddBasicInfoRow(contractorLabel, acceptorURL)
         st = GetContractStatusText(c.status, c.type)
         if c.status == const.conStatusFailed:
-            st = '<b><color=red>%s</color></b>' % st
-        text += '<b>%(statusKey)s</b><t>%(status)s<br>' % {'statusKey': mls.UI_CONTRACTS_STATUS,
+            textToBold = '<color=red>%s</color>' % st
+            st = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=textToBold)
+        boldStatus = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=localization.GetByLabel('UI/Contracts/ContractsWindow/Status'))
+        text += '%(statusKey)s<t>%(status)s<br>' % {'statusKey': boldStatus,
          'status': st}
         if c.startStationID == 0:
-            loc = mls.UI_CONTRACTS_NONE
+            loc = localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen')
         else:
             owner = cfg.evelocations.Get(c.startStationID)
             startStationTypeID = sm.GetService('ui').GetStation(c.startStationID).stationTypeID
             startStationIsPlayerOwnable = sm.GetService('godma').GetType(startStationTypeID).isPlayerOwnable
             dot = sm.GetService('contracts').GetSystemSecurityDot(c.startSolarSystemID)
-            loc = '%s <url:showinfo:%s//%s>%s</url>' % (dot,
-             startStationTypeID,
-             c.startStationID,
-             owner.name)
+            loc = localization.GetByLabel('UI/Contracts/ContractsWindow/StationLinkWithDot', dot=dot, station=c.startStationID, info=('showinfo', startStationTypeID, c.startStationID))
             if c.startStationID == eve.session.stationid:
-                loc += '<br><t>%s' % mls.UI_GENERIC_CURRENTSTATION
+                loc += '<br><t>%s' % localization.GetByLabel('UI/Generic/CurrentStation')
             elif c.startSolarSystemID == eve.session.solarsystemid:
-                loc += '<br><t>%s' % mls.UI_GENERIC_CURRENTSYSTEM
+                loc += '<br><t>%s' % localization.GetByLabel('UI/Generic/CurrentSystem')
             elif startStationIsPlayerOwnable:
-                loc += '<br><t><color=0xffbb0000>%s</color>' % mls.UI_CONTRACTS_MIGHTBEINACCESSIBLE
+                loc += '<br><t><color=0xffbb0000>%s</color>' % localization.GetByLabel('UI/Contracts/ContractEntry/MightBeInaccessible')
             n = sm.GetService('pathfinder').GetJumpCountFromCurrent(c.startSolarSystemID)
             securityClass = sm.GetService('map').GetSecurityClass(c.startSolarSystemID)
             mr = sm.GetService('contracts').GetRouteSecurityWarning(session.solarsystemid2, c.startSolarSystemID)
+            routeLink = '<url:showrouteto:%s>%s</url>' % (c.startSolarSystemID, localization.GetByLabel('UI/Contracts/ContractsWindow/ShowRoute'))
+            loc += '<br><t>'
+            loc += localization.GetByLabel('UI/Contracts/ContractsService/NumJumpsAway', numJumps=int(n), routeLink=routeLink)
             if mr:
-                mr = '<br><t>%s' % mr
-            loc += '<br><t>%s - <url:showrouteto:%s>%s</url>%s' % (mls.UI_CONTRACTS_JUMPSAWAY % {'jumps': int(n)},
-             c.startSolarSystemID,
-             mls.UI_CONTRACTS_SHOWROUTE,
-             mr)
-        text += AddBasicInfoRow(mls.UI_CONTRACTS_LOCATION, loc)
+                loc += '<br><t>%s' % mr
+        text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsWindow/Location'), loc)
         if c.type != const.conTypeAuction or c.status != const.conStatusOutstanding or session.charid == c.issuerID:
-            text += AddBasicInfoRow(mls.UI_CONTRACTS_DATEISSUED, util.FmtDate(c.dateIssued, 'ss'))
+            text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsWindow/DateIssued'), util.FmtDate(c.dateIssued, 'ss'))
         if c.status == const.conStatusInProgress:
             cb = c.dateAccepted + DAY * c.numDays
-            if cb < blue.os.GetTime() + HOUR:
-                if cb - blue.os.GetTime() < 0:
-                    timeleft = mls.UI_CONTRACTS_OVERDUE
+            if cb < blue.os.GetWallclockTime() + HOUR:
+                if cb - blue.os.GetWallclockTime() < 0:
+                    timeLeftLabel = localization.GetByLabel('UI/Contracts/ContractEntry/Overdue')
                 else:
-                    timeleft = mls.UI_CONTRACTS_TIMELEFT_VALUE % {'time': util.FmtDate(cb - blue.os.GetTime(), 'ls')}
-                cb = '<color=red>%s (%s)</color>' % (util.FmtDate(cb, 'ls'), timeleft)
+                    timeLeftLabel = localization.GetByLabel('UI/Contracts/ContractsService/TimeLeftWithoutLabelVerbose', time=util.FmtDate(cb, 'ls'), timeLeft=util.FmtDate(cb - blue.os.GetWallclockTime(), 'ls'))
+                cb = '<color=red>%s</color>' % timeLeftLabel
             else:
                 cb = util.FmtDate(cb, 'ls')
-            text += AddBasicInfoRow(mls.UI_CONTRACTS_COMPLETEBEFORE, cb)
+            text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsWindow/CompleteBefore'), cb)
         elif c.status != const.conStatusOutstanding:
-            text += AddBasicInfoRow(mls.UI_CONTRACTS_DATECOMPLETED, util.FmtDate(c.dateCompleted, 'ls'))
+            text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsWindow/DateCompleted'), util.FmtDate(c.dateCompleted, 'ls'))
         elif c.type != const.conTypeAuction:
-            text += AddBasicInfoRow(mls.UI_CONTRACTS_DATEEXPIRED, '%s (%s)' % (util.FmtDate(c.dateExpired, 'ls'), ConFmtDate(c.dateExpired - blue.os.GetTime(), False)))
-        tabs = [105, 480]
+            expirationDateLabel = localization.GetByLabel('UI/Contracts/ContractsService/ExpirationDate', expiredOn=util.FmtDate(c.dateExpired, 'ls'), timeSinceExpired=ConFmtDate(c.dateExpired - blue.os.GetWallclockTime(), False))
+            text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsWindow/ExpirationDate'), expirationDateLabel)
+        tabs = [115, 480]
         basicInfoParent = uicls.Container(name='infocontainer', parent=self.sr.main, align=uiconst.TOTOP, padRight=const.defaultPadding)
-        basicInfo = uicls.Label(text=text, parent=basicInfoParent, top=const.defaultPadding, idx=0, tabs=tabs, state=uiconst.UI_NORMAL)
+        basicInfo = uicls.EveLabelMedium(text=text, parent=basicInfoParent, top=const.defaultPadding, idx=0, tabs=tabs, state=uiconst.UI_NORMAL, left=6)
         basicInfoParent.height = basicInfo.textheight + 5
         uicls.Line(parent=basicInfoParent, align=uiconst.TOTOP)
         isResizable = False
@@ -3193,49 +3246,71 @@ class ContractDetailsWindow(uicls.Window):
                 self.AddButton(BComplete)
         if c.type == const.conTypeAuction:
             text = ''
-            text += AddBasicInfoRow(mls.UI_CONTRACTS_STARTINGBID, FmtISKWithDescription(c.price))
-            bo = [mls.UI_CONTRACTS_NONE, FmtISKWithDescription(c.collateral)][(c.collateral > 0)]
-            text += AddBasicInfoRow(mls.UI_CONTRACTS_BUYOUTPRICE, bo)
-            b = mls.UI_CONTRACTS_NOBIDS
+            text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsWindow/StartingBid'), FmtISKWithDescription(c.price))
+            bo = [localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen'), FmtISKWithDescription(c.collateral)][(c.collateral > 0)]
+            text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsWindow/BuyoutPrice'), bo)
+            b = localization.GetByLabel('UI/Contracts/ContractEntry/NoBids')
             if len(contract.bids) > 0:
-                b = '<b>%s</b> (%s %s)' % (FmtISKWithDescription(contract.bids[0].amount), len(contract.bids), mls.UI_CONTRACTS_BIDSSOFAR)
-            text += AddBasicInfoRow(mls.UI_CONTRACTS_CURRENTBID, b)
-            timeleft = '%s' % mls.UI_CONTRACTS_FINISHED
+                b = localization.GetByLabel('UI/Contracts/ContractsWindow/BidsSoFar', numISK=FmtISKWithDescription(contract.bids[0].amount), numBids=len(contract.bids))
+            text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsWindow/CurrentBid'), b)
+            timeleft = localization.GetByLabel('UI/Contracts/ContractsWindow/Finished')
             if c.status == const.conStatusOutstanding:
-                diff = c.dateExpired - blue.os.GetTime()
-                if c.dateExpired - blue.os.GetTime() > 0:
+                diff = c.dateExpired - blue.os.GetWallclockTime()
+                if c.dateExpired - blue.os.GetWallclockTime() > 0:
                     timeleft = ConFmtDate(diff, True)
-            text += AddBasicInfoRow(mls.UI_CONTRACTS_TIMELEFT, timeleft)
-            isExpired = c.dateExpired < blue.os.GetTime()
+            text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsWindow/TimeLeft'), timeleft)
+            isExpired = c.dateExpired < blue.os.GetWallclockTime()
             highBidder = None
             if len(contract.bids) > 0:
                 highBidder = contract.bids[0].bidderID
             if eve.session.charid == highBidder:
-                text += AddBasicInfoRow('', '<color=' + COL_GET + '><b>' + [mls.UI_CONTRACTS_YOUARETHEHIGHESTBIDDER, mls.UI_CONTRACTS_YOUWON][isExpired] + '</b></color>')
+                if isExpired:
+                    strToBold = localization.GetByLabel('UI/Contracts/ContractsWindow/YouWon')
+                else:
+                    strToBold = localization.GetByLabel('UI/Contracts/ContractsWindow/YouAreHighBidder')
+                boldStr = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=strToBold)
+                rowInfo = '<color=%s>%s</color>' % (COL_GET, boldStr)
+                text += AddBasicInfoRow('', rowInfo)
             elif eve.session.corpid == highBidder:
-                text += AddBasicInfoRow('', '<color=' + COL_GET + '><b>' + [mls.UI_CONTRACTS_YOURCORPISTHEHIGHESTBIDDER, mls.UI_CONTRACTS_YOURCORPWON][isExpired] + '</b></color>')
+                if isExpired:
+                    strToBold = localization.GetByLabel('UI/Contracts/ContractsWindow/YourCorpWon')
+                else:
+                    strToBold = localization.GetByLabel('UI/Contracts/ContractsWindow/YourCorpHighBidder')
+                boldStr = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=strToBold)
+                rowInfo = '<color=%s>%s</color>' % (COL_GET, boldStr)
+                text += AddBasicInfoRow('', rowInfo)
             else:
                 for i in range(len(contract.bids)):
                     b = contract.bids[i]
                     if i != 0:
                         if b.bidderID == eve.session.charid:
-                            text += AddBasicInfoRow('', '<color=' + COL_PAY + '><b>' + [mls.UI_CONTRACTS_YOUHAVEBEENOUTBID, mls.UI_CONTRACTS_YOULOST][isExpired] + '</b></color>')
+                            if isExpired:
+                                strToBold = localization.GetByLabel('UI/Contracts/ContractsWindow/YouLost')
+                            else:
+                                strToBold = localization.GetByLabel('UI/Contracts/ContractsWindow/YouHaveBeenOutBid')
+                            boldStr = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=strToBold)
+                            rowInfo = '<color=%s>%s</color>' % (COL_PAY, boldStr)
+                            text += AddBasicInfoRow('', rowInfo)
                         elif b.bidderID == eve.session.corpid:
-                            text += AddBasicInfoRow('', '<color=' + COL_PAY + '><b>' + [mls.UI_CONTRACTS_YOURCORPHASBEENOUTBID, mls.UI_CONTRACTS_YOURCORPLOST][isExpired] + '</b></color>')
+                            if isExpired:
+                                strToBold = localization.GetByLabel('UI/Contracts/ContractsWindow/YourCorpLost')
+                            else:
+                                strToBold = localization.GetByLabel('UI/Contracts/ContractsWindow/YourCorpWasOutBid')
+                            boldStr = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=strToBold)
+                            rowInfo = '<color=%s>%s</color>' % (COL_PAY, boldStr)
+                            text += AddBasicInfoRow('', rowInfo)
                         break
 
                 if isExpired and len(contract.bids) > 0:
                     winner = cfg.eveowners.Get(contract.bids[0].bidderID)
-                    text += AddBasicInfoRow('', '<url:showinfo:%(acceptorTypeID)s//%(acceptorID)s>%(acceptorName)s</url> %(won)s' % {'acceptorTypeID': winner.typeID,
-                     'acceptorID': winner.ownerID,
-                     'acceptorName': winner.ownerName,
-                     'won': mls.UI_CONTRACTS_WONTHISAUCTION})
+                    showInfoLink = localization.GetByLabel('UI/Contracts/ContractsWindow/ShowInfoLinkWithMore', showInfoName=winner.ownerName, info=('showinfo', winner.typeID, winner.ownerID), more=localization.GetByLabel('UI/Contracts/ContractsWindow/WonThisAuction'))
+                    text += AddBasicInfoRow('', showInfoLink)
             infoParent = uicls.Container(name='infocontainer', parent=self.sr.main, align=uiconst.TOTOP, width=const.defaultPadding)
-            info = uicls.Label(text=text, parent=infoParent, top=const.defaultPadding, idx=0, tabs=tabs, state=uiconst.UI_NORMAL)
-            infoParent.height = info.textheight
+            info = uicls.EveLabelMedium(text=text, parent=infoParent, top=const.defaultPadding, idx=0, tabs=tabs, state=uiconst.UI_NORMAL, left=6)
+            infoParent.height = info.textheight + 2 * const.defaultPadding
             uicls.Line(parent=infoParent, align=uiconst.TOTOP)
             uicls.Line(parent=infoParent, align=uiconst.TOBOTTOM)
-            isResizable = self.InsertItemList(contract, '<color=%s>%s</color>' % (COL_GET, [mls.UI_CONTRACTS_YOUWILLGET, mls.UI_CONTRACTS_BUYERWILLGET][(session.charid == c.issuerID)]), True, 3)
+            isResizable = self.InsertItemList(contract, '<color=%s>%s</color>' % (COL_GET, [localization.GetByLabel('UI/Contracts/ContractsWindow/YouWillGet'), localization.GetByLabel('UI/Contracts/ContractsWindow/BuyerWillGet')][(session.charid == c.issuerID)]), True, 3)
             if len(contract.bids) > 0 and isExpired:
                 if c.status != const.conStatusFinishedIssuer and c.status != const.conStatusFinished and isIssuedByMe:
                     self.AddButton(BGetMoney)
@@ -3252,12 +3327,24 @@ class ContractDetailsWindow(uicls.Window):
         elif c.type == const.conTypeItemExchange:
             text = ''
             if c.price > 0:
-                text += AddBasicInfoRow([mls.UI_CONTRACTS_YOUWILLPAY, mls.UI_CONTRACTS_BUYERWILLPAY][(session.charid == c.issuerID)], '<color=%s><b>%s</b></color>' % (COL_PAY, FmtISKWithDescription(c.price)))
+                if session.charid == c.issuerID:
+                    rowLabel = localization.GetByLabel('UI/Contracts/ContractsWindow/BuyerWillPay')
+                else:
+                    rowLabel = localization.GetByLabel('UI/Contracts/ContractsWindow/YouWillPay')
+                boldIsk = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=FmtISKWithDescription(c.price))
+                rowInfo = '<color=%s>%s</color>' % (COL_PAY, boldIsk)
+                text += AddBasicInfoRow(rowLabel, rowInfo)
             if c.reward > 0 or c.price == 0:
-                text += AddBasicInfoRow([mls.UI_CONTRACTS_YOUWILLGET, mls.UI_CONTRACTS_BUYERWILLGET][(session.charid == c.issuerID)], '<color=%s><b>%s</b></color>' % (COL_GET, FmtISKWithDescription(c.reward)))
+                if session.charid == c.issuerID:
+                    rowLabel = localization.GetByLabel('UI/Contracts/ContractsWindow/BuyerWillGet')
+                else:
+                    rowLabel = localization.GetByLabel('UI/Contracts/ContractsWindow/YouWillGet')
+                boldIsk = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=FmtISKWithDescription(c.reward))
+                rowInfo = '<color=%s>%s</color>' % (COL_GET, boldIsk)
+                text += AddBasicInfoRow(rowLabel, rowInfo)
             infoParent = uicls.Container(name='infocontainer', parent=self.sr.main, align=uiconst.TOTOP, width=const.defaultPadding)
-            info = uicls.Label(text=text, parent=infoParent, top=const.defaultPadding + 3, idx=0, tabs=tabs, state=uiconst.UI_NORMAL, fontsize=14)
-            infoParent.height = info.textheight
+            info = uicls.EveLabelLarge(text=text, parent=infoParent, top=const.defaultPadding, idx=0, tabs=tabs, state=uiconst.UI_NORMAL, left=6)
+            infoParent.height = info.textheight + 2 * const.defaultPadding
             uicls.Line(parent=infoParent, align=uiconst.TOTOP)
             uicls.Line(parent=infoParent, align=uiconst.TOBOTTOM)
             fixedSize = False
@@ -3265,8 +3352,8 @@ class ContractDetailsWindow(uicls.Window):
                 if not i.inCrate:
                     fixedSize = True
 
-            isResizable = self.InsertItemList(contract, '<color=%s>%s</color>' % (COL_GET, [mls.UI_CONTRACTS_YOUWILLGET, mls.UI_CONTRACTS_BUYERWILLGET][(session.charid == c.issuerID)]), True, 2, fixedSize=fixedSize)
-            if self.InsertItemList(contract, '<color=%s>%s</color>' % (COL_PAY, [mls.UI_CONTRACTS_YOUWILLPAY, mls.UI_CONTRACTS_BUYERWILLPAY][(session.charid == c.issuerID)]), False, 2, hint=mls.UI_CONTRACTS_NOREQUIREDITEMS, forceList=True):
+            isResizable = self.InsertItemList(contract, '<color=%s>%s</color>' % (COL_GET, [localization.GetByLabel('UI/Contracts/ContractsWindow/YouWillGet'), localization.GetByLabel('UI/Contracts/ContractsWindow/BuyerWillGet')][(session.charid == c.issuerID)]), True, 2, fixedSize=fixedSize)
+            if self.InsertItemList(contract, '<color=%s>%s</color>' % (COL_PAY, [localization.GetByLabel('UI/Contracts/ContractsWindow/YouWillPay'), localization.GetByLabel('UI/Contracts/ContractsWindow/BuyerWillPay')][(session.charid == c.issuerID)]), False, 2, hint=localization.GetByLabel('UI/Contracts/ContractEntry/NoRequiredItems'), forceList=True):
                 isResizable = True
             if isIssuedByMe:
                 if c.status == const.conStatusOutstanding or c.status == const.conStatusRejected:
@@ -3279,30 +3366,42 @@ class ContractDetailsWindow(uicls.Window):
                     if isAssignedToMe:
                         self.AddButton(BReject)
         elif c.type == const.conTypeCourier:
-            timeleft = '<font color=' + COL_GET + '>%s</font>' % mls.UI_CONTRACTS_FINISHED
+            timeleft = '<font color=' + COL_GET + '>%s</font>' % localization.GetByLabel('UI/Contracts/ContractsWindow/Finished')
             text = ''
             if c.status == const.conStatusInProgress:
-                timeleft = '<font color=' + COL_PAY + '>%s</font>' % mls.UI_CONTRACTS_EXPIRED
+                timeleft = '<font color=' + COL_PAY + '>%s</font>' % localization.GetByLabel('UI/Contracts/ContractsWindow/Expired')
                 de = c.dateExpired
                 if c.status == const.conStatusInProgress:
                     de = c.dateAccepted + DAY * c.numDays
-                    timeleft = mls.UI_CONTRACTS_OVERDUE_AGO % util.FmtDate(-(de - blue.os.GetTime()), 'ss')
-                diff = de - blue.os.GetTime()
+                diff = de - blue.os.GetWallclockTime()
                 if diff > 0:
-                    timeleft = '%s (%s)' % (ConFmtDate(diff, False), util.FmtDate(de, 'ss'))
-                text += AddBasicInfoRow(mls.UI_CONTRACTS_TIMELEFT, timeleft)
+                    timeleft = localization.GetByLabel('UI/Contracts/ContractsService/TimeLeftWithoutCaption', timeLeft=ConFmtDate(diff, False), expireTime=util.FmtDate(de, 'ss'))
+                else:
+                    overdueLabel = localization.GetByLabel('UI/Contracts/ContractsService/Overdue', time=util.FmtDate(-diff, 'ss'))
+                    timeleft = '<color=red>%s</color>' % overdueLabel
+                text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsWindow/TimeLeft'), timeleft)
             elif c.status == const.conStatusOutstanding:
-                text += AddBasicInfoRow(mls.UI_CONTRACTS_COMPLETEIN, '%s %s' % (c.numDays, [mls.GENERIC_DAY, mls.GENERIC_DAYS_LOWER][(c.numDays != 1)]))
-            text += AddBasicInfoRow(mls.UI_CONTRACTS_VOLUME, '%s %s' % (util.FmtAmt(c.volume, showFraction=3), mls.UI_CONTRACTS_CUBEMETRES))
+                rowInfoText = localization.GetByLabel('UI/Contracts/ContractsService/QuantityDays', numDays=c.numDays)
+                text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsWindow/CompleteIn'), rowInfoText)
+            volumeLabel = localization.GetByLabel('UI/Contracts/ContractsWindow/NumericVolume', volume=util.FmtAmt(c.volume, showFraction=3))
+            text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsSearch/columnVolume'), volumeLabel)
             numJumps = sm.GetService('pathfinder').GetJumpCountFromCurrent(c.endSolarSystemID, c.startSolarSystemID)
             perjump = ''
             if numJumps:
-                perjump = int(c.reward / numJumps)
-                perjump = ' (%s / %s)' % (FmtISKWithDescription(perjump, justDesc=True), mls.UI_GENERIC_JUMP)
-            text += AddBasicInfoRow(mls.UI_CONTRACTS_REWARD, {False: mls.UI_CONTRACTS_NONE,
-             True: '<color=%s><b>%s</b></color>%s' % (COL_GET, FmtISKWithDescription(c.reward), perjump)}[(c.reward > 0)])
-            text += AddBasicInfoRow(mls.UI_CONTRACTS_COLLATERAL, {False: mls.UI_CONTRACTS_NONE,
-             True: '<color=%s><b>%s</b></color>' % (COL_PAY, FmtISKWithDescription(c.collateral))}[(c.collateral > 0)])
+                jumpCost = int(c.reward / numJumps)
+                perjump = localization.GetByLabel('UI/Contracts/ContractsService/ISKPerJump', costPerJump=FmtISKWithDescription(jumpCost, justDesc=True))
+            if c.reward > 0:
+                boldIsk = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=FmtISKWithDescription(c.reward))
+                b = '<color=%s>%s</color>%s' % (COL_GET, boldIsk, perjump)
+            else:
+                b = localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen')
+            text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsWindow/Reward'), b)
+            if c.collateral > 0:
+                boldIsk = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=FmtISKWithDescription(c.collateral))
+                b = '<color=%s>%s</color>' % (COL_PAY, boldIsk)
+            else:
+                b = localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen')
+            text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsWindow/Collateral'), b)
             owner = cfg.evelocations.Get(c.endStationID)
             mr = sm.GetService('contracts').GetRouteSecurityWarning(c.startSolarSystemID, c.endSolarSystemID)
             securityClass = sm.GetService('map').GetSecurityClass(c.endSolarSystemID)
@@ -3310,29 +3409,23 @@ class ContractDetailsWindow(uicls.Window):
                 mr = '<t>%s' % mr
             dot = sm.GetService('contracts').GetSystemSecurityDot(c.endSolarSystemID)
             endStationTypeID = sm.GetService('ui').GetStation(c.endStationID).stationTypeID
-            loc = '%s <url:showinfo:%s//%s>%s</url>' % (dot,
-             endStationTypeID,
-             c.endStationID,
-             owner.name)
+            loc = localization.GetByLabel('UI/Contracts/ContractsWindow/StationLinkWithDot', dot=dot, station=c.endStationID, info=('showinfo', endStationTypeID, c.endStationID))
             endStation = sm.RemoteSvc('stationSvc').GetStation(c.endStationID)
             endStationIsPlayerOwnable = sm.GetService('godma').GetType(endStation.stationTypeID).isPlayerOwnable
             if endStationIsPlayerOwnable:
-                loc += '<br><t><color=0xffbb0000>%s</color>' % mls.UI_CONTRACTS_MIGHTBEINACCESSIBLE
-            loc += '<br><t><b>%d</b> %s - <url:showrouteto:%s>%s</url><br>' % (sm.GetService('pathfinder').GetJumpCountFromCurrent(c.endSolarSystemID),
-             mls.UI_CONTRACTS_JUMPSFROMCURRENT,
-             c.endSolarSystemID,
-             mls.UI_CONTRACTS_SHOWROUTE)
+                loc += '<br><t><color=0xffbb0000>%s</color>' % localization.GetByLabel('UI/Contracts/ContractEntry/MightBeInaccessible')
+            jumpLink = '<url:showrouteto:%s>%s</url>' % (c.endSolarSystemID, localization.GetByLabel('UI/Contracts/ContractsWindow/ShowRoute'))
+            routeLabel = localization.GetByLabel('UI/Contracts/ContractsService/RouteInfo', numJumps=sm.GetService('pathfinder').GetJumpCountFromCurrent(c.endSolarSystemID), jumpLink=jumpLink)
+            loc += '<br><t>%s<br>' % routeLabel
             if c.startSolarSystemID != session.solarsystemid2:
-                loc += '<t><b>%d</b> %s - <url:showrouteto:%s::%s>%s</url>' % (numJumps,
-                 mls.UI_CONTRACTS_JUMPSFROMSTART,
-                 c.endSolarSystemID,
-                 c.startSolarSystemID,
-                 mls.UI_CONTRACTS_SHOWROUTE)
+                jumpLink = '<url:showrouteto:%s::%s>%s</url>' % (c.endSolarSystemID, c.startSolarSystemID, localization.GetByLabel('UI/Contracts/ContractsWindow/ShowRoute'))
+                routeLabel = localization.GetByLabel('UI/Contracts/ContractsService/ShowRouteFromStart', numJumps=numJumps, jumpLink=jumpLink)
+                loc += '<t>%s' % routeLabel
             if mr:
                 loc += '<br>%s' % mr
-            text += AddBasicInfoRow(mls.UI_CONTRACTS_DESTINATION, loc)
+            text += AddBasicInfoRow(localization.GetByLabel('UI/Common/Destination'), loc)
             infoParent = uicls.Container(name='infocontainer', parent=self.sr.main, align=uiconst.TOTOP, width=const.defaultPadding)
-            info = uicls.Label(text=text, parent=infoParent, top=const.defaultPadding, idx=0, tabs=tabs, state=uiconst.UI_NORMAL)
+            info = uicls.EveLabelMedium(text=text, parent=infoParent, top=const.defaultPadding, idx=0, tabs=tabs, state=uiconst.UI_NORMAL)
             infoParent.height = info.textheight
             uicls.Line(parent=infoParent, align=uiconst.TOTOP)
             if isIssuedByMe:
@@ -3348,29 +3441,38 @@ class ContractDetailsWindow(uicls.Window):
         elif c.type == const.conTypeLoan:
             text = ''
             if c.status == const.conStatusInProgress:
-                timeleft = '<font color=red>%s</font>' % mls.UI_CONTRACTS_EXPIRED
+                timeleft = '<font color=red>%s</font>' % localization.GetByLabel('UI/Contracts/ContractsWindow/Expired')
                 de = c.dateExpired
                 if c.status == const.conStatusInProgress:
                     de = c.dateAccepted + DAY * c.numDays
-                    timeleft = mls.UI_CONTRACTS_OVERDUE_AGO % util.FmtDate(-(de - blue.os.GetTime()), 'ss')
-                diff = de - blue.os.GetTime()
+                    overdueLabel = localization.GetByLabel('UI/Contracts/ContractsService/Overdue', time=util.FmtDate(-(de - blue.os.GetWallclockTime()), 'ss'))
+                    timeleft = '<color=red>%s</color>' % overdueLabel
+                diff = de - blue.os.GetWallclockTime()
                 if diff > 0:
-                    timeleft = '%s (%s)' % (ConFmtDate(diff, False), util.FmtDate(de, 'ss'))
-                text += AddBasicInfoRow(mls.UI_CONTRACTS_TIMELEFT, timeleft)
+                    timeleft = localization.GetByLabel('UI/Contracts/ContractsService/TimeLeftWithoutCaption', timeLeft=ConFmtDate(diff, False), expireTime=util.FmtDate(de, 'ss'))
+                text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsWindow/TimeLeft'), timeleft)
             elif c.status == const.conStatusOutstanding or c.status == const.conStatusRejected:
                 self.AddButton(BDelete)
-            text += AddBasicInfoRow(mls.UI_CONTRACTS_PRICE, {False: mls.UI_CONTRACTS_NONE,
-             True: '<color=%s><b>%s</b></color>' % (COL_PAY, FmtISKWithDescription(c.price))}[(c.price > 0)])
-            text += AddBasicInfoRow(mls.UI_CONTRACTS_COLLATERAL, {False: mls.UI_CONTRACTS_NONE,
-             True: '<color=%s><b>%s</b></color>' % (COL_PAY, FmtISKWithDescription(c.collateral))}[(c.collateral > 0)])
+            if c.price > 0:
+                boldISK = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=FmtISKWithDescription(c.price))
+                rowInfo = '<color=%s>%s</color>' % (COL_PAY, boldISK)
+            else:
+                rowInfo = localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen')
+            text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsSearch/columnPrice'), rowInfo)
+            if c.collateral > 0:
+                boldISK = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=FmtISKWithDescription(c.collateral))
+                rowInfo = '<color=%s>%s</color>' % (COL_PAY, boldISK)
+            else:
+                rowInfo = localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen')
+            text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractsWindow/Collateral'), rowInfo)
             if c.reward > 0:
-                text += AddBasicInfoRow(mls.UI_CONTRACTS_MONEYBORROWED, '<color=%s>%s</color>' % (COL_GET, FmtISKWithDescription(c.reward)))
+                text += AddBasicInfoRow(localization.GetByLabel('UI/Contracts/ContractEntry/ISKBorrowed'), '<color=%s>%s</color>' % (COL_GET, FmtISKWithDescription(c.reward)))
             infoParent = uicls.Container(name='infocontainer', parent=self.sr.main, align=uiconst.TOTOP, width=const.defaultPadding)
-            info = uicls.Label(text=text, parent=infoParent, top=const.defaultPadding, idx=0, tabs=tabs, state=uiconst.UI_NORMAL)
+            info = uicls.EveLabelMedium(text=text, parent=infoParent, top=const.defaultPadding, idx=0, tabs=tabs, state=uiconst.UI_NORMAL)
             infoParent.height = info.textheight
             uicls.Line(parent=infoParent, align=uiconst.TOTOP)
             uicls.Line(parent=infoParent, align=uiconst.TOBOTTOM)
-            isResizable = self.InsertItemList(contract, mls.UI_CONTRACTS_BORROWEDITEMS, True, 3, fixedSize=True)
+            isResizable = self.InsertItemList(contract, localization.GetByLabel('UI/Contracts/ContractsWindow/BorrowedItems'), True, 3, fixedSize=True)
             if isIssuedByMe:
                 if c.status == const.conStatusRejected:
                     self.AddButton(BDelete)
@@ -3378,10 +3480,18 @@ class ContractDetailsWindow(uicls.Window):
                 nocollateral = ''
                 if not c.collateral:
                     isk = c.reward or 0
-                    nocollateral = "Since this contract doesn't have any collateral and operates completely on trust it should be straightforward for the contract acceptor to create an Item Exchange contract to transfer the lent items and/or cash back to the issuer. You should transfer a total of <b>%s</b> plus any items found in this contract back to the issuer." % util.FmtISK(isk)
+                    nocollateral = localization.GetByLabel('UI/Contracts/ContractsService/NoCollateralISK', reward=isk)
                 else:
-                    nocollateral = '<b>Note that you have put collateral into escrow on this contract.</b> Your best course of action is to contact Customer Support to get your collateral back.'
-                html = "<font color=0xffff4444><h4>This contract type is no longer supported!</h4></font>\n                You will not be able to complete this loan contract because it is no longer supported in the system.<Br>It is recommended that you click the 'Fail' button below and repay the contract manually.<br><br>%s<br><br>\n                We apologize for the inconvenience this causes. If you need further assistance please file a petition and the customer support staff will be able to help you.\n                " % nocollateral
+                    nocollateral = localization.GetByLabel('UI/Contracts/ContractsService/NoCollateral')
+                contractTypeLabel = localization.GetByLabel('UI/Contracts/ContractsService/ContractTypeNotSupported')
+                notSupportedLabel = localization.GetByLabel('UI/Contracts/ContractsService/LoanContractNotSupported')
+                failLabel = localization.GetByLabel('UI/Contracts/ContractsService/ClickFail')
+                apologizeLabel = localization.GetByLabel('UI/Contracts/ContractsService/WeApologize')
+                html = '<font color=0xffff4444><h4>%s</h4></font>%s<br>%s<br><br>%s<br><br>%s' % (contractTypeLabel,
+                 notSupportedLabel,
+                 failLabel,
+                 nocollateral,
+                 apologizeLabel)
                 descParent = uicls.Container(name='desc', parent=self.sr.main, align=uiconst.TOTOP, left=const.defaultPadding, top=const.defaultPadding, height=180)
                 desc = uicls.Edit(parent=descParent, readonly=1, hideBackground=1)
                 desc.SetValue('<html><body>%s</body></html>' % html)
@@ -3399,7 +3509,7 @@ class ContractDetailsWindow(uicls.Window):
         self.sr.captionpush = uicls.Container(name='captionpush', parent=self.sr.main, align=uiconst.TOBOTTOM, height=12, left=0, top=-16)
         historyicon = uicls.MenuIcon(size=24, ignoreSize=True, align=uiconst.CENTERLEFT)
         historyicon.GetMenu = lambda : self.GetHistoryMenu()
-        historyicon.hint = mls.UI_GENERIC_HISTORY
+        historyicon.hint = localization.GetByLabel('UI/Common/History')
         self.sr.captionpush = uicls.Container(name='captionpush', parent=self.sr.main, align=uiconst.TOBOTTOM, height=12, left=0, top=-16)
         self.sr.captionpush.children.insert(1000, historyicon)
         return self
@@ -3409,11 +3519,11 @@ class ContractDetailsWindow(uicls.Window):
     def GetHistoryMenu(self):
         m = []
         if self.contract.contract.issuerID == session.charid:
-            m.append((mls.UI_CONTRACTS_COPYCONTRACT, sm.GetService('contracts').OpenCreateContract, (None, self.contract)))
+            m.append((localization.GetByLabel('UI/Contracts/ContractsWindow/CopyContract'), sm.GetService('contracts').OpenCreateContract, (None, self.contract)))
         typeID = None
         if self.contract.items and len(self.contract.items) == 1:
             typeID = self.contract.items[0].itemTypeID
-        m += [(mls.UI_CONTRACTS_FINDRELATED, ('isDynamic', sm.GetService('contracts').GetRelatedMenu, (self.contract.contract, typeID)))]
+        m += [(localization.GetByLabel('UI/Contracts/ContractEntry/FindRelated'), ('isDynamic', sm.GetService('contracts').GetRelatedMenu, (self.contract.contract, typeID)))]
         m += [None]
         for i in range(len(self.history)):
             h = self.history[(-(i + 1))]
@@ -3431,37 +3541,37 @@ class ContractDetailsWindow(uicls.Window):
     def AddButton(self, which):
         caption = function = None
         if which == BCancel:
-            caption = mls.UI_GENERIC_CLOSE
+            caption = localization.GetByLabel('UI/Common/Close')
             function = self.Cancel
         elif which == BAccept:
-            caption = mls.UI_CONTRACTS_ACCEPT
+            caption = localization.GetByLabel('UI/Contracts/ContractsWindow/Accept')
             function = self.Accept
         elif which == BAcceptForCorp:
-            caption = mls.UI_CONTRACTS_ACCEPT_FORCORP
+            caption = localization.GetByLabel('UI/Contracts/ContractsWindow/AcceptForCorp')
             function = self.AcceptForCorp
         elif which == BReject:
-            caption = mls.UI_CONTRACTS_REJECT
+            caption = localization.GetByLabel('UI/Contracts/ContractsWindow/Rejected')
             function = self.Reject
         elif which == BComplete:
-            caption = mls.UI_CONTRACTS_COMPLETE
+            caption = localization.GetByLabel('UI/Contracts/ContractsWindow/Complete')
             function = self.Complete
         elif which == BDelete:
-            caption = mls.UI_CONTRACTS_DELETE
+            caption = localization.GetByLabel('UI/Contracts/ContractsWindow/Delete')
             function = self.Delete
         elif which == BSucceed:
-            caption = mls.UI_CONTRACTS_SUCCEED
+            caption = localization.GetByLabel('UI/Contracts/ContractsWindow/Succeed')
             function = self.Succeed
         elif which == BFail:
-            caption = mls.UI_CONTRACTS_FAIL
+            caption = localization.GetByLabel('UI/Contracts/ContractsWindow/Fail')
             function = self.Fail
         elif which == BGetItems:
-            caption = mls.UI_CONTRACTS_GETITEMS
+            caption = localization.GetByLabel('UI/Contracts/ContractEntry/GetItems')
             function = self.GetItems
         elif which == BGetMoney:
-            caption = mls.UI_CONTRACTS_GETMONEY
+            caption = localization.GetByLabel('UI/Contracts/ContractEntry/GetMoney')
             function = self.GetMoney
         elif which == BPlaceBid:
-            caption = mls.UI_CONTRACTS_PLACEBID
+            caption = localization.GetByLabel('UI/Contracts/ContractEntry/PlaceBid')
             function = self.PlaceBid
         button = (caption,
          function,
@@ -3472,7 +3582,7 @@ class ContractDetailsWindow(uicls.Window):
 
 
     def Cancel(self):
-        self.SelfDestruct()
+        self.Close()
 
 
 
@@ -3538,7 +3648,7 @@ class ContractDetailsWindow(uicls.Window):
         try:
             self.ShowLoad()
             if sm.GetService('contracts').DeleteContract(self.contractID):
-                self.SelfDestruct()
+                self.Close()
 
         finally:
             try:
@@ -3620,7 +3730,8 @@ class ContractDetailsWindow(uicls.Window):
                 return False
         else:
             titleParent = uicls.Container(name='title', parent=self.sr.main, align=uiconst.TOTOP, width=const.defaultPadding)
-            title = uicls.Label(text='<b>%s</b>' % title, parent=titleParent, top=6, idx=0, fontsize=14, state=uiconst.UI_NORMAL, left=6)
+            boldTitle = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=title)
+            title = uicls.EveLabelLarge(text=boldTitle, parent=titleParent, top=6, idx=0, state=uiconst.UI_NORMAL, left=6)
             titleParent.height = title.textheight + 6
             if len(items) == 1 and not forceList:
                 item = items[0]
@@ -3631,25 +3742,18 @@ class ContractDetailsWindow(uicls.Window):
                 group = cfg.invgroups.Get(type.groupID)
                 groupName = group.groupName
                 categoryName = CategoryName(group.categoryID)
-                q = ' x %s' % util.FmtAmt(max(1, item.quantity))
                 details = ''
-                iid = ''
-                if item.itemID > 0:
-                    iid = '//%s' % item.itemID
                 if group.categoryID == const.categoryBlueprint:
                     if item.copy == 1:
                         if shouldHideBlueprintInfo:
-                            details = mls.UI_CONTRACTS_ITEMDETAILS_BLUEPRINTCOPYSIMPLE
+                            details = localization.GetByLabel('UI/Contracts/ContractsService/BlueprintCopy')
                         else:
-                            details = mls.UI_CONTRACTS_ITEMDETAILS_BLUEPRINTCOPY % {'runs': item.licensedProductionRunsRemaining or 0,
-                             'ME': item.materialLevel or 0,
-                             'PE': item.productivityLevel or 0}
+                            details = localization.GetByLabel('UI/VirtualGoodsStore/BlueprintCopy', runs=item.licensedProductionRunsRemaining or 0, materialLevel=item.materialLevel or 0, productivityLevel=item.productivityLevel or 0)
                     elif shouldHideBlueprintInfo:
-                        details = mls.UI_CONTRACTS_ITEMDETAILS_BLUEPRINTORIGINALSIMPLE
+                        details = localization.GetByLabel('UI/Contracts/ContractsService/BlueprintOriginal')
                     else:
-                        details = mls.UI_CONTRACTS_ITEMDETAILS_BLUEPRINTORIGINAL % {'ME': item.materialLevel or 0,
-                         'PE': item.productivityLevel or 0}
-                descParent = uicls.Container(name='desc', parent=self.sr.main, align=uiconst.TOTOP, left=const.defaultPadding, top=const.defaultPadding, height=100)
+                        details = localization.GetByLabel('UI/VirtualGoodsStore/OriginalBlueprint', materialLevel=item.materialLevel or 0, productivityLevel=item.productivityLevel or 0)
+                descParent = uicls.Container(name='desc', parent=self.sr.main, align=uiconst.TOTOP, left=const.defaultPadding, top=const.defaultPadding, height=80)
                 leftParent = picParent = uicls.Container(name='leftParent', parent=descParent, align=uiconst.TOLEFT, width=72)
                 picParent = uicls.Container(name='picParent', parent=leftParent, align=uiconst.TOPRIGHT, width=64, height=64, state=uiconst.UI_NORMAL)
                 infoParent = uicls.Container(name='infoParent', parent=descParent, align=uiconst.TOALL, padding=(8,
@@ -3668,17 +3772,17 @@ class ContractDetailsWindow(uicls.Window):
                     setattr(picParent, 'typeID', typeID)
                     picParent.cursor = uiconst.UICURSOR_MAGNIFIER
                     picParent.OnClick = (self.OnPreviewClick, picParent)
-                captionText = '%s%s' % (typeName, q)
+                captionText = localization.GetByLabel('UI/Contracts/ContractsService/NameXQuantity', typeID=item.itemTypeID, quantity=util.FmtAmt(max(1, item.quantity)))
                 self.caption = uicls.CaptionLabel(parent=infoParent, text=captionText, uppercase=False, letterspace=0, padRight=16)
                 self.infolink = uicls.InfoIcon(itemID=itemID, typeID=typeID, size=16, left=0, top=const.defaultPadding, parent=infoParent, idx=0)
                 self.infolink.left = self.caption.textwidth + 8
-                categoryAndGroupText = '%s / %s' % (categoryName, groupName)
-                self.categoryAndGroup = uicls.Label(parent=infoParent, top=self.caption.textheight, text=categoryAndGroupText)
+                categoryAndGroupText = localization.GetByLabel('UI/Contracts/ContractEntry/CategoryAndGroup', categoryName=categoryName, groupName=groupName)
+                self.categoryAndGroup = uicls.EveLabelMedium(parent=infoParent, top=self.caption.textheight, text=categoryAndGroupText)
                 if self.GetItemDamageText(item):
                     damageAndTextilsText = '<color=red>%s</color> %s' % (self.GetItemDamageText(item), details)
                 else:
                     damageAndTextilsText = details
-                self.damageAndTextils = uicls.Label(parent=infoParent, top=self.categoryAndGroup.textheight + self.categoryAndGroup.top, text=damageAndTextilsText)
+                self.damageAndTextils = uicls.EveLabelMedium(parent=infoParent, top=self.categoryAndGroup.textheight + self.categoryAndGroup.top, text=damageAndTextilsText)
                 return False
             else:
                 if fixedSize:
@@ -3728,19 +3832,16 @@ class ContractDetailsWindow(uicls.Window):
                     details = ''
                     if group.categoryID == const.categoryBlueprint:
                         if item.copy == 1:
-                            details = mls.UI_CONTRACTS_ITEMDETAILS_BLUEPRINTCOPY % {'runs': item.licensedProductionRunsRemaining or 0,
-                             'ME': item.materialLevel or 0,
-                             'PE': item.productivityLevel or 0}
+                            details = localization.GetByLabel('UI/VirtualGoodsStore/BlueprintCopy', runs=item.licensedProductionRunsRemaining or 0, materialLevel=item.materialLevel or 0, productivityLevel=item.productivityLevel or 0)
                         else:
-                            details = mls.UI_CONTRACTS_ITEMDETAILS_BLUEPRINTORIGINAL % {'ME': item.materialLevel or 0,
-                             'PE': item.productivityLevel or 0}
+                            details = localization.GetByLabel('UI/VirtualGoodsStore/OriginalBlueprint', materialLevel=item.materialLevel or 0, productivityLevel=item.productivityLevel or 0)
                     chld = ''
                     if item.parentID > 0:
                         chld = ' '
                     mrdmg = self.GetItemDamageText(item)
                     if item.flagID and cfg.IsShipFittingFlag(item.flagID):
                         if cfg.IsShipFittingFlag(item.flagID):
-                            details = mls.UI_GENERIC_FITTED
+                            details = localization.GetByLabel('UI/Common/Fitted')
                     label = '%s%s<t>%s<t>%s<t>%s%s' % (chld,
                      typeName,
                      max(1, item.quantity) if item.quantity is not None else None,
@@ -3752,7 +3853,7 @@ class ContractDetailsWindow(uicls.Window):
                          typeName,
                          max(1, item.quantity) if item.quantity is not None else None,
                          groupName)
-                        hdr = [mls.UI_GENERIC_NAME, mls.UI_GENERIC_QTY, mls.UI_GENERIC_TYPE]
+                        hdr = [localization.GetByLabel('UI/Contracts/ContractsWindow/Name'), localization.GetByLabel('UI/Inventory/ItemQuantityShort'), localization.GetByLabel('UI/Common/Type')]
                     else:
                         label = '%s%s<t>%s<t>%s<t>%s%s' % (chld,
                          typeName,
@@ -3760,10 +3861,10 @@ class ContractDetailsWindow(uicls.Window):
                          groupName,
                          details,
                          mrdmg)
-                        hdr = [mls.UI_GENERIC_NAME,
-                         mls.UI_GENERIC_QTY,
-                         mls.UI_GENERIC_TYPE,
-                         mls.UI_GENERIC_DETAILS]
+                        hdr = [localization.GetByLabel('UI/Contracts/ContractsWindow/Name'),
+                         localization.GetByLabel('UI/Inventory/ItemQuantityShort'),
+                         localization.GetByLabel('UI/Common/Type'),
+                         localization.GetByLabel('UI/Common/Details')]
                     itemTypeID = item.itemTypeID
                     scrolllist.append(listentry.Get('Item', {'itemID': item.itemID,
                      'typeID': itemTypeID,
@@ -3773,7 +3874,7 @@ class ContractDetailsWindow(uicls.Window):
                 if len(scrolllist) >= 1:
                     hint = None
                 elif hint is None:
-                    hint = mls.UI_GENERIC_NOITEMSFOUND
+                    hint = localization.GetByLabel('UI/Contracts/ContractsWindow/NoItemsFound')
                 self.sr.scroll.ShowHint(hint)
                 return not fixedSize
 
@@ -3808,14 +3909,14 @@ class ContractDetailsWindow(uicls.Window):
 
         txt = ''
         if dmg > 0:
-            txt = ' <color=0xffff4444>%s</color>' % (mls.UI_CONTRACTS_PERCENTDAMAGED % {'dmg': dmg})
+            txt = ' <color=0xffff4444>%s</color>' % localization.GetByLabel('UI/Contracts/ContractsService/PercentDamaged', percent=dmg)
         return txt
 
 
 
     def GetContractItemSubContent(self, tmp, *args):
         scrolllist = []
-        scrolllist.append(listentry.Get('Header', {'label': mls.UI_INFOWND_AVAILABLETOYOU}))
+        scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Contracts/ContractsWindow/AvailableToYou')}))
         entry = listentry.Get('Item', {'itemID': None,
          'typeID': each[2],
          'label': each[1],
@@ -3875,12 +3976,13 @@ class ContractDetailsWindow(uicls.Window):
 
 class IgnoreListWindow(uicls.Window):
     __guid__ = 'form.IgnoreListWindow'
+    default_windowID = 'contractignorelist'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.locationInfo = {}
         self.scope = 'all'
-        self.SetCaption(mls.UI_CONTRACTS_IGNORELIST)
+        self.SetCaption(localization.GetByLabel('UI/Contracts/ContractsWindow/IgnoreList'))
         self.SetWndIcon(GetContractIcon(const.conTypeNothing), mainTop=-10)
         self.SetMinSize([200, 200], 1)
         self.SetTopparentHeight(0)
@@ -3890,7 +3992,7 @@ class IgnoreListWindow(uicls.Window):
         uicls.Container(name='push', parent=self.sr.main, align=uiconst.TORIGHT, width=const.defaultPadding)
         uicls.Container(name='push', parent=self.sr.main, align=uiconst.TOBOTTOM, height=const.defaultPadding)
         hp = uicls.Container(name='hintparent', parent=self.sr.main, align=uiconst.TOTOP, height=16, state=uiconst.UI_HIDDEN)
-        t = uicls.Label(text=mls.UI_CONTRACTS_IGNOREHEADER, parent=hp, top=-3, width=self.minsize[0] - 32, autowidth=False, state=uiconst.UI_DISABLED, align=uiconst.CENTER)
+        t = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Contracts/ContractsWindow/IgnoreHeader'), parent=hp, top=-3, width=self.minsize[0] - 32, state=uiconst.UI_DISABLED, align=uiconst.CENTER)
         hp.state = uiconst.UI_DISABLED
         hp.height = t.height + 8
         sub = uicls.Container(name='subparent', parent=self.sr.main, align=uiconst.TOBOTTOM, height=26)
@@ -3899,8 +4001,8 @@ class IgnoreListWindow(uicls.Window):
         ignoreList.sr.id = 'ignoreList'
         captionparent = uicls.Container(name='captionparent', parent=self.sr.main, align=uiconst.TOPLEFT, left=128, top=36, idx=0)
         caption = uicls.CaptionLabel(text='', parent=captionparent)
-        self.closeBtn = uicls.ButtonGroup(btns=[[mls.UI_CMD_CLOSE,
-          self.SelfDestruct,
+        self.closeBtn = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Generic/Close'),
+          self.Close,
           None,
           81]], parent=sub)
         self.PopulateIgnoreList()
@@ -3925,7 +4027,7 @@ class IgnoreListWindow(uicls.Window):
         if len(scrolllist) > 0:
             self.sr.ignoreList.ShowHint()
         else:
-            self.sr.ignoreList.ShowHint(mls.UI_CONTRACTS_NOIGNORED)
+            self.sr.ignoreList.ShowHint(localization.GetByLabel('UI/Contracts/ContractEntry/NoIgnored'))
 
 
 

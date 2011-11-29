@@ -10,6 +10,7 @@ import _weakref
 import uicls
 import uiconst
 import xtriui
+import localization
 accuracyThreshold = 0.8
 
 class Target(uicls.Container):
@@ -24,7 +25,8 @@ class Target(uicls.Container):
      'OnDroneControlLost',
      'OnStateSetupChance',
      'OnSetPlayerStanding',
-     'OnItemNameChange']
+     'OnItemNameChange',
+     'OnUIRefresh']
 
     def init(self):
         self.gaugesInited = 0
@@ -38,9 +40,19 @@ class Target(uicls.Container):
         self.drones = {}
         self.timers = {}
         self.jammers = {}
-        self.timerNames = {'propulsion': mls.UI_INFLIGHT_SCRAMBLINGSHORT,
-         'electronic': mls.UI_INFLIGHT_JAMMINGSHORT,
-         'unknown': mls.UI_INFLIGHT_MISCELLANEOUSSHORT}
+        self.timerNames = {'propulsion': localization.GetByLabel('UI/Inflight/ScramblingShort'),
+         'electronic': localization.GetByLabel('UI/Inflight/JammingShort'),
+         'unknown': localization.GetByLabel('UI/Inflight/MiscellaneousShort')}
+
+
+
+    def OnUIRefresh(self):
+        self.Flush()
+        self.init()
+        bp = sm.GetService('michelle').GetBallpark()
+        if bp is not None:
+            slimItem = bp.GetInvItem(self.id)
+        self.Startup(slimItem)
 
 
 
@@ -49,7 +61,6 @@ class Target(uicls.Container):
         obs = sm.GetService('target').IsObserving()
         self.ball = _weakref.ref(sm.GetService('michelle').GetBall(slimItem.itemID))
         self.slimItem = _weakref.ref(slimItem)
-        self.wannalook = 1
         self.id = slimItem.itemID
         self.itemID = slimItem.itemID
         self.updatedamage = slimItem.categoryID != const.categoryAsteroid and slimItem.groupID != const.groupHarvestableCloud
@@ -61,11 +72,15 @@ class Target(uicls.Container):
         self.sr.hilite = uicls.Fill(parent=iconPar, color=(1.0, 1.0, 1.0, 0.125), state=uiconst.UI_HIDDEN)
         self.sr.activeTarget = xtriui.ActiveTarget(parent=iconPar)
         rot = uiutil.GetChild(self.sr.activeTarget, 'rotate')
-        sm.GetService('ui').Rotate(rot, 2.0)
-        sm.GetService('ui').BlinkSpriteA(rot.children[0], 1.0, 500.0, 0)
+        sm.GetService('ui').Rotate(rot, 2.0, timeFunc=blue.os.GetSimTime)
+        sm.GetService('ui').BlinkSpriteA(rot.children[0], 1.0, 500.0, 0, timeFunc=blue.os.GetSimTime)
         self.sr.diode = uicls.Fill(parent=self, color=(0.0, 1.0, 0.0, 1.0), align=uiconst.TOLEFT, width=6, state=uiconst.UI_HIDDEN)
         self.InRangeHide()
-        self.sr.label = uicls.Label(text=' ', parent=self, left=[0, 74][obs], top=68, width=[96, 128][obs], autowidth=False, state=uiconst.UI_DISABLED, fontsize=[9, 14][obs], letterspace=[1, 0][obs], uppercase=[1, 0][obs])
+        if not obs:
+            labelClass = uicls.EveLabelSmall
+        else:
+            labelClass = uicls.EveLabelMedium
+        self.sr.label = labelClass(text=' ', parent=self, left=[0, 74][obs], top=68, width=[96, 128][obs], state=uiconst.UI_DISABLED, lineSpacing=-0.1)
         self.SetTargetLabel()
         self.sr.assigned = uicls.Container(name='assigned', align=uiconst.TOPLEFT, parent=self, width=32, height=128, left=64)
         self.sr.updateTimer = base.AutoTimer(random.randint(750, 1000), self.UpdateData)
@@ -95,7 +110,7 @@ class Target(uicls.Container):
         obs = sm.GetService('target').IsObserving()
         self.label = uix.GetSlimItemName(self.slimForFlag)
         if self.slimForFlag.corpID:
-            self.label += ' [%s]' % cfg.corptickernames.Get(self.slimForFlag.corpID).tickerName
+            self.label = localization.GetByLabel('UI/Inflight/Target/TargetLabelWithTicker', target=uix.GetSlimItemName(self.slimForFlag), ticker=cfg.corptickernames.Get(self.slimForFlag.corpID).tickerName)
         if obs:
             self.label = sm.GetService('bracket').DisplayName(self.slimForFlag, uix.GetSlimItemName(self.slimForFlag))
         self.UpdateData()
@@ -221,42 +236,42 @@ class Target(uicls.Container):
         timer.timerID = timerID
         self.ArrangeGauges()
         uicls.Container(name='push', parent=timer, align=uiconst.TOBOTTOM, height=1)
-        t1 = uicls.Label(text=label, parent=timer, left=68, top=-1, state=uiconst.UI_DISABLED, fontsize=9, letterspace=1, uppercase=1)
+        t1 = uicls.EveHeaderSmall(text=label, parent=timer, left=68, top=-1, state=uiconst.UI_DISABLED)
         uicls.Line(parent=timer, align=uiconst.TOTOP, color=(1.0, 1.0, 1.0, 0.5))
         uicls.Line(parent=timer, align=uiconst.TOBOTTOM, color=(1.0, 1.0, 1.0, 0.5))
         uicls.Line(parent=timer, align=uiconst.TOLEFT, color=(1.0, 1.0, 1.0, 0.5))
         uicls.Line(parent=timer, align=uiconst.TORIGHT, color=(1.0, 1.0, 1.0, 0.5))
-        t = uicls.Label(text='', parent=timer, left=5, top=0, fontsize=9, letterspace=1, state=uiconst.UI_NORMAL)
+        t = uicls.EveLabelSmall(text='', parent=timer, left=5, top=0, state=uiconst.UI_NORMAL)
         p = uicls.Fill(parent=timer, align=uiconst.TOLEFT)
         timer.height = max(8, t.textheight - 2, t1.textheight - 2)
         duration = float(duration)
         while 1 and not timer.destroyed:
-            now = blue.os.GetTime()
+            now = blue.os.GetSimTime()
             dt = blue.os.TimeDiffInMs(startTime, now)
             timeLeft = (duration - dt) / 1000.0
             timer.timeLeft = timeLeft
             if timer.destroyed or dt > duration:
-                t.text = mls.UI_GENERIC_DONE
+                t.text = localization.GetByLabel('UI/Common/Done')
                 p.width = 0
                 break
-            t.text = '%.1f %s' % (timeLeft, uix.Plural(timeLeft, 'UI_GENERIC_SECONDSHORT'))
+            t.text = localization.GetByLabel('UI/Inflight/Target/TimerDuration', timeLeft=timeLeft)
             p.width = int(62 * ((duration - dt) / duration))
             timer.height = max(8, t.textheight - 2)
             blue.pyos.synchro.Yield()
 
-        blue.pyos.synchro.Sleep(250)
+        blue.pyos.synchro.SleepWallclock(250)
         if not timer.destroyed and not self.destroyed:
             t.text = ''
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
         if not timer.destroyed and not self.destroyed:
-            t.text = mls.UI_GENERIC_DONE
-            blue.pyos.synchro.Sleep(250)
+            t.text = localization.GetByLabel('UI/Common/Done')
+            blue.pyos.synchro.SleepWallclock(250)
         if not timer.destroyed and not self.destroyed:
             t.text = ''
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
         if not timer.destroyed and not self.destroyed:
-            t.text = mls.UI_GENERIC_DONE
-            blue.pyos.synchro.Sleep(250)
+            t.text = localization.GetByLabel('UI/Common/Done')
+            blue.pyos.synchro.SleepWallclock(250)
         if not timer.destroyed and not self.destroyed:
             t.text = ''
             timer.Close()
@@ -327,9 +342,10 @@ class Target(uicls.Container):
             par = uicls.Container(name='gauges', parent=self, align=uiconst.TOPLEFT, width=64, height=32, top=0, left=74, state=uiconst.UI_NORMAL)
         else:
             par = uicls.Container(name='gauges', parent=self, align=uiconst.TOPLEFT, width=66, height=32, top=66, left=0, state=uiconst.UI_NORMAL)
-        for each in ('SHIELD', 'ARMOR', 'STRUCTURE'):
-            g = uicls.Container(name='gauge_%s' % each.lower(), parent=par, align=uiconst.TOTOP, height=6, top=2)
-            t = uicls.Label(text=getattr(mls, 'UI_GENERIC_' + each + 'SHORT', each), parent=g, left=68, top=-1, state=uiconst.UI_DISABLED, fontsize=9, letterspace=1)
+        gaugesWithLabels = (('SHIELD', 'UI/Inflight/Target/ShieldShort'), ('ARMOR', 'UI/Inflight/Target/ArmorShort'), ('STRUCTURE', 'UI/Inflight/Target/StructureShort'))
+        for (gaugeName, label,) in gaugesWithLabels:
+            g = uicls.Container(name='gauge_%s' % gaugeName.lower(), parent=par, align=uiconst.TOTOP, height=6, top=2)
+            t = uicls.EveLabelSmall(text=localization.GetByLabel(label), parent=g, left=68, top=-1, state=uiconst.UI_DISABLED)
             g.height = max(6, t.textheight - 4)
             barpar = uicls.Container(name='barpar', parent=g, align=uiconst.TOALL, left=1, top=1, width=1, height=1)
             g.sr.bar = uicls.Fill(parent=barpar, align=uiconst.TOLEFT)
@@ -338,7 +354,7 @@ class Target(uicls.Container):
              14 / 256.0,
              1.0))
             uicls.Frame(parent=g, color=(1.0, 1.0, 1.0, 0.5))
-            setattr(self.sr, 'gauge_%s' % each.lower(), g)
+            setattr(self.sr, 'gauge_%s' % gaugeName.lower(), g)
 
         uicls.Container(name='push', parent=par, align=uiconst.TOTOP, height=2)
         self.sr.gaugeParent = par
@@ -362,7 +378,6 @@ class Target(uicls.Container):
     def _OnClose(self, *args):
         sm.UnregisterNotify(self)
         self.sr.updateTimer = None
-        self.sr.hoverTimer = None
 
 
 
@@ -453,15 +468,9 @@ class Target(uicls.Container):
 
 
     def OnClick(self, *args):
-        self.wannalook = 0
         sm.GetService('state').SetState(self.itemID, state.selected, 1)
         sm.GetService('state').SetState(self.itemID, state.activeTarget, 1)
         sm.GetService('menu').TacticalItemClicked(self.itemID)
-
-
-
-    def OnMouseUp(self, btn):
-        self.wannalook = 1
 
 
 
@@ -469,9 +478,9 @@ class Target(uicls.Container):
         obs = sm.GetService('target').IsObserving()
         m = []
         if obs:
-            m += [('Toggle Team', sm.GetService('target').ToggleTeam, (self.itemID,))]
-            m += [('Move Up', sm.GetService('target').MoveUp, (self.itemID,))]
-            m += [('Move Down', sm.GetService('target').MoveDown, (self.itemID,))]
+            m += [(localization.GetByLabel('UI/Inflight/Target/ToggleTeam'), sm.GetService('target').ToggleTeam, (self.itemID,))]
+            m += [(localization.GetByLabel('UI/Inflight/Target/MoveUp'), sm.GetService('target').MoveUp, (self.itemID,))]
+            m += [(localization.GetByLabel('UI/Inflight/Target/MoveDown'), sm.GetService('target').MoveDown, (self.itemID,))]
         m += sm.GetService('menu').CelestialMenu(self.itemID)
         return m
 
@@ -483,27 +492,117 @@ class Target(uicls.Container):
 
 
     def OnMouseDown(self, *args):
-        pass
+        if args[0] != uiconst.MOUSELEFT or len(uicore.layer.target.children) <= 1:
+            return 
+        horizontalAlign = settings.user.ui.Get('alignHorizontally', True)
+        (rows, cols,) = sm.GetService('target').GetTargetsSize()
+        width = height = 0
+        left = top = None
+        for target in uicore.layer.target.children:
+            if isinstance(target, xtriui.Target):
+                (tl, tt, tw, th,) = target.GetAbsolute()
+                width = max(int(cols * tw), width)
+                height = max(int(rows * th), height)
+                if left == None:
+                    left = tl
+                else:
+                    left = min(left, tl)
+                if top == None:
+                    top = tt
+                else:
+                    top = min(top, tt)
+
+        clipper = (left,
+         top,
+         left + width,
+         top + height)
+        uthread.new(self.DoRepositionDrag, clipper)
+
+
+
+    def OnMouseUp(self, *args):
+        if args[0] != uiconst.MOUSELEFT:
+            return 
+        uicore.uilib.UnclipCursor()
 
 
 
     def OnMouseEnter(self, *args):
         sm.GetService('state').SetState(self.id, state.mouseOver, 1)
-        self.sr.hoverTimer = base.AutoTimer(3000, self.Hover)
-
-
-
-    def Hover(self):
-        if uicore.uilib.mouseOver == self and self.wannalook:
-            uiutil.SetOrder(self, 0)
-            sm.GetService('target').SetAsInterest(self.itemID)
 
 
 
     def OnMouseExit(self, *args):
         sm.GetService('state').SetState(self.itemID, state.mouseOver, 0)
-        sm.GetService('target').SetAsInterest(None)
-        self.sr.hoverTimer = None
+
+
+
+    def DoRepositionDrag(self, cursorClipper):
+        blue.synchro.Sleep(200)
+        if uicore.uilib.leftbtn and uicore.uilib.mouseOver == self:
+            uicore.uilib.ClipCursor(*cursorClipper)
+        else:
+            return 
+        origin = self.GetAbsolute()
+        xOffset = uicore.uilib.x - origin[0]
+        yOffset = uicore.uilib.y - origin[1]
+        horizontalAlign = settings.user.ui.Get('alignHorizontally', True)
+        repositionLine = uicls.Line(align=uiconst.TORIGHT, weight=4, color=(1, 1, 1, 0.5))
+        uiutil.Transplant(self, uicore.layer.abovemain)
+        targetSvc = sm.GetService('target')
+        targetSvc.ArrangeTargets()
+        while uicore.uilib.leftbtn:
+            self.SetAlign(uiconst.TOPLEFT)
+            self.left = uicore.uilib.x - xOffset
+            self.top = uicore.uilib.y - yOffset
+            ((x, y,), (toLeft, toTop,),) = targetSvc.GetOriginPosition(getDirection=1)
+            lessThanAll = True
+            for target in uicore.layer.target.children:
+                if isinstance(target, xtriui.Target):
+                    (tl, tt, tw, th,) = target.GetAbsolute()
+                    if tl - 2 <= uicore.uilib.x <= tl + tw + 2 and tt - 2 <= uicore.uilib.y <= tt + th + 2:
+                        if horizontalAlign:
+                            repositionLine.padTop = repositionLine.padBottom = 32
+                            if not toLeft:
+                                repositionLine.SetAlign(uiconst.TOLEFT)
+                                repositionLine.padLeft = -10
+                            else:
+                                repositionLine.SetAlign(uiconst.TORIGHT)
+                                repositionLine.padLeft = 0
+                            lessThanAll = False
+                            break
+                        else:
+                            if not toTop:
+                                repositionLine.SetAlign(uiconst.TOTOP)
+                                repositionLine.padTop = 0
+                            else:
+                                repositionLine.SetAlign(uiconst.TOBOTTOM)
+                                repositionLine.padTop = -10
+                            lessThanAll = False
+                            break
+
+            if lessThanAll:
+                if horizontalAlign:
+                    repositionLine.padTop = repositionLine.padBottom = 32
+                    if not toLeft:
+                        repositionLine.SetAlign(uiconst.TORIGHT)
+                        repositionLine.padLeft = 0
+                    else:
+                        repositionLine.SetAlign(uiconst.TOLEFT)
+                    repositionLine.padLeft = -10
+                elif not toTop:
+                    repositionLine.SetAlign(uiconst.TOBOTTOM)
+                    repositionLine.padTop = -10
+                else:
+                    repositionLine.SetAlign(uiconst.TOTOP)
+                    repositionLine.padTop = 0
+            uiutil.Transplant(repositionLine, target)
+            blue.pyos.synchro.Yield()
+
+        uicore.uilib.UnclipCursor()
+        uiutil.Transplant(self, uicore.layer.target, idx=uicore.layer.target.children.index(repositionLine.parent) if not lessThanAll else None)
+        repositionLine.Close()
+        targetSvc.ArrangeTargets()
 
 
 
@@ -514,9 +613,9 @@ class Target(uicls.Container):
         obs = sm.GetService('target').IsObserving()
         if not obs:
             dist = ball.surfaceDist
-            self.sr.label.text = '%s<br>%s' % (self.label, util.FmtDist(dist))
+            self.sr.label.text = localization.GetByLabel('UI/Inflight/Target/DataLabel', label=self.label, distance=util.FmtDist(dist))
         else:
-            self.sr.label.text = '%s' % self.label
+            self.sr.label.text = self.label
         if self.updatedamage:
             self.UpdateDamage()
 
@@ -615,15 +714,11 @@ class Target(uicls.Container):
                 dronesByTypeID[droneTypeID] = 0
             dronesByTypeID[droneTypeID] += 1
 
-        string = mls.UI_GENERIC_DRONES
+        hintLines = []
         for (droneTypeID, number,) in dronesByTypeID.iteritems():
-            typeName = cfg.invtypes.Get(droneTypeID).typeName
-            string += '<br>'
-            string += typeName
-            string += ': '
-            string += str(number)
+            hintLines.append(localization.GetByLabel('UI/Inflight/Target/DroneHintLine', drone=droneTypeID, count=number))
 
-        droneIcon.hint = string
+        droneIcon.hint = localization.GetByLabel('UI/Inflight/Target/DroneHintLabel', droneHintLines='<br>'.join(hintLines))
 
 
 

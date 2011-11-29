@@ -9,7 +9,7 @@ import notificationUtil
 import form
 import uiconst
 import yaml
-import uicls
+import localization
 
 class notificationSvc(service.Service):
     __guid__ = 'svc.notificationSvc'
@@ -216,8 +216,7 @@ class notificationSvc(service.Service):
         if numToMark < 1:
             return 
         if numToMark > const.notificationsMaxUpdated:
-            txt = mls.UI_EVEMAIL_NOTIFICATIONS_TOOMANYSELECTED % {'num': numToMark,
-             'maxnum': const.notificationsMaxUpdated}
+            txt = localization.GetByLabel('UI/Mail/Notifications/TooManySelected', num=numToMark, max=const.notificationsMaxUpdated)
             raise UserError('CustomInfo', {'info': txt})
         notificationsList = list(notificationIDsToMarkAsRead)
         self.notificationMgr.MarkAsProcessed(notificationsList)
@@ -283,8 +282,7 @@ class notificationSvc(service.Service):
         if numToDelete < 1:
             return 
         if numToDelete > const.notificationsMaxUpdated:
-            txt = mls.UI_EVEMAIL_NOTIFICATIONS_TOOMANYSELECTED % {'num': numToDelete,
-             'maxnum': const.notificationsMaxUpdated}
+            txt = localization.GetByLabel('UI/Mail/Notifications/TooManySelected', num=numToDelete, max=const.notificationsMaxUpdated)
             raise UserError('CustomInfo', {'info': txt})
         self.notificationMgr.DeleteNotifications(notificationIDs)
         self.UpdateCacheAfterDeleting(notificationIDs)
@@ -399,9 +397,9 @@ class notificationSvc(service.Service):
         if len(n) < 1:
             return 
         first = n[0]
-        header = mls.UI_EVEMAIL_NEWNOTIFICATION
+        header = localization.GetByLabel('UI/Mail/Notifications/NewNotification')
         senderName = cfg.eveowners.Get(first.senderID).ownerName
-        text1 = '%s: %s' % (mls.UI_EVEMAIL_FROM, senderName)
+        text1 = '%s: %s' % (localization.GetByLabel('UI/Mail/From'), senderName)
         if len(first.subject) > 100:
             text2 = '%s...' % first.subject[:100]
         else:
@@ -423,31 +421,26 @@ class notificationSvc(service.Service):
         sender = cfg.eveowners.Get(senderID)
         senderTypeID = sender.typeID
         if senderTypeID is not None and senderTypeID > 0:
-            senderText = '\n                <a href="showinfo:%(senderType)s//%(senderID)s">%(senderName)s</a>\n            ' % {'senderType': senderTypeID,
+            senderText = '<a href="showinfo:%(senderType)s//%(senderID)s">%(senderName)s</a>' % {'senderType': senderTypeID,
              'senderID': senderID,
              'senderName': sender.name}
         else:
             senderText = sender.name
         date = util.FmtDate(created, 'ls')
-        newmsgText = '\n            <font size=21>%(subject)s</font>\n            <br>\n            <font size=12><b>%(from)s: </b>%(senderText)s</font>\n            <br>\n            <b>%(sent)s:</b> %(date)s\n            <br>\n            <br>\n            %(body)s\n        ' % {'subject': subject,
-         'from': mls.UI_EVEMAIL_FROM,
-         'senderText': senderText,
-         'sent': mls.UI_EVEMAIL_SENT,
-         'date': date,
-         'body': message}
+        newmsgText = localization.GetByLabel('UI/Mail/NotificationText', subject=subject, sender=senderText, date=date, body=message)
         return newmsgText
 
 
 
     def OpenNotificationReadingWnd(self, info, *args):
         wndName = 'mail_readingWnd_%s' % info.notificationID
-        wnd = sm.GetService('window').GetWindow(wndName, 1, decoClass=form.MailReadingWnd, windowPrefsID='mailReadingWnd', mail=None, msgID=info.notificationID, txt='', toolbar=False, trashed=False, type=const.mailTypeNotifications)
+        wnd = form.MailReadingWnd.Open(windowID=wndName, mail=None, msgID=info.notificationID, txt='', toolbar=False, trashed=False, type=const.mailTypeNotifications)
         if not info.processed:
             self.MarkAsRead([info.notificationID])
             sm.ScatterEvent('OnNotificationReadOutside', info.notificationID)
         if wnd is not None:
             wnd.Maximize()
-            blue.pyos.synchro.Sleep(1)
+            blue.pyos.synchro.SleepWallclock(1)
             txt = sm.GetService('notificationSvc').GetReadingText(info.senderID, info.subject, info.created, info.body)
             wnd.SetText(txt)
 

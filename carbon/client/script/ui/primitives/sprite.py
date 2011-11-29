@@ -24,6 +24,7 @@ class TexturedBase(uicls.Base):
     default_shadowOffset = (0, 0)
     default_shadowColor = (0, 0, 0, 0.5)
     default_spriteEffect = trinity.TR2_SFX_COPY
+    default_rotation = 0.0
 
     def ApplyAttributes(self, attributes):
         uicls.Base.ApplyAttributes(self, attributes)
@@ -50,6 +51,10 @@ class TexturedBase(uicls.Base):
         color = attributes.get('color', self.default_color)
         if type(color) == types.TupleType:
             self.SetRGB(*color)
+        opacity = attributes.get('opacity', None)
+        if opacity is not None:
+            self.opacity = opacity
+        self.rotation = attributes.get('rotation', self.default_rotation)
         self.__dict__['isReady'] = True
 
 
@@ -414,6 +419,38 @@ class TexturedBase(uicls.Base):
 
 
 
+    @apply
+    def rotation():
+        doc = 'Set rotation of primary texture'
+
+        def fget(self):
+            return self.texture.rotation
+
+
+
+        def fset(self, value):
+            self.texture.rotation = value
+            self.texture.useTransform = bool(value)
+
+
+        return property(**locals())
+
+
+
+    def ReloadTexture(self):
+        if self.texture:
+            if self.texture.atlasTexture:
+                self.texture.atlasTexture.Reload()
+
+
+
+    def ReloadSecondaryTexture(self):
+        if self.textureSecondary:
+            if self.textureSecondary.atlasTexture:
+                self.textureSecondary.atlasTexture.Reload()
+
+
+
     def SetTexturePath(self, texturePath):
         if self.texture:
             self.texture.resPath = str(texturePath or '')
@@ -512,10 +549,12 @@ class Sprite(TexturedBase):
     default_width = 0
     default_height = 0
     default_pickRadius = 0
+    default_useSizeFromTexture = False
 
     def ApplyAttributes(self, attributes):
         TexturedBase.ApplyAttributes(self, attributes)
         self.pickRadius = attributes.get('pickRadius', self.default_pickRadius)
+        self.renderObject.useSizeFromTexture = attributes.get('useSizeFromTexture', self.default_useSizeFromTexture)
 
 
 
@@ -532,7 +571,26 @@ class Sprite(TexturedBase):
             self._pickRadius = value
             ro = self.renderObject
             if ro and hasattr(ro, 'pickRadius'):
-                ro.pickRadius = value or 0.0
+                ro.pickRadius = uicore.ScaleDpi(value) or 0.0
+
+
+        return property(**locals())
+
+
+
+    @apply
+    def useSizeFromTexture():
+        doc = '\n            If set, displayWidth/Height are ignored and size of primary texture is used instead.\n            '
+
+        def fget(self):
+            return self._useSizeFromTexture
+
+
+
+        def fset(self, value):
+            self._useSizeFromTexture = value
+            if self.renderObject:
+                self.renderObject.useSizeFromTexture = value
 
 
         return property(**locals())

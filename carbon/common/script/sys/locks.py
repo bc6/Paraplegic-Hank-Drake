@@ -95,7 +95,7 @@ class EventQueue(object):
 
 
     def clock(self):
-        return blue.os.GetTime(1) * 1e-07
+        return blue.os.GetWallclockTimeNow() * 1e-07
 
 
 
@@ -205,8 +205,79 @@ class LockMixin(ContextMixin):
 
     def LockedFor(self):
         if self.lockedWhen:
-            return (blue.os.GetTime() - self.lockedWhen) * 1e-07
+            return (blue.os.GetWallclockTime() - self.lockedWhen) * 1e-07
         return -1.0
+
+
+
+    def __repr__(self):
+        return '<%s %r, t=%f at %#x>' % (self.__class__.__name__,
+         self.name,
+         self.LockedFor(),
+         id(self))
+
+
+
+
+class FifoLock(LockMixin):
+    __guid__ = 'locks.FifoLock'
+
+    def __init__(self, name = 'noname'):
+        self.name = name
+        self.waiting = stackless.channel()
+        self.waiting.preference = 1
+        self.owning = None
+        self.lockedWhen = None
+        lockManager.Register(self)
+
+
+
+    def acquire(self, blocking = True):
+        if self.owning:
+            if not blocking:
+                return False
+            self.waiting.receive()
+        else:
+            self.owning = stackless.getcurrent()
+            self.lockedWhen = blue.os.GetTime()
+        return True
+
+
+
+    def release(self):
+        self.owning = None
+        self.lockedWhen = None
+        if self.waiting.balance < 0:
+            self.owning = self.waiting.queue
+            self.lockedWhen = blue.os.GetTime()
+            self.waiting.send(None)
+
+
+
+    def IsCool(self):
+        return self.owning is None
+
+
+
+    def HoldingTasklets(self):
+        if self.owning:
+            return [self.owning]
+        return []
+
+
+
+    def WaitingTasklets(self):
+        return ChannelTasklets(self.waiting)
+
+
+
+    def LockedAt(self):
+        return self.lockedWhen
+
+
+
+    def Unblock(self):
+        self.release()
 
 
 
@@ -221,14 +292,6 @@ class Lock(LockMixin):
         self.owning = []
         self.lockedWhen = None
         lockManager.Register(self)
-
-
-
-    def __repr__(self):
-        return '<%s %r, t=%f at %#x>' % (self.__class__.__name__,
-         self.name,
-         self.LockedFor(),
-         id(self))
 
 
 
@@ -254,7 +317,7 @@ class Lock(LockMixin):
 
     def try_acquire(self):
         if not self.owning:
-            self.lockedWhen = blue.os.GetTime()
+            self.lockedWhen = blue.os.GetWallclockTime()
             self.owning.append(stackless.getcurrent())
             return True
         return False
@@ -337,7 +400,7 @@ class RLock(Lock):
         current = stackless.getcurrent()
         if not self.owning or Inherits(self.owning[0], current):
             if not self.owning:
-                self.lockedWhen = blue.os.GetTime()
+                self.lockedWhen = blue.os.GetWallclockTime()
             self.owning.append(current)
             return True
         return False
@@ -513,7 +576,7 @@ class RWLock(LockMixin):
             self.state -= 1
             self.owning.append(current)
             if not self.lockedWhen:
-                self.lockedWhen = blue.os.GetTime()
+                self.lockedWhen = blue.os.GetWallclockTime()
             return True
         return False
 
@@ -537,7 +600,7 @@ class RWLock(LockMixin):
             self.state += 1
             self.owning.append(current)
             if not self.lockedWhen:
-                self.lockedWhen = blue.os.GetTime()
+                self.lockedWhen = blue.os.GetWallclockTime()
             return True
         return False
 
@@ -1104,7 +1167,7 @@ def LockCycleReport(graph = None, out = None, timeLimit = None, pathLimit = 10):
 def OldLockReport(threshold = None, out = None):
     if out is None:
         out = sys.stdout
-    now = blue.os.GetTime()
+    now = blue.os.GetWallclockTime()
     result = False
     import uthread
     for each in lockManager.GetLocks():
@@ -1205,6 +1268,7 @@ exports = {'graph.Graph': Graph,
  'locks.RWLock': RWLock,
  'locks.Condition': Condition,
  'locks.Event': Event,
+ 'locks.FifoLock': FifoLock,
  'locks.eventQueue': eventQueue,
  'locks.Startup': Startup,
  'locks.SingletonCall': SingletonCall}

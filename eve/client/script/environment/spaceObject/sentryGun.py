@@ -16,7 +16,9 @@ entityExplosionsL = ['res:/Emitter/tracerexplosion/NPCDeathL1.blue', 'res:/Emitt
 TURRET_TYPE_ID = {const.raceAmarr: 462,
  const.raceGallente: 569,
  const.raceCaldari: 574,
- const.raceMinmatar: 498}
+ const.raceMinmatar: 498,
+ const.racePirates: 462,
+ const.raceSleepers: 4049}
 TURRET_FALLBACK_TYPE_ID = 462
 
 class SentryGun(spaceObject.SpaceObject):
@@ -57,7 +59,7 @@ class SentryGun(spaceObject.SpaceObject):
         self.fitted = True
         self.modules = {}
         ts = turret.TurretSet.FitTurret(self.model, self.typeID, self.turretTypeID, 1)
-        if ts is not None:
+        if self.modules and ts:
             self.modules[self.id] = ts
 
 

@@ -12,12 +12,19 @@ import _socket
 import datetime
 import os
 import copy
+import gpcs
 
 class ProcessHealthSvc(service.Service):
     __guid__ = 'svc.processHealth'
     __servicename__ = 'processHealth'
     __displayname__ = 'Process Health Service'
     __dependencies__ = ['machoNet']
+    __notifyevents__ = ['ProcessShutdown']
+
+    def ProcessShutdown(self):
+        self.WriteLog()
+
+
 
     def CreateFakeData(self):
         import util
@@ -31,7 +38,7 @@ class ProcessHealthSvc(service.Service):
         data.pymemData = []
         data.memData = []
         data.schedData = []
-        t0 = blue.os.GetTime() - 2 * const.DAY
+        t0 = blue.os.GetWallclockTime() - 2 * const.DAY
         tp = t0
         delay = 0
         lag = 0
@@ -69,14 +76,14 @@ class ProcessHealthSvc(service.Service):
     def __init__(self, *args):
         service.Service.__init__(self, *args)
         self.logLines = []
-        self.startDateTime = util.FmtDate(blue.os.GetTime(), 'ss')
+        self.startDateTime = util.FmtDateEng(blue.os.GetWallclockTime(), 'ss')
         self.cache = util.KeyVal
         self.cache.cacheTime = 0
         self.cache.minutes = 0
         self.cache.cache = []
         self.lastLoggedLine = 0
         self.lastStartPos = 0
-        self.columnNames = ('dateTime', 'pyDateTime', 'procCpu', 'threadCpu', 'blueMem', 'pyMem', 'virtualMem', 'runnable1', 'runnable2', 'watchdog time', 'spf')
+        self.columnNames = ('dateTime', 'pyDateTime', 'procCpu', 'threadCpu', 'blueMem', 'pyMem', 'virtualMem', 'runnable1', 'runnable2', 'watchdog time', 'spf', 'serviceCalls')
 
 
 
@@ -135,7 +142,7 @@ class ProcessHealthSvc(service.Service):
         data = bluepy.GetBlueInfo(minutes, isYield=False)
         ret = []
         for i in xrange(0, len(data.timeData)):
-            (fps, nrRunnable1, nrYielders, nrSleepers, watchDogTime, nrRunnable2,) = data.schedData[i]
+            (fps, nrRunnable1, nrYielders, nrSleepWallclockers, watchDogTime, nrRunnable2,) = data.schedData[i]
             spf = 1.0 / fps if fps > 0.1 else 0
             ret.append({'dateTime': data.timeData[i],
              'procCpu': data.procCpuData[i],
@@ -152,9 +159,13 @@ class ProcessHealthSvc(service.Service):
 
 
 
+    def GetAllLogs(self, logAll = True):
+        logs = self.GetProcessInfo()
+        return self.FormatLog(logs, logAll)
+
+
+
     def GetProcessInfo(self, minutes = 0, useIncrementalStartPos = False):
-        if blue.os.GetTime() - self.cache.cacheTime < 25 * const.SEC and self.cache.minutes == minutes:
-            return self.cache.cache
         blueLines = self.GetBlueDataAsDictList(minutes)
         lastLine = {}
         if useIncrementalStartPos:
@@ -171,7 +182,7 @@ class ProcessHealthSvc(service.Service):
 
         self.lastStartPos = startPos
         self.cache.minutes = minutes
-        self.cache.cacheTime = blue.os.GetTime()
+        self.cache.cacheTime = blue.os.GetWallclockTime()
         self.cache.cache = blueLines
         return blueLines
 
@@ -183,7 +194,7 @@ class ProcessHealthSvc(service.Service):
             if prefs.GetValue('disableProcessHealthService', 0):
                 self.LogWarn('Process Health Service is disabled in prefs. Disabling loop.')
                 return 
-            blue.pyos.synchro.Sleep(10000)
+            blue.pyos.synchro.SleepWallclock(10000)
             try:
                 seconds += 10
                 self.DoOnceEvery10Secs()
@@ -203,12 +214,15 @@ class ProcessHealthSvc(service.Service):
         netReadCalls = stats['PacketsReceived']
         netWriteCalls = stats['PacketsSent']
         sessionCount = self.GetSessionCount()
-        logline = {'pyDateTime': blue.os.GetTime(),
+        serviceCalls = sum(gpcs.CoreServiceCall.__recvServiceCallCount__.itervalues())
+        logline = {'pyDateTime': blue.os.GetWallclockTime(),
          'bytesReceived': netBytesRead,
          'bytesSent': netBytesWritten,
          'packetsReceived': netReadCalls,
          'packetsSent': netWriteCalls,
-         'sessionCount': sessionCount}
+         'sessionCount': sessionCount,
+         'tidiFactor': blue.os.simDilation,
+         'serviceCalls': serviceCalls}
         self.logLines.append(logline)
 
 
@@ -223,21 +237,21 @@ class ProcessHealthSvc(service.Service):
 
 
 
-    def FormatLog(self, logLines):
+    def FormatLog(self, logLines, logAll = False):
         txt = ''
         allColumnNames = self.columnNames + tuple(sorted(set(logLines[0].iterkeys()).difference(self.columnNames)))
-        if self.lastLoggedLine == 0:
+        if self.lastLoggedLine == 0 or logAll:
             for name in allColumnNames:
                 txt += '%s\t' % name
 
             txt += '\n'
         for l in xrange(0, len(logLines) - 1):
             logLine = logLines[l]
-            if logLine['dateTime'] > self.lastLoggedLine:
+            if logLine['dateTime'] > self.lastLoggedLine or logAll:
                 self.lastLoggedLine = logLine['dateTime']
                 for name in allColumnNames:
                     if name in ('dateTime', 'pyDateTime'):
-                        txt += '%s\t' % util.FmtDate(logLine[name])
+                        txt += '%s\t' % util.FmtDateEng(logLine[name])
                     elif round(logLine[name], 2).is_integer():
                         txt += '%s\t' % str(logLine[name])
                     else:

@@ -9,6 +9,8 @@ import listentry
 import sys
 import uicls
 import uiconst
+import localization
+import re
 
 class AssetsSvc(service.Service):
     __exportedcalls__ = {'Show': [],
@@ -29,7 +31,7 @@ class AssetsSvc(service.Service):
     def Stop(self, memStream = None):
         wnd = self.GetWnd()
         if wnd and not wnd.destroyed:
-            wnd.SelfDestruct()
+            wnd.Close()
 
 
 
@@ -66,9 +68,8 @@ class AssetsSvc(service.Service):
         wnd = self.GetWnd(1)
         if wnd is not None and not wnd.destroyed:
             wnd.Maximize()
-            wnd.Refresh()
             if stationID is not None:
-                wnd.sr.maintabs.ShowPanelByName(mls.UI_SHARED_ALLITEMS)
+                wnd.sr.maintabs.ShowPanelByName(localization.GetByLabel('UI/Inventory/Inventory/AssetsWindow/AllItems'))
                 blue.pyos.synchro.Yield()
                 for entry in wnd.sr.scroll.GetNodes():
                     if entry.__guid__ == 'listentry.Group':
@@ -127,7 +128,7 @@ class AssetsSvc(service.Service):
 
 
     def GetStations(self, blueprintOnly = 0, isCorp = 0):
-        stations = eve.GetInventory(const.containerGlobal).ListStations(blueprintOnly, isCorp)
+        stations = sm.GetService('invCache').GetInventory(const.containerGlobal).ListStations(blueprintOnly, isCorp)
         primeloc = []
         for station in stations:
             primeloc.append(station.stationID)
@@ -139,7 +140,9 @@ class AssetsSvc(service.Service):
 
 
     def GetWnd(self, new = 0):
-        return sm.StartService('window').GetWindow('assets', new, decoClass=form.AssetsWindow)
+        if new:
+            return form.AssetsWindow.Open()
+        return form.AssetsWindow.GetIfOpen()
 
 
 
@@ -153,9 +156,10 @@ class AssetsSvc(service.Service):
 
 class AssetsWindow(uicls.Window):
     __guid__ = 'form.AssetsWindow'
-    default_width = 500
+    default_width = 395
     default_height = 400
-    default_minSize = (500, 256)
+    default_minSize = (395, 256)
+    default_windowID = 'assets'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -168,15 +172,18 @@ class AssetsWindow(uicls.Window):
         self.pending = None
         self.loading = 0
         self.SetScope('station_inflight')
-        self.SetCaption(mls.UI_CORP_ASSETS)
+        self.SetCaption(localization.GetByLabel('UI/Inventory/AssetsWindow/Assets'))
         self.SetWndIcon('ui_7_64_13', mainTop=-8, size=128)
         self.SetMainIconSize(64)
         self.sr.topParent.state = uiconst.UI_DISABLED
-        uicls.WndCaptionLabel(text=mls.UI_GENERIC_PERSONALASSETS, subcaption=mls.UI_CORP_DELAYED5MINUTES, parent=self.sr.topParent, align=uiconst.RELATIVE)
+        self.sortOptions = [(localization.GetByLabel('UI/Common/Name'), 0), (localization.GetByLabel('UI/Common/NumberOfJumps'), 1), (localization.GetByLabel('UI/Common/NumberOfItems'), 2)]
+        uicls.WndCaptionLabel(text=localization.GetByLabel('UI/Inventory/AssetsWindow/PersonalAssets'), subcaption=localization.GetByLabel('UI/Inventory/AssetsWindow/DelayedFiveMinutes'), parent=self.sr.topParent, align=uiconst.RELATIVE)
+        self.searchRegex = re.compile('\n                (?:\\s*)                         # \n                (?P<name>\\w*)                   # the argument name\n                [:]\\s*                          #\n                (?:\\"                           # match group for for quoted strings, skipped\n                    (?:                         # match group for the closing quote, skipped\n                        (?P<value>.*?)          # contents of a qouted string\n                            (?<!\\\\)             # ignoring a trailing escape \n                    \\") |                       # end of match group OR\n                    (?P<value2>[\\w\\d\\.\\,+-]*)   # value of a key:value pair for non-quoted instances, allows values used for numbers and negatives\n                )', re.UNICODE + re.IGNORECASE + re.VERBOSE)
+        self.Refresh()
 
 
 
-    def Reload(self, *args):
+    def ReloadTabs(self, *args):
         self.sr.maintabs.ReloadVisible()
 
 
@@ -191,33 +198,33 @@ class AssetsWindow(uicls.Window):
          const.defaultPadding,
          const.defaultPadding))
         self.sr.scroll.sr.id = 'assets'
-        self.sr.scroll.sr.minColumnWidth = {mls.UI_GENERIC_NAME: 44}
+        self.sr.scroll.sr.minColumnWidth = {localization.GetByLabel('UI/Common/Name'): 44}
         self.sr.scroll.allowFilterColumns = 1
-        self.sr.scroll.OnNewHeaders = self.Reload
+        self.sr.scroll.OnNewHeaders = self.ReloadTabs
         self.sr.scroll.sortGroups = True
         self.sr.scroll.SetColumnsHiddenByDefault(uix.GetInvItemDefaultHiddenHeaders())
-        tabs = [[mls.UI_SHARED_ALLITEMS,
+        tabs = [[localization.GetByLabel('UI/Inventory/AssetsWindow/AllItems'),
           self.sr.scroll,
           self,
           'allitems'],
-         [mls.UI_GENERIC_REGION,
+         [localization.GetByLabel('UI/Common/LocationTypes/Region'),
           self.sr.scroll,
           self,
           'regitems'],
-         [mls.UI_GENERIC_CONSTELLATION,
+         [localization.GetByLabel('UI/Common/LocationTypes/Constellation'),
           self.sr.scroll,
           self,
           'conitems'],
-         [mls.UI_GENERIC_SOLARSYSTEM,
+         [localization.GetByLabel('UI/Common/LocationTypes/SolarSystem'),
           self.sr.scroll,
           self,
           'sysitems'],
-         [mls.UI_CMD_SEARCH,
+         [localization.GetByLabel('UI/Common/Buttons/Search'),
           self.sr.scroll,
           self,
           'search']]
         if eve.session.stationid:
-            tabs.insert(4, [mls.UI_GENERIC_STATION,
+            tabs.insert(4, [localization.GetByLabel('UI/Common/LocationTypes/Station'),
              self.sr.scroll,
              self,
              'station'])
@@ -241,23 +248,23 @@ class AssetsWindow(uicls.Window):
             if not self.station_inited:
                 idx = self.sr.main.children.index(self.sr.maintabs)
                 self.sr.station_tabs = uicls.TabGroup(name='tabparent2', parent=self.sr.main, idx=idx + 1)
-                tabs = [[mls.UI_GENERIC_SHIPS,
+                tabs = [[localization.GetByLabel('UI/Common/ItemTypes/Ships'),
                   self.sr.scroll,
                   self,
                   '%sships' % key],
-                 [mls.UI_GENERIC_MODULES,
+                 [localization.GetByLabel('UI/Common/ItemTypes/Modules'),
                   self.sr.scroll,
                   self,
                   '%smodules' % key],
-                 [mls.UI_GENERIC_CHARGES,
+                 [localization.GetByLabel('UI/Common/ItemTypes/Charges'),
                   self.sr.scroll,
                   self,
                   '%scharges' % key],
-                 [mls.UI_GENERIC_MINERALS,
+                 [localization.GetByLabel('UI/Common/ItemTypes/Minerals'),
                   self.sr.scroll,
                   self,
                   '%sminerals' % key],
-                 [mls.UI_GENERIC_OTHER,
+                 [localization.GetByLabel('UI/Common/Other'),
                   self.sr.scroll,
                   self,
                   '%sother' % key]]
@@ -275,10 +282,9 @@ class AssetsWindow(uicls.Window):
         elif key in ('allitems', 'regitems', 'conitems', 'sysitems'):
             if not getattr(self, 'filt_inited', False):
                 self.sr.filt_cont = uicls.Container(align=uiconst.TOTOP, height=67, parent=self.sr.main, top=2, idx=1)
-                sortoptions = [(mls.UI_GENERIC_NAME, 0), (mls.UI_GENERIC_NUMJUMPS, 1), (mls.UI_GENERIC_NUMITEMS, 2)]
-                self.sr.sortcombo = c = uicls.Combo(label=mls.UI_CMD_SORTBY, parent=self.sr.filt_cont, options=sortoptions, name='sortcombo', select=None, callback=self.Filter, width=100, pos=(5, 16, 0, 0))
+                self.sr.sortcombo = c = uicls.Combo(label=localization.GetByLabel('UI/Common/SortBy'), parent=self.sr.filt_cont, options=self.sortOptions, name='sortcombo', select=None, callback=self.Filter, width=100, pos=(5, 16, 0, 0))
                 l = self.sr.sortcombo.width + self.sr.sortcombo.left + const.defaultPadding
-                self.sr.filtcombo = c = uicls.Combo(label=mls.UI_GENERIC_VIEW, parent=self.sr.filt_cont, options=[], name='filtcombo', select=None, callback=self.Filter, width=100, pos=(l,
+                self.sr.filtcombo = c = uicls.Combo(label=localization.GetByLabel('UI/Common/View'), parent=self.sr.filt_cont, options=[], name='filtcombo', select=None, callback=self.Filter, width=100, pos=(l,
                  16,
                  0,
                  0))
@@ -298,32 +304,17 @@ class AssetsWindow(uicls.Window):
             if self.sr.Get('station_tabs', None):
                 self.sr.station_tabs.state = uiconst.UI_HIDDEN
             if not self.search_inited:
-                t = const.defaultPadding + 14
                 self.sr.search_cont = uicls.Container(align=uiconst.TOTOP, height=37, parent=self.sr.main, idx=1)
-                t = const.defaultPadding + 14
-                sortoptions = [(mls.UI_GENERIC_NAME, 0), (mls.UI_GENERIC_NUMJUMPS, 1), (mls.UI_GENERIC_NUMITEMS, 2)]
-                last = self.sr.sortcombosearch = c = uicls.Combo(label=mls.UI_CMD_SORTBY, parent=self.sr.search_cont, options=sortoptions, name='sortcombosearch', select=None, callback=self.Search, width=100, pos=(5,
-                 t,
+                top = const.defaultPadding + 14
+                self.sr.sortcombosearch = uicls.Combo(label=localization.GetByLabel('UI/Common/SortBy'), parent=self.sr.search_cont, options=self.sortOptions, name='sortcombosearch', select=None, callback=self.Search, width=100, pos=(const.defaultPadding,
+                 top,
                  0,
                  0))
-                l = last.left + last.width + const.defaultPadding
-                searchoptions = [(mls.UI_GENERIC_ALL, 0),
-                 (mls.UI_GENERIC_TYPE, 1),
-                 (mls.UI_GENERIC_GROUP, 2),
-                 (mls.UI_GENERIC_CATEGORY, 3)]
-                last = self.sr.searchwhich = uicls.Combo(label=mls.UI_GENERIC_SEARCHBY, parent=self.sr.search_cont, options=searchoptions, left=l, top=t, name='searchcombo', select=None)
-                l = last.left + last.width + const.defaultPadding
-                last = self.sr.searchtype = uicls.SinglelineEdit(name='assetssearchtype', parent=self.sr.search_cont, left=l, width=80, top=t, label=mls.UI_GENERIC_STRING, maxLength=100)
-                l = last.left + last.width + const.defaultPadding
-                last = self.sr.searchquantmin = uicls.SinglelineEdit(name='assetssearchqantmin', parent=self.sr.search_cont, left=l, width=70, ints=(0, 9999999), top=t, label=mls.UI_GENERIC_MINQTY)
-                l = last.left + last.width + const.defaultPadding
-                last = self.sr.searchquantmax = uicls.SinglelineEdit(name='assetssearchqantmax', parent=self.sr.search_cont, left=l, width=70, ints=(0, 9999999), top=t, label=mls.UI_GENERIC_MAXQTY)
-                l = last.left + last.width + const.defaultPadding
-                b1 = uicls.Button(parent=self.sr.search_cont, label=mls.UI_CMD_SEARCH, left=l, top=t, func=self.Search)
-                self.sr.search_cont.height = self.sr.searchquantmax.top + self.sr.searchquantmax.height
+                left = self.sr.sortcombosearch.left + self.sr.sortcombosearch.width + const.defaultPadding
+                self.sr.searchtype = uicls.SinglelineEdit(name='assetssearchtype', parent=self.sr.search_cont, left=left, width=200, top=top, label=localization.GetByLabel('UI/Common/SearchText'), maxLength=100)
+                left = self.sr.searchtype.left + self.sr.searchtype.width + const.defaultPadding
+                button = uicls.Button(parent=self.sr.search_cont, label=localization.GetByLabel('UI/Common/Buttons/Search'), left=left, top=top, func=self.Search)
                 self.sr.searchtype.OnReturn = self.Search
-                self.sr.searchquantmin.OnReturn = self.Search
-                self.sr.searchquantmax.OnReturn = self.Search
                 self.search_inited = 1
             if self.sr.Get('filt_cont', None):
                 self.sr.filt_cont.state = uiconst.UI_HIDDEN
@@ -343,56 +334,240 @@ class AssetsWindow(uicls.Window):
 
 
 
+    def ParseString(self, text):
+        advancedMatches = self.searchRegex.findall(text)
+        if advancedMatches:
+            text = text.split(advancedMatches[0][0] + ':', 1)[0]
+        return (text.strip(), advancedMatches)
+
+
+
+    def GetConditions(self, advancedMatches):
+        uiSvc = sm.StartService('ui')
+        conditions = []
+        for (word, quoted, value,) in advancedMatches:
+            value = quoted or value
+            try:
+                if 'type'.startswith(word):
+                    typeName = value
+
+                    def CheckType(item):
+                        t = cfg.invtypes.Get(item.typeID)
+                        return t.name.lower().find(typeName) > -1
+
+
+                    conditions.append(CheckType)
+                elif 'group'.startswith(word):
+                    groupName = value
+
+                    def CheckGroup(item):
+                        g = cfg.invgroups.Get(item.groupID)
+                        return g.name.lower().find(groupName) > -1
+
+
+                    conditions.append(CheckGroup)
+                elif 'category'.startswith(word):
+                    categoryName = value
+
+                    def CheckCategory(item):
+                        c = cfg.invcategories.Get(item.categoryID)
+                        return c.name.lower().find(categoryName) > -1
+
+
+                    conditions.append(CheckCategory)
+                elif 'minimum'.startswith(word):
+                    quantity = int(value)
+
+                    def CheckMinQuantity(item):
+                        return item.stacksize >= quantity
+
+
+                    conditions.append(CheckMinQuantity)
+                elif 'maximum'.startswith(word):
+                    quantity = int(value)
+
+                    def CheckMaxQuantity(item):
+                        return item.stacksize <= quantity
+
+
+                    conditions.append(CheckMaxQuantity)
+                elif 'metalevel'.startswith(word):
+                    level = int(value)
+
+                    def CheckMetaLevel(item):
+                        metaLevel = int(sm.GetService('godma').GetTypeAttribute(item.typeID, const.attributeMetaLevel, 0))
+                        return level == metaLevel
+
+
+                    conditions.append(CheckMetaLevel)
+                elif 'metagroup'.startswith(word):
+                    groupName = value
+
+                    def CheckMetaGroup(item):
+                        metaGroupID = int(sm.GetService('godma').GetTypeAttribute(item.typeID, const.attributeMetaGroupID, 0))
+                        if metaGroupID > 0:
+                            metaGroup = cfg.invmetagroups.Get(metaGroupID)
+                            return groupName in metaGroup.name.lower()
+                        return False
+
+
+                    conditions.append(CheckMetaGroup)
+                elif 'techlevel'.startswith(word):
+                    level = int(value)
+
+                    def CheckTechLevel(item):
+                        techLevel = int(sm.GetService('godma').GetTypeAttribute(item.typeID, const.attributeTechLevel, 1))
+                        return level == techLevel
+
+
+                    conditions.append(CheckTechLevel)
+                elif 'minsecurity'.startswith(word):
+                    secLevel = float(value)
+
+                    def CheckMinSecurity(item):
+                        solarSystemID = uiSvc.GetStation(item.locationID).solarSystemID
+                        systemSec = sm.GetService('map').GetSecurityStatus(solarSystemID)
+                        return systemSec >= secLevel
+
+
+                    conditions.append(CheckMinSecurity)
+                elif 'maxsecurity'.startswith(word):
+                    secLevel = float(value)
+
+                    def CheckMaxSecurity(item):
+                        solarSystemID = uiSvc.GetStation(item.locationID).solarSystemID
+                        systemSec = sm.GetService('map').GetSecurityStatus(solarSystemID)
+                        return systemSec <= secLevel
+
+
+                    conditions.append(CheckMaxSecurity)
+                elif 'security'.startswith(word):
+                    if 'high'.startswith(value):
+                        secClass = [const.securityClassHighSec]
+                    elif 'low'.startswith(value):
+                        secClass = [const.securityClassLowSec]
+                    elif 'null'.startswith(value) or 'zero'.startswith(value):
+                        secClass = [const.securityClassZeroSec]
+                    elif 'empire'.startswith(value):
+                        secClass = [const.securityClassHighSec, const.securityClassLowSec]
+                    else:
+                        continue
+
+                    def CheckSecurityClass(item):
+                        solarSystemID = uiSvc.GetStation(item.locationID).solarSystemID
+                        systemSecClass = sm.GetService('map').GetSecurityClass(solarSystemID)
+                        return systemSecClass in secClass
+
+
+                    conditions.append(CheckSecurityClass)
+                elif 'system'.startswith(word):
+                    name = value
+
+                    def CheckSolarSystem(item):
+                        solarSystemID = uiSvc.GetStation(item.locationID).solarSystemID
+                        item = sm.GetService('map').GetItem(solarSystemID)
+                        return name in item.itemName.lower()
+
+
+                    conditions.append(CheckSolarSystem)
+                elif 'constellation'.startswith(word):
+                    name = value
+
+                    def CheckConstellation(item):
+                        solarSystemID = uiSvc.GetStation(item.locationID).solarSystemID
+                        mapSvc = sm.GetService('map')
+                        constellationID = mapSvc.GetConstellationForSolarSystem(solarSystemID)
+                        item = mapSvc.GetItem(constellationID)
+                        return name in item.itemName.lower()
+
+
+                    conditions.append(CheckConstellation)
+                elif 'region'.startswith(word):
+                    name = value
+
+                    def CheckRegion(item):
+                        solarSystemID = uiSvc.GetStation(item.locationID).solarSystemID
+                        mapSvc = sm.GetService('map')
+                        regionID = mapSvc.GetRegionForSolarSystem(solarSystemID)
+                        item = mapSvc.GetItem(regionID)
+                        return name in item.itemName.lower()
+
+
+                    conditions.append(CheckRegion)
+                elif 'station'.startswith(word):
+                    name = value
+
+                    def CheckStation(item):
+                        stationName = cfg.evelocations.Get(item.locationID).locationName.lower()
+                        return name in stationName
+
+
+                    conditions.append(CheckStation)
+                elif 'blueprint'.startswith(word):
+                    if 'copy'.startswith(value):
+                        isBpo = False
+                    elif 'original'.startswith(value):
+                        isBpo = True
+                    else:
+                        continue
+
+                    def CheckBlueprintType(item):
+                        if item.categoryID == const.categoryBlueprint:
+                            if isBpo:
+                                return item.singleton != const.singletonBlueprintCopy
+                            else:
+                                return item.singleton == const.singletonBlueprintCopy
+                        return False
+
+
+                    conditions.append(CheckBlueprintType)
+            except:
+                sm.GetService('assets').LogInfo('Failed parsing keyword', word, 'value', value, 'and happily ignoring it')
+
+        return conditions
+
+
+
     def Search(self, *args):
         self.ShowLoad()
         self.sr.scroll.Load(contentList=[])
-        self.SetHint(mls.UI_SHARED_MAPGETTINGDATA)
-        blue.pyos.synchro.Sleep(1)
-        container = eve.GetInventory(const.containerGlobal)
+        self.SetHint(localization.GetByLabel('UI/Common/GettingData'))
+        blue.pyos.synchro.Yield()
+        container = sm.GetService('invCache').GetInventory(const.containerGlobal)
         allitems = container.List()
         badLocations = [const.locationTemp, const.locationSystem, eve.session.charid]
+        uiSvc = sm.StartService('ui')
         solarsystems = {}
-        self.SetHint(mls.UI_GENERIC_SEARCHING)
-        blue.pyos.synchro.Sleep(1)
+        self.SetHint(localization.GetByLabel('UI/Common/Searching'))
+        blue.pyos.synchro.Yield()
         searchtype = unicode(self.sr.searchtype.GetValue() or '').lower()
-        searchquantmin = int(self.sr.searchquantmin.GetValue() or 0)
-        searchquantmax = int(self.sr.searchquantmax.GetValue() or 0)
-        searchwhich = int(self.sr.searchwhich.GetValue() or 0)
+        (searchtype, advancedMatches,) = self.ParseString(searchtype)
+        conditions = self.GetConditions(advancedMatches)
         stations = {}
-        for each in allitems:
-            stationID = each.locationID
+        for item in allitems:
+            stationID = item.locationID
             if util.IsJunkLocation(stationID) or stationID in badLocations:
                 continue
-            if each.stacksize == 0:
+            if item.stacksize == 0:
                 continue
             if len(searchtype):
-                found = False
-                t = cfg.invtypes.Get(each.typeID)
-                if searchwhich in (0, 1):
-                    if t.name.lower().find(searchtype) > -1:
-                        found = True
-                if not found:
-                    g = cfg.invgroups.Get(t.groupID)
-                    if searchwhich in (0, 2):
-                        if g.name.lower().find(searchtype) > -1:
-                            found = True
-                    if not found and searchwhich in (0, 3):
-                        c = cfg.invcategories.Get(g.categoryID)
-                        if c.name.lower().find(searchtype) > -1:
-                            found = True
-                if not found:
+                if cfg.invtypes.Get(item.typeID).name.lower().find(searchtype) > -1:
+                    pass
+                elif cfg.invgroups.Get(item.groupID).name.lower().find(searchtype) > -1:
+                    pass
+                elif cfg.invcategories.Get(item.categoryID).name.lower().find(searchtype) > -1:
+                    pass
+                else:
                     continue
-            if each.stacksize < searchquantmin:
-                continue
-            if searchquantmax > 0 and each.stacksize > searchquantmax:
+            if not all((condition(item) for condition in conditions)):
                 continue
             if stationID not in stations:
                 stations[stationID] = []
-            stations[stationID].append(each)
+            stations[stationID].append(item)
 
         sortlocations = []
         for stationID in stations:
-            solarsystemID = sm.StartService('ui').GetStation(stationID).solarSystemID
+            solarsystemID = uiSvc.GetStation(stationID).solarSystemID
             sortlocations.append((solarsystemID, stationID, stations[stationID]))
 
         sortlocations.sort()
@@ -414,7 +589,7 @@ class AssetsWindow(uicls.Window):
         self.SetHint()
         closed = [0, 1][getattr(self, 'invalidateOpenState_%s' % key, 0)]
         sortlocations = sm.StartService('assets').GetAll(key, keyID=keyID, sortKey=sortKey)
-        options = [(mls.UI_GENERIC_CURRENT, (key, 0))]
+        options = [(localization.GetByLabel('UI/Common/Current'), (key, 0))]
         opts = {}
         for r in sm.StartService('assets').locationCache.iterkeys():
             if key == 'regitems' and util.IsRegion(r) or key == 'conitems' and util.IsConstellation(r) or key == 'sysitems' and util.IsSolarSystem(r):
@@ -440,25 +615,21 @@ class AssetsWindow(uicls.Window):
         if self.destroyed:
             return 
         setattr(self, 'invalidateOpenState_%s' % key, 0)
-        k = {'allitems': 0,
-         'regitems': 1,
-         'conitems': 2,
-         'sysitems': 3}
-        noContent = mls.UI_SHARED_NOITEMSAT % {'where': [mls.UI_SHARED_ATSTATION,
-                   mls.UI_SHARED_INREGION,
-                   mls.UI_SHARED_INCONSTELLATION,
-                   mls.UI_SHARED_INSOLARSYSTEM][k[key]]}
-        self.sr.scroll.Load(contentList=scrolllist, headers=uix.GetInvItemDefaultHeaders(), noContentHint=noContent)
+        locText = {'allitems': localization.GetByLabel('UI/Inventory/AssetsWindow/NoAssetsAtStation'),
+         'regitems': localization.GetByLabel('UI/Inventory/AssetsWindow/NoAssetsInRegion'),
+         'conitems': localization.GetByLabel('UI/Inventory/AssetsWindow/NoAssetsInConstellation'),
+         'sysitems': localization.GetByLabel('UI/Inventory/AssetsWindow/NoAssetsInSolarSystem')}
+        self.sr.scroll.Load(contentList=scrolllist, headers=uix.GetInvItemDefaultHeaders(), noContentHint=locText[key])
         self.HideLoad()
 
 
 
     def ShowStationItems(self, key):
         self.ShowLoad()
-        hangarInv = eve.GetInventory(const.containerHangar)
+        hangarInv = sm.GetService('invCache').GetInventory(const.containerHangar)
         items = hangarInv.List()
         if not len(items):
-            self.SetHint(mls.UI_SHARED_NOASSETS)
+            self.SetHint(localization.GetByLabel('UI/Inventory/AssetsWindow/NoAssets'))
             return 
         assets = []
         self.sr.scroll.Load(fixedEntryHeight=42, contentList=[], headers=uix.GetInvItemDefaultHeaders())
@@ -484,11 +655,15 @@ class AssetsWindow(uicls.Window):
                     continue
             assets.append(listentry.Get('InvAssetItem', data=uix.GetItemData(each, 'details', scrollID=self.sr.scroll.sr.id)))
 
+        locText = {'ships': localization.GetByLabel('UI/Inventory/AssetsWindow/NoShipsAtStation'),
+         'modules': localization.GetByLabel('UI/Inventory/AssetsWindow/NoModulesAtStation'),
+         'minerals': localization.GetByLabel('UI/Inventory/AssetsWindow/NoMineralsAtStation'),
+         'charges': localization.GetByLabel('UI/Inventory/AssetsWindow/NoChargesAtStation')}
         if not len(assets):
             if not itemname:
-                self.SetHint(mls.UI_SHARED_NOITEMSCATATSTATION)
+                self.SetHint(localization.GetByLabel('UI/Inventory/AssetsWindow/NoAssetsInCategoryAtStation'))
             else:
-                self.SetHint(mls.UI_SHARED_NOITEMATSTATION % {'type': getattr(mls, 'UI_GENERIC_' + key.upper())})
+                self.SetHint(locText[key])
         else:
             self.SetHint()
         self.sr.scroll.Load(contentList=assets, sortby='label', headers=uix.GetInvItemDefaultHeaders())
@@ -502,7 +677,10 @@ class AssetsWindow(uicls.Window):
             uicore.registry.SetListGroupOpenState(('assetslocations_%s' % key, location.locationID), 0)
         jumps = fakeJumps or sm.StartService('pathfinder').GetJumpCountFromCurrent(solarsystemID)
         itemCount = fakeItems or station.itemCount
-        label = '%s - %s%s' % (location.name, uix.Plural(station.itemCount, 'UI_SHARED_NUM_ITEM') % {'num': itemCount}, ['', ' - %s' % (uix.Plural(jumps, 'UI_SHARED_NUM_JUMP') % {'num': jumps})][(key != 'sysitems')])
+        if key is not 'sysitems':
+            label = localization.GetByLabel('UI/Inventory/AssetsWindow/LocationDataLabel', location=location.locationID, itemCount=itemCount, jumps=jumps)
+        else:
+            label = localization.GetByLabel('UI/Inventory/AssetsWindow/LocationDataLabelNoJump', location=location.locationID, itemCount=itemCount)
         if sortKey == 1:
             sortVal = (jumps, location.name, itemCount)
         elif sortKey == 2:
@@ -549,7 +727,7 @@ class AssetsWindow(uicls.Window):
 
             return scrolllist
         if eve.session.stationid and data.location.locationID == eve.session.stationid:
-            hangarInv = eve.GetInventory(const.containerHangar)
+            hangarInv = sm.GetService('invCache').GetInventory(const.containerHangar)
             items = hangarInv.List()
             scrolllist = []
             for each in items:
@@ -558,7 +736,7 @@ class AssetsWindow(uicls.Window):
                 scrolllist.append(listentry.Get('InvAssetItem', data=uix.GetItemData(each, 'details', scrollID=data.scrollID)))
 
             return scrolllist
-        items = eve.GetInventory(const.containerGlobal).ListStationItems(data.location.locationID)
+        items = sm.GetService('invCache').GetInventory(const.containerGlobal).ListStationItems(data.location.locationID)
         badLocations = [const.locationTemp, const.locationSystem, eve.session.charid]
         scrolllist = []
         for each in items:
@@ -628,7 +806,7 @@ class AssetsWindow(uicls.Window):
         for station in sortedList:
             scrolllist.append(listentry.Get('Group', self.GetLocationData(station.solarsystemID, station, 'search', scrollID=self.sr.scroll.sr.id, sortKey=sortKey)))
 
-        self.sr.scroll.Load(contentList=scrolllist, headers=uix.GetInvItemDefaultHeaders(), noContentHint=mls.UI_GENERIC_NOTHINGFOUND)
+        self.sr.scroll.Load(contentList=scrolllist, headers=uix.GetInvItemDefaultHeaders(), noContentHint=localization.GetByLabel('UI/Common/NothingFound'))
         self.HideLoad()
 
 

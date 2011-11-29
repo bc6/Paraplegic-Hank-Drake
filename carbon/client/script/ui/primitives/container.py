@@ -27,7 +27,7 @@ class Container(uicls.Base):
 
     def ApplyAttributes(self, attributes):
         self._childrenDirty = False
-        self.children = uicls.UIChildrenList(self)
+        self.children = self.GetChildrenList()
         self.background = uicls.BackgroundList(self)
         uicls.Base.ApplyAttributes(self, attributes)
         self._dragging = False
@@ -63,6 +63,8 @@ class Container(uicls.Base):
 
 
     def FlagChildrenDirty(self):
+        if self._childrenDirty and not self._displayDirty:
+            return 
         self._childrenDirty = True
         if self.align == uiconst.NOALIGN:
             uicore.uilib.alignIslands.append(self)
@@ -96,6 +98,11 @@ class Container(uicls.Base):
                     budget = each.Traverse(budget, myOrgBudget, lvl=lvl + 1)
 
         return mbudget
+
+
+
+    def GetChildrenList(self):
+        return uicls.UIChildrenList(self)
 
 
 
@@ -287,7 +294,7 @@ class Container(uicls.Base):
             self._pickRadius = value
             ro = self.renderObject
             if ro and hasattr(ro, 'pickRadius'):
-                ro.pickRadius = value or 0.0
+                ro.pickRadius = uicore.ScaleDpi(value) or 0.0
 
 
         return property(**locals())
@@ -349,7 +356,7 @@ class Container(uicls.Base):
 
 
 
-    def AppendChild(self, child):
+    def _AppendChildRO(self, child):
         RO = self.GetRenderObject()
         if not RO:
             return 
@@ -357,10 +364,12 @@ class Container(uicls.Base):
         if childRO:
             RO.children.append(childRO)
         self.FlagAlignmentDirty()
+        if child.align == uiconst.NOALIGN:
+            child.UpdateAlignmentAsRoot()
 
 
 
-    def InsertChild(self, idx, child):
+    def _InsertChildRO(self, idx, child):
         RO = self.GetRenderObject()
         if not RO:
             return 
@@ -368,10 +377,12 @@ class Container(uicls.Base):
         if childRO:
             RO.children.insert(idx, childRO)
         self.FlagAlignmentDirty()
+        if child.align == uiconst.NOALIGN:
+            child.UpdateAlignmentAsRoot()
 
 
 
-    def RemoveChild(self, child):
+    def _RemoveChildRO(self, child):
         RO = self.GetRenderObject()
         if not RO:
             return 

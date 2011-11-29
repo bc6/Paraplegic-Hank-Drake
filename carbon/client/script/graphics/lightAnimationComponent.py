@@ -30,6 +30,7 @@ class LightAnimationComponentManager(service.Service):
     def Run(self, *etc):
         service.Service.Run(self, *etc)
         self.isServiceReady = True
+        self.synchronizedTime = blue.os.GetWallclockTime()
 
 
 
@@ -52,6 +53,12 @@ class LightAnimationComponentManager(service.Service):
     def SetupComponent(self, entity, component):
         if entity.HasComponent('loadedLight'):
             component.light = entity.GetComponent('loadedLight').renderObject
+        elif entity.HasComponent('pointLight'):
+            component.light = entity.GetComponent('pointLight').renderObject
+        elif entity.HasComponent('spotLight'):
+            component.light = entity.GetComponent('spotLight').renderObject
+        elif entity.HasComponent('boxLight'):
+            component.light = entity.GetComponent('boxLight').renderObject
         if component.curveSet is not None and component.light is not None:
             component.light.curveSets.append(component.curveSet)
             for b in component.curveSet.bindings:
@@ -66,6 +73,12 @@ class LightAnimationComponentManager(service.Service):
                         curve.SetKeyTime(idx, curve.GetKeyTime(idx) + component.animationStartDelay)
 
 
+
+
+
+    def RegisterComponent(self, entity, component):
+        if component.curveSet is not None:
+            component.curveSet.PlayFrom(blue.os.TimeDiffInMs(self.synchronizedTime, blue.os.GetWallclockTime()) / 1000.0)
 
 
 

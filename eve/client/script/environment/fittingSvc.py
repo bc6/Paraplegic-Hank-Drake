@@ -7,6 +7,7 @@ import listentry
 import form
 import uix
 import sys
+import localization
 from collections import defaultdict
 CORP_FITTINGS_LOCAL_CACHE_TIME = 10 * const.MIN
 
@@ -162,15 +163,15 @@ class fittingSvc(service.Service):
             try:
                 int(flag)
             except TypeError:
-                raise UserError('InvalidFittingDataInvalidFlag', {'typeName': (TYPEID, type.typeID)})
+                raise UserError('InvalidFittingDataInvalidFlag', {'type': type.typeID})
             if not (cfg.IsShipFittingFlag(flag) or flag == const.flagDroneBay):
-                raise UserError('InvalidFittingDataInvalidFlag', {'typeName': (TYPEID, type.typeID)})
+                raise UserError('InvalidFittingDataInvalidFlag', {'type': type.typeID})
             try:
                 int(qty)
             except TypeError:
-                raise UserError('InvalidFittingDataInvalidQuantity', {'typeName': (TYPEID, type.typeID)})
+                raise UserError('InvalidFittingDataInvalidQuantity', {'type': type.typeID})
             if qty == 0:
-                raise UserError('InvalidFittingDataInvalidQuantity', {'typeName': (TYPEID, type.typeID)})
+                raise UserError('InvalidFittingDataInvalidQuantity', {'type': type.typeID})
 
         return True
 
@@ -183,10 +184,10 @@ class fittingSvc(service.Service):
 
 
     def PrimeFittings(self, ownerID):
-        if ownerID not in self.fittings or ownerID == session.corpid and self.corpFittingTime < blue.os.GetTime():
+        if ownerID not in self.fittings or ownerID == session.corpid and self.corpFittingTime < blue.os.GetWallclockTime():
             self.fittings[ownerID] = self.GetFittingMgr(ownerID).GetFittings(ownerID)
             if ownerID == session.corpid:
-                self.corpFittingTime = blue.os.GetTime() + CORP_FITTINGS_LOCAL_CACHE_TIME
+                self.corpFittingTime = blue.os.GetWallclockTime() + CORP_FITTINGS_LOCAL_CACHE_TIME
 
 
 
@@ -258,7 +259,7 @@ class fittingSvc(service.Service):
                 text += '%sx %s<br>' % (qty, cfg.invtypes.Get(typeID).typeName)
 
         if text != '':
-            text = mls.UI_GENERIC_FITTING_MISSINGITEMS + '<br>%s' % text
+            text = localization.GetByLabel('UI/Fitting/MissingItems', types=text)
             eve.Message('CustomInfo', {'info': text})
 
 
@@ -274,7 +275,7 @@ class fittingSvc(service.Service):
 
 
     def UpdateFittingWindow(self):
-        wnd = sm.StartService('window').GetWindow('FittingMgmt')
+        wnd = form.FittingMgmt.GetIfOpen()
         if wnd is not None:
             wnd.DrawFittings()
 
@@ -333,7 +334,7 @@ class fittingSvc(service.Service):
         (fitting, truncated,) = self.GetFittingFromString(fitting)
         if fitting == -1:
             raise UserError('FittingInvalidForViewing')
-        sm.StartService('window').GetWindow('viewFitting' + fitting.name, create=1, decoClass=form.ViewFitting, fitting=fitting, truncated=truncated)
+        form.ViewFitting.Open(fitting=fitting, truncated=truncated)
 
 
 
@@ -435,7 +436,7 @@ class fittingSvc(service.Service):
 
         charges = typesByRack['charges']
         if len(charges) > 0:
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_GENERIC_CHARGES}))
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Generic/Charges')}))
             for (type, qty,) in charges.iteritems():
                 data = util.KeyVal()
                 data.typeID = type
@@ -445,7 +446,7 @@ class fittingSvc(service.Service):
 
         drones = typesByRack['drones']
         if len(drones) > 0:
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_GENERIC_DRONES}))
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Drones/Drones')}))
             for (type, qty,) in drones.iteritems():
                 data = util.KeyVal()
                 data.typeID = type

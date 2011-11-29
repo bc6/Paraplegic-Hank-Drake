@@ -6,18 +6,25 @@ import re
 import const
 from util import DECIMAL, FmtAmt
 import log
-PROBE_STATE_TEXT_MAP = {const.probeStateInactive: 'UI_GENERIC_INACTIVE',
- const.probeStateIdle: 'UI_SHARED_PROBE_STATE_IDLE',
- const.probeStateMoving: 'UI_SHARED_PROBE_STATE_MOVING',
- const.probeStateWarping: 'UI_SHARED_PROBE_STATE_WARPING',
- const.probeStateScanning: 'UI_SHARED_PROBE_STATE_SCANNING',
- const.probeStateReturning: 'UI_SHARED_PROBE_STATE_RETURNING'}
+import logConst
+import localization
+import localizationUtil
+PROBE_STATE_TEXT_MAP = {const.probeStateInactive: 'UI/Inflight/Scanner/Inactive',
+ const.probeStateIdle: 'UI/Inflight/Scanner/Idle',
+ const.probeStateMoving: 'UI/Inflight/Scanner/Moving',
+ const.probeStateWarping: 'UI/Inflight/Scanner/Warping',
+ const.probeStateScanning: 'UI/Inflight/Scanner/Scanning',
+ const.probeStateReturning: 'UI/Inflight/Scanner/Returning'}
 PROBE_STATE_COLOR_MAP = {const.probeStateInactive: '<color=gray>%s</color>',
  const.probeStateIdle: '<color=0xFF22FF22>%s</color>',
  const.probeStateMoving: '<color=yellow>%s</color>',
  const.probeStateWarping: '<color=yellow>%s</color>',
  const.probeStateScanning: '<color=0xFF66BBFF>%s</color>',
  const.probeStateReturning: '<color=yellow>%s</color>'}
+CURRENCY_FORMAT_TRANSLATIONS = {(const.creditsAURUM, 0): 'UI/Util/FmtAurNoDecimal',
+ (const.creditsAURUM, 1): 'UI/Util/FmtAur',
+ (const.creditsISK, 0): 'UI/Util/FmtIskNoDecimal',
+ (const.creditsISK, 1): 'UI/Util/FmtIsk'}
 
 def FmtISK(isk, showFractionsAlways = 1):
     return FmtCurrency(isk, showFractionsAlways, const.creditsISK)
@@ -30,554 +37,396 @@ def FmtAUR(aur, showFractionsAlways = 0):
 
 
 def FmtCurrency(amount, showFractionsAlways = 1, currency = None):
-    if currency == const.creditsAURUM:
-        currencyString = ' %s' % mls.UI_GENERIC_AUR
-    elif currency == const.creditsISK:
-        currencyString = ' %s' % mls.UI_GENERIC_ISK
+    if currency is None:
+        key = (const.creditsISK, showFractionsAlways)
     else:
-        currencyString = ''
-    minus = ['-', ''][(amount >= 0)]
-    fractions = 0.0
-    try:
-        fractions = abs(math.fmod(amount, 1.0))
-        if amount is None:
-            amount = 0
-        amount = long(amount)
-    except:
-        log.LogTraceback()
-        raise RuntimeError(mls.UI_SHARED_FORMAT_VALUEMUSTBE)
-    ret = ''
-    digit = ''
-    amt = str(abs(amount))
-    for i in xrange(len(amt) % 3, len(amt) + 3, 3):
-        if i < 3:
-            ret += amt[:i]
-        else:
-            ret += digit + amt[(i - 3):i]
-        if i != 0:
-            digit = [',', '.'][(DECIMAL == ',')]
-
-    if fractions != 0.0 and currency != const.creditsAURUM or showFractionsAlways:
-        if round(fractions * 100) / 100 == 1:
-            return FmtAmt(float('%s%s' % (minus, ret.replace(digit, ''))) + 1, showFraction=showFractionsAlways * 2) + currencyString
-        rest = str(100 * round(fractions, 2))[:2]
-        if rest[1] == '.':
-            rest = '0' + rest[0]
-        ret = '%s%s%s' % (ret, DECIMAL, rest)
-    return minus + ret + currencyString
+        key = (currency, showFractionsAlways)
+    fmtPath = CURRENCY_FORMAT_TRANSLATIONS[key]
+    if not showFractionsAlways:
+        amount = int(amount)
+    return localization.GetByLabel(fmtPath, amount=amount)
 
 
 
-def FmtRef(entryTypeID, o1, o2, arg1, pretty = 1, amount = 0.0, constants = None):
-    constants = constants or const
-    if entryTypeID == constants.refBackwardCompatible:
+def FmtRef(entryTypeID, o1, o2, arg1, pretty = 1, amount = 0.0):
+    if entryTypeID == const.refBackwardCompatible:
         if pretty:
             return ''
         else:
-            return mls.UI_SHARED_FORMAT_BACKWARDCOMPATIBILITY % {'type': entryTypeID,
-             'o1': o1,
-             'o2': o2,
-             'arg': arg1}
-    if entryTypeID == constants.refUndefined:
+            return localization.GetByLabel('UI/Generic/FormatReference/backwardsCompatiable', type=entryTypeID, o1=o1, o2=o2, arg=arg1)
+    if entryTypeID == const.refUndefined:
         if pretty:
             return ''
         else:
-            return mls.UI_SHARED_FORMAT_UNDEFINEDREFTYPE % {'type': entryTypeID,
-             'o1': o1,
-             'o2': o2,
-             'arg': arg1}
-    elif entryTypeID == constants.refPlayerTrading:
-        return mls.UI_SHARED_FORMAT_DIRECTTRADEBETWEEN % {'name1': GetName(o1),
-         'name2': GetName(o2)}
-    if entryTypeID == constants.refMarketTransaction:
-        return mls.UI_SHARED_FORMAT_MARKETBOUGHTSTUFF % {'name1': GetName(o1),
-         'name2': GetName(o2)}
-    if entryTypeID == constants.refMarketFinePaid:
-        return mls.UI_SHARED_FORMAT_MARKETPAIDFINE
-    if entryTypeID == constants.refGMCashTransfer:
-        return mls.UI_SHARED_FORMAT_GMISSUEDTRANSACTION % {'arg': arg1,
-         'name1': GetName(o1),
-         'name2': GetName(o2)}
-    if entryTypeID == constants.refATMWithdraw:
-        return mls.UI_SHARED_FORMAT_ATMCASHWITHDRAWALBY % {'name': GetName(o1),
-         'location': cfg.evelocations.Get(arg1).name}
-    if entryTypeID == constants.refATMDeposit:
-        return mls.UI_SHARED_FORMAT_ATMCASHDEPOSITBY % {'name': GetName(o1),
-         'location': cfg.evelocations.Get(arg1).name}
-    if entryTypeID == constants.refMissionReward:
-        return mls.UI_SHARED_FORMAT_MISSIOINREWARD
-    if entryTypeID == constants.refCloneActivation:
-        return mls.UI_SHARED_FORMAT_CLONEACTIVATION
-    if entryTypeID == constants.refCloneTransfer:
-        return mls.UI_SHARED_FORMAT_CLONETRANSFERTO % {'location': GetLocation(arg1)}
-    if entryTypeID == constants.refInheritance:
-        return mls.UI_SHARED_FORMAT_INHERITANCEFROM % {'name': GetName(o1)}
-    if entryTypeID == constants.refPlayerDonation:
-        return mls.UI_SHARED_FORMAT_DEPOSITEDCASHINTO % {'name1': GetName(o1),
-         'name2': GetName(o2)}
-    if entryTypeID == constants.refCorporationPayment:
+            return localization.GetByLabel('UI/Generic/FormatReference/undefinedType', type=entryTypeID, o1=o1, o2=o2, arg=arg1)
+    elif entryTypeID == const.refPlayerTrading:
+        return localization.GetByLabel('UI/Generic/FormatReference/directTradeBetweenPlayers', name1=GetName(o1), name2=GetName(o2))
+    if entryTypeID == const.refMarketTransaction:
+        return localization.GetByLabel('UI/Generic/FormatReference/marketBoughtStuff', name1=GetName(o1), name2=GetName(o2))
+    if entryTypeID == const.refMarketFinePaid:
+        return localization.GetByLabel('UI/Generic/FormatReference/marketpaidFine')
+    if entryTypeID == const.refGMCashTransfer:
+        return localization.GetByLabel('UI/Generic/FormatReference/gmIssuedTransaction', arg=arg1, name1=GetName(o1), name2=GetName(o2))
+    if entryTypeID == const.refMissionReward:
+        return localization.GetByLabel('UI/Generic/FormatReference/missionReward')
+    if entryTypeID == const.refCloneActivation:
+        return localization.GetByLabel('UI/Generic/FormatReference/cloneActivated')
+    if entryTypeID == const.refCloneTransfer:
+        return localization.GetByLabel('UI/Generic/FormatReference/cloneTransferTo', arg=arg1)
+    if entryTypeID == const.refInheritance:
+        return localization.GetByLabel('UI/Generic/FormatReference/inheritance', name=GetName(o1))
+    if entryTypeID == const.refPlayerDonation:
+        return localization.GetByLabel('UI/Generic/FormatReference/playerDonation', name1=GetName(o1), name2=GetName(o2))
+    if entryTypeID == const.refCorporationPayment:
         if arg1 != -1:
-            return mls.UI_SHARED_FORMAT_TRANSFERREDCASHFROMTO % {'arg': GetName(arg1),
-             'name1': GetName(o1),
-             'name2': GetName(o2)}
-        return mls.UI_SHARED_FORMAT_CASHTRANSFERREDFROMTO % {'name1': GetName(o1),
-         'name2': GetName(o2)}
-    if entryTypeID == constants.refDockingFee:
-        return mls.UI_SHARED_FORMAT_DOCKINGFEEBETWEEN % {'amount1': GetName(o1),
-         'amount2': GetName(o2)}
-    if entryTypeID == constants.refOfficeRentalFee:
-        return mls.UI_SHARED_FORMAT_OFFICERENTALFEEBETWEEN % {'amount1': GetName(o1),
-         'amount2': GetName(o2)}
-    if entryTypeID == constants.refFactorySlotRentalFee:
-        return mls.UI_SHARED_FORMAT_FACTORYSLOTRENTALFEE % {'amount1': GetName(o1),
-         'amount2': GetName(o2)}
-    if entryTypeID == constants.refAgentMiscellaneous:
-        return mls.UI_SHARED_FORMAT_CASHTRANSFERFROMAGENTTO % {'name1': GetName(o1),
-         'name2': GetName(o2)}
-    if entryTypeID == constants.refAgentMissionReward:
-        return mls.UI_SHARED_FORMAT_MISSIONREWARDFROMAGENTTO % {'name1': GetName(o1),
-         'name2': GetName(o2)}
-    if entryTypeID == constants.refAgentMissionTimeBonusReward:
-        return mls.UI_SHARED_FORMAT_MISSIONREWARDBONUSFROMTO % {'name1': GetName(o1),
-         'name2': GetName(o2)}
-    if entryTypeID == constants.refAgentMissionCollateralPaid:
-        return mls.UI_SHARED_FORMAT_MISSIONCOLLATERALPAIDBY % {'name1': GetName(o1),
-         'name2': GetName(o2)}
-    if entryTypeID == constants.refAgentMissionCollateralRefunded:
-        return mls.UI_SHARED_FORMAT_MISSIONCOLLATERALREFUNDEDBY % {'name1': GetName(o1),
-         'name2': GetName(o2)}
-    if entryTypeID == constants.refAgentDonation:
-        return mls.UI_SHARED_FORMAT_DONATIONFROMTO % {'name1': GetName(o1),
-         'name2': GetName(o2)}
-    if entryTypeID == constants.refAgentSecurityServices:
-        return mls.UI_SHARED_FORMAT_CONCORDRELATIONSBYAGENT % {'name1': GetName(o2),
-         'name2': GetName(o1)}
-    if entryTypeID == constants.refAgentLocationServices:
-        return mls.UI_SHARED_FORMAT_PAIDAGENTTOLOCATE
-    if entryTypeID == constants.refCSPA:
+            return localization.GetByLabel('UI/Generic/FormatReference/corpPayment1', arg=GetName(arg1), name1=GetName(o1), name2=GetName(o2))
+        return localization.GetByLabel('UI/Generic/FormatReference/corpPayment2', name1=GetName(o1), name2=GetName(o2))
+    if entryTypeID == const.refDockingFee:
+        return localization.GetByLabel('UI/Generic/FormatReference/dockingFee', name1=GetName(o1), name2=GetName(o2))
+    if entryTypeID == const.refOfficeRentalFee:
+        return localization.GetByLabel('UI/Generic/FormatReference/officeRentalFee', name1=GetName(o1), name2=GetName(o2))
+    if entryTypeID == const.refFactorySlotRentalFee:
+        return localization.GetByLabel('UI/Generic/FormatReference/factoryRentalFee', name1=GetName(o1), name2=GetName(o2))
+    if entryTypeID == const.refAgentMiscellaneous:
+        return localization.GetByLabel('UI/Generic/FormatReference/cashFromAgent', name1=GetName(o1), name2=GetName(o2))
+    if entryTypeID == const.refAgentMissionReward:
+        return localization.GetByLabel('UI/Generic/FormatReference/missionRewardFromAgent', name1=GetName(o1), name2=GetName(o2))
+    if entryTypeID == const.refAgentMissionTimeBonusReward:
+        return localization.GetByLabel('UI/Generic/FormatReference/missionRewardBonusFromAgent', name1=GetName(o1), name2=GetName(o2))
+    if entryTypeID == const.refAgentMissionCollateralPaid:
+        return localization.GetByLabel('UI/Generic/FormatReference/missionCollateralPaid', name1=GetName(o1), name2=GetName(o2))
+    if entryTypeID == const.refAgentMissionCollateralRefunded:
+        return localization.GetByLabel('UI/Generic/FormatReference/missionCollateralRefund', name1=GetName(o1), name2=GetName(o2))
+    if entryTypeID == const.refAgentDonation:
+        return localization.GetByLabel('UI/Generic/FormatReference/agentDonation', name1=GetName(o1), name2=GetName(o2))
+    if entryTypeID == const.refAgentSecurityServices:
+        return localization.GetByLabel('UI/Generic/FormatReference/concordRelations', name1=GetName(o1), name2=GetName(o2))
+    if entryTypeID == const.refAgentLocationServices:
+        return localization.GetByLabel('UI/Generic/FormatReference/agentLocationService')
+    if entryTypeID == const.refCSPA:
         if arg1:
-            return mls.UI_SHARED_FORMAT_CSPASERVICECHARGE_PAIDBY % {'name1': GetName(o1),
-             'name2': GetName(arg1)}
+            return localization.GetByLabel('UI/Generic/FormatReference/cspaServiceChargePaidBy', name1=GetName(o1), name2=GetName(arg1))
         else:
-            return mls.UI_SHARED_FORMAT_CSPASERVICECHARGE_PAIDBYWITHVARIOUSPARTIES % {'name': GetName(o1)}
-    elif entryTypeID == constants.refCSPAOfflineRefund:
+            return localization.GetByLabel('UI/Generic/FormatReference/cspaServiceCharge', name=GetName(o1))
+    elif entryTypeID == const.refCSPAOfflineRefund:
         if arg1:
-            return mls.UI_SHARED_FORMAT_CSPASERVICECHARGE_FORFAILEDCOM % {'name1': GetName(o2),
-             'name2': GetName(arg1)}
+            return localization.GetByLabel('UI/Generic/FormatReference/cspaServiceChargeRefundBy', name1=GetName(o2), name2=GetName(arg1))
         else:
-            return mls.UI_SHARED_FORMAT_CSPASERVICECHARGE_FORFAILEDCOMWITHVARIOUSPARTIES % {'name1': GetName(o2)}
-    elif entryTypeID == constants.refBountySurcharge:
-        return mls.UI_SHARED_FORMAT_MARKETSURCHARGE
-    if entryTypeID == constants.refRepairBill:
-        return mls.UI_SHARED_FORMAT_REPAIRBILLBETWEEN % {'name1': GetName(o1),
-         'name2': GetName(o2)}
-    if entryTypeID == constants.refBounty:
-        return mls.UI_SHARED_FORMAT_GAVECASHTOBOUNTYPOOL % {'name1': GetName(o1),
-         'name2': GetName(arg1)}
-    if entryTypeID == constants.refBountyPrize:
-        return mls.UI_SHARED_FORMAT_GOTBOUNTYPRIZEFORKILLING % {'name1': GetName(o2),
-         'name2': GetName(arg1)}
-    if entryTypeID == constants.refBountyPrizes:
-        return mls.UI_SHARED_FORMAT_GOTBOUNTYPRIZES % {'name1': GetName(o2),
-         'location': GetLocation(arg1) or cfg.evelocations.Get(arg1).name}
-    if entryTypeID == constants.refInsurance:
+            return localization.GetByLabel('UI/Generic/FormatReference/cspaServiceChargeRefundByConcord', name1=GetName(o2))
+    elif entryTypeID == const.refBountySurcharge:
+        return localization.GetByLabel('UI/Generic/FormatReference/incursionBountySurcharge')
+    if entryTypeID == const.refRepairBill:
+        return localization.GetByLabel('UI/Generic/FormatReference/repairBill', name1=GetName(o1), name2=GetName(o2))
+    if entryTypeID == const.refBounty:
+        return localization.GetByLabel('UI/Generic/FormatReference/bountyPaidTo', name1=GetName(o1), name2=GetName(arg1))
+    if entryTypeID == const.refBountyPrize:
+        return localization.GetByLabel('UI/Generic/FormatReference/bountyKilledHim', name1=GetName(o2), name2=GetName(arg1))
+    if entryTypeID == const.refBountyPrizes:
+        return localization.GetByLabel('UI/Generic/FormatReference/bountyPrizes', location=GetLocation(arg1) or cfg.evelocations.Get(arg1).name, name1=GetName(o2))
+    if entryTypeID == const.refInsurance:
         if arg1 > 0:
-            return mls.UI_SHARED_FORMAT_INSURANCEPAIDBYCOVERINGLOSS % {'name1': GetName(o1),
-             'name2': GetName(o2),
-             'itemname': GetName(-arg1)}
+            return localization.GetByLabel('UI/Generic/FormatReference/insurancePaidByCoveringLoss', itemname=cfg.invtypes.Get(arg1).name, name1=GetName(o1), name2=GetName(o2))
         else:
             if arg1 and arg1 < 0:
-                return mls.UI_SHARED_FORMAT_INSURANCEPAIDBYFORSHIP % {'name1': GetName(o1),
-                 'name2': GetName(o2),
-                 'location': GetLocation(-arg1),
-                 'refID': -arg1}
-            return mls.UI_SHARED_FORMAT_INSURANCEPAIDBYTO % {'name1': GetName(o1),
-             'name2': GetName(o2)}
-    elif entryTypeID == constants.refMissionExpiration:
-        return mls.UI_SHARED_FORMAT_MISSIONROLLBACKDUETO
-    if entryTypeID == constants.refMissionCompletion:
-        return mls.UI_SHARED_FORMAT_MISSIONCOMPLETION
-    if entryTypeID == constants.refShares:
-        return mls.UI_SHARED_FORMAT_COMPANYSHARESTRANSACTION
-    if entryTypeID == constants.refCourierMissionEscrow:
-        return mls.UI_SHARED_FORMAT_COURIERMISSIONESCROW
-    if entryTypeID == constants.refMissionCost:
-        return mls.UI_SHARED_FORMAT_MISSIONCOST
+                return localization.GetByLabel('UI/Generic/FormatReference/insurancePaidForShip', locaton=GetLocation(-arg1), name1=GetName(o1), name2=GetName(o2), refID=-arg1)
+            return localization.GetByLabel('UI/Generic/FormatReference/insurancePaidTo', name1=GetName(o1), name2=GetName(o2))
+    elif entryTypeID == const.refMissionExpiration:
+        return localization.GetByLabel('UI/Generic/FormatReference/missionRollebackExpired')
+    if entryTypeID == const.refMissionCompletion:
+        return localization.GetByLabel('UI/Generic/FormatReference/missionComplete')
+    if entryTypeID == const.refShares:
+        return localization.GetByLabel('UI/Generic/FormatReference/sharesTransaction')
+    if entryTypeID == const.refCourierMissionEscrow:
+        return localization.GetByLabel('UI/Generic/FormatReference/missionCourierEscrow')
+    if entryTypeID == const.refMissionCost:
+        return localization.GetByLabel('UI/Generic/FormatReference/missionCost')
     if entryTypeID == const.refCorporationTaxNpcBounties:
-        return mls.UI_SHARED_FORMAT_CORPORATIONTAX_NPCBOUNTY
+        return localization.GetByLabel('UI/Generic/FormatReference/corpTaxBounties')
     if entryTypeID == const.refCorporationTaxAgentRewards:
-        return mls.UI_SHARED_FORMAT_CORPORATIONTAX_AGENTREWARD
+        return localization.GetByLabel('UI/Generic/FormatReference/corpTaxMissions')
     if entryTypeID == const.refCorporationTaxAgentBonusRewards:
-        return mls.UI_SHARED_FORMAT_CORPORATIONTAX_AGENTBONUSREWARD
+        return localization.GetByLabel('UI/Generic/FormatReference/corpTaxMissionBonus')
     if entryTypeID == const.refCorporationTaxRewards:
-        return mls.UI_SHARED_FORMAT_CORPORATIONTAX_REWARD % {'name': GetName(o1)}
-    if entryTypeID == constants.refCorporationAccountWithdrawal:
-        return mls.UI_SHARED_FORMAT_TRANSFEREDCASHFROM % {'name1': GetName(arg1),
-         'name2': GetName(o1),
-         'name3': GetName(o2)}
-    if entryTypeID == constants.refCorporationDividendPayment:
-        if o2 == constants.ownerBank:
-            return mls.UI_SHARED_FORMAT_PAYINGDIVIDENDS % {'name': GetName(o1)}
+        return localization.GetByLabel('UI/Generic/FormatReference/corpTaxRewards', name=GetName(o1))
+    if entryTypeID == const.refCorporationAccountWithdrawal:
+        return localization.GetByLabel('UI/Generic/FormatReference/corpWithdrawl', name1=GetName(arg1), name2=GetName(o1), name3=GetName(o2))
+    if entryTypeID == const.refCorporationDividendPayment:
+        if o2 == const.ownerBank:
+            return localization.GetByLabel('UI/Generic/FormatReference/corpDividendsPayed', name=GetName(o1))
         else:
-            return mls.UI_SHARED_FORMAT_RECEIVINGDIVIDENDPAYMENTFROM % {'name1': GetName(o2),
-             'name2': GetName(arg1)}
+            return localization.GetByLabel('UI/Generic/FormatReference/corpDividendsPayedFrom', name1=GetName(o2), name2=GetName(arg1))
+    elif entryTypeID == const.refCorporationRegistrationFee:
+        return localization.GetByLabel('UI/Generic/FormatReference/corpRegistrationFee', name1=GetName(o1))
+    if entryTypeID == const.refCorporationLogoChangeCost:
+        return localization.GetByLabel('UI/Generic/FormatReference/corpLogoChangeFee', name1=GetName(o1), name2=GetName(arg1))
+    if entryTypeID == const.refCorporationAdvertisementFee:
+        return localization.GetByLabel('UI/Generic/FormatReference/corpAdvertisementFee', name1=GetName(o1))
+    if entryTypeID == const.refReleaseOfImpoundedProperty:
+        return localization.GetByLabel('UI/Generic/FormatReference/releaseImpoundFee', location=GetLocation(arg1), name1=GetName(o1), name2=GetName(o2))
+    if entryTypeID == const.refBrokerfee:
+        owner = cfg.eveowners.GetIfExists(o1)
+        if owner is not None:
+            return localization.GetByLabel('UI/Generic/FormatReference/marketBrokersFeeBy', name1=owner.ownerName)
+        return localization.GetByLabel('UI/Generic/FormatReference/marketBrokersFee')
+    if entryTypeID == const.refMarketEscrow:
+        owner = cfg.eveowners.GetIfExists(o1 if arg1 == -1 else o2)
+        if owner is not None:
+            if amount < 0.0:
+                return localization.GetByLabel('UI/Generic/FormatReference/marketEscrowAuthorizedBy', name=owner.ownerName)
+        if amount < 0.0:
+            return localization.GetByLabel('UI/Generic/FormatReference/marketEscrow')
+        else:
+            return localization.GetByLabel('UI/Generic/FormatReference/marketEscrowRelease')
     else:
-        if entryTypeID == constants.refCorporationRegistrationFee:
-            return mls.UI_SHARED_FORMAT_PAIDCORPREGISTRATIONFEE % {'name': GetName(o1)}
+        if entryTypeID == const.refWarFee:
+            return localization.GetByLabel('UI/Generic/FormatReference/warFee', name=GetName(arg1))
         else:
-            if entryTypeID == constants.refCorporationLogoChangeCost:
-                return mls.UI_SHARED_FORMAT_PAIDFORLOGOCHANGE % {'name1': GetName(o1),
-                 'name2': GetName(arg1)}
-            if entryTypeID == constants.refCorporationAdvertisementFee:
-                return mls.UI_SHARED_FORMAT_PAIDCORPADVERTISEMENTFEE % {'name': GetName(o1)}
-            if entryTypeID == constants.refReleaseOfImpoundedProperty:
-                return mls.UI_SHARED_FORMAT_PAIDFOR_RELEASEOFIMPOUNDED % {'name1': GetName(o1),
-                 'name2': GetName(o2),
-                 'location': GetLocation(arg1)}
-            if entryTypeID == constants.refBrokerfee:
-                owner = cfg.eveowners.GetIfExists(o1)
-                if owner is not None:
-                    return mls.UI_SHARED_FORMAT_MARKETORDERCOMMISSIONAUTHORIZEDBY % {'name': owner.ownerName}
-                return mls.UI_SHARED_FORMAT_MARKETORDERCOMMISSION
-            if entryTypeID == constants.refMarketEscrow:
-                if arg1 == -1:
-                    owner = cfg.eveowners.GetIfExists(o1)
+            if entryTypeID == const.refAllianceRegistrationFee:
+                return localization.GetByLabel('UI/Generic/FormatReference/allianceRegistrationFee')
+            if entryTypeID == const.refAllianceMaintainanceFee:
+                return localization.GetByLabel('UI/Generic/FormatReference/allianceMaintenceFee', name=GetName(arg1))
+            if entryTypeID == const.refSovereignityRegistrarFee:
+                return localization.GetByLabel('UI/Generic/FormatReference/sovereigntyRegistrarFee', name=GetLocation(arg1))
+            if entryTypeID == const.refSovereignityUpkeepAdjustment:
+                return localization.GetByLabel('UI/Generic/FormatReference/sovereigntyAdjustmentFee', name=GetLocation(arg1))
+            if entryTypeID == const.refTransactionTax:
+                return localization.GetByLabel('UI/Generic/FormatReference/marketSalesTax')
+            if entryTypeID == const.refContrabandFine:
+                return localization.GetByLabel('UI/Generic/FormatReference/smugglingFine')
+            if entryTypeID == const.refManufacturing:
+                return localization.GetByLabel('UI/Generic/FormatReference/manufacturingFee', arg1=arg1, name1=GetName(o1), name2=GetName(o2))
+            if entryTypeID == const.refResearchingTechnology:
+                return localization.GetByLabel('UI/Generic/FormatReference/researchTechnologyFee', arg1=arg1, name1=GetName(o1), name2=GetName(o2))
+            if entryTypeID == const.refResearchingTimeProductivity:
+                return localization.GetByLabel('UI/Generic/FormatReference/researchTimeFee', arg1=arg1, name1=GetName(o1), name2=GetName(o2))
+            if entryTypeID == const.refResearchingMaterialProductivity:
+                return localization.GetByLabel('UI/Generic/FormatReference/researchMaterialFee', arg1=arg1, name1=GetName(o1), name2=GetName(o2))
+            if entryTypeID == const.refCopying:
+                return localization.GetByLabel('UI/Generic/FormatReference/researchCopyFee', arg1=arg1, name1=GetName(o1), name2=GetName(o2))
+            if entryTypeID == const.refReverseEngineering:
+                return localization.GetByLabel('UI/Generic/FormatReference/researchInventionFee', arg1=arg1, name1=GetName(o1), name2=GetName(o2))
+            if entryTypeID == const.refContractAuctionBid:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractBid')
+            if entryTypeID == const.refContractAuctionBidRefund:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractBidRefund')
+            if entryTypeID == const.refContractCollateral:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractCollateral')
+            if entryTypeID == const.refContractRewardRefund:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractCollateralRewardRefund')
+            if entryTypeID == const.refContractAuctionSold:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractAuctionComplete')
+            if entryTypeID == const.refContractReward:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractComplete')
+            if entryTypeID == const.refContractCollateralRefund:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractCollateralRefund')
+            if entryTypeID == const.refContractCollateralPayout:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractCollateralPayout')
+            if entryTypeID == const.refContractPrice:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractAccept')
+            if entryTypeID == const.refContractBrokersFee:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractBrokerFee')
+            if entryTypeID == const.refContractSalesTax:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractSalesTax')
+            if entryTypeID == const.refContractDeposit:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractDeposit')
+            if entryTypeID == const.refContractDepositSalesTax:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractDepositReturnedLessTax')
+            if entryTypeID == const.refContractRewardAdded:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractRewardDepoistComplete')
+            if entryTypeID == const.refContractReversal:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractGMReversal', arg=arg1, name1=GetName(o1), name2=GetName(o2))
+            if entryTypeID == const.refContractAuctionBidCorp:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractCorporateBid', arg=arg1, name=GetName(o1))
+            if entryTypeID == const.refContractCollateralCorp:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractCorporateCollateral', arg=arg1, name=GetName(o1))
+            if entryTypeID == const.refContractPriceCorp:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractCorporateAccept', arg=arg1, name=GetName(o1))
+            if entryTypeID == const.refContractBrokersFeeCorp:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractCorporateBrokerFee', arg=arg1, name=GetName(o1))
+            if entryTypeID == const.refContractDepositCorp:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractCorporateDeposit', arg=arg1, name=GetName(o1))
+            if entryTypeID == const.refContractDepositRefund:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractCorporateDepositRefund')
+            if entryTypeID == const.refContractRewardAddedCorp:
+                return localization.GetByLabel('UI/Generic/FormatReference/contractCorporateReward', arg=arg1, name=GetName(o1))
+            if entryTypeID == const.refJumpCloneInstallationFee:
+                return localization.GetByLabel('UI/Generic/FormatReference/cloneInstallFee')
+            if entryTypeID == const.refPaymentToLPStore:
+                return localization.GetByLabel('UI/Generic/FormatReference/lpStorePayment')
+            if entryTypeID == const.refSecureEVETimeCodeExchange:
+                return localization.GetByLabel('UI/Generic/FormatReference/plexExchangeBetween', arg=arg1, name1=GetName(o1), name2=GetName(o2))
+            if entryTypeID == const.refMedalCreation:
+                return localization.GetByLabel('UI/Generic/FormatReference/medalCreationFee', name1=GetName(o1), name2=GetName(o2))
+            if entryTypeID == const.refMedalIssuing:
+                return localization.GetByLabel('UI/Generic/FormatReference/medalIssueFee', name1=GetName(o1), name2=GetName(o2))
+            if entryTypeID == const.refAttributeRespecification:
+                return localization.GetByLabel('UI/Generic/FormatReference/attributeRemap')
+            if entryTypeID == const.refPlanetaryImportTax:
+                if arg1 is not None:
+                    planetName = cfg.evelocations.Get(arg1).name
                 else:
-                    owner = cfg.eveowners.GetIfExists(o2)
-                if owner is not None:
-                    if amount < 0.0:
-                        return mls.UI_SHARED_FORMAT_MARKETESCROWAUTHORIZEDBY % {'name': owner.ownerName}
-                return [mls.UI_SHARED_FORMAT_MARKETESCROWRELEASE, mls.UI_SHARED_FORMAT_MARKETESCROW][(amount < 0.0)]
-            if entryTypeID == constants.refWarFee:
-                return mls.UI_SHARED_FORMAT_FEEFORWARAGAINST % {'name': GetName(arg1)}
-            if entryTypeID == constants.refAllianceRegistrationFee:
-                return mls.UI_SHARED_FORMAT_ALLIANCEREGISTRATIONFEE
-            if entryTypeID == constants.refAllianceMaintainanceFee:
-                return mls.UI_SHARED_FORMAT_FEEFORTHEMAINTAINANCE % {'name': GetName(arg1)}
-            if entryTypeID == constants.refSovereignityRegistrarFee:
-                return mls.UI_SHARED_FORMAT_SOVEREIGNITYREGISTRARFEE % {'systemname': GetLocation(arg1)}
-            if entryTypeID == constants.refSovereignityUpkeepAdjustment:
-                return mls.UI_SHARED_FORMAT_SOVEREIGNITYUPKEEPADJUSTMENT % {'systemname': GetLocation(arg1)}
-            if entryTypeID == constants.refAccelerationGateFee:
-                return mls.UI_SHARED_FORMAT_FEEFORUSINGACCELERATIONGATE % {'name': GetName(o2),
-                 'location': GetLocation(arg1)}
-            if entryTypeID == constants.refTransactionTax:
-                return mls.UI_SHARED_FORMAT_SALESTAXPAID
-            if entryTypeID == constants.refContrabandFine:
-                return mls.UI_SHARED_FORMAT_FINEFORCONSTRABANDSMUGGLING
-            if entryTypeID == constants.refManufacturing:
-                return mls.UI_SHARED_FORMAT_MANUFACTURINGJOBFEE % {'name1': GetName(o1),
-                 'name2': GetName(o2),
-                 'arg': arg1}
-            if entryTypeID == constants.refResearchingTechnology:
-                return mls.UI_SHARED_FORMAT_TECHNOLOGICALRESEARCHJOBFEE % {'name1': GetName(o1),
-                 'name2': GetName(o2),
-                 'arg': arg1}
-            if entryTypeID == constants.refResearchingTimeProductivity:
-                return mls.UI_SHARED_FORMAT_TIMEPRODUCTIVITY_RESEARCHJOBFEE % {'name1': GetName(o1),
-                 'name2': GetName(o2),
-                 'arg': arg1}
-            if entryTypeID == constants.refResearchingMaterialProductivity:
-                return mls.UI_SHARED_FORMAT_MATERIALPRODUCTIVITYRESEARCHJOBFEE % {'name1': GetName(o1),
-                 'name2': GetName(o2),
-                 'arg': arg1}
-            if entryTypeID == constants.refCopying:
-                return mls.UI_SHARED_FORMAT_BLUEPRINTCOPYINGJOBFEE % {'name1': GetName(o1),
-                 'name2': GetName(o2),
-                 'arg': arg1}
-            if entryTypeID == constants.refDuplicating:
-                return mls.UI_SHARED_FORMAT_ITEMDUPLICATIONJOBFEE % {'name1': GetName(o1),
-                 'name2': GetName(o2),
-                 'arg': arg1}
-            if entryTypeID == constants.refReverseEngineering:
-                return mls.UI_SHARED_FORMAT_REVERSEENGINEERINGJOBFEE % {'name1': GetName(o1),
-                 'name2': GetName(o2),
-                 'arg': arg1}
-            if entryTypeID == constants.refContractAuctionBid:
-                return mls.UI_SHARED_FORMAT_CONTRACTAUCTIONBID
-            if entryTypeID == constants.refContractAuctionBidRefund:
-                return mls.UI_SHARED_FORMAT_CONTRACTAUCTIONBIDREFUND
-            if entryTypeID == constants.refContractCollateral:
-                return mls.UI_SHARED_FORMAT_CONTRACTCOLLATERAL
-            if entryTypeID == constants.refContractRewardRefund:
-                return mls.UI_SHARED_FORMAT_CONTRACTREWARDREFUND
-            if entryTypeID == constants.refContractAuctionSold:
-                return mls.UI_SHARED_FORMAT_CONTRACTAUCTIONSOLD
-            if entryTypeID == constants.refContractReward:
-                return mls.UI_SHARED_FORMAT_CONTRACTREWARD
-            if entryTypeID == constants.refContractCollateralRefund:
-                return mls.UI_SHARED_FORMAT_CONTRACTCOLLATERALREFUND
-            if entryTypeID == constants.refContractCollateralPayout:
-                return mls.UI_SHARED_FORMAT_CONTRACTCOLLATERALPAYOUT
-            if entryTypeID == constants.refContractPrice:
-                return mls.UI_SHARED_FORMAT_CONTRACTPRICE
-            if entryTypeID == constants.refContractBrokersFee:
-                return mls.UI_SHARED_FORMAT_CONTRACTBROKERSFEE
-            if entryTypeID == constants.refContractSalesTax:
-                return mls.UI_SHARED_FORMAT_CONTRACTSALESTAX
-            if entryTypeID == constants.refContractDeposit:
-                return mls.UI_SHARED_FORMAT_CONTRACTDEPOSIT
-            if entryTypeID == constants.refContractDepositSalesTax:
-                return mls.UI_SHARED_FORMAT_CONTRACTDEPOSITSALESTAX
-            if entryTypeID == constants.refContractRewardAdded:
-                return mls.UI_SHARED_FORMAT_CONTRACTREWARDADDED
-            if entryTypeID == constants.refContractReversal:
-                return mls.UI_SHARED_FORMAT_CONTRACTREVERSAL % {'arg': arg1,
-                 'name1': GetName(o1),
-                 'name2': GetName(o2)}
-            if entryTypeID == constants.refContractAuctionBidCorp:
-                return mls.UI_SHARED_FORMAT_CONTRACTAUCTIONBIDCORP % {'name': GetName(o1),
-                 'arg': arg1}
-            if entryTypeID == constants.refContractCollateralCorp:
-                return mls.UI_SHARED_FORMAT_CONTRACTCOLLATERALCORP % {'name': GetName(o1),
-                 'arg': arg1}
-            if entryTypeID == constants.refContractPriceCorp:
-                return mls.UI_SHARED_FORMAT_CONTRACTPRICECORP % {'name': GetName(o1),
-                 'arg': arg1}
-            if entryTypeID == constants.refContractBrokersFeeCorp:
-                return mls.UI_SHARED_FORMAT_CONTRACTBROKERSFEECORP % {'name': GetName(o1),
-                 'arg': arg1}
-            if entryTypeID == constants.refContractDepositCorp:
-                return mls.UI_SHARED_FORMAT_CONTRACTDEPOSITCORP % {'name': GetName(o1),
-                 'arg': arg1}
-            if entryTypeID == constants.refContractDepositRefund:
-                return mls.UI_SHARED_FORMAT_CONTRACTDEPOSITREFUND
-            if entryTypeID == constants.refContractCollateralCorp:
-                return mls.UI_SHARED_FORMAT_CONTRACTCOLLATERALCORP % {'name': GetName(o1),
-                 'arg': arg1}
-            if entryTypeID == constants.refContractRewardAddedCorp:
-                return mls.UI_SHARED_FORMAT_CONTRACTREWARDADDEDCORP % {'name': GetName(o1),
-                 'arg': arg1}
-            if entryTypeID == constants.refJumpCloneInstallationFee:
-                return mls.UI_SHARED_FORMAT_JUMPCLONEINSTALLATIONFEE
-            if entryTypeID == constants.refPaymentToLPStore:
-                return mls.UI_SHARED_FORMAT_LPSTORE_PAYMENT
-            if entryTypeID == constants.refSecureEVETimeCodeExchange:
-                return mls.UI_SHARED_FORMAT_ETCEXCHANGEBETWEEN % {'arg': arg1,
-                 'name1': GetName(o1),
-                 'name2': GetName(o2)}
-            if entryTypeID == constants.refMedalCreation:
-                return mls.UI_SHARED_FORMAT_MEDALCREATIONFEE % {'amount1': GetName(o1),
-                 'amount2': GetName(o2)}
-            if entryTypeID == constants.refMedalIssuing:
-                return mls.UI_SHARED_FORMAT_MEDALISSUINGFEE % {'amount1': GetName(o1),
-                 'amount2': GetName(o2)}
-            if entryTypeID == constants.refAttributeRespecification:
-                return mls.UI_SHARED_FORMAT_ATTRIBUTERESPEC
-            if entryTypeID == constants.refPlanetaryImportTax:
-                return mls.UI_SHARED_FORMAT_PLANETARYIMPORTTAX % {'name': GetName(o1),
-                 'planet': cfg.evelocations.Get(arg1).name if arg1 is not None else mls.UI_GENERIC_UNKNOWN}
-            if entryTypeID == constants.refPlanetaryExportTax:
-                return mls.UI_SHARED_FORMAT_PLANETARYEXPORTTAX % {'name': GetName(o1),
-                 'planet': cfg.evelocations.Get(arg1).name if arg1 is not None else mls.UI_GENERIC_UNKNOWN}
-            if entryTypeID == constants.refPlanetaryConstruction:
-                return mls.UI_SHARED_FORMAT_PLANETARYCONSTRUCTION % {'name': GetName(o1),
-                 'planet': cfg.evelocations.Get(arg1).name if arg1 is not None else mls.UI_GENERIC_UNKNOWN}
-            if entryTypeID == constants.refRewardManager:
-                return mls.UI_REWARD_JOURNAL_DESCRIPTION % {'name1': GetName(o1),
-                 'name2': GetName(o2)}
-            if entryTypeID == constants.refMinigameBetting:
-                return mls.UI_SHARED_FORMAT_BETTINGCASHTRANSFERFROMTO % {'name1': GetName(o1),
-                 'name2': GetName(o2)}
-            if entryTypeID == constants.refStorePurchase:
-                return mls.UI_SHARED_FORMAT_PURCHASEFROMSTORE
-            if entryTypeID == constants.refStoreRefund:
-                return mls.UI_SHARED_FORMAT_REFUNDFROMSTORE
-            if entryTypeID == constants.refPlexConversion:
-                return mls.UI_SHARED_FORMAT_PLEXCONVERSION
-            if entryTypeID == constants.refAurumGiveAway:
-                return mls.UI_SHARED_FORMAT_AURUMGIVEAWAY
+                    planetName = localization.GetByLabel('UI/Generic/Unknown')
+                return localization.GetByLabel('UI/Generic/FormatReference/planetImportTax', name=GetName(o1), planet=planetName)
+            if entryTypeID == const.refPlanetaryExportTax:
+                if arg1 is not None:
+                    planetName = cfg.evelocations.Get(arg1).name
+                else:
+                    planetName = localization.GetByLabel('UI/Generic/Unknown')
+                return localization.GetByLabel('UI/Generic/FormatReference/planetExportTax', name=GetName(o1), planet=planetName)
+            if entryTypeID == const.refPlanetaryConstruction:
+                if arg1 is not None:
+                    planetName = cfg.evelocations.Get(arg1).name
+                else:
+                    planetName = localization.GetByLabel('UI/Generic/Unknown')
+                return localization.GetByLabel('UI/Generic/FormatReference/planetConstruction', name=GetName(o1), planet=planetName)
+            if entryTypeID == const.refRewardManager:
+                return localization.GetByLabel('UI/Generic/FormatReference/rewardPayout', name1=GetName(o1), name2=GetName(o2))
+            if entryTypeID == const.refStorePurchase:
+                return localization.GetByLabel('UI/Generic/FormatReference/virtualGoodsPurchase')
+            if entryTypeID == const.refStoreRefund:
+                return localization.GetByLabel('UI/Generic/FormatReference/virtualGoodsRefund')
+            if entryTypeID == const.refPlexConversion:
+                return localization.GetByLabel('UI/Generic/FormatReference/virtualGoodsPlexConversion')
+            if entryTypeID == const.refAurumGiveAway:
+                return localization.GetByLabel('UI/Generic/FormatReference/virtualGoodsLottery')
+            if entryTypeID == const.refAurumTokenConversion:
+                return localization.GetByLabel('UI/Generic/FormatReference/AurumTokenConversion')
             if pretty:
-                return '-'
-            return mls.UI_SHARED_FORMAT_UNKNOWNREFERENCE % {'ID': entryTypeID,
-             'o1': o1,
-             'o2': o2,
-             'arg': arg1}
+                return localizationUtil.LocalizationSafeString('-')
+            return localization.GetByLabel('UI/Generic/FormatReference/unknowenJournalReference', ID=entryTypeID, arg=arg1, o1=o1, o2=o2)
 
 
 
 def FmtStandingTransaction(transaction):
     import uix
-    subject = mls.UI_SHARED_FORMAT_STANDINGCHANGE
+    subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectStandingChange')
     body = ''
     try:
-        if transaction.eventTypeID == const.eventStandingDecay:
-            subject = mls.UI_SHARED_FORMAT_STANDINGDECAY
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG1
-        elif transaction.eventTypeID == const.eventStandingDerivedModificationPositive:
+        if transaction.eventTypeID == logConst.eventDecay:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectDecay')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageDecay')
+        elif transaction.eventTypeID == logConst.eventDerivedModificationPositive:
             cfg.eveowners.Prime([transaction.fromID])
-            subject = mls.UI_SHARED_FORMAT_DERIVEDMODIFICATION
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG2 % {'name1': cfg.eveowners.Get(transaction.fromID).name,
-             'name2': cfg.eveowners.Get(transaction.fromID).name,
-             'name3': cfg.eveowners.Get(transaction.fromID).name}
-        elif transaction.eventTypeID == const.eventStandingDerivedModificationNegative:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectDerivedModificatonPositive')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageDerivedModificatonPositive', name=cfg.eveowners.Get(transaction.fromID).name)
+        elif transaction.eventTypeID == logConst.eventDerivedModificationNegative:
             cfg.eveowners.Prime([transaction.fromID])
-            subject = mls.UI_SHARED_FORMAT_DERIVEDMODIFICATION
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG3 % {'name1': cfg.eveowners.Get(transaction.fromID).name,
-             'name2': cfg.eveowners.Get(transaction.fromID).name,
-             'name3': cfg.eveowners.Get(transaction.fromID).name}
-        elif transaction.eventTypeID == const.eventStandingCombatAggression:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectDerivedModificatonNegitive')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageDerivedModificatonNegitive', name=cfg.eveowners.Get(transaction.fromID).name)
+        elif transaction.eventTypeID == logConst.eventCombatAggression:
             cfg.eveowners.Prime([transaction.int_1])
             cfg.evelocations.Prime([transaction.int_2])
-            subject = mls.UI_SHARED_FORMAT_COMBATAGGRESSION
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG4 % {'ownerName': cfg.eveowners.Get(transaction.int_1).name,
-             'typeName': cfg.invtypes.Get(transaction.int_3).name,
-             'locationName': cfg.evelocations.Get(transaction.int_2).name}
-        elif transaction.eventTypeID == const.eventStandingCombatAssistance:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectCombatAgression')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageCombatAgression', locationID=transaction.int_2, ownerName=cfg.eveowners.Get(transaction.int_1).name, typeID=transaction.int_3)
+        elif transaction.eventTypeID == logConst.eventCombatAssistance:
             cfg.eveowners.Prime([transaction.int_1])
             cfg.evelocations.Prime([transaction.int_2])
-            subject = mls.UI_SHARED_FORMAT_COMBATASSISTANCE
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG5 % {'ownerName': cfg.eveowners.Get(transaction.int_1).name,
-             'typeName': cfg.invtypes.Get(transaction.int_3).name,
-             'locationName': cfg.evelocations.Get(transaction.int_2).name}
-        elif transaction.eventTypeID == const.eventStandingCombatShipKill:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectCombatAssistence')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageCombatAssistence', locationID=transaction.int_2, name=cfg.eveowners.Get(transaction.int_1).name, typeID=transaction.int_3)
+        elif transaction.eventTypeID == logConst.eventCombatShipKill:
             cfg.eveowners.Prime([transaction.int_1])
             cfg.evelocations.Prime([transaction.int_2])
-            subject = mls.UI_SHARED_FORMAT_COMBATSHIPKILL
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG6 % {'owerName': cfg.eveowners.Get(transaction.int_1).name,
-             'typeName': cfg.invtypes.Get(transaction.int_3).name,
-             'locationName': cfg.evelocations.Get(transaction.int_2).name}
-        elif transaction.eventTypeID == const.eventStandingPropertyDamage:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectCombatShipKill')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageCombatShipKill', locationID=transaction.int_2, name=cfg.eveowners.Get(transaction.int_1).name, typeID=transaction.int_3)
+        elif transaction.eventTypeID == logConst.eventPropertyDamage:
             cfg.eveowners.Prime([transaction.int_1])
             cfg.evelocations.Prime([transaction.int_2])
-            subject = mls.UI_SHARED_FORMAT_PROPERTYDAMAGE
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG6 % {'owerName': cfg.eveowners.Get(transaction.int_1).name,
-             'typeName': cfg.invtypes.Get(transaction.int_3).name,
-             'locationName': cfg.evelocations.Get(transaction.int_2).name}
-        elif transaction.eventTypeID == const.eventStandingCombatPodKill:
-            subject = mls.UI_SHARED_FORMAT_COMBATPODKILL
-            if transaction.int_1:
-                n1 = cfg.eveowners.Get(transaction.int_1).name
-            else:
-                n1 = '???'
-            if transaction.int_2:
-                n2 = cfg.evelocations.Get(transaction.int_2).name
-            else:
-                n2 = '???'
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG7 % {'ownerName': n1,
-             'locationName': n2}
-        elif transaction.eventTypeID == const.eventStandingSlashSet:
-            subject = 'GM Intervention'
-            if transaction.int_1:
-                n = cfg.eveowners.Get(transaction.int_1).name
-            else:
-                n = '???'
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG8 % {'ownerName': n,
-             'message': transaction.msg}
-        elif transaction.eventTypeID == const.eventStandingStandingreset:
-            subject = mls.UI_SHARED_FORMAT_GMINTERVENTION
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG9
-        elif transaction.eventTypeID == const.eventStandingPlayerSetStanding:
-            subject = mls.UI_SHARED_FORMAT_PLAYERSET
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG10 % {'message': transaction.msg}
-        elif transaction.eventTypeID == const.eventStandingPlayerCorpSetStanding:
-            subject = mls.UI_SHARED_FORMAT_CORPSET
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG11 % {'ownerName': cfg.eveowners.Get(transaction.int_1).name,
-             'msg': transaction.msg}
-        elif transaction.eventTypeID == const.eventStandingAgentMissionCompleted:
-            subject = mls.UI_SHARED_FORMAT_MISSIONCOMPLETED % {'message': transaction.msg}
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG12 % {'msg': transaction.msg}
-        elif transaction.eventTypeID == const.eventStandingAgentMissionDeclined:
-            subject = mls.UI_SHARED_FORMAT_MISSIONDECLINED % {'message': transaction.msg}
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG13 % {'msg': transaction.msg}
-        elif transaction.eventTypeID == const.eventStandingAgentMissionFailed:
-            subject = mls.UI_SHARED_FORMAT_MISSIONFAILURE % {'message': transaction.msg}
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG14 % {'message': transaction.msg}
-        elif transaction.eventTypeID == const.eventStandingAgentMissionOfferExpired:
-            subject = mls.UI_SHARED_FORMAT_MISSIONOFFEREXPIRED % {'message': transaction.msg}
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectPropertyDamage')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messagePropertyDamage', locationID=transaction.int_2, name=cfg.eveowners.Get(transaction.int_1).name, typeID=transaction.int_1)
+        elif transaction.eventTypeID == logConst.eventCombatPodKill:
+            n1 = cfg.eveowners.Get(transaction.int_1).name if transaction.int_1 else '???'
+            n2 = cfg.evelocations.Get(transaction.int_2).name if transaction.int_2 else '???'
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectCombatPodKill')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageCombatPodKill', locationName=n2, name=n1)
+        elif transaction.eventTypeID == logConst.eventSlashSetStanding:
+            n = cfg.eveowners.Get(transaction.int_1).name if transaction.int_1 else '???'
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectSetBySlashCmd')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageSetBySlashCmd', message=transaction.msg, name=n)
+        elif transaction.eventTypeID == logConst.eventStandingReset:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectSetBySlashCmd')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageResetBySlashCmd')
+        elif transaction.eventTypeID == logConst.eventPlayerSetStanding:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectPlayerSet')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messagePlayerSet', message=transaction.msg)
+        elif transaction.eventTypeID == logConst.eventPlayerCorpSetStanding:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectCorporationSet')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageCorporationSet', message=transaction.msg, name=cfg.eveowners.Get(transaction.int_1).name)
+        elif transaction.eventTypeID == logConst.eventAgentMissionCompleted:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectMissionComplete', message=transaction.msg)
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageMissionComplete', message=transaction.msg)
+        elif transaction.eventTypeID == logConst.eventAgentMissionDeclined:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectMissionDeclined', message=transaction.msg)
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageMissionDecline', message=transaction.msg)
+        elif transaction.eventTypeID == logConst.eventAgentMissionFailed:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectMissionFailed', message=transaction.msg)
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageMissionFailed', message=transaction.msg)
+        elif transaction.eventTypeID == logConst.eventAgentMissionOfferExpired:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectMissionExpired', message=transaction.msg)
             if transaction.msg:
-                body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG15
+                body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageMissionExpiredNoMsg')
             else:
-                body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG16 % {'message': transaction.msg}
-        elif transaction.eventTypeID == const.eventStandingAgentMissionBonus:
+                body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageMissionExpiredMsg', message=transaction.msg)
+        elif transaction.eventTypeID == logConst.eventAgentMissionBonus:
             import binascii
             import cPickle
             stuff = cPickle.loads(binascii.a2b_hex(transaction.msg))
             if transaction.modification >= 0.0:
-                subject = mls.UI_SHARED_FORMAT_MISSIONBONUS % {'arg': stuff.get('header', '???')}
-                body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG17 % {'arg': stuff.get('body', '???')}
+                subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectMissionBonus', message=stuff.get('header', '???'))
+                body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageMissionBonus', message=stuff.get('body', '???'))
             else:
-                subject = mls.UI_SHARED_FORMAT_MISSIONPENALTY % {'arg': stuff.get('header', '???')}
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG18 % {'arg': stuff.get('body', '???')}
-        elif transaction.eventTypeID == const.eventStandingPirateKillSecurityStatus:
-            subject = mls.UI_SHARED_FORMAT_LAWENFORCEMENT
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG19 % {'ownerName': cfg.eveowners.Get(transaction.int_1).name}
-        elif transaction.eventTypeID == const.eventStandingPromotionStandingIncrease:
+                subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectMissionPenalty', message=stuff.get('header', '???'))
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageMissionPenalty', message=stuff.get('body', '???'))
+        elif transaction.eventTypeID == logConst.eventPirateKillSecurityStatus:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectLawEnforcmentGain')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageLawEnforcmentGain', name=cfg.eveowners.Get(transaction.int_1).name)
+        elif transaction.eventTypeID == logConst.eventPromotionFactionStandingIncrease:
             rankNumber = transaction.int_1
             corpID = transaction.int_2
             faction = sm.StartService('faction').GetFaction(corpID)
-            subject = mls.UI_FACWAR_RANKPROMOTION
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG21 % {'rankName': uix.GetRankLabel(faction, rankNumber)[0],
-             'corpName': cfg.eveowners.Get(corpID).name}
-        elif transaction.eventTypeID == const.eventStandingCombatShipKill_OwnFaction:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectFacwarPromotion')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageFacwarPromotion', corpName=cfg.eveowners.Get(corpID).name, rankName=uix.GetRankLabel(faction, rankNumber)[0])
+        elif transaction.eventTypeID == logConst.eventCombatShipKillOwnFaction:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectCombatShipKill')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageCombatSkipKillOwnFaction', factionName=cfg.eveowners.Get(transaction.int_1).name, locationID=transaction.int_2, typeID=transaction.int_3)
+        elif transaction.eventTypeID == logConst.eventCombatPodKillOwnFaction:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectCombatPodKill')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageCombatPodKillOwnFaction', factionName=cfg.eveowners.Get(transaction.int_1).name, locationID=transaction.int_2)
+        elif transaction.eventTypeID == logConst.eventCombatAggressionOwnFaction:
             factionID = transaction.int_1
             locationID = transaction.int_2
             typeID = transaction.int_3
-            subject = mls.UI_SHARED_FORMAT_COMBATSHIPKILL
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG27 % {'factionName': cfg.eveowners.Get(factionID).name,
-             'typeName': cfg.invtypes.Get(typeID).name,
-             'locationName': cfg.evelocations.Get(locationID).name}
-        elif transaction.eventTypeID == const.eventStandingCombatPodKill_OwnFaction:
-            factionID = transaction.int_1
-            locationID = transaction.int_2
-            subject = mls.UI_SHARED_FORMAT_COMBATPODKILL
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG22 % {'factionName': cfg.eveowners.Get(factionID).name,
-             'locationName': cfg.evelocations.Get(locationID).name}
-        elif transaction.eventTypeID == const.eventStandingCombatAggression_OwnFaction:
-            factionID = transaction.int_1
-            locationID = transaction.int_2
-            typeID = transaction.int_3
-            subject = mls.UI_SHARED_FORMAT_COMBATAGGRESSION
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG26 % {'factionName': cfg.eveowners.Get(factionID).name,
-             'typeName': cfg.invtypes.Get(typeID).name,
-             'locationName': cfg.evelocations.Get(locationID).name}
-        elif transaction.eventTypeID == const.eventStandingCombatAssistance_OwnFaction:
-            factionID = transaction.int_1
-            locationID = transaction.int_2
-            typeID = transaction.int_3
-            subject = mls.UI_SHARED_FORMAT_COMBATASSISTANCE
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG23 % {'factionName': cfg.eveowners.Get(factionID).name,
-             'typeName': cfg.invtypes.Get(typeID).name,
-             'locationName': cfg.evelocations.Get(locationID).name}
-        elif transaction.eventTypeID == const.eventStandingPropertyDamage_OwnFaction:
-            factionID = transaction.int_1
-            locationID = transaction.int_2
-            typeID = transaction.int_3
-            subject = mls.UI_SHARED_FORMAT_PROPERTYDAMAGE
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG27 % {'factionName': cfg.eveowners.Get(factionID).name,
-             'typeName': cfg.invtypes.Get(typeID).name,
-             'locationName': cfg.evelocations.Get(locationID).name}
-        elif transaction.eventTypeID == const.eventStandingTacticalSiteDefended:
-            factionID = transaction.int_1
-            enemyFactionID = transaction.int_2
-            subject = mls.UI_SHARED_FORMAT_SITEDEFENDED
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG24 % {'factionName': cfg.eveowners.Get(factionID).name,
-             'enemyFactionName': cfg.eveowners.Get(enemyFactionID).name}
-        elif transaction.eventTypeID == const.eventStandingTacticalSiteConquered:
-            factionID = transaction.int_1
-            enemyFactionID = transaction.int_2
-            subject = mls.UI_SHARED_FORMAT_SITECONQUERED
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG25 % {'factionName': cfg.eveowners.Get(factionID).name,
-             'enemyFactionName': cfg.eveowners.Get(enemyFactionID).name}
-        elif transaction.eventTypeID == const.eventStandingRecommendationLetterUsed:
-            subject = mls.UI_SHARED_FORMAT_RECOMMENDATIONLETTERUSED
-            body = mls.UI_SHARED_FORMAT_RECOMMENDATIONLETTERUSED_BODY
-        elif transaction.eventTypeID == const.eventStandingTutorialAgentInitial:
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG28
-        elif transaction.eventTypeID == const.eventStandingContrabandTrafficking:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectCombatAgression')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageCombatAgressionOwnFaction', factionName=cfg.eveowners.Get(factionID).name, locationID=locationID, typeID=typeID)
+        elif transaction.eventTypeID == logConst.eventCombatAssistanceOwnFaction:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectCombatAssistence')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageCombatAssistanceOwnFaction', factionName=cfg.eveowners.Get(transaction.int_1).name, locationID=transaction.int_2, typeID=transaction.int_3)
+        elif transaction.eventTypeID == logConst.eventPropertyDamageOwnFaction:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectPropertyDamage')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageCombatProprtyDamageOwnFaction', factionName=cfg.eveowners.Get(transaction.int_1).name, locationID=transaction.int_2, typeID=transaction.int_3)
+        elif transaction.eventTypeID == logConst.eventTacticalSiteDefended:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectFacwarSiteDefened')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageFacwarSiteDefened', enemyFactionName=cfg.eveowners.Get(transaction.int_2).name, factionName=cfg.eveowners.Get(transaction.int_1).name)
+        elif transaction.eventTypeID == logConst.eventTacticalSiteConquered:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectFacwarSiteConquered')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageFacwarSiteConquered', enemyFactionName=cfg.eveowners.Get(transaction.int_2).name, factionName=cfg.eveowners.Get(transaction.int_1).name)
+        elif transaction.eventTypeID == logConst.eventRecommendationLetterUsed:
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectRecomendationLetterUsed')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageRecomendationLetterUsed')
+        elif transaction.eventTypeID == logConst.eventTutorialAgentInitial:
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageGraduation')
+        elif transaction.eventTypeID == logConst.eventContrabandTrafficking:
             factionID = transaction.int_1
             locationID = transaction.int_2
             if factionID:
                 factionName = cfg.eveowners.Get(factionID).name
             else:
-                factionName = mls.UI_GENERIC_SOMEONE
+                factionName = localization.GetByLabel('UI/Generic/FormatStandingTransactions/labelSomeone')
             if locationID:
                 locationName = cfg.evelocations.Get(locationID).name
             else:
-                locationName = mls.UI_GENERIC_SOMEWHERE
-            subject = mls.SHARED_HDCONTRABAND
-            body = mls.UI_SHARED_FORMAT_FMTSTANDINGTRANSACTION_MSG29 % {'factionName': factionName,
-             'systemName': locationName}
+                locationName = localization.GetByLabel('UI/Generic/FormatStandingTransactions/labelSomewhere')
+            subject = localization.GetByLabel('UI/Generic/FormatStandingTransactions/subjectContraband')
+            body = localization.GetByLabel('UI/Generic/FormatStandingTransactions/messageContraband', factionName=factionName, systemName=locationName)
     except:
         log.LogException()
         sys.exc_clear()
@@ -601,36 +450,36 @@ def FmtSystemSecStatus(raw, getColor = 0):
 
 
 def GetStandingEventTypes():
-    return [(mls.UI_SHARED_FORMAT_AGENTBUYOFF, const.eventStandingAgentBuyOff),
-     (mls.UI_SHARED_FORMAT_AGENTDONATION, const.eventStandingAgentDonation),
-     (mls.UI_SHARED_FORMAT_AGENTMISSIONBONUS, const.eventStandingAgentMissionBonus),
-     (mls.UI_SHARED_FORMAT_AGENTMISSIONCOMPLETED, const.eventStandingAgentMissionCompleted),
-     (mls.UI_SHARED_FORMAT_AGENTMISSIONDECLINED, const.eventStandingAgentMissionDeclined),
-     (mls.UI_SHARED_FORMAT_AGENTMISSIONFAILED, const.eventStandingAgentMissionFailed),
-     (mls.UI_SHARED_FORMAT_AGENTMISSIONOFFEREXPIRED, const.eventStandingAgentMissionOfferExpired),
-     (mls.UI_SHARED_FORMAT_COMBATAGGRESSION, const.eventStandingCombatAggression),
-     (mls.UI_SHARED_FORMAT_COMBATOTHER, const.eventStandingCombatOther),
-     (mls.UI_SHARED_FORMAT_COMBATPODKILL, const.eventStandingCombatPodKill),
-     (mls.UI_SHARED_FORMAT_COMBATSHIPKILL, const.eventStandingCombatShipKill),
-     (mls.UI_SHARED_FORMAT_DECAY, const.eventStandingDecay),
-     (mls.UI_SHARED_FORMAT_DERIVEDMODIFICATIONNEG, const.eventStandingDerivedModificationNegative),
-     (mls.UI_SHARED_FORMAT_DERIVEDMODIFICATIONPOS, const.eventStandingDerivedModificationPositive),
-     (mls.UI_SHARED_FORMAT_INITIALCORPAGENT, const.eventStandingInitialCorpAgent),
-     (mls.UI_SHARED_FORMAT_INITIALFACTIONALLY, const.eventStandingInitialFactionAlly),
-     (mls.UI_SHARED_FORMAT_INITIALFACTIONCORP, const.eventStandingInitialFactionCorp),
-     (mls.UI_SHARED_FORMAT_INITIALFACTIONENEMY, const.eventStandingInitialFactionEnemy),
-     (mls.UI_SHARED_FORMAT_LAW_ENFORCEMENT, const.eventStandingPirateKillSecurityStatus),
-     (mls.UI_SHARED_FORMAT_PLAYERCORPSETSTANDING, const.eventStandingPlayerCorpSetStanding),
-     (mls.UI_SHARED_FORMAT_PLAYERSETSTANDING, const.eventStandingPlayerSetStanding),
-     (mls.UI_SHARED_FORMAT_RECALCENTITYKILLS, const.eventStandingReCalcEntityKills),
-     (mls.UI_SHARED_FORMAT_RECALCMISSIONFAILURE, const.eventStandingReCalcMissionFailure),
-     (mls.UI_SHARED_FORMAT_RECALCMISSIONSUCESS, const.eventStandingReCalcMissionSuccess),
-     (mls.UI_SHARED_FORMAT_RECALCPIRATEKILLS, const.eventStandingReCalcPirateKills),
-     (mls.UI_SHARED_FORMAT_RECALCPLAYERSETSTANDING, const.eventStandingReCalcPlayerSetStanding),
-     (mls.UI_SHARED_FORMAT_SLASHSET, const.eventStandingSlashSet),
-     (mls.UI_SHARED_FORMAT_STANDINGRESET, const.eventStandingStandingreset),
-     (mls.UI_SHARED_FORMAT_TUTORIALAGENTINITIAL, const.eventStandingTutorialAgentInitial),
-     (mls.UI_SHARED_FORMAT_UPDATESTANDING, const.eventStandingUpdatestanding)]
+    return [(localization.GetByLabel('UI/Generic/StandingNames/agentByoff'), logConst.eventAgentBuyOff),
+     (localization.GetByLabel('UI/Generic/StandingNames/agentDonation'), logConst.eventAgentDonation),
+     (localization.GetByLabel('UI/Generic/StandingNames/agentMissionBonus'), logConst.eventAgentMissionBonus),
+     (localization.GetByLabel('UI/Generic/StandingNames/agentMissionComplete'), logConst.eventAgentMissionCompleted),
+     (localization.GetByLabel('UI/Generic/StandingNames/agentMissionDeclined'), logConst.eventAgentMissionDeclined),
+     (localization.GetByLabel('UI/Generic/StandingNames/agentMissionFailed'), logConst.eventAgentMissionFailed),
+     (localization.GetByLabel('UI/Generic/StandingNames/agentMissionExpired'), logConst.eventAgentMissionOfferExpired),
+     (localization.GetByLabel('UI/Generic/StandingNames/combatAgression'), logConst.eventCombatAggression),
+     (localization.GetByLabel('UI/Generic/StandingNames/combatOther'), logConst.eventCombatOther),
+     (localization.GetByLabel('UI/Generic/StandingNames/combatPodKill'), logConst.eventCombatPodKill),
+     (localization.GetByLabel('UI/Generic/StandingNames/combatShipKill'), logConst.eventCombatShipKill),
+     (localization.GetByLabel('UI/Generic/StandingNames/decay'), logConst.eventDecay),
+     (localization.GetByLabel('UI/Generic/StandingNames/derivedNegitive'), logConst.eventDerivedModificationNegative),
+     (localization.GetByLabel('UI/Generic/StandingNames/derivedPositive'), logConst.eventDerivedModificationPositive),
+     (localization.GetByLabel('UI/Generic/StandingNames/agentInital'), logConst.eventInitialCorpAgent),
+     (localization.GetByLabel('UI/Generic/StandingNames/factionInital'), logConst.eventInitialFactionAlly),
+     (localization.GetByLabel('UI/Generic/StandingNames/factionInitalCorp'), logConst.eventInitialFactionCorp),
+     (localization.GetByLabel('UI/Generic/StandingNames/factionInitalEnemy'), logConst.eventInitialFactionEnemy),
+     (localization.GetByLabel('UI/Generic/StandingNames/lawEnforcement'), logConst.eventPirateKillSecurityStatus),
+     (localization.GetByLabel('UI/Generic/StandingNames/playerCorpSetStandings'), logConst.eventPlayerCorpSetStanding),
+     (localization.GetByLabel('UI/Generic/StandingNames/playerSetStandings'), logConst.eventPlayerSetStanding),
+     (localization.GetByLabel('UI/Generic/StandingNames/entityRecacluate'), logConst.eventRecalcEntityKills),
+     (localization.GetByLabel('UI/Generic/StandingNames/agentMissionRecaculateFailed'), logConst.eventRecalcMissionFailure),
+     (localization.GetByLabel('UI/Generic/StandingNames/agentMissionRecaculateSucess'), logConst.eventRecalcMissionSuccess),
+     (localization.GetByLabel('UI/Generic/StandingNames/entityRecaculatePirateKills'), logConst.eventRecalcPirateKills),
+     (localization.GetByLabel('UI/Generic/StandingNames/playerRecaculateSetStandings'), logConst.eventRecalcPlayerSetStanding),
+     (localization.GetByLabel('UI/Generic/StandingNames/GMSlashSet'), logConst.eventSlashSetStanding),
+     (localization.GetByLabel('UI/Generic/StandingNames/standingReset'), logConst.eventStandingReset),
+     (localization.GetByLabel('UI/Generic/StandingNames/tutorialInitial'), logConst.eventTutorialAgentInitial),
+     (localization.GetByLabel('UI/Generic/StandingNames/standingsUpdate'), logConst.eventUpdateStanding)]
 
 
 
@@ -641,12 +490,10 @@ def GetName(ownerID):
         else:
             if ownerID < 0:
                 return cfg.invtypes.Get(-ownerID).name
-            if boot.role == 'client' and sm.GetService('agents').IsAgent(ownerID):
-                return sm.GetService('agents').GetAgentDisplayName(ownerID)
             return cfg.eveowners.Get(ownerID).name
     except:
         sys.exc_clear()
-        return 'id:%s (no name)' % ownerID
+        return localizationUtil.LocalizationSafeString('id:%s (no name)' % ownerID)
 
 
 
@@ -655,19 +502,19 @@ def GetLocation(locationID):
         if boot.role == 'server' or eve.session.regionid < const.mapWormholeRegionMin:
             return cfg.evelocations.Get(locationID).name
         if locationID >= const.mapWormholeRegionMin and locationID <= const.mapWormholeRegionMax:
-            return '%s %s' % (mls.UI_GENERIC_UNCHARTED, mls.UI_GENERIC_REGION)
+            return localization.GetByLabel('UI/Generic/FormatLocations/unchartedRegion')
         if locationID >= const.mapWormholeConstellationMin and locationID <= const.mapWormholeConstellationMax:
-            return '%s %s' % (mls.UI_GENERIC_UNCHARTED, mls.UI_GENERIC_CONSTELLATION)
+            return localization.GetByLabel('UI/Generic/FormatLocations/unchartedConstellation')
         if locationID >= const.mapWormholeSystemMin and locationID <= const.mapWormholeSystemMax:
-            return '%s %s' % (mls.UI_GENERIC_UNCHARTED, mls.SYSTEM)
+            return localization.GetByLabel('UI/Generic/FormatLocations/unchartedSystem')
     except:
         sys.exc_clear()
-        return 'id:%s (unknown location)' % locationID
+        return localization.GetByLabel('UI/Generic/FormatLocations/errorUnknowenLocation', id=locationID)
 
 
 
 def FmtProbeState(state, colorize = False):
-    stateText = getattr(mls, PROBE_STATE_TEXT_MAP[state])
+    stateText = localization.GetByLabel(PROBE_STATE_TEXT_MAP[state])
     if colorize:
         return PROBE_STATE_COLOR_MAP[state] % stateText
     else:
@@ -677,40 +524,142 @@ def FmtProbeState(state, colorize = False):
 
 def FmtPlanetAttributeKeyVal(key, val):
     text = val
+    label = None
     if key == 'temperature':
-        text = str(int(val)) + ' K'
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeTemperature')
+        text = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/formatTempatureKelvin', value=str(int(val)))
     elif key == 'orbitRadius':
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeOrbitRadius')
         numAU = val / const.AU
         if numAU > 0.1:
-            text = '%.3f AU' % numAU
+            text = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/formatOrbitalRadiusInAU', value=numAU)
         else:
-            text = '%s km' % FmtAmt(int(val))
+            text = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/formatOrbitalRadiusInKM', value=FmtAmt(int(val)))
     elif key == 'eccentricity':
-        text = '%.3f' % val
-    elif key in ('massDust', 'massGas'):
-        text = '%.1e kg' % val
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeEccentricity')
+        text = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/formatEccentricity', value=val)
+    elif key == 'massDust':
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeMassDust')
+        text = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/formatMassInKG', value='%.1e' % val)
+    elif key == 'massGas':
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeMassGas')
+        text = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/formatMassInKG', value='%.1e' % val)
     elif key == 'density':
-        text = '%.1f g/cm^3' % val
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeDensity')
+        text = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/formatDensity', value=val)
     elif key == 'orbitPeriod':
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeOrbitPeriod')
         numDays = val / 864000
         if numDays > 1.0:
-            text = '%d %s' % (int(numDays), mls.UI_GENERIC_DAYSLOWER)
+            text = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/formatOrbitalPeriodInt', value=int(numDays))
         else:
-            text = '%.3f %s' % (numDays, mls.UI_GENERIC_DAYSLOWER)
+            text = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/formatOrbitalPeriodFloat', value=numDays)
     elif key in ('age',):
-        text = '%s %s' % (FmtAmt(int(val / 31536000 / 1000000) * 1000000), mls.UI_GENERIC_YEARS)
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeAge')
+        value = int(val / 31536000 / 1000000) * 1000000
+        text = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/formatAge', value=FmtAmt(value))
     elif key == 'radius':
-        text = '%s km' % FmtAmt(int(val / 1000))
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeRadius')
+        text = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/formatOrbitalRadiusInKM', value=FmtAmt(int(val / 1000)))
     elif key == 'surfaceGravity':
-        text = '%.1f m/s^2' % val
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeSurfaceGravity')
+        text = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/formatSurfaceGravity', value=val)
     elif key == 'escapeVelocity':
-        text = '%.1f km/s' % (val / 1000)
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeEscapeVelocity')
+        text = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/formatEscapeVelocity', value=val / 1000)
     elif key == 'pressure':
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributePressure')
         if val < 1000:
-            text = mls.UI_GENERIC_VERYLOW
+            text = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/formatSurfacePresureVeryLow')
         else:
-            text = '%.2f kPa' % (val / 100000)
-    return (getattr(mls, 'UI_CELINFO_' + key.upper(), key), text)
+            text = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/formatSurfacePresure', value=val / 100000)
+    elif key == 'fragmented':
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeFragmented')
+    elif key == 'life':
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeLife')
+    elif key == 'locked':
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeLocked')
+    elif key == 'luminosity':
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeLuminosity')
+        text = localizationUtil.FormatNumeric(text)
+    elif key == 'mass':
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeMass')
+    elif key == 'rotatopmRate':
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeRotatopmRate')
+    elif key == 'spectralClass':
+        label = localization.GetByLabel('UI/Generic/FormatPlanetAttributes/attributeSpectralClass')
+    return (label, text)
+
+
+
+def FmtDist2(dist, maxDecimals = 2):
+    if dist < 0.0:
+        dist = abs(dist)
+        maxDecimals = None
+    if dist < 10000.0:
+        dist = int(dist)
+        maxDecimals = None
+        fmtUrl = '/Carbon/UI/Common/FormatDistance/fmtDistInMeters'
+    elif dist < 10000000000.0:
+        dist = float(dist) / 1000.0
+        fmtUrl = '/Carbon/UI/Common/FormatDistance/fmtDistInKiloMeters'
+    else:
+        dist = round(dist / const.AU, maxDecimals)
+        fmtUrl = '/Carbon/UI/Common/FormatDistance/fmtDistInAU'
+    if maxDecimals == 0:
+        maxDecimals = None
+        dist = int(dist)
+    distStr = localizationUtil.FormatNumeric(dist, useGrouping=False, decimalPlaces=maxDecimals)
+    return localization.GetByLabel(fmtUrl, distance=distStr)
+
+
+
+def FmtISKEng(isk, showFractionsAlways = 1):
+    return FmtCurrencyEng(isk, showFractionsAlways, const.creditsISK)
+
+
+
+def FmtAUREng(aur, showFractionsAlways = 0):
+    return FmtCurrencyEng(aur, showFractionsAlways, const.creditsAURUM)
+
+
+
+def FmtCurrencyEng(amount, showFractionsAlways = 1, currency = None):
+    if currency == const.creditsAURUM:
+        currencyString = ' AUR'
+    elif currency == const.creditsISK:
+        currencyString = ' ISK'
+    else:
+        currencyString = ''
+    minus = ['-', ''][(amount >= 0)]
+    fractions = 0.0
+    try:
+        fractions = abs(math.fmod(amount, 1.0))
+        if amount is None:
+            amount = 0
+        amount = long(amount)
+    except:
+        log.LogTraceback()
+        raise RuntimeError('Value must be Int, Long or Float')
+    ret = ''
+    digit = ''
+    amt = str(abs(amount))
+    for i in xrange(len(amt) % 3, len(amt) + 3, 3):
+        if i < 3:
+            ret += amt[:i]
+        else:
+            ret += digit + amt[(i - 3):i]
+        if i != 0:
+            digit = [',', '.'][(DECIMAL == ',')]
+
+    if fractions != 0.0 and currency != const.creditsAURUM or showFractionsAlways:
+        if round(fractions * 100) / 100 == 1:
+            return FmtAmt(float('%s%s' % (minus, ret.replace(digit, ''))) + 1, showFraction=showFractionsAlways * 2) + currencyString
+        rest = str(100 * round(fractions, 2))[:2]
+        if rest[1] == '.':
+            rest = '0' + rest[0]
+        ret = '%s%s%s' % (ret, DECIMAL, rest)
+    return minus + ret + currencyString
 
 
 exports = {'util.FmtISK': FmtISK,
@@ -722,5 +671,9 @@ exports = {'util.FmtISK': FmtISK,
  'util.FmtSystemSecStatus': FmtSystemSecStatus,
  'util.FmtProbeState': FmtProbeState,
  'util.GetLocation': GetLocation,
- 'util.FmtPlanetAttributeKeyVal': FmtPlanetAttributeKeyVal}
+ 'util.FmtPlanetAttributeKeyVal': FmtPlanetAttributeKeyVal,
+ 'util.FmtDist2': FmtDist2,
+ 'util.FmtISKEng': FmtISKEng,
+ 'util.FmtAUREng': FmtAUREng,
+ 'util.FmtCurrencyEng': FmtCurrencyEng}
 

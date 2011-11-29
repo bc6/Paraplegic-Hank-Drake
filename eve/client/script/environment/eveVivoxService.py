@@ -8,6 +8,7 @@ import util
 import vivox
 import vivoxConstants
 import uiconst
+import localization
 
 class EveVivoxService(svc.vivox):
     __guid__ = 'svc.evevivox'
@@ -35,7 +36,7 @@ class EveVivoxService(svc.vivox):
 
 
     def AppGetServerName(self):
-        return eve.serverName
+        return util.GetServerName()
 
 
 
@@ -74,7 +75,7 @@ class EveVivoxService(svc.vivox):
 
 
             if self.connector.ChannelJoinInProgressCount() - virtualChannels >= 2:
-                eve.Message('CustomNotify', {'notify': mls.UI_EVEVOICE_TOOMANYCHANNELS})
+                eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Voice/TooManyChannels')})
                 return False
         if type(eveChannelID) == types.TupleType:
             for key in self.members.keys():
@@ -84,7 +85,7 @@ class EveVivoxService(svc.vivox):
                     self.LeaveChannel(self.GetCcpChannelName(key))
 
         if self.connector.ChannelJoinInProgressCount() > 6:
-            eve.Message('CustomNotify', {'notify': mls.UI_EVEVOICE_TOOMANYCHANNELS})
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Voice/TooManyChannels')})
             return False
         return True
 
@@ -112,7 +113,7 @@ class EveVivoxService(svc.vivox):
             uthread.pool('vivox::SetSpeakingChannel', self._SetSpeakingChannel, 'muted', self.speakingChannel)
             self.speakingChannel = None
         elif sm.GetService('fleet').IsVoiceMuted(eveChannelID) or self.gaggedAt.has_key(vivoxChannelName):
-            eve.Message('CustomNotify', {'notify': mls.UI_FLEET_MUTED_IN_CHANNEL})
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Voice/MutedInChannel')})
 
 
 
@@ -141,7 +142,7 @@ class EveVivoxService(svc.vivox):
                 self.SetSpeakingChannel(None)
             self.LogInfo('I was gagged at', vivoxChannelName)
             sm.RemoteSvc('LSC').VoiceStatus(eveChannelID, 2)
-            blue.pyos.synchro.Sleep(blue.os.TimeDiffInMs(blue.os.GetTime(), time))
+            blue.pyos.synchro.SleepWallclock(blue.os.TimeDiffInMs(blue.os.GetWallclockTime(), time))
             self.UnGag(charID, eveChannelID)
         else:
             self.LogInfo('someone was gagged at', charID, vivoxChannelName)
@@ -211,7 +212,7 @@ class EveVivoxService(svc.vivox):
 
 
     def AppCreateAccountSendNotifyMessage(self):
-        eve.Message('CustomNotify', {'notify': mls.UI_EVEVOICE_CREATINGVOICEACCOUNT})
+        eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Voice/CreatingAccount')})
 
 
 
@@ -235,14 +236,14 @@ class EveVivoxService(svc.vivox):
 
 
     def AppGetAvailableKeyBindings(self):
-        availableKeyBindings = [(mls.UI_GENERIC_NONE, 1),
-         (mls.UI_SYSMENU_MIDDLEMOUSE, 4),
-         (mls.UI_SYSMENU_LEFTCTRL, 162),
-         (mls.UI_SYSMENU_RIGHTCTRL, 163),
-         (mls.UI_SYSMENU_LEFTALT, 164),
-         (mls.UI_SYSMENU_RIGHTALT, 165),
-         (mls.UI_GENERIC_KEYPAD + ' 0', 96),
-         (mls.UI_SYSMENU_RIGHTSHIFT, 161)]
+        availableKeyBindings = [(localization.GetByLabel('UI/Generic/None'), 1),
+         (localization.GetByLabel('UI/SystemMenu/MiddleMouseButton'), 4),
+         (localization.GetByLabel('UI/SystemMenu/LeftCtrl'), 162),
+         (localization.GetByLabel('UI/SystemMenu/RightCtrl'), 163),
+         (localization.GetByLabel('UI/SystemMenu/LeftAlt'), 164),
+         (localization.GetByLabel('UI/SystemMenu/RightAlt'), 165),
+         (localization.GetByLabel('UI/Generic/KeyPad0'), 96),
+         (localization.GetByLabel('UI/SystemMenu/RightShift'), 161)]
         return availableKeyBindings
 
 
@@ -295,10 +296,10 @@ class EveVivoxService(svc.vivox):
         if color:
             if color.lower() == 'speak':
                 icon = 'ui_38_16_197'
-                tip = mls.UI_GENERIC_YOUARESPEAKING
+                tip = localization.GetByLabel('UI/Voice/YouAreSpeaking')
             else:
                 icon = 'ui_38_16_196'
-                tip = mls.UI_GENERIC_YOUARELISTENING
+                tip = localization.GetByLabel('UI/Voice/YouAreListening')
         wnd.SetHeaderIcon(icon, 12, tip)
 
 
@@ -433,15 +434,15 @@ class EveVivoxService(svc.vivox):
         myInstantChannel = 'inst' + str(eve.session.charid)
         if reply == -1:
             self.connector.LeaveChannel(myInstantChannel)
-            eve.Message('CustomNotify', {'notify': mls.UI_EVEVOICE_INIVITENOTVOICEENABLED})
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Voice/InviteNotVoiceEnabled')})
             sm.ScatterEvent('OnInstantVoiceChannelFailed')
         elif reply == -2:
             self.connector.LeaveChannel(myInstantChannel)
-            eve.Message('CustomNotify', {'notify': mls.UI_EVEVOICE_INVITEBUSY})
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Voice/InviteBusy')})
             sm.ScatterEvent('OnInstantVoiceChannelFailed')
         elif reply == -3:
             self.connector.LeaveChannel(myInstantChannel)
-            eve.Message('CustomNotify', {'notify': mls.UI_EVEVOICE_INVITENOTINFLEETWITHYOU})
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Voice/InviteNotInFleet')})
             sm.ScatterEvent('OnInstantVoiceChannelFailed')
 
 
@@ -462,12 +463,12 @@ class EveVivoxService(svc.vivox):
 
     def InstantVoiceResponse(self):
         WAIT_TIME = 10
-        blue.pyos.synchro.Sleep(WAIT_TIME * 1000)
+        blue.pyos.synchro.SleepWallclock(WAIT_TIME * 1000)
         if self.members.has_key('inst' + str(session.charid)):
             if len(self.members[('inst' + str(session.charid))]) == 0:
                 self.LogWarn('Timeout (', WAIT_TIME, ' sec) waiting for participant to join instant chat.')
                 self.LeaveInstantChannel()
-                eve.Message('CustomNotify', {'notify': mls.UI_EVEVOICE_PRIVATETIMEOUT})
+                eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Voice/PrivateTimeout')})
                 sm.ScatterEvent('OnInstantVoiceChannelFailed')
                 return 
         self.LogInfo('InstantVoiceResponse() - got member')
@@ -482,17 +483,17 @@ class EveVivoxService(svc.vivox):
             if self.prettyChannelNames.has_key(key):
                 return self.prettyChannelNames[key]
             if t.startswith('corp'):
-                c = mls.UI_GENERIC_CORPORATION
+                c = localization.GetByLabel('UI/Common/Corporation')
             elif t.startswith('fleet'):
-                c = mls.UI_FLEET_FLEET
+                c = localization.GetByLabel('UI/Fleet/Fleet')
             elif t.startswith('wing'):
-                c = mls.UI_FLEET_WING
+                c = localization.GetByLabel('UI/Fleet/Wing')
             if t.startswith('squad'):
-                c = mls.UI_FLEET_SQUAD
+                c = localization.GetByLabel('UI/Fleet/Squad')
             elif t.startswith('inst'):
-                c = mls.UI_FLEET_PRIVATE
+                c = localization.GetByLabel('UI/Fleet/Private')
             elif t.startswith('alliance'):
-                c = mls.UI_GENERIC_ALLIANCE
+                c = localization.GetByLabel('UI/Common/Alliance')
         else:
             key = eveChannelName
             if self.prettyChannelNames.has_key(key):
@@ -550,7 +551,7 @@ class EveVivoxService(svc.vivox):
 
     def AppOnLoggedIn(self):
         if self.sendMessageOnLogIn:
-            eve.Message('CustomNotify', {'notify': mls.UI_SYSMENU_EVEVOICEENABLED})
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Voice/Enabled')})
         self.sendMessageOnLogIn = True
         if settings.user.audio.Get('talkBinding', 4):
             self.EnableGlobalPushToTalkMode('talk')
@@ -562,23 +563,23 @@ class EveVivoxService(svc.vivox):
 
 
     def AppOnLoggedOut(self):
-        eve.Message('CustomNotify', {'notify': mls.UI_EVEVOICE_LOGGEDOUT})
+        eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Voice/LoggedOut')})
 
 
 
     def AppOnAccountNotFound(self):
-        eve.Message('CustomNotify', {'notify': mls.UI_EVEVOICE_VOICEACCOUNTNOTFOUND})
+        eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Voice/AccountNotFound')})
 
 
 
     def AppAccountCreated(self):
-        eve.Message('CustomNotify', {'notify': mls.UI_EVEVOICE_VOICEACCOUNTINIT})
+        eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Voice/Initializing')})
         self.LogInfo('Account created')
 
 
 
     def AppCreateAccountFailed(self):
-        eve.Message('CustomNotify', {'notify': mls.UI_EVEVOICE_CREATINGVOICEACCOUNTFAILED % {'statusText': ''}})
+        eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Voice/CreatingAccountFailed')})
 
 
 
@@ -594,7 +595,7 @@ class EveVivoxService(svc.vivox):
             return 
         eveChannelName = self.GetCcpChannelName(channelName)
         uthread.new(self.voiceMgr.LogChannelJoined, channelName).context = 'vivoxService::_OnJoinChannel::LogChannelJoined'
-        eve.Message('CustomNotify', {'notify': mls.UI_EVEVOICE_JOINEDCHANNEL % {'name': self.GetPrettyChannelName(eveChannelName)}})
+        eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Voice/JoinedChannel', channel=self.GetPrettyChannelName(eveChannelName))})
         if 'inst' in channelName:
             sm.ScatterEvent('OnVoiceChannelJoined', eveChannelName)
             uthread.pool('vivox::_OnJoinedChannel', self.GetParticipants, channelName)
@@ -658,7 +659,7 @@ class EveVivoxService(svc.vivox):
                 self.speakingChannel = None
             if len(self.members.keys()) == 0 and self.autoJoinQueue == ['Echo']:
                 self.JoinEchoChannel()
-            eve.Message('CustomNotify', {'notify': mls.UI_EVEVOICE_LEFTCHANNEL % {'name': self.GetPrettyChannelName(eveChannelName)}})
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Voice/LeftChannel', channel=self.GetPrettyChannelName(eveChannelName))})
             sm.ScatterEvent('OnVoiceChannelLeft', eveChannelName)
 
 
@@ -685,7 +686,7 @@ class EveVivoxService(svc.vivox):
 
 
     def OnInstantVoiceChannelReady(self):
-        eve.Message('CustomNotify', {'notify': mls.UI_EVEVOICE_PRIVATECHANNELREADY % {'name': cfg.eveowners.Get(self.GetInstantVoiceParticipant()).name}})
+        eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Voice/PrivateChannelReady', char=self.GetInstantVoiceParticipant())})
 
 
 

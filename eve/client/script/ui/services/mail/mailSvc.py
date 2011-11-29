@@ -14,7 +14,7 @@ import uiutil
 import uthread
 import uix
 import copy
-import uicls
+import localization
 MAIL_PATH = blue.rot.PathToFilename('cache:/EveMail/')
 BODIES_IN_CACHE = 30
 MAIL_FILE_HEADER_VERSION = 5
@@ -147,7 +147,7 @@ class mailSvc(service.Service):
                 raise 
             except Exception as e:
                 log.LogException('mail failed to load')
-                raise UserError('CustomInfo', {'info': mls.UI_EVEMAIL_FAILEDTOLOAD})
+                raise UserError('CustomInfo', {'info': localization.GetByLabel('UI/Mail/FailedToLoad')})
 
 
 
@@ -240,7 +240,7 @@ class mailSvc(service.Service):
                     try:
                         mail.senderName = cfg.eveowners.Get(mail.senderID).name
                     except IndexError:
-                        mail.senderName = mls.UI_GENERIC_UNKNOWN
+                        mail.senderName = localization.GetByLabel('UI/Generic/Unknown')
 
             for messageID in toDelete:
                 del self.mailHeaders[messageID]
@@ -556,11 +556,11 @@ class mailSvc(service.Service):
 
 
 
-    def GetMailsByLabelOrListID(self, labelID = None, orderBy = mls.UI_EVEMAIL_RECEIVED, ascending = False, pos = 0, count = 20, listID = None):
+    def GetMailsByLabelOrListID(self, labelID = None, orderBy = localization.GetByLabel('UI/Mail/Received'), ascending = False, pos = 0, count = 20, listID = None):
         self.LogInfo('Get messages', labelID, orderBy, ascending, pos, count, listID)
         tmpList = []
         isSentitems = labelID == const.mailLabelSent
-        if isSentitems and orderBy == mls.UI_EVEMAIL_SENDER:
+        if isSentitems and orderBy == localization.GetByLabel('UI/Mail/Sender'):
             mails = []
             for message in self.mailHeaders.itervalues():
                 if labelID in message.labels:
@@ -580,13 +580,13 @@ class mailSvc(service.Service):
         ret = util.KeyVal()
         ret.totalNum = len(tmpList)
         ret.sorted = self.DoSort(tmpList, ascending=ascending, pos=pos, count=count)
-        if isSentitems and orderBy != mls.UI_EVEMAIL_SENDER:
+        if isSentitems and orderBy != localization.GetByLabel('UI/Mail/Sender'):
             self.TryPrimeRecipients(ret.sorted)
         return ret
 
 
 
-    def GetTrashedMails(self, orderBy = mls.UI_EVEMAIL_RECEIVED, ascending = False, pos = 0, count = 20):
+    def GetTrashedMails(self, orderBy = localization.GetByLabel('UI/Mail/Received'), ascending = False, pos = 0, count = 20):
         self.LogInfo('Get trash', orderBy, ascending, pos, count)
         tmpList = []
         for message in self.mailHeaders.itervalues():
@@ -601,22 +601,22 @@ class mailSvc(service.Service):
 
 
 
-    def PrepareOrder(self, message, orderBy = mls.UI_EVEMAIL_RECEIVED, ascending = False, sentItems = 0):
+    def PrepareOrder(self, message, orderBy = localization.GetByLabel('UI/Mail/Received'), ascending = False, sentItems = 0):
         if ascending:
             secondarySortID = message.messageID
         else:
             secondarySortID = -message.messageID
-        if orderBy == mls.UI_EVEMAIL_RECEIVED:
+        if orderBy == localization.GetByLabel('UI/Mail/Received'):
             return (message.messageID, secondarySortID)
-        if orderBy == mls.UI_EVEMAIL_SUBJECT:
+        if orderBy == localization.GetByLabel('UI/Mail/Subject'):
             return (message.subject.lower(), secondarySortID)
-        if orderBy == mls.UI_EVEMAIL_SENDER:
+        if orderBy == localization.GetByLabel('UI/Mail/Sender'):
             if sentItems:
                 name = self.GetRecipient(message, getName=1)
             else:
                 name = message.senderName
             return (name.lower(), secondarySortID)
-        if orderBy == mls.UI_EVEMAIL_STATUS:
+        if orderBy == localization.GetByLabel('UI/Mail/Status'):
             order = 4
             if not message.read:
                 order = 1
@@ -686,7 +686,7 @@ class mailSvc(service.Service):
         numSentTo += len(toCharIDs) + len(toCorpIDs)
         if numSentTo > 1:
             if getName:
-                return mls.UI_EVEMAIL_MULTIPLE
+                return localization.GetByLabel('UI/Mail/Multiple')
             else:
                 return -1
         for each in toCharIDs + toCorpIDs:
@@ -717,10 +717,10 @@ class mailSvc(service.Service):
     def GetAllLabels(self, assignable = 0):
         self.LogInfo('GetAllLabels')
         allLabels = copy.copy(self.GetLabels())
-        static = [(mls.UI_EVEMAIL_LABEL_ALLIANCE, const.mailLabelAlliance),
-         (mls.UI_EVEMAIL_LABEL_CORP, const.mailLabelCorporation),
-         (mls.UI_EVEMAIL_LABEL_INBOX, const.mailLabelInbox),
-         (mls.UI_EVEMAIL_LABEL_SENT, const.mailLabelSent)]
+        static = [(localization.GetByLabel('UI/Mail/LabelAlliance'), const.mailLabelAlliance),
+         (localization.GetByLabel('UI/Mail/LabelCorp'), const.mailLabelCorporation),
+         (localization.GetByLabel('UI/Mail/LabelInbox'), const.mailLabelInbox),
+         (localization.GetByLabel('UI/Mail/LabelSent'), const.mailLabelSent)]
         for (name, id,) in static:
             keyVal = allLabels.get(id, None)
             if keyVal is not None:
@@ -849,9 +849,7 @@ class mailSvc(service.Service):
 
 
     def TryCloseMailWindow(self):
-        wnd = sm.GetService('window').GetWindow('mail', 0, decoClass=form.MailWindow)
-        if wnd is not None:
-            wnd.CloseX()
+        form.MailWindow.CloseIfOpen()
 
 
 
@@ -915,7 +913,7 @@ class mailSvc(service.Service):
 
     def __WriteToShelveFile(self, fileName, key, value):
         self.LogInfo('WriteToShelve', fileName, key)
-        s = blue.os.GetTime(1)
+        s = blue.os.GetWallclockTimeNow()
         key = str(key)
         try:
             fileHandle = shelve.open(fileName)
@@ -926,13 +924,13 @@ class mailSvc(service.Service):
             self.cacheFileCorruption = True
             self.TryCloseMailWindow()
             raise UserError('MailCacheFileError')
-        self.LogInfo('Writing', blue.os.TimeDiffInMs(s, blue.os.GetTime(1)))
+        self.LogInfo('Writing', blue.os.TimeDiffInMs(s, blue.os.GetWallclockTimeNow()))
 
 
 
     def __ReadFromShelveFile(self, fileName, key):
         self.LogInfo('ReadingFromShelve', fileName, key)
-        s = blue.os.GetTime(1)
+        s = blue.os.GetWallclockTimeNow()
         key = str(key)
         retValue = None
         try:
@@ -946,7 +944,7 @@ class mailSvc(service.Service):
             self.cacheFileCorruption = True
             self.TryCloseMailWindow()
             raise UserError('MailCacheFileError')
-        self.LogInfo('Reading', blue.os.TimeDiffInMs(s, blue.os.GetTime(1)))
+        self.LogInfo('Reading', blue.os.TimeDiffInMs(s, blue.os.GetWallclockTimeNow()))
 
 
 
@@ -972,7 +970,7 @@ class mailSvc(service.Service):
 
     def __DeleteFromBodyFile(self, key):
         self.LogInfo('DeletingFromShelve', key)
-        s = blue.os.GetTime(1)
+        s = blue.os.GetWallclockTimeNow()
         key = str(key)
         try:
             fileHandle = shelve.open(self.mailFileBodies)
@@ -984,7 +982,7 @@ class mailSvc(service.Service):
             self.cacheFileCorruption = True
             self.TryCloseMailWindow()
             raise UserError('MailCacheFileError')
-        self.LogInfo('Deleting', blue.os.TimeDiffInMs(s, blue.os.GetTime(1)))
+        self.LogInfo('Deleting', blue.os.TimeDiffInMs(s, blue.os.GetWallclockTimeNow()))
 
 
 
@@ -1022,7 +1020,7 @@ class mailSvc(service.Service):
                 mail.forwarded = 1
                 mail.statusMask = mail.statusMask | const.mailStatusMaskForwarded
                 self.needToSaveHeaders = True
-        self.OnMailSent(messageID, session.charid, blue.os.GetTime() / MIN * MIN, toCharacterIDs, toListID, toCorpOrAllianceID, title, 0)
+        self.OnMailSent(messageID, session.charid, blue.os.GetWallclockTime() / MIN * MIN, toCharacterIDs, toListID, toCorpOrAllianceID, title, 0)
         sm.ScatterEvent('OnMailStatusUpdate', isReplyTo, isForwardedFrom)
         return messageID
 
@@ -1031,10 +1029,10 @@ class mailSvc(service.Service):
     def SendMsgDlg(self, toCharacterIDs = [], toListID = None, toCorpOrAllianceID = [], isForwardedFrom = 0, isReplyTo = 0, subject = None, body = None):
         if session.userType == const.userTypeTrial:
             n = 1
-            t = getattr(self, 'lastMessageTime', blue.os.GetTime() - 10 * const.mailTrialAccountTimer * MIN)
-            if blue.os.GetTime() - t < n * const.mailTrialAccountTimer * MIN:
-                raise UserError('TrialAccountRestriction', {'what': mls.UI_SHARED_EVEMAILRESTRICTIONTIME % {'timeleft': util.FmtDate(t + n * MIN - blue.os.GetTime())}})
-        sendPage = sm.GetService('window').GetWindow('newmessage', 1, decoClass=form.NewNewMessage, ignoreCurrent=1, toCharacterIDs=toCharacterIDs, toListID=toListID, toCorpOrAllianceID=toCorpOrAllianceID, isForwardedFrom=isForwardedFrom, isReplyTo=isReplyTo, subject=subject, body=body)
+            t = getattr(self, 'lastMessageTime', blue.os.GetWallclockTime() - 10 * const.mailTrialAccountTimer * MIN)
+            if blue.os.GetWallclockTime() - t < n * const.mailTrialAccountTimer * MIN:
+                raise UserError('TrialAccountRestriction', {'what': localization.GetByLabel('UI/Mail/RestrictionTime', timeLeft=t + n * MIN - blue.os.GetWallclockTime())})
+        sendPage = form.NewNewMessage.Open(toCharacterIDs=toCharacterIDs, toListID=toListID, toCorpOrAllianceID=toCorpOrAllianceID, isForwardedFrom=isForwardedFrom, isReplyTo=isReplyTo, subject=subject, body=body)
         return sendPage
 
 
@@ -1060,7 +1058,7 @@ class mailSvc(service.Service):
         receiversText = self.GetReceiverText(msg)
         newmsg = self.SendMsgDlg(toCharacterIDs=toCharacterIDs, toListID=toListID, toCorpOrAllianceID=toCorpOrAllianceID, isReplyTo=msg.messageID)
         newmsgText = self.GetReplyMessage(msg)
-        newmsg.sr.subjecField.SetValue('%s %s' % (mls.UI_GENERIC_INBOXRE, msg.subject))
+        newmsg.sr.subjecField.SetValue('%s %s' % (localization.GetByLabel('UI/Mail/GenericInboxRe'), msg.subject))
         newmsg.messageedit.SetValue(newmsgText, scrolltotop=1)
 
 
@@ -1073,13 +1071,13 @@ class mailSvc(service.Service):
         if receiversMaillistID is not None:
             name = sm.GetService('mailinglists').GetDisplayName(receiversMaillistID)
             if format:
-                name = '<b>%s</b>' % name
-            receiversText += '%s, ' % name
+                name = localization.GetByLabel('UI/Map/StarMap/lblBoldName', name=name)
+                receiversText += '%s, ' % name
         if receiversCorp:
             name = cfg.eveowners.Get(receiversCorp).ownerName
             toAdd = '%s' % name
             if format:
-                toAdd = '<b>%s</b>' % toAdd
+                toAdd = localization.GetByLabel('UI/Map/StarMap/lblBoldName', name=toAdd)
             receiversText += '%s, ' % toAdd
         charsIDs = [ charID for charID in receiversChar if charID not in (-1, None) ]
         self.PrimeOwners(charsIDs)
@@ -1106,17 +1104,10 @@ class mailSvc(service.Service):
         date = msg.sentDate
         receiversText = self.GetReceiverText(msg, format=1)
         if msg.statusMask & const.mailStatusMaskAutomated == const.mailStatusMaskAutomated:
-            senderText = '<b>%s</b>' % senderName
+            senderText = localization.GetByLabel('UI/Map/StarMap/lblBoldName', name=senderName)
         else:
             senderText = '<a href="showinfo:1377//%s">%s</a>' % (senderID, senderName)
-        txt = '\n<font size=22>%(subject)s</font>\n<br>\n<font size=12><b>%(from)s: </b>%(senderText)s</font>\n<br>\n<font size=12><b>%(sent)s: </b>%(date)s</font>\n<br>\n<font size=12><b>%(to)s: </b>%(receivers)s</font>\n<font size=12>\n<br>\n<br>\n%(body)s</font>\n' % {'from': mls.UI_EVEMAIL_FROM,
-         'sent': mls.UI_EVEMAIL_SENT,
-         'to': mls.UI_EVEMAIL_TO,
-         'subject': subject,
-         'senderText': senderText,
-         'body': body,
-         'date': util.FmtDate(date, 'ls'),
-         'receivers': receiversText}
+        txt = localization.GetByLabel('UI/Mail/MailText', subject=subject, sender=senderText, date=util.FmtDate(date, 'ls'), receivers=receiversText, body=body)
         return txt
 
 
@@ -1126,17 +1117,17 @@ class mailSvc(service.Service):
             return ''
         receiversText = self.GetReceiverText(msg)
         if msg.statusMask & const.mailStatusMaskAutomated == const.mailStatusMaskAutomated:
-            senderText = '<b>%s</b>' % msg.senderName
+            senderText = localization.GetByLabel('UI/Map/StarMap/lblBoldName', name=msg.senderName)
         else:
             senderText = '<a href="showinfo:1377//%s">%s</a>' % (msg.senderID, cfg.eveowners.Get(msg.senderID).ownerName)
         body = self.GetBody(msg.messageID)
         newmsgText = '\n<br><br>%(line)s<br>\n%(subject)s\n<br>\n%(from)s: %(senders)s\n<br>\n%(sent)s: %(date)s\n<br>\n%(to)s: %(receivers)s\n<br>\n<br>\n%(body)s\n' % {'line': '--------------------------------',
          'subject': msg.subject,
-         'from': mls.UI_EVEMAIL_FROM,
+         'from': localization.GetByLabel('UI/Mail/From'),
          'senders': senderText,
-         'sent': mls.UI_EVEMAIL_SENT,
+         'sent': localization.GetByLabel('UI/Mail/Sent'),
          'date': util.FmtDate(msg.sentDate, 'ls'),
-         'to': mls.UI_EVEMAIL_TO,
+         'to': localization.GetByLabel('UI/Mail/To'),
          'receivers': receiversText,
          'body': body}
         maxLen = const.mailMaxBodySize * 0.9
@@ -1190,7 +1181,7 @@ class mailSvc(service.Service):
                 try:
                     self.mailHeaders[messageID].senderName = cfg.eveowners.Get(senderID).name
                 except IndexError:
-                    self.mailHeaders[messageID].senderName = mls.UI_GENERIC_UNKNOWN
+                    self.mailHeaders[messageID].senderName = localization.GetByLabel('UI/Generic/Unknown')
             self.needToSaveHeaders = True
             if not read:
                 self.OnNewMailReceived(self.mailHeaders[messageID])
@@ -1240,9 +1231,9 @@ class mailSvc(service.Service):
 
 
     def GetMailNotification(self, msg):
-        header = mls.UI_EVEMAIL_NEWMAILHEADER
+        header = localization.GetByLabel('UI/Mail/NewMailHeader')
         senderName = msg.senderName
-        text1 = '%s: %s' % (mls.UI_EVEMAIL_FROM, senderName)
+        text1 = '%s: %s' % (localization.GetByLabel('UI/Mail/From'), senderName)
         subject = msg.subject
         if len(subject) > 100:
             text2 = '%s...' % subject[:100]
@@ -1262,17 +1253,17 @@ class mailSvc(service.Service):
 
 
     def GetMailAndNotificationNotification(self, mailCount, notificationCount, time = 5000, shouldBlinkNeocom = False):
-        blue.pyos.synchro.Sleep(3000)
+        blue.pyos.synchro.SleepWallclock(3000)
         if shouldBlinkNeocom:
             sm.GetService('neocom').Blink('mail')
-        blue.pyos.synchro.Sleep(7000)
-        header = mls.UI_EVEMAIL_NEWMAILHEADER
+        blue.pyos.synchro.SleepWallclock(7000)
+        header = localization.GetByLabel('UI/Mail/NewMailHeader')
         text1 = ''
         text2 = ''
         if mailCount > 0:
-            text1 = mls.UI_EVEMAIL_NEWMAILS % {'numMails': mailCount}
+            text1 = localization.GetByLabel('UI/Mail/NewMails', numMails=mailCount)
         if notificationCount > 0:
-            text2 = mls.UI_EVEMAIL_NEWNOTIFICATIONS % {'num': notificationCount}
+            text2 = localization.GetByLabel('UI/Mail/NewNotifications', num=notificationCount)
         if text1 == '':
             text1 = text2
             text2 = ''
@@ -1288,9 +1279,7 @@ class mailSvc(service.Service):
 
 
     def ShowMailNotification(self, header, text1, text2, number = (0, 0), time = 5000, *args):
-        ahidden = sm.GetService('neocom').GetAHidden() or settings.user.windows.Get('neoalign', 'left') != 'left'
-        BIG = settings.user.windows.Get('neowidth', 1) and not ahidden
-        left = [[36, 2], [132, 2]][BIG][ahidden] + 14
+        (leftSide, rightSide,) = sm.GetService('neocom').GetSideOffset()
         data = util.KeyVal()
         data.headerText = header
         data.text1 = text1
@@ -1299,7 +1288,7 @@ class mailSvc(service.Service):
         data.time = time
         icon = uiutil.FindChild(uicore.layer.abovemain, 'newmail')
         if not icon:
-            icon = xtriui.PopupNotification(name='newmail', parent=None, align=uiconst.TOPLEFT, pos=(left,
+            icon = xtriui.PopupNotification(name='newmail', parent=None, align=uiconst.TOPLEFT, pos=(leftSide,
              60,
              230,
              60), idx=0)
@@ -1313,12 +1302,12 @@ class mailSvc(service.Service):
 
     def OnOpenPopupMail(self, msg, *args):
         wndName = 'mail_readingWnd_%s' % msg.messageID
-        wnd = sm.GetService('window').GetWindow(wndName, 1, decoClass=form.MailReadingWnd, windowPrefsID='mailReadingWnd', mail=msg, msgID=msg.messageID, txt='', toolbar=1, trashed=msg.trashed, type=const.mailTypeMail)
+        wnd = form.MailReadingWnd.Open(windowID=wndName, mail=msg, msgID=msg.messageID, txt='', toolbar=1, trashed=msg.trashed, type=const.mailTypeMail)
         if not msg.read:
             sm.ScatterEvent('OnMailStatusUpdate', None, None, [msg.messageID])
         if wnd is not None:
             wnd.Maximize()
-            blue.pyos.synchro.Sleep(1)
+            blue.pyos.synchro.SleepWallclock(1)
             wnd.SetText(self.GetMailText(msg))
 
 
@@ -1350,7 +1339,7 @@ class mailSvc(service.Service):
 
 
     def MailMenu(self, *args):
-        m = [(mls.UI_EVEMAIL_DISABLENOTIFICATION, self.DisableNotification)]
+        m = [(localization.GetByLabel('UI/Mail/DisableNotification'), self.DisableNotification)]
         return m
 
 
@@ -1360,24 +1349,16 @@ class mailSvc(service.Service):
 
 
 
-    def GetMailWindow(self, create = 1, *args):
-        if self.IsFileCacheCorrupted():
-            raise UserError('MailCacheFileError')
-        wnd = sm.GetService('window').GetWindow('mail', create, decoClass=form.MailWindow)
-        return wnd
-
-
-
     def CheckLabelName(self, dict, *args):
         name = dict.get('name', '').strip()
         myLabelNames = [ label.name for label in self.GetAllLabels(assignable=0).values() ]
         if name in myLabelNames:
-            return mls.UI_EVEMAIL_LABELNAMETAKEN
+            return localization.GetByLabel('UI/Mail/LabelNameTaken')
 
 
 
     def RenameLabelFromUI(self, labelID):
-        ret = uix.NamePopup(mls.UI_EVEMAIL_LABELNAME, mls.UI_EVEMAIL_LABELNAME2, maxLength=const.mailMaxLabelSize, validator=self.CheckLabelName)
+        ret = uix.NamePopup(localization.GetByLabel('UI/Mail/LabelName'), localization.GetByLabel('UI/Mail/LabelTypeNew'), maxLength=const.mailMaxLabelSize, validator=self.CheckLabelName)
         if ret is None:
             return 
         name = ret.get('name', '')

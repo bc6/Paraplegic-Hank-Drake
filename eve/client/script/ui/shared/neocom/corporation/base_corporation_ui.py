@@ -1,22 +1,20 @@
-from service import *
+import service
 import uthread
 import blue
 import uix
 import uiutil
-import xtriui
 import form
-import operator
 import util
-import draw
 import uiconst
 import uicls
+import localization
 
 def ReturnNone():
     return None
 
 
 
-class CorporationUI(Service):
+class CorporationUI(service.Service):
     __exportedcalls__ = {'VoteWindow': [],
      'LoadTop': [],
      'Show': [],
@@ -42,31 +40,44 @@ class CorporationUI(Service):
      'OnLockedItemChangeUI': [],
      'OnCorporationMedalAdded': []}
     __guid__ = 'svc.corpui'
-    __notifyevents__ = ['ProcessSessionChange', 'OnSessionChanged', 'DoSessionChanging']
+    __notifyevents__ = ['ProcessSessionChange',
+     'OnSessionChanged',
+     'DoSessionChanging',
+     'ProcessUIRefresh']
     __servicename__ = 'corpui'
     __displayname__ = 'Corporation UI Client Service'
     __dependencies__ = ['corp']
     __update_on_reload__ = 0
 
     def __init__(self):
-        Service.__init__(self)
+        service.Service.__init__(self)
         self.wasVisible = 0
 
 
 
     def Run(self, memStream = None):
         self.LogInfo('Starting Corporation')
-        self.state = SERVICE_START_PENDING
+        self.state = service.SERVICE_START_PENDING
         self.locks = {}
         self.ResetWindow()
-        self.state = SERVICE_RUNNING
+        self.state = service.SERVICE_RUNNING
 
 
 
     def Stop(self, memStream = None):
         wnd = self.GetWnd()
         if wnd and not wnd.destroyed:
-            wnd.SelfDestruct()
+            wnd.Close()
+
+
+
+    def ProcessUIRefresh(self):
+        wnd = form.Corporation.GetIfOpen()
+        showWindow = False
+        if wnd and not wnd.IsHidden():
+            showWindow = True
+        self.Stop()
+        self.ResetWindow(bShowIfVisible=showWindow)
 
 
 
@@ -90,9 +101,9 @@ class CorporationUI(Service):
         if 'corpid' in change or 'corprole' in change or 'allianceid' in change:
             self.ResetWindow(self.wasVisible)
         if 'corpid' in change or 'allianceid' in change:
-            bulletinWnd = sm.GetService('window').GetWindow('EditCorpBulletin')
+            bulletinWnd = form.EditCorpBulletin.GetIfOpen()
             if bulletinWnd and ('corpid' in change or bulletinWnd.IsAlliance()):
-                bulletinWnd.SelfDestruct()
+                bulletinWnd.Close()
         if 'solarsystemid' in change:
             self.RefreshWindow()
 
@@ -107,16 +118,16 @@ class CorporationUI(Service):
 
 
     def GetWnd(self, haveto = 0, panelName = None):
-        wnd = sm.GetService('window').GetWindow('corporation')
+        wnd = form.Corporation.GetIfOpen()
         if not wnd and haveto:
-            wnd = sm.GetService('window').GetWindow('corporation', create=1, decoClass=form.Corporation)
+            wnd = form.Corporation.Open()
             wnd.sr.main = uiutil.GetChild(wnd, 'main')
             wnd.sr.main.left = wnd.sr.main.top = 0
             wnd.sr.main.clipChildren = 1
-            wnd.SetCaption(mls.UI_GENERIC_CORPORATION)
+            wnd.SetCaption(localization.GetByLabel('UI/Corporations/BaseCorporationUI/Corporation'))
             wnd.OnScale_ = self.OnWndScale
             wnd.RefreshSize = self.RefreshSize
-            wnd.OnClose_ = self.OnCloseWnd
+            wnd._OnClose = self.OnCloseWnd
             wnd.SetWndIcon('ui_7_64_6')
             wnd.SetTopparentHeight(0)
             self.Initialize(wnd, panelName)
@@ -127,8 +138,8 @@ class CorporationUI(Service):
     def OnCloseWnd(self, *args):
         for panels in self.panels.values():
             for panel in panels:
-                if hasattr(panel, 'OnClose_'):
-                    panel.OnClose_(args)
+                if hasattr(panel, '_OnClose'):
+                    panel._OnClose(args)
 
 
         self.ResetPanels()
@@ -184,7 +195,7 @@ class CorporationUI(Service):
             self.ResetPanels()
             wnd = self.GetWnd()
             if wnd and not wnd.destroyed:
-                wnd.SelfDestruct()
+                wnd.Close()
             if bShowIfVisible:
                 self.Show()
 
@@ -208,7 +219,7 @@ class CorporationUI(Service):
         wnd.ShowLoad()
         uix.Flush(wnd.sr.main)
         self.toparea = uicls.Container(parent=wnd.sr.main, name='corptop', pos=(0, 0, 0, 54), align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
-        simplepic = uicls.Icon(parent=self.toparea, name='simplepic', pos=(4, 0, 64, 64), icon='ui_7_64_5')
+        uicls.Icon(parent=self.toparea, name='simplepic', pos=(4, 0, 64, 64), icon='ui_7_64_5')
         self.panelHome = None
         self.members = None
         self.recruitment = None
@@ -223,17 +234,15 @@ class CorporationUI(Service):
         self.titles = None
         self.alliances = None
         tabpanels = []
-        homeHint = mls.UI_CORP_ABOUTTHISCORP
-        applicationsHint = cfg.GetMessage('CorpApplicationsHint').text
-        membersHint = cfg.GetMessage('CorpMembersHint').text
-        warsHint = cfg.GetMessage('CorpWarsHint').text
-        standingsHint = cfg.GetMessage('CorpStandingsHint').text
-        votesHint = cfg.GetMessage('CorpVotesHint').text
-        sanctionableActionsHint = cfg.GetMessage('CorpSanctionableActionsHint').text
-        accountsHint = cfg.GetMessage('CorpAccountsHint').text
-        alliancesHint = mls.UI_GENERIC_ALLIANCES
+        homeHint = localization.GetByLabel('UI/Corporations/BaseCorporationUI/AboutThisCorp')
+        warsHint = localization.GetByLabel('UI/Corporations/BaseCorporationUI/CorpWarsHint')
+        standingsHint = localization.GetByLabel('UI/Corporations/BaseCorporationUI/CorpStandingsHint')
+        votesHint = localization.GetByLabel('UI/Corporations/BaseCorporationUI/CorpVotesHint')
+        sanctionableActionsHint = localization.GetByLabel('UI/Corporations/BaseCorporationUI/CorpSanctionableActionsHint')
+        accountsHint = localization.GetByLabel('UI/Corporations/BaseCorporationUI/CorpAccountsHint')
+        alliancesHint = localization.GetByLabel('UI/Corporations/BaseCorporationUI/AlliancesHint')
         self.panelHome = form.CorpUIHome(name='corp_home', parent=wnd.sr.main, state=uiconst.UI_PICKCHILDREN)
-        tabpanels.append([mls.UI_CORP_HOME,
+        tabpanels.append([localization.GetByLabel('UI/Corporations/BaseCorporationUI/Home'),
          self.panelHome,
          self,
          'home',
@@ -242,7 +251,7 @@ class CorporationUI(Service):
         self.panels['home'] = [self.panelHome]
         self.recruitment = form.CorpRecruitment(name='recruitmentpar', pos=(0, 0, 0, 0))
         wnd.sr.main.children.append(self.recruitment)
-        tabpanels.append([mls.UI_CORP_RECRUITMENT,
+        tabpanels.append([localization.GetByLabel('UI/Corporations/BaseCorporationUI/Recruitment'),
          self.recruitment,
          self,
          'recruitment',
@@ -254,7 +263,7 @@ class CorporationUI(Service):
         if not util.IsNPC(eve.session.corpid):
             self.membertracking = form.CorpMemberTracking(name='membertrackingpar', pos=(0, 0, 0, 0))
             wnd.sr.main.children.append(self.membertracking)
-            membersTabEntries.append([mls.UI_CORP_MEMBERLIST,
+            membersTabEntries.append([localization.GetByLabel('UI/Corporations/BaseCorporationUI/MemberList'),
              self.membertracking,
              self.membertracking,
              'main'])
@@ -262,14 +271,14 @@ class CorporationUI(Service):
             (grantableRoles, grantableRolesAtHQ, grantableRolesAtBase, grantableRolesAtOther,) = self.corp.GetMyGrantableRoles()
             if session.corprole & const.corpRolePersonnelManager | grantableRoles:
                 self.findmember = form.CorpFindMembersInRole(name='findmember', parent=wnd.sr.main, left=const.defaultPadding, width=const.defaultPadding)
-                membersTabEntries.append([mls.UI_CORP_FINDMEMBERINROLE,
+                membersTabEntries.append([localization.GetByLabel('UI/Corporations/BaseCorporationUI/FindMemberInRole'),
                  self.findmember,
                  self.findmember,
                  'findmember'])
                 self.panels['members'].append(self.findmember)
                 self.members = form.CorpMembers(name='members', pos=(0, 0, 0, 0))
                 wnd.sr.main.children.append(self.members)
-                membersTabEntries.append([mls.UI_CORP_ROLEMANAGEMENT,
+                membersTabEntries.append([localization.GetByLabel('UI/Corporations/BaseCorporationUI/RoleManagement'),
                  self.members,
                  self.members,
                  'roles'])
@@ -277,7 +286,7 @@ class CorporationUI(Service):
             if const.corpRoleDirector & eve.session.corprole == const.corpRoleDirector:
                 self.titles = form.CorpTitles(name='titles', pos=(0, 0, 0, 0))
                 wnd.sr.main.children.append(self.titles)
-                membersTabEntries.append([mls.UI_CORP_TITLEMANAGEMENT,
+                membersTabEntries.append([localization.GetByLabel('UI/Corporations/BaseCorporationUI/TitleManagement'),
                  self.titles,
                  self.titles,
                  'titles'])
@@ -285,21 +294,21 @@ class CorporationUI(Service):
         if eve.session.corprole & const.corpRoleAuditor == const.corpRoleAuditor:
             self.auditing = form.CorpAuditing(name='auditingpar', pos=(0, 0, 0, 0))
             wnd.sr.main.children.append(self.auditing)
-            membersTabEntries.append([mls.UI_CORP_AUDITING,
+            membersTabEntries.append([localization.GetByLabel('UI/Corporations/BaseCorporationUI/Auditing'),
              self.auditing,
              self.auditing,
              'main'])
             self.panels['members'].append(self.auditing)
         self.decorations = form.CorpDecorations(name='decorations', pos=(0, 0, 0, 0))
         wnd.sr.main.children.append(self.decorations)
-        membersTabEntries.append([mls.UI_GENERIC_DECORATIONS,
+        membersTabEntries.append([localization.GetByLabel('UI/Corporations/BaseCorporationUI/Decorations'),
          self.decorations,
          self.decorations,
          'decorations'])
         self.panels['members'].append(self.decorations)
         wnd.sr.membersTabs = uicls.TabGroup(name='tabparent', parent=wnd.sr.main, idx=0)
         wnd.sr.membersTabs.Startup(membersTabEntries, 'corpmembersstab', autoselecttab=0)
-        tabpanels.append([mls.UI_CORP_MEMBERS,
+        tabpanels.append([localization.GetByLabel('UI/Corporations/BaseCorporationUI/Members'),
          None,
          self,
          'members',
@@ -307,7 +316,7 @@ class CorporationUI(Service):
         if not util.IsNPC(session.corpid):
             self.standings = form.CorpStandings(name='standingspar', pos=(0, 0, 0, 0))
             wnd.sr.main.children.append(self.standings)
-            tabpanels.append([mls.UI_CORP_STANDINGS,
+            tabpanels.append([localization.GetByLabel('UI/Corporations/BaseCorporationUI/Standings'),
              self.standings,
              self,
              'standings',
@@ -319,7 +328,7 @@ class CorporationUI(Service):
         if self.corp.CanViewVotes(eve.session.corpid):
             self.votes = form.CorpVotes(name='votespar', pos=(0, 0, 0, 0))
             wnd.sr.main.children.append(self.votes)
-            politicsTabEntries.append([mls.UI_CORP_VOTES,
+            politicsTabEntries.append([localization.GetByLabel('UI/Corporations/BaseCorporationUI/Votes'),
              self.votes,
              self.votes,
              'votes',
@@ -328,7 +337,7 @@ class CorporationUI(Service):
             self.panels['politics'].append(self.votes)
             self.sanctionable = form.CorpSanctionableActions(name='sanctionablepar', pos=(0, 0, 0, 0))
             wnd.sr.main.children.append(self.sanctionable)
-            politicsTabEntries.append([mls.UI_CORP_SANCTIONABLEACTIONS,
+            politicsTabEntries.append([localization.GetByLabel('UI/Corporations/BaseCorporationUI/SanctionableActions'),
              self.sanctionable,
              self.sanctionable,
              'sanctionable',
@@ -337,7 +346,7 @@ class CorporationUI(Service):
             self.panels['politics'].append(self.sanctionable)
         self.wars = form.CorpWars(name='warspar', pos=(0, 0, 0, 0))
         wnd.sr.main.children.append(self.wars)
-        tabpanels.append([mls.UI_CORP_WARS,
+        tabpanels.append([localization.GetByLabel('UI/Corporations/BaseCorporationUI/Wars'),
          self.wars,
          self,
          'wars',
@@ -347,7 +356,7 @@ class CorporationUI(Service):
         if len(self.panels['politics']):
             wnd.sr.politicsTabs = uicls.TabGroup(name='tabparent', parent=wnd.sr.main, idx=0)
             wnd.sr.politicsTabs.Startup(politicsTabEntries, 'corppoliticsstab', autoselecttab=0)
-            tabpanels.append([mls.UI_CORP_POLITICS,
+            tabpanels.append([localization.GetByLabel('UI/Corporations/BaseCorporationUI/Politics'),
              None,
              self,
              'politics',
@@ -355,7 +364,7 @@ class CorporationUI(Service):
         if const.corpRoleAccountant & eve.session.corprole != 0 or self.corp.UserIsCEO():
             self.accounts = form.CorpAccounts(name='accountspar', pos=(0, 0, 0, 0))
             wnd.sr.main.children.append(self.accounts)
-            tabpanels.append([mls.UI_CORP_ASSETS,
+            tabpanels.append([localization.GetByLabel('UI/Corporations/BaseCorporationUI/Assets'),
              self.accounts,
              self,
              'accounts',
@@ -364,7 +373,7 @@ class CorporationUI(Service):
             self.panels['accounts'] = [self.accounts]
         self.alliances = form.Alliances(name='alliances', pos=(0, 0, 0, 0))
         wnd.sr.main.children.append(self.alliances)
-        tabpanels.append([mls.UI_GENERIC_ALLIANCES,
+        tabpanels.append([localization.GetByLabel('UI/Corporations/BaseCorporationUI/Alliances'),
          self.alliances,
          self,
          'alliances',
@@ -383,7 +392,7 @@ class CorporationUI(Service):
         uiutil.SetOrder(wnd.sr.maintabs, 0)
         wnd.HideLoad()
         wnd.state = uiconst.UI_NORMAL
-        sm.StartService('wallet').AskSetWalletDivision()
+        uthread.new(sm.StartService('wallet').AskSetWalletDivision)
 
 
 
@@ -541,9 +550,9 @@ class CorporationUI(Service):
             if wnd is not None and not wnd.destroyed:
                 wnd.Maximize()
                 return wnd
-        wnd = sm.GetService('window').GetWindow('voting', create=1, ignoreCurrent=1)
+        wnd = uicls.Window.Open(name='voting')
         wnd.scope = 'station_inflight'
-        wnd.SetCaption('%s %s' % (cfg.eveowners.Get(corpID).name, mls.UI_CORP_VOTES))
+        wnd.SetCaption(localization.GetByLabel('UI/Corporations/BaseCorporationUI/VoteWindowCaption', corporationName=cfg.eveowners.Get(corpID).name))
         wnd.SetMinSize([256, 256])
         wnd.SetWndIcon(None)
         wnd.SetTopparentHeight(0)
@@ -565,21 +574,14 @@ class CorporationUI(Service):
 
     def ApplyToJoinAlliance(self, allianceID):
         if not eve.session.corprole & const.corpRoleDirector == const.corpRoleDirector:
-            raise UserError('CrpAccessDenied', {'reason': mls.UI_CORP_ACCESSDENIED5})
+            raise UserError('CrpAccessDenied', {'reason': localization.GetByLabel('UI/Corporations/AccessRestrictions/OnlyForActiveCEO')})
         if eve.session.charid != sm.GetService('corp').GetCorporation().ceoID:
-            raise UserError('CrpAccessDenied', {'reason': mls.UI_CORP_ACCESSDENIED5})
-        left = uicore.desktop.width / 2 - 500 / 2
-        top = uicore.desktop.height / 2 - 400 / 2
+            raise UserError('CrpAccessDenied', {'reason': localization.GetByLabel('UI/Corporations/AccessRestrictions/OnlyForActiveCEO')})
         alliance = sm.GetService('alliance').GetAlliance(allianceID)
         corp = sm.GetService('corp').GetCorporation(alliance.executorCorpID)
         myCorpName = cfg.eveowners.Get(eve.session.corpid).ownerName
         allianceName = cfg.eveowners.Get(allianceID).ownerName
-        charName = cfg.eveowners.Get(eve.session.charid).ownerName
-        stdText = mls.UI_CORP_HINT19 % {'ceo': cfg.eveowners.Get(corp.ceoID).ownerName,
-         'mycorp': myCorpName,
-         'alliancename': allianceName,
-         'myname': charName,
-         'mycorpname': myCorpName}
+        stdText = localization.GetByLabel('UI/Corporations/BaseCorporationUI/AskJoinAlliance', ceo=cfg.eveowners.Get(corp.ceoID).ownerName, mycorp=myCorpName, alliancename=allianceName, sender=session.charid, mycorpname=myCorpName)
         format = []
         format.append({'type': 'btline'})
         format.append({'type': 'push',
@@ -597,12 +599,12 @@ class CorporationUI(Service):
         format.append({'type': 'push',
          'frame': 1})
         format.append({'type': 'text',
-         'text': mls.UI_CORP_HINT20 + ' ' + mls.UI_CORP_HINT21,
+         'text': localization.GetByLabel('UI/Corporations/BaseCorporationUI/ThisApplicationOverwritesOlderOnes'),
          'frame': 1})
         format.append({'type': 'push',
          'frame': 1})
         format.append({'type': 'btline'})
-        retval = uix.HybridWnd(format, mls.UI_CORP_ALLIANCEAPPLICATION, 1, None, uiconst.OKCANCEL, [128, 128], minH=120, unresizeAble=1)
+        retval = uix.HybridWnd(format, localization.GetByLabel('UI/Corporations/BaseCorporationUI/AllianceApplication'), 1, None, uiconst.OKCANCEL, [128, 128], minH=120, unresizeAble=1)
         if retval is None:
             return 
         sm.GetService('corp').ApplyToJoinAlliance(allianceID, retval['applicationText'])
@@ -626,8 +628,14 @@ class CorporationUI(Service):
 
 class CorporationWindow(uicls.Window):
     __guid__ = 'form.Corporation'
-    default_width = 600
-    default_height = 610
-    default_minSize = (550, 610)
+    default_width = 550
+    default_height = 635
+    default_minSize = (550, 635)
+    default_windowID = 'corporation'
+
+    def OnUIRefresh(self):
+        pass
+
+
 
 

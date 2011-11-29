@@ -15,7 +15,6 @@ import dungeonEditorTools
 import __builtin__
 import log
 import uiconst
-import lh2rhUtil
 pi = 3.141592653589793
 SAVE_TIME = 30 * const.SEC
 UNLOCK_TIME = 15 * const.SEC
@@ -147,14 +146,14 @@ class ScenarioMgr(service.Service):
 
 
     def ChoosePathStep(self, defaultPathStepID, pathSteps, namesByDungeonID):
-        deadEndLabel = mls.UI_GENERIC_DEAD_END
+        deadEndLabel = 'Dead end'
         l = []
         for pathStep in pathSteps:
-            l.append(('%s<t>%s<t>%s' % (pathStep.pathStepID, namesByDungeonID.get(pathStep.destDungeonID, deadEndLabel), [mls.UI_GENERIC_NO, mls.UI_GENERIC_YES][(pathStep.pathStepID == defaultPathStepID)]), pathStep.pathStepID))
+            l.append(('%s<t>%s<t>%s' % (pathStep.pathStepID, namesByDungeonID.get(pathStep.destDungeonID, deadEndLabel), ['No', 'Yes'][(pathStep.pathStepID == defaultPathStepID)]), pathStep.pathStepID))
 
-        windowTitle = mls.UI_GENERIC_EPGMWINDOWTITLE
-        listTitle = mls.UI_GENERIC_EPGMWINDOWCAPTION
-        choice = uix.ListWnd(l, 'generic', windowTitle, hint=listTitle, isModal=1, scrollHeaders=[mls.UI_GENERIC_ID, mls.UI_INFLIGHT_DUNGEON, mls.UI_GENERIC_DEFAULT], minw=180)
+        windowTitle = 'GMH EP Choice'
+        listTitle = 'Select the next step in the escalating path. If you do not choose a step, or do not choose one within a reasonable amount of time, the random pick will be chosen for you.'
+        choice = uix.ListWnd(l, 'generic', windowTitle, hint=listTitle, isModal=1, scrollHeaders=['ID', 'Dungeon', 'Default'], minw=180)
         if choice:
             choice = choice[1]
         return choice
@@ -199,7 +198,7 @@ class ScenarioMgr(service.Service):
         pendingObjectIDs = set(objectIDs)
         objectItemIDs = []
         while len(pendingObjectIDs) and attemptsLeft:
-            blue.pyos.synchro.Sleep(500)
+            blue.pyos.synchro.SleepWallclock(500)
             arrivedObjectIDs = set()
             for (itemID, slimItem,) in bp.slimItems.iteritems():
                 if slimItem.dunObjectID in pendingObjectIDs:
@@ -232,7 +231,7 @@ class ScenarioMgr(service.Service):
 
                 if not objectWasAdded:
                     sleepTime += 200
-                    blue.synchro.Sleep(200)
+                    blue.synchro.SleepWallclock(200)
                     dunObjects = self.GetDunObjects()
 
             if not objectWasAdded:
@@ -296,7 +295,7 @@ class ScenarioMgr(service.Service):
             (locked, byWho,) = dungeonHelper.IsObjectLocked(slimItem.dunObjectID)
             if locked != True or byWho != []:
                 break
-            blue.synchro.Sleep(500)
+            blue.synchro.SleepWallclock(500)
         else:
             self.LogError('AddSelected_thread tried to add ball', ballID, 'for dungeon object', slimItem.dunObjectID, 'to selection, but it does not appear to exist.')
             return 
@@ -321,12 +320,12 @@ class ScenarioMgr(service.Service):
             return 
         targetBall = sm.GetService('michelle').GetBall(ballID)
         targetModel = getattr(targetBall, 'model', None)
-        modelWaitEntryTime = blue.os.GetTime()
+        modelWaitEntryTime = blue.os.GetWallclockTime()
         if slimItem.groupID not in self.groupsWithNoModel:
             while not targetModel:
-                blue.pyos.synchro.Sleep(100)
+                blue.pyos.synchro.SleepWallclock(100)
                 targetModel = getattr(targetBall, 'model', None)
-                if blue.os.GetTime() > modelWaitEntryTime + const.SEC * 15.0:
+                if blue.os.GetWallclockTime() > modelWaitEntryTime + const.SEC * 15.0:
                     self.LogError('ReplaceObjectBall gave up on waiting for the object model to load.')
                     return False
 
@@ -344,7 +343,7 @@ class ScenarioMgr(service.Service):
             (yaw, pitch, roll,) = targetModel.rotation.GetYawPitchRoll()
             tf.rotationCurve.value.SetYawPitchRoll(yaw, pitch, roll)
         tf.useCurves = 1
-        tf.Update(blue.os.GetTime())
+        tf.Update(blue.os.GetSimTime())
         self.fakeTransforms[ballID] = tf
         if targetModel:
             self.backupTranslations[ballID] = targetModel.translationCurve
@@ -407,16 +406,16 @@ class ScenarioMgr(service.Service):
             while self.unsavedTime:
                 sleepTill = min(self.unsavedTime.itervalues()) + SAVE_TIME
                 sleepTill += const.SEC
-                sleepTime = (sleepTill - blue.os.GetTime()) / const.MSEC
+                sleepTime = (sleepTill - blue.os.GetWallclockTime()) / const.MSEC
                 if sleepTime > 0:
-                    blue.synchro.Sleep(sleepTime)
+                    blue.synchro.SleepWallclock(sleepTime)
                 while self.isMoving:
                     blue.synchro.Yield()
 
                 if sleepTime < 0 and not self.isMoving:
                     self.unsavedTime = {}
                 savingIDs = []
-                threshhold = blue.os.GetTime() - SAVE_TIME
+                threshhold = blue.os.GetWallclockTime() - SAVE_TIME
                 for (ballID, updateTime,) in self.unsavedTime.iteritems():
                     if threshhold > self.unsavedTime[ballID]:
                         savingIDs.append(ballID)
@@ -477,7 +476,7 @@ class ScenarioMgr(service.Service):
         objectID = slimItem.dunObjectID
         if objectID not in self.lockedObjects:
             self.lockedObjects[objectID] = int(bool(self.unsavedChanges[ballID] & dungeonEditorTools.CHANGE_TRANSLATION) or bool(self.unsavedChanges[ballID] & dungeonEditorTools.CHANGE_ROTATION) or bool(self.unsavedChanges[ballID] & dungeonEditorTools.CHANGE_SCALE))
-            self.lockedTime[objectID] = blue.os.GetTime()
+            self.lockedTime[objectID] = blue.os.GetWallclockTime()
             self.UnlockObjectsOnTimeout()
 
 
@@ -489,8 +488,7 @@ class ScenarioMgr(service.Service):
                 return 
             objectID = slimItem.dunObjectID
             if self.unsavedChanges[ballID] & dungeonEditorTools.CHANGE_TRANSLATION:
-                (x, y, z,) = lh2rhUtil.ConvertPosition(slimItem.dunX, slimItem.dunY, slimItem.dunZ)
-                dungeonHelper.SaveObjectPosition(objectID, x, y, z)
+                dungeonHelper.SaveObjectPosition(objectID, slimItem.dunX, slimItem.dunY, slimItem.dunZ)
             if self.unsavedChanges[ballID] & dungeonEditorTools.CHANGE_SCALE:
                 dungeonHelper.SaveObjectRadius(objectID, slimItem.dunRadius)
             targetBall = michelle.GetBall(slimItem.itemID)
@@ -502,7 +500,6 @@ class ScenarioMgr(service.Service):
                 yaw = yaw / pi * 180.0
                 pitch = pitch / pi * 180.0
                 roll = roll / pi * 180.0
-                (yaw, pitch, roll,) = lh2rhUtil.ConvertYawPitchRollRotation(yaw, pitch, roll)
                 dungeonHelper.SaveObjectRotation(objectID, yaw, pitch, roll)
 
         finally:
@@ -908,7 +905,7 @@ class ScenarioMgr(service.Service):
                     sys.exc_clear()
                     self.isMoving = False
                     return 
-            self.lastChangeTimestamp = blue.os.GetTime()
+            self.lastChangeTimestamp = blue.os.GetWallclockTime()
             blue.synchro.Yield()
 
         self.isMoving = False
@@ -920,7 +917,7 @@ class ScenarioMgr(service.Service):
         if ballID not in self.unsavedChanges:
             self.unsavedChanges[ballID] = dungeonEditorTools.CHANGE_NONE
         self.unsavedChanges[ballID] = self.unsavedChanges[ballID] | changeType
-        self.unsavedTime[ballID] = blue.os.GetTime()
+        self.unsavedTime[ballID] = blue.os.GetWallclockTime()
         self.StartSavingChanges()
         slimItem = sm.StartService('michelle').GetItem(ballID)
         if slimItem and getattr(slimItem, 'dunObjectID', None) is not None:
@@ -962,7 +959,7 @@ class ScenarioMgr(service.Service):
 
             if ballStillHere:
                 sleepTime += 500
-                blue.synchro.Sleep(500)
+                blue.synchro.SleepWallclock(500)
 
         sm.ScatterEvent('OnDEObjectListChanged')
 
@@ -1017,13 +1014,13 @@ class ScenarioMgr(service.Service):
         michelleSvc = sm.StartService('michelle')
         targetBall = michelleSvc.GetBall(ballID)
         targetModel = getattr(targetBall, 'model', None)
-        modelWaitEntryTime = blue.os.GetTime()
+        modelWaitEntryTime = blue.os.GetWallclockTime()
         slimItem = michelleSvc.GetItem(ballID)
         if slimItem.groupID not in self.groupsWithNoModel:
             while not targetModel:
-                blue.pyos.synchro.Sleep(1000)
+                blue.pyos.synchro.SleepWallclock(1000)
                 targetModel = getattr(targetBall, 'model', None)
-                if blue.os.GetTime() > modelWaitEntryTime + UNLOCK_OBJECT_MODEL_TIMEOUT:
+                if blue.os.GetWallclockTime() > modelWaitEntryTime + UNLOCK_OBJECT_MODEL_TIMEOUT:
                     self.LogWarn('UnlockObjectWhenInitialized gave up after', UNLOCK_OBJECT_MODEL_TIMEOUT, 'sec on waiting for the object model to load.', ballID, dunObjectID)
                     return False
 
@@ -1065,10 +1062,10 @@ class ScenarioMgr(service.Service):
         try:
             while self.lockedTime:
                 sleepTill = min(self.lockedTime.itervalues()) + UNLOCK_TIME
-                sleepTime = (sleepTill - blue.os.GetTime()) / const.MSEC
+                sleepTime = (sleepTill - blue.os.GetWallclockTime()) / const.MSEC
                 if sleepTime > 0:
-                    blue.synchro.Sleep(sleepTime)
-                threshhold = blue.os.GetTime() - UNLOCK_TIME
+                    blue.synchro.SleepWallclock(sleepTime)
+                threshhold = blue.os.GetWallclockTime() - UNLOCK_TIME
                 unlockedAny = False
                 for (ballID, updateTime,) in self.lockedTime.items():
                     if threshhold > self.lockedTime[ballID]:
@@ -1104,7 +1101,7 @@ class ScenarioMgr(service.Service):
         count = 0
         for ballID in self.selection:
             if ballID in self.fakeTransforms:
-                self.fakeTransforms[ballID].Update(blue.os.GetTime())
+                self.fakeTransforms[ballID].Update(blue.os.GetSimTime())
                 targetBall = self.fakeTransforms[ballID].translationCurve
                 x += targetBall.x
                 y += targetBall.y
@@ -1129,7 +1126,7 @@ class ScenarioMgr(service.Service):
             return self.groupRotation
         ballID = self.selection[0]
         if ballID in self.fakeTransforms:
-            self.fakeTransforms[ballID].Update(blue.os.GetTime())
+            self.fakeTransforms[ballID].Update(blue.os.GetSimTime())
             targetBall = self.fakeTransforms[ballID].rotationCurve
             return geo2.Vector(targetBall.value.x, targetBall.value.y, targetBall.value.z, targetBall.value.w)
 
@@ -1183,18 +1180,18 @@ class ScenarioMgr(service.Service):
         self.playerLocation.translationCurve = ego
         self.playerLocation.rotationCurve = ego
         self.playerLocation.useCurves = 1
-        self.playerLocation.Update(blue.os.GetTime())
+        self.playerLocation.Update(blue.os.GetSimTime())
 
 
 
     def GetPlayerOffset(self):
-        self.playerLocation.Update(blue.os.GetTime())
+        self.playerLocation.Update(blue.os.GetSimTime())
         return self.playerLocation.translationCurve
 
 
 
     def GetDungeonOrigin(self):
-        self.dungeonOrigin.Update(blue.os.GetTime())
+        self.dungeonOrigin.Update(blue.os.GetSimTime())
         return self.dungeonOrigin.translationCurve
 
 
@@ -1211,7 +1208,7 @@ class ScenarioMgr(service.Service):
         self.dungeonOrigin.translationCurve = translationCurve
         self.dungeonOrigin.rotationCurve = rotationCurve
         self.dungeonOrigin.useCurves = 1
-        self.dungeonOrigin.Update(blue.os.GetTime())
+        self.dungeonOrigin.Update(blue.os.GetSimTime())
 
 
 

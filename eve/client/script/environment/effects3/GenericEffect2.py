@@ -88,7 +88,7 @@ class GenericEffect:
          'trinity.TriRotationCurve',
          'trinity.TriColorCurve']
         curves = tf.Find(curveTypes)
-        now = blue.os.GetTime()
+        now = blue.os.GetSimTime()
         for curve in curves:
             curve.start = now
 
@@ -170,6 +170,8 @@ class ShipEffect(GenericEffect):
             self.gfxModel.translationCurve = shipBall
         if FX_USEBALLROTATION & self.__positioning__:
             self.gfxModel.rotationCurve = shipBall
+        if hasattr(shipBall, 'model') and hasattr(shipBall.model, 'renderLast'):
+            self.gfxModel.renderLast = shipBall.model.renderLast
         scene2 = sm.StartService('sceneManager').GetRegisteredScene2('default')
         scene2.objects.append(self.gfxModel)
 
@@ -212,7 +214,8 @@ class ShipRenderEffect(ShipEffect):
         resPath = None
         if shipBall.model.mesh is None:
             if shipBall.model.highDetailMesh is not None:
-                resPath = shipBall.model.highDetailMesh.object.geometryResPath
+                if hasattr(shipBall.model.highDetailMesh.object, 'geometryResPath'):
+                    resPath = shipBall.model.highDetailMesh.object.geometryResPath
         else:
             resPath = shipBall.model.mesh.geometryResPath
         numAreas = -1

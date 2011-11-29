@@ -6,9 +6,13 @@ import sys
 import macho
 import notificationUtil
 import time
-import datetime
 import os
-from service import ROLE_ANY, ROLEMASK_VIEW, ROLE_ADMIN, ROLE_CONTENT, ROLE_GML, ROLE_GMH, ROLE_PROGRAMMER, ROLE_TRANSLATION, ROLE_TRANSLATIONEDITOR, ROLE_TRANSLATIONADMIN, ROLE_TRANSLATIONTESTER, ROLE_PETITIONEE, ROLE_DBA, ROLE_MARKET, ROLE_MARKETH
+import localization
+try:
+    import logConst
+except:
+    logConst = util.KeyVal()
+from service import ROLEMASK_VIEW, ROLE_ADMIN, ROLE_CONTENT, ROLE_GML, ROLE_GMH, ROLE_PROGRAMMER, ROLE_PETITIONEE
 
 class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
     __guid__ = 'htmlwriter.ESPHtmlWriter'
@@ -35,6 +39,39 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
 
     if macho.mode == 'server':
 
+        def GetOperationText(self, operationID, isDescription = False):
+            if operationID not in self.cache.Index(const.cacheStaOperations):
+                return ''
+            if isDescription:
+                return localization.GetByMessageID(self.cache.Index(const.cacheStaOperations, operationID).descriptionID)
+            return localization.GetByMessageID(self.cache.Index(const.cacheStaOperations, operationID).operationNameID)
+
+
+
+        def GetRoleDescription(self, roleID, isShort = False):
+            if roleID not in self.cache.Index(const.cacheCrpRoles):
+                return ''
+            if isShort:
+                return localization.GetByMessageID(self.cache.Index(const.cacheCrpRoles, roleID).shortDescriptionID)
+            return localization.GetByMessageID(self.cache.Index(const.cacheCrpRoles, roleID).descriptionID)
+
+
+
+        def GetCelestialDescription(self, itemID):
+            if itemID in self.cache.Index(const.cacheMapCelestialDescriptions):
+                return localization.GetByMessageID(self.cache.Index(const.cacheMapCelestialDescriptions, itemID).descriptionID)
+            else:
+                return ''
+
+
+
+        def GetCorpActivityName(self, activityID):
+            if activityID in self.cache.Index(const.cacheCrpActivities):
+                return ''
+            return localization.GetByMessageID(self.cache.Index(const.cacheCrpActivities, activityID).activityNameID)
+
+
+
         def MetaGroupLink(self, metaGroupID, linkText = None, props = ''):
             if metaGroupID is None:
                 return ''
@@ -42,7 +79,7 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
                 if linkText is None:
                     linkText = cfg.invmetagroups.Get(metaGroupID).metaGroupName
                     if linkText is None:
-                        return self.FontRed(mls.UI_GENERIC_UNKNOWN)
+                        return self.FontRed('Unknown')
                 return self.Link('/gd/type.py', linkText, {'action': 'MetaGroups'}, props)
 
 
@@ -63,6 +100,8 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
                     ownerTypeID = owner.typeID
                     if not linkText:
                         linkText = owner.ownerName
+                if linkText is not None:
+                    linkText = self.HTMLEncode(linkText)
                 if ownerTypeID == const.typeFaction:
                     return self.FactionLink(ownerID, linkText, props)
                 if ownerTypeID == const.typeCorporation:
@@ -87,6 +126,8 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
                             sys.exc_clear()
                             return self.FontRed('???')
                         linkText = location.locationName
+                if linkText is not None:
+                    linkText = self.HTMLEncode(linkText)
                 if locationID < const.minRegion:
                     return linkText
                 if locationID < const.minConstellation:
@@ -104,14 +145,16 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
 
 
         def CharacterLink(self, characterID, linkText = None, props = '', noHover = False):
-            if characterID > const.minDustCharacter:
+            if util.IsDustCharacter(characterID):
                 return htmlwriter.SPHtmlWriter.CharacterLink(self, characterID, linkText, props)
             if characterID is None:
                 return ''
             if linkText is None:
                 linkText = self.OwnerName(characterID)
                 if linkText is None:
-                    return self.GetSpan([mls.UI_GENERIC_UNKNOWN], className='red')
+                    return self.GetSpan(['Unknown'], className='red')
+            if linkText is not None:
+                linkText = self.HTMLEncode(linkText)
             return self.GetTooltip(href='/gm/character.py?action=Character&characterID=%s' % characterID, ajax='/gm/worker_info.py?action=FetchInfo&id=%s&idType=1' % characterID, title=linkText, caption=linkText)
 
 
@@ -122,7 +165,9 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
             if linkText is None:
                 linkText = self.OwnerName(characterID)
                 if linkText is None:
-                    return self.GetSpan([mls.UI_GENERIC_UNKNOWN], className='red')
+                    return self.GetSpan(['Unknown'], className='red')
+            if linkText is not None:
+                linkText = self.HTMLEncode(linkText)
             return self.GetTooltipActions(href='/gm/character.py?action=Character&characterID=%s' % characterID, ajax='/gm/worker_info.py?action=FetchInfo&id=%s&idType=1' % characterID, title=linkText, caption=linkText, actions=actions)
 
 
@@ -133,6 +178,8 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
             else:
                 if linkText is None:
                     linkText = 'petition'
+                if linkText is not None:
+                    linkText = self.HTMLEncode(linkText)
                 return self.Link('/gm/petitionClient.py', linkText, {'action': 'ViewPetition',
                  'petitionID': petID}, props)
 
@@ -144,7 +191,9 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
             if linkText is None:
                 linkText = self.OwnerName(corporationID)
                 if linkText is None:
-                    return self.GetSpan([mls.UI_GENERIC_UNKNOWN], className='red')
+                    return self.GetSpan(['Unknown'], className='red')
+            if linkText is not None:
+                linkText = self.HTMLEncode(linkText)
             return self.GetTooltip(href='/gm/corporation.py?action=Corporation&corporationID=%s' % corporationID, ajax='/gm/worker_info.py?action=FetchInfo&id=%s&idType=3' % corporationID, title=linkText, caption=linkText)
 
 
@@ -155,7 +204,9 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
             if linkText is None:
                 linkText = self.OwnerName(allianceID)
                 if linkText is None:
-                    return self.GetSpan([mls.UI_GENERIC_UNKNOWN], className='red')
+                    return self.GetSpan(['Unknown'], className='red')
+            if linkText is not None:
+                linkText = self.HTMLEncode(linkText)
             return self.GetTooltip(href='/gm/alliance.py?action=Alliance&allianceID=%s' % allianceID, ajax='/gm/worker_info.py?action=FetchInfo&id=%s&idType=9' % allianceID, title=linkText, caption=linkText)
 
 
@@ -167,7 +218,9 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
                 if linkText is None:
                     linkText = self.OwnerName(ownerID)
                     if linkText is None:
-                        return self.FontRed(mls.UI_GENERIC_UNKNOWN)
+                        return self.FontRed('Unknown')
+                if linkText is not None:
+                    linkText = self.HTMLEncode(linkText)
                 return self.Link('/gm/war.py', linkText, {'action': 'WarableEntity',
                  'ownerID': ownerID}, props)
 
@@ -179,7 +232,9 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
             if linkText is None:
                 linkText = self.OwnerName(factionID)
                 if linkText is None:
-                    return self.GetSpan([mls.UI_GENERIC_UNKNOWN], className='red')
+                    return self.GetSpan(['Unknown'], className='red')
+            if linkText is not None:
+                linkText = self.HTMLEncode(linkText)
             return self.GetTooltip(href='/gm/faction.py?action=Faction&factionID=%s' % factionID, ajax='/gm/worker_info.py?action=FetchInfo&id=%s&idType=8' % factionID, title=linkText, caption=linkText)
 
 
@@ -190,7 +245,9 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
             if linkText is None:
                 linkText = self.LocationName(stationID)
                 if linkText is None:
-                    return self.GetSpan([mls.UI_GENERIC_UNKNOWN], className='red')
+                    return self.GetSpan(['Unknown'], className='red')
+            if linkText is not None:
+                linkText = self.HTMLEncode(linkText)
             return self.GetTooltip(href='/gm/stations.py?action=Station&stationID=%s' % stationID, ajax='/gm/worker_info.py?action=FetchInfo&id=%s&idType=7' % stationID, title=linkText, caption=linkText)
 
 
@@ -202,7 +259,9 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
                 if linkText is None:
                     linkText = self.LocationName(worldSpaceID)
                     if linkText is None:
-                        return self.FontRed(mls.UI_GENERIC_UNKNOWN)
+                        return self.FontRed('Unknown')
+                if linkText is not None:
+                    linkText = self.HTMLEncode(linkText)
                 return self.Link('/gm/worldSpaces.py', linkText, {'action': 'WorldSpace',
                  'worldspaceID': worldSpaceID}, props)
 
@@ -214,7 +273,9 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
             if linkText is None:
                 linkText = self.LocationName(systemID)
                 if linkText is None:
-                    return self.GetSpan([mls.UI_GENERIC_UNKNOWN], className='red')
+                    return self.GetSpan(['Unknown'], className='red')
+            if linkText is not None:
+                linkText = self.HTMLEncode(linkText)
             return self.GetTooltip(href='/gd/universe.py?action=System&systemID=%s' % systemID, ajax='/gm/worker_info.py?action=FetchInfo&id=%s&idType=4' % systemID, title=linkText, caption=linkText)
 
 
@@ -225,7 +286,9 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
             if linkText is None:
                 linkText = self.LocationName(constellationID)
                 if linkText is None:
-                    return self.GetSpan([mls.UI_GENERIC_UNKNOWN], className='red')
+                    return self.GetSpan(['Unknown'], className='red')
+            if linkText is not None:
+                linkText = self.HTMLEncode(linkText)
             return self.GetTooltip(href='/gd/universe.py?action=Constellation&constellationID=%s' % constellationID, ajax='/gm/worker_info.py?action=FetchInfo&id=%s&idType=6' % constellationID, title=linkText, caption=linkText)
 
 
@@ -236,7 +299,9 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
             if linkText is None:
                 linkText = self.LocationName(regionID)
                 if linkText is None:
-                    return self.GetSpan([mls.UI_GENERIC_UNKNOWN], className='red')
+                    return self.GetSpan(['Unknown'], className='red')
+            if linkText is not None:
+                linkText = self.HTMLEncode(linkText)
             return self.GetTooltip(href='/gd/universe.py?action=Region&regionID=%s' % regionID, ajax='/gm/worker_info.py?action=FetchInfo&id=%s&idType=5' % regionID, title=linkText, caption=linkText)
 
 
@@ -247,12 +312,16 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
             if linkText is None:
                 linkText = self.LocationName(planetID)
                 if linkText is None:
-                    return self.GetSpan([mls.UI_GENERIC_UNKNOWN], className='red')
+                    return self.GetSpan(['Unknown'], className='red')
+            if linkText is not None:
+                linkText = self.HTMLEncode(linkText)
             return self.GetTooltip(href='/gm/planets.py?action=ViewPlanet&planetID=%s' % planetID, ajax='/gm/worker_info.py?action=FetchInfo&id=%s&idType=10' % planetID, title=linkText, caption=linkText)
 
 
 
         def CombatZoneLink(self, combatZoneID, linkText):
+            if linkText is not None:
+                linkText = self.HTMLEncode(linkText)
             if combatZoneID is None:
                 return ''
             else:
@@ -262,6 +331,8 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
 
 
         def MapLink(self, itemID, linkText = 'Map', props = ''):
+            if linkText is not None:
+                linkText = self.HTMLEncode(linkText)
             if itemID is None:
                 return ''
             else:
@@ -276,6 +347,8 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
                 if len(row) == 0:
                     return 'Deleted reward'
                 linkText = row.name
+            if linkText is not None:
+                linkText = self.HTMLEncode(linkText)
             return self.Link('/gd/rewards.py', linkText, {'action': 'ViewReward',
              'rewardID': rewardID}, props)
 
@@ -288,6 +361,8 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
                 if len(pinRow) == 0:
                     return 'Deleted pin'
                 pinName = cfg.invtypes.Get(pinRow[0].typeID).name
+            if pinName is not None:
+                pinName = self.HTMLEncode(pinName)
             return self.Link('/gm/planets.py', pinName, {'action': 'ViewPin',
              'pinID': pinID}, props)
 
@@ -299,6 +374,8 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
             pinName = linkText
             if pinName is None:
                 pinName = cfg.invtypes.Get(pinRow.typeID).name
+            if pinName is not None:
+                pinName = self.HTMLEncode(pinName)
             return self.TypeLink(pinTypeID, linkText=pinName, props=props)
 
 
@@ -307,6 +384,8 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
             schematicName = linkText
             if schematicName is None:
                 schematicName = cfg.schematics.Get(schematicID).schematicName
+            if schematicName is not None:
+                schematicName = self.HTMLEncode(schematicName)
             return self.Link('/gd/schematics.py', schematicName, {'action': 'View',
              'schematicID': schematicID})
 
@@ -314,12 +393,14 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
 
         def RecipeLink(self, parentID, parentType, text = None):
             if text is None:
+                text = self.HTMLEncode(text)
                 if parentType == const.cef.PARENT_TYPEID:
                     text = cfg.invtypes.Get(parentID).typeName
                 elif parentType == const.cef.PARENT_GROUPID:
                     text = cfg.invgroups.Get(parentID).groupName
-                else:
-                    text = cfg.invcategories.Get(parentID).categoryName
+                text = cfg.invcategories.Get(parentID).categoryName
+            if text is not None:
+                text = self.HTMLEncode(text)
             return self.Link('/gd/entities.py', text, {'action': 'Recipe',
              'parentID': parentID,
              'parentType': parentType})
@@ -330,7 +411,7 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
             combo = {}
             if allowNone:
                 combo[0] = '(none)'
-            for r in self.cache.Rowset(const.cacheChrRaces):
+            for r in cfg.races:
                 combo[r.raceID] = r.raceName
 
             return combo
@@ -342,8 +423,8 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
             if allowNone:
                 combo[0] = '(none)'
             for b in self.cache.Rowset(const.cacheChrBloodlines):
-                r = self.cache.Index(const.cacheChrRaces, b.raceID)
-                combo[b.bloodlineID] = r.raceName + ', ' + b.bloodlineName
+                r = cfg.races.Get(b.raceID)
+                combo[b.bloodlineID] = '%i, %s' % (r.raceNameID, localization.GetByMessageID(b.bloodlineNameID))
 
             return combo
 
@@ -433,7 +514,7 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
 
         def SelectRegion(self, action, regionID):
             li = []
-            for r in self.DB2.SQL('SELECT * FROM mapRegions ORDER BY regionName'):
+            for r in self.DB2.SQL('SELECT * FROM map.regionsDx ORDER BY regionName'):
                 bon = ''
                 boff = ''
                 if r.regionID == regionID:
@@ -455,7 +536,7 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
         def SelectRegionConstellation(self, action, regionID, constellationID):
             if self.SelectRegion(action, regionID):
                 li = []
-                for c in self.DB2.SQLInt('constellationID, constellationName', 'mapConstellations', '', 'constellationName', 'regionID', regionID):
+                for c in self.DB2.SQLInt('constellationID, constellationName', 'map.constellationsDx', '', 'constellationName', 'regionID', regionID):
                     bon = ''
                     boff = ''
                     if c.constellationID == constellationID:
@@ -478,7 +559,7 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
         def SelectRegionConstellationSolarSystem(self, action, regionID, constellationID, solarSystemID):
             if self.SelectRegionConstellation(action, regionID, constellationID):
                 li = []
-                for s in self.DB2.SQLInt('solarSystemID, solarSystemName', 'mapSolarSystems', '', 'solarSystemName', 'constellationID', constellationID):
+                for s in self.DB2.SQLInt('solarSystemID, solarSystemName', 'map.solarSystemsDx', '', 'solarSystemName', 'constellationID', constellationID):
                     bon = ''
                     boff = ''
                     if s.solarSystemID == solarSystemID:
@@ -547,27 +628,27 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
             line.append(attr)
             act = ''
             if t.groupID == const.groupCharacter:
-                act = self.CharacterLink(r.itemID, mls.CHARACTER)
+                act = self.CharacterLink(r.itemID, 'Character')
             elif t.groupID == const.groupCorporation:
-                act = self.CorporationLink(r.itemID, mls.CORPORATION)
+                act = self.CorporationLink(r.itemID, 'Corporation')
             elif t.groupID == const.groupFaction:
-                act = self.FactionLink(r.itemID, mls.FACTION)
+                act = self.FactionLink(r.itemID, 'Faction')
             elif t.groupID == const.groupRegion:
-                act = self.RegionLink(r.itemID, mls.REGION)
+                act = self.RegionLink(r.itemID, 'Region')
             elif t.groupID == const.groupConstellation:
-                act = self.ConstellationLink(r.itemID, mls.CONSTELLATION)
+                act = self.ConstellationLink(r.itemID, 'Constellation')
             elif t.groupID == const.groupSolarSystem:
-                act = self.SystemLink(r.itemID, mls.SYSTEM)
+                act = self.SystemLink(r.itemID, 'System')
             elif t.groupID == const.groupStation:
-                act = self.StationLink(r.itemID, mls.STATION)
+                act = self.StationLink(r.itemID, 'Station')
             elif t.groupID == const.groupControlTower:
-                act = self.Link('/gm/starbase.py', mls.STARBASE, {'action': 'Starbase',
+                act = self.Link('/gm/starbase.py', 'Starbase', {'action': 'Starbase',
                  'towerID': r.itemID})
             elif t.groupID == const.groupPlanet:
-                act = self.Link('/gd/universe.py', mls.GENERIC_PLANET, {'action': 'Celestial',
+                act = self.Link('/gd/universe.py', 'Planet', {'action': 'Celestial',
                  'celestialID': r.itemID})
             elif t.groupID == const.groupAsteroidBelt:
-                act = self.Link('/gd/universe.py', mls.GENERIC_BELT, {'action': 'AsteroidBelt',
+                act = self.Link('/gd/universe.py', 'Belt', {'action': 'AsteroidBelt',
                  'asteroidBeltID': r.itemID})
             line.append(act)
             lines.append(line)
@@ -622,19 +703,16 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
 
 
 
-        def UserTag(self, userID, tagTypeID = -1, tagTypeName = '', redir = None):
+        def UserTag(self, userID, tagTypeID = -1, redir = None):
             s = ''
             if tagTypeID < 0:
-                dbuser = self.DB2.GetSchema('user')
-                rs = dbuser.EspTags_SelectUser(userID)
+                rs = self.DB2.SQLInt('tagTypeID', '[user].espTags', '', '', 'userID', userID)
                 if len(rs) == 0:
                     tagTypeID = None
                 else:
-                    r = rs[0]
-                tagTypeID = r.tagTypeID
-                tagTypeName = self.IsNone(r.tagTypeName, '???')
+                    tagTypeID = rs[0].tagTypeID
             if tagTypeID:
-                s = 'User tagged as: <font color=orange size=4><b>%s</b></font>' % tagTypeName
+                s = 'User tagged as: <font color=orange size=4><b>%s</b></font>' % self.cache.IndexText(const.cacheUserEspTagTypes, tagTypeID)
                 if session.role & ROLE_GMH:
                     s += '&nbsp;' * 6
                     s += self.Button('/gm/users.py', 'Remove Tag', {'action': 'RemoveTagFromUser',
@@ -679,51 +757,64 @@ class ESPHtmlWriter(htmlwriter.SPHtmlWriter):
 
 
     def GetPickerAgent(self, ctrlID, ctrlLabel = None, minLength = 4):
+        if ctrlLabel is not None:
+            ctrlLabel = self.HTMLEncode(ctrlLabel)
         return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/agentds.py', minLength=minLength)
 
 
 
     def GetPickerType(self, ctrlID, ctrlLabel = None, minLength = 4):
+        if ctrlLabel is not None:
+            ctrlLabel = self.HTMLEncode(ctrlLabel)
         return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/typeds.py', minLength=minLength)
 
 
 
     def GetPickerCharacter(self, ctrlID, ctrlLabel = None, minLength = 3):
+        if ctrlLabel is not None:
+            ctrlLabel = self.HTMLEncode(ctrlLabel)
         return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/characterds.py', minLength=minLength)
 
 
 
-    def GetPickerUser(self, ctrlID, ctrlLabel = None, minLength = 3):
-        return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/userds.py', minLength=minLength)
-
-
-
     def GetPickerAffiliate(self, ctrlID, ctrlLabel = None, minLength = 3):
+        if ctrlLabel is not None:
+            ctrlLabel = self.HTMLEncode(ctrlLabel)
         return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/affiliateds.py', minLength=minLength)
 
 
 
     def GetPickerStation(self, ctrlID, ctrlLabel = None, minLength = 3):
+        if ctrlLabel is not None:
+            ctrlLabel = self.HTMLEncode(ctrlLabel)
         return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/stationds.py', minLength=minLength)
 
 
 
     def GetPickerCorporation(self, ctrlID, ctrlLabel = None, minLength = 3):
+        if ctrlLabel is not None:
+            ctrlLabel = self.HTMLEncode(ctrlLabel)
         return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/corporationds.py', minLength=minLength)
 
 
 
     def GetPickerRegion(self, ctrlID, ctrlLabel = None, minLength = 3):
+        if ctrlLabel is not None:
+            ctrlLabel = self.HTMLEncode(ctrlLabel)
         return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/regionds.py', minLength=minLength)
 
 
 
     def GetPickerConstellation(self, ctrlID, ctrlLabel = None, minLength = 3):
+        if ctrlLabel is not None:
+            ctrlLabel = self.HTMLEncode(ctrlLabel)
         return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/constellationds.py', minLength=minLength)
 
 
 
     def GetPickerSolarSystem(self, ctrlID, ctrlLabel = None, minLength = 3):
+        if ctrlLabel is not None:
+            ctrlLabel = self.HTMLEncode(ctrlLabel)
         return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/solarsystemds.py', minLength=minLength)
 
 
@@ -772,7 +863,7 @@ if macho.mode == 'server':
             selectorHTML += '">' + selectName
             for category in categories:
                 categoryID = category[0]
-                categoryName = category[1]
+                categoryName = category[1][0]
                 categoryIsParent = category[2]
                 selectorHTML = selectorHTML + '<OPTION VALUE="%s"' % str(categoryID)
                 if categoryID == selectedCategoryID:
@@ -787,10 +878,6 @@ if macho.mode == 'server':
 
 
         def AppCharacterImage(self, coreStatic, appStatic):
-            if coreStatic.characterID > const.minDustCharacter:
-                import dust.portrait
-                portraitInfo = sm.GetService('dustCharacter').GetCharacterPortraitInfo(coreStatic.characterID)
-                return dust.portrait.GetWebFilename(portraitInfo.bloodlineID, portraitInfo.gender, portraitInfo.portraitID)
             image = self.GetOwnerImage('Character', coreStatic.characterID)
             if image == None:
                 image = '/img/bloodline%d%s.jpg' % (appStatic.bloodlineID, ['F', 'M'][coreStatic.gender])
@@ -799,18 +886,22 @@ if macho.mode == 'server':
 
 
         def AppUserCharactersInfo(self, coreStatic, appStatic):
-            bloodline = self.cache.Index(const.cacheChrBloodlines, appStatic.bloodlineID)
-            bloodlineName = Tr(bloodline.bloodlineName, 'character.bloodlines.bloodlineName', bloodline.dataID, prefs.languageID)
-            race = self.cache.Index(const.cacheChrRaces, bloodline.raceID)
-            raceName = Tr(race.raceName, 'character.races.raceName', race.dataID, prefs.languageID)
+            bloodline = cfg.bloodlines.Get(appStatic.bloodlineID)
+            bloodlineName = localization.GetByMessageID(bloodline.bloodlineNameID, languageID=prefs.languageID)
+            if bloodlineName is None:
+                bloodlineName = '[bloodline {} has no nameID set]'.format(appStatic.bloodlineID)
+            race = cfg.races.Get(bloodline.raceID)
+            raceName = localization.GetByMessageID(race.raceNameID, languageID=prefs.languageID)
+            if raceName is None:
+                raceName = '[race {} has no nameID set]'.format(bloodline.raceID)
             if coreStatic.online == 0:
                 onlineText = ''
             else:
-                onlineText = '<br>' + self.FontBold(self.FontGreen(mls.ONLINE))
-            s = raceName + ', ' + bloodlineName + ', ' + [mls.FEMALE, mls.MALE][coreStatic.gender] + onlineText
-            if coreStatic.characterID > const.minDustCharacter:
+                onlineText = '<br>' + self.FontBold(self.FontGreen('Online'))
+            s = raceName + ', ' + bloodlineName + ', ' + ['Female', 'Male'][coreStatic.gender] + onlineText
+            if util.IsDustCharacter(coreStatic.characterID):
                 return s
-            s += '<br>%s<br>%s' % (self.CorporationLink(appStatic.corporationID), self.Link('/gm/corporation.py', mls.UI_SHARED_MEMBERDETAILS, {'action': 'MemberDetails',
+            s += '<br>%s<br>%s' % (self.CorporationLink(appStatic.corporationID), self.Link('/gm/corporation.py', 'Member Details', {'action': 'MemberDetails',
               'corporationID': appStatic.corporationID,
               'charid': coreStatic.characterID}))
             if appStatic.transferPrepareDateTime:
@@ -820,14 +911,14 @@ if macho.mode == 'server':
 
 
         def AppUserCharactersLocation(self, coreStatic, appStatic):
-            if coreStatic.characterID > const.minDustCharacter:
+            if util.IsDustCharacter(coreStatic.characterID):
                 return ''
             return self.CharacterLocationText(coreStatic.characterID, appStatic.locationID, appStatic.locationTypeID, appStatic.locationLocationID, appStatic.activeShipID, appStatic.activeShipTypeID)
 
 
 
         def AppUserCharactersAct(self, coreStatic, appStatic):
-            if coreStatic.characterID > const.minDustCharacter:
+            if util.IsDustCharacter(coreStatic.characterID):
                 return ''
             act = ''
             if coreStatic.userID == session.userid:
@@ -838,16 +929,16 @@ if macho.mode == 'server':
                     elif util.IsStation(appStatic.locationLocationID):
                         solarSystemID = sm.StartService('stationSvc').GetStation(appStatic.locationLocationID).solarSystemID
                     if solarSystemID == 30000380:
-                        act += '<br><br>' + self.Link('/gm/character.py', mls.UI_CMD_SELECT.upper(), {'action': 'SelectCharacter',
+                        act += '<br><br>' + self.Link('/gm/character.py', 'SELECT', {'action': 'SelectCharacter',
                          'characterID': coreStatic.characterID})
                         if session.role & ROLE_PETITIONEE > 0:
-                            act += '<br>' + self.Link('/gm/character.py', mls.GENERIC_PETITION.upper(), {'action': 'SelectCharacter',
+                            act += '<br>' + self.Link('/gm/character.py', 'PETITION', {'action': 'SelectCharacter',
                              'characterID': coreStatic.characterID,
                              'redir': 'p'})
                     else:
                         act += '<br /><span title="Move|By moving character to polaris you can select the character" class="red">Not in Polaris, can\'t select</span>'
                 elif session.charid == coreStatic.characterID:
-                    act += '<br><br>' + self.Link('/gm/character.py', mls.REPORT_LOGOFF, {'action': 'LogOffCharacter'})
+                    act += '<br><br>' + self.Link('/gm/character.py', 'Logoff', {'action': 'LogOffCharacter'})
             return act
 
 
@@ -856,120 +947,133 @@ if macho.mode == 'server':
             htmlwriter.SPHtmlWriter.CharacterHeader(self, characterID, small, menuPlacement)
             (coreStatic, appStatic,) = self.cache.CharacterDataset(characterID)
             li = []
-            if characterID > const.minDustCharacter:
-                li.append(self.Link('', 'Currency', {'action': 'DustCharacterCurrency',
-                 'characterID': characterID}))
-                li.append('-')
-                li.append(self.Link('', 'Skills', {'action': 'DustSkills',
-                 'characterID': characterID}))
-                li.append('>' + self.Link('', 'Extra Skill Points', {'action': 'DustEditExtraSkillPointsForm',
-                 'characterID': characterID}) + self.MidDot() + self.Link('', 'History', {'action': 'DustSkillHistory',
-                 'characterID': characterID}))
-                li.append('-')
-                li.append(self.Link('', 'Inventory', {'action': 'DustInventory',
-                 'characterID': characterID}))
-                li.append('>' + self.Link('', 'Modify', {'action': 'DustModifyInventoryForm',
-                 'characterID': characterID}) + self.MidDot() + self.Link('', 'History', {'action': 'DustInventoryHistory',
-                 'characterID': characterID}))
-                li.append('-')
-                li.append(self.Link('', 'Fitting', {'action': 'DustFittings',
-                 'characterID': characterID}))
-                li.append('-')
-                li.append(self.FontGray('Fitting (old)'))
-                li.append('>' + self.Link('', 'Character', {'action': 'DustCharacterFittings',
-                 'characterID': characterID}) + self.MidDot() + self.Link('', 'Vehicles', {'action': 'DustVehicleFittings',
-                 'characterID': characterID}))
-                li.append('-')
-                li.append(self.Link('', 'Lifetime Stats', {'action': 'DataLogLifetimeStats',
-                 'characterID': characterID}))
-                li.append('>' + self.Link('', 'Kills', {'action': 'DataLogKillsKiller',
-                 'characterID': characterID}) + self.MidDot() + self.Link('', 'Deaths', {'action': 'DataLogKillsVictim',
-                 'characterID': characterID}) + self.MidDot() + self.Link('', 'War Points', {'action': 'DataLogWarPoints',
-                 'characterID': characterID}))
-                li.append('>' + self.Link('', 'Team Selects', {'action': 'DataLogTeamSelects',
-                 'characterID': characterID}) + self.MidDot() + self.Link('', 'MCC Surges', {'action': 'DataLogMccSurges',
-                 'characterID': characterID}))
-                li.append('>' + self.Link('', 'Object Destructions', {'action': 'DataLogObjectDestructions',
-                 'characterID': characterID}))
-                li.append('>' + self.Link('', 'Objective Hacks', {'action': 'DataLogObjectiveHacks',
-                 'characterID': characterID}))
-                li.append('>' + self.Link('', 'Character Positions', {'action': 'DataLogCharacterPositions',
-                 'characterID': characterID}))
-                self.SubjectActions(li, menuPlacement)
-                return 
+            if coreStatic is None:
+                li.append('Character not found.  No header menu possible.')
+            elif util.IsDustCharacter(characterID):
+                self.PopulateDustHeaderLinks(li, characterID, coreStatic, appStatic)
+            else:
+                self.PopulateEveHeaderLinks(li, characterID, coreStatic, appStatic)
+            self.SubjectActions(li, menuPlacement)
+
+
+
+        def PopulateDustHeaderLinks(self, li, characterID, coreStatic, appStatic):
+            li.append(self.Link('', 'Currency', {'action': 'DustCharacterCurrency',
+             'characterID': characterID}))
+            li.append('-')
+            li.append(self.Link('', 'Skills', {'action': 'DustSkills',
+             'characterID': characterID}))
+            li.append('>' + self.Link('', 'Extra Skill Points', {'action': 'DustEditExtraSkillPointsForm',
+             'characterID': characterID}) + self.MidDot() + self.Link('', 'History', {'action': 'DustSkillHistory',
+             'characterID': characterID}))
+            li.append('>' + self.Link('', 'Grant All Skills', {'action': 'DustGrantAllSkillsForm',
+             'characterID': characterID}))
+            li.append('-')
+            li.append(self.Link('', 'Inventory', {'action': 'DustInventory',
+             'characterID': characterID}))
+            li.append('>' + self.Link('', 'Modify', {'action': 'DustModifyInventoryForm',
+             'characterID': characterID}) + self.MidDot() + self.Link('', 'History', {'action': 'DustInventoryHistory',
+             'characterID': characterID}))
+            li.append('-')
+            li.append(self.Link('', 'Fitting', {'action': 'DustFittings',
+             'characterID': characterID}))
+            li.append('-')
+            li.append(self.FontGray('Fitting (old)'))
+            li.append('>' + self.Link('', 'Character', {'action': 'DustCharacterFittings',
+             'characterID': characterID}) + self.MidDot() + self.Link('', 'Vehicles', {'action': 'DustVehicleFittings',
+             'characterID': characterID}))
+            li.append('-')
+            li.append(self.Link('', 'Lifetime Stats', {'action': 'DataLogLifetimeStats',
+             'characterID': characterID}))
+            li.append('>' + self.Link('', 'Kills', {'action': 'DataLogKillsKiller',
+             'characterID': characterID}) + self.MidDot() + self.Link('', 'Deaths', {'action': 'DataLogKillsVictim',
+             'characterID': characterID}) + self.MidDot() + self.Link('', 'War Points', {'action': 'DataLogWarPoints',
+             'characterID': characterID}))
+            li.append('>' + self.Link('', 'Team Selects', {'action': 'DataLogTeamSelects',
+             'characterID': characterID}) + self.MidDot() + self.Link('', 'MCC Surges', {'action': 'DataLogMccSurges',
+             'characterID': characterID}))
+            li.append('>' + self.Link('', 'Object Destructions', {'action': 'DataLogObjectDestructions',
+             'characterID': characterID}))
+            li.append('>' + self.Link('', 'Objective Hacks', {'action': 'DataLogObjectiveHacks',
+             'characterID': characterID}))
+            li.append('>' + self.Link('', 'Character Positions', {'action': 'DataLogCharacterPositions',
+             'characterID': characterID}))
+
+
+
+        def PopulateEveHeaderLinks(self, li, characterID, coreStatic, appStatic):
             eveGateProfileUrl = self.cache.Setting('zcluster', 'CommunityWebsite')
-            if coreStatic and eveGateProfileUrl:
+            if eveGateProfileUrl:
                 if eveGateProfileUrl[-1] != '/':
                     eveGateProfileUrl += '/'
-                li.append(self.Link(eveGateProfileUrl + 'GM/Profile/' + coreStatic.characterName, mls.CHAR_GOTO_COMMUNITY_PROFILE_PAGE))
+                li.append(self.Link(eveGateProfileUrl + 'GM/Profile/' + coreStatic.characterName, 'Go to Community Profile Page'))
                 li.append('-')
-            if characterID < const.minDustCharacter:
-                forumUrl = unicode('https://forums.eveonline.com/default.aspx?g=search&postedby=') + unicode(coreStatic.characterName)
-                li.append(self.Link(forumUrl, 'Go to Forum History', {}))
-                li.append('-')
-            li.append(self.Link('/gm/logs.py', mls.CHAR_AUDITLOG, {'action': 'AuditLog',
+            forumUrl = unicode('https://forums.eveonline.com/default.aspx?g=search&postedby=') + unicode(coreStatic.characterName)
+            li.append(self.Link(forumUrl, 'Go to Forum History', {}))
+            li.append('-')
+            li.append(self.Link('/gm/logs.py', 'Audit Log', {'action': 'AuditLog',
              'logGroup': const.groupCharacter,
              'characterID': characterID}))
-            li.append(self.Link('/gm/owner.py', mls.UI_GENERIC_BOOKMARKS, {'action': 'Bookmarks',
+            li.append(self.Link('/gm/owner.py', 'Bookmarks', {'action': 'Bookmarks',
              'characterID': characterID}))
             now = time.gmtime()
-            li.append(self.Link('/gm/calendar.py', mls.UI_CAL_CALENDAR, {'action': 'FindByOwner',
+            li.append(self.Link('/gm/calendar.py', 'Calendar', {'action': 'FindByOwner',
              'ownerID': characterID,
              'ownerType': const.groupCharacter,
              'fromMonth': 1,
              'fromYear': const.calendarStartYear,
              'toMonth': 1,
              'toYear': now[0] + 1}))
-            li.append(self.Link('/gm/clones.py', mls.CLONE_CLONES, {'action': 'Clones',
-             'characterID': characterID}) + self.MidDot() + self.Link('/gm/owner.py', mls.UI_GENERIC_INSURANCE, {'action': 'Insurance',
+            li.append(self.Link('/gm/clones.py', 'Clones', {'action': 'Clones',
+             'characterID': characterID}) + self.MidDot() + self.Link('/gm/owner.py', 'Insurance', {'action': 'Insurance',
              'characterID': characterID}))
-            li.append(self.Link('/gm/owner.py', mls.UI_CONTACTS_CONTACTS, {'action': 'Contacts',
+            li.append(self.Link('/gm/owner.py', 'Contacts', {'action': 'Contacts',
              'groupID': const.groupCharacter,
              'ownID': characterID}))
-            li.append(self.Link('/gm/corporation.py', mls.CHAR_CORPMEMBERDETAILS, {'action': 'CorpMemberDetailsByCharID',
+            li.append(self.Link('/gm/corporation.py', 'Corp. Member Details', {'action': 'CorpMemberDetailsByCharID',
              'characterID': characterID}))
-            li.append(self.Link('/gm/character.py', mls.CHAR_DESTROYED_JUNK, {'action': 'JunkedItems',
+            li.append(self.Link('/gm/character.py', 'Destroyed Junk', {'action': 'JunkedItems',
              'characterID': characterID}))
-            li.append(self.Link('/gm/character.py', mls.CHAR_EMPLOYMENTRECORDS, {'action': 'EmploymentRecords',
+            li.append(self.Link('/gm/character.py', 'Employment Records', {'action': 'EmploymentRecords',
              'characterID': characterID}))
-            li.append(self.Link('/gm/character.py', mls.CHAR_EPIC_MISSION_ARC, {'action': 'DisplayEpicMissionArcStatus',
+            li.append(self.Link('/gm/character.py', 'Epic Mission Arc', {'action': 'DisplayEpicMissionArcStatus',
              'characterID': characterID}))
-            li.append(self.Link('/gm/character.py', mls.CMD_GIVELOOT, {'action': 'CharacterLootFormNew',
+            li.append(self.Link('/gm/character.py', 'Give Loot', {'action': 'CharacterLootFormNew',
              'characterID': characterID}))
             li.append(self.Link('/gm/character.py', 'Goodies and Respeccing', {'action': 'EditGoodiesAndRespeccing',
              'characterID': characterID}))
-            li.append(self.Link('/gm/faction.py', mls.GENERIC_MILITIASTATS, {'action': 'FactionalWarfareStatisticsForEntity',
+            li.append(self.Link('/gm/faction.py', 'Militia Stats', {'action': 'FactionalWarfareStatisticsForEntity',
              'entityID': characterID}))
-            li.append(self.Link('/gm/petition.py', mls.GENERIC_PETITION, {'action': 'BriefPetitionHistory',
-             'characterID': characterID}) + self.MidDot() + self.Link('/gm/character.py', mls.CREATE_NEW_PETITION, {'action': 'CreatePetitionForm',
+            li.append(self.Link('/gm/petition.py', 'Petition', {'action': 'BriefPetitionHistory',
+             'characterID': characterID}) + self.MidDot() + self.Link('/gm/character.py', 'Create New Petition', {'action': 'CreatePetitionForm',
              'characterID': characterID}))
-            li.append(self.Link('/gm/character.py', mls.CHAR_PUNISHMENTS, {'action': 'PunishCharacterForm',
-             'characterID': characterID}) + self.MidDot() + self.Link('/gm/users.py', mls.USER_BANUSER, {'action': 'BanUserByCharacterID',
+            li.append(self.Link('/gm/character.py', 'Punishments', {'action': 'PunishCharacterForm',
+             'characterID': characterID}) + self.MidDot() + self.Link('/gm/users.py', 'Ban User', {'action': 'BanUserByCharacterID',
              'characterID': characterID}))
-            li.append(self.Link('/gm/character.py', mls.WAR_RANKS_MEDALS, {'action': 'RanksAndMedals',
+            li.append(self.Link('/gm/character.py', 'Ranks And Medals', {'action': 'RanksAndMedals',
              'characterID': characterID}))
-            li.append(self.Link('/gm/owner.py', mls.UI_GENERIC_STANDINGS, {'action': 'Standings',
+            li.append(self.Link('/gm/owner.py', 'Standings', {'action': 'Standings',
              'groupID': const.groupCharacter,
              'ownID': characterID}))
             li.append(self.Link('/gm/owner.py', 'LP Report', {'action': 'ShowCorpLPForCharacter',
              'characterID': characterID}))
             li.append('-')
-            li.append(self.Link('/gm/accounting.py', mls.GENERIC_ACCOUNTING, {'action': 'Statement',
+            li.append(self.Link('/gm/accounting.py', 'Accounting', {'action': 'Statement',
              'characterID': characterID,
              'groupID': const.groupCharacter}))
-            li.append('>' + self.Link('/gm/accounting.py', mls.UI_GENERIC_CASH, {'action': 'Journal',
+            li.append('>' + self.Link('/gm/accounting.py', 'Cash', {'action': 'Journal',
              'characterID': characterID,
              'keyID': const.accountingKeyCash,
              'entrTypeFilter': None,
              'subAction': 'last25',
              'groupID': 1,
-             'submited': 1}) + self.MidDot() + self.Link('/gm/accounting.py', mls.UI_GENERIC_INSURANCE, {'action': 'Journal',
+             'submited': 1}) + self.MidDot() + self.Link('/gm/accounting.py', 'Insurance', {'action': 'Journal',
              'characterID': characterID,
              'keyID': 1000,
              'entryTypeFilter': 19,
              'subAction': 'last25',
              'groupID': 1,
-             'submited': 1}) + self.MidDot() + self.Link('/gm/owner.py', mls.UI_GENERIC_BILLS, {'action': 'Bills',
+             'submited': 1}) + self.MidDot() + self.Link('/gm/owner.py', 'Bills', {'action': 'Bills',
              'groupID': const.groupCharacter,
              'ownID': characterID}))
             li.append('>' + self.Link('/gm/accounting.py', 'Aruum', {'action': 'Journal',
@@ -978,95 +1082,95 @@ if macho.mode == 'server':
              'entrTypeFilter': None,
              'subAction': 'last25',
              'groupID': 1,
-             'submited': 1}) + self.MidDot() + self.Link('/gm/character.py', mls.CHAR_CREDITS, {'action': 'CharacterCreditsForm',
-             'characterID': characterID}) + self.MidDot() + self.Link('/gm/accounting.py', mls.CHAR_MASSREVERSAL, {'action': 'MassReversal',
+             'submited': 1}) + self.MidDot() + self.Link('/gm/character.py', 'Credits', {'action': 'CharacterCreditsForm',
+             'characterID': characterID}) + self.MidDot() + self.Link('/gm/accounting.py', 'Mass Reversal', {'action': 'MassReversal',
              'characterID': characterID}))
             li.append('-')
-            li.append(self.Link('/gm/character.py', mls.UI_GENERIC_AGENTS, {'action': 'AgentsForm',
+            li.append(self.Link('/gm/character.py', 'Agents', {'action': 'AgentsForm',
              'characterID': characterID}))
-            li.append('>' + self.Link('/gm/character.py', mls.CHAR_AGENTSSPAWNPOINTS, {'action': 'AgentSpawnpoints',
-             'characterID': characterID}))
-            li.append('-')
-            li.append(self.Link('/gm/certificates.py', mls.UI_SHARED_CERTIFICATES, {'action': 'CharacterCertsDisplay',
-             'characterID': characterID}))
-            li.append('>' + self.Link('/gm/certificates.py', mls.UI_CMD_GIVE + ' ' + mls.UI_SHARED_CERTIFICATES, {'action': 'GiveCertsForm',
-             'characterID': characterID}) + self.MidDot() + self.Link('/gm/certificates.py', mls.UI_GENERIC_JOURNAL, {'action': 'CharacterCertsJournal',
+            li.append('>' + self.Link('/gm/character.py', 'Agent Spawnpoints', {'action': 'AgentSpawnpoints',
              'characterID': characterID}))
             li.append('-')
-            li.append(self.Link('/gm/contracts.py', mls.UI_CONTRACTS_CONTRACTS, {'action': 'ListForEntity',
+            li.append(self.Link('/gm/certificates.py', 'Certificates', {'action': 'CharacterCertsDisplay',
+             'characterID': characterID}))
+            li.append('>' + self.Link('/gm/certificates.py', 'Give Certificates', {'action': 'GiveCertsForm',
+             'characterID': characterID}) + self.MidDot() + self.Link('/gm/certificates.py', 'Journal', {'action': 'CharacterCertsJournal',
+             'characterID': characterID}))
+            li.append('-')
+            li.append(self.Link('/gm/contracts.py', 'Contracts', {'action': 'ListForEntity',
              'submit': 1,
              'ownerID': characterID}))
-            li.append('>' + self.Link('/gm/contracts.py', mls.UI_CONTRACTS_ISSUEDBY, {'action': 'List',
+            li.append('>' + self.Link('/gm/contracts.py', 'Issued By', {'action': 'List',
              'submit': 1,
-             'characterID': characterID}) + self.MidDot() + self.Link('/gm/contracts.py', mls.UI_CONTRACTS_ISSUEDTO, {'action': 'List',
+             'characterID': characterID}) + self.MidDot() + self.Link('/gm/contracts.py', 'Issued To', {'action': 'List',
              'submit': 1,
              'acceptedByID': characterID,
              'filtStatus': const.conStatusInProgress}))
-            li.append('>' + self.Link('/gm/contracts.py', mls.UI_CONTRACTS_ASSIGNEDTO, {'action': 'List',
+            li.append('>' + self.Link('/gm/contracts.py', 'Assigned To', {'action': 'List',
              'submit': 1,
              'assignedToID': characterID}))
             li.append('-')
-            li.append(self.Link('/gm/character.py', mls.CHAR_DESTROYED_SHIPS, {'action': 'ShipsKilled',
+            li.append(self.Link('/gm/character.py', 'Destroyed Ships', {'action': 'ShipsKilled',
              'characterID': characterID}))
-            li.append('>' + self.Link('/gm/character.py', mls.UI_GENERIC_KILLRIGHTS, {'action': 'KillRights',
-             'characterID': characterID}) + self.MidDot() + self.Link('/gm/character.py', mls.COMMON_KILL + ' ' + mls.GENERIC_REPORT, {'action': 'KillReport',
+            li.append('>' + self.Link('/gm/character.py', 'Kill Rights', {'action': 'KillRights',
+             'characterID': characterID}) + self.MidDot() + self.Link('/gm/character.py', 'Kill Report', {'action': 'KillReport',
              'characterID': characterID}))
             li.append('-')
-            li.append(self.FontGray(mls.GENERIC_ITEMS))
-            li.append('>' + self.Link('/gm/inventory.py', mls.SHARED_FINDITEM, {'action': 'FindItem',
-             'ownID': characterID}) + self.MidDot() + self.Link('/gm/owner.py', mls.SYSTEM + '-' + mls.UI_GENERIC_ITEMS, {'action': 'SystemItems',
+            li.append(self.FontGray('Items'))
+            li.append('>' + self.Link('/gm/inventory.py', 'Find Item', {'action': 'FindItem',
+             'ownID': characterID}) + self.MidDot() + self.Link('/gm/owner.py', 'System - Items', {'action': 'SystemItems',
              'groupID': const.groupCharacter,
              'ownID': characterID}))
             li.append('>' + self.Link('/gm/inventory.py', 'Find traded items', {'action': 'FindTradedItems',
              'ownID': characterID}))
-            li.append('>' + self.Link('/gm/owner.py', mls.STATION + '-' + mls.UI_GENERIC_ITEMS, {'action': 'StationItems',
+            li.append('>' + self.Link('/gm/owner.py', 'Station - Items', {'action': 'StationItems',
              'groupID': const.groupCharacter,
              'ownID': characterID}))
-            li.append('>' + self.Link('/gm/owner.py', mls.UI_PI_LAUNCHES, {'action': 'PlanataryLaunches',
+            li.append('>' + self.Link('/gm/owner.py', 'Planetary Launches', {'action': 'PlanataryLaunches',
              'ownID': characterID}))
             li.append('-')
             li.append(self.Link('/gm/logs.py', 'Events', {'action': 'OwnerEvents',
              'ownerType': const.groupCharacter,
              'ownerID': characterID}))
-            li.append('>' + self.Link('/gm/logs.py', mls.SHARED_MOVEMENT, {'action': 'OwnerEvents',
+            li.append('>' + self.Link('/gm/logs.py', 'Movement', {'action': 'OwnerEvents',
              'ownerType': const.groupCharacter,
              'ownerID': characterID,
-             'eventGroupID': 3}) + self.MidDot() + self.Link('/gm/logs.py', mls.HD_STANDING, {'action': 'OwnerEvents',
+             'eventGroupID': 3}) + self.MidDot() + self.Link('/gm/logs.py', 'Standing', {'action': 'OwnerEvents',
              'ownerType': const.groupCharacter,
              'ownerID': characterID,
              'eventGroupID': 6}))
-            li.append('>' + self.Link('/gm/logs.py', mls.UI_GENERIC_MISSION, {'action': 'OwnerEvents',
+            li.append('>' + self.Link('/gm/logs.py', 'Mission', {'action': 'OwnerEvents',
              'ownerType': const.groupCharacter,
              'ownerID': characterID,
-             'eventGroupID': 9}) + self.MidDot() + self.Link('/gm/logs.py', mls.UI_GENERIC_DAMAGE, {'action': 'OwnerEvents',
+             'eventGroupID': 9}) + self.MidDot() + self.Link('/gm/logs.py', 'Damage', {'action': 'OwnerEvents',
              'ownerType': const.groupCharacter,
              'ownerID': characterID,
              'eventGroupID': 4}))
-            li.append('>' + self.Link('/gm/logs.py', mls.UI_MARKET_MARKET, {'action': 'OwnerEvents',
+            li.append('>' + self.Link('/gm/logs.py', 'Market', {'action': 'OwnerEvents',
              'ownerType': const.groupCharacter,
              'ownerID': characterID,
-             'eventGroupID': 13}) + self.MidDot() + self.Link('/gm/logs.py', mls.UI_INFLIGHT_DUNGEON, {'action': 'OwnerEvents',
+             'eventGroupID': 13}) + self.MidDot() + self.Link('/gm/logs.py', 'Dungeon', {'action': 'OwnerEvents',
              'ownerType': const.groupCharacter,
              'ownerID': characterID,
              'eventGroupID': 14}))
-            li.append('>' + self.Link('/gm/logs.py', mls.SHARED_KILLED + '!', {'action': 'OwnerEvents',
+            li.append('>' + self.Link('/gm/logs.py', 'Killed!', {'action': 'OwnerEvents',
              'ownerType': const.groupCharacter,
              'ownerID': characterID,
-             'eventGroupID': -1}) + self.MidDot() + self.Link('/gm/logs.py', mls.UI_GENERIC_MISSION + '!', {'action': 'OwnerEvents',
+             'eventGroupID': -1}) + self.MidDot() + self.Link('/gm/logs.py', 'Mission!', {'action': 'OwnerEvents',
              'ownerType': const.groupCharacter,
              'ownerID': characterID,
-             'eventGroupID': -2}) + self.MidDot() + self.Link('/gm/logs.py', mls.UI_GENERIC_BOUNTY + '!', {'action': 'BountyLog',
+             'eventGroupID': -2}) + self.MidDot() + self.Link('/gm/logs.py', 'Bounty!', {'action': 'BountyLog',
              'characterID': characterID}))
-            li.append('>' + self.Link('/gm/logs.py', mls.LOG_CARGOACCESS_OTHERCARGOS, {'action': 'CargoAccessLogs',
+            li.append('>' + self.Link('/gm/logs.py', 'Accessed Others Cargo', {'action': 'CargoAccessLogs',
              'charID': characterID}))
             li.append('>' + self.Link('/gm/logs.py', 'Owned by history', {'action': 'CharacterOwnedBy',
              'charID': characterID}))
             li.append('-')
-            li.append(self.FontGray(mls.CHAR_NOTIFICATIONS))
+            li.append(self.FontGray('Notifications'))
             newLine = True
             line = ''
-            groupNames = notificationUtil.groupNames.items()
-            revNames = [ [v[1], v[0]] for v in groupNames ]
+            groupNames = notificationUtil.groupNamePaths.items()
+            revNames = [ [localization.GetByLabel(v[1]), v[0]] for v in groupNames ]
             revNames.sort()
             for (label, groupID,) in revNames:
                 if newLine:
@@ -1084,48 +1188,48 @@ if macho.mode == 'server':
             if line != '':
                 li.append(line)
             li.append('-')
-            li.append(self.FontGray(mls.UI_MARKET_MARKET))
-            li.append('>' + self.Link('/gm/owner.py', mls.UI_GENERIC_ORDERS, {'action': 'Orders',
+            li.append(self.FontGray('Market'))
+            li.append('>' + self.Link('/gm/owner.py', 'orders', {'action': 'Orders',
              'groupID': const.groupCharacter,
-             'ownID': characterID}) + self.MidDot() + self.Link('/gm/owner.py', mls.UI_GENERIC_TRANSACTIONS, {'action': 'Transactions',
+             'ownID': characterID}) + self.MidDot() + self.Link('/gm/owner.py', 'Transactions', {'action': 'Transactions',
              'groupID': const.groupCharacter,
              'ownID': characterID}))
             li.append('-')
-            li.append(self.FontGray(mls.CHAR_MESSAGES))
-            li.append('>' + self.Link('/gm/owner.py', mls.CHAR_RECEIVED, {'action': 'Messages',
-             'charID': characterID}) + self.MidDot() + self.Link('/gm/owner.py', mls.CHAR_SENT, {'action': 'SentMessages',
+            li.append(self.FontGray('Messages'))
+            li.append('>' + self.Link('/gm/owner.py', 'Received', {'action': 'Messages',
+             'charID': characterID}) + self.MidDot() + self.Link('/gm/owner.py', 'Sent', {'action': 'SentMessages',
              'charID': characterID}))
-            li.append('>' + self.Link('/gm/owner.py', mls.UI_SHARED_MAILINGLISTS, {'action': 'MailingLists',
+            li.append('>' + self.Link('/gm/owner.py', 'Mailing Lists', {'action': 'MailingLists',
              'charID': characterID}))
             li.append('-')
-            li.append(self.Link('/gm/character.py', mls.GENERIC_MOVE, {'action': 'MoveCharacterForm',
+            li.append(self.Link('/gm/character.py', 'Move', {'action': 'MoveCharacterForm',
              'characterID': characterID}))
-            li.append('>' + self.Link('/gm/character.py', mls.CHAR_LASTSTATION, {'action': 'MoveCharacter',
+            li.append('>' + self.Link('/gm/character.py', 'Last Station', {'action': 'MoveCharacter',
              'characterID': characterID,
              'stationID': 0,
-             'moveShipIfApplicable': 'on'}) + self.MidDot() + self.Link('/gm/character.py', mls.CHAR_LASTSYSTEM, {'action': 'MoveCharacter',
+             'moveShipIfApplicable': 'on'}) + self.MidDot() + self.Link('/gm/character.py', 'Last System', {'action': 'MoveCharacter',
              'characterID': characterID,
              'solarSystemID': 0,
              'moveShipIfApplicable': 'on'}))
             li.append('-')
             li.append(self.FontGray('Science & Industry'))
-            li.append('>' + self.Link('/gm/ram.py', mls.UI_CORP_JOBS, {'action': 'JobsOwner',
+            li.append('>' + self.Link('/gm/ram.py', 'Jobs', {'action': 'JobsOwner',
              'ownerID': characterID,
-             'groupID': const.groupCharacter}) + self.MidDot() + self.Link('/gm/ram.py', mls.STATION_ASSEMBLYLINES, {'action': 'AssemblyLinesOwner',
+             'groupID': const.groupCharacter}) + self.MidDot() + self.Link('/gm/ram.py', 'Assembly Lines', {'action': 'AssemblyLinesOwner',
              'ownerID': characterID,
              'groupID': const.groupCharacter}))
-            li.append('>' + self.Link('/gm/ram.py', mls.UI_CMD_GIVE + '-' + mls.BLUEPRINT, {'action': 'GiveBlueprint',
+            li.append('>' + self.Link('/gm/ram.py', 'Give  Blueprint', {'action': 'GiveBlueprint',
              'characterID': characterID}))
             li.append('-')
-            li.append(self.Link('/gm/planets.py', mls.UI_GENERIC_PLANETS, {'action': 'PlanetsByOwner',
+            li.append(self.Link('/gm/planets.py', 'Planets', {'action': 'PlanetsByOwner',
              'ownerID': characterID}))
             li.append('-')
-            li.append(self.Link('/gm/character.py', mls.UI_GENERIC_SKILLS, {'action': 'CharacterSkills',
+            li.append(self.Link('/gm/character.py', 'Skills', {'action': 'CharacterSkills',
              'characterID': characterID}))
-            li.append('>' + self.Link('/gm/skilljournal.py', mls.UI_CMD_GIVE + '-' + mls.UI_GENERIC_SKILLS, {'action': 'CharacterSkillsForm',
-             'characterID': characterID}) + self.MidDot() + self.Link('/gm/skilljournal.py', mls.CHAR_SKILLJOURNAL, {'action': 'CharacterSkillsJournal',
+            li.append('>' + self.Link('/gm/skilljournal.py', 'Give - Skills', {'action': 'CharacterSkillsForm',
+             'characterID': characterID}) + self.MidDot() + self.Link('/gm/skilljournal.py', 'Skill Journal', {'action': 'CharacterSkillsJournal',
              'characterID': characterID}))
-            li.append('>' + self.Link('/gm/character.py', mls.CHAR_SKILLQUEUE, {'action': 'SkillQueue',
+            li.append('>' + self.Link('/gm/character.py', 'Training Queue', {'action': 'SkillQueue',
              'characterID': characterID}))
             li.append('>' + self.Link('/gm/skilljournal.py', 'Set Free Skill Points', {'action': 'SetFreeSkillPointsForm',
              'characterID': characterID}))
@@ -1137,14 +1241,11 @@ if macho.mode == 'server':
              'ownerType': 1}))
             li.append('-')
             li.append(self.FontGray('Paper doll'))
-            li.append('>' + self.Link('/gm/character.py', 'Paper doll history', {'action': 'PaperdollHistory',
-             'characterID': characterID}))
             li.append('>' + self.Link('/gm/character.py', 'Flags', {'action': 'PaperdollFlags',
              'characterID': characterID}))
             if prefs.clusterMode != 'LIVE' and session.role & ROLE_CONTENT > 0:
                 li.append('>' + self.Link('/gm/character.py', 'Copy paperdoll', {'action': 'PaperdollCharacterCopy',
                  'characterID': characterID}))
-            self.SubjectActions(li, menuPlacement)
 
 
 
@@ -1186,84 +1287,84 @@ if macho.mode == 'server':
              'characterID': corporationID,
              'ownerType': 2}))
             li.append('-')
-            li.append(self.Link('/gm/corporation.py', mls.CORP_ALLIANCERECORDS, {'action': 'AllianceRecords',
+            li.append(self.Link('/gm/corporation.py', 'Alliance Records', {'action': 'AllianceRecords',
              'corporationID': corporationID}))
-            li.append(self.Link('/gm/logs.py', mls.CHAR_AUDITLOG, {'action': 'AuditLog',
+            li.append(self.Link('/gm/logs.py', 'Audit Log', {'action': 'AuditLog',
              'logGroup': const.groupCorporation,
              'corporationID': corporationID}))
             li.append(self.Link('/gm/logs.py', 'Events', {'action': 'OwnerEvents',
              'ownerType': const.groupCorporation,
-             'ownerID': corporationID}) + self.MidDot() + self.Link('/gm/logs.py', mls.LOG_CARGOACCESS_OTHERCARGOS, {'action': 'CargoAccessLogs',
+             'ownerID': corporationID}) + self.MidDot() + self.Link('/gm/logs.py', 'Accessed Others Cargo', {'action': 'CargoAccessLogs',
              'charID': corporationID}))
             li.append(self.Link('/gm/corporation.py', 'Bulletins', {'action': 'Bulletins',
              'ownerID': corporationID}))
             if not util.IsNPC(corporationID):
                 now = time.gmtime()
-                li.append(self.Link('/gm/calendar.py', mls.UI_CAL_CALENDAR, {'action': 'FindByOwner',
+                li.append(self.Link('/gm/calendar.py', 'Calendar', {'action': 'FindByOwner',
                  'ownerID': corporationID,
                  'ownerType': const.groupCorporation,
                  'fromMonth': 1,
                  'fromYear': const.calendarStartYear,
                  'toMonth': 1,
                  'toYear': now[0] + 1}))
-            li.append(self.Link('/gm/owner.py', mls.UI_CONTACTS_CONTACTS, {'action': 'Contacts',
+            li.append(self.Link('/gm/owner.py', 'Contacts', {'action': 'Contacts',
              'groupID': const.groupCorporation,
              'ownID': corporationID}))
-            li.append(self.Link('/gm/corporation.py', '%s %s' % (mls.UI_GENERIC_GAG, mls.UI_CORP_CORP), {'action': 'GagCorporationForm',
-             'corporationID': corporationID}) + self.MidDot() + self.Link('/gm/corporation.py', '%s %s' % (mls.UI_GENERIC_UNGAG, mls.UI_CORP_CORP), {'action': 'UnGagCorporation',
+            li.append(self.Link('/gm/corporation.py', 'Gag Corp', {'action': 'GagCorporationForm',
+             'corporationID': corporationID}) + self.MidDot() + self.Link('/gm/corporation.py', 'Ungag Corp', {'action': 'UnGagCorporation',
              'corporationID': corporationID}))
-            li.append(self.Link('/gm/corporation.py', mls.CORP_LOCKEDITEMS, {'action': 'LockedItems',
+            li.append(self.Link('/gm/corporation.py', 'Locked Items', {'action': 'LockedItems',
              'corporationID': corporationID}))
-            li.append(self.Link('/gm/corporation.py', mls.COMMON_KILL + ' ' + mls.GENERIC_REPORT, {'action': 'KillReport',
+            li.append(self.Link('/gm/corporation.py', 'Kill Report', {'action': 'KillReport',
              'corporationID': corporationID}))
-            li.append(self.Link('/gm/corporation.py', mls.UI_GENERIC_MEDALS, {'action': 'Medals',
+            li.append(self.Link('/gm/corporation.py', 'Medals', {'action': 'Medals',
              'corporationID': corporationID}))
-            li.append(self.Link('/gm/faction.py', mls.GENERIC_MILITIASTATS, {'action': 'FactionalWarfareStatisticsForEntity',
+            li.append(self.Link('/gm/faction.py', 'Militia Stats', {'action': 'FactionalWarfareStatisticsForEntity',
              'entityID': corporationID}))
             li.append(self.Link('/gm/corporation.py', 'Corporate Registry Ads', {'action': 'CorporateRegistry',
              'corporationID': corporationID}))
-            li.append(self.Link('/gm/owner.py', mls.UI_CORP_OFFICES, {'action': 'RentableItems',
+            li.append(self.Link('/gm/owner.py', 'Offices', {'action': 'RentableItems',
              'groupID': const.groupCorporation,
              'ownID': corporationID,
              'typID': 26}))
-            li.append(self.Link('/gm/corporation.py', mls.SHARED_HDROLES, {'action': 'Roles',
+            li.append(self.Link('/gm/corporation.py', 'Roles', {'action': 'Roles',
              'corporationID': corporationID}))
-            li.append(self.Link('/gm/corporation.py', mls.CORP_SHAREHOLDERS, {'action': 'ViewShareholders',
-             'corporationID': corporationID}) + self.MidDot() + self.Link('/gm/corporation.py', mls.UI_GENERIC_SHARES, {'action': 'CreateCorporationSharesForm',
+            li.append(self.Link('/gm/corporation.py', 'Shareholders', {'action': 'ViewShareholders',
+             'corporationID': corporationID}) + self.MidDot() + self.Link('/gm/corporation.py', 'Shares', {'action': 'CreateCorporationSharesForm',
              'corporationID': corporationID}))
-            li.append(self.Link('/gm/owner.py', mls.UI_GENERIC_STANDINGS, {'action': 'Standings',
+            li.append(self.Link('/gm/owner.py', 'Standings', {'action': 'Standings',
              'groupID': const.groupCorporation,
              'ownID': corporationID}))
-            li.append(self.Link('/gm/corporation.py', mls.UI_GENERIC_STATIONS, {'action': 'Stations',
+            li.append(self.Link('/gm/corporation.py', 'Stations', {'action': 'Stations',
              'corporationID': corporationID}))
             li.append(self.Link('/gm/corporation.py', 'Starbases', {'action': 'Starbases',
              'corporationID': corporationID}))
-            li.append(self.Link('/gm/corporation.py', mls.UI_CORP_TITLES, {'action': 'Titles',
+            li.append(self.Link('/gm/corporation.py', 'Titles', {'action': 'Titles',
              'corporationID': corporationID}))
-            li.append(self.Link('/gm/corporation.py', mls.MARKET_TRADES, {'action': 'Trades',
+            li.append(self.Link('/gm/corporation.py', 'Trades', {'action': 'Trades',
              'corporationID': corporationID}))
             li.append('-')
-            li.append(self.Link('/gm/accounting.py', mls.GENERIC_ACCOUNTING, {'action': 'Statement',
+            li.append(self.Link('/gm/accounting.py', 'Accounting', {'action': 'Statement',
              'characterID': corporationID,
              'groupID': const.groupCorporation}))
-            li.append('>' + self.Link('/gm/accounting.py', mls.UI_GENERIC_CASH, {'action': 'Journal',
+            li.append('>' + self.Link('/gm/accounting.py', 'Cash', {'action': 'Journal',
              'characterID': corporationID,
              'keyID': const.accountingKeyCash,
              'entryTypeFilter': None,
              'subAction': 'last25',
              'groupID': const.groupCorporation,
-             'submited': 1}) + self.MidDot() + self.Link('/gm/accounting.py', mls.UI_GENERIC_INSURANCE, {'action': 'Journal',
+             'submited': 1}) + self.MidDot() + self.Link('/gm/accounting.py', 'Insurance', {'action': 'Journal',
              'characterID': corporationID,
              'keyID': 1000,
              'entryTypeFilter': 19,
              'subAction': 'last25',
              'groupID': const.groupCorporation,
              'submited': 1}))
-            li.append('>' + self.Link('/gm/owner.py', mls.UI_GENERIC_BILLS, {'action': 'Bills',
+            li.append('>' + self.Link('/gm/owner.py', 'Bills', {'action': 'Bills',
              'groupID': const.groupCorporation,
-             'ownID': corporationID}) + self.MidDot() + self.Link('/gm/corporation.py', mls.CHAR_CREDITS, {'action': 'CorporationCreditsForm',
+             'ownID': corporationID}) + self.MidDot() + self.Link('/gm/corporation.py', 'Credits', {'action': 'CorporationCreditsForm',
              'corporationID': corporationID}))
-            li.append('>' + self.Link('/gm/accounting.py', mls.CHAR_MASSREVERSAL, {'action': 'MassReversal',
+            li.append('>' + self.Link('/gm/accounting.py', 'Mass Reversal', {'action': 'MassReversal',
              'characterID': corporationID}) + self.MidDot() + self.Link('/gm/accounting.py', 'Aurum', {'action': 'Journal',
              'characterID': corporationID,
              'keyID': const.accountingKeyAUR,
@@ -1272,77 +1373,77 @@ if macho.mode == 'server':
              'groupID': const.groupCorporation,
              'submited': 1}))
             li.append('-')
-            li.append(self.Link('/gm/contracts.py', mls.UI_CONTRACTS_CONTRACTS, {'action': 'ListForEntity',
+            li.append(self.Link('/gm/contracts.py', 'Contracts', {'action': 'ListForEntity',
              'submit': 1,
              'ownerID': corporationID}))
-            li.append('>' + self.Link('/gm/contracts.py', mls.UI_CONTRACTS_ISSUEDBY, {'action': 'List',
+            li.append('>' + self.Link('/gm/contracts.py', 'Issued By', {'action': 'List',
              'submit': 1,
-             'corporationID': corporationID}) + self.MidDot() + self.Link('/gm/contracts.py', mls.UI_CONTRACTS_ISSUEDTO, {'action': 'List',
+             'corporationID': corporationID}) + self.MidDot() + self.Link('/gm/contracts.py', 'Issued To', {'action': 'List',
              'submit': 1,
              'acceptedByID': corporationID,
              'filtStatus': const.conStatusInProgress}))
-            li.append('>' + self.Link('/gm/contracts.py', mls.UI_CONTRACTS_ASSIGNEDTO, {'action': 'List',
+            li.append('>' + self.Link('/gm/contracts.py', 'Assigned To', {'action': 'List',
              'submit': 1,
              'assignedToID': corporationID}))
             li.append('-')
             li.append('!Items')
-            li.append('>' + self.Link('/gm/inventory.py', mls.SHARED_FINDITEM, {'action': 'FindItem',
-             'ownID': corporationID}) + self.MidDot() + self.Link('/gm/owner.py', mls.SYSTEM + '-' + mls.UI_GENERIC_ITEMS, {'action': 'SystemItems',
+            li.append('>' + self.Link('/gm/inventory.py', 'Find Item', {'action': 'FindItem',
+             'ownID': corporationID}) + self.MidDot() + self.Link('/gm/owner.py', 'System-Items', {'action': 'SystemItems',
              'groupID': const.groupCorporation,
              'ownID': corporationID}))
-            li.append('>' + self.Link('/gm/owner.py', mls.STATION + '-' + mls.UI_GENERIC_ITEMS, {'action': 'StationItems',
+            li.append('>' + self.Link('/gm/owner.py', 'Station-Items', {'action': 'StationItems',
              'groupID': const.groupCorporation,
-             'ownID': corporationID}) + self.MidDot() + self.Link('/gm/owner.py', mls.UI_CORP_OFFICE + '-' + mls.UI_GENERIC_ITEMS, {'action': 'OfficeItems',
+             'ownID': corporationID}) + self.MidDot() + self.Link('/gm/owner.py', 'Office-Items', {'action': 'OfficeItems',
              'groupID': const.groupCorporation,
              'ownID': corporationID}))
-            li.append('>' + self.Link('/gm/corporation.py', mls.SHARED_FINDITEM + ' ' + mls.UI_CORP_MEMBERS, {'action': 'FindItemsOnMembers',
+            li.append('>' + self.Link('/gm/corporation.py', 'Find Item Members', {'action': 'FindItemsOnMembers',
              'corporationID': corporationID}))
             li.append('-')
             li.append('!Market')
-            li.append('>' + self.Link('/gm/owner.py', mls.UI_GENERIC_ORDERS, {'action': 'Orders',
+            li.append('>' + self.Link('/gm/owner.py', 'orders', {'action': 'Orders',
              'groupID': const.groupCorporation,
-             'ownID': corporationID}) + self.MidDot() + self.Link('/gm/owner.py', mls.UI_GENERIC_TRANSACTIONS, {'action': 'Transactions',
+             'ownID': corporationID}) + self.MidDot() + self.Link('/gm/owner.py', 'Transactions', {'action': 'Transactions',
              'groupID': const.groupCorporation,
              'ownID': corporationID}))
             li.append('-')
-            li.append(self.Link('/gm/corporation.py', mls.UI_CORP_MEMBERS, {'action': 'SimplyViewMembers',
+            li.append(self.Link('/gm/corporation.py', 'Members', {'action': 'SimplyViewMembers',
              'corporationID': corporationID}))
-            li.append('>' + self.Link('/gm/corporation.py', mls.CORP_COMPLEXMEMEBERS, {'action': 'ViewMembers',
+            li.append('>' + self.Link('/gm/corporation.py', 'Complex Members', {'action': 'ViewMembers',
              'corporationID': corporationID}))
-            li.append('>' + self.Link('/gm/petition.py', mls.UI_CORP_MEMBERS + ' Petitions', {'action': 'CorpPetitions',
+            li.append('>' + self.Link('/gm/petition.py', 'Members Petitions', {'action': 'CorpPetitions',
              'corpID': corporationID}))
             li.append('-')
             li.append('!Notes')
-            li.append('>' + self.Link('/gm/corporation.py', mls.UI_CORP_CORP, {'action': 'Notes',
-             'corporationID': corporationID}) + self.MidDot() + self.Link('/gm/corporation.py', mls.UI_CORP_MEMBERS + '(' + mls.GENERIC_USERS + ')', {'action': 'NotesForCorp',
+            li.append('>' + self.Link('/gm/corporation.py', 'Corp', {'action': 'Notes',
+             'corporationID': corporationID}) + self.MidDot() + self.Link('/gm/corporation.py', 'Members(Users)', {'action': 'NotesForCorp',
              'corporationID': corporationID}))
             li.append('-')
-            li.append('!' + mls.CORP_SANCTIONEDACTIONS)
-            li.append('>' + self.Link('/gm/corporation.py', mls.UI_CORP_INEFFECT, {'action': 'ViewSanctionableActions',
+            li.append('!Sanctioned Actions')
+            li.append('>' + self.Link('/gm/corporation.py', 'In Effect', {'action': 'ViewSanctionableActions',
              'corporationID': corporationID,
-             'inEffect': 1}) + self.MidDot() + self.Link('/gm/corporation.py', mls.UI_CORP_NOTINEFFECT, {'action': 'ViewSanctionableActions',
+             'inEffect': 1}) + self.MidDot() + self.Link('/gm/corporation.py', 'Not In Effect', {'action': 'ViewSanctionableActions',
              'corporationID': corporationID,
              'inEffect': 0}))
             li.append('-')
-            li.append('!' + mls.UI_RMR_SCIENCEANDINDUSTRY)
-            li.append('>' + self.Link('/gm/ram.py', mls.UI_CORP_JOBS, {'action': 'JobsOwner',
+            li.append('!Science & Industry')
+            li.append('>' + self.Link('/gm/ram.py', 'Jobs', {'action': 'JobsOwner',
              'ownerID': corporationID,
-             'groupID': const.groupCorporation}) + self.MidDot() + self.Link('/gm/ram.py', mls.STATION_ASSEMBLYLINES, {'action': 'AssemblyLinesOwner',
+             'groupID': const.groupCorporation}) + self.MidDot() + self.Link('/gm/ram.py', 'Assembly Lines', {'action': 'AssemblyLinesOwner',
              'ownerID': corporationID,
              'groupID': const.groupCorporation}))
             li.append('-')
-            li.append('!' + mls.WAR_WARS)
-            li.append('>' + self.Link('/gm/war.py', mls.UI_GENERIC_ACTIVE, {'action': 'ViewWars',
+            li.append('!Wars')
+            li.append('>' + self.Link('/gm/war.py', 'Active', {'action': 'ViewWars',
              'ownerID': corporationID,
-             'onlyActive': 1}) + self.MidDot() + self.Link('/gm/war.py', mls.UI_GENERIC_ALL, {'action': 'ViewWars',
+             'onlyActive': 1}) + self.MidDot() + self.Link('/gm/war.py', 'All', {'action': 'ViewWars',
              'ownerID': corporationID,
-             'onlyActive': 0}) + self.MidDot() + self.Link('/gm/corporation.py', mls.UI_GENERIC_FACTION, {'action': 'ViewFactionWarsForCorp',
+             'onlyActive': 0}) + self.MidDot() + self.Link('/gm/corporation.py', 'Faction', {'action': 'ViewFactionWarsForCorp',
              'corporationID': corporationID}))
             li.append('-')
-            li.append('!' + mls.UI_CMD_VOTES)
-            li.append('>' + self.Link('/gm/corporation.py', mls.UI_GENERIC_OPEN, {'action': 'ViewVotes',
+            li.append('!Votes')
+            li.append('>' + self.Link('/gm/corporation.py', 'Open', {'action': 'ViewVotes',
              'corporationID': corporationID,
-             'isOpen': 1}) + self.MidDot() + self.Link('/gm/corporation.py', mls.UI_GENERIC_CLOSED, {'action': 'ViewVotes',
+             'isOpen': 1}) + self.MidDot() + self.Link('/gm/corporation.py', 'Closed', {'action': 'ViewVotes',
              'corporationID': corporationID,
              'isOpen': 0}))
             self.SubjectActions(li, menuPlacement)
@@ -1357,7 +1458,7 @@ if macho.mode == 'server':
                 image = '/img/alliance.jpg'
             lines = []
             info = ''
-            info = self.SplitAdd(info, util.FmtDate(a.startDate, 'ln'), ', ')
+            info = self.SplitAdd(info, util.FmtDateEng(a.startDate, 'ln'), ', ')
             lines.append([0, 'Info', info])
             if a.url:
                 lines.append([0, 'web', a.url])
@@ -1367,48 +1468,48 @@ if macho.mode == 'server':
             li.append(self.Link('/gm/alliance.py', 'INFO', {'action': 'Alliance',
              'allianceID': allianceID}))
             li.append('-')
-            li.append(self.Link('/gm/accounting.py', mls.GENERIC_ACCOUNTING, {'action': 'Statement',
+            li.append(self.Link('/gm/accounting.py', 'Accounting', {'action': 'Statement',
              'characterID': allianceID,
              'groupID': const.groupAlliance}))
-            li.append(self.Link('/gm/alliance.py', mls.UI_CORP_APPLICATIONS, {'action': 'ViewApplications',
+            li.append(self.Link('/gm/alliance.py', 'Applications', {'action': 'ViewApplications',
              'allianceID': allianceID}))
             now = time.gmtime()
-            li.append(self.Link('/gm/calendar.py', mls.UI_CAL_CALENDAR, {'action': 'FindByOwner',
+            li.append(self.Link('/gm/calendar.py', 'Calendar', {'action': 'FindByOwner',
              'ownerID': allianceID,
              'ownerType': const.groupAlliance,
              'fromMonth': 1,
              'fromYear': const.calendarStartYear,
              'toMonth': 1,
              'toYear': now[0] + 1}))
-            li.append(self.Link('/gm/owner.py', mls.UI_GENERIC_BILLS, {'action': 'Bills',
+            li.append(self.Link('/gm/owner.py', 'Bills', {'action': 'Bills',
              'groupID': const.groupAlliance,
              'ownID': allianceID}))
-            li.append(self.Link('/gm/alliance.py', mls.ALLI_BILLSPAYABLEBYGMH, {'action': 'ViewBills',
+            li.append(self.Link('/gm/alliance.py', 'Bills (Payable by GMH)', {'action': 'ViewBills',
              'allianceID': allianceID}))
             li.append(self.Link('/gm/corporation.py', 'Bulletins', {'action': 'Bulletins',
              'ownerID': allianceID}))
-            li.append(self.Link('/gm/owner.py', mls.UI_CONTACTS_CONTACTS, {'action': 'Contacts',
+            li.append(self.Link('/gm/owner.py', 'Contacts', {'action': 'Contacts',
              'groupID': const.groupAlliance,
              'ownID': allianceID}))
-            li.append(self.Link('/gm/inventory.py', mls.SHARED_FINDITEM, {'action': 'FindItem',
+            li.append(self.Link('/gm/inventory.py', 'Find Item', {'action': 'FindItem',
              'ownID': allianceID}))
             li.append(self.Link('/gm/logs.py', 'Events', {'action': 'OwnerEvents',
              'ownerType': const.groupAlliance,
              'ownerID': allianceID}))
-            li.append(self.Link('/gm/alliance.py', mls.UI_CORP_MEMBERS, {'action': 'ViewMembers',
+            li.append(self.Link('/gm/alliance.py', 'Members', {'action': 'ViewMembers',
              'allianceID': allianceID}))
-            li.append(self.Link('/gm/alliance.py', mls.UI_GENERIC_NOTES, {'action': 'Notes',
+            li.append(self.Link('/gm/alliance.py', 'Notes', {'action': 'Notes',
              'allianceID': allianceID}))
-            li.append(self.Link('/gm/alliance.py', mls.UI_CORP_RANKINGS, {'action': 'Rankings'}))
-            li.append(self.Link('/gm/owner.py', mls.UI_GENERIC_STANDINGS, {'action': 'Standings',
+            li.append(self.Link('/gm/alliance.py', 'Rankings', {'action': 'Rankings'}))
+            li.append(self.Link('/gm/owner.py', 'Standings', {'action': 'Standings',
              'groupID': const.groupAlliance,
              'ownID': allianceID}))
-            li.append(self.Link('/gm/alliance.py', mls.UI_SHARED_MAPSOVEREIGNTY + ' ' + mls.GENERIC_BILLCAPB, {'action': 'Sovereignty',
+            li.append(self.Link('/gm/alliance.py', 'Sovereignty Bill', {'action': 'Sovereignty',
              'allianceID': allianceID}))
-            li.append(self.Link('/gm/war.py', mls.WAR_WARS + '(' + mls.UI_GENERIC_ACTIVE + ')', {'action': 'ViewWars',
+            li.append(self.Link('/gm/war.py', 'Wars(Active)', {'action': 'ViewWars',
              'ownerID': allianceID,
              'onlyActive': 1}))
-            li.append(self.Link('/gm/war.py', mls.WAR_WARS + '(' + mls.UI_GENERIC_ALL + ')', {'action': 'ViewWars',
+            li.append(self.Link('/gm/war.py', 'Wars(All)', {'action': 'ViewWars',
              'ownerID': allianceID,
              'onlyActive': 0}))
             self.SubjectActions(li, menuPlacement)
@@ -1417,7 +1518,7 @@ if macho.mode == 'server':
 
 
         def FactionHeader(self, factionID, smallHeader = 1, menuPlacement = 'rMenu'):
-            f = self.cache.Index(const.cacheChrFactions, factionID)
+            f = cfg.factions.Get(factionID)
             image = '/img/faction%s.jpg' % factionID
             self.SubjectHeader(smallHeader, 'FACTION', factionID, f.factionName, '#E8E8FF', image, '/gm/faction.py', 'Faction', 'factionID', [[1, 'System', self.SystemLink(f.solarSystemID)], [1, 'Corporation', self.CorporationLink(f.corporationID)]])
             li = []
@@ -1425,20 +1526,20 @@ if macho.mode == 'server':
             li.append(self.Link('/gm/faction.py', 'INFO', {'action': 'Faction',
              'factionID': factionID}))
             li.append('-')
-            li.append(self.Link('/gm/faction.py', mls.UI_GENERIC_CORPORATIONS, {'action': 'Corporations',
+            li.append(self.Link('/gm/faction.py', 'Corporations', {'action': 'Corporations',
              'factionID': factionID}))
-            li.append(self.Link('/gm/faction.py', mls.UI_FACWAR_FACWARCORPS, {'action': 'FactionalWarfareCorporations',
+            li.append(self.Link('/gm/faction.py', 'FacWar Corporations', {'action': 'FactionalWarfareCorporations',
              'factionID': factionID}))
-            li.append(self.Link('/gm/faction.py', mls.GENERIC_MILITIASTATS, {'action': 'FactionalWarfareStatisticsForEntity',
+            li.append(self.Link('/gm/faction.py', 'Militia Stats', {'action': 'FactionalWarfareStatisticsForEntity',
              'entityID': factionID}))
-            li.append(self.Link('/gm/faction.py', mls.FACTION_DISTRIBUTIONS, {'action': 'Distributions',
+            li.append(self.Link('/gm/faction.py', 'Distributions', {'action': 'Distributions',
              'factionID': factionID}))
-            li.append(self.Link('/gm/faction.py', mls.FACTION_TERRITORY, {'action': 'Territory',
+            li.append(self.Link('/gm/faction.py', 'Territory', {'action': 'Territory',
              'factionID': factionID}))
             li.append(self.Link('/gm/logs.py', 'Events', {'action': 'OwnerEvents',
              'ownerType': const.groupFaction,
              'ownerID': factionID}))
-            li.append(self.Link('/gm/owner.py', mls.UI_GENERIC_STANDINGS, {'action': 'Standings',
+            li.append(self.Link('/gm/owner.py', 'Standings', {'action': 'Standings',
              'groupID': const.groupFaction,
              'ownID': factionID}))
             self.SubjectActions(li, menuPlacement)
@@ -1462,22 +1563,22 @@ if macho.mode == 'server':
                     s += self.FontHeaderProperty('WorldSpace')
                     s += ':<br>%s' % self.WorldSpaceLink(locationID)
                 elif util.IsSolarSystem(locationID):
-                    s += self.FontHeaderProperty(mls.SYSTEM.upper())
+                    s += self.FontHeaderProperty('SYSTEM')
                     s += ':<br>%s' % self.SystemLink(locationID)
                 else:
-                    s += self.FontHeaderProperty(mls.STATION.upper())
+                    s += self.FontHeaderProperty('STATION')
                     s += ':<br>%s' % self.StationLink(locationID)
                     s += ' - %s' % self.SystemLink(solarSystemID)
                 if shipID:
-                    s += '<br>' + self.FontHeaderProperty(mls.SHIP.upper()) + ':<br>%s' % self.Link('/gm/character.py', cfg.evelocations.Get(shipID).locationName, {'action': 'Ship',
+                    s += '<br>' + self.FontHeaderProperty('SHIP') + ':<br>%s' % self.Link('/gm/character.py', cfg.evelocations.Get(shipID).locationName, {'action': 'Ship',
                      'characterID': characterID,
                      'shipID': shipID})
-                    s += '<br>' + self.FontProperty(mls.TYPE) + ': %s' % cfg.invtypes.Get(locationTypeID).typeName
+                    s += '<br>' + self.FontProperty('Type') + ': %s' % cfg.invtypes.Get(locationTypeID).typeName
                 elif activeShipID:
-                    s += '<br>' + self.FontHeaderProperty(mls.SHIP.upper()) + ':<br>%s' % self.Link('/gm/character.py', cfg.evelocations.Get(activeShipID).locationName, {'action': 'Ship',
+                    s += '<br>' + self.FontHeaderProperty('SHIP') + ':<br>%s' % self.Link('/gm/character.py', cfg.evelocations.Get(activeShipID).locationName, {'action': 'Ship',
                      'characterID': characterID,
                      'shipID': activeShipID})
-                    s += '<br>' + self.FontProperty(mls.TYPE) + ': %s' % cfg.invtypes.Get(activeShipTypeID).typeName
+                    s += '<br>' + self.FontProperty('Type') + ': %s' % cfg.invtypes.Get(activeShipTypeID).typeName
             except:
                 s = '<font color=red>Invalid Location: %s</font>' % locationID
             return s
@@ -1489,8 +1590,8 @@ if macho.mode == 'server':
             diff = dtNow - dt
             numMinutes = diff / 10000000.0 / 60
             numDays = numMinutes / 60 / 24
-            dTimeFmt = util.FmtDate(dt, 'ns')
-            dst = util.FmtDate(dt, 'sn')
+            dTimeFmt = util.FmtDateEng(dt, 'ns')
+            dst = util.FmtDateEng(dt, 'sn')
             lst = dst.split('.')
             dDateFmt = lst[2] + '. ' + ['Jan',
              'Feb',
@@ -1504,7 +1605,7 @@ if macho.mode == 'server':
              'Oct',
              'Nov',
              'Dec'][(int(lst[1]) - 1)] + ' ' + lst[0]
-            dn = util.FmtDate(dtNow, 'ns')
+            dn = util.FmtDateEng(dtNow, 'ns')
             if numDays < 1 and dTimeFmt.split(':')[0] <= dn.split(':')[0]:
                 return '<b>Today at %s</b>' % dTimeFmt
             else:
@@ -1629,14 +1730,16 @@ if macho.mode == 'server':
 
         def TypeHeader(self, typeID, typeAction = 'Type'):
             typeName = ''
+            typeNameID = None
             groupID = -1
             categoryID = -1
-            rs = self.DB2.SQLInt('*', 'inventory.types', '', '', 'typeID', typeID)
+            rs = self.DB2.SQLInt('*', 'inventory.typesEx', '', '', 'typeID', typeID)
             if len(rs) == 0:
                 r = None
             else:
                 r = rs[0]
                 typeName = r.typeName
+                typeNameID = r.typeNameID
                 groupID = r.groupID
                 group = cfg.invgroups.GetIfExists(groupID)
                 if group is None:
@@ -1646,7 +1749,7 @@ if macho.mode == 'server':
             lines = []
             lines.append([1, 'Group', self.GroupLink(groupID)])
             lines.append([1, 'Category', self.CategoryLink(categoryID)])
-            self.SubjectHeader(1, 'TYPE', typeID, typeName, '#C0C0C0', self.TypeImage(typeID), '/gd/type.py', 'Type', 'typeID', lines, 64, 64)
+            self.SubjectHeader(1, 'TYPE', typeID, self.GetLocalizationLabel(typeName, typeNameID), '#C0C0C0', self.TypeImage(typeID), '/gd/type.py', 'Type', 'typeID', lines, 64, 64)
             li = []
             li.append('#TYPE')
             li.append(self.Link('type.py', 'INFO', {'action': 'Type',
@@ -1770,46 +1873,39 @@ class InfoHtmlWriter(ESPHtmlWriter):
 
 def hook_AppServerPages(writer, menu = ''):
     if writer.showMenu:
-        dGMH = not session.role & ROLE_GMH
         dGML = not session.role & ROLE_GML
         dCONTENT = not session.role & ROLE_CONTENT
         dADMIN = not session.role & ROLE_ADMIN
         dVIEW = not session.role & ROLEMASK_VIEW
-        dDBA = not session.role & ROLE_DBA
         dPROG = not session.role & ROLE_PROGRAMMER
-        dMARKET = not session.role & ROLE_MARKET
-        dMARKETH = not session.role & ROLE_MARKETH
-        dTRL = not session.role & ROLE_TRANSLATION
-        dTRE = not session.role & ROLE_TRANSLATIONEDITOR
-        dTRADMIN = not session.role & ROLE_TRANSLATIONADMIN
-        dTRQA = not session.role & ROLE_TRANSLATIONTESTER
         if macho.mode == 'server':
             writer.inserts['icon'] = writer.Link('/gm/search.py', writer.Image('/img/menu_search32.jpg', 'width=32 height=32'))
             writer.AddTopMenuSubLine('GM')
-            writer.AddTopMenuSub('GM', mls.UI_CMD_SEARCH, '/gm/search.py', disabled=dVIEW)
-            writer.AddTopMenuSub('GM', mls.SHARED_FINDITEM, '/gm/inventory.py?action=FindItem', disabled=dVIEW)
-            writer.AddTopMenuSub('GM', mls.ITEM + ' ' + mls.GENERIC_REPORT, '/gm/inventory.py?action=Item', disabled=dVIEW)
+            writer.AddTopMenuSub('GM', 'Search', '/gm/search.py', disabled=dVIEW)
+            writer.AddTopMenuSub('GM', 'Find Item', '/gm/inventory.py?action=FindItem', disabled=dVIEW)
+            writer.AddTopMenuSub('GM', 'Item Report', '/gm/inventory.py?action=Item', disabled=dVIEW)
             writer.AddTopMenuSubLine('GM')
-            writer.AddTopMenuSub('GM', mls.UI_GENERIC_ALLIANCES, '/gm/alliance.py', disabled=dVIEW)
-            writer.AddTopMenuSub('GM', mls.UI_CAL_CALENDAR, '/gm/calendar.py', disabled=dVIEW)
-            writer.AddTopMenuSub('GM', mls.UI_CONTRACTS_CONTRACTS, '/gm/contracts.py', disabled=dVIEW)
-            writer.AddTopMenuSub('GM', mls.UI_GENERIC_CORPORATIONS, '/gm/corporation.py', disabled=dVIEW)
-            writer.AddTopMenuSub('GM', mls.UI_GENERIC_FACTIONS, '/gm/faction.py', disabled=dVIEW)
+            writer.AddTopMenuSub('GM', 'Alliances', '/gm/alliance.py', disabled=dVIEW)
+            writer.AddTopMenuSub('GM', 'Calendar', '/gm/calendar.py', disabled=dVIEW)
+            writer.AddTopMenuSub('GM', 'Contracts', '/gm/contracts.py', disabled=dVIEW)
+            writer.AddTopMenuSub('GM', 'Corporations', '/gm/corporation.py', disabled=dVIEW)
+            writer.AddTopMenuSub('GM', 'Factions', '/gm/faction.py', disabled=dVIEW)
             writer.AddTopMenuSub('GM', 'Fleets', '/gm/fleet.py', disabled=dVIEW)
             writer.AddTopMenuSub('GM', 'Inventory', '/gm/inventory.py', disabled=dVIEW)
-            writer.AddTopMenuSub('GM', mls.STARBASE_STARBASES, '/gm/starbase.py', disabled=dVIEW)
-            writer.AddTopMenuSub('GM', mls.UI_GENERIC_STATIONS, '/gm/stations.py', disabled=dVIEW)
+            writer.AddTopMenuSub('GM', 'Starbases', '/gm/starbase.py', disabled=dVIEW)
+            writer.AddTopMenuSub('GM', 'Stations', '/gm/stations.py', disabled=dVIEW)
             writer.AddTopMenuSub('GM', 'Tale', '/gm/tale.py', disabled=dVIEW)
-            writer.AddTopMenuSub('GM', mls.UI_GENERIC_PLANETS, '/gm/planets.py', disabled=dVIEW)
+            writer.AddTopMenuSub('GM', 'Planets', '/gm/planets.py', disabled=dVIEW)
             writer.AddTopMenuSub('GM', 'Voice Chat', '/gm/voice.py', disabled=dVIEW)
             writer.AddTopMenuSub('GM', 'Virtual Store', '/gm/store.py', disabled=dVIEW)
             if prefs.GetValue('enableDust', 0) == 1:
                 writer.AddTopMenuSubLine('GM')
-                writer.AddTopMenuSub('GM', 'Battles', '/dust/battles.py', disabled=dVIEW)
+                writer.AddTopMenuSub('GM', 'Quick Battles', '/dust/battleSeriesBattles.py', disabled=dVIEW)
+                writer.AddTopMenuSub('GM', 'Corp Battles', '/dust/corporationBattles.py', disabled=dVIEW)
             writer.AddTopMenuSub('PETITION', 'My Petitions', '/gm/petitionClient.py?action=ShowMyPetitions', disabled=dVIEW)
             writer.AddTopMenuSubLine('PETITION')
-            writer.AddTopMenuSub('PETITION', mls.PETI_ANSWERPETITIONS, '/gm/petitionClient.py?action=ShowClaimedPetitions', disabled=dVIEW)
-            writer.AddTopMenuSub('PETITION', mls.UI_GENERIC_KNOWLEDGEBASE, '/gm/knowledgebase.py', disabled=dCONTENT)
+            writer.AddTopMenuSub('PETITION', 'Answer Petitions', '/gm/petitionClient.py?action=ShowClaimedPetitions', disabled=dVIEW)
+            writer.AddTopMenuSub('PETITION', 'Knowledge Base', '/gm/knowledgebase.py', disabled=dCONTENT)
             writer.AddTopMenuSub('PETITION', 'Petition Management', '/gm/petition.py', disabled=dGML)
             writer.AddTopMenuSub('PETITION', 'Support Management', '/gm/supportManagement.py', disabled=dGML)
             writer.AddTopMenuSubLine('CONTENT')
@@ -1863,32 +1959,35 @@ def hook_AppServerPages(writer, menu = ''):
             writer.AddTopMenuSubLine('ADMIN')
             writer.AddTopMenuSub('ADMIN', 'Bulkdata', '/admin/bulkdata.py', disabled=dADMIN)
             writer.AddTopMenuSub('ADMIN', 'Edit ESP', '/admin/editEsp.py', disabled=dPROG)
+            if prefs.GetValue('enableDust', 0) == 1:
+                writer.AddTopMenuSubLine('ADMIN')
+                writer.AddTopMenuSub('ADMIN', 'Dust remote cluster', '/dust/remoteDustCluster.py', disabled=dVIEW)
         elif macho.mode == 'proxy':
             pass
         elif macho.mode == 'client':
             pass
         if macho.mode == 'server':
             if menu == 'GM':
-                writer.AddMenu('Search', mls.UI_CMD_SEARCH, '', '/gm/search.py')
-                writer.AddMenu('Alliances', mls.UI_GENERIC_ALLIANCES, '', '/gm/alliance.py')
-                writer.AddMenu('Contracts', mls.UI_CONTRACTS_CONTRACTS, '', '/gm/contracts.py')
-                writer.AddMenu('Corporations', mls.UI_GENERIC_CORPORATIONS, '', '/gm/corporation.py')
-                writer.AddMenu('Factions', mls.UI_GENERIC_FACTIONS, '', '/gm/faction.py')
+                writer.AddMenu('Search', 'Search', '', '/gm/search.py')
+                writer.AddMenu('Alliances', 'Alliances', '', '/gm/alliance.py')
+                writer.AddMenu('Contracts', 'Contracts', '', '/gm/contracts.py')
+                writer.AddMenu('Corporations', 'Corporations', '', '/gm/corporation.py')
+                writer.AddMenu('Factions', 'Factions', '', '/gm/faction.py')
                 writer.AddMenu('Inventory', 'Inventory', '', '/gm/inventory.py')
-                writer.AddMenu('Starbases', mls.STARBASE_STARBASES, '', '/gm/starbase.py')
-                writer.AddMenu('Stations', mls.UI_GENERIC_STATIONS, '', '/gm/stations.py')
+                writer.AddMenu('Starbases', 'Starbases', '', '/gm/starbase.py')
+                writer.AddMenu('Stations', 'Stations', '', '/gm/stations.py')
             elif menu == 'PETITION':
-                writer.AddMenu('AnswerPetitions', mls.PETI_ANSWERPETITIONS, '', '/gm/petitionClient.py?action=ShowClaimedPetitions')
-                writer.AddMenu('KnowledgeBase', mls.UI_GENERIC_KNOWLEDGEBASE, '', '/gm/knowledgebase.py')
+                writer.AddMenu('AnswerPetitions', 'Answer Petitions', '', '/gm/petitionClient.py?action=ShowClaimedPetitions')
+                writer.AddMenu('KnowledgeBase', 'Knowledge Base', '', '/gm/knowledgebase.py')
                 writer.AddMenu('PetitionManagement', 'Petition Management', '', '/gm/petition.py')
                 writer.AddMenu('SupportManagement', 'Support Management', '', '/gm/supportManagement.py')
                 writer.AddMenu('SpamReports', 'Spam Reports', '', '/gm/users.py?action=ListSpamUsers')
-                writer.AddMenu('Characters', mls.UI_GENERIC_CHARACTERS, '', '/gm/character.py')
-                writer.AddMenu('Users', mls.GENERIC_USERS, '', '/gm/users.py')
-                writer.AddMenu('Search', mls.UI_CMD_SEARCH, '', '/gm/search.py')
-                writer.AddMenu('ItemReport', mls.ITEM + ' ' + mls.GENERIC_REPORT, '', '/gm/inventory.py?action=Item')
-                writer.AddMenu('FindItem', mls.SHARED_FINDITEM, '', '/gm/inventory.py?action=FindItem')
-                writer.AddMenu('My Characters', mls.CHAR_MYCHARACTERS, '', '/gm/character.py?action=MyCharacters')
+                writer.AddMenu('Characters', 'Characters', '', '/gm/character.py')
+                writer.AddMenu('Users', 'Users', '', '/gm/users.py')
+                writer.AddMenu('Search', 'Search', '', '/gm/search.py')
+                writer.AddMenu('ItemReport', 'Item Report', '', '/gm/inventory.py?action=Item')
+                writer.AddMenu('FindItem', 'Find Item', '', '/gm/inventory.py?action=FindItem')
+                writer.AddMenu('My Characters', 'My Characters', '', '/gm/character.py?action=MyCharacters')
             elif menu == 'CONTENT':
                 writer.AddMenu('Agents', 'Agents', '', '/gd/agents.py')
                 writer.AddMenu('Blueprints', 'Blueprints', '', '/gd/blueprints.py')

@@ -613,7 +613,7 @@ class CharCreationColorPicker(uicls.Container):
         import blue
         import trinity
         from util import ResFile
-        sourceRoot = blue.os.respath + 'UI/Texture/CharacterCreation/colorBits/'
+        sourceRoot = blue.os.ResolvePath(u'res:/') + 'UI/Texture/CharacterCreation/colorBits/'
         textures = os.listdir(sourceRoot)
         self.colorBits = {}
         for each in textures:

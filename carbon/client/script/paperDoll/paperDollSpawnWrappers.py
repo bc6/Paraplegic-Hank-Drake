@@ -76,7 +76,7 @@ class PaperDollManager(object):
 
 
 
-    def SpawnPaperDollCharacterFromDNA(self, scene, dollName, dollDNA, position = None, rotation = None, lodEnabled = False, compressionSettings = None, gender = PD.GENDER.FEMALE, usePrepass = False, textureResolution = None, updateDoll = True):
+    def SpawnPaperDollCharacterFromDNA(self, scene, dollName, dollDNA, position = None, rotation = None, lodEnabled = False, compressionSettings = None, gender = PD.GENDER.FEMALE, usePrepass = False, textureResolution = None, updateDoll = True, spawnAtLOD = 0):
         pdc = PaperDollCharacter(self.factory)
         pdc.LoadDollFromDNA(dollDNA, dollName=dollName, lodEnabled=lodEnabled, compressionSettings=compressionSettings)
         if textureResolution:
@@ -84,7 +84,7 @@ class PaperDollManager(object):
         if lodEnabled:
             pdc.SpawnLOD(scene, point=position, rotation=rotation, gender=gender, usePrepass=usePrepass)
         else:
-            pdc.Spawn(scene, point=position, rotation=rotation, gender=gender, usePrepass=usePrepass, updateDoll=updateDoll)
+            pdc.Spawn(scene, point=position, rotation=rotation, gender=gender, usePrepass=usePrepass, updateDoll=updateDoll, lod=spawnAtLOD)
         self._PaperDollManager__pdc[self._PaperDollManager__GetKey(pdc)] = pdc
         sm.ScatterEvent('OnDollCreated', self._PaperDollManager__GetKey(pdc))
         return pdc
@@ -208,10 +208,16 @@ class PaperDollCharacter(object):
 
     def OnCreate(self, dev):
         if self.doll and self.avatar:
-            self.doll.buildDataManager.SetAllAsDirty(clearMeshes=True)
+            self.doll.KillUpdate()
+            self.doll.mapBundle.ReCreate()
+            for modifier in self.doll.buildDataManager.GetModifiersAsList():
+                if modifier.decalData:
+                    modifier.IsDirty = True
+
+            self.doll.decalBaker = None
             if PD.SkinSpotLightShadows.instance is not None:
                 PD.SkinSpotLightShadows.instance.RefreshLights()
-            self.doll.Update(self.factory, self.avatar)
+            uthread.new(self.doll.Update, self.factory, self.avatar)
 
 
 
@@ -364,7 +370,7 @@ class PaperDollCharacter(object):
     def LoadFromRes(self, resPath):
         self.doll = PD.Doll(PaperDollCharacter._PaperDollCharacter__DEFAULT_NAME)
         while not self.factory.IsLoaded:
-            blue.synchro.Yield()
+            PD.Yield()
 
         self.doll.Load(resPath, self.factory)
         if self.avatar:
@@ -474,7 +480,7 @@ class PaperDollCharacter(object):
 
     def WaitForUpdate(self):
         while self.doll.busyUpdating:
-            blue.synchro.Yield()
+            PD.Yield()
 
 
 

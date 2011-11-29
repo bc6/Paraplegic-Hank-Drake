@@ -28,6 +28,7 @@ class Character(service.Service):
     __guid__ = 'svc.character'
     __exportedcalls__ = {}
     __notifyevents__ = ['OnGraphicSettingsChanged']
+    __dependencies__ = ['cacheDirectoryLimit']
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def __init__(self):
@@ -56,6 +57,8 @@ class Character(service.Service):
         self.animNetwork = blue.resMan.GetResource(ccConst.CHARACTER_CREATION_NETWORK)
         self.textureQuality = 1
         self.cachedPortraitInfo = {}
+        self.modifierLocationsByName = {}
+        self.modifierLocationsByKey = {}
 
 
 
@@ -66,6 +69,18 @@ class Character(service.Service):
         defaultClothSim = int(trinity.GetMaxShaderModelSupported() == 'SM_3_0_HI')
         self.factory.clothSimulationActive = prefs.GetValue('charClothSimulation', defaultClothSim)
         self.paperDollManager = paperDoll.PaperDollManager(self.factory)
+
+
+
+    def PopulateModifierLocationDicts(self, force = False):
+        if not force and len(self.modifierLocationsByKey) > 0:
+            return 
+        self.modifierLocationsByName = {}
+        self.modifierLocationsByKey = {}
+        for row in cfg.paperdollModifierLocations:
+            self.modifierLocationsByKey[row.modifierLocationID] = row.modifierKey
+            self.modifierLocationsByName[row.modifierKey] = row.modifierLocationID
+
 
 
 
@@ -136,9 +151,9 @@ class Character(service.Service):
             self.ApplyTypeToDoll(charID, plugList[0], doUpdate=False)
         self.EnsureUnderwear(charID, genderID, bloodlineID)
         if genderID == ccConst.GENDERID_MALE:
-            self.ApplyTypeToDoll(charID, ccConst.BASE_HAIR_TYPE_MALE, doUpdate=False)
+            self.ApplyTypeToDoll(charID, self.GetRelativePath(ccConst.BASE_HAIR_TYPE_MALE), doUpdate=False)
         else:
-            self.ApplyTypeToDoll(charID, ccConst.BASE_HAIR_TYPE_FEMALE, doUpdate=False)
+            self.ApplyTypeToDoll(charID, self.GetRelativePath(ccConst.BASE_HAIR_TYPE_FEMALE), doUpdate=False)
         self.RandomizeDollCategory(charID, 'skintone', 0)
         self.RandomizeDollCategory(charID, 'makeup/eyes', 0)
         self.RandomizeDollCategory(charID, 'makeup/eyebrows', 0)
@@ -152,7 +167,7 @@ class Character(service.Service):
 
 
     def GetNewCharacterMetadata(self, genderID, bloodlineID):
-        return util.KeyVal(genderID=genderID, bloodlineID=bloodlineID, types={}, typeColors={}, typeWeights={}, typeSpecularity={}, hairDarkness=0.0, appearanceID=0)
+        return util.KeyVal(genderID=genderID, bloodlineID=bloodlineID, types={}, typeColors={}, typeWeights={}, typeSpecularity={}, hairDarkness=0.0)
 
 
 
@@ -166,7 +181,7 @@ class Character(service.Service):
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def AddCharacterToScene(self, charID, scene, gender, bloodlineID = None, dna = None, position = (0.0, 0.0, 0.0), updateDoll = True):
+    def AddCharacterToScene(self, charID, scene, gender, bloodlineID = None, dna = None, position = (0.0, 0.0, 0.0), updateDoll = True, textureResolution = None, lod = None):
         applyNewCharacterTypes = False
         if charID in self.characters:
             character = self.characters[charID]
@@ -179,6 +194,14 @@ class Character(service.Service):
             randomDoll = paperDollUtil.CreateRandomDollNoClothes(gender, bloodlineID, noRandomize=prefs.GetValue('NoRandomize', 0))
             self.characters[charID] = character = self.paperDollManager.SpawnDoll(scene, doll=randomDoll, updateDoll=updateDoll)
         self.characterMetadata[charID] = self.GetNewCharacterMetadata(ccUtil.PaperDollGenderToGenderID(gender), bloodlineID)
+        needUpdate = False
+        if character is not None:
+            if lod is not None:
+                character.doll.overrideLod = lod
+                needUpdate = True
+            if textureResolution is not None:
+                character.doll.textureResolution = textureResolution
+                needUpdate = True
         self.scene = scene
         if character is None:
             log.LogError('AddCharacterToScene: Character', charID, 'not created')
@@ -197,6 +220,9 @@ class Character(service.Service):
             self.InitializeNewCharacter(charID, ccUtil.PaperDollGenderToGenderID(gender), bloodlineID)
         elif dna is not None:
             self.ApplyDBRowToDoll(charID, gender, bloodlineID, dna)
+            needUpdate = True
+        if needUpdate and updateDoll:
+            self.UpdateDoll(charID)
         return character
 
 
@@ -216,9 +242,27 @@ class Character(service.Service):
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
+    def CleanCircularReferences(self):
+        for each in self.characters:
+            character = self.characters[each]
+            if character.avatar:
+                for cs in character.avatar.curveSets:
+                    for bind in cs.bindings:
+                        bind.copyValueCallable = None
+
+                    del cs.bindings[:]
+                    del cs.curves[:]
+
+                del character.avatar.curveSets[:]
+
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
     def TearDown(self):
         self.preloadedResources = []
         self.paperDollManager.ClearDolls()
+        self.CleanCircularReferences()
         self.characters = {}
         sceneManager = sm.GetService('sceneManager')
         sceneManager.UnregisterScene2('characterCreation')
@@ -231,6 +275,7 @@ class Character(service.Service):
             self.sculpting.scene = None
             self.sculpting.pickScene = None
             self.sculpting = None
+        self.scene = None
 
 
 
@@ -677,7 +722,7 @@ class Character(service.Service):
         combined = {}
         typeData = self.GetAvailableTypesByCategory(categoryPath, genderID, bloodlineID, getTypesOnly=True)
         for each in typeData:
-            modifier = self.factory.CollectBuildData(each[0], self.factory.GetOptionsByGender(genderID))
+            modifier = self.factory.CollectBuildData(genderID, each[0])
             combined.update(modifier.colorVariations)
 
         doneA = []
@@ -778,7 +823,7 @@ class Character(service.Service):
         hasContentRole = session.role & service.ROLE_CONTENT
         inLimitedRecustomization = util.GetAttrs(uicore, 'layer', 'charactercreation', 'mode') == ccConst.MODE_LIMITED_RECUSTOMIZATION
         for (i, each,) in enumerate(types):
-            typeData = self.factory.GetItemType(each)
+            typeData = self.factory.GetItemType(each, gender=gender)
             if typeData is None:
                 log.LogWarn('GetItemType for path returned None', each)
                 continue
@@ -824,10 +869,11 @@ class Character(service.Service):
     def ApplyTypeToDoll(self, charID, itemType, weight = 1.0, doUpdate = True, rawColorVariation = None):
         if itemType is None:
             return 
+        self.PopulateModifierLocationDicts()
         genderID = self.characterMetadata[charID].genderID
         if type(itemType) is not tuple:
             charGender = ccUtil.GenderIDToPaperDollGender(genderID)
-            itemTypeData = self.factory.GetItemType(itemType)
+            itemTypeData = self.factory.GetItemType(itemType, gender=charGender)
             if itemTypeData is None:
                 log.LogError("Item type file is missing can can't be loaded", itemType)
                 return 
@@ -837,9 +883,29 @@ class Character(service.Service):
         category = self.GetCategoryFromResPath(itemType[1][0])
         activeMod = self.GetModifierByCategory(charID, category)
         if activeMod:
+            godmaSvc = sm.GetService('godma')
+            modifierLocationKey = self.modifierLocationsByName[category]
+            toRemove = []
+            for (otherCategory, otherResourceID,) in self.characterMetadata[charID].types.iteritems():
+                otherResource = cfg.paperdollResources.Get(otherResourceID)
+                if otherResource.typeID is None:
+                    continue
+                alsoCoversCategory = godmaSvc.GetTypeAttribute2(otherResource.typeID, const.attributeClothingAlsoCoversCategory)
+                if alsoCoversCategory == modifierLocationKey:
+                    toRemove.append(otherCategory)
+
+            for itemToRemove in toRemove:
+                self.ApplyItemToDoll(charID, itemToRemove, None, removeFirst=True, doUpdate=False)
+
             doll.RemoveResource(activeMod.GetResPath(), self.factory)
         modifier = doll.AddItemType(self.factory, itemType[1], weight, rawColorVariation)
         self.characterMetadata[charID].types[category] = itemType[0]
+        myTypeID = itemType[2]
+        if myTypeID:
+            alsoCoversCategory = sm.GetService('godma').GetTypeAttribute2(myTypeID, const.attributeClothingAlsoCoversCategory)
+            if alsoCoversCategory:
+                modifierLocationName = self.modifierLocationsByKey[int(alsoCoversCategory)]
+                self.ApplyItemToDoll(charID, modifierLocationName, None, removeFirst=True, doUpdate=False)
         if ccUtil.HasUserDefinedWeight(category):
             self.characterMetadata[charID].typeWeights[category] = weight
         if category in (ccConst.hair, ccConst.beard, ccConst.eyebrows):
@@ -1264,7 +1330,7 @@ class Character(service.Service):
     def RandomizeDollCategory(self, charID, category, oddsOfSelectingNone, addWeight = None, weightFrom = 0, weightTo = 1.0, fullRandomization = False):
         blue.synchro.Yield()
         randomizer = paperDoll.EveDollRandomizer(self.factory)
-        randomizer.gender = self.characters[charID].doll.GetDNA()[0]
+        randomizer.gender = self.characters[charID].doll.gender
         randomizer.bloodline = self.characterMetadata[charID].bloodlineID
         randomizer.fullRandomization = fullRandomization
         randomizer.AddCategoryForWhitelistRandomization(category, oddsOfSelectingNone)
@@ -1277,6 +1343,8 @@ class Character(service.Service):
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def GetPoseData(self):
+        if self.sculpting is None:
+            return 
         self.sculpting.UpdateAnimation([])
         poseDataDict = self.sculpting.animationController.GetAllControlParameterValuesByName(True)
         for k in poseDataDict.keys():
@@ -1334,9 +1402,9 @@ class Character(service.Service):
             self.assetsToIDs[gender] = {}
             for row in cfg.paperdollResources:
                 if row.resGender == gender == paperDoll.GENDER.MALE:
-                    self.assetsToIDs[gender][row.resPath.lower()] = (row.paperdollResourceID, row.typeID)
+                    self.assetsToIDs[gender][self.GetRelativePath(row.resPath).lower()] = (row.paperdollResourceID, row.typeID)
 
-        assetPath = assetPath.lower()
+        assetPath = self.GetRelativePath(assetPath).lower()
         if assetPath in self.assetsToIDs[gender]:
             return self.assetsToIDs[gender][assetPath]
         else:
@@ -1356,8 +1424,7 @@ class Character(service.Service):
         self.ApplyDBRowToDoll(entityID, gender, bloodline, dollDNA)
         doll = self.GetSingleCharactersDoll(entityID)
         dna = doll.GetDNA()
-        del self.characters[entityID]
-        del self.characterMetadata[entityID]
+        self.RemoveFromCharacterDicts(entityID, fromCharacterDict=True, fromMetadataDict=True)
         return dna
 
 
@@ -1403,6 +1470,25 @@ class Character(service.Service):
 
 
 
+    def GetRelativePath(self, resPath):
+        if resPath.lower().startswith('res:'):
+            for chopPart in ['Modular/Female/',
+             'Modular/Male/',
+             'Female/Paperdoll/',
+             'Male/Paperdoll/',
+             'modular/female/',
+             'modular/male/',
+             'female/paperdoll/',
+             'male/paperdoll/']:
+                startPos = resPath.find(chopPart)
+                if startPos != -1:
+                    chopTo = len(chopPart) + startPos
+                    resPath = resPath[chopTo:]
+
+        return resPath
+
+
+
     @bluepy.CCP_STATS_ZONE_METHOD
     def ApplyDBRowToDoll(self, charID, gender, bloodlineID, dbRow):
         if charID not in self.characters:
@@ -1415,9 +1501,8 @@ class Character(service.Service):
         colorNames = cfg.paperdollColorNames
         resources = cfg.paperdollResources
         if dbRow is None:
-            self.LogWarn('Not applying anything to paperdoll, since dbRow is None')
+            self.LogError('Not applying anything to paperdoll, since dbRow is None')
             return 
-        self.characterMetadata[charID].appearanceID = dbRow.appearance.appearanceID
         for sculptRow in dbRow.sculpts:
             sculptInto = sculptLocations.GetIfExists(sculptRow.sculptLocationID)
             if sculptInto is None:
@@ -1451,7 +1536,8 @@ class Character(service.Service):
             weight = modifierWeights.get(modifierInfo.modifierKey, 1.0)
             if modifierRow.paperdollResourceVariation != 0 and modifierInfo.variationKey != '':
                 self.ApplyItemToDoll(charID, modifierInfo.variationKey, self.tuckingOptions[modifierInfo.variationKey], removeFirst=True, variation='v%d' % modifierRow.paperdollResourceVariation, doUpdate=False)
-            modifierObjects[modifierInfo.modifierKey] = self.ApplyTypeToDoll(charID, resourcesInfo.resPath, weight=weight, doUpdate=False)
+            resPath = self.GetRelativePath(resourcesInfo.resPath)
+            modifierObjects[modifierInfo.modifierKey] = self.ApplyTypeToDoll(charID, resPath, weight=weight, doUpdate=False)
 
         genderID = ccUtil.PaperDollGenderToGenderID(gender)
         self.EnsureUnderwear(charID, genderID, bloodlineID)
@@ -1494,6 +1580,14 @@ class Character(service.Service):
                 self.SetHairDarkness(charID, dbRow.appearance.hairDarkness)
                 self.SynchronizeHairColors(charID)
 
+
+
+
+    def RemoveFromCharacterDicts(self, charID, fromCharacterDict = True, fromMetadataDict = True):
+        if fromCharacterDict:
+            self.characters.pop(charID, None)
+        if fromMetadataDict:
+            self.characterMetadata.pop(charID, None)
 
 
 

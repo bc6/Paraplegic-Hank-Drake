@@ -7,6 +7,7 @@ import uiutil
 import uicls
 import log
 import html
+import localization
 
 class SE_BaseClassCore(uicls.Container):
     __guid__ = 'uicls.SE_BaseClassCore'
@@ -72,7 +73,7 @@ class SE_GenericCore(SE_BaseClassCore):
 
     def ApplyAttributes(self, attributes):
         SE_BaseClassCore.ApplyAttributes(self, attributes)
-        self.sr.label = uicls.Label(name='text', text='', parent=self, pos=(5, 0, 0, 0), state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT, singleline=True, autowidth=True, autoheight=True)
+        self.sr.label = uicls.Label(name='text', text='', parent=self, pos=(5, 0, 0, 0), state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT, singleline=True)
         self.sr.line = uicls.Line(name='line', align=uiconst.TOBOTTOM, parent=self, pos=(0, 0, 0, 1), idx=0)
         self.sr.selection = uicls.Fill(name='selection', parent=self, align=uiconst.TOALL, pos=(0, 1, 0, 1), color=(1.0, 1.0, 1.0, 0.25))
         self.sr.hilite = uicls.Fill(name='hilite', parent=self, align=uiconst.TOALL, pos=(0, 1, 0, 1), color=(1.0, 1.0, 1.0, 0.25))
@@ -96,8 +97,8 @@ class SE_GenericCore(SE_BaseClassCore):
         self.sr.label.singleline = node.get('singleline', 1)
         self.sr.label.letterspace = node.get('letterspace', 0)
         self.sr.label.shadow = node.get('letterspace', None)
-        if node.font:
-            self.sr.label.font = node.font
+        if node.fontStyle:
+            self.sr.label.fontStyle = node.fontStyle
         if node.fontsize:
             self.sr.label.fontsize = node.fontsize
         if node.fontcolor:
@@ -118,7 +119,7 @@ class SE_GenericCore(SE_BaseClassCore):
 
 
     def GetDynamicHeight(node, width):
-        height = uicore.font.GetTextHeight(node.label, width=width - 5 + 16 * node.get('sublevel', 0), font=node.get('font', fontConst.DEFAULT_FONT), fontsize=node.get('fontsize', fontConst.DEFAULT_FONTSIZE), letterspace=node.get('letterspace', 0), singleline=node.get('singleline', 1)) + 4
+        height = uicore.font.GetTextHeight(node.label, width=width - 5 + 16 * node.get('sublevel', 0), fontStyle=node.get('fontStyle', None), fontsize=node.get('fontsize', fontConst.DEFAULT_FONTSIZE), letterspace=node.get('letterspace', 0), singleline=node.get('singleline', 1)) + 4
         return height
 
 
@@ -203,7 +204,7 @@ class SE_TextCore(SE_BaseClassCore):
 
     def ApplyAttributes(self, attributes):
         SE_BaseClassCore.ApplyAttributes(self, attributes)
-        self.sr.text = uicls.Label(text='', parent=self, autoheight=1, autowidth=0, state=uiconst.UI_NORMAL, fontsize=12, align=uiconst.TOTOP, padLeft=6, padRight=6, padTop=2)
+        self.sr.text = uicls.Label(text='', parent=self, state=uiconst.UI_NORMAL, fontsize=12, align=uiconst.TOTOP, padLeft=6, padRight=6, padTop=2)
 
 
 
@@ -212,16 +213,16 @@ class SE_TextCore(SE_BaseClassCore):
         if node.textColor:
             self.sr.text.SetRGB(*node.textColor)
         self.sr.text.letterspace = node.get('letterspace', self.sr.text.letterspace)
-        self.sr.text.linespace = node.get('linespace', self.sr.text.linespace)
+        self.sr.text.lineSpacing = node.get('lineSpacing', self.sr.text.lineSpacing)
         self.sr.text.fontsize = node.get('fontsize', self.sr.text.fontsize)
-        self.sr.text.font = node.get('font', self.sr.text.font)
+        self.sr.text.fontStyle = node.get('fontStyle', self.sr.text.fontStyle)
         self.sr.text.busy = 0
         self.sr.text.text = node.text
 
 
 
     def GetDynamicHeight(node, width):
-        textheight = uicore.font.GetTextHeight(node.text, width=width - 12, font='res:/berafont.pfb', fontsize=node.get('fontsize', 12), linespace=node.get('linespace', 12), letterspace=node.get('letterspace', 0)) + 4
+        textheight = uicore.font.GetTextHeight(node.text, width=width - 12, fontsize=node.get('fontsize', 12), lineSpacing=node.get('lineSpacing', 0.0), letterspace=node.get('letterspace', 0)) + 4
         return textheight
 
 
@@ -266,7 +267,6 @@ class SE_TextlineCore(SE_BaseClassCore, uicls.BaseLink):
 
 
     def Load(self, node):
-        self.height = node.maxBaseHeight
         uiutil.Flush(self.sr.links)
         self.leftM = 0
         self.sr.hiliteLinks = []
@@ -289,6 +289,7 @@ class SE_TextlineCore(SE_BaseClassCore, uicls.BaseLink):
             self.sr.sprite = uicls.Sprite(parent=self, state=uiconst.UI_PICKCHILDREN, filter=False, name='textSprite', idx=0)
             self.sr.sprite.OnCreate = self.OnCreate
             trinity.device.RegisterResource(self.sr.sprite)
+            uicore.textObjects.add(self)
         return self.sr.sprite
 
 
@@ -360,7 +361,7 @@ class SE_TextlineCore(SE_BaseClassCore, uicls.BaseLink):
             return 
         scrollwidth = self.sr.node.scroll.GetContentWidth()
         if self.sr.node.glyphString:
-            linewidth = self.sr.node.glyphString.width
+            linewidth = self.ReverseScaleDpi(self.sr.node.glyphString.width)
         else:
             linewidth = 0
         lineHeight = self.sr.node.Get('maxBaseHeight', 12)
@@ -408,7 +409,7 @@ class SE_TextlineCore(SE_BaseClassCore, uicls.BaseLink):
         if not bBox or bBox.Width() <= 0 or bBox.Height() <= 0:
             sprite.state = uiconst.UI_HIDDEN
             return 
-        surfaceWidth = bBox.Width()
+        surfaceWidth = bBox.Width() + bBox.xMin
         surfaceHeight = glyphstring.baseHeight
         if glyphstring.shadow:
             (sx, sy, scol,) = glyphstring.shadow[-1]
@@ -416,12 +417,9 @@ class SE_TextlineCore(SE_BaseClassCore, uicls.BaseLink):
             surfaceHeight -= sy
         sprite.texture = None
         texturePrimary = trinity.Tr2Sprite2dTexture()
-        texturePrimary.atlasTexture = trinity.textureAtlasMan.atlases[0].CreateTexture(surfaceWidth, surfaceHeight)
-        texturePrimary.srcX = 0.0
-        texturePrimary.srcY = 0.0
-        texturePrimary.srcWidth = int(surfaceWidth)
-        texturePrimary.srcHeight = int(surfaceHeight)
+        texturePrimary.atlasTexture = uicore.uilib.CreateTexture(surfaceWidth, surfaceHeight)
         sprite.texture = texturePrimary
+        sprite.useSizeFromTexture = True
         try:
             bufferData = texturePrimary.atlasTexture.LockBuffer()
         except AttributeError:
@@ -433,15 +431,13 @@ class SE_TextlineCore(SE_BaseClassCore, uicls.BaseLink):
                 return 
         try:
             buf = SE_TextlineCore.TexResBuf(bufferData)
-            uicore.font.Clear_Buffer(buf.data, buf.width, buf.height, buf.pitch)
-            glyphstring.DrawToBuf(buf, -bBox.xMin, glyphstring.baseHeight - glyphstring.baseLine)
+            trinity.fontMan.ClearBuffer(buf.data, buf.width, buf.height, buf.pitch)
+            glyphstring.DrawToBuf(buf, 0, glyphstring.baseHeight - glyphstring.baseLine)
 
         finally:
             texturePrimary.atlasTexture.UnlockBuffer()
 
-        sprite.SetSize(surfaceWidth, surfaceHeight)
         sprite.top = 0
-        sprite.left += bBox.xMin
         self.sr.xMin = bBox.xMin
         sprite.state = uiconst.UI_PICKCHILDREN
 
@@ -650,7 +646,7 @@ class SE_TextlineCore(SE_BaseClassCore, uicls.BaseLink):
 
     def CursorBlink(self):
         f = uicore.registry.GetFocus()
-        if f is uicore.desktop or not blue.rot.GetInstance('app:/App').IsActive():
+        if f is uicore.desktop or not trinity.app.IsActive():
             if self.sr.textcursor:
                 self.sr.textcursor.state = uiconst.UI_HIDDEN
             self.sr.cursortimer = None
@@ -866,7 +862,7 @@ class SE_ListGroupCore(SE_BaseClassCore):
                     if newEntry is not None:
                         addlist.append(newEntry)
 
-            if not len(newcontent) and len(node.subEntries) and node.subEntries[0].label != mls.UI_GENERIC_NOITEM:
+            if not len(newcontent) and len(node.subEntries) and node.subEntries[0].label != localization.GetByLabel('/Carbon/UI/Controls/Common/NoItem'):
                 noItem = self.GetNoItemEntry()
                 if noItem:
                     addlist.append(noItem)
@@ -892,12 +888,12 @@ class SE_ListGroupCore(SE_BaseClassCore):
         if not node.get('showmenu', True):
             return m
         if not node.open:
-            m += [(mls.UI_CMD_EXPAND, self.Toggle, ())]
+            m += [(localization.GetByLabel('/Carbon/UI/Common/Expand'), self.Toggle, ())]
         else:
-            m += [(mls.UI_CMD_COLLAPSE, self.Toggle, ())]
+            m += [(localization.GetByLabel('/Carbon/UI/Common/Collapse'), self.Toggle, ())]
         if node.get('state', None) != 'locked':
-            m += [(mls.UI_CMD_CHANGELABEL, self.ChangeLabel)]
-            m += [(mls.UI_CMD_DELETEFOLDER, self.DeleteFolder)]
+            m += [(localization.GetByLabel('/Carbon/UI/Controls/ScrollEntries/ChangeLabel'), self.ChangeLabel)]
+            m += [(localization.GetByLabel('/Carbon/UI/Controls/ScrollEntries/DeleteFolder'), self.DeleteFolder)]
         if node.get('MenuFunction', None):
             cm = node.MenuFunction(node)
             m += cm
@@ -926,7 +922,7 @@ class SE_ListGroupCore(SE_BaseClassCore):
 
 
     def GetNewGroupName(self):
-        return uiutil.AskName(mls.UI_GENERIC_TYPEINNEWNAME, mls.UI_GENERIC_TYPEINNEWNAMEFOLDER)
+        return uiutil.AskName(localization.GetByLabel('/Carbon/UI/Controls/ScrollEntries/TypeInNewName'), localization.GetByLabel('/Carbon/UI/Controls/ScrollEntries/TypeInNewFolderName'))
 
 
 
@@ -951,7 +947,7 @@ class SE_ListGroupCore(SE_BaseClassCore):
     def CloseWindow(self, windowID):
         wnd = uicore.registry.GetWindow(windowID)
         if wnd:
-            wnd.SelfDestruct()
+            wnd.Close()
 
 
 
@@ -1005,8 +1001,10 @@ class SE_ListGroupCore(SE_BaseClassCore):
             node.cleanLabel = node.label
         text = node.cleanLabel
         if self.sr.subitems is not None and node.get('showlen', 1):
-            text += ' [%s]' % len(self.sr.subitems)
-        text += node.get('posttext', '')
+            text = localization.GetByLabel('/Carbon/UI/Controls/ScrollEntries/LabelWithLength', label=text, length=len(self.sr.subitems))
+        posttext = node.get('posttext', '')
+        if posttext:
+            text = localization.GetByLabel('/Carbon/UI/Controls/ScrollEntries/LabelWithPostfix', label=text, postfix=posttext)
         self.sr.label.text = text
         node.label = text
 
@@ -1017,20 +1015,20 @@ def ScrollEntryNode(**kw):
     data = uiutil.Bunch(**kw)
     decoClass = data.get('decoClass', uicls.SE_Generic)
     data.decoClass = decoClass
-    reqParams = getattr(decoClass, '__params__', [])
-    for each in reqParams:
-        if each not in data:
-            raise RuntimeError('Required keyword for %s are %s' % (decoClass.__guid__, reqParams))
-
     data.GetHeightFunction = getattr(decoClass, 'GetHeight', None)
     data.GetColumnWidthFunction = getattr(decoClass, 'GetColumnWidth', None)
     data.PreLoadFunction = getattr(decoClass, 'PreLoad', None)
+    data.allowDynamicResize = getattr(decoClass, 'allowDynamicResize', False)
     if data.GetHeightFunction:
         data.GetHeightFunction = data.GetHeightFunction.im_func
     if data.PreLoadFunction:
         data.PreLoadFunction = data.PreLoadFunction.im_func
     if data.GetColumnWidthFunction:
         data.GetColumnWidthFunction = data.GetColumnWidthFunction.im_func
+    if not data.charIndex and data.label:
+        data.charIndex = uiutil.GetAsUnicode(data.label).split('<t>')[0]
+    if data.charIndex:
+        data.charIndex = data.charIndex.lower()
     return data
 
 

@@ -27,7 +27,7 @@ class DividerCore(uicls.Container):
             diffx = uicore.uilib.x - self._initCursor[0]
             diffy = uicore.uilib.y - self._initCursor[1]
             self.OnChange_(self, diffx, diffy)
-            blue.pyos.synchro.Sleep(1)
+            blue.pyos.synchro.SleepWallclock(1)
 
 
 

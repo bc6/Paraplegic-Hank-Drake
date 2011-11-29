@@ -147,7 +147,7 @@ def CallbackOnAnimationFinish(animInfo, callbackBundle):
 
 def _CallbackOnAnimationFinish_NoBlock(animInfo, callbackBundle):
     duration = int(animInfo[const.animation.METADATA_DURATION] * 1000)
-    blue.pyos.synchro.Sleep(duration)
+    blue.pyos.synchro.SleepWallclock(duration)
     method = callbackBundle[0]
     method(*callbackBundle[1:])
 
@@ -189,7 +189,7 @@ def GetSynchedAnimPosition(entity):
             height = sm.GetService('gameWorldClient').GetFloorHeight(pos, entity.scene.sceneID)
             pos.y = height
         return pos
-    return entity.GetComponent('movement').avatar.pos
+    return entity.GetComponent('position').position
 
 
 
@@ -197,7 +197,7 @@ def SleepUntilImpact(animInfo):
     duration = animInfo[const.animation.METADATA_DURATION]
     impactPoint = animInfo[const.animation.METADATA_IMPACT_POINT]
     duration = int(impactPoint * duration * 1000)
-    blue.pyos.synchro.Sleep(duration)
+    blue.pyos.synchro.SleepWallclock(duration)
 
 
 
@@ -219,7 +219,7 @@ def CanWalkToStartPositionForSynchedAnim(sourceEnt, targetEnt, animInfo, callbac
     targetEntityPosition = targetEnt.GetComponent('position').position
     targetEntityRotation = targetEnt.GetComponent('position').rotation
     (endPos, trash, trash, trash,) = GetSynchedAnimStartLocation(sourceEntityPosition, sourceEntityRotation, targetEntityPosition, targetEntityRotation, animInfo)
-    sourceEnt.GetComponent('movement').avatar.CollisionCheckMovementPosition(endPos)
+    sourceEnt.GetComponent('movement').characterController.CollisionCheckMovementPosition(endPos)
     gw.CanPathTo(sourceEntityPosition, endPos, const.AVATAR_RADIUS, const.AVATAR_HEIGHT, callback, callbackArgs)
 
 

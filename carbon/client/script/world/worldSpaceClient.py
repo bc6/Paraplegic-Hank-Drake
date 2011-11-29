@@ -5,21 +5,12 @@ import world
 
 class WorldSpaceClient(world.BaseWorldSpaceService):
     __guid__ = 'svc.worldSpaceClient'
-    __dependencies__ = world.BaseWorldSpaceService.__dependencies__[:]
-    __dependencies__.extend(['physicalPortalClient', 'occluderClient'])
 
     def __init__(self):
         world.BaseWorldSpaceService.__init__(self)
-        self.trinityInitialized = False
         self.activeWorldSpace = None
         self.showLoadingWindow = False
         self.instanceLoadedChannel = collections.defaultdict(list)
-
-
-
-    def Run(self, *etc):
-        world.BaseWorldSpaceService.Run(self, *etc)
-        self.UnloadOtherWorldSpaces = True
 
 
 
@@ -41,7 +32,6 @@ class WorldSpaceClient(world.BaseWorldSpaceService):
                 if self.IsInstanceLoaded(instanceID) and (session.worldspaceid is None or session.worldspaceid and session.worldspaceid != instanceID):
                     self.LogInfo('Unloading worldspace instance', instanceID)
                     instance = self.instances[instanceID]
-                    self._GameSpecificUnloading(instance)
                     proximity = sm.GetService('proximity')
                     proximity.UnloadInstance(instance)
                     worldSpaceID = instance.GetWorldSpaceTypeID()
@@ -56,11 +46,6 @@ class WorldSpaceClient(world.BaseWorldSpaceService):
                 self.LogInfo('Unloaded worldspace instance', instanceID)
                 uthread.UnLock(self, 'Worldspace', instanceID)
 
-
-
-
-    def _GameSpecificUnloading(self, instance):
-        pass
 
 
 

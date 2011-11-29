@@ -1,3 +1,4 @@
+import localization
 import uix
 import xtriui
 import util
@@ -15,7 +16,7 @@ class VirtualBaseMissionEntry(uicls.SE_BaseClassCore):
 
 
     def Startup(self, *etc):
-        self.sr.label = uicls.Label(text='', parent=self, left=5, state=uiconst.UI_DISABLED, color=None, singleline=1, align=uiconst.CENTERLEFT)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=self, left=5, state=uiconst.UI_DISABLED, color=None, singleline=1, align=uiconst.CENTERLEFT)
         self.sr.line = uicls.Container(name='lineparent', align=uiconst.TOBOTTOM, parent=self, height=1)
         uicls.Line(parent=self.sr.line, align=uiconst.TOALL)
         self.sr.selection = uicls.Fill(parent=self, padTop=1, padBottom=1, color=(1.0, 1.0, 1.0, 0.25), state=uiconst.UI_HIDDEN)
@@ -24,7 +25,7 @@ class VirtualBaseMissionEntry(uicls.SE_BaseClassCore):
 
     def GetHeight(_self, *args):
         (node, width,) = args
-        node.height = uix.GetTextHeight(node.label, autoWidth=1, singleLine=1) + 4
+        node.height = uix.GetTextHeight(node.label, singleLine=1) + 4
         return node.height
 
 
@@ -78,10 +79,10 @@ class VirtualAgentMissionEntry(VirtualBaseMissionEntry):
 
         self.sr.label.left = textOffset + 4
         self.rightClickMenu = []
-        self.rightClickMenu.append((mls.UI_CMD_READDETAILS, self.OpenDetails))
-        self.rightClickMenu.append(('%s %s' % (mls.UI_CMD_STARTCONVERSATIONWITH, cfg.eveowners.Get(self.sr.node.agentID).name), self.Convo))
+        self.rightClickMenu.append((localization.GetByLabel('UI/Agents/Commands/ReadDetails'), self.OpenDetails))
+        self.rightClickMenu.append((localization.GetByLabel('UI/Agents/Commands/StartConversationWith', agentID=self.sr.node.agentID), self.Convo))
         if node.missionState == const.agentMissionStateOffered:
-            self.rightClickMenu.append((mls.UI_CMD_REMOVEOFFER, self.RemoveOffer))
+            self.rightClickMenu.append((localization.GetByLabel('UI/Agents/Commands/RemoveOffer'), self.RemoveOffer))
 
 
 
@@ -117,7 +118,7 @@ class VirtualAgentMissionEntry(VirtualBaseMissionEntry):
             _fakeNode.__guid__ = 'listentry.VirtualAgentMissionEntry'
             _fakeNode.agentID = self.sr.node.agentID
             _fakeNode.charID = session.charid
-            _fakeNode.label = mls.AGT_MISSIONJOURNAL_CAPTION_PREFIX
+            _fakeNode.label = localization.GetByLabel('UI/Agents/MissionJournal')
             fakeNode = [_fakeNode]
         return fakeNode
 
@@ -149,7 +150,7 @@ class VirtualAgentOfferEntry(VirtualBaseMissionEntry):
 
 
     def GetMenu(self):
-        return [(mls.UI_CMD_READDETAILS, self.OpenDetails), ('%s %s' % (mls.UI_CMD_STARTCONVERSATIONWITH, cfg.eveowners.Get(self.sr.node.agentID).name), self.Convo)]
+        return [(localization.GetByLabel('UI/Agents/Commands/ReadDetails'), self.OpenDetails), (localization.GetByLabel('UI/Agents/Commands/StartConversationWith', agentID=self.sr.node.agentID), self.Convo)]
 
 
 
@@ -180,7 +181,9 @@ class VirtualResearchEntry(VirtualBaseMissionEntry):
 
 
     def GetMenu(self):
-        return sm.GetService('menu').CharacterMenu(self.sr.node.agentID)
+        m = sm.GetService('menu').CharacterMenu(self.sr.node.agentID)
+        m += [(localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo)]
+        return m
 
 
 

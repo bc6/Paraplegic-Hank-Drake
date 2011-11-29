@@ -1,5 +1,4 @@
 import cameras
-import trinity
 import math
 import geo2
 import uiutil
@@ -100,7 +99,6 @@ class CharCreationCamera(cameras.PolarCamera):
             setup['nearMaxTilt'] = math.pi * 0.66
             setup['farMinTilt'] = math.pi * 0.33
             setup['farMaxTilt'] = math.pi * 0.66
-            setup['distance'] = 1.0
             setup['distance'] = setup['nearDistance'] + 0.5
             setup['rotateAvatar'] = False
         self._transformDistance = None
@@ -109,7 +107,7 @@ class CharCreationCamera(cameras.PolarCamera):
             self.avatar.rotation = (0, 0, 0, 1)
             self.yaw = math.pi / 2
         self._rotateAvatar = setup['rotateAvatar']
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         for (k, v,) in setup.iteritems():
             if transformTime:
                 if k == 'distance':
@@ -193,6 +191,15 @@ class CharCreationCamera(cameras.PolarCamera):
 
 
 
+    def Zoom(self, delta):
+        newFov = self.fieldOfView + delta * 0.0005
+        newFov = min(self.maxFov, max(self.minFov, newFov))
+        self.fieldOfView = newFov
+        self.xFactor = self.xTarget
+        self.yFactor = self.yTarget
+
+
+
     def Dolly(self, delta):
         if self.controlStyle == CONTROL_NONE:
             return 
@@ -207,23 +214,29 @@ class CharCreationCamera(cameras.PolarCamera):
 
 
 
-    def GetPortionFromDistance(self, distance = None):
-        distance = distance or self.distance
+    def GetPortionFromDistance(self):
         minmaxRange = self.farDistance - self.nearDistance
-        portion = (distance - self.nearDistance) / minmaxRange
+        portion = (self.distance - self.nearDistance) / minmaxRange
         return portion
 
 
 
-    def GetFocusYBasedOnDistance(self, distance):
-        portion = self.GetPortionFromDistance(distance)
+    def GetPortionFromFieldOfView(self):
+        minmaxRange = self.maxFov - self.minFov
+        portion = (self.fieldOfView - self.minFov) / minmaxRange
+        return portion
+
+
+
+    def GetFocusYBasedOnDistance(self):
+        portion = self.GetPortionFromDistance()
         focusRange = self.farFocusY - self.nearFocusY
         return self.nearFocusY + focusRange * portion
 
 
 
-    def GetMinMaxPitchBasedOnDistance(self, distance):
-        portion = self.GetPortionFromDistance(distance)
+    def GetMinMaxPitchBasedOnDistance(self):
+        portion = self.GetPortionFromDistance()
         minRange = self.farMinTilt - self.nearMinTilt
         maxRange = self.farMaxTilt - self.nearMaxTilt
         return (self.nearMinTilt + minRange * portion, self.nearMaxTilt + maxRange * portion)
@@ -237,22 +250,21 @@ class CharCreationCamera(cameras.PolarCamera):
         self.yFactor += dy * 0.0005 * self.distance
         self.xTarget = self.xFactor
         self.yTarget = self.yFactor
-        focusY = self.GetFocusYBasedOnDistance(self.distance)
         self._onFocusValue = False
 
 
 
-    def GetPanLimitsBasedOnDistance(self, distance):
+    def GetPanLimitsBasedOnDistance(self):
         if self.controlStyle == CONTROL_VERTICAL:
             portion = 1.0
         else:
-            portion = self.GetPortionFromDistance(distance)
+            portion = self.GetPortionFromDistance()
         return ((self.minPanX * portion - self.nearPan, self.maxPanX * portion + self.nearPan), (self.minPanY * portion - self.nearPan, self.maxPanY * portion + self.nearPan))
 
 
 
     def LimitPanning(self):
-        (xLimits, yLimits,) = self.GetPanLimitsBasedOnDistance(self.distance)
+        (xLimits, yLimits,) = self.GetPanLimitsBasedOnDistance()
         if self.controlStyle == CONTROL_BOTH:
             xAxis = geo2.Vector(self.viewMatrix.transform[0][0], self.viewMatrix.transform[1][0], self.viewMatrix.transform[2][0])
             yAxis = geo2.Vector(self.viewMatrix.transform[0][1], self.viewMatrix.transform[1][1], self.viewMatrix.transform[2][1])
@@ -274,7 +286,7 @@ class CharCreationCamera(cameras.PolarCamera):
         if self.controlStyle == CONTROL_NONE:
             return 
         if self._rotateAvatar:
-            delta = delta * 0.005
+            delta = min(35.0, max(-35.0, delta)) * 0.005
             (yaw, pitch, roll,) = geo2.QuaternionRotationGetYawPitchRoll(self.avatar.rotation)
             yaw = yaw + delta
             if self.maxRotation is not None and self.minRotation is not None:
@@ -305,13 +317,12 @@ class CharCreationCamera(cameras.PolarCamera):
     def AdjustPitch(self, delta):
         if self.controlStyle == CONTROL_NONE:
             return 
-        (self.minPitch, self.maxPitch,) = self.GetMinMaxPitchBasedOnDistance(self.distance)
+        (self.minPitch, self.maxPitch,) = self.GetMinMaxPitchBasedOnDistance()
         cameras.PolarCamera.AdjustPitch(self, delta * 0.005)
 
 
 
     def Update(self):
-        cameras.PolarCamera.Update(self)
         if self.updateFocus:
             right = self.GetBonePosition('fj_eyeballRight')
             left = self.GetBonePosition('fj_eyeballLeft')
@@ -323,6 +334,7 @@ class CharCreationCamera(cameras.PolarCamera):
             length = geo2.Vec2Length(geo2.Vector(self.focus[0], self.focus[2]))
             self.focus = (0.0, self.focus[1], length)
             self.updateFocus = False
+        cameras.PolarCamera.Update(self)
 
 
 
@@ -332,11 +344,11 @@ class CharCreationCamera(cameras.PolarCamera):
 
 
 
-class CharCreationCameraHandler(cameras.CoreCameraBehavior):
+class CharCreationCameraHandler(cameras.CameraBehavior):
     __guid__ = 'cameras.CharCreationCameraHandler'
 
     def __init__(self):
-        cameras.CoreCameraBehavior.__init__(self)
+        cameras.CameraBehavior.__init__(self)
 
 
 
@@ -349,18 +361,18 @@ class CharCreationCameraHandler(cameras.CoreCameraBehavior):
     def ProcessCameraUpdate(self, camera, now, frameTime):
         if camera._transformDistance:
             (startTime, startValue, toValue, duration,) = camera._transformDistance
-            ndt = min(1.0, blue.os.TimeDiffInMs(startTime) / duration)
+            ndt = min(1.0, blue.os.TimeDiffInMs(startTime, blue.os.GetWallclockTime()) / duration)
             camera.distance = mathUtil.Lerp(startValue, toValue, ndt)
             if ndt >= 1.0:
                 camera._transformDistance = None
         if camera._transformPOI:
             (startTime, startValue, toValue, duration,) = camera._transformPOI
-            ndt = min(1.0, blue.os.TimeDiffInMs(startTime) / duration)
+            ndt = min(1.0, blue.os.TimeDiffInMs(startTime, blue.os.GetWallclockTime()) / duration)
             camera.yFactor = mathUtil.Lerp(-startValue[1], -toValue[1], ndt)
             if ndt >= 1.0:
                 camera._transformPOI = None
         if camera.controlStyle != CONTROL_NONE:
-            (camera.minPitch, camera.maxPitch,) = camera.GetMinMaxPitchBasedOnDistance(camera.distance)
+            (camera.minPitch, camera.maxPitch,) = camera.GetMinMaxPitchBasedOnDistance()
             camera.pitch = min(camera.maxPitch, max(camera.minPitch, camera.pitch))
             camera.LimitPanning()
         camera.UpdateProjectionMatrix()

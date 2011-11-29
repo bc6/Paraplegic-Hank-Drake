@@ -4,14 +4,17 @@ import uiutil
 import xtriui
 import types
 import uix
-import draw
 import uthread
 import uicls
 import uiconst
+import localization
 
 class MessageBox(uicls.Window):
     __guid__ = 'form.MessageBox'
     __nonpersistvars__ = ['suppress']
+    default_width = 340
+    default_height = 210
+    default_alwaysLoadDefaults = True
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -28,20 +31,15 @@ class MessageBox(uicls.Window):
         self.MakeUnMinimizable()
         self.HideHeader()
         self.SetMinSize([340, height])
-        w = 340
-        h = 210
         self.DefineIcons(icon, customicon)
         if title is None:
-            title = mls.UI_GENERIC_INFORMATION
+            title = localization.GetByLabel('UI/Common/Information')
         self.sr.main = uiutil.FindChild(self, 'main')
-        push = uicls.Container(name='push', align=uiconst.TOLEFT, parent=self.sr.topParent, width=64)
-        caption = uicls.CaptionLabel(text=title, align=uiconst.CENTERLEFT, parent=self.sr.topParent, left=64, width=270, autowidth=0)
+        caption = uicls.EveCaptionLarge(text=title, align=uiconst.CENTERLEFT, parent=self.sr.topParent, left=64, width=270)
         self.SetTopparentHeight(max(56, caption.textheight + 16))
         if text:
-            edit = uicls.Edit(parent=self.sr.main, padding=(const.defaultPadding,
-             const.defaultPadding,
-             const.defaultPadding,
-             const.defaultPadding), readonly=1)
+            text = text.replace('\r', '').replace('\n', '')
+            edit = uicls.EditPlainText(parent=self.sr.main, padding=const.defaultPadding, readonly=1)
             self.edit = edit
             uthread.new(self.SetText, text)
         self.DefineButtons(buttons, default=default)
@@ -54,8 +52,6 @@ class MessageBox(uicls.Window):
 
     def ShowSupp(self, text):
         bottom = uicls.Container(name='suppressContainer', parent=self.sr.main, align=uiconst.TOBOTTOM, height=20, idx=0)
-        if self.edit:
-            self.edit.height = 0
         self.sr.suppCheckbox = uicls.Checkbox(text=text, parent=bottom, configName='suppress', retval=0, checked=0, groupname=None, callback=self.ChangeSupp, align=uiconst.TOPLEFT, pos=(6, 0, 320, 0))
 
 
@@ -66,16 +62,15 @@ class MessageBox(uicls.Window):
 
 
     def SetText(self, txt):
-        self.edit.autoScrollToBottom = 0
         self.edit.SetValue(txt, scrolltotop=1)
 
 
 
-    def CloseX(self, *etc):
+    def CloseByUser(self, *etc):
         if self.isModal:
             self.SetModalResult(uiconst.ID_CLOSE)
         else:
-            uicls.Window.CloseX(self)
+            uicls.Window.CloseByUser(self)
 
 
 

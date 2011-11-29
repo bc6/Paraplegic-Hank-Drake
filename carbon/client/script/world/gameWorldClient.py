@@ -16,7 +16,6 @@ class GameWorldClient(GameWorld.GameWorldService):
 
     def OnLoadEntityScene(self, sceneID):
         GameWorld.GameWorldService.OnLoadEntityScene(self, sceneID)
-        self.gameworlds[sceneID].RegisterTrinitySlaveScene(trinity.Tr2PhysXScene())
 
 
 

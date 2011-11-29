@@ -119,10 +119,10 @@ class Moniker():
 
 
 
-    def __ClearBoundObject(self):
+    def __ClearBoundObject(self, disconnectDelay = 30):
         if self.boundObject is not None and isinstance(self.boundObject, base.ObjectConnection):
             try:
-                self.boundObject.DisconnectObject(30)
+                self.boundObject.DisconnectObject(disconnectDelay)
             except AttributeError:
                 pass
         self.boundObject = None
@@ -257,10 +257,14 @@ class Moniker():
             if self._Moniker__nodeID is not None:
                 return self._Moniker__nodeID
             else:
-                if macho.mode == 'client':
+                if macho.mode == 'client' or base.IsInClientContext():
                     self._Moniker__nodeID = sm.services['machoNet'].GuessNodeIDFromAddress(self._Moniker__serviceName, self._Moniker__bindParams)
                     if self._Moniker__nodeID is not None:
                         return self._Moniker__nodeID
+                    if not self._Moniker__nodeID:
+                        self._Moniker__nodeID = sm.services['machoNet']._addressCache.Get(self._Moniker__serviceName, self._Moniker__bindParams)
+                        if self._Moniker__nodeID is not None:
+                            return self._Moniker__nodeID
                 if sess is None:
                     if session and session.role == ROLE_SERVICE:
                         sess = session.GetActualSession()
@@ -277,7 +281,7 @@ class Moniker():
                 self._Moniker__nodeID = service.MachoResolveObject(self._Moniker__bindParams, justQuery)
                 if self._Moniker__nodeID is None and not justQuery:
                     raise RuntimeError('Resolution failure:  ResolveObject returned None')
-                if macho.mode == 'client':
+                if macho.mode == 'client' or base.IsInClientContext():
                     sm.services['machoNet'].SetNodeOfAddress(self._Moniker__serviceName, self._Moniker__bindParams, self._Moniker__nodeID)
                 return self._Moniker__nodeID
 
@@ -306,12 +310,12 @@ class Moniker():
 
 
 
-    def Unbind(self):
+    def Unbind(self, disconnectDelay = 30):
         if '__semaphoreB__' not in self.__dict__:
             self.__semaphoreB__ = uthread.Semaphore(('moniker::Bind', self._Moniker__serviceName, self._Moniker__bindParams))
         self.__semaphoreB__.acquire()
         try:
-            self._Moniker__ClearBoundObject()
+            self._Moniker__ClearBoundObject(disconnectDelay)
 
         finally:
             self.__semaphoreB__.release()

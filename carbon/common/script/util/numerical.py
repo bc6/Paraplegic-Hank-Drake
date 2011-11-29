@@ -92,7 +92,7 @@ class FrameClock(object):
         self.threshold = prefs.GetValue('frameClockThreshold', 1.0)
         self.threshold = long(self.threshold * 10000000.0)
         self.filter = KalmanFilterSS(A, B, B1, C, self.factor, 1.0)
-        self.t0 = blue.os.GetTime(1)
+        self.t0 = blue.os.GetWallclockTimeNow()
         self.lastTime = 0L
         self.step = 0
         self.filter.q[0] = 0.0
@@ -101,14 +101,14 @@ class FrameClock(object):
 
 
     def Rebase(self, t = None):
-        self.t0 = t or blue.os.GetTime(1)
+        self.t0 = t or blue.os.GetWallclockTimeNow()
         self.filter.q[0] = 0.0
         self.lastTime = self.t0
 
 
 
     def Sample(self):
-        rt = blue.os.GetTime(1)
+        rt = blue.os.GetWallclockTimeNow()
         t = (rt - self.t0) * 1e-07
         q = self.filter.Step(t, None)
         self.step += 1

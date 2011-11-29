@@ -2,12 +2,13 @@ import uix
 import uiutil
 import xtriui
 import listentry
+import localization
 import util
-import draw
 import sys
 import uicls
 import uiconst
 import trinity
+import fontConst
 
 class Rank(uicls.Container):
     __guid__ = 'xtriui.Rank'
@@ -325,19 +326,17 @@ class ImageSlider(uicls.Container):
         self.boundaryRight = len(self.data) - self.visiblecount
         prv = uicls.Container(name='ImgSliderPrev', align=uiconst.TOLEFT, width=h / 2, parent=self)
         prv.OnClick = (self.Browse, -1)
-        prv.hint = 'previous'
         self.sr.prev = prv
         uicls.Frame(parent=prv, color=(1.0, 1.0, 1.0, 0.125))
         uicls.Container(name='push', align=uiconst.TOLEFT, width=2, parent=self)
-        uicls.Icon(icon='ui_38_16_223', parent=prv, size=16, left=0, top=0, align=uiconst.CENTER, state=uiconst.UI_DISABLED)
+        uicls.Icon(icon='ui_38_16_223', parent=prv, size=16, left=0, top=0, align=uiconst.CENTER, state=uiconst.UI_DISABLED, hint=localization.GetByLabel('UI/Corporations/CreateDecorationWindow/PreviousItem'))
         uicls.Fill(parent=prv, color=(0.0, 0.0, 0.0, 0.25))
         nxt = uicls.Container(name='ImgSliderNext', align=uiconst.TORIGHT, width=h / 2, parent=self)
         nxt.OnClick = (self.Browse, 1)
-        nxt.hint = 'next'
         self.sr.next = nxt
         uicls.Frame(parent=nxt, color=(1.0, 1.0, 1.0, 0.125))
         uicls.Container(name='push', align=uiconst.TORIGHT, width=2, parent=self)
-        uicls.Icon(icon='ui_38_16_224', parent=nxt, size=16, left=0, top=0, align=uiconst.CENTER, state=uiconst.UI_DISABLED)
+        uicls.Icon(icon='ui_38_16_224', parent=nxt, size=16, left=0, top=0, align=uiconst.CENTER, state=uiconst.UI_DISABLED, hint=localization.GetByLabel('UI/Corporations/CreateDecorationWindow/NextItem'))
         uicls.Fill(parent=nxt, color=(0.0, 0.0, 0.0, 0.25))
         self.sr.mainpar = uicls.Container(name='ImgSliderMainPar', parent=self, align=uiconst.TOALL, state=uiconst.UI_NORMAL)
         self.sr.main = uicls.Container(name='ImgSliderMain', parent=self.sr.mainpar, align=uiconst.TOALL, state=uiconst.UI_NORMAL, clipChildren=1)
@@ -559,13 +558,13 @@ class ImageSlider(uicls.Container):
 
 class MedalRibbonPickerWindow(uicls.Window):
     __guid__ = 'form.MedalRibbonPickerWindow'
-    __notifyevents__ = []
+    default_windowID = 'MedalRibbonPickerWindow'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.submitting = False
         self.currentselection = None
-        self.SetCaption(mls.UI_GENERIC_CREATEDECORATION)
+        self.SetCaption(localization.GetByLabel('UI/Corporations/CreateDecorationWindow/Title'))
         self.SetWndIcon(None)
         self.SetMinSize([428, 520])
         self.MakeUnResizeable()
@@ -581,27 +580,27 @@ class MedalRibbonPickerWindow(uicls.Window):
         missingFields = []
         mName = self.sr.medalname.GetValue()
         if not bool(mName):
-            missingFields.append(mls.UI_GENERIC_NAME)
+            missingFields.append(localization.GetByLabel('UI/Corporations/CreateDecorationWindow/DecorationName'))
         mDesc = self.sr.medaldesc.GetValue()
         if not bool(mDesc):
-            missingFields.append(mls.UI_GENERIC_DESCRIPTION)
+            missingFields.append(localization.GetByLabel('UI/Corporations/CreateDecorationWindow/Description'))
         rData = self.sr.medalribbonobject.sr.ribbon.GetPrettyData()
         if not rData:
-            missingFields.append(mls.UI_GENERIC_RIBBON)
+            missingFields.append(localization.GetByLabel('UI/Corporations/CreateDecorationWindow/Ribbon'))
         mData = self.sr.medalribbonobject.sr.medal.GetPrettyData()
         if not mData:
-            missingFields.append(mls.UI_GENERIC_MEDAL)
+            missingFields.append(localization.GetByLabel('UI/Corporations/CreateDecorationWindow/Medal'))
         walletAccess = sm.GetService('wallet').HaveAccessToCorpWalletDivision(eve.session.corpAccountKey)
         if not walletAccess:
             if eve.Message('SelectWalletDivision', {}, uiconst.YESNO) == uiconst.ID_YES:
                 sm.GetService('wallet').SelectWalletDivision()
             else:
-                missingFields.append(mls.UI_CORP_ACTIVEWALLETDIVISION)
+                missingFields.append(localization.GetByLabel('UI/Corporations/CreateDecorationWindow/ActiveWalletDivision'))
         k = getattr(eve.session, 'corpAccountKey')
-        if k is None and mls.UI_CORP_ACTIVEWALLETDIVISION not in missingFields:
-            missingFields.append(mls.UI_CORP_ACTIVEWALLETDIVISION)
+        if k is None and localization.GetByLabel('UI/Corporations/CreateDecorationWindow/ActiveWalletDivision') not in missingFields:
+            missingFields.append(localization.GetByLabel('UI/Corporations/CreateDecorationWindow/ActiveWalletDivision'))
         if missingFields:
-            eve.Message('GenericMissingInfo', {'fields': '<b>%s</b>' % ', '.join(missingFields)})
+            eve.Message('GenericMissingInfo', {'fields': localization.GetByLabel('UI/Map/StarMap/lblBoldName', name=', '.join(missingFields))})
             self.submitting = False
             return 
         cMedalData = []
@@ -622,7 +621,7 @@ class MedalRibbonPickerWindow(uicls.Window):
             self.submitting = False
 
         if destroy:
-            self.SelfDestruct()
+            self.Close()
 
 
 
@@ -649,11 +648,11 @@ class MedalRibbonPickerWindow(uicls.Window):
         medalribbonobject.Startup([ribbondata, medaldata], imgSize * 2)
         self.sr.medalribbonobject = medalribbonobject
         btns = []
-        btns.append([mls.UI_CMD_SUBMIT,
+        btns.append([localization.GetByLabel('UI/Corporations/CreateDecorationWindow/Submit'),
          self.SubmitData,
          None,
          None])
-        btns.append([mls.UI_CMD_RESET,
+        btns.append([localization.GetByLabel('UI/Corporations/CreateDecorationWindow/Reset'),
          self.AddSliders,
          None,
          None])
@@ -664,20 +663,20 @@ class MedalRibbonPickerWindow(uicls.Window):
          0,
          const.defaultPadding,
          0))
-        uix.GetContainerHeader(mls.UI_CONTRACTS_BASICINFO, self.sr.mainselector, 0, -4)
+        uix.GetContainerHeader(localization.GetByLabel('UI/Contracts/BasicInfo'), self.sr.mainselector, 0, -4)
         uicls.Container(name='push', align=uiconst.TOTOP, height=6, parent=self.sr.mainselector)
         medalnamecont = uicls.Container(parent=self.sr.mainselector, align=uiconst.TOTOP)
         uicls.Container(name='push', align=uiconst.TOTOP, height=24, parent=medalnamecont)
         uicls.Container(name='push', align=uiconst.TOLEFT, width=4, parent=medalnamecont)
         uicls.Container(name='push', align=uiconst.TORIGHT, width=4, parent=medalnamecont)
-        self.sr.medalname = uicls.SinglelineEdit(name='medalname', parent=medalnamecont, setvalue=None, pos=(0, 12, 284, 0), label=mls.UI_GENERIC_NAME, maxLength=100)
+        self.sr.medalname = uicls.SinglelineEdit(name='medalname', parent=medalnamecont, setvalue=None, pos=(0, 12, 284, 0), label=localization.GetByLabel('UI/Corporations/CreateDecorationWindow/DecorationName'), maxLength=100)
         top = const.defaultPadding + self.sr.medalname.top + self.sr.medalname.height
-        uicls.Label(text=mls.UI_GENERIC_DESCRIPTION, parent=medalnamecont, top=top, width=60, autowidth=False, letterspace=1, fontsize=10, uppercase=1)
+        uicls.EveLabelSmall(text=localization.GetByLabel('UI/Corporations/CreateDecorationWindow/Description'), parent=medalnamecont, top=top, width=100)
         self.sr.medaldesc = uicls.EditPlainText(setvalue='', parent=medalnamecont, align=uiconst.TOPLEFT, name='medaldesc', maxLength=1000, top=top + 16, left=-1, width=286, height=64)
         medalnamecont.height = self.sr.medalname.height + self.sr.medaldesc.height + 8 + 23
         uicls.Container(name='push', align=uiconst.TOTOP, height=4, parent=self.sr.mainselector)
-        uix.GetContainerHeader(mls.UI_GENERIC_RIBBON, self.sr.mainselector, 1, -4)
-        labels = [ each.raceName for each in sm.GetService('cc').GetData('races', shuffle=0) if each.raceID in [const.raceCaldari,
+        uix.GetContainerHeader(localization.GetByLabel('UI/Corporations/CreateDecorationWindow/Ribbon'), self.sr.mainselector, 1, -4)
+        labels = [ each.raceName for each in cfg.races if each.raceID in [const.raceCaldari,
          const.raceMinmatar,
          const.raceGallente,
          const.raceAmarr] ]
@@ -731,7 +730,7 @@ class MedalRibbonPickerWindow(uicls.Window):
             self.ribbonsliders.append(slider)
 
         uicls.Container(name='push', align=uiconst.TOTOP, height=4, parent=self.sr.mainselector)
-        uix.GetContainerHeader(mls.UI_GENERIC_MEDAL, self.sr.mainselector, 1, -4)
+        uix.GetContainerHeader(localization.GetByLabel('UI/Corporations/CreateDecorationWindow/Medal'), self.sr.mainselector, 1, -4)
         labels = (('compass', 2),
          ('imperial', 2),
          ('pentagon', 1),
@@ -780,7 +779,7 @@ class MedalRibbonPickerWindow(uicls.Window):
         uicls.Frame(parent=rem, color=(1.0, 1.0, 1.0, 0.125))
         dbtn = uicls.Icon(icon='ui_38_16_111', parent=rem, size=16, left=0, top=0, align=uiconst.CENTER)
         dbtn.OnClick = (self.ResetSlider, dbtn)
-        dbtn.hint = 'reset'
+        dbtn.hint = localization.GetByLabel('UI/Corporations/CreateDecorationWindow/ResetItem')
         dbtn.slider = slider
         uicls.Fill(parent=rem, color=(0.0, 0.0, 0.0, 0.25))
         push = uicls.Container(name='push', align=uiconst.TOLEFT, height=32, width=4)
@@ -798,7 +797,7 @@ class MedalRibbonPickerWindow(uicls.Window):
 
     def PostOnClick(self, obj, *args):
         import random
-        labels = [ each.raceName for each in sm.GetService('cc').GetData('races', shuffle=1) if each.raceID in [const.raceCaldari,
+        labels = [ each.raceName for each in sm.GetService('cc').GetRaceData(shuffle=1) if each.raceID in [const.raceCaldari,
          const.raceMinmatar,
          const.raceGallente,
          const.raceAmarr] ]
@@ -928,8 +927,8 @@ class MedalRibbonEntry(listentry.LabelTextTop):
 
     def GetHeight(self, *args):
         (node, width,) = args
-        labelheight = uix.GetTextHeight(node.label, fontsize=9, autoWidth=1, singleLine=1, uppercase=1)
-        textheight = uix.GetTextHeight(node.text, fontsize=12, autoWidth=1, singleLine=1)
+        labelheight = uix.GetTextHeight(node.label, fontsize=fontConst.EVE_SMALL_FONTSIZE, singleLine=1, uppercase=1)
+        textheight = uix.GetTextHeight(node.text, fontsize=fontConst.EVE_MEDIUM_FONTSIZE, singleLine=1)
         size = node.Get('iconsize', 32)
         node.height = max(labelheight + textheight, size) + 2
         return node.height

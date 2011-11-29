@@ -12,6 +12,7 @@ import time
 import uicls
 import uiconst
 import log
+import localization
 
 class FormAlliancesApplications(uicls.Container):
     __guid__ = 'form.AlliancesApplications'
@@ -20,7 +21,8 @@ class FormAlliancesApplications(uicls.Container):
     def CreateWindow(self):
         self.sr.inited = 1
         self.sr.rejectedContainer = uicls.Container(name='rejectedContainer', align=uiconst.TOTOP, parent=self, pos=(0, 0, 0, 18))
-        self.sr.viewRejected = uicls.Checkbox(text=mls.UI_CORP_ALLIANCE_APPLICATION_SHOWREJECTED, parent=self.sr.rejectedContainer, configName='viewRejected', retval=1, checked=0, groupname=None, callback=self.CheckBoxChecked, align=uiconst.TOPLEFT, pos=(const.defaultPadding,
+        showRejectedLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/ShowRejected')
+        self.sr.viewRejected = uicls.Checkbox(text=showRejectedLabel, parent=self.sr.rejectedContainer, configName='viewRejected', retval=1, checked=0, groupname=None, callback=self.CheckBoxChecked, align=uiconst.TOPLEFT, pos=(const.defaultPadding,
          const.defaultPadding,
          150,
          0))
@@ -29,10 +31,12 @@ class FormAlliancesApplications(uicls.Container):
          const.defaultPadding,
          const.defaultPadding))
         self.sr.tabs = uicls.TabGroup(name='tabparent', parent=self, idx=0)
-        self.sr.tabs.Startup([[mls.UI_GENERIC_ALLIANCE,
+        allianceLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Alliance')
+        myApplicationsLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/MyApplications')
+        self.sr.tabs.Startup([[allianceLabel,
           self,
           self,
-          'alliance'], [mls.UI_CORP_MYAPPLICATIONS,
+          'alliance'], [myApplicationsLabel,
           self,
           self,
           'myApplications']], 'allianceApplications')
@@ -60,17 +64,18 @@ class FormAlliancesApplications(uicls.Container):
             sm.GetService('corpui').ShowLoad()
             scrolllist = []
             headers = []
-            hint = mls.UI_CORP_HINT3
+            hint = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/NoApplicationsFound')
             if eve.session.allianceid is None:
-                hint = mls.UI_CORP_HINT2 % {'owner': cfg.eveowners.Get(eve.session.corpid).ownerName}
+                hint = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/CorporationNotInAlliance', corpName=cfg.eveowners.Get(eve.session.corpid).ownerName)
             elif const.corpRoleDirector & eve.session.corprole != const.corpRoleDirector:
                 log.LogInfo('ShowAllianceApplications Invalid Callee')
-                hint = mls.UI_CORP_HINT1
+                hint = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/RequireDirectorHint')
             elif self is None or self.destroyed:
                 log.LogInfo('ShowAllianceApplications Destroyed or None')
-                hint = '\xfe\xfa s\xe1st mig ekki.'
             else:
-                headers = [mls.UI_GENERIC_NAME, mls.UI_GENERIC_STATUS]
+                nameLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/Name')
+                statusLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/Status')
+                headers = [nameLabel, statusLabel]
                 applications = sm.GetService('alliance').GetApplications(viewRejected)
                 log.LogInfo('ShowAllianceApplications len(applications):', len(applications))
                 owners = []
@@ -103,14 +108,16 @@ class FormAlliancesApplications(uicls.Container):
             sm.GetService('corpui').ShowLoad()
             scrolllist = []
             headers = []
-            hint = mls.UI_CORP_HINT3
+            hint = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/NoApplicationsFound')
             if const.corpRoleDirector & eve.session.corprole != const.corpRoleDirector:
                 log.LogInfo('ShowAllianceApplications Invalid Callee')
-                hint = mls.UI_CORP_HINT1
+                hint = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/RequireDirectorHint')
             elif self is None or self.destroyed:
                 log.LogInfo('ShowMyApplications Destroyed or None')
             else:
-                headers = [mls.UI_GENERIC_NAME, mls.UI_GENERIC_STATUS]
+                nameLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/Name')
+                statusLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/Status')
+                headers = [nameLabel, statusLabel]
                 applications = sm.GetService('corp').GetAllianceApplications()
                 log.LogInfo('ShowMyApplications len(applications):', len(applications))
                 owners = []
@@ -135,13 +142,13 @@ class FormAlliancesApplications(uicls.Container):
     def __GetStatusStr(self, status):
         string = ''
         if status == const.allianceApplicationNew:
-            string = mls.UI_CORP_NEW
+            string = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/New')
         elif status == const.allianceApplicationAccepted:
-            string = mls.UI_CORP_ACCEPTED
+            string = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/Accepted')
         elif status == const.allianceApplicationEffective:
-            string = mls.UI_CORP_EFFECTIVE
+            string = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/Effective')
         elif status == const.allianceApplicationRejected:
-            string = mls.UI_CORP_REJECTED
+            string = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/Rejected')
         return string
 
 
@@ -163,15 +170,18 @@ class FormAlliancesApplications(uicls.Container):
 
 
     def GetAllianceMenu(self, entry):
-        return [(mls.UI_CMD_VIEW, self.AllianceViewApplication, (entry,))]
+        viewLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/View')
+        return [(viewLabel, self.AllianceViewApplication, (entry,))]
 
 
 
     def GetApplicationMenu(self, entry):
         application = entry.sr.node.application
-        data = [(mls.UI_CMD_VIEW, self._ViewApplication, (entry,))]
+        viewLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/View')
+        data = [(viewLabel, self._ViewApplication, (entry,))]
         if application.state == const.allianceApplicationRejected:
-            data.append((mls.UI_CMD_DELETE, self.DeleteApplication, (application,)))
+            deleteLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/Delete')
+            data.append((deleteLabel, self.DeleteApplication, (application,)))
         return data
 
 
@@ -280,8 +290,9 @@ class FormAlliancesApplications(uicls.Container):
         format = []
         status = self._FormAlliancesApplications__GetStatusStr(application.state)
         format.append({'type': 'bbline'})
+        statusLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/Status')
         format.append({'type': 'labeltext',
-         'label': mls.UI_GENERIC_STATUS,
+         'label': statusLabel,
          'text': status,
          'frame': 1})
         format.append({'type': 'bbline'})
@@ -307,17 +318,19 @@ class FormAlliancesApplications(uicls.Container):
         btn = uiconst.OK
         left = uicore.desktop.width / 2 - 400 / 2
         top = uicore.desktop.height / 2 - 400 / 2
+        viewApplicationDetails = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/ViewApplicationDetails')
         if application.state in [const.allianceApplicationAccepted, const.allianceApplicationEffective]:
-            return uix.HybridWnd(format, mls.UI_CORP_VIEWAPPLICATIONDETAILS, 0, None, btn, [left, top], 400, unresizeAble=1)
-        uix.HybridWnd(format, mls.UI_CORP_VIEWAPPLICATIONDETAILS, 1, None, btn, [left, top], 400, unresizeAble=1)
+            return uix.HybridWnd(format, viewApplicationDetails, 0, None, btn, [left, top], 400, unresizeAble=1)
+        uix.HybridWnd(format, viewApplicationDetails, 1, None, btn, [left, top], 400, unresizeAble=1)
 
 
 
     def CheckApplication(self, retval):
         if retval.has_key('appltext'):
             applicationText = retval['appltext']
-            if len(applicationText) > 1000:
-                return mls.UI_CORP_HINT4
+            textLength = len(applicationText)
+            if textLength > 1000:
+                return localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/ApplicationTooLong', textLength=textLength)
         return ''
 
 
@@ -336,8 +349,10 @@ class FormAlliancesApplications(uicls.Container):
         if application.state == const.allianceApplicationNew:
             canEditStatus = 1
             canAppendNote = 1
-            stati[const.allianceApplicationRejected] = (mls.UI_CMD_REJECT, 0)
-            stati[const.allianceApplicationAccepted] = (mls.UI_CMD_ACCEPT, 1)
+            rejectLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/Reject')
+            acceptLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/Accept')
+            stati[const.allianceApplicationRejected] = (rejectLabel, 0)
+            stati[const.allianceApplicationAccepted] = (acceptLabel, 1)
         elif application.state == const.allianceApplicationAccepted:
             canEditStatus = 0
             canAppendNote = 0
@@ -347,8 +362,11 @@ class FormAlliancesApplications(uicls.Container):
         elif application.state == const.allianceApplicationRejected:
             canEditStatus = 0
             canAppendNote = 0
+        statusLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/Status')
+        fromLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/From')
+        termsAndConditionsLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/TermsAndConditions')
         format.append({'type': 'header',
-         'text': mls.UI_GENERIC_FROM,
+         'text': fromLabel,
          'frame': 1})
         format.append({'type': 'text',
          'text': cfg.eveowners.Get(application.corporationID).ownerName,
@@ -356,7 +374,7 @@ class FormAlliancesApplications(uicls.Container):
         format.append({'type': 'push',
          'frame': 1})
         format.append({'type': 'header',
-         'text': mls.UI_GENERIC_STATUS,
+         'text': statusLabel,
          'frame': 1})
         format.append({'type': 'text',
          'text': status,
@@ -364,11 +382,11 @@ class FormAlliancesApplications(uicls.Container):
         format.append({'type': 'push',
          'frame': 1})
         format.append({'type': 'header',
-         'text': mls.UI_CORP_TERMSANDCOND,
+         'text': termsAndConditionsLabel,
          'frame': 1})
         if canEditStatus == 0:
             format.append({'type': 'labeltext',
-             'label': mls.UI_GENERIC_STATUS,
+             'label': statusLabel,
              'text': status,
              'frame': 1})
             format.append({'type': 'bbline'})
@@ -391,12 +409,13 @@ class FormAlliancesApplications(uicls.Container):
 
             format.append({'type': 'bbline'})
         if canAppendNote == 1:
+            allianceApplicationTextLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/AllianceApplicationText')
             format.append({'type': 'push',
              'frame': 1})
             format.append({'type': 'textedit',
              'setvalue': application.applicationText + ' --- ',
              'key': 'appltext',
-             'label': mls.UI_CORP_APPLICATIONTEXT,
+             'label': allianceApplicationTextLabel,
              'required': 0,
              'frame': 1,
              'height': 96,
@@ -422,23 +441,26 @@ class FormAlliancesApplications(uicls.Container):
             btn = uiconst.OKCANCEL
         else:
             btn = uiconst.OK
+        viewApplicationDetailsLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/ViewApplicationDetails')
         left = uicore.desktop.width / 2 - 400 / 2
         top = uicore.desktop.height / 2 - 400 / 2
         if application.state == const.allianceApplicationEffective:
-            return uix.HybridWnd(format, mls.UI_CORP_VIEWAPPLICATIONDETAILS, 0, None, btn, [left, top], 400, unresizeAble=1)
-        retval = uix.HybridWnd(format, mls.UI_CORP_VIEWAPPLICATIONDETAILS, 1, None, btn, [left, top], 400, unresizeAble=1)
+            return uix.HybridWnd(format, viewApplicationDetailsLabel, 0, None, btn, [left, top], 400, unresizeAble=1)
+        retval = uix.HybridWnd(format, viewApplicationDetailsLabel, 1, None, btn, [left, top], 400, unresizeAble=1)
         if retval is not None and canEditStatus == 1 and canAppendNote == 1:
             applicationText = retval['appltext']
             status = retval['stati']
             if status == const.allianceApplicationAccepted:
                 wars = sm.GetService('war').GetWars(corporationID, 1)
                 if len(wars):
+                    warningLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/Warning')
+                    warsWillBeAdoptedLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/WarsWillBeAdopted')
                     format = []
                     format.append({'type': 'header',
-                     'text': mls.UI_GENERIC_WARNING,
+                     'text': warningLabel,
                      'frame': 1})
                     format.append({'type': 'text',
-                     'text': mls.UI_CORP_HINT5,
+                     'text': warsWillBeAdoptedLabel,
                      'frame': 1})
                     format.append({'type': 'push'})
                     declaredIDs = []
@@ -450,8 +472,9 @@ class FormAlliancesApplications(uicls.Container):
                             againstIDs.append(war.againstID)
 
                     if len(declaredIDs):
+                        declaredByLabel = (localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/DeclaredBy'),)
                         format.append({'type': 'header',
-                         'text': mls.UI_CORP_DECLAREDBY,
+                         'text': declaredByLabel,
                          'frame': 1})
                         for ownerID in declaredIDs:
                             format.append({'type': 'text',
@@ -459,8 +482,9 @@ class FormAlliancesApplications(uicls.Container):
                              'frame': 0})
 
                     if len(againstIDs):
+                        againstLabel = (localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/Against'),)
                         format.append({'type': 'header',
-                         'text': mls.UI_CORP_AGAINST,
+                         'text': againstLabel,
                          'frame': 1})
                         for ownerID in againstIDs:
                             format.append({'type': 'text',
@@ -470,10 +494,12 @@ class FormAlliancesApplications(uicls.Container):
                     format.append({'type': 'push',
                      'frame': 1})
                     format.append({'type': 'bbline'})
+                    confirmAcceptLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/ConfirmAccept')
                     format.append({'type': 'text',
-                     'text': mls.UI_CORP_HINT6,
+                     'text': confirmAcceptLabel,
                      'frame': 0})
-                    retval = uix.HybridWnd(format, mls.UI_CORP_ADOPTWARS, 1, None, uiconst.OKCANCEL, [left, top], 400, unresizeAble=1)
+                    adoptWarsLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Applications/AdoptWars')
+                    retval = uix.HybridWnd(format, adoptWarsLabel, 1, None, uiconst.OKCANCEL, [left, top], 400, unresizeAble=1)
                     if retval is None:
                         return 
             sm.GetService('alliance').UpdateApplication(corporationID, applicationText, status)

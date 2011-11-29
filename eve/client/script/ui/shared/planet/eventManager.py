@@ -1,4 +1,5 @@
 import uiconst
+import form
 STATE_NORMAL = 0
 STATE_BUILDPIN = 1
 STATE_CREATELINKSTART = 2
@@ -16,6 +17,11 @@ class EventManager:
         sm.RegisterNotify(self)
         self.state = STATE_NORMAL
         self.subState = SUBSTATE_NORMAL
+
+
+
+    def Close(self):
+        sm.UnregisterNotify(self)
 
 
 
@@ -138,8 +144,7 @@ class EventManager:
 
     def OnDepletionPinClicked(self, index):
         self.planetUISvc.CloseCurrentlyOpenContainer()
-        import form
-        sm.GetService('window').GetWindow('depletionManager', create=1, decoClass=form.DepletionManager, pinManager=self.myPinManager)
+        form.DepletionManager.Open(pinManager=self.myPinManager)
 
 
 

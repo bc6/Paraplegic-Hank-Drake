@@ -1,14 +1,10 @@
-import blue
 import uthread
-import util
-import xtriui
 import uix
-import form
 import listentry
-import lg
-import draw
 import uiconst
 import uicls
+import localization
+import util
 
 class CorpMembersViewSimple(uicls.Container):
     __guid__ = 'form.CorpMembersViewSimple'
@@ -25,29 +21,29 @@ class CorpMembersViewSimple(uicls.Container):
     def CreateWindow(self):
         wndOutputArea = uicls.Container(name='output', parent=self, align=uiconst.TOTOP, height=48)
         captionparent = uicls.Container(name='captionparent', parent=wndOutputArea, align=uiconst.TOTOP, width=136, height=16)
-        self.labelResults = uicls.Label(text='%s:' % mls.UI_CORP_RESULTS, parent=captionparent, align=uiconst.TOTOP, height=16, state=uiconst.UI_NORMAL)
+        self.labelResults = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/SimpleView/ResultsLabel'), parent=captionparent, align=uiconst.TOTOP, height=16, state=uiconst.UI_NORMAL)
         wndResultsBar = uicls.Container(name='results', parent=wndOutputArea, align=uiconst.TOTOP, height=16)
         wndNavBtns = uicls.Container(name='sidepar', parent=wndResultsBar, align=uiconst.TORIGHT, width=52)
         label = uicls.Container(name='text', parent=wndResultsBar, align=uiconst.TOLEFT, width=150, height=16)
-        uicls.Label(text='%s:' % mls.UI_CORP_MEMBERSPERPAGE, parent=label, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
-        optlist = [['10', 10],
-         ['25', 25],
-         ['50', 50],
-         ['100', 100],
-         ['500', 500]]
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/SimpleView/MembersPerPage'), parent=label, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        optlist = [[util.FmtAmt(10), 10],
+         [util.FmtAmt(25), 25],
+         [util.FmtAmt(50), 50],
+         [util.FmtAmt(100), 100],
+         [util.FmtAmt(500), 500]]
         countcombo = uicls.Combo(label='', parent=wndResultsBar, options=optlist, name='membersperpage', callback=self.OnComboChange, width=146, pos=(150, 0, 0, 0))
         countcombo.sr.label.width = 200
         countcombo.sr.label.top = -16
         self.sr.MembersPerPage = countcombo
         btn = uix.GetBigButton(24, wndNavBtns, 0, 0)
         btn.OnClick = (self.Navigate, -1)
-        btn.hint = mls.UI_GENERIC_PREVIOUS
+        btn.hint = localization.GetByLabel('UI/Common/Previous')
         btn.state = uiconst.UI_HIDDEN
         btn.sr.icon.LoadIcon('ui_23_64_1')
         self.backBtn = btn
         btn = uix.GetBigButton(24, wndNavBtns, 24, 0)
         btn.OnClick = (self.Navigate, 1)
-        btn.hint = mls.UI_GENERIC_VIEWMORE
+        btn.hint = localization.GetByLabel('UI/Common/ViewMore')
         btn.state = uiconst.UI_HIDDEN
         btn.sr.icon.LoadIcon('ui_23_64_2')
         self.fwdBtn = btn
@@ -60,7 +56,9 @@ class CorpMembersViewSimple(uicls.Container):
     def PopulateView(self, memberIDs = None):
         if memberIDs is not None:
             self.memberIDs = memberIDs
-        self.labelResults.text = '%s: (%s)' % (mls.UI_CORP_RESULTS, len(self.memberIDs))
+            self.labelResults.text = (localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/SimpleView/ResultsLabelPopulated', numResults=len(self.memberIDs)),)
+        else:
+            self.labelResults.text = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/SimpleView/ResultsLabel')
         nFrom = self.viewFrom
         nTo = nFrom + self.viewPerPage
         scrolllist = []

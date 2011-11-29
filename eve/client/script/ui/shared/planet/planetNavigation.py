@@ -1,4 +1,3 @@
-import xtriui
 import uix
 import uiconst
 import planetCommon
@@ -10,7 +9,7 @@ from service import ROLE_GML
 import uthread
 import log
 import geo2
-import types
+import localization
 DEG2RAD = 0.0174532925199
 RED = (1.0, 0.0, 0.0, 1.0)
 GREEN = (0.0, 1.0, 0.0, 1.0)
@@ -201,18 +200,23 @@ class PlanetCamera(object):
 
 
 
-class PlanetNav(uicls.Container):
-    __guid__ = 'form.PlanetNav'
+class PlanetLayer(uicls.LayerCore):
+    __guid__ = 'uicls.PlanetLayer'
     __update_on_reload__ = 0
+
+    def OnOpenView(self):
+        pass
+
+
 
     def init(self):
         self.align = uiconst.TOALL
         self.cursor = uiconst.UICURSOR_SELECTDOWN
         self.orbitOnMouseMove = False
         self.planetWasRotated = False
-        self.camera = planet.ui.Camera()
         self.isTabStop = True
         self.pickLast = None
+        self.camera = None
 
 
 
@@ -220,6 +224,7 @@ class PlanetNav(uicls.Container):
         self.eventManager = sm.GetService('planetUI').eventManager
         self.myPinManager = sm.GetService('planetUI').myPinManager
         self.otherPinManager = sm.GetService('planetUI').otherPinManager
+        self.camera = planet.ui.Camera()
 
 
 
@@ -371,7 +376,8 @@ class PlanetNav(uicls.Container):
         menuItems = [('ID: %d' % planetID, blue.pyos.SetClipboardData, [str(planetID)]),
          None,
          ('Verify Simulation', planetUISvc.VerifySimulation, []),
-         ('Draw cartesian axis', planetUISvc.curveLineDrawer.DrawCartesianAxis, [])]
+         ('Draw cartesian axis', planetUISvc.curveLineDrawer.DrawCartesianAxis, []),
+         ('Flush Dust Pin Cache', sm.GetService('planetBaseSvc')._InvalidateCache, [long(planetID)])]
         if surfacePoint is not None:
             menuItems.append(('Get Local Resource Report', planetUISvc.GetLocalDistributionReport, [surfacePoint]))
             menuItems.append(('Add depletion point', planetUISvc.AddDepletionPoint, [surfacePoint]))
@@ -399,12 +405,14 @@ class PlanetNav(uicls.Container):
         if session.role & ROLE_GML == ROLE_GML:
             m.append(['GM/Debug Menu...', self.DebugMenu()])
             m.append(None)
-        showOtherPins = settings.user.ui.Get('planetShowOtherCharactersPins', True)
-        if showOtherPins:
-            showOtherPinsTxt = mls.UI_PI_HIDEOTHERNETWORKS
-        else:
-            showOtherPinsTxt = mls.UI_PI_SHOWOTHERNETWORKS
-        m.extend([(showOtherPinsTxt, sm.GetService('planetUI').otherPinManager.ShowOrHideOtherCharactersPins, [not showOtherPins]), (mls.UI_PI_EXIT_PLANET_MODE, sm.GetService('planetUI').Close, [])])
+        if sm.GetService('planetUI').otherPinManager is not None:
+            showOtherPins = settings.user.ui.Get('planetShowOtherCharactersPins', True)
+            if showOtherPins:
+                showOtherPinsTxt = localization.GetByLabel('UI/PI/Common/HideOtherNetworks')
+            else:
+                showOtherPinsTxt = localization.GetByLabel('UI/PI/Common/ShowOtherNetworks')
+            m.append((showOtherPinsTxt, sm.GetService('planetUI').otherPinManager.ShowOrHideOtherCharactersPins, [not showOtherPins]))
+        m.append((localization.GetByLabel('UI/PI/Common/ExitPlanetMode'), sm.GetService('viewState').CloseSecondaryView, ('planet',)))
         return m
 
 
@@ -413,7 +421,7 @@ class PlanetNav(uicls.Container):
         sceneManager = sm.GetService('sceneManager')
         planetui = sm.GetService('planetUI')
         scene2 = sceneManager.GetRegisteredScene2('planet')
-        (x, y,) = (uicore.uilib.x, uicore.uilib.y)
+        (x, y,) = (int(uicore.uilib.x * uicore.desktop.dpiScaling), int(uicore.uilib.y * uicore.desktop.dpiScaling))
         if scene2:
             (projection, view, viewport,) = uix.GetFullscreenProjectionViewAndViewport()
             result = scene2.PickObjectAndAreaID(x, y, projection, view, viewport)

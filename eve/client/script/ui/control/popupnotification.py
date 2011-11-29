@@ -5,6 +5,7 @@ import uiconst
 import uthread
 import blue
 import uicls
+import localization
 
 class PopupNotification(uicls.Container):
     __guid__ = 'xtriui.PopupNotification'
@@ -17,14 +18,14 @@ class PopupNotification(uicls.Container):
         uicls.Fill(parent=self, color=(0, 0, 0, 1), idx=-1, state=uiconst.UI_DISABLED)
         closex = uicls.Icon(icon='ui_38_16_220', parent=self, idx=0, state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
         closex.OnClick = self.CloseNotification
-        closex.sr.hint = mls.UI_SHARED_SKILLS_CLOSENOTIFICATION
+        closex.sr.hint = localization.GetByLabel('UI/Common/CloseNotification')
         iconCont = uicls.Container(name='iconCont', parent=sub, align=uiconst.TOLEFT, pos=(0, 0, 60, 0))
         textCont = uicls.Container(name='textCont', parent=sub, align=uiconst.TOALL, pos=(0, 0, 0, 0), state=uiconst.UI_NORMAL)
         self.sr.icon = uicls.Icon(parent=iconCont, icon='50_11', pos=(-2, 2, 64, 64), align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED)
-        self.sr.headerText = uicls.Label(text='', parent=textCont, padTop=12, align=uiconst.TOTOP, fontsize=10, letterspace=1, linespace=10, uppercase=1, state=uiconst.UI_DISABLED)
-        self.sr.text1 = uicls.Label(text='', parent=textCont, state=uiconst.UI_DISABLED, align=uiconst.TOTOP, padding=(0, -2, 4, 0))
-        self.sr.text2 = uicls.Label(text='', parent=textCont, state=uiconst.UI_HIDDEN, align=uiconst.TOTOP, padding=(0, -2, 4, 0))
-        self.sr.text3 = uicls.Label(text='', parent=textCont, state=uiconst.UI_HIDDEN, align=uiconst.TOTOP, padding=(0, -2, 4, 0))
+        self.sr.headerText = uicls.EveLabelSmall(text='', parent=textCont, padTop=12, align=uiconst.TOTOP, state=uiconst.UI_DISABLED, bold=True)
+        self.sr.text1 = uicls.EveLabelMedium(text='', parent=textCont, state=uiconst.UI_DISABLED, align=uiconst.TOTOP, padding=(0, -2, 4, 0))
+        self.sr.text2 = uicls.EveLabelMedium(text='', parent=textCont, state=uiconst.UI_HIDDEN, align=uiconst.TOTOP, padding=(0, -2, 4, 0))
+        self.sr.text3 = uicls.EveLabelMedium(text='', parent=textCont, state=uiconst.UI_HIDDEN, align=uiconst.TOTOP, padding=(0, -2, 4, 0))
 
 
 
@@ -59,7 +60,7 @@ class PopupNotification(uicls.Container):
 
 
     def Kill(self, time = 10000):
-        blue.pyos.synchro.Sleep(time)
+        blue.pyos.synchro.SleepWallclock(time)
         if not self or self.destroyed:
             return 
         if uicore.uilib.mouseOver == self or uiutil.IsUnder(uicore.uilib.mouseOver, self):

@@ -1,9 +1,9 @@
 import paperDoll
 import blue
 import const
-import random
 import yaml
 import util
+import localization
 FACIAL_POSE_PARAMETERS = util.KeyVal(PortraitPoseNumber='PortraitPoseNumber', HeadLookTarget='HeadLookTarget', HeadTilt='HeadTilt', OrientChar='OrientChar', BrowLeftCurl='BrowLeftCurl', BrowLeftTighten='BrowLeftTighten', BrowLeftUpDown='BrowLeftUpDown', BrowRightCurl='BrowRightCurl', BrowRightTighten='BrowRightTighten', BrowRightUpDown='BrowRightUpDown', EyeClose='EyeClose', EyesLookVertical='EyesLookVertical', EyesLookHorizontal='EyesLookHorizontal', SquintLeft='SquintLeft', SquintRight='SquintRight', JawSideways='JawSideways', JawUp='JawUp', PuckerLips='PuckerLips', FrownLeft='FrownLeft', FrownRight='FrownRight', SmileLeft='SmileLeft', SmileRight='SmileRight')
 bloodlineAssets = {const.bloodlineAchura: 'caldari_achura',
  const.bloodlineAmarr: 'amarr_amarr',
@@ -75,32 +75,54 @@ def CacheRequiredModifierLocatiosn():
         REQUIRED_MODIFICATION_LOCATIONS.add(MODIFIER_LOCATION_BY_KEY[paperDoll.BODY_CATEGORIES.TOPOUTER])
         REQUIRED_MODIFICATION_LOCATIONS.add(MODIFIER_LOCATION_BY_KEY[paperDoll.BODY_CATEGORIES.TOPMIDDLE])
     if not len(REQUIRED_MODIFICATION_LOCATIONS_FEMALE):
-        REQUIRED_MODIFICATION_LOCATIONS_FEMALE[MODIFIER_LOCATION_BY_KEY[paperDoll.BODY_CATEGORIES.BOTTOMOUTER]] = mls.UI_CHARCREA_BOTTOM
-        REQUIRED_MODIFICATION_LOCATIONS_FEMALE[MODIFIER_LOCATION_BY_KEY[paperDoll.BODY_CATEGORIES.FEET]] = mls.UI_CHARCREA_FEET
+        REQUIRED_MODIFICATION_LOCATIONS_FEMALE[MODIFIER_LOCATION_BY_KEY[paperDoll.BODY_CATEGORIES.BOTTOMOUTER]] = localization.GetByLabel('UI/CharacterCustomization/Bottom')
+        REQUIRED_MODIFICATION_LOCATIONS_FEMALE[MODIFIER_LOCATION_BY_KEY[paperDoll.BODY_CATEGORIES.FEET]] = localization.GetByLabel('UI/CharacterCustomization/Feet')
     if not len(REQUIRED_MODIFICATION_LOCATIONS_MALE):
-        REQUIRED_MODIFICATION_LOCATIONS_MALE[MODIFIER_LOCATION_BY_KEY[paperDoll.BODY_CATEGORIES.BOTTOMOUTER]] = mls.UI_CHARCREA_BOTTOM
-        REQUIRED_MODIFICATION_LOCATIONS_MALE[MODIFIER_LOCATION_BY_KEY[paperDoll.BODY_CATEGORIES.FEET]] = mls.UI_CHARCREA_FEET
+        REQUIRED_MODIFICATION_LOCATIONS_MALE[MODIFIER_LOCATION_BY_KEY[paperDoll.BODY_CATEGORIES.BOTTOMOUTER]] = localization.GetByLabel('UI/CharacterCustomization/Bottom')
+        REQUIRED_MODIFICATION_LOCATIONS_MALE[MODIFIER_LOCATION_BY_KEY[paperDoll.BODY_CATEGORIES.FEET]] = localization.GetByLabel('UI/CharacterCustomization/Feet')
 
 
 
 def HasRequiredClothing(dollGender, dollTypes):
     CacheRequiredModifierLocatiosn()
     dollModifierLocations = set([ row.modifierLocationID for row in dollTypes ])
-    missingCategoryDescriptions = []
+    missingCategoryDescriptions = {}
     if len(dollModifierLocations.intersection(REQUIRED_MODIFICATION_LOCATIONS)) == 0:
-        missingCategoryDescriptions.append(mls.UI_CHARCREA_TOP)
+        missingCategoryDescriptions['top'] = localization.GetByLabel('UI/CharacterCustomization/Top')
     if dollGender == 'female':
         dollCategories = REQUIRED_MODIFICATION_LOCATIONS_FEMALE
     else:
         dollCategories = REQUIRED_MODIFICATION_LOCATIONS_MALE
     for (category, description,) in dollCategories.iteritems():
-        if category not in dollModifierLocations and description not in missingCategoryDescriptions:
-            missingCategoryDescriptions.append(description)
+        if category not in dollModifierLocations and category not in missingCategoryDescriptions:
+            missingCategoryDescriptions[category] = description
 
     if len(missingCategoryDescriptions) > 0:
-        raise UserError('MissingRequiredClothing', {'clothingList': ', '.join(missingCategoryDescriptions)})
-    else:
-        return True
+        resourceIDs = set([ row.paperdollResourceID for row in dollTypes ])
+        typesOn = set()
+        for rID in resourceIDs:
+            if rID is None:
+                continue
+            resource = cfg.paperdollResources.Get(rID)
+            if resource.typeID is not None:
+                typesOn.add(resource.typeID)
+
+        for typeOn in typesOn:
+            if len(missingCategoryDescriptions) < 1:
+                break
+            attributes = cfg.dgmtypeattribs.get(typeOn, [])
+            for attr in attributes:
+                if attr.attributeID == const.attributeClothingAlsoCoversCategory:
+                    alsoCovers = int(attr.value)
+                    if alsoCovers in REQUIRED_MODIFICATION_LOCATIONS:
+                        missingCategoryDescriptions.pop('top', None)
+                    else:
+                        missingCategoryDescriptions.pop(alsoCovers, None)
+
+
+    if len(missingCategoryDescriptions) > 0:
+        raise UserError('MissingRequiredClothing', {'clothingList': ', '.join(missingCategoryDescriptions.values())})
+    return True
 
 
 

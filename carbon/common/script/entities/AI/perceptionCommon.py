@@ -4,15 +4,6 @@ import service
 import collections
 import geo2
 
-class PerceptionComponent:
-    __guid__ = 'AI.PerceptionComponent'
-
-    def __init__(self, state):
-        self.state = state
-
-
-
-
 class perceptionCommon(service.Service):
     __guid__ = 'AI.perceptionCommon'
     sceneManagers = {}
@@ -20,7 +11,18 @@ class perceptionCommon(service.Service):
     __componentTypes__ = ['perception']
 
     def CreateComponent(self, name, state):
-        return PerceptionComponent(state)
+        component = GameWorld.PerceptionComponent()
+        component.entityTypeString = state[const.perception.PERCEPTION_COMPONENT_ENTITY_TYPE]
+        component.behaviorSensesID = int(state[const.perception.PERCEPTION_COMPONENT_SENSE_GROUP])
+        component.behaviorFiltersID = int(state[const.perception.PERCEPTION_COMPONENT_FILTER_GROUP])
+        component.behaviorDecaysID = int(state[const.perception.PERCEPTION_COMPONENT_DECAY_GROUP])
+        component.sensorBoneName = state[const.perception.PERCEPTION_COMPONENT_SENSOR_BONENAME]
+        component.sensorOffsetString = state[const.perception.PERCEPTION_COMPONENT_SENSOR_OFFSET]
+        component.dropStimType = state[const.perception.PERCEPTION_COMPONENT_DROP_STIMTYPE]
+        component.dropRange = state[const.perception.PERCEPTION_COMPONENT_DROP_RANGE]
+        component.tags = state[const.perception.PERCEPTION_COMPONENT_TAGS]
+        component.clientServer = int(state[const.perception.PERCEPTION_COMPONENT_CLIENTSERVER])
+        return component
 
 
 
@@ -28,60 +30,48 @@ class perceptionCommon(service.Service):
         if sceneID not in self.sceneManagers:
             self.LogError('SceneID in prepare perception component has no previous manager ', sceneID, entityID)
             return 
+        component.entityID = entityID
+        component.entityTypeID = const.perception.PERCEPTION_ENTITY_TYPE_TO_ID.get(component.entityTypeString)
+        if component.entityTypeID == -1:
+            self.LogError('entity in prepare perception component has missing type', entityID)
+            return 
+        if component.behaviorSensesID == -1 or component.behaviorFiltersID == -1 or component.behaviorDecaysID == -1:
+            self.LogError('entity in prepare perception component has missing state behaviorIDs', entityID)
+            return 
+        component.sensorOffset = geo2.Vector(0.0, 0.0, 0.0)
+        if component.sensorOffsetString != '':
+            component.sensorOffsetString = component.sensorOffsetString.strip('()')
+            sensorOffsetTuple = component.sensorOffsetString.split(',')
+            try:
+                component.sensorOffset = geo2.Vector(float(sensorOffsetTuple[0]), float(sensorOffsetTuple[1]), float(sensorOffsetTuple[2]))
+            except:
+                self.LogError('entity has invalid perception sensor offset value', entityID)
+                component.sensorOffset = geo2.Vector(0.0, 0.0, 0.0)
+        self.entityService.entitySceneManager.PrepareComponent(entityID, sceneID, component)
 
 
 
     def SetupComponent(self, entity, component):
-        pass
-
-
-
-    def RegisterComponent(self, entity, component):
         if entity.scene.sceneID not in self.sceneManagers:
             self.LogError("Trying to register a perception component thats doesn't have a valid scene", entity.entityID)
             return 
-        entityTypeID = None
-        entityType = component.state.get(const.perception.PERCEPTION_COMPONENT_ENTITY_TYPE)
-        if entityType:
-            entityTypeID = const.perception.PERCEPTION_ENTITY_TYPE_TO_ID.get(entityType)
-        if not entityTypeID:
-            self.LogError('entity in prepare perception component has invalid entityType', entity.entityID)
-            return 
-        behaviorSensesID = component.state.get(const.perception.PERCEPTION_COMPONENT_SENSE_GROUP)
-        behaviorFiltersID = component.state.get(const.perception.PERCEPTION_COMPONENT_FILTER_GROUP)
-        behaviorDecaysID = component.state.get(const.perception.PERCEPTION_COMPONENT_DECAY_GROUP)
-        if behaviorSensesID is None or behaviorFiltersID is None or behaviorDecaysID is None:
-            self.LogError('entity in prepare perception component has missing state behaviorIDs', entity.entityID)
-            return 
-        sensorBoneName = component.state.get(const.perception.PERCEPTION_COMPONENT_SENSOR_BONENAME)
-        sensorOffsetString = component.state.get(const.perception.PERCEPTION_COMPONENT_SENSOR_OFFSET)
-        sensorOffset = geo2.Vector(0.0, 0.0, 0.0)
-        if sensorBoneName is None and sensorOffsetString is None:
+        if component.sensorBoneName == '' and component.sensorOffsetString == '':
             bv = entity.GetComponent('boundingVolume')
             if bv is not None:
                 sensorOffset = geo2.Vector(*bv.minExtends)
                 sensorOffset.x = sensorOffset.x + (bv.maxExtends[0] - bv.minExtends[0]) / 2
                 sensorOffset.y = sensorOffset.y + (bv.maxExtends[1] - bv.minExtends[1]) / 2
                 sensorOffset.z = sensorOffset.z + (bv.maxExtends[2] - bv.minExtends[2]) / 2
-        if sensorBoneName is None:
-            sensorBoneName = ''
-        if sensorOffsetString is not None:
-            sensorOffsetString = sensorOffsetString.strip('()')
-            sensorOffsetTuple = sensorOffsetString.split(',')
-            try:
-                sensorOffset = geo2.Vector(float(sensorOffsetTuple[0]), float(sensorOffsetTuple[1]), float(sensorOffsetTuple[2]))
-            except:
-                self.LogError('entity has invalid perception sensor offset value', entity.entityID)
-                sensorOffset = geo2.Vector(0.0, 0.0, 0.0)
-        dropStimType = component.state.get(const.perception.PERCEPTION_COMPONENT_DROP_STIMTYPE)
-        dropRange = component.state.get(const.perception.PERCEPTION_COMPONENT_DROP_RANGE)
-        if dropStimType is None:
-            dropStimType = ''
-        if dropRange is None:
-            dropRange = 0.0
-        positionComponent = entity.GetComponent('position')
+                component.sensorOffset = sensorOffset
         perceptionManager = self.sceneManagers[entity.scene.sceneID]
-        perceptionManager.AddEntity(entity.entityID, behaviorSensesID, behaviorFiltersID, behaviorDecaysID, entityTypeID, positionComponent, sensorBoneName, sensorOffset.x, sensorOffset.y, sensorOffset.z, dropStimType, dropRange)
+        perceptionManager.AddEntity(component)
+
+
+
+    def RegisterComponent(self, entity, component):
+        if self.IsClientServerFlagValid(component.clientServer):
+            perceptionManager = self.sceneManagers[entity.scene.sceneID]
+            perceptionManager.EnableEntity(entity.entityID)
 
 
 
@@ -99,24 +89,13 @@ class perceptionCommon(service.Service):
 
 
 
-    def PackUpForSceneTransfer(self, component, destinationSceneID):
-        return component.state
-
-
-
-    def UnPackFromSceneTransfer(self, component, entity, state):
-        component.state = state
-        return component
-
-
-
     def ReportState(self, component, entity):
         report = collections.OrderedDict()
-        report['Type'] = component.state.get(const.perception.PERCEPTION_COMPONENT_ENTITY_TYPE)
+        report['Type'] = component.entityTypeString
         if not hasattr(self, 'reportLookupsCreated'):
             self.CreateLookups()
             self.reportLookupsCreated = True
-        groupID = component.state.get(const.perception.PERCEPTION_COMPONENT_SENSE_GROUP)
+        groupID = component.behaviorSensesID
         report['senseGroupID'] = groupID
         if groupID:
             behaviorList = self.behaviorSenses.get(groupID)
@@ -133,7 +112,7 @@ class perceptionCommon(service.Service):
                     reportVal = senseName + '(' + str(senseID) + ')' + ',Los=' + str(sense[2]) + ',Range=' + str(behaviorSense[2]) + ',fovAngle=' + str(behaviorSense[3])
                     report['sense%03d' % senseID] = reportVal
 
-        groupID = component.state.get(const.perception.PERCEPTION_COMPONENT_FILTER_GROUP)
+        groupID = component.behaviorFiltersID
         report['filterGroupID'] = groupID
         if groupID:
             behaviorList = self.behaviorFilters.get(groupID)
@@ -178,9 +157,11 @@ class perceptionCommon(service.Service):
                     else:
                         confidenceName = 'InvalidConfidence'
                     reportVal = reportVal + ',' + confidenceName + '(' + str(confidenceID) + ')'
+                    tags = behaviorFilter[7]
+                    reportVal = reportVal + ',' + tags
                     report['filter%03d' % genID] = reportVal
 
-        groupID = component.state.get(const.perception.PERCEPTION_COMPONENT_DECAY_GROUP)
+        groupID = component.behaviorDecaysID
         report['decayGroupID'] = groupID
         if groupID:
             behaviorList = self.behaviorDecays.get(groupID)
@@ -199,10 +180,12 @@ class perceptionCommon(service.Service):
 
         manager = self.GetPerceptionManager(entity.scene.sceneID)
         report['Visibility'] = ', '.join([ '%s' % s for s in manager.GetVisibility(entity.entityID) ])
-        report['sensor bone name'] = component.state.get(const.perception.PERCEPTION_COMPONENT_SENSOR_BONENAME)
-        report['sensor offset'] = component.state.get(const.perception.PERCEPTION_COMPONENT_SENSOR_OFFSET)
-        report['drop stimType'] = component.state.get(const.perception.PERCEPTION_COMPONENT_DROP_STIMTYPE)
-        report['drop range'] = component.state.get(const.perception.PERCEPTION_COMPONENT_DROP_RANGE)
+        report['sensor bone name'] = component.sensorBoneName
+        report['sensor offset'] = component.sensorOffsetString
+        report['drop stimType'] = component.dropStimType
+        report['drop range'] = component.dropRange
+        report['tags'] = component.tags
+        report['clientServer'] = const.perception.PERCEPTION_CLIENTSERVER_FLAGS[component.clientServer]
         return report
 
 
@@ -309,8 +292,8 @@ class perceptionCommon(service.Service):
         self.sceneManagers[sceneID] = perceptionManager
         perceptionManager.SetSceneSettings(self.GetSettings())
         gw = self.gameWorldService.GetGameWorld(sceneID)
-        gw.perceptionManager = perceptionManager
         perceptionManager.SetGameWorld(gw)
+        GameWorld.GetSceneManagerSingleton().AddComponentManager(sceneID, perceptionManager)
         perceptionManager.StartTicker(str(sceneID))
         self.LogInfo('Done Creating a new perception system for scene ', sceneID)
 
@@ -318,8 +301,6 @@ class perceptionCommon(service.Service):
 
     def OnUnloadEntityScene(self, sceneID):
         self.LogInfo('Unloading perception system for scene ', sceneID)
-        gw = self.gameWorldService.GetGameWorld(sceneID)
-        gw.perceptionManager = None
         if sceneID in self.sceneManagers:
             del self.sceneManagers[sceneID]
         else:
@@ -328,10 +309,21 @@ class perceptionCommon(service.Service):
 
 
 
+    def LoadAttributeID(self, attribute):
+        return 0
+
+
+
     def LoadSenses(self):
         self.sensesAllowed = {}
         for senseRow in cfg.perceptionSenses:
-            self.sensesAllowed[senseRow.senseID] = (senseRow.senseID, senseRow.senseName, senseRow.losType)
+            rangeAttributeID = self.LoadAttributeID('Sense' + senseRow.senseName + 'Range')
+            fovAttributeID = self.LoadAttributeID('Sense' + senseRow.senseName + 'FOV')
+            self.sensesAllowed[senseRow.senseID] = (senseRow.senseID,
+             senseRow.senseName,
+             senseRow.losType,
+             rangeAttributeID,
+             fovAttributeID)
 
         return tuple(self.sensesAllowed.values())
 
@@ -343,11 +335,16 @@ class perceptionCommon(service.Service):
             if stimTypeRow.senseID not in self.sensesAllowed:
                 self.LogError('AI stimType using non existent senseID ', stimTypeRow)
                 continue
+            if stimTypeRow.stimTypeName == 'Actor':
+                rangeAttributeID = self.LoadAttributeID('StimType' + stimTypeRow.stimTypeName + 'Range')
+            else:
+                rangeAttributeID = 0
             self.stimTypesAllowed[stimTypeRow.stimTypeID] = (stimTypeRow.stimTypeID,
              stimTypeRow.stimTypeName,
              stimTypeRow.createFlag,
              stimTypeRow.rangeDefault,
-             stimTypeRow.senseID)
+             stimTypeRow.senseID,
+             rangeAttributeID)
 
         return tuple(self.stimTypesAllowed.values())
 
@@ -424,7 +421,8 @@ class perceptionCommon(service.Service):
                  row.stimTypeID,
                  row.subjectID,
                  row.targetID,
-                 row.confidenceID))
+                 row.confidenceID,
+                 row.tags))
             elif row.targetID not in cfg.perceptionTargets:
                 self.LogError('BehaviorFilter has invalid TargetID', row)
 

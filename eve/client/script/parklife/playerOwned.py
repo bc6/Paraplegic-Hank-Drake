@@ -8,6 +8,7 @@ import sys
 import pos
 import log
 import uiconst
+import localization
 ONLINE_STATES = (pos.STRUCTURE_ONLINING,
  pos.STRUCTURE_REINFORCED,
  pos.STRUCTURE_ONLINE,
@@ -89,7 +90,7 @@ class PlayerOwned(service.Service):
         if item is None or item.posState != posState or item.posTimestamp != stateTimestamp:
             return 
         (x1, x2, stateDelay,) = self.GetStructureState(item)
-        blue.pyos.synchro.Sleep(stateDelay)
+        blue.pyos.synchro.SleepWallclock(stateDelay)
         item = self.michelle.GetItem(itemID)
         if item is None:
             return 
@@ -135,60 +136,60 @@ class PlayerOwned(service.Service):
         stateDelay = None
         godmaSM = self.godma.GetStateManager()
         if slimItem.posState == pos.STRUCTURE_ANCHORED:
-            stateName = 'anchored'
+            stateName = const.pwnStructureStateAnchored
             if slimItem.posTimestamp is not None:
                 delayMs = godmaSM.GetType(slimItem.typeID).anchoringDelay
-                if blue.os.GetTime() - slimItem.posTimestamp < delayMs * 10000:
-                    stateName = 'anchoring'
+                if blue.os.GetWallclockTime() - slimItem.posTimestamp < delayMs * 10000:
+                    stateName = const.pwnStructureStateAnchoring
                     stateTimestamp = slimItem.posTimestamp
                     stateDelay = delayMs
         elif slimItem.posState == pos.STRUCTURE_ONLINING:
-            stateName = 'online'
+            stateName = const.pwnStructureStateOnline
             if slimItem.posState == pos.STRUCTURE_ONLINING and slimItem.posTimestamp is not None:
                 delayMs = godmaSM.GetType(slimItem.typeID).onliningDelay
-                if blue.os.GetTime() - slimItem.posTimestamp < delayMs * 10000:
-                    stateName = 'onlining'
+                if blue.os.GetWallclockTime() - slimItem.posTimestamp < delayMs * 10000:
+                    stateName = const.pwnStructureStateOnlining
                     stateTimestamp = slimItem.posTimestamp
                     stateDelay = delayMs
         elif slimItem.posState == pos.STRUCTURE_UNANCHORED:
-            stateName = 'unanchored'
+            stateName = const.pwnStructureStateUnanchored
             if slimItem.posTimestamp is not None:
                 delayMs = godmaSM.GetType(slimItem.typeID).unanchoringDelay
-                if blue.os.GetTime() - slimItem.posTimestamp < delayMs * 10000:
-                    stateName = 'unanchoring'
+                if blue.os.GetWallclockTime() - slimItem.posTimestamp < delayMs * 10000:
+                    stateName = const.pwnStructureStateUnanchoring
                     stateTimestamp = slimItem.posTimestamp
                     stateDelay = delayMs
         elif slimItem.posState == pos.STRUCTURE_VULNERABLE:
-            stateName = 'vulnerable'
+            stateName = const.pwnStructureStateVulnerable
         elif slimItem.posState == pos.STRUCTURE_INVULNERABLE:
-            stateName = 'invulnerable'
+            stateName = const.pwnStructureStateInvulnerable
         elif slimItem.posState == pos.STRUCTURE_REINFORCED:
-            delayMs = (blue.os.GetTime() - slimItem.posTimestamp) / 10000
+            delayMs = (blue.os.GetWallclockTime() - slimItem.posTimestamp) / 10000
             if delayMs < 0:
-                stateName = 'reinforced'
+                stateName = const.pwnStructureStateReinforced
                 stateDelay = -delayMs
-                stateTimestamp = blue.os.GetTime() + delayMs
+                stateTimestamp = blue.os.GetWallclockTime() + delayMs
         elif slimItem.posState in (pos.STRUCTURE_SHIELD_REINFORCE, pos.STRUCTURE_ARMOR_REINFORCE):
-            stateName = 'reinforced'
+            stateName = const.pwnStructureStateReinforced
             stateTimestamp = slimItem.posTimestamp + slimItem.posDelayTime
             stateDelay = slimItem.posDelayTime
         elif slimItem.posState == pos.STRUCTURE_OPERATING:
-            stateName = 'online'
-            delayMs = (blue.os.GetTime() - slimItem.posTimestamp) / 10000
+            stateName = const.pwnStructureStateOnline
+            delayMs = (blue.os.GetWallclockTime() - slimItem.posTimestamp) / 10000
             if delayMs < 0:
-                stateName = 'operating'
+                stateName = const.pwnStructureStateOperating
                 stateDelay = -delayMs
-                stateTimestamp = blue.os.GetTime() + delayMs
+                stateTimestamp = blue.os.GetWallclockTime() + delayMs
         elif slimItem.posState == pos.STRUCTURE_ONLINE:
-            stateName = 'online'
+            stateName = const.pwnStructureStateOnline
         if slimItem.incapacitated:
-            stateName = 'incapacitated'
+            stateName = const.pwnStructureStateIncapacitated
         return (stateName, stateTimestamp, stateDelay)
 
 
 
     def EnterTowerPassword(self, towerID):
-        password = uix.NamePopup(caption=mls.UI_INFLIGHT_TOWERSHIELDHARMONIC, label=mls.UI_INFLIGHT_ENTERTHESHAREDSECRET, setvalue='', icon=-1, modal=1, btns=None, maxLength=50, passwordChar='*')
+        password = uix.NamePopup(caption=localization.GetByLabel('UI/Inflight/POS/TowerShieldHarmonic'), label=localization.GetByLabel('UI/Inflight/POS/EnterTheSharedSecret'), setvalue='', icon=-1, modal=1, btns=None, maxLength=50, passwordChar='*')
         if password is None:
             return 
         posMgr = moniker.GetPOSMgr()
@@ -199,7 +200,7 @@ class PlayerOwned(service.Service):
     def EnterShipPassword(self):
         format = [{'type': 'text',
           'refreshheight': 1,
-          'text': mls.UI_INFLIGHT_ENTERHARMONICPASSW,
+          'text': localization.GetByLabel('UI/Inflight/POS/EnterHarmonicPassword'),
           'frame': 1}, {'type': 'edit',
           'setvalue': '',
           'label': '_hide',
@@ -209,9 +210,9 @@ class PlayerOwned(service.Service):
           'setfocus': 1,
           'frame': 1}, {'type': 'text',
           'refreshheight': 1,
-          'text': mls.UI_INFLIGHT_HARMONICPASSWTEXT,
+          'text': localization.GetByLabel('UI/Inflight/POS/HarmonicPasswordText'),
           'frame': 1}]
-        retval = uix.HybridWnd(format, mls.UI_INFLIGHT_SHIPSHIELDHARMONIC, 1, None, uiconst.OKCANCEL, icon=uiconst.OKCANCEL, minW=240, minH=170)
+        retval = uix.HybridWnd(format, localization.GetByLabel('UI/Inflight/POS/ShipShieldHarmonic'), 1, None, uiconst.OKCANCEL, icon=uiconst.OKCANCEL, minW=240, minH=170, unresizeAble=True)
         if retval is not None:
             if session.stationid:
                 eve.Message('CannotSetShieldHarmonicPassword')
@@ -266,7 +267,7 @@ class PlayerOwned(service.Service):
             if ballItem.categoryID == const.categoryStructure:
                 ball = bp.GetBall(ballID)
                 if not ball.isFree:
-                    raise UserError('CantAnchorTowerInvalidStructures', {'item': (TYPEID, ballItem.typeID)})
+                    raise UserError('CantAnchorTowerInvalidStructures', {'typeID': ballItem.typeID})
                 self.LogInfo('Anchor ignore', cfg.invtypes.Get(ballItem.typeID).name)
 
 
@@ -286,7 +287,7 @@ class PlayerOwned(service.Service):
 
         if raiseError is not None:
             item = self.michelle.GetItem(locusID)
-            raise UserError(raiseError, {'item': (TYPEID, item.typeID)})
+            raise UserError(raiseError, {'itemTypeID': item.typeID})
 
 
 
@@ -309,7 +310,7 @@ class PlayerOwned(service.Service):
         if slimItem.posTimestamp is not None:
             godmaSM = self.godma.GetStateManager()
             delayMs = godmaSM.GetType(slimItem.typeID).anchoringDelay
-            if blue.os.GetTime() - slimItem.posTimestamp < delayMs * 10000:
+            if blue.os.GetWallclockTime() - slimItem.posTimestamp < delayMs * 10000:
                 return 0
         return 1
 
@@ -327,7 +328,7 @@ class PlayerOwned(service.Service):
         if slimItem.posState == pos.STRUCTURE_ONLINING and slimItem.posTimestamp is not None:
             godmaSM = self.godma.GetStateManager()
             delayMs = godmaSM.GetType(slimItem.typeID).onliningDelay
-            if blue.os.GetTime() - slimItem.posTimestamp < delayMs * 10000:
+            if blue.os.GetWallclockTime() - slimItem.posTimestamp < delayMs * 10000:
                 return 0
         return 1
 
@@ -343,7 +344,7 @@ class PlayerOwned(service.Service):
         if slimItem.posTimestamp is not None:
             godmaSM = self.godma.GetStateManager()
             delayMs = godmaSM.GetType(slimItem.typeID).unanchoringDelay
-            if blue.os.GetTime() - slimItem.posTimestamp < delayMs * 10000:
+            if blue.os.GetWallclockTime() - slimItem.posTimestamp < delayMs * 10000:
                 return 0
         return 1
 
@@ -371,7 +372,7 @@ class PlayerOwned(service.Service):
         if slimItem.posState == pos.STRUCTURE_ANCHORED:
             if slimItem.posTimestamp is not None:
                 delayMs = godmaSM.GetType(slimItem.typeID).anchoringDelay
-                if blue.os.GetTime() - slimItem.posTimestamp < delayMs * 10000:
+                if blue.os.GetWallclockTime() - slimItem.posTimestamp < delayMs * 10000:
                     return 0
         elif slimItem.posState in UNANCHORABLE_STATES:
             return 0
@@ -517,7 +518,7 @@ class PlayerOwned(service.Service):
         if controller:
             ct = cfg.eveowners.Get(controller).name
         else:
-            ct = mls.UI_GENERIC_NOTAVAILABLESHORT
+            ct = localization.GetByLabel('UI/Generic/NotAvailableShort')
             if self.currenttargets.has_key(itemID):
                 del self.currenttargets[itemID]
         return (controller, ct)

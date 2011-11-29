@@ -9,7 +9,7 @@ from service import ROLE_SERVICE, ROLE_ADMIN, ROLE_PROGRAMMER
 globals().update(service.consts)
 
 def CurrentTimeString():
-    (year, month, weekday, day, hour, minute, second, ms,) = util.GetTimeParts()
+    (year, month, weekday, day, hour, minute, second, ms,) = util.GetTimeParts(blue.os.GetWallclockTime())
     line = '%d/%d/%d %d:%d:%d.%d' % (month,
      day,
      year,
@@ -173,6 +173,88 @@ class TrafficCounter(Counter):
             self.lastperfrom.clear()
             self.lastperfrom = self.perfrom.copy()
             self.perfrom.clear()
+
+
+
+
+class StatCounter(Counter):
+
+    def __init__(self, name, parent):
+        Counter.__init__(self, name, parent)
+        self.Reset()
+
+
+
+    def Reset(self):
+        self.lastval = 0
+        self.total = 0
+        self.minval = 0
+        self.maxval = 0
+        self.count = 0
+
+
+
+    def Add(self, value = 1):
+        self.lastval = value
+        self.total += value
+        self.count += 1
+        if value > self.maxval:
+            self.maxval = value
+        if (not self.minval or value < self.minval) and value:
+            self.minval = value
+
+
+
+    def Dec(self, value = 1):
+        raise NotImplementedError
+
+
+
+    def Set(self, value):
+        raise NotImplementedError
+
+
+
+    def Total(self):
+        return self.total
+
+
+
+    def Count(self):
+        return self.count
+
+
+
+    def Min(self):
+        return self.minval
+
+
+
+    def Max(self):
+        return self.maxval
+
+
+
+    def Avg(self):
+        avg = 0.0
+        if self.count > 0:
+            avg = self.total / float(self.count)
+        return avg
+
+
+
+    def Value(self):
+        return 'total=%f, last=%f, min=%f, max=%f, count=%f, avg=%f' % (self.total,
+         self.lastval,
+         self.minval,
+         self.maxval,
+         self.count,
+         self.Avg())
+
+
+
+    def Flush(self):
+        pass
 
 
 
@@ -378,6 +460,8 @@ class CoreCounterService(service.Service):
             counter = Counter(name, self)
         elif type == 'traffic':
             counter = TrafficCounter(name, self)
+        elif type == 'statistic':
+            counter = StatCounter(name, self)
         elif type == 'avg':
             counter = AvgCounter(name, self)
         elif type == 'max':
@@ -422,7 +506,7 @@ class CoreCounterService(service.Service):
     def StartLogging_thread(self):
         self.logStart = 1
         while 1:
-            blue.pyos.synchro.Sleep(self.countersInterval * 1000)
+            blue.pyos.synchro.SleepWallclock(self.countersInterval * 1000)
             if not self.logStart:
                 return 
             self.Flush()

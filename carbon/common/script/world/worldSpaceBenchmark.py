@@ -110,7 +110,7 @@ class WorldSpaceBenchmark(object):
         self.frameTimeList = []
         self.maxFrameTime = 0
         self.avgFrameTime = 0
-        self.startTime = blue.os.TimeAsDouble(blue.os.GetTime())
+        self.startTime = blue.os.TimeAsDouble(blue.os.GetWallclockTimeNow())
         numPoints = len(self.pointList)
         frameTimes = []
         for view in xrange(6):
@@ -121,9 +121,9 @@ class WorldSpaceBenchmark(object):
                 (position, focus,) = self.pointList[(posNum * 6 + view)]
                 self.SetPosition(position)
                 self.SetFocus(focus)
-                time = blue.os.TimeAsDouble(blue.os.GetTime())
+                time = blue.os.TimeAsDouble(blue.os.GetWallclockTime())
                 blue.pyos.synchro.Yield()
-                frameTime = blue.os.TimeAsDouble(blue.os.GetTime()) - time
+                frameTime = blue.os.TimeAsDouble(blue.os.GetWallclockTime()) - time
                 frameTimes[view].append(frameTime)
                 if frameTime > self.maxFrameTime:
                     self.maxFrameTime = frameTime
@@ -134,7 +134,7 @@ class WorldSpaceBenchmark(object):
                 self.frameTimeList.append(frameTimes[view][posNum])
 
 
-        self.timeElapsed = blue.os.TimeAsDouble(blue.os.GetTime()) - self.startTime
+        self.timeElapsed = blue.os.TimeAsDouble(blue.os.GetWallclockTimeNow()) - self.startTime
         print 'Done!'
         print 'Number of views used ' + str(len(self.frameTimeList))
         print 'Number of positions ' + str(len(self.frameTimeList) / 6)

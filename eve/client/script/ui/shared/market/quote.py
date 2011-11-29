@@ -1,21 +1,20 @@
 import blue
-import xtriui
 import form
 import uix
 import uiutil
 import util
-import listentry
 import uthread
 import sys
-import base
 import service
-import draw
 import log
 import uicls
 import uiconst
+import localization
 MINSCROLLHEIGHT = 64
 LEFTSIDEWIDTH = 80
 LABELWIDTH = 100
+MODE_DISPLAY = {'buy': util.KeyVal(display='UI/Market/MarketQuote/CommandBuy', displayType='UI/Market/MarketQuote/BuyType'),
+ 'sell': util.KeyVal(display='UI/Market/MarketQuote/CommandSell', displayType='UI/Market/MarketQuote/SellType')}
 
 class MarketUtils(service.Service):
     __exportedcalls__ = {'Buy': [],
@@ -48,7 +47,7 @@ class MarketUtils(service.Service):
     __guid__ = 'svc.marketutils'
     __servicename__ = 'Market Utils'
     __displayname__ = 'Market Utils'
-    __notifyevents__ = []
+    __notifyevents__ = ['ProcessUIRefresh']
     __dependencies__ = []
 
     def __init__(self):
@@ -72,8 +71,13 @@ class MarketUtils(service.Service):
 
 
 
+    def ProcessUIRefresh(self):
+        self.Reset()
+
+
+
     def StartupCheck(self):
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         if self.regionUpAt is not None:
             if self.regionUpAt.time < now - 2 * MIN:
                 return 
@@ -150,10 +154,12 @@ class MarketUtils(service.Service):
 
 
     def ShowMarketDetails(self, typeID, orderID):
-        marketWnd = sm.GetService('window').GetWindow('market', maximize=1)
+        marketWnd = form.RegionalMarket.GetIfOpen()
         if not marketWnd:
             uicore.cmd.OpenMarket()
-        marketWnd = sm.GetService('window').GetWindow('market')
+        else:
+            marketWnd.Maximize()
+        marketWnd = form.RegionalMarket.GetIfOpen()
         if marketWnd:
             marketWnd.LoadTypeID_Ext(typeID)
 
@@ -163,12 +169,10 @@ class MarketUtils(service.Service):
         if self.marketgroups is None:
             self.marketgroups = sm.GetService('marketQuote').GetMarketProxy().GetMarketGroups()
             self.allgroups = {}
-            translate = prefs.languageID != 'EN'
             for mgID in self.marketgroups.iterkeys():
                 for entry in self.marketgroups[mgID]:
-                    if translate:
-                        entry.marketGroupName = Tr(entry.marketGroupName, 'inventory.marketGroups.marketGroupName', entry.dataID)
-                        entry.description = Tr(entry.description, 'inventory.marketGroups.description', entry.dataID)
+                    entry.marketGroupName = localization.GetByMessageID(entry.marketGroupNameID)
+                    entry.description = localization.GetByMessageID(entry.descriptionID)
                     self.allgroups[entry.marketGroupID] = entry
 
 
@@ -204,10 +208,10 @@ class MarketUtils(service.Service):
                     pass
                 return True
             if bidLimit == const.rangeStation and order is None:
-                raise UserError('CustomError', {'error': mls.UI_MARKET_ERROR1})
+                raise UserError('CustomError', {'error': localization.GetByLabel('UI/Market/MarketQuote/OutOfRange')})
         else:
             if not inStation and askLimit == const.rangeStation:
-                raise UserError('CustomError', {'error': mls.UI_MARKET_ERROR2})
+                raise UserError('CustomError', {'error': localization.GetByLabel('UI/Market/MarketQuote/CanOnlySellInSameStation')})
             return True
 
 
@@ -229,13 +233,14 @@ class MarketUtils(service.Service):
         sm.GetService('marketutils').StartupCheck()
         if locationID == None and order.stationID != None:
             locationID = order.stationID
-        wnd = sm.GetService('window').GetWindow('marketbuyaction', decoClass=form.MarketActionWindow, create=1, maximize=1)
+        wnd = form.MarketActionWindow.Open()
         advancedBuyWnd = settings.char.ui.Get('advancedBuyWnd', 0)
         if uicore.uilib.Key(uiconst.VK_SHIFT) or placeOrder or advancedBuyWnd and not ignoreAdvanced:
             wnd.LoadBuy_Detailed(typeID, order, duration, locationID, forceRange=True)
         elif locationID is not None:
             sm.GetService('marketQuote').RefreshJumps(typeID, locationID)
         wnd.TradeSimple('buy', typeID=typeID, order=order, locationID=locationID, ignoreAdvanced=ignoreAdvanced)
+        uicore.registry.SetFocus(wnd)
 
 
 
@@ -246,7 +251,7 @@ class MarketUtils(service.Service):
         if invItem is None:
             return 
         if invItem.singleton:
-            raise UserError('RepackageBeforeSelling', {'item': (TYPEID, typeID)})
+            raise UserError('RepackageBeforeSelling', {'item': typeID})
         retList = []
         stationID = sm.GetService('invCache').GetStationIDOfItem(invItem)
         if stationID is None:
@@ -257,8 +262,8 @@ class MarketUtils(service.Service):
             if jumps == const.rangeRegion:
                 raise UserError('MktInvalidRegion')
             else:
-                jumpText = mls.UI_GENERIC_JUMP if jumps == 1 else mls.UI_GENERIC_JUMPS
-                limitText = mls.UI_GENERIC_JUMP if limit == 1 else mls.UI_GENERIC_JUMPS
+                jumpText = localization.GetByLabel('UI/Market/MarketQuote/JumpDistance', jumps=jumps)
+                limitText = localization.GetByLabel('UI/Market/MarketQuote/JumpDistance', jumps=limit)
                 if limit >= 0:
                     raise UserError('MktCantSellItem2', {'numJumps': jumps,
                      'jumpText1': jumpText,
@@ -268,31 +273,32 @@ class MarketUtils(service.Service):
                     raise UserError('MktCantSellItemOutsideStation', {'numJumps': jumps,
                      'jumpText': jumpText})
         sm.GetService('marketutils').StartupCheck()
-        wnd = sm.GetService('window').GetWindow('marketsellaction', decoClass=form.MarketActionWindow, create=1, maximize=1)
+        wnd = form.MarketActionWindow.Open(windowID='marketsellaction')
         advancedSellWnd = settings.char.ui.Get('advancedSellWnd', 0)
         if uicore.uilib.Key(uiconst.VK_SHIFT) or placeOrder or advancedSellWnd:
             wnd.LoadSell_Detailed(invItem)
         else:
             wnd.TradeSimple('sell', invItem=invItem)
+        uicore.registry.SetFocus(wnd)
 
 
 
     def ModifyOrder(self, order):
-        wnd = sm.GetService('window').GetWindow('marketmodifyaction', decoClass=form.MarketActionWindow, create=1, maximize=1)
+        wnd = form.MarketActionWindow.Open(windowID='marketmodifyaction')
         wnd.LoadModify(order)
 
 
 
     def PickStation(self):
         if not session.solarsystemid2:
-            return None
+            return 
         stations = sm.RemoteSvc('stationSvc').GetStationsByRegion(eve.session.regionid)
         quote = sm.GetService('marketQuote')
         limits = quote.GetSkillLimits()
         bidDistance = limits['bid']
         stationsToList = [ each for each in stations if quote.GetStationDistance(each.stationID) <= bidDistance ]
         if len(stationsToList) == 0:
-            return None
+            return 
         for each in stationsToList:
             itemID = each.stationID
             if itemID not in cfg.evelocations:
@@ -300,18 +306,19 @@ class MarketUtils(service.Service):
                  each.stationName,
                  each.x,
                  each.y,
-                 each.z]
+                 each.z,
+                 None]
                 cfg.evelocations.Hint(itemID, staData)
 
         stationLst = [ (cfg.evelocations.Get(station.stationID).name, station.stationID) for station in stationsToList ]
-        station = uix.ListWnd(stationLst, 'generic', mls.UI_MARKET_SELECTSTATION, hint=mls.UI_MARKET_TEXT4, isModal=1, ordered=1)
+        station = uix.ListWnd(stationLst, 'generic', localization.GetByLabel('UI/Search/SelectStation'), hint=localization.GetByLabel('UI/Market/MarketQuote/ChouseStation'), isModal=1, ordered=1)
         if station:
             return station
 
 
 
     def PickItem(self, typeID, quantity = None):
-        stations = eve.GetInventory(const.containerGlobal).ListStations()
+        stations = sm.GetService('invCache').GetInventory(const.containerGlobal).ListStations()
         primeloc = []
         for station in stations:
             primeloc.append(station.stationID)
@@ -321,9 +328,9 @@ class MarketUtils(service.Service):
         else:
             return None
         stationLst = [ (cfg.evelocations.Get(station.stationID).name + ' (' + str(station.itemCount) + ' items)', station.stationID) for station in stations ]
-        station = uix.ListWnd(stationLst, 'generic', mls.UI_MARKET_SELECTSTATION, hint=mls.UI_MARKET_TEXT5, isModal=1)
+        station = uix.ListWnd(stationLst, 'generic', localization.GetByLabel('UI/Search/SelectStation'), hint=localization.GetByLabel('UI/Market/MarketQuote/SellFromStations'), isModal=1)
         if station:
-            items = eve.GetInventory(const.containerGlobal).ListStationItems(station[1])
+            items = sm.GetService('invCache').GetInventory(const.containerGlobal).ListStationItems(station[1])
             badLocations = [const.locationTemp, const.locationSystem, eve.session.charid]
             valid = []
             for each in items:
@@ -343,28 +350,27 @@ class MarketUtils(service.Service):
                 scrolllist.append(('%s<t>%s' % (invtype.name, util.FmtAmt(each.stacksize)), each))
 
             if not scrolllist:
-                if eve.Message('CustomQuestion', {'header': mls.UI_MARKET_TRYANOTHERSTATION,
-                 'question': mls.UI_MARKET_TEXT6 % {'type': cfg.invtypes.Get(typeID).name,
-                              'station': station[0]}}, uiconst.YESNO) == uiconst.ID_YES:
+                if eve.Message('CustomQuestion', {'header': localization.GetByLabel('UI/Market/MarketQuote/headerTryAnotherStation'),
+                 'question': localization.GetByLabel('UI/Market/MarketQuote/NoItemsAtStations', typeID=typeID, stationName=station[0])}, uiconst.YESNO) == uiconst.ID_YES:
                     return self.PickItem(typeID, quantity)
                 return None
-            item = uix.ListWnd(scrolllist, 'generic', mls.UI_MARKET_SELECTITEM, hint=mls.UI_MARKET_TEXT7, isModal=1, scrollHeaders=[mls.UI_GENERIC_TYPE, mls.UI_GENERIC_QUANTITY])
+            item = uix.ListWnd(scrolllist, 'generic', localization.GetByLabel('UI/Search/SelectItem'), hint=localization.GetByLabel('UI/Market/MarketQuote/SelectItemsToSell'), isModal=1, scrollHeaders=[localization.GetByLabel('UI/Common/Type'), localization.GetByLabel('UI/Common/Quantity')])
             if item:
                 return item[1]
 
 
 
     def GetFuncMaps(self):
-        return {mls.UI_GENERIC_TYPE: 'GetType',
-         mls.UI_GENERIC_QUANTITY: 'GetQuantity',
-         mls.UI_GENERIC_PRICE: 'GetPrice',
-         mls.UI_GENERIC_LOCATION: 'GetLocation',
-         mls.UI_GENERIC_RANGE: 'GetRange',
-         mls.UI_GENERIC_MINVOLUME: 'GetMinVolume',
-         mls.UI_GENERIC_EXPIRESIN: 'GetExpiresIn',
-         mls.UI_GENERIC_ISSUEDBY: 'GetIssuedBy',
-         mls.UI_GENERIC_JUMPS: 'GetJumps',
-         mls.UI_GENERIC_WALLETDIVISION: 'GetWalletDivision'}
+        return {uiutil.StripTags(localization.GetByLabel('UI/Common/Type'), stripOnly=['localized']): 'GetType',
+         uiutil.StripTags(localization.GetByLabel('UI/Common/Quantity'), stripOnly=['localized']): 'GetQuantity',
+         uiutil.StripTags(localization.GetByLabel('UI/Market/MarketQuote/headerPrice'), stripOnly=['localized']): 'GetPrice',
+         uiutil.StripTags(localization.GetByLabel('UI/Common/Location'), stripOnly=['localized']): 'GetLocation',
+         uiutil.StripTags(localization.GetByLabel('UI/Common/Range'), stripOnly=['localized']): 'GetRange',
+         uiutil.StripTags(localization.GetByLabel('UI/Market/MarketQuote/HeaderMinVolumn'), stripOnly=['localized']): 'GetMinVolume',
+         uiutil.StripTags(localization.GetByLabel('UI/Market/Marketbase/ExpiresIn'), stripOnly=['localized']): 'GetExpiresIn',
+         uiutil.StripTags(localization.GetByLabel('UI/Market/MarketQuote/headerIssuedBy'), stripOnly=['localized']): 'GetIssuedBy',
+         uiutil.StripTags(localization.GetByLabel('UI/Market/Marketbase/Jumps'), stripOnly=['localized']): 'GetJumps',
+         uiutil.StripTags(localization.GetByLabel('UI/Market/MarketQuote/headerWalletDivision'), stripOnly=['localized']): 'GetWalletDivision'}
 
 
 
@@ -372,15 +378,15 @@ class MarketUtils(service.Service):
         sortJumps = record.jumps
         if record.jumps == 0:
             if record.stationID == session.stationid:
-                data.label += '%s<t>' % mls.UI_GENERIC_STATION
+                data.label += '%s<t>' % localization.GetByLabel('UI/Common/LocationTypes/Station')
                 sortJumps = -1
             else:
-                data.label += '%s<t>' % mls.UI_GENERIC_SOLARSYSTEMSYSTEM
+                data.label += '%s<t>' % localization.GetByLabel('UI/Common/LocationTypes/System')
         elif record.jumps == 1000000:
-            data.label += '%s<t>' % mls.UI_GENERIC_UNREACHABLE
+            data.label += '%s<t>' % localization.GetByLabel('UI/Common/LocationTypes/Unreachable')
         else:
             data.label += '<right>%i<t>' % record.jumps
-        data.Set('sort_%s' % mls.UI_GENERIC_JUMPS, sortJumps)
+        data.Set('sort_%s' % localization.GetByLabel('UI/Market/Marketbase/Jumps'), sortJumps)
 
 
 
@@ -391,7 +397,7 @@ class MarketUtils(service.Service):
 
     def GetPrice(self, record, data):
         data.label += '<right>%s<t>' % util.FmtISK(record.price)
-        data.Set('sort_%s' % mls.UI_GENERIC_PRICE, record.price)
+        data.Set('sort_%s' % localization.GetByLabel('UI/Market/MarketQuote/headerPrice'), record.price)
 
 
 
@@ -399,92 +405,92 @@ class MarketUtils(service.Service):
         typeObject = cfg.invtypes.GetIfExists(record.typeID)
         if typeObject is not None:
             data.label += typeObject.name + '<t>'
-            data.Set('sort_%s' % mls.UI_GENERIC_TYPE, typeObject.name.lower())
+            data.Set('sort_%s' % localization.GetByLabel('UI/Common/Type'), typeObject.name.lower())
         else:
-            data.label += 'Unknown Entity: ' + str(record.typeID) + '<t>'
-            data.Set('sort_%s' % mls.UI_GENERIC_TYPE, 'unknown entity: ' + str(record.typeID))
+            data.label += localization.GetByLabel('UI/Market/MarketQuote/UnknowenTypeError', typeIDText=str(record.typeID)) + '<t>'
+            data.Set('sort_%s' % localization.GetByLabel('UI/Common/Type'), localization.GetByLabel('UI/Market/MarketQuote/UnknowenTypeError', typeIDText=str(record.typeID)))
 
 
 
     def GetLocation(self, record, data):
         locationName = cfg.evelocations.Get(record.stationID).name
         data.label += locationName + '<t>'
-        data.Set('sort_%s' % mls.UI_GENERIC_LOCATION, locationName.lower())
+        data.Set('sort_%s' % localization.GetByLabel('UI/Common/Location'), locationName.lower())
 
 
 
     def GetExpiresIn(self, record, data):
-        exp = record.issueDate + record.duration * DAY - blue.os.GetTime()
+        exp = record.issueDate + record.duration * DAY - blue.os.GetWallclockTime()
         if exp < 0:
-            data.label += '%s<t>' % mls.UI_GENERIC_EXPIRED
+            data.label += '%s<t>' % localization.GetByLabel('UI/Market/MarketQuote/Expired')
         else:
             data.label += util.FmtDate(exp, 'ss') + '<t>'
-        data.Set('sort_%s' % mls.UI_GENERIC_EXPIRESIN, record.issueDate + record.duration * DAY)
+        data.Set('sort_%s' % localization.GetByLabel('UI/Market/Marketbase/ExpiresIn'), record.issueDate + record.duration * DAY)
 
 
 
     def GetQuantity(self, record, data):
         data.label += '<right>%s<t>' % util.FmtAmt(int(record.volRemaining))
-        data.Set('sort_%s' % mls.UI_GENERIC_QUANTITY, int(record.volRemaining))
+        data.Set('sort_%s' % localization.GetByLabel('UI/Common/Quantity'), int(record.volRemaining))
 
 
 
     def GetQuantitySlashVolume(self, record, data):
         data.label += '<right>%s/%s<t>' % (util.FmtAmt(int(record.volRemaining)), util.FmtAmt(int(record.volEntered)))
-        data.Set('sort_%s' % mls.UI_GENERIC_QUANTITY, (int(record.volRemaining), record.volEntered))
+        data.Set('sort_%s' % localization.GetByLabel('UI/Common/Quantity'), (int(record.volRemaining), record.volEntered))
 
 
 
     def GetMinVolume(self, record, data):
         vol = int(min(record.volRemaining, record.minVolume))
         data.label += '<right>%s<t>' % util.FmtAmt(vol)
-        data.Set('sort_%s' % mls.UI_GENERIC_MINVOLUME, vol)
+        data.Set('sort_%s' % localization.GetByLabel('UI/Market/MarketQuote/HeaderMinVolumn'), vol)
 
 
 
     def GetSolarsystem(self, record, data):
         solarsystemName = cfg.evelocations.Get(record.solarSystemID).name
         data.label += solarsystemName + '<t>'
-        data.Set('sort_%s' % mls.UI_GENERIC_SOLARSYSTEM, solarsystemName.lower())
+        data.Set('sort_%s' % localization.GetByLabel('UI/Common/LocationTypes/SolarSystem'), solarsystemName.lower())
 
 
 
     def GetRegion(self, record, data):
         regionName = cfg.evelocations.Get(record.regionID).name
         data.label += regionName + '<t>'
-        data.Set('sort_%s' % mls.UI_GENERIC_REGION, regionName.lower())
+        data.Set('sort_%s' % localization.GetByLabel('UI/Common/LocationTypes/Region'), regionName.lower())
 
 
 
     def GetConstellation(self, record, data):
         constellationName = cfg.evelocations.Get(record.constellationID).name
         data.label += constellationName + '<t>'
-        data.Set('sort_%s' % mls.UI_GENERIC_CONSTELLATION, constellationName.lower())
+        data.Set('sort_%s' % localization.GetByLabel('UI/Common/LocationTypes/Constellation'), constellationName.lower())
 
 
 
     def GetRange(self, record, data):
         if record.range == const.rangeStation:
-            range = mls.UI_GENERIC_STATION
+            rangeText = localization.GetByLabel('UI/Common/LocationTypes/Station')
             sortval = 0
         elif record.range == const.rangeSolarSystem:
-            range = mls.UI_GENERIC_SOLARSYSTEM
+            rangeText = localization.GetByLabel('UI/Common/LocationTypes/SolarSystem')
             sortval = 0.5
         elif record.range == const.rangeRegion:
-            range = mls.UI_GENERIC_REGION
+            rangeText = localization.GetByLabel('UI/Common/LocationTypes/Region')
             sortval = sys.maxint
         else:
-            range = uix.Plural(record.range, 'UI_SHARED_NUM_JUMP') % {'num': record.range}
+            rangeText = localization.GetByLabel('UI/Market/MarketQuote/NumberOfJumps', num=record.range)
             sortval = record.range
-        data.label += range + '<t>'
-        data.Set('sort_%s' % mls.UI_GENERIC_RANGE, sortval)
+        data.label += rangeText + '<t>'
+        data.Set('sort_%s' % localization.GetByLabel('UI/Common/Range'), sortval)
 
 
 
     def GetIssuedBy(self, record, data):
         name = cfg.eveowners.Get(record.charID).name
         data.label += name + '<t>'
-        data.Set('sort_%s' % mls.UI_GENERIC_ISSUEDBY, name.lower())
+        data.Set('sort_%s' % localization.GetByLabel('UI/Market/MarketQuote/headerIssuedBy'), name.lower())
 
 
 
@@ -495,7 +501,7 @@ class MarketUtils(service.Service):
             ret.append((level1.marketGroupName, level1.marketGroupID))
 
         ret.sort()
-        ret.insert(0, (mls.UI_GENERIC_ALL, None))
+        ret.insert(0, (localization.GetByLabel('UI/Market/MarketQuote/All'), None))
         return ret
 
 
@@ -548,6 +554,7 @@ class MarketUtils(service.Service):
 
 class MarketActionWindow(uicls.Window):
     __guid__ = 'form.MarketActionWindow'
+    default_windowID = 'marketbuyaction'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -562,25 +569,25 @@ class MarketActionWindow(uicls.Window):
         self.bestAskDict = {}
         self.bestMatchableAskDict = {}
         self.bestBidDict = {}
-        self.durations = [[mls.UI_GENERIC_IMMEDIATE, 0],
-         [mls.UI_GENERIC_DAY, 1],
-         ['3 %s' % mls.UI_GENERIC_DAYS, 3],
-         [mls.UI_GENERIC_WEEK, 7],
-         ['2 %s' % mls.UI_GENERIC_WEEKS, 14],
-         [mls.UI_GENERIC_MONTH, 30],
-         ['3 %s' % mls.UI_GENERIC_MONTHS, 90]]
-        self.ranges = [[mls.UI_GENERIC_STATION, const.rangeStation],
-         [mls.UI_GENERIC_SOLARSYSTEM, const.rangeSolarSystem],
-         [mls.UI_GENERIC_REGION, const.rangeRegion],
-         [mls.UI_SHARED_NUM_JUMP % {'num': 1}, 1],
-         [mls.UI_SHARED_NUM_JUMPS % {'num': 2}, 2],
-         [mls.UI_SHARED_NUM_JUMPS % {'num': 3}, 3],
-         [mls.UI_SHARED_NUM_JUMPS % {'num': 4}, 4],
-         [mls.UI_SHARED_NUM_JUMPS % {'num': 5}, 5],
-         [mls.UI_SHARED_NUM_JUMPS % {'num': 10}, 10],
-         [mls.UI_SHARED_NUM_JUMPS % {'num': 20}, 20],
-         [mls.UI_SHARED_NUM_JUMPS % {'num': 30}, 30],
-         [mls.UI_SHARED_NUM_JUMPS % {'num': 40}, 40]]
+        self.durations = [[localization.GetByLabel('UI/Market/MarketQuote/Immediate'), 0],
+         [localization.GetByLabel('UI/Common/DateWords/Day'), 1],
+         [localization.GetByLabel('UI/Market/MarketQuote/ThreeDays'), 3],
+         [localization.GetByLabel('UI/Common/DateWords/Week'), 7],
+         [localization.GetByLabel('UI/Market/MarketQuote/TwoWeeks'), 14],
+         [localization.GetByLabel('UI/Common/DateWords/Month'), 30],
+         [localization.GetByLabel('UI/Market/MarketQuote/ThreeMonths'), 90]]
+        self.ranges = [[localization.GetByLabel('UI/Common/LocationTypes/Station'), const.rangeStation],
+         [localization.GetByLabel('UI/Common/LocationTypes/SolarSystem'), const.rangeSolarSystem],
+         [localization.GetByLabel('UI/Common/LocationTypes/Region'), const.rangeRegion],
+         [localization.GetByLabel('UI/Market/MarketQuote/NumberOfJumps', num=1), 1],
+         [localization.GetByLabel('UI/Market/MarketQuote/NumberOfJumps', num=2), 2],
+         [localization.GetByLabel('UI/Market/MarketQuote/NumberOfJumps', num=3), 3],
+         [localization.GetByLabel('UI/Market/MarketQuote/NumberOfJumps', num=4), 4],
+         [localization.GetByLabel('UI/Market/MarketQuote/NumberOfJumps', num=5), 5],
+         [localization.GetByLabel('UI/Market/MarketQuote/NumberOfJumps', num=10), 10],
+         [localization.GetByLabel('UI/Market/MarketQuote/NumberOfJumps', num=20), 20],
+         [localization.GetByLabel('UI/Market/MarketQuote/NumberOfJumps', num=30), 30],
+         [localization.GetByLabel('UI/Market/MarketQuote/NumberOfJumps', num=40), 40]]
         self.SetWndIcon()
         self.SetTopparentHeight(0)
         self.SetMinSize([480, 310], 1)
@@ -599,7 +606,7 @@ class MarketActionWindow(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         if self.sr.sellItem:
             sm.StartService('invCache').UnlockItem(self.sr.sellItem.itemID)
 
@@ -634,37 +641,37 @@ class MarketActionWindow(uicls.Window):
         else:
             self.sr.hasMatch = False
         self.invType = invType = cfg.invtypes.Get(typeID)
-        self.DefineButtons(uiconst.OKCANCEL, okLabel=mls.UI_CMD_BUY, okFunc=self.Buy, cancelFunc=self.Cancel)
-        self.SetCaption('%s %s' % (mls.UI_MARKET_BUY, invType.name))
+        self.DefineButtons(uiconst.OKCANCEL, okLabel=localization.GetByLabel('UI/Market/MarketQuote/CommandBuy'), okFunc=self.Buy, cancelFunc=self.Cancel)
+        self.SetCaption(localization.GetByLabel('UI/Market/MarketQuote/BuyItem', typeID=typeID))
         self.AddSpace(where=self.sr.main)
         self.AddBigText(None, invType.name, typeID=invType.typeID)
         name = location.name
         self.sr.isBuy = True
         if len(name) > 64:
             name = name[:61] + '...'
-        locationText = self.AddText(mls.UI_GENERIC_LOCATION, '&gt;&gt; <color=0xffffbb00>%s</color> &lt;&lt;' % name)
+        locationText = self.AddText(localization.GetByLabel('UI/Common/Location'), '&gt;&gt; <color=0xffffbb00>%s</color> &lt;&lt;' % name)
         lt = locationText.children[1]
         lt.GetMenu = self.GetLocationMenu
         lt.expandOnLeft = 1
-        lt.hint = mls.UI_MARKET_SELECTSTATION
+        lt.hint = localization.GetByLabel('UI/Search/SelectStation')
         lt.height += 1
         self.AddSpace(where=self.sr.main)
         if order:
             price = self.bidprice if self.bidprice is not None else order.price
-            self.AddEdit(mls.UI_MARKET_BIDPRICE, price, floats=(0.01, 9223372036854.0, 2), refName='price', rightText='')
+            self.AddEdit(localization.GetByLabel('UI/Market/MarketQuote/labelBidPrice'), price, floats=(0.01, 9223372036854.0, 2), refName='price', rightText='')
         elif bestMatchableAsk:
             bestPrice = bestMatchableAsk.price
         else:
             bestPrice = averagePrice
         price = self.bidprice if self.bidprice is not None else bestPrice
-        self.AddEdit(mls.UI_MARKET_BIDPRICE, price, floats=(0.01, 9223372036854.0, 2), refName='price', rightText='')
+        self.AddEdit(localization.GetByLabel('UI/Market/MarketQuote/labelBidPrice'), price, floats=(0.01, 9223372036854.0, 2), refName='price', rightText='')
         self.AddSpace(where=self.sr.main)
-        self.AddText(mls.UI_MARKET_REGIONALAVG, util.FmtISK(averagePrice), height=14)
-        self.AddText(mls.UI_MARKET_BESTREGIONAL, '', 'quoteText', height=14)
-        self.AddText(mls.UI_MARKET_BESTMATCHABLE, '', refName='matchText', height=14)
+        self.AddText(localization.GetByLabel('UI/Market/MarketQuote/RegionalAdverage'), util.FmtISK(averagePrice), height=14)
+        self.AddText(localization.GetByLabel('UI/Market/MarketQuote/BestRegional'), '', 'quoteText', height=14)
+        self.AddText(localization.GetByLabel('UI/Market/MarketQuote/BestMatchable'), '', refName='matchText', height=14)
         self.AddSpace(where=self.sr.main)
         quantity = self.qty if self.qty is not None else 1
-        self.AddEdit(mls.UI_GENERIC_QUANTITY, quantity, ints=(1, sys.maxint), refName='quantity', showMin=1)
+        self.AddEdit(localization.GetByLabel('UI/Common/Quantity'), quantity, ints=(1, sys.maxint), refName='quantity', showMin=1)
         buySettings = settings.user.ui.Get('buydefault', {})
         if buySettings and buySettings.has_key('duration'):
             duration = buySettings['duration']
@@ -675,9 +682,9 @@ class MarketActionWindow(uicls.Window):
             canRemoteTrade = True
         duration2 = self.duration if self.duration is not None else duration
         if canRemoteTrade:
-            self.AddCombo(mls.UI_GENERIC_DURATION, self.durations, duration2, 'duration', refName='duration')
+            self.AddCombo(localization.GetByLabel('UI/Market/MarketQuote/Duration'), self.durations, duration2, 'duration', refName='duration')
         else:
-            self.AddCombo(mls.UI_GENERIC_DURATION, self.durations[0:1], 0, 'duration', refName='duration')
+            self.AddCombo(localization.GetByLabel('UI/Market/MarketQuote/Duration'), self.durations[0:1], 0, 'duration', refName='duration')
         if not session.stationid == locationID and (order or session.stationid is None or forceRange):
             ranges = [self.ranges[0]]
             if canRemoteTrade:
@@ -692,25 +699,25 @@ class MarketActionWindow(uicls.Window):
         if buySettings and buySettings.has_key('range'):
             firstRange = buySettings['range']
         range = self.range if self.range is not None else firstRange
-        combo = self.AddCombo(mls.UI_GENERIC_RANGE, ranges, range, 'duration', refName='range')
-        self.OnComboChange(combo, mls.UI_GENERIC_STATION, const.rangeStation)
+        combo = self.AddCombo(localization.GetByLabel('UI/Common/Range'), ranges, range, 'duration', refName='range')
+        self.OnComboChange(combo, localization.GetByLabel('UI/Common/LocationTypes/Station'), const.rangeStation)
         self.AddSpace(where=self.sr.main)
-        self.AddText(mls.UI_MARKET_BROKERSFEE, '-', 'fee')
-        self.AddBigText(mls.UI_GENERIC_TOTAL, '-', 'totalOrder')
+        self.AddText(localization.GetByLabel('UI/Market/MarketQuote/BrokersFee'), '-', 'fee')
+        self.AddBigText(localization.GetByLabel('UI/Generic/Total'), '-', 'totalOrder')
         self.MakeCorpCheckboxMaybe()
         self.AddSpace(where=self.sr.main)
         cont = uicls.Container(name='cont', parent=self.sr.main, align=uiconst.TOTOP, height=20)
-        self.sr.rememberBuySettings = uicls.Checkbox(text='%s' % mls.UI_MARKET_REMEMBER_SETTINGS, parent=cont, configName='rememberBuySettings', retval=None, align=uiconst.TOPLEFT, pos=(0, 0, 350, 0))
+        self.sr.rememberBuySettings = uicls.Checkbox(text=localization.GetByLabel('UI/Market/MarketQuote/RememberSettings'), parent=cont, configName='rememberBuySettings', retval=None, align=uiconst.TOPLEFT, pos=(0, 0, 350, 0))
         btn = uix.GetBigButton(32, self.sr.main, left=10, top=10, iconMargin=2)
         btn.OnClick = (self.ViewDetails, typeID)
-        btn.hint = mls.UI_MARKET_CLICKFORDETAIL
+        btn.hint = localization.GetByLabel('UI/Market/MarketQuote/hintClickForDetails')
         btn.SetAlign(uiconst.BOTTOMRIGHT)
         uiutil.SetOrder(btn, 0)
         btn.sr.icon.LoadIcon('ui_7_64_1')
         self.sr.currentOrder = order
         self.ready = True
         mainBtnPar = uiutil.GetChild(self, 'btnsmainparent')
-        btn = uicls.Button(parent=mainBtnPar, label='&lt;&lt; %s' % mls.UI_GENERIC_SIMPLE, func=self.GoPlaceBuyOrder, args=(typeID,
+        btn = uicls.Button(parent=mainBtnPar, label=localization.GetByLabel('UI/Market/MarketQuote/SimpleOrder'), func=self.GoPlaceBuyOrder, args=(typeID,
          order,
          1,
          locationID), align=uiconst.TOPRIGHT, pos=(5, 2, 0, 0))
@@ -733,7 +740,7 @@ class MarketActionWindow(uicls.Window):
                         useCorpWallet = buySettings['useCorpWallet']
                 useCorpWallet2 = self.useCorp if self.useCorp is not None else useCorpWallet
                 cont = uicls.Container(name='cont', parent=self.sr.main, align=uiconst.TOTOP, height=20)
-                self.sr.usecorp = uicls.Checkbox(text='%s (%s)' % (mls.UI_MARKET_USECORPACCOUNT, n), parent=cont, configName='usecorp', retval=None, checked=useCorpWallet2, align=uiconst.TOPLEFT, pos=(0, 0, 350, 0))
+                self.sr.usecorp = uicls.Checkbox(text=localization.GetByLabel('UI/Market/MarketQuote/UseCorpAccount', accountName=n), parent=cont, configName='usecorp', retval=None, checked=useCorpWallet2, align=uiconst.TOPLEFT, pos=(0, 0, 350, 0))
 
 
 
@@ -775,8 +782,7 @@ class MarketActionWindow(uicls.Window):
                 self.remoteBuyLocation = locationID
                 self.sr.stationID = locationID
         else:
-            sm.StartService('invCache').TryLockItem(invItem.itemID, 'lockItemMenuFunction', {'itemType': cfg.invtypes.Get(invItem.typeID).typeName,
-             'action': mls.UI_MARKET_SOLD.lower()}, 1)
+            sm.StartService('invCache').TryLockItem(invItem.itemID, 'lockItemMarketLock', {'itemType': invItem.typeID}, 1)
             self.invType = invType = cfg.invtypes.Get(invItem.typeID)
             typeID = typeID or invItem.typeID
             stationID = sm.GetService('invCache').GetStationIDOfItem(invItem)
@@ -787,14 +793,14 @@ class MarketActionWindow(uicls.Window):
             self.sr.stationID = stationID
             self.sr.solarSystemID = None
             order = quote.GetBestMatchableBid(invItem.typeID, self.sr.stationID, invItem.stacksize)
-        self.SetCaption('%s %s' % (getattr(mls, 'UI_MARKET_' + mode.upper()), invType.name))
+        self.SetCaption(localization.GetByLabel(MODE_DISPLAY[mode].displayType, typeID=typeID))
         self.loading = mode
         self.ready = False
         self.FlushMain(4)
         self.AddSpace(where=self.sr.main)
         self.AddBigText(None, invType.name, typeID=invType.typeID)
         if order:
-            locationText = self.AddText(mls.UI_GENERIC_LOCATION, '&gt;&gt; %s &lt;&lt;' % location.name)
+            locationText = self.AddText(localization.GetByLabel('UI/Common/Location'), '&gt;&gt; %s &lt;&lt;' % location.name)
             self.sr.isBuy = False
             lt = locationText.children[1]
             lt.GetMenu = self.GetLocationMenu
@@ -802,57 +808,62 @@ class MarketActionWindow(uicls.Window):
             if mode == 'buy':
                 if session.stationid and order.stationID != session.stationid:
                     if order.jumps == 0:
-                        self.AddText(mls.UI_GENERIC_WARNING, mls.UI_MARKET_TEXT8, color=(1.0, 0.0, 0.0, 1.0))
+                        self.AddText(localization.GetByLabel('UI/Market/MarketQuote/headerWarrning'), localization.GetByLabel('UI/Market/MarketQuote/InDifferentStationInSystem'), color=(1.0, 0.0, 0.0, 1.0))
                     else:
-                        self.AddText(mls.UI_GENERIC_WARNING, mls.UI_MARKET_TEXT9 % {'jumps': order.jumps,
-                         'jump': uix.Plural(order.jumps, 'UI_GENERIC_JUMP')}, color=(1.0, 0.0, 0.0, 1.0))
+                        self.AddText(localization.GetByLabel('UI/Market/MarketQuote/headerWarrning'), localization.GetByLabel('UI/Market/MarketQuote/InDifferentStationInDifferntSystem', jumps=order.jumps), color=(1.0, 0.0, 0.0, 1.0))
                 elif session.solarsystemid and order.jumps > 0:
-                    self.AddText(mls.UI_GENERIC_WARNING, mls.UI_MARKET_TEXT9 % {'jumps': order.jumps,
-                     'jump': uix.Plural(order.jumps, 'UI_GENERIC_JUMP')}, color=(1.0, 0.0, 0.0, 1.0))
+                    self.AddText(localization.GetByLabel('UI/Market/MarketQuote/headerWarrning'), localization.GetByLabel('UI/Market/MarketQuote/InDifferentStationInDifferntSystem', jumps=order.jumps), color=(1.0, 0.0, 0.0, 1.0))
         self.AddSpace(where=self.sr.main)
         if order:
             colors = ['<color=0xff00ff00>', '<color=0xffff5050>']
             if order.bid:
                 colors.reverse()
             self.sr.percentage = (order.price - averagePrice) / averagePrice
-            self.AddText(mls.UI_GENERIC_PRICE, util.FmtISK(order.price) + ' [ %s%s%s %s<color=0xffffffff> ]' % (colors[(order.price >= averagePrice)],
-             round(100 * self.sr.percentage, 2),
-             [mls.UI_MARKET_PERCENTABOVE, mls.UI_MARKET_PERCENTBELOW][(order.price < averagePrice)].replace('%%', '%'),
-             mls.UI_MARKET_REGIONALAVG.lower()))
+            p = {'price': order.price,
+             'percentage': round(100 * self.sr.percentage, 2),
+             'aboveBelow': localization.GetByLabel('UI/Market/MarketQuote/PercentBelow') if order.price < averagePrice else localization.GetByLabel('UI/Market/MarketQuote/PercentAbove'),
+             'colorFormat': colors[(order.price >= averagePrice)]}
+            self.AddText(localization.GetByLabel('UI/Market/MarketQuote/headerPrice'), localization.GetByLabel('UI/Market/MarketQuote/PriceDisplay', **p))
         else:
-            self.AddText('hide', [mls.UI_MARKET_TEXT11, mls.UI_MARKET_TEXT10][(mode == 'sell')] % {'item': invType.name,
-             'location': {const.rangeStation: mls.UI_GENERIC_STATION,
-                          const.rangeSolarSystem: mls.UI_GENERIC_SOLARSYSTEM,
-                          const.rangeRegion: mls.UI_GENERIC_REGION}[marketRange].lower()})
+            msg = 'UI/Market/MarketQuote/NoOneIsSellingHere'
+            if mode == 'sell':
+                msg = 'UI/Market/MarketQuote/NoBuyersThatCollectHere'
+            p = {'typeID': invType.typeID}
+            if marketRange == const.rangeStation:
+                p['location'] = localization.GetByLabel('UI/Common/LocationTypes/Station')
+            elif marketRange == const.rangeSolarSystem:
+                p['location'] = localization.GetByLabel('UI/Common/LocationTypes/SolarSystem')
+            elif marketRange == const.rangeRegion:
+                p['location'] = localization.GetByLabel('UI/Common/LocationTypes/Region')
+            self.AddText('hide', localization.GetByLabel(msg, **p))
         if order:
             self.AddSpace(where=self.sr.main)
             if mode == 'buy':
-                editBox = self.AddEdit(mls.UI_GENERIC_QUANTITY, 1, ints=(1, order.volRemaining), refName='quantity', rightText=mls.UI_MARKET_TEXT12 % {'qty': util.FmtAmt(order.volRemaining),
-                 'item': uix.Plural(order.volRemaining, 'UI_GENERIC_ITEM')})
+                editBox = self.AddEdit(localization.GetByLabel('UI/Common/Quantity'), 1, ints=(1, order.volRemaining), refName='quantity', rightText=localization.GetByLabel('UI/Market/MarketQuote/SimpleOrderQuantity', qty=order.volRemaining))
                 uicore.registry.SetFocus(editBox)
             else:
-                self.AddText(mls.UI_GENERIC_QUANTITY, util.FmtAmt(min(invItem.stacksize, order.volRemaining)))
+                self.AddText(localization.GetByLabel('UI/Common/Quantity'), util.FmtAmt(min(invItem.stacksize, order.volRemaining)))
         if order:
             if mode == 'sell':
-                self.AddText(mls.UI_MARKET_SALESTAX, '-', 'transactionTax')
-            self.AddBigText(mls.UI_GENERIC_TOTAL, '-', 'totalOrder')
+                self.AddText(localization.GetByLabel('UI/Contracts/ContractsWindow/SalesTax'), '-', 'transactionTax')
+            self.AddBigText(localization.GetByLabel('UI/Generic/Total'), '-', 'totalOrder')
         if order:
             self.MakeCorpCheckboxMaybe()
         if order:
-            self.DefineButtons(uiconst.OKCANCEL, okLabel=getattr(mls, 'UI_CMD_' + mode.upper()), okFunc=getattr(self, mode.capitalize()), cancelFunc=self.Cancel)
+            self.DefineButtons(uiconst.OKCANCEL, okLabel=localization.GetByLabel(MODE_DISPLAY[mode].display), okFunc=getattr(self, mode.capitalize()), cancelFunc=self.Cancel)
         else:
             self.DefineButtons(uiconst.CLOSE)
         btn = uix.GetBigButton(32, self.sr.main, left=10, top=10, iconMargin=2)
         btn.OnClick = (self.ViewDetails, typeID)
-        btn.hint = mls.UI_MARKET_CLICKFORDETAIL
+        btn.hint = localization.GetByLabel('UI/Market/MarketQuote/hintClickForDetails')
         btn.SetAlign(uiconst.BOTTOMRIGHT)
         uiutil.SetOrder(btn, 0)
         btn.sr.icon.LoadIcon('ui_7_64_1')
         mainBtnPar = uiutil.GetChild(self, 'btnsmainparent')
         if mode == 'sell':
-            btn = uicls.Button(parent=mainBtnPar, label='%s &gt;&gt;' % mls.UI_GENERIC_ADVANCED, func=self.GoPlaceSellOrder, args=invItem, align=uiconst.TOPRIGHT, pos=(5, 2, 0, 0))
+            btn = uicls.Button(parent=mainBtnPar, label=localization.GetByLabel('UI/Market/MarketQuote/btnAdvancedOrder'), func=self.GoPlaceSellOrder, args=invItem, align=uiconst.TOPRIGHT, pos=(5, 2, 0, 0))
         else:
-            btn = uicls.Button(parent=mainBtnPar, label='%s &gt;&gt;' % mls.UI_GENERIC_ADVANCED, func=self.GoPlaceBuyOrder, args=(typeID,
+            btn = uicls.Button(parent=mainBtnPar, label=localization.GetByLabel('UI/Market/MarketQuote/btnAdvancedOrder'), func=self.GoPlaceBuyOrder, args=(typeID,
              order,
              0,
              locationID), align=uiconst.TOPRIGHT, pos=(5, 2, 0, 0))
@@ -865,7 +876,7 @@ class MarketActionWindow(uicls.Window):
 
 
     def GetLocationMenu(self):
-        m = [(mls.UI_MARKET_SELECTSTATION, self.SelectStation)]
+        m = [(localization.GetByLabel('UI/Search/SelectStation'), self.SelectStation)]
         if self.sr.stationID:
             stationInfo = sm.GetService('ui').GetStation(self.sr.stationID)
             if stationInfo:
@@ -877,11 +888,11 @@ class MarketActionWindow(uicls.Window):
     def SelectStation(self):
         format = []
         format.append({'type': 'header',
-         'text': mls.UI_MARKET_SELECTSTATIONFORREMOTEBUYORDER,
+         'text': localization.GetByLabel('UI/Market/MarketQuote/SelectStationForBuyOrder'),
          'frame': 1})
         format.append({'type': 'edit',
          'labelwidth': 60,
-         'label': mls.UI_GENERIC_STATION,
+         'label': localization.GetByLabel('UI/Common/LocationTypes/Station'),
          'key': 'station',
          'required': 0,
          'frame': 1,
@@ -891,7 +902,7 @@ class MarketActionWindow(uicls.Window):
         format.append({'type': 'push'})
         left = uicore.desktop.width / 2 - 500 / 2
         top = uicore.desktop.height / 2 - 400 / 2
-        retval = uix.HybridWnd(format, mls.UI_MARKET_SELECTSTATION, 1, None, uiconst.OKCANCEL, [left, top], 300, 100, unresizeAble=1, icon='ui_7_64_1')
+        retval = uix.HybridWnd(format, localization.GetByLabel('UI/Search/SelectStation'), 1, None, uiconst.OKCANCEL, [left, top], 300, 100, unresizeAble=1, icon='ui_7_64_1')
         if retval:
             name = retval['station']
             if name:
@@ -904,8 +915,8 @@ class MarketActionWindow(uicls.Window):
                         if jumps == const.rangeRegion:
                             raise UserError('MktInvalidRegion')
                         else:
-                            jumpText = mls.UI_GENERIC_JUMP if jumps == 1 else mls.UI_GENERIC_JUMPS
-                            limitText = mls.UI_GENERIC_JUMP if limit == 1 else mls.UI_GENERIC_JUMPS
+                            jumpText = localization.GetByLabel('UI/Market/MarketQuote/JumpDistance', jumps=jumps)
+                            limitText = localization.GetByLabel('UI/Market/MarketQuote/JumpDistance', jumps=limit)
                             if limit >= 0:
                                 raise UserError('MktCantSellItem2', {'numJumps': jumps,
                                  'jumpText1': jumpText,
@@ -940,8 +951,7 @@ class MarketActionWindow(uicls.Window):
         station = sm.GetService('ui').GetStation(stationID)
         if station is None:
             return 
-        sm.StartService('invCache').TryLockItem(invItem.itemID, 'lockItemMenuFunction', {'itemType': cfg.invtypes.Get(invItem.typeID).typeName,
-         'action': mls.UI_MARKET_SOLD.lower()}, 1)
+        sm.StartService('invCache').TryLockItem(invItem.itemID, 'lockItemMarketLock', {'itemType': invItem.typeID}, 1)
         self.sr.stationID = stationID
         self.sr.solarSystemID = None
         self.loading = 'sell'
@@ -952,8 +962,8 @@ class MarketActionWindow(uicls.Window):
         averagePrice = quote.GetAveragePrice(invItem.typeID)
         bestMatchableBid = quote.GetBestMatchableBid(invItem.typeID, self.sr.stationID, invItem.stacksize)
         self.sr.solarSystemID = station.solarSystemID
-        self.DefineButtons(uiconst.OKCANCEL, okLabel=mls.UI_CMD_SELL, okFunc=self.Sell, cancelFunc=self.Cancel)
-        self.SetCaption('%s %s' % (mls.UI_CMD_SELL, invType.name))
+        self.DefineButtons(uiconst.OKCANCEL, okLabel=localization.GetByLabel('UI/Market/MarketQuote/CommandSell'), okFunc=self.Sell, cancelFunc=self.Cancel)
+        self.SetCaption(localization.GetByLabel('UI/Market/MarketQuote/SellItem', typeID=invItem.typeID))
         self.AddSpace(where=self.sr.main)
         self.AddBigText(None, invType.name, typeID=invType.typeID)
         self.AddSpace(where=self.sr.main)
@@ -961,38 +971,38 @@ class MarketActionWindow(uicls.Window):
             bestPrice = bestMatchableBid.price
         else:
             bestPrice = averagePrice
-        self.AddEdit(mls.UI_MARKET_ASKPRICE, bestPrice, floats=(0.01, 9223372036854.0, 2), refName='price', rightText='')
+        self.AddEdit(localization.GetByLabel('UI/Market/MarketQuote/AskPrice'), bestPrice, floats=(0.01, 9223372036854.0, 2), refName='price', rightText='')
         self.AddSpace(where=self.sr.main)
-        self.AddText(mls.UI_MARKET_REGIONALAVG, util.FmtISK(averagePrice), height=14)
-        self.AddText(mls.UI_MARKET_BESTREGIONAL, '', 'quoteText', height=14)
-        self.AddText(mls.UI_MARKET_REGIONALAVG, util.FmtISK(averagePrice), height=14)
-        self.AddText(mls.UI_MARKET_BESTMATCHABLE, '', refName='matchText', height=14)
+        self.AddText(localization.GetByLabel('UI/Market/MarketQuote/RegionalAdverage'), util.FmtISK(averagePrice), height=14)
+        self.AddText(localization.GetByLabel('UI/Market/MarketQuote/BestRegional'), '', 'quoteText', height=14)
+        self.AddText(localization.GetByLabel('UI/Market/MarketQuote/RegionalAdverage'), util.FmtISK(averagePrice), height=14)
+        self.AddText(localization.GetByLabel('UI/Market/MarketQuote/BestMatchable'), '', refName='matchText', height=14)
         self.AddSpace(where=self.sr.main)
         qty = invItem.stacksize
-        qtyEdit = self.AddEdit(mls.UI_GENERIC_QUANTITY, qty, ints=(1, long(qty)), refName='quantity', showMin=0)
+        qtyEdit = self.AddEdit(localization.GetByLabel('UI/Common/Quantity'), qty, ints=(1, long(qty)), refName='quantity', showMin=0)
         sellSettings = settings.user.ui.Get('selldefault', {})
         if sellSettings and sellSettings.has_key('duration'):
             duration = sellSettings['duration']
         self.AddSpace(where=self.sr.main)
-        self.AddCombo(mls.UI_GENERIC_DURATION, self.durations, duration, 'duration', refName='duration')
+        self.AddCombo(localization.GetByLabel('UI/Market/MarketQuote/Duration'), self.durations, duration, 'duration', refName='duration')
         self.AddSpace(where=self.sr.main)
-        self.AddText(mls.UI_MARKET_BROKERSFEE, '-', 'fee')
-        self.AddText(mls.UI_MARKET_SALESTAX, '-', 'transactionTax')
-        self.AddBigText(mls.UI_GENERIC_TOTAL, '-', 'totalOrder')
+        self.AddText(localization.GetByLabel('UI/Market/MarketQuote/BrokersFee'), '-', 'fee')
+        self.AddText(localization.GetByLabel('UI/Contracts/ContractsWindow/SalesTax'), '-', 'transactionTax')
+        self.AddBigText(localization.GetByLabel('UI/Generic/Total'), '-', 'totalOrder')
         self.MakeCorpCheckboxMaybe()
         self.AddSpace(where=self.sr.main)
         cont = uicls.Container(name='cont', parent=self.sr.main, align=uiconst.TOTOP, height=20)
-        self.sr.rememberSellSettings = uicls.Checkbox(text='%s' % mls.UI_MARKET_REMEMBER_SETTINGS, parent=cont, configName='rememberSellSettings', retval=None, align=uiconst.TOPLEFT, pos=(0, 0, 350, 0))
+        self.sr.rememberSellSettings = uicls.Checkbox(text=localization.GetByLabel('UI/Market/MarketQuote/RememberSettings'), parent=cont, configName='rememberSellSettings', retval=None, align=uiconst.TOPLEFT, pos=(0, 0, 350, 0))
         btn = uix.GetBigButton(32, self.sr.main, left=10, top=10, iconMargin=2)
         btn.OnClick = (self.ViewDetails, invItem.typeID)
-        btn.hint = mls.UI_MARKET_CLICKFORDETAIL
+        btn.hint = localization.GetByLabel('UI/Market/MarketQuote/hintClickForDetails')
         btn.SetAlign(align=uiconst.BOTTOMRIGHT)
         uiutil.SetOrder(btn, 0)
         btn.sr.icon.LoadIcon('ui_7_64_1')
         self.sr.sellItem = invItem
         self.ready = True
         mainBtnPar = uiutil.GetChild(self, 'btnsmainparent')
-        btn = uicls.Button(parent=mainBtnPar, label='&lt;&lt; %s' % mls.UI_GENERIC_SIMPLE, func=self.GoPlaceSellOrder, args=(invItem, 1), align=uiconst.TOPRIGHT, pos=(5, 2, 0, 0))
+        btn = uicls.Button(parent=mainBtnPar, label=localization.GetByLabel('UI/Market/MarketQuote/SimpleOrder'), func=self.GoPlaceSellOrder, args=(invItem, 1), align=uiconst.TOPRIGHT, pos=(5, 2, 0, 0))
         self.UpdateTotals()
         self.HideLoad()
 
@@ -1040,14 +1050,14 @@ class MarketActionWindow(uicls.Window):
     def GoPlaceSellOrder(self, invItem, simple = 0, *args):
         settings.char.ui.Set('advancedSellWnd', not simple)
         uthread.new(sm.GetService('marketutils').Sell, invItem.typeID, invItem, not simple)
-        self.SelfDestruct()
+        self.Close()
 
 
 
     def GoPlaceBuyOrder(self, typeID, order = None, simple = 0, prePickedLocationID = None, *args):
         settings.char.ui.Set('advancedBuyWnd', not simple)
         uthread.new(sm.GetService('marketutils').Buy, typeID, order=order, placeOrder=not simple, prePickedLocationID=prePickedLocationID)
-        self.SelfDestruct()
+        self.Close()
 
 
 
@@ -1061,18 +1071,18 @@ class MarketActionWindow(uicls.Window):
         self.invType = invType = cfg.invtypes.Get(order.typeID)
         location = cfg.evelocations.Get(order.stationID)
         self.DefineButtons(uiconst.OKCANCEL, okFunc=self.Modify, cancelFunc=self.Cancel)
-        self.SetCaption(mls.UI_CMD_MODIFYORDER)
-        self.AddText(mls.UI_GENERIC_TYPE, invType.name)
-        self.AddText(mls.UI_GENERIC_LOCATION, location.name)
+        self.SetCaption(localization.GetByLabel('UI/Market/MarketQuote/labelModifyOrder'))
+        self.AddText(localization.GetByLabel('UI/Common/Type'), invType.name)
+        self.AddText(localization.GetByLabel('UI/Common/Location'), location.name)
         uicls.Container(name='push', parent=self.sr.main, align=uiconst.TOTOP, height=const.defaultPadding)
-        self.AddText([mls.UI_MARKET_OLDSELLPRICE, mls.UI_MARKET_OLDBUYPRICE][order.bid], util.FmtISK(order.price))
-        self.AddText(mls.UI_MARKET_QTYREMAINING, util.FmtAmt(order.volRemaining))
+        self.AddText([localization.GetByLabel('UI/Market/MarketQuote/labelOldSellPrice'), localization.GetByLabel('UI/Market/MarketQuote/labelOldBuyPrice')][order.bid], util.FmtISK(order.price))
+        self.AddText(localization.GetByLabel('UI/Market/MarketQuote/labelQuantityRemaining'), util.FmtAmt(order.volRemaining))
         self.quantity = order.volRemaining
-        edit = self.AddEdit([mls.UI_MARKET_NEWSELLPRICE, mls.UI_MARKET_NEWBUYPRICE][order.bid], '%.2f' % order.price, floats=(0.01, 9223372036854.0, 2), refName='price', rightText='')
+        edit = self.AddEdit([localization.GetByLabel('UI/Market/MarketQuote/NewSellPrice'), localization.GetByLabel('UI/Market/MarketQuote/NewBuyPrice')][order.bid], '%.2f' % order.price, floats=(0.01, 9223372036854.0, 2), refName='price', rightText='')
         uicore.registry.SetFocus(edit)
         uicls.Container(name='push', parent=self.sr.main, align=uiconst.TOTOP, height=const.defaultPadding)
-        self.AddText(mls.UI_MARKET_TOTALCHANGE, '-', 'totalOrder')
-        self.AddText(mls.UI_MARKET_BROKERSFEE, '-', 'fee')
+        self.AddText(localization.GetByLabel('UI/Market/MarketQuote/labelTotalChange'), '-', 'totalOrder')
+        self.AddText(localization.GetByLabel('UI/Market/MarketQuote/BrokersFee'), '-', 'fee')
         self.sr.currentOrder = order
         self.ready = True
         self.UpdateTotals()
@@ -1086,7 +1096,7 @@ class MarketActionWindow(uicls.Window):
 
 
     def Cancel(self, *args):
-        self.SelfDestruct()
+        self.Close()
 
 
 
@@ -1096,11 +1106,14 @@ class MarketActionWindow(uicls.Window):
         price = self.sr.price.GetValue()
         order = self.sr.currentOrder
         if self.sr.percentage < -0.5 or self.sr.percentage > 1.0:
-            aboveOrBelow = mls.UI_MARKET_PERCENTBELOW if self.sr.percentage < 0.0 else mls.UI_MARKET_PERCENTABOVE
-            ret = eve.Message('MktConfirmTrade', {'amount': str(round(100 * abs(self.sr.percentage), 2)) + aboveOrBelow}, uiconst.YESNO, default=uiconst.ID_NO)
+            percentage = round(100 * abs(self.sr.percentage), 2)
+            label = 'UI/Market/MarketQuote/PercentAboveWithQuantity'
+            if self.sr.percentage < 0.0:
+                label = 'UI/Market/MarketQuote/PercentBelowWithQuantity'
+            ret = eve.Message('MktConfirmTrade', {'amount': localization.GetByLabel(label, amount=percentage)}, uiconst.YESNO, default=uiconst.ID_NO)
             if ret != uiconst.ID_YES:
                 return 
-        self.SelfDestruct()
+        self.Close()
         sm.GetService('marketQuote').ModifyOrder(order, price)
 
 
@@ -1136,12 +1149,13 @@ class MarketActionWindow(uicls.Window):
         else:
             useCorp = False
         if self.sr.percentage > 1.0:
-            ret = eve.Message('MktConfirmTrade', {'amount': str(round(100 * abs(self.sr.percentage), 2)) + mls.UI_MARKET_PERCENTABOVE}, uiconst.YESNO, default=uiconst.ID_NO)
+            amount = round(100 * abs(self.sr.percentage), 2)
+            ret = eve.Message('MktConfirmTrade', {'amount': localization.GetByLabel('UI/Market/MarketQuote/PercentAboveWithQuantity', amount=amount)}, uiconst.YESNO, default=uiconst.ID_NO)
             if ret != uiconst.ID_YES:
                 return 
         if self.sr.Get('rememberBuySettings') and not self.sr.rememberBuySettings.destroyed and self.sr.rememberBuySettings.checked:
             self.RemeberBuySettings()
-        self.SelfDestruct()
+        self.Close()
         sm.GetService('marketQuote').BuyStuff(stationID, typeID, price, quantity, orderRange, minVolume, duration, useCorp)
 
 
@@ -1175,12 +1189,13 @@ class MarketActionWindow(uicls.Window):
         if self.sr.Get('quantityMin', None) and not self.sr.quantityMin.destroyed:
             minVolume = self.sr.quantityMin.GetValue()
         if self.sr.percentage < -0.5:
-            ret = eve.Message('MktConfirmTrade', {'amount': str(round(100 * abs(self.sr.percentage), 2)) + mls.UI_MARKET_PERCENTBELOW}, uiconst.YESNO, default=uiconst.ID_NO)
+            percentage = round(100 * abs(self.sr.percentage), 2)
+            ret = eve.Message('MktConfirmTrade', {'amount': localization.GetByLabel('UI/Market/MarketQuote/PercentBelowWithQuantity', amount=percentage)}, uiconst.YESNO, default=uiconst.ID_NO)
             if ret != uiconst.ID_YES:
                 return 
         if self.sr.Get('rememberSellSettings') and self.sr.rememberSellSettings.checked:
             self.RemeberSellSettings()
-        self.SelfDestruct()
+        self.Close()
         sm.GetService('marketQuote').SellStuff(stationID, typeID, itemID, price, quantity, duration, useCorp, located)
 
 
@@ -1191,8 +1206,8 @@ class MarketActionWindow(uicls.Window):
         if label == 'hide':
             left = 0
         elif label:
-            uicls.Label(text=label, parent=par, width=LABELWIDTH, autowidth=False, left=0, top=6, fontsize=9, letterspace=2, color=color, linespace=9, state=uiconst.UI_NORMAL)
-        t = uicls.Label(text=text, parent=par, width=self.Width() - LABELWIDTH - 16, autowidth=False, left=left, top=4, fontsize=12, color=color, state=uiconst.UI_NORMAL)
+            uicls.EveLabelSmall(text=label, parent=par, width=LABELWIDTH, left=0, top=6, color=color, state=uiconst.UI_NORMAL)
+        t = uicls.EveLabelMedium(text=text, parent=par, width=self.Width() - LABELWIDTH - 16, left=left, top=4, color=color, state=uiconst.UI_NORMAL)
         par.height = max(20, t.textheight)
         if refName:
             setattr(self.sr, refName, t)
@@ -1204,7 +1219,7 @@ class MarketActionWindow(uicls.Window):
         par = uicls.Container(name='text', parent=self.sr.main, align=uiconst.TOTOP, height=height)
         left = 0
         if label:
-            uicls.Label(text=label, parent=par, width=LABELWIDTH, autowidth=False, left=0, top=13, fontsize=9, letterspace=2, color=None, state=uiconst.UI_NORMAL)
+            uicls.EveLabelSmall(text=label, parent=par, width=LABELWIDTH, left=0, top=13, color=None, state=uiconst.UI_NORMAL)
             left = LABELWIDTH
         offset = 0
         if typeID:
@@ -1214,7 +1229,7 @@ class MarketActionWindow(uicls.Window):
              32,
              32), typeID=typeID, align=uiconst.TOPLEFT)
             icon.SetSize(32, 32)
-        t = uicls.CaptionLabel(text=text, parent=par, align=uiconst.RELATIVE, width=self.Width() - left + offset - 16, left=left + offset, uppercase=False, letterspace=0, autowidth=0)
+        t = uicls.EveCaptionMedium(text=text, parent=par, align=uiconst.TOTOP, width=self.Width() - left + offset - 16, padLeft=left + offset)
         if refName:
             setattr(self.sr, refName, t)
         par.height = t.textheight + 4
@@ -1241,16 +1256,16 @@ class MarketActionWindow(uicls.Window):
             minedit.OnChange = self.OnEditChange
             if refName:
                 setattr(self.sr, refName + 'Min', minedit)
-            uicls.Label(text=mls.UI_GENERIC_MINIMUM, parent=parent, width=200, left=edit.left + edit.width + 6, top=7, autowidth=False, fontsize=9, letterspace=2, state=uiconst.UI_NORMAL)
+            uicls.EveLabelSmall(text=localization.GetByLabel('UI/Generic/Minimum'), parent=parent, width=200, left=edit.left + edit.width + 6, top=7, state=uiconst.UI_NORMAL)
         if ints:
             edit.IntMode(*ints)
         elif floats:
             edit.FloatMode(*floats)
         if setvalue:
             edit.SetValue(setvalue)
-        _label = uicls.Label(text=label, parent=parent, width=LABELWIDTH, left=0, top=[6, -1][(label.find('<br>') >= 0)], autowidth=False, fontsize=9, letterspace=2, linespace=9, state=uiconst.UI_NORMAL)
+        _label = uicls.EveLabelSmall(text=label, parent=parent, width=LABELWIDTH, left=0, top=[6, -1][(label.find('<br>') >= 0)], state=uiconst.UI_NORMAL)
         if rightText is not None:
-            _rightText = uicls.Label(text=rightText, parent=parent, width=self.Width() - width - left - 6 - 8, left=width + left + 6, top=4, autowidth=False, state=uiconst.UI_NORMAL)
+            _rightText = uicls.EveLabelMedium(text=rightText, parent=parent, width=self.Width() - width - left - 6 - 8, left=width + left + 6, top=4, state=uiconst.UI_NORMAL)
             minHeight = max(minHeight, _rightText.textheight + 8)
             if refName:
                 setattr(self.sr, refName + '_rightText', _rightText)
@@ -1267,7 +1282,7 @@ class MarketActionWindow(uicls.Window):
          2,
          0,
          0))
-        _label = uicls.Label(text=label, parent=parent, width=LABELWIDTH, autowidth=False, left=0, top=[7, -1][(label.find('<br>') >= 0)], fontsize=9, letterspace=2, linespace=9, state=uiconst.UI_NORMAL)
+        _label = uicls.EveLabelSmall(text=label, parent=parent, width=LABELWIDTH, left=0, top=[7, -1][(label.find('<br>') >= 0)], state=uiconst.UI_NORMAL)
         combo.sr.label = _label
         if setvalue is not None:
             combo.SelectItemByValue(setvalue)
@@ -1297,14 +1312,14 @@ class MarketActionWindow(uicls.Window):
                         self.sr.price.SetValue(bestBid.price)
                     if self.sr.matchText:
                         averagePrice = sm.GetService('marketQuote').GetAveragePrice(self.invType.typeID)
-                        self.sr.matchText.text = util.FmtISK(bestBid.price) + ' [ %s%s %s, %s %s ]' % (round(100 * (bestBid.price - averagePrice) / averagePrice, 2),
-                         [mls.UI_MARKET_PERCENTABOVE, mls.UI_MARKET_PERCENTBELOW][(bestBid.price < averagePrice)],
-                         mls.UI_MARKET_REGIONALAVG,
-                         int(bestBid.volRemaining),
-                         [mls.UI_GENERIC_UNIT, mls.UI_GENERIC_UNITS][(int(bestBid.volRemaining) != 1)])
+                        p = {'price': bestBid.price,
+                         'percentage': round(100 * (bestBid.price - averagePrice) / averagePrice, 2),
+                         'aboveBelow': localization.GetByLabel('UI/Market/MarketQuote/PercentBelow') if bestBid.price < averagePrice else localization.GetByLabel('UI/Market/MarketQuote/PercentAbove'),
+                         'volRemaining': int(bestBid.volRemaining)}
+                        self.sr.matchText.text = localization.GetByLabel('UI/Market/MarketQuote/BestBidDisplay', **p)
                         self.CheckHeights(self.sr.matchText, 'matchText')
                 elif self.sr.matchText:
-                    self.sr.matchText.text = mls.UI_MARKET_TEXT13
+                    self.sr.matchText.text = localization.GetByLabel('UI/Market/MarketQuote/NoMatchBid')
                     self.CheckHeights(self.sr.matchText, 'matchText')
             self.UpdateTotals()
         except:
@@ -1383,17 +1398,17 @@ class MarketActionWindow(uicls.Window):
                 _fee = quote.BrokersFee(self.sr.stationID, price * quantity, limits['fee'])
                 fee = _fee.amt
                 if _fee.percentage < 0:
-                    p = mls.UI_GENERIC_MINIMUM
+                    p = localization.GetByLabel('UI/Generic/Minimum')
                 else:
                     p = '%s%%' % round(_fee.percentage * 100, 2)
-                self.sr.fee.text = '%s (%s)' % (util.FmtISK(fee), p)
+                self.sr.fee.text = localization.GetByLabel('UI/Market/MarketQuote/MarketFee', percentage=p, price=fee)
             else:
                 self.sr.fee.text = '-'
             self.CheckHeights(self.sr.fee, 'fee')
         tax = 0.0
         if not self.destroyed and hasattr(self, 'sr') and self.sr.Get('transactionTax') and not self.sr.transactionTax.destroyed:
             tax = price * quantity * limits['acc']
-            self.sr.transactionTax.text = '%s (%.1f%%)' % (util.FmtISK(tax), limits['acc'] * 100.0)
+            self.sr.transactionTax.text = localization.GetByLabel('UI/Market/MarketQuote/MarketTax', percentage=limits['acc'] * 100.0, price=tax)
             self.CheckHeights(self.sr.transactionTax, 'transactionTax')
         if not self.destroyed and hasattr(self, 'sr') and self.sr.Get('totalOrder') and not self.sr.totalOrder.destroyed:
             if self.loading == 'buy':
@@ -1419,17 +1434,17 @@ class MarketActionWindow(uicls.Window):
                 if bestMatchableAsk:
                     jumps = int(bestMatchableAsk.jumps)
                     if jumps == 0 and bestMatchableAsk.stationID == self.sr.stationID:
-                        jumps = mls.UI_MARKET_INSAMESTATION
+                        jumps = localization.GetByLabel('UI/Market/MarketQuote/InSameStation')
                     else:
-                        jumps = [mls.UI_MARKET_JUMPSAWAY, mls.UI_MARKET_JUMPSAWAY][(jumps != 1)] % {'jumps': jumps}
-                    matchText = util.FmtISK(bestMatchableAsk.price) + ' [ %s%s %s, %s %s %s ]' % (round(100 * (bestMatchableAsk.price - averagePrice) / averagePrice, 2),
-                     [mls.UI_MARKET_PERCENTABOVE, mls.UI_MARKET_PERCENTBELOW][(bestMatchableAsk.price < averagePrice)],
-                     mls.UI_MARKET_REGIONALAVG,
-                     int(bestMatchableAsk.volRemaining),
-                     [mls.UI_GENERIC_UNIT, mls.UI_GENERIC_UNITS][(int(bestMatchableAsk.volRemaining) != 1)],
-                     jumps)
+                        jumps = localization.GetByLabel('UI/Market/MarketQuote/JumpsAway', jumps=jumps)
+                    p = {'price': bestMatchableAsk.price,
+                     'percentage': round(100 * (bestMatchableAsk.price - averagePrice) / averagePrice, 2),
+                     'aboveBelow': localization.GetByLabel('UI/Market/MarketQuote/PercentBelow') if bestMatchableAsk.price < averagePrice else localization.GetByLabel('UI/Market/MarketQuote/PercentAbove'),
+                     'volRemaining': int(bestMatchableAsk.volRemaining),
+                     'jumps': jumps}
+                    matchText = localization.GetByLabel('UI/Market/MarketQuote/BestAskDisplay', **p)
                 else:
-                    matchText = mls.UI_MARKET_TEXT14
+                    matchText = localization.GetByLabel('UI/Market/MarketQuote/NoMatchesAsk')
                 self.sr.matchText.text = matchText
                 self.CheckHeights(self.sr.matchText, 'matchText')
             if not self.destroyed and hasattr(self, 'sr') and self.sr.Get('quoteText') and not self.sr.quoteText.destroyed:
@@ -1441,25 +1456,29 @@ class MarketActionWindow(uicls.Window):
                 if bestAsk:
                     jumps = int(bestAsk.jumps)
                     if jumps == 0 and bestAsk.stationID == self.sr.stationID:
-                        jumps = mls.UI_MARKET_INSAMESTATION
+                        jumps = localization.GetByLabel('UI/Market/MarketQuote/InSameStation')
                     else:
-                        jumps = [mls.UI_MARKET_JUMPSAWAY, mls.UI_MARKET_JUMPSAWAY][(jumps != 1)] % {'jumps': jumps}
-                    quoteText = util.FmtISK(bestAsk.price) + ' [ %s%s %s, %s %s %s ]' % (round(100 * (bestAsk.price - averagePrice) / averagePrice, 2),
-                     [mls.UI_MARKET_PERCENTABOVE, mls.UI_MARKET_PERCENTBELOW][(bestAsk.price < averagePrice)],
-                     mls.UI_MARKET_REGIONALAVG,
-                     int(bestAsk.volRemaining),
-                     [mls.UI_GENERIC_UNIT, mls.UI_GENERIC_UNITS][(int(bestAsk.volRemaining) != 1)],
-                     jumps)
+                        jumps = localization.GetByLabel('UI/Market/MarketQuote/JumpsAway', jumps=jumps)
+                    p = {'price': bestAsk.price,
+                     'percentage': round(100 * (bestAsk.price - averagePrice) / averagePrice, 2),
+                     'aboveBelow': localization.GetByLabel('UI/Market/MarketQuote/PercentBelow') if bestAsk.price < averagePrice else localization.GetByLabel('UI/Market/MarketQuote/PercentAbove'),
+                     'volRemaining': int(bestAsk.volRemaining),
+                     'jumps': jumps}
+                    quoteText = localization.GetByLabel('UI/Market/MarketQuote/BestAskDisplay', **p)
                 else:
-                    quoteText = mls.UI_MARKET_TEXT14
+                    quoteText = localization.GetByLabel('UI/Market/MarketQuote/NoMatchesAsk')
                 self.sr.quoteText.text = quoteText
                 self.CheckHeights(self.sr.quoteText, 'quoteText')
             self.sr.percentage = (price - averagePrice) / averagePrice
             if not self.destroyed and hasattr(self, 'sr') and self.sr.Get('price_rightText') and not self.sr.price_rightText.destroyed:
-                self.sr.price_rightText.text = ' [ %s%s%s %s<color=0xffffffff> ]' % (colors[(price < averagePrice)],
-                 round(100 * self.sr.percentage, 2),
-                 [mls.UI_MARKET_PERCENTABOVE, mls.UI_MARKET_PERCENTBELOW][(price < averagePrice)],
-                 mls.UI_MARKET_REGIONALAVG)
+                if price < averagePrice:
+                    aboveBelow = 'UI/Market/MarketQuote/PercentBelow'
+                else:
+                    aboveBelow = 'UI/Market/MarketQuote/PercentAbove'
+                p = {'colorText': colors[(price < averagePrice)],
+                 'percentage': round(100 * self.sr.percentage, 2),
+                 'aboveBelow': localization.GetByLabel(aboveBelow)}
+                self.sr.price_rightText.text = localization.GetByLabel('UI/Market/MarketQuote/BuyQuantity', **p)
                 self.CheckHeights(self.sr.price_rightText, 'price_rightText')
         elif self.loading == 'sell':
             if not self.destroyed and hasattr(self, 'sr') and self.sr.Get('quoteText') and not self.sr.quoteText.destroyed:
@@ -1471,25 +1490,28 @@ class MarketActionWindow(uicls.Window):
                 if bestBid:
                     jumps = max(bestBid.jumps - max(0, bestBid.range), 0)
                     if jumps == 0 and self.sr.stationID == bestBid.stationID:
-                        jumpText = mls.UI_MARKET_INSAMESTATIONASITEMS
+                        jumpText = localization.GetByLabel('UI/Market/MarketQuote/ItemsInSameStation')
                     else:
-                        jumpText = [mls.UI_MARKET_JUMPFROMTHISITEM, mls.UI_MARKET_JUMPSFROMTHISITEM][(jumps == 0 or jumps > 1)] % {'jumps': jumps}
-                    quoteText = '%s [ %s %s %s ]' % (util.FmtISK(bestBid.price),
-                     util.FmtAmt(long(bestBid.volRemaining)),
-                     [mls.UI_MARKET_UNITMATCHABLE, mls.UI_MARKET_UNITSMATCHABLE][(bestBid.volRemaining >= 2)],
-                     jumpText)
+                        jumpText = localization.GetByLabel('UI/Market/MarketQuote/JumpsFromThisSystem', jumps=jumps)
+                    p = {'minVolumeText': '',
+                     'price': bestBid.price,
+                     'volRemaining': long(bestBid.volRemaining),
+                     'jumpText': jumpText}
                     if bestBid.minVolume > 1 and bestBid.volRemaining >= bestBid.minVolume:
-                        quoteText += ' %s' % mls.UI_MARKET_TEXT15 % {'min': bestBid.minVolume}
+                        p['minVolumeText'] = localization.GetByLabel('UI/Market/MarketQuote/SimpleMinimumVolume', min=bestBid.minVolume)
+                    quoteText = localization.GetByLabel('UI/Market/MarketQuote/SellQuantity', **p)
                 else:
-                    quoteText = mls.UI_MARKET_TEXT13
+                    quoteText = localization.GetByLabel('UI/Market/MarketQuote/NoMatchBid')
                 self.sr.quoteText.text = quoteText
                 self.CheckHeights(self.sr.quoteText, 'quoteText')
             if not self.destroyed and hasattr(self, 'sr') and self.sr.Get('price_rightText') and not self.sr.price_rightText.destroyed:
                 self.sr.percentage = (price - averagePrice) / averagePrice
-                self.sr.price_rightText.text = ' [ %s%.2f%s %s<color=0xffffffff> ]' % (colors[(price < averagePrice)],
-                 100 * self.sr.percentage,
-                 [mls.UI_MARKET_PERCENTABOVE, mls.UI_MARKET_PERCENTBELOW][(price < averagePrice)],
-                 mls.UI_MARKET_REGIONALAVG)
+                p = {'colorText': colors[(price < averagePrice)],
+                 'percentage': 100 * self.sr.percentage,
+                 'aboveBelow': localization.GetByLabel('UI/Market/MarketQuote/PercentAbove')}
+                if price < averagePrice:
+                    p['aboveBelow'] = localization.GetByLabel('UI/Market/MarketQuote/PercentBelow')
+                self.sr.price_rightText.text = localization.GetByLabel('UI/Market/MarketQuote/MarketSellPrice', **p)
                 self.CheckHeights(self.sr.price_rightText, 'price_rightText')
         elif self.loading == 'modify':
             if self.sr.currentOrder.bid:
@@ -1504,10 +1526,12 @@ class MarketActionWindow(uicls.Window):
             self.CheckHeights(self.sr.fee, 'fee')
             if not self.destroyed and hasattr(self, 'sr') and self.sr.Get('price_rightText') and not self.sr.price_rightText.destroyed:
                 self.sr.percentage = (price - averagePrice) / averagePrice
-                self.sr.price_rightText.text = ' [ %s%s%s %s<color=0xffffffff> ]' % (colors[(price < averagePrice)],
-                 round(100 * self.sr.percentage, 2),
-                 [mls.UI_MARKET_PERCENTABOVE, mls.UI_MARKET_PERCENTBELOW][(price < averagePrice)],
-                 mls.UI_MARKET_REGIONALAVG)
+                p = {'colorText': colors[(price < averagePrice)],
+                 'percentage': round(100 * self.sr.percentage, 2),
+                 'aboveBelow': localization.GetByLabel('UI/Market/MarketQuote/PercentAbove')}
+                if price < averagePrice:
+                    p['aboveBelow'] = localization.GetByLabel('UI/Market/MarketQuote/PercentBelow')
+                self.sr.price_rightText.text = localization.GetByLabel('UI/Market/MarketQuote/MarketModifyPrice', **p)
                 self.CheckHeights(self.sr.price_rightText, 'price_rightText')
 
 

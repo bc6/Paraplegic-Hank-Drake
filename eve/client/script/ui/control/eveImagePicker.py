@@ -1,7 +1,5 @@
 import uicls
 import uiconst
-import uiutil
-import trinity
 import math
 import uthread
 import blue
@@ -9,6 +7,7 @@ import base
 import service
 import ccConst
 import log
+import localization
 HILITE = ('ui_105_32_27', 15, -3)
 
 class ImagePicker(uicls.Container):
@@ -39,15 +38,16 @@ class ImagePicker(uicls.Container):
         self._doBlock = False
         self._availableTypeIDs = set()
         if session.role & service.ROLE_CONTENT:
+            invCache = sm.GetService('invCache')
             if session.stationid:
                 try:
-                    inv = eve.GetInventory(const.containerHangar)
+                    inv = invCache.GetInventory(const.containerHangar)
                     self._availableTypeIDs.update({i.typeID for i in inv.List() if i.categoryID == const.categoryApparel})
                 except Exception as e:
                     log.LogWarn()
             if session.charid:
                 try:
-                    inv = eve.GetInventoryFromId(session.charid)
+                    inv = invCache.GetInventoryFromId(session.charid)
                     self._availableTypeIDs.update({i.typeID for i in inv.List() if i.flagID == const.flagWardrobe})
                 except Exception as e:
                     log.LogWarn()
@@ -57,14 +57,14 @@ class ImagePicker(uicls.Container):
         self.browserWidth = attributes.get('browserWidth', 400)
         self.numSpecialItems = attributes.get('numSpecialItems', 0)
         (l, t, w, h,) = self.parent.GetAbsolute()
-        self.sr.counterParent = uicls.Container(parent=self.parent, align=uiconst.TOPLEFT, name='counterParent', state=uiconst.UI_NORMAL, hint=mls.UI_CHARCREA_SHOWACTIVE, pos=(7, 6, 13, 9), opacity=0.5, idx=0)
+        self.sr.counterParent = uicls.Container(parent=self.parent, align=uiconst.TOPLEFT, name='counterParent', state=uiconst.UI_NORMAL, hint=localization.GetByLabel('UI/CharacterCustomization/ShowActive'), pos=(7, 6, 13, 9), opacity=0.5, idx=0)
         self.sr.counterParent.OnMouseEnter = (self.OnGenericMouseEnter, self.sr.counterParent)
         self.sr.counterParent.OnMouseExit = (self.OnGenericMouseExit, self.sr.counterParent)
         self.sr.counterParent.OnClick = self.ShowActiveSlot
         self.sr.counterParent.sr.icon = uicls.Frame(frameConst=(ccConst.ICON_FOCUSFRAME, 15, -11), parent=self.sr.counterParent, color=ccConst.COLOR50)
-        self.sr.counterParent.sr.label = uicls.CCLabel(text='', parent=self.sr.counterParent, autowidth=1, autoheight=1, color=ccConst.COLOR50, align=uiconst.CENTER, left=1)
+        self.sr.counterParent.sr.label = uicls.CCLabel(text='', parent=self.sr.counterParent, color=ccConst.COLOR50, align=uiconst.CENTER, left=1)
         if self.DebugRoleCheck():
-            self.sr.debugLabel = uicls.CCLabel(text='', parent=self, autowidth=1, autoheight=1, align=uiconst.CENTER, top=self.imageHeight / 2 + 8, letterspace=0, fontsize=9, color=(1.0, 1.0, 1.0, 0.5), state=uiconst.UI_NORMAL, idx=0)
+            self.sr.debugLabel = uicls.CCLabel(text='', parent=self, align=uiconst.CENTER, top=self.imageHeight / 2 + 8, letterspace=0, fontsize=9, color=(1.0, 1.0, 1.0, 0.5), state=uiconst.UI_NORMAL, idx=0)
             self.sr.debugLabel.GetMenu = self.GetDebugMenu
         self.BuildStrip(attributes.images)
         self.UpdateCounter()
@@ -163,9 +163,17 @@ class ImagePicker(uicls.Container):
 
 
     def SetActiveDataFromValue(self, toValue, doCallbacks = True, focusOnSlot = True, doYield = True):
+        toValueSet = set([toValue])
+        if isinstance(toValue, tuple):
+            if toValue[1] == '':
+                v0TypeData = (toValue[0], 'v0', toValue[2])
+                toValueSet.add(v0TypeData)
+            elif toValue[1] == 'v0':
+                emptyStringTypeData = (toValue[0], '', toValue[2])
+                toValueSet.add(emptyStringTypeData)
         for (i, imageData,) in enumerate(self.images):
             (resPath, data, hiliteResPath,) = imageData
-            if toValue == data[1]:
+            if data[1] in toValueSet:
                 self.SetActiveData(imageData, focusOnSlot=focusOnSlot, doCallbacks=doCallbacks, doYield=doYield)
                 break
 
@@ -269,10 +277,6 @@ class ImagePicker(uicls.Container):
         resFile = blue.ResFile()
         if not resPath or not resFile.FileExists(resPath):
             resPath = 'res:/UI/Asset/missingThumbnail.dds'
-        else:
-            checkThumbPath = resPath.replace('.dds', '_thumb.dds')
-            if resFile.FileExists(checkThumbPath):
-                resPath = checkThumbPath
         slot.sr.thumbnail.LoadTexture(resPath)
         if len(data) > 2 and data[2] is not None and session.role & service.ROLE_CONTENT:
             inLimitedRecustomization = getattr(uicore.layer.charactercreation, 'mode', -1) == ccConst.MODE_LIMITED_RECUSTOMIZATION
@@ -339,7 +343,7 @@ class ImagePicker(uicls.Container):
 
 
     def SettleAfterWheel_thread(self, *args):
-        blue.pyos.synchro.Sleep(250)
+        blue.pyos.synchro.SleepWallclock(250)
         if not self or self.destroyed:
             return 
         self.sr.wheelSettleTimer = None
@@ -451,7 +455,7 @@ class ImagePicker(uicls.Container):
                 break
             iExp = math.exp(i / 10.0)
             self.Browse(-(distance - int(distance * (iExp / maxExp))))
-            blue.pyos.synchro.Sleep(10)
+            blue.pyos.synchro.SleepWallclock(10)
             if self.destroyed:
                 return 
             if self._initMouseDownX:

@@ -10,6 +10,8 @@ import uiutil
 import uicls
 import uiconst
 import log
+import localization
+import localizationUtil
 cgre = re.compile('chargeGroup\\d{1,2}')
 
 class DefenceStructureButton(uicls.Container):
@@ -56,7 +58,6 @@ class DefenceStructureButton(uicls.Container):
         self.isInvItem = 1
         self.blinking = 0
         self.effect_activating = 0
-        self.typeName = ''
         self.dogmaLM = None
         self.sr.sourceIcon = None
         self.sr.sourceGaugeParent = None
@@ -97,6 +98,8 @@ class DefenceStructureButton(uicls.Container):
         self.sr.glow = uiutil.GetChild(sourceContainer, 'glow')
         self.sr.busy = uiutil.GetChild(sourceContainer, 'busy')
         self.sr.quantityParent = uiutil.GetChild(sourceContainer, 'quantityParent')
+        self.sr.quantityParent.left = 8
+        self.sr.quantityParent.width = 28
         idx = self.parent.children.index(self)
         fill = uicls.Fill(parent=self, color=(1.0, 1.0, 1.0, 0.125), state=uiconst.UI_HIDDEN, idx=idx)
         self.sr.hilite = fill
@@ -106,16 +109,16 @@ class DefenceStructureButton(uicls.Container):
         self.sr.chargeIcon = chargeIcon
         if not len(self.__cgattrs__):
             self.__cgattrs__.extend([ a.attributeID for a in cfg.dgmattribs if cgre.match(a.attributeName) is not None ])
+        self.sr.typeID = moduleinfo.typeID
         invType = cfg.invtypes.Get(moduleinfo.typeID)
         group = cfg.invtypes.Get(moduleinfo.typeID).Group()
         self.sr.moduleInfo = moduleinfo
         self.locationFlag = moduleinfo.flagID
         self.sr.sourceID = moduleinfo.itemID
         self.id = moduleinfo.itemID
-        self.typeName = uix.GetItemName(self.sr.moduleInfo)
         self.sr.glow.z = 0
-        self.sr.qtylabel = uicls.Label(text='', parent=self.sr.quantityParent, left=2, top=0, width=30, height=9, letterspace=1, fontsize=9, state=uiconst.UI_DISABLED, uppercase=1, idx=0, autoheight=False, autowidth=False)
-        self.sr.distancelabel = uicls.Label(text='', parent=self.sr.targetContainer, left=12, top=-16, width=70, height=9, letterspace=1, fontsize=9, state=uiconst.UI_DISABLED, uppercase=1, idx=0, autoheight=False, autowidth=False)
+        self.sr.qtylabel = uicls.Label(text='', parent=self.sr.quantityParent, width=30, state=uiconst.UI_DISABLED, idx=0, fontsize=9)
+        self.sr.distancelabel = uicls.EveHeaderSmall(text='', parent=self.sr.targetContainer, left=12, top=-16, width=70, state=uiconst.UI_DISABLED, idx=0)
         if cfg.IsChargeCompatible(moduleinfo):
             self.invCookie = sm.GetService('inv').Register(self)
         self.SetCharge(None)
@@ -291,7 +294,7 @@ class DefenceStructureButton(uicls.Container):
     def UpdateChargeQuantity(self, charge):
         if charge is self.charge:
             self.quantity = charge.stacksize
-            self.sr.qtylabel.text = '%s' % util.FmtAmt(charge.stacksize)
+            self.sr.qtylabel.text = util.FmtAmt(self.quantity, 'ss')
 
 
 
@@ -307,7 +310,7 @@ class DefenceStructureButton(uicls.Container):
 
 
     def GetShell(self):
-        return eve.GetInventoryFromId(eve.session.shipid)
+        return sm.GetService('invCache').GetInventoryFromId(eve.session.shipid)
 
 
 
@@ -316,11 +319,11 @@ class DefenceStructureButton(uicls.Container):
             return 
         self.blinking = 1
         while self.waitingForActiveTarget or self.goingOnline:
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
             if self.destroyed:
                 return 
             self.sr.sourceIcon.color.a = 0.25
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
             if self.destroyed:
                 return 
             self.sr.sourceIcon.color.a = 1.0
@@ -342,10 +345,12 @@ class DefenceStructureButton(uicls.Container):
             return 
         m = []
         if self.sr.Get('sourceID', None):
-            m += [(mls.UI_INFLIGHT_SOURCE, sm.GetService('menu').CelestialMenu(self.sr.sourceID))]
+            sourceLabel = localization.GetByLabel('UI/Inflight/Source')
+            m += [(sourceLabel, sm.GetService('menu').CelestialMenu(self.sr.sourceID))]
             m += [None]
         if self.sr.Get('targetID', None):
-            m += [(mls.UI_GENERIC_TARGET, sm.GetService('menu').CelestialMenu(self.sr.targetID))]
+            targetLabel = localization.GetByLabel('UI/Inflight/Target')
+            m += [(targetLabel, sm.GetService('menu').CelestialMenu(self.sr.targetID))]
         return m
 
 
@@ -366,7 +371,7 @@ class DefenceStructureButton(uicls.Container):
         shiplayer = uicore.layer.shipui
         if not shiplayer:
             return 
-        blue.pyos.synchro.Sleep(1000)
+        blue.pyos.synchro.SleepWallclock(1000)
         shiplayer.CheckPendingReloads()
 
 
@@ -406,7 +411,7 @@ class DefenceStructureButton(uicls.Container):
                     effect.Activate()
                     self.goingOnline = 1
                     uthread.new(self.BlinkIcon)
-                    blue.pyos.synchro.Sleep(5000)
+                    blue.pyos.synchro.SleepWallclock(5000)
                     self.goingOnline = 0
                 else:
                     self.ShowOffline(1)
@@ -596,48 +601,47 @@ class DefenceStructureButton(uicls.Container):
         if uicore.uilib.mouseOver != self:
             self.sr.accuracyTimer = None
             return 
-        info = '%s: %s' % (mls.UI_GENERIC_TYPE, self.typeName)
+        infoList = [localization.GetByLabel('UI/Common/TypeLabel', typeID=self.sr.typeID)]
+        statusList = []
         defEff = self.GetDefaultEffect()
         if defEff:
-            status = mls.UI_GENERIC_INACTIVE
             if defEff.isActive:
-                status = mls.UI_GENERIC_ACTIVE
-        else:
-            status = ''
-        info += '<br>%s: %s' % (mls.UI_GENERIC_STATUS, status)
+                statusList.append(localization.GetByLabel('UI/Inflight/StatusActive'))
+            else:
+                statusList.append(localization.GetByLabel('UI/Inflight/StatusInactive'))
         if self.goingOnline:
-            info += ', %s' % mls.UI_INFLIGHT_GOINGONLINE.lower()
+            statusList.append(localization.GetByLabel('UI/Inflight/GoingOnline'))
         if self.waitingForActiveTarget:
-            info += ', %s' % mls.UI_INFLIGHT_WAITINGFORACTIVETARGET.lower()
+            statusList.append(localization.GetByLabel('UI/Inflight/WaitingForActiveTarget'))
+        if statusList:
+            infoList.append(localization.GetByLabel('UI/Inflight/StatusLabel', statusList=localizationUtil.FormatGenericList(statusList)))
         if cfg.IsChargeCompatible(self.sr.moduleInfo):
             if self.charge and self.charge.typeID:
-                chargetype = cfg.invtypes.Get(self.charge.typeID)
-                info += '<br>' + mls.UI_INFLIGHT_CHARGEPCS % {'qty': util.FmtAmt(self.quantity),
-                 'type': chargetype.name}
+                infoList.append(localization.GetByLabel('UI/Inflight/ChargeQuantity', quantity=self.quantity, typeID=self.charge.typeID))
             else:
-                info += '<br>%s' % mls.UI_INFLIGHT_CHARGENOCHARGE
+                infoList.append(localization.GetByLabel('UI/Inflight/ChargeNoCharge'))
         accuracy = self.GetAccuracy()
         acc = ''
         if accuracy is not None:
-            info += '<br>%s: %.2f' % (mls.UI_GENERIC_ACCURACY, accuracy[0])
+            infoList.append(localization.GetByLabel('UI/Inflight/AccuracyLabel', accuracy=accuracy[0]))
         if self.charge:
             godmaInfo = sm.GetService('godma').GetItem(self.charge.itemID)
             if godmaInfo and godmaInfo.crystalsGetDamaged:
-                info += '<br>%s: %.2f' % (mls.UI_GENERIC_DAMAGE, godmaInfo.damage)
+                infoList.append(localization.GetByLabel('UI/Inflight/DamageLabel', damage=godmaInfo.damage))
         t = self.sr.Get('targetID', None)
         if t:
             slimItem = sm.GetService('michelle').GetBallpark().GetInvItem(t)
-            info += '<br>%s: %s' % (mls.UI_GENERIC_TARGET, uix.GetSlimItemName(slimItem))
+            infoList.append(localization.GetByLabel('UI/Inflight/TargetLabel', itemName=uix.GetSlimItemName(slimItem)))
         pos = uicore.layer.shipui.GetPosFromFlag(self.sr.moduleInfo.itemID)
         if pos:
             slotno = pos[1] + 1
             cmd = uicore.cmd
             combo = cmd.GetShortcutByFuncName('CmdActivateHighPowerSlot%i' % slotno, True)
             if not combo:
-                combo = mls.UI_GENERIC_NONE
-            info += '<br>%s: %s' % (mls.UI_GENERIC_SHORTCUT, combo)
+                combo = localization.GetByLabel('UI/Common/None')
+            infoList.append(localization.GetByLabel('UI/Inflight/ShortcutLabel', keyCombo=combo))
         if self and getattr(self, 'sr', None):
-            self.sr.hint = info
+            self.sr.hint = '<br>'.join(infoList)
 
 
 
@@ -795,12 +799,12 @@ class DefenceStructureButton(uicls.Container):
         time = sm.GetService('bracket').GetScanSpeed(source, slimItem)
         if hasattr(self, 'sr') and self.sr.Get('targetContainer'):
             par = uicls.Container(parent=self.sr.targetContainer, width=52, height=13, left=6, top=62, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED)
-            t = uicls.Label(text='', parent=par, width=200, height=12, left=6, top=1, fontsize=9, letterspace=1, uppercase=1, autoheight=False, autowidth=False, state=uiconst.UI_NORMAL)
+            t = uicls.EveHeaderSmall(text='', parent=par, width=200, left=6, top=1, state=uiconst.UI_NORMAL)
             p = uicls.Fill(parent=par, align=uiconst.RELATIVE, width=48, height=11, left=1, top=1, color=(1.0, 1.0, 1.0, 0.25))
             uicls.Frame(parent=par, color=(1.0, 1.0, 1.0, 0.5))
-            startTime = blue.os.GetTime()
+            startTime = blue.os.GetSimTime()
             while not self.destroyed and self.countDown:
-                now = blue.os.GetTime()
+                now = blue.os.GetSimTime()
                 dt = blue.os.TimeDiffInMs(startTime, now)
                 if self.scanAttributeChangeFlag:
                     waitRatio = dt / float(time)
@@ -810,9 +814,9 @@ class DefenceStructureButton(uicls.Container):
                     dt = blue.os.TimeDiffInMs(startTime, now)
                 if t.destroyed:
                     return 
-                t.text = '%.3f %s' % ((time - dt) / 1000.0, [mls.UI_GENERIC_SECONDSHORT, mls.UI_GENERIC_SECONDSSHORT][((time - dt) / 1000.0 > 2.0)])
+                t.text = localizationUtil.FormatNumeric((time - dt) / 1000.0, decimalPlaces=3)
                 if dt > time:
-                    t.text = mls.UI_INFLIGHT_LOCKED
+                    t.text = localization.GetByLabel('UI/Inflight/Brackets/TargetLocked')
                     break
                 p.width = int(48 * ((time - dt) / time))
                 blue.pyos.synchro.Yield()
@@ -822,23 +826,23 @@ class DefenceStructureButton(uicls.Container):
             if not self.countDown:
                 par.Close()
             p.width = 0
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
             if t.destroyed:
                 return 
             t.text = ''
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
             if t.destroyed:
                 return 
-            t.text = mls.UI_INFLIGHT_LOCKED
-            blue.pyos.synchro.Sleep(250)
+            t.text = localization.GetByLabel('UI/Inflight/Brackets/TargetLocked')
+            blue.pyos.synchro.SleepWallclock(250)
             if t.destroyed:
                 return 
             t.text = ''
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
             if t.destroyed:
                 return 
-            t.text = mls.UI_INFLIGHT_LOCKED
-            blue.pyos.synchro.Sleep(250)
+            t.text = localization.GetByLabel('UI/Inflight/Brackets/TargetLocked')
+            blue.pyos.synchro.SleepWallclock(250)
             par.Close()
 
 

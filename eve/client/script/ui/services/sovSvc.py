@@ -3,6 +3,7 @@ import service
 import form
 import util
 import moniker
+import localization
 from sovereignty import SovereigntyTab
 STAT_ID_KILLS = 3
 CLAIM_DAYS_TO_SECONDS = 86400
@@ -33,9 +34,8 @@ class SovService(service.Service):
 
 
     def GetInfrastructureHubWnd(self, hubID = None):
-        wnd = sm.GetService('window').GetWindow('infrastructhubman', decoClass=form.InfrastructureHubWnd, create=1, hubID=hubID)
-        if wnd is not None and not wnd.destroyed:
-            wnd.Maximize()
+        form.InfrastructureHubWnd.CloseIfOpen()
+        wnd = form.InfrastructureHubWnd.Open(hubID=hubID)
         return wnd
 
 
@@ -73,22 +73,22 @@ class SovService(service.Service):
         if sovInfo is not None and sovInfo.contested > 0:
             numGates = sm.GetService('map').GetNumberOfStargates(solarSystemID)
             if sovInfo.contested * 2 > numGates:
-                text += ' (%s)' % mls.UI_INFLIGHT_SYSTEMVULNERABLE
+                text = localization.GetByLabel('UI/Inflight/Brackets/SystemVulnerable')
             else:
-                text += ' (%s)' % mls.UI_INFLIGHT_SYSTEMCONTESTED
+                text = localization.GetByLabel('UI/Inflight/Brackets/SystemContested')
         return text
 
 
 
     def AddUppgrades(self, hubID, itemlist, sourceLocationID):
-        inv = eve.GetInventoryFromId(hubID)
+        inv = sm.GetService('invCache').GetInventoryFromId(hubID)
         inv.MultiAdd(itemlist, sourceLocationID)
 
 
 
     def CalculateUpgradeCost(self, solarsystemID, typeIDs):
         claimTime = self.GetSystemSovereigntyInfo(solarsystemID, forceUpdate=True).claimTime
-        daysHeld = (blue.os.GetTime(1) - claimTime) / const.DAY
+        daysHeld = (blue.os.GetWallclockTimeNow() - claimTime) / const.DAY
         daysLeft = const.sovereignityBillingPeriod - daysHeld % const.sovereignityBillingPeriod
         self.LogInfo('claimTime is', claimTime, util.FmtDate(claimTime), 'which amounts to ', daysHeld, 'days. days left for this billing cycle are', daysLeft)
         total = 0
@@ -101,11 +101,10 @@ class SovService(service.Service):
 
 
     def GetSovOverview(self, location = None):
-        wnd = sm.GetService('window').GetWindow('sovOverview', decoClass=form.SovereigntyOverviewWnd, create=1)
+        wnd = form.SovereigntyOverviewWnd.Open()
         if wnd is not None and not wnd.destroyed:
             if location is not None:
                 wnd.SetLocation(*location)
-            wnd.Maximize()
         return wnd
 
 
@@ -232,13 +231,13 @@ class SovService(service.Service):
 
         sovInfo = self.GetSystemSovereigntyInfo(session.solarsystemid)
         sovereigntyLevel = int(godma.GetTypeAttribute(typeID, const.attributeDevIndexSovereignty, 0))
-        sovHeldFor = (blue.os.GetTime() - sovInfo.claimTime) / const.DAY
+        sovHeldFor = (blue.os.GetWallclockTime() - sovInfo.claimTime) / const.DAY
         if util.GetTimeIndexLevelForDays(sovHeldFor) < sovereigntyLevel:
             return False
         requiredUpgradeID = int(godma.GetTypeAttribute(typeID, const.attributeSovUpgradeRequiredUpgradeID, 0))
         blockingUpgradeID = int(godma.GetTypeAttribute(typeID, const.attributeSovUpgradeBlockingUpgradeID, 0))
         if requiredUpgradeID > 0 or blockingUpgradeID > 0:
-            inv = eve.GetInventoryFromId(hubID)
+            inv = sm.GetService('invCache').GetInventoryFromId(hubID)
             found = False
             requiredUpgradeID == 0
             for upgrade in inv.List():
@@ -279,12 +278,12 @@ class SovService(service.Service):
 
 
     def GetOutpostData(self, outpostID):
-        if self.outpostData is not None and blue.os.TimeDiffInMs(self.outpostData.updateTime) > 3600000:
+        if self.outpostData is not None and blue.os.TimeDiffInMs(self.outpostData.updateTime, blue.os.GetWallclockTime()) > 3600000:
             return self.outpostData
         else:
             allianceSvc = sm.GetService('alliance')
             corpMgr = moniker.GetCorpStationManagerEx(outpostID)
-            self.outpostData = util.KeyVal(allianceCorpList=set([ corporationID for corporationID in allianceSvc.GetMembers() ]), updateTime=blue.os.GetTime(), upgradeLevel=corpMgr.GetStationDetails(outpostID).upgradeLevel)
+            self.outpostData = util.KeyVal(allianceCorpList=set([ corporationID for corporationID in allianceSvc.GetMembers() ]), updateTime=blue.os.GetWallclockTime(), upgradeLevel=corpMgr.GetStationDetails(outpostID).upgradeLevel)
             return self.outpostData
 
 
@@ -301,7 +300,7 @@ class SovService(service.Service):
 
 
     def GetInfrastructureHubItemData(self, hubID):
-        inv = eve.GetInventoryFromId(hubID)
+        inv = sm.GetService('invCache').GetInventoryFromId(hubID)
         itemData = {}
         for item in inv.List():
             itemData[item.typeID] = util.KeyVal(itemID=item.itemID, typeID=item.typeID, groupID=item.groupID, online=item.flagID == const.flagStructureActive)
@@ -337,7 +336,7 @@ class SovService(service.Service):
     def GetLevelForIndex(self, indexID, devIndex = None):
         if indexID == const.attributeDevIndexSovereignty:
             sovInfo = self.GetSystemSovereigntyInfo(session.solarsystemid2)
-            currentTime = blue.os.GetTime()
+            currentTime = blue.os.GetWallclockTime()
             timeDiff = currentTime - sovInfo.claimTime
             value = (currentTime - sovInfo.claimTime) / const.SEC
             increasing = True

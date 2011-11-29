@@ -8,7 +8,8 @@ import uthread
 import random
 import form
 import trinity
-import math
+import localization
+import log
 BG_GRAY = (0.15, 0.15, 0.15, 1.0)
 TEMPLATE_DURATION = 12000
 
@@ -30,7 +31,7 @@ class BaseTemplate(uicls.Container):
     def PlayIntro(self, videoPath):
         if not videoPath:
             return 
-        video = uicls.VideoSprite(parent=self, videoPath=videoPath, align=uiconst.TOALL, padding=(-51, -139, -51, -139), positionComponent=getattr(self.uiDesktop, 'positionComponent', None))
+        video = uicls.VideoSprite(parent=self, videoPath=videoPath, align=uiconst.TOALL, padding=(-128, -132, -128, -132), positionComponent=getattr(self.uiDesktop, 'positionComponent', None))
         while not video.isFinished:
             blue.synchro.Yield()
 
@@ -49,21 +50,23 @@ class SOV(BaseTemplate):
         if data is None:
             return 
         self.PlayIntro(data.get('introVideoPath', None))
-        leftFrame = uicls.ScreenFrame1(parent=self, align=uiconst.TOPLEFT, pos=(80, 50, 400, 400))
+        leftFrame = uicls.ScreenFrame1(parent=self, align=uiconst.TOPLEFT, pos=(60, 50, 400, 400))
         uiutil.GetOwnerLogo(leftFrame.mainCont, data.oldOwnerID, size=400)
-        blue.pyos.synchro.Sleep(100)
+        blue.pyos.synchro.SleepWallclock(100)
         uicore.animations.FadeIn(leftFrame.mainCont, duration=0.1, loops=3)
-        rightFrame = uicls.ScreenFrame1(parent=self, align=uiconst.TOPRIGHT, pos=(80, 50, 400, 400))
+        rightFrame = uicls.ScreenFrame1(parent=self, align=uiconst.TOPRIGHT, pos=(60, 50, 400, 400))
         uiutil.GetOwnerLogo(rightFrame.mainCont, data.newOwnerID, size=400)
         uicore.animations.FadeIn(rightFrame.mainCont, duration=0.1, loops=3)
-        text = '<fontsize=50><b><color=WHITE>%s</color>\n' % mls.UI_HOLOSCREEN_SOVEREIGNTYTITLE
-        text += '<fontsize=25>%s</b>' % data.middleText
-        label = uicls.Label(parent=self, text=text, align=uiconst.CENTER, pos=(0, -20, 230, 0))
+        text = '<center>' + localization.GetByLabel('UI/Station/Holoscreen/SOV/SovereigntyChange') + '<center>'
+        headingLabel = uicls.Label(parent=self, text=text, align=uiconst.CENTER, bold=True, color=util.Color.WHITE, fontsize=40, pos=(0, -120, 300, 0))
+        uicore.animations.BlinkIn(headingLabel)
+        text = '<center>' + data.middleText + '<center>'
+        label = uicls.Label(parent=self, text=text, align=uiconst.CENTER, bold=True, fontsize=25, pos=(0, -20, 230, 0))
         uicore.animations.BlinkIn(label)
         banner = uicls.TextBanner(parent=self, align=uiconst.TOBOTTOM, padTop=10, scrollText=False, text=data.bottomText, fontSize=30, leftContWidth=310)
         uicls.Sprite(parent=banner.leftCont, pos=(30, -20, 252, 114), texturePath='res:/UI/Texture/Classes/CQMainScreen/scopeNewsLogo.png')
         uicore.animations.BlinkIn(banner)
-        blue.pyos.synchro.Sleep(TEMPLATE_DURATION)
+        blue.pyos.synchro.SleepWallclock(TEMPLATE_DURATION)
 
 
 
@@ -80,8 +83,8 @@ class CareerAgent(BaseTemplate):
         self.leftCont = uicls.Container(parent=self, align=uiconst.TOLEFT, width=640, padRight=10)
         self.rightCont = uicls.ScreenFrame5(parent=self, align=uiconst.TOALL)
         headingCont = uicls.Container(parent=self.leftCont, align=uiconst.TOTOP, height=100, bgColor=(0.35, 0.35, 0.35, 1.0))
-        uicls.Label(parent=headingCont, text=data.headingText, fontsize=80, align=uiconst.CENTER, color=util.Color.WHITE, uppercase=True)
-        blue.pyos.synchro.Sleep(300)
+        uicls.Label(parent=headingCont, text=data.headingText, fontsize=80, align=uiconst.CENTER, color=util.Color.WHITE, uppercase=True, bold=True)
+        blue.pyos.synchro.SleepWallclock(300)
         uicls.ScreenHeading2(parent=self.leftCont, appear=True, align=uiconst.TOTOP, text=data.subHeadingText)
         frame = uicls.ScreenFrame4(parent=self.leftCont, align=uiconst.TOALL, appear=True, padTop=10)
         frame.mainCont.padLeft = 30
@@ -90,7 +93,7 @@ class CareerAgent(BaseTemplate):
         pictureCont = uicls.Container(align=uiconst.TOPLEFT, parent=frame.mainCont, pos=(0, 8, 256, 256))
         uicls.Frame(parent=pictureCont, color=util.Color.WHITE)
         uiutil.GetOwnerLogo(pictureCont, data.charID, size=256)
-        uicls.Label(name='mainTextLabel', parent=frame.mainCont, pos=(290, 45, 300, 0), text=data.mainText)
+        uicls.EveLabelMedium(name='mainTextLabel', parent=frame.mainCont, pos=(290, 45, 300, 0), text=data.mainText)
         video = uicls.VideoSprite(parent=self.rightCont.mainCont, videoPath=data.careerVideoPath, align=uiconst.TOALL, repeat=True, positionComponent=getattr(self.uiDesktop, 'positionComponent', None))
         while not video.isFinished:
             blue.synchro.Yield()
@@ -113,16 +116,16 @@ class Incursion(BaseTemplate):
         headingCont = uicls.Container(parent=leftCont, align=uiconst.TOTOP, height=100, fontsize=50)
         fill = uicls.Fill(bgParent=headingCont, color=(1.0, 0.0, 0.0, 0.5))
         uicore.animations.FadeTo(fill, startVal=0.5, endVal=0.2, duration=1.0, loops=uiconst.ANIM_REPEAT)
-        label = uicls.Label(parent=headingCont, text=data.headingText, fontsize=80, align=uiconst.CENTER, color=util.Color.WHITE)
+        label = uicls.Label(parent=headingCont, text=data.headingText, fontsize=80, align=uiconst.CENTER, color=util.Color.WHITE, uppercase=True, bold=True)
         frame = uicls.ScreenFrame1(parent=leftCont, align=uiconst.TOALL, appear=True, padTop=10)
         frame.mainCont.padTop = 70
         banner = uicls.TextBanner(parent=frame.mainCont, align=uiconst.TOBOTTOM, padTop=10, scrollText=False, text=data.bottomText, fontSize=30, leftContWidth=310)
         uicls.Sprite(parent=banner.leftCont, pos=(10, -20, 300, 100), texturePath='res:/UI/Texture/Classes/CQMainScreen/concordLogo.png')
-        uicls.Label(parent=frame.mainCont, left=20, top=0, text=mls.UI_GENERIC_CONSTELLATION, fontsize=30)
+        uicls.Label(parent=frame.mainCont, left=20, top=0, text=localization.GetByLabel('UI/Common/Constellation'), fontsize=30)
         uicls.Label(parent=frame.mainCont, left=20, top=30, text=data.constellationText, fontsize=45)
-        uicls.Label(parent=frame.mainCont, left=280, top=0, text=mls.UI_INCURSION_STAGING_SYSTEM, fontsize=30)
+        uicls.Label(parent=frame.mainCont, left=280, top=0, text=localization.GetByLabel('UI/Incursion/Journal/StagingSystem'), fontsize=30)
         uicls.Label(parent=frame.mainCont, left=280, top=30, text=data.systemInfoText, fontsize=45)
-        uicls.Label(parent=frame.mainCont, left=20, top=140, text=mls.UI_INCURSION_INFLUENCE, fontsize=30)
+        uicls.Label(parent=frame.mainCont, left=20, top=140, text=localization.GetByLabel('UI/Incursion/Common/HUDInfluenceTitle'), fontsize=30)
         influenceBar = uicls.SystemInfluenceBar(parent=frame.mainCont, align=uiconst.TOPLEFT, pos=(20, 180, 700, 60))
         influenceBar.SetInfluence(data.influence, True)
         uicore.animations.BlinkIn(frame.mainCont, sleep=True)
@@ -145,20 +148,20 @@ class ShipExposure(BaseTemplate):
         self.PlayIntro(data.get('introVideoPath', None))
         leftCont = uicls.Container(parent=self, align=uiconst.TOLEFT, width=500, padRight=10)
         topLeftCont = uicls.ScreenFrame4(parent=leftCont, align=uiconst.TOTOP, height=200)
-        blue.pyos.synchro.Sleep(600)
+        blue.pyos.synchro.SleepWallclock(600)
         uicore.animations.BlinkIn(topLeftCont.mainCont)
         topLeftCont.mainCont.padTop = 15
         topLeftCont.mainCont.padLeft = 20
         uicls.Label(parent=topLeftCont.mainCont, text=data.shipName, fontsize=60, align=uiconst.TOTOP)
         uicls.Label(parent=topLeftCont.mainCont, text=data.shipGroupName, fontsize=30, align=uiconst.TOTOP, padTop=-10)
         trainCont = uicls.Container(name='trainCont', parent=topLeftCont.mainCont, align=uiconst.BOTTOMLEFT, bgColor=(0, 0.3, 0, 1.0), pos=(0, 20, 270, 50))
-        uicls.Label(parent=trainCont, text='<b>%s' % data.buttonText, fontsize=20, align=uiconst.CENTER)
+        uicls.Label(parent=trainCont, text=data.buttonText, fontsize=20, align=uiconst.CENTER, bold=True)
         bottomFrame = uicls.ScreenFrame2(parent=leftCont, align=uiconst.TOALL, padTop=10)
         bottomFrame.mainCont.clipChildren = True
         bottomFrame.mainCont.padBottom = 5
         bottomFrame.mainCont.padTop = 15
-        blue.pyos.synchro.Sleep(300)
-        label = uicls.Label(parent=bottomFrame.mainCont, text=data.mainText, width=480, align=uiconst.CENTERTOP, top=40)
+        blue.pyos.synchro.SleepWallclock(300)
+        label = uicls.EveLabelMedium(parent=bottomFrame.mainCont, text=data.mainText, width=480, align=uiconst.CENTERTOP, top=40)
         label.opacity = 0.0
         uicore.animations.BlinkIn(label, sleep=True)
         (w, h,) = bottomFrame.GetAbsoluteSize()
@@ -170,9 +173,9 @@ class ShipExposure(BaseTemplate):
         fill = uicls.Fill(parent=rightFrame.mainCont, color=(0.5, 0.5, 0.5, 1.0))
         uicore.animations.FadeIn(fill, sleep=True)
         uicls.Scene3dCont(parent=rightFrame.mainCont, typeID=data.shipTypeID, opacity=0.0, duration=TEMPLATE_DURATION / 1000.0)
-        blue.pyos.synchro.Sleep(100)
+        blue.pyos.synchro.SleepWallclock(100)
         uicore.animations.BlinkOut(fill, sleep=True)
-        blue.pyos.synchro.Sleep(TEMPLATE_DURATION)
+        blue.pyos.synchro.SleepWallclock(TEMPLATE_DURATION)
 
 
 
@@ -188,11 +191,11 @@ class RacialEpicArc(BaseTemplate):
         self.PlayIntro(data.get('introVideoPath', None))
         uicls.TextBanner(parent=self, align=uiconst.TOBOTTOM, height=100, text=data.bottomText)
         rightCont = uicls.ScreenFrame5(parent=self, align=uiconst.TORIGHT, width=700, padLeft=10, padBottom=10)
-        blue.pyos.synchro.Sleep(300)
+        blue.pyos.synchro.SleepWallclock(300)
         topLeftCont = uicls.ScreenFrame2(parent=self, align=uiconst.TOTOP, height=300)
         bottomLeftCont = uicls.ScreenHeading1(parent=self, align=uiconst.TOALL, pos=(0, 0, 0, 0), padTop=10, padBottom=10, leftContWidth=150, appear=False)
-        blue.pyos.synchro.Sleep(300)
-        uicls.ScreenHeading2(parent=topLeftCont.mainCont, text=mls.CHAR_EPICARC_AGENT, align=uiconst.TOBOTTOM, hasBargraph=False, padBottom=10, padRight=10)
+        blue.pyos.synchro.SleepWallclock(300)
+        uicls.ScreenHeading2(parent=topLeftCont.mainCont, text=localization.GetByLabel('UI/Station/Holoscreen/RacialEpicArc/EpicArcAgent'), align=uiconst.TOBOTTOM, hasBargraph=False, padBottom=10, padRight=10)
         topLeftCont.mainCont.padLeft = 30
         topLeftCont.mainCont.padTop = 15
         pictureCont = uicls.Container(align=uiconst.TOPLEFT, parent=topLeftCont.mainCont, pos=(0, 20, 180, 180))
@@ -202,13 +205,13 @@ class RacialEpicArc(BaseTemplate):
         logo.align = uiconst.TOALL
         logo.width = logo.height = 0
         uicls.Label(name='charNameLabel', parent=topLeftCont.mainCont, text=cfg.eveowners.Get(data.charID).name, fontsize=50, left=200, top=20, color=util.Color.WHITE)
-        uicls.Label(name='charLocationLabel', parent=topLeftCont.mainCont, pos=(200, 75, 300, 0), text=data.mainText)
+        uicls.EveLabelMedium(name='charLocationLabel', parent=topLeftCont.mainCont, pos=(200, 75, 300, 0), text=data.mainText)
         uicore.animations.BlinkIn(topLeftCont.mainCont)
         uiutil.GetOwnerLogo(bottomLeftCont.leftCont, data.factionID, size=150)
         icon = bottomLeftCont.leftCont.children[0]
         icon.align = uiconst.CENTER
         uicls.Label(parent=bottomLeftCont.mainCont, text=data.factionNameText, fontsize=42, top=30, left=15)
-        uicls.Label(parent=bottomLeftCont.mainCont, text=mls.AGT_AGENTMGR_GETMYJOURNALDETAILS_MISSIONTYPE_EPICARC, fontsize=30, top=80, left=15)
+        uicls.Label(parent=bottomLeftCont.mainCont, text=localization.GetByLabel('UI/Agents/MissionTypes/EpicArc'), fontsize=30, top=80, left=15)
         bottomLeftCont.AnimAppear()
         video = uicls.VideoSprite(parent=rightCont.mainCont, videoPath=data.videoPath, align=uiconst.TOALL, positionComponent=getattr(self.uiDesktop, 'positionComponent', None))
         while not video.isFinished:
@@ -228,7 +231,7 @@ class FullscreenVideo(BaseTemplate):
             return 
         self.PlayIntro(data.get('introVideoPath', None))
         frame = uicls.ScreenFrame4(parent=self, align=uiconst.TOALL)
-        blue.pyos.synchro.Sleep(300)
+        blue.pyos.synchro.SleepWallclock(300)
         video = uicls.VideoSprite(parent=frame.mainCont, videoPath=data.videoPath, align=uiconst.TOALL, positionComponent=getattr(self.uiDesktop, 'positionComponent', None))
         uicore.animations.BlinkIn(frame.mainCont, loops=4)
         while not video.isFinished:
@@ -251,7 +254,7 @@ class CharacterInfo(BaseTemplate):
         uicls.Sprite(parent=banner.leftCont, pos=(10, -20, 300, 100), texturePath='res:/UI/Texture/Classes/CQMainScreen/concordLogo.png')
         uicore.animations.BlinkIn(banner, sleep=True)
         iconFrame = uicls.ScreenFrame5(parent=self, align=uiconst.TOPLEFT, pos=(100, 10, 450, 450), appear=True)
-        blue.pyos.synchro.Sleep(300)
+        blue.pyos.synchro.SleepWallclock(300)
         uiutil.GetOwnerLogo(iconFrame.mainCont, data.charID, size=512)
         icon = iconFrame.mainCont.children[0]
         icon.width = icon.height = 0
@@ -260,17 +263,17 @@ class CharacterInfo(BaseTemplate):
             wantedCont = uicls.Container(parent=iconFrame.mainCont, align=uiconst.BOTTOMLEFT, width=iconFrame.width, height=90, idx=0)
             fill = uicls.Fill(bgParent=wantedCont, color=(1.0, 0.0, 0.0, 0.5))
             uicore.animations.FadeTo(fill, startVal=0.5, endVal=0.2, duration=1.0, loops=uiconst.ANIM_REPEAT)
-            label = uicls.Label(parent=wantedCont, text='<b>%s' % data.wantedHeading, fontsize=50, align=uiconst.CENTERTOP, color=util.Color.WHITE)
+            label = uicls.Label(parent=wantedCont, text=data.wantedHeading, fontsize=50, align=uiconst.CENTERTOP, color=util.Color.WHITE, bold=True)
         uicore.animations.SpGlowFadeOut(icon, duration=0.1, loops=3, sleep=True)
         frame = uicls.ScreenFrame4(parent=self, align=uiconst.TOPRIGHT, pos=(100, 50, 500, 400), appear=True)
-        blue.pyos.synchro.Sleep(300)
+        blue.pyos.synchro.SleepWallclock(300)
         uicls.Fill(bgParent=frame.mainCont, color=BG_GRAY)
-        uicls.Label(name='heading', parent=frame.mainCont, text=data.heading, fontsize=45, left=20, top=20)
-        uicls.Label(name='mainTextLabel', parent=frame.mainCont, pos=(20, 90, 480, 0), text=data.mainText)
+        uicls.Label(name='heading', parent=frame.mainCont, text=data.heading, fontsize=40, left=20, top=20, uppercase=True, bold=True)
+        uicls.EveLabelMedium(name='mainTextLabel', parent=frame.mainCont, pos=(20, 70, 480, 0), text=data.mainText)
         uicore.animations.BlinkIn(frame.mainCont)
         if data.isWanted:
-            label = uicls.Label(parent=frame.mainCont, text='<b>%s' % data.wantedText, fontsize=45, top=-50, color=(0.6, 0.0, 0.0, 1.0))
-        blue.pyos.synchro.Sleep(TEMPLATE_DURATION)
+            label = uicls.Label(parent=frame.mainCont, text=data.wantedText, fontsize=45, top=-50, color=(0.6, 0.0, 0.0, 1.0), bold=True)
+        blue.pyos.synchro.SleepWallclock(TEMPLATE_DURATION)
 
 
 
@@ -286,20 +289,20 @@ class Plex(BaseTemplate):
         self.PlayIntro(data.get('introVideoPath', None))
         leftFrame = uicls.ScreenFrame5(parent=self, align=uiconst.TOLEFT, width=700)
         uicls.Sprite(name='plexLogo', parent=leftFrame.mainCont, align=uiconst.TOPLEFT, pos=(10, 30, 262, 326), texturePath='res:/UI/Texture/Classes/CQMainScreen/plexLogo.png')
-        uicls.Label(name='heading', parent=leftFrame.mainCont, pos=(310, 20, 380, 0), text='<b>' + data.headingText, fontsize=70)
+        uicls.Label(name='heading', parent=leftFrame.mainCont, pos=(310, 20, 380, 0), text=data.headingText, fontsize=70, uppercase=True, bold=True)
         uicls.Label(name='subHeading', parent=leftFrame.mainCont, pos=(310, 85, 380, 0), text=data.subHeadingText, fontsize=35)
         greenCont = uicls.Container(name='trainCont', parent=leftFrame.mainCont, align=uiconst.TOPLEFT, bgColor=(0, 0.3, 0, 1.0), pos=(310, 143, 370, 50))
-        uicls.Label(parent=greenCont, text='<b>%s' % data.buttonText, fontsize=20, align=uiconst.CENTER)
+        uicls.Label(parent=greenCont, text=data.buttonText, fontsize=20, align=uiconst.CENTER, bold=True)
         uicls.Label(parent=leftFrame.mainCont, pos=(10, 250, 690, 0), text=data.mainText, fontsize=35)
         uicls.Sprite(parent=leftFrame.mainCont, align=uiconst.BOTTOMRIGHT, pos=(10, 30, 300, 100), texturePath='res:/UI/Texture/Classes/CQMainScreen/concordLogo.png')
         leftFrame.mainCont.opacity = 0.0
-        blue.synchro.Sleep(300)
+        blue.synchro.SleepWallclock(300)
         uicore.animations.BlinkIn(leftFrame.mainCont, sleep=True)
         rightFrame = uicls.ScreenFrame1(parent=self, align=uiconst.TORIGHT, width=540)
-        blue.synchro.Sleep(300)
+        blue.synchro.SleepWallclock(300)
         self.auraSprite = uicls.Sprite(name='aura', parent=rightFrame.mainCont, texturePath='res:/UI/Texture/Classes/CQMainScreen/aura.png', align=uiconst.CENTER, width=470, height=470)
         uthread.new(BlinkSprite, self.auraSprite)
-        blue.pyos.synchro.Sleep(TEMPLATE_DURATION)
+        blue.pyos.synchro.SleepWallclock(TEMPLATE_DURATION)
 
 
 
@@ -317,15 +320,15 @@ class AuraMessage(BaseTemplate):
         self.auraSprite = uicls.Sprite(name='aura', parent=leftFrame.mainCont, texturePath='res:/UI/Texture/Classes/CQMainScreen/aura.png', align=uiconst.TOALL)
         uthread.new(BlinkSprite, self.auraSprite)
         rightFrame = uicls.ScreenFrame2(parent=self, align=uiconst.TOPRIGHT, pos=(80, 50, 550, 300))
-        blue.pyos.synchro.Sleep(600)
+        blue.pyos.synchro.SleepWallclock(600)
         uicore.animations.BlinkIn(rightFrame.mainCont)
         rightFrame.mainCont.padTop = 30
         rightFrame.mainCont.padLeft = 30
         rightFrame.mainCont.padRight = 30
-        lblHead = uicls.Label(parent=rightFrame.mainCont, text=data.headingText, fontsize=50, align=uiconst.TOTOP)
+        lblHead = uicls.Label(parent=rightFrame.mainCont, text=data.headingText, fontsize=50, align=uiconst.TOTOP, uppercase=True, bold=True)
         lblBody = uicls.Label(parent=rightFrame.mainCont, text=data.subHeadingText, fontsize=35, align=uiconst.TOTOP, padTop=10)
         rightFrame.height = lblHead.height + lblBody.height + 65
-        blue.pyos.synchro.Sleep(TEMPLATE_DURATION)
+        blue.pyos.synchro.SleepWallclock(TEMPLATE_DURATION)
 
 
 
@@ -341,11 +344,11 @@ class CloneStatus(BaseTemplate):
         top = uicls.Container(parent=self, align=uiconst.TOTOP, height=200)
         bottom = uicls.Container(parent=self)
         sf = uicls.ScreenFrame1(parent=top, align=uiconst.TOLEFT, width=200, padding=10, wedgeWidth=10)
-        blue.pyos.synchro.Sleep(30)
+        blue.pyos.synchro.SleepWallclock(30)
         sf = uicls.ScreenFrame2(parent=top, padding=10)
-        blue.pyos.synchro.Sleep(30)
-        blue.pyos.synchro.Sleep(3000)
-        blue.pyos.synchro.Sleep(TEMPLATE_DURATION)
+        blue.pyos.synchro.SleepWallclock(30)
+        blue.pyos.synchro.SleepWallclock(3000)
+        blue.pyos.synchro.SleepWallclock(TEMPLATE_DURATION)
 
 
 
@@ -358,9 +361,9 @@ class VirtualGoodsStore(BaseTemplate):
     def Play(self, data):
         self.PlayIntro(data.get('introVideoPath', None))
         frame = uicls.ScreenFrame5(parent=self, align=uiconst.TOALL)
-        uicls.Label(name='headingLabel', parent=frame.mainCont, align=uiconst.CENTERTOP, fontsize=80, text=data.headingText, top=30)
+        uicls.Label(name='headingLabel', parent=frame.mainCont, align=uiconst.CENTERTOP, fontsize=80, text=data.headingText, uppercase=True, bold=True, top=30)
         uicore.animations.BlinkIn(frame.mainCont, sleep=True)
-        blue.synchro.Sleep(300)
+        blue.synchro.SleepWallclock(300)
         img1 = uicls.Sprite(name='img1', parent=frame.mainCont, pos=(10, 130, 380, 285), align=uiconst.TOPLEFT)
         uicore.animations.BlinkIn(img1, duration=0.05, sleep=True)
         img2 = uicls.Sprite(name='img2', parent=frame.mainCont, pos=(0, 130, 380, 285), align=uiconst.CENTERTOP)
@@ -372,7 +375,7 @@ class VirtualGoodsStore(BaseTemplate):
             if imgPath is None:
                 sm.GetService('photo').GetStorebanner(i + 1, 'EN', sprite)
 
-        blue.pyos.synchro.Sleep(TEMPLATE_DURATION)
+        blue.pyos.synchro.SleepWallclock(TEMPLATE_DURATION)
 
 
 
@@ -429,7 +432,6 @@ class Scene3dCont(uicls.Container):
             if model is None:
                 self.sceneContainer.ClearScene()
                 raise UserError('PreviewNoModel')
-                return 
             if getattr(model, 'boosters', None) is not None:
                 model.boosters = None
             if getattr(model, 'modelRotationCurve', None) is not None:
@@ -451,12 +453,12 @@ class Scene3dCont(uicls.Container):
     def _CreateRotationCurve(self, model):
         model.rotationCurve = trinity.TriYPRSequencer()
         model.rotationCurve.YawCurve = yawCurve = trinity.TriScalarCurve()
-        yawCurve.start = blue.os.GetTime()
+        yawCurve.start = blue.os.GetWallclockTime()
         yawCurve.extrapolation = trinity.TRIEXT_CONSTANT
         yawCurve.AddKey(0.0, -70.0, 0, 0, trinity.TRIINT_HERMITE)
         yawCurve.AddKey(self.duration, 70.0, 0, 0, trinity.TRIINT_HERMITE)
         model.rotationCurve.PitchCurve = pitchCurve = trinity.TriScalarCurve()
-        pitchCurve.start = blue.os.GetTime()
+        pitchCurve.start = blue.os.GetWallclockTime()
         pitchCurve.extrapolation = trinity.TRIEXT_CONSTANT
         pitchCurve.AddKey(0.0, -10.0, 0, 0, trinity.TRIINT_HERMITE)
         pitchCurve.AddKey(self.duration, 10.0, 0, 0, trinity.TRIINT_HERMITE)
@@ -469,7 +471,7 @@ def BlinkSprite(sprite):
         num = random.randint(2, 4)
         uicore.animations.SpGlowFadeOut(sprite, duration=0.4 / num, loops=num)
         uicore.animations.SpColorMorphTo(sprite, startColor=(0.3, 0.3, 0.3, 1.0), endColor=util.Color.WHITE, duration=1.0)
-        blue.pyos.synchro.Sleep(random.randint(3000, 5000))
+        blue.pyos.synchro.SleepWallclock(random.randint(3000, 5000))
 
 
 

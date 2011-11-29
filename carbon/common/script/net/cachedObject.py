@@ -25,7 +25,7 @@ class CachedObject:
         self.__cachedObject__ = cachedObject
         self.__compressed__ = 0
         self.__thePickle__ = None
-        self.__objectVersion__ = (blue.os.GetTime(1), objectVersion)
+        self.__objectVersion__ = (blue.os.GetWallclockTimeNow(), objectVersion)
         if (self.__shared__ or objectVersion is None) and macho.mode != 'client':
             self.__thePickle__ = blue.marshal.Save(cachedObject)
             if len(self.__thePickle__) > 170:

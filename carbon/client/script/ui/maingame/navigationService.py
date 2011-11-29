@@ -9,7 +9,8 @@ class CoreNavigationService(service.Service):
 
     def Run(self, memStream = None):
         service.Service.Run(self, memStream)
-        self.hasControl = False
+        self.hasControl = True
+        self.hasFocus = False
         self.navKeys = None
         self.lastKeyRunning = False
         self.keyDownCookie = None
@@ -24,6 +25,11 @@ class CoreNavigationService(service.Service):
 
     def Stop(self, stream):
         service.Service.Stop(self)
+
+
+
+    def HasControl(self):
+        return self.hasFocus and self.hasControl
 
 
 
@@ -49,9 +55,12 @@ class CoreNavigationService(service.Service):
 
 
     def CheckKeyState(self):
-        while self.state == service.SERVICE_RUNNING:
-            if self.hasControl:
-                self.RecreatePlayerMovement()
+        while True:
+            if self.state == service.SERVICE_RUNNING:
+                if self.hasControl:
+                    self.RecreatePlayerMovement()
+            elif self.state == service.SERVICE_STOPPED:
+                return 
             blue.synchro.Yield()
 
 

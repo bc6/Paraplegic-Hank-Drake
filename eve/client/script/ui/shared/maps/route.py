@@ -66,7 +66,7 @@ class MapRoute(object):
         else:
             map = sm.StartService('map')
             for (index, destinationID,) in enumerate(destinations):
-                destination = map.GetItem(destinationID)
+                destination = cfg.evelocations.Get(destinationID)
                 pos = trinity.TriVector(destination.x, destination.y, destination.z)
                 if flattened:
                     pos.y = 0.0
@@ -76,7 +76,7 @@ class MapRoute(object):
                 transCurve.AddKey(index * 2 * self.timeBase, pos, trinity.TriVector(), trinity.TriVector(), trinity.TRIINT_LINEAR)
                 transCurve.AddKey((index * 2 + 1) * self.timeBase, pos, trinity.TriVector(), trinity.TriVector(), trinity.TRIINT_LINEAR)
 
-        now = blue.os.GetTime(1)
+        now = blue.os.GetSimTime()
         self.model.translationCurve = transCurve
         self.model.translationCurve.start = now
         if blinking:

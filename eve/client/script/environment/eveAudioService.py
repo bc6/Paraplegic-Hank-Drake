@@ -1,3 +1,4 @@
+import audio2
 import svc
 import blue
 import sys
@@ -7,7 +8,7 @@ import trinity
 class EveAudioService(svc.audio):
     __guid__ = 'svc.eveAudio'
     __replaceservice__ = 'audio'
-    __exportedcalls__ = svc.audio.__exportedcalls__
+    __exportedcalls__ = svc.audio.__exportedcalls__.copy()
     __exportedcalls__.update({'PlaySound': [],
      'AudioMessage': [],
      'SendUIEvent': [],
@@ -29,13 +30,10 @@ class EveAudioService(svc.audio):
 
 
     def AppRun(self):
-        if blue.win32 and trinity.device and uicore.uilib:
-            try:
-                blue.win32.WTSRegisterSessionNotification(trinity.device.GetWindow(), 0)
-                uicore.uilib.SessionChangeHandler = self.OnUserSessionChange
-            except:
-                sys.exc_clear()
-                uicore.uilib.SessionChangeHandler = None
+        if self.AppGetSetting('forceEnglishVoice', False):
+            aPath = blue.os.ResolvePath(u'res:/Audio')
+            io = audio2.AudLowLevelIO(aPath)
+            self.manager.config.lowLevelIO = io
 
 
 
@@ -47,20 +45,6 @@ class EveAudioService(svc.audio):
                 sys.exc_clear()
         if uicore.uilib:
             uicore.uilib.SessionChangeHandler = None
-
-
-
-    def OnUserSessionChange(self, wp, lp):
-        if not self.IsActivated():
-            return 
-        if wp == 1:
-            sm.GetService('vivox').OnSessionReconnect()
-            if self.IsActivated() and self.GetMasterVolume() > 0.0:
-                self.SetMasterVolume(self.GetMasterVolume(), persist=True)
-        elif wp == 2:
-            sm.GetService('vivox').OnSessionDisconnect()
-            if self.IsActivated() and self.GetMasterVolume() > 0.0:
-                self.SetMasterVolume(0.0, persist=False)
 
 
 

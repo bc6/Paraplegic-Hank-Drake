@@ -8,10 +8,11 @@ import util
 import blue
 import uicls
 import uiconst
+import localization
 from fleetcommon import *
 GETFLEETS_THROTTLETIME = 2000
 SIZE_FULLUI = (390, 250)
-COMBO_SIZES = [110, 90, 86]
+COMBO_SIZES = [125, 90, 86]
 
 class FleetFinderWindow(uicls.Container):
     __guid__ = 'form.FleetFinderWindow'
@@ -70,9 +71,9 @@ class FleetFinderWindow(uicls.Container):
                 self.sr.standingCombo.width = COMBO_SIZES[2]
         if self.sr.Get('infoCont'):
             if self.Height() < SIZE_FULLUI[1]:
-                self.sr.infoCont.height = 155 - (SIZE_FULLUI[1] - self.Height())
+                self.sr.infoCont.height = 215 - (SIZE_FULLUI[1] - self.Height())
             else:
-                self.sr.infoCont.height = 155
+                self.sr.infoCont.height = 215
         if self.sr.Get('myAdvertText'):
             if self.Height() < 180:
                 self.sr.myAdvertText.state = uiconst.UI_HIDDEN
@@ -94,15 +95,15 @@ class FleetFinderWindow(uicls.Container):
         myAdvertParent = uicls.Container(name='myadvert', parent=self, align=uiconst.TOALL, pos=(0, 0, 0, 0), clipChildren=1)
         self.sr.myAdvertButtons = uicls.Container(name='myAdvertButtons', parent=myAdvertParent, align=uiconst.TOBOTTOM, height=35)
         self.sr.tabs = uicls.TabGroup(name='fleetfindertabs', parent=self, idx=0)
-        tabs = [[mls.UI_FLEET_FINDFLEETS,
+        tabs = [[localization.GetByLabel('UI/Fleet/FleetRegistry/FindFleets'),
           findFleetsParent,
           self,
-          'findfleets'], [mls.UI_FLEET_MYADVERT,
+          'findfleets'], [localization.GetByLabel('UI/Fleet/FleetRegistry/MyAdvert'),
           myAdvertParent,
           self,
           'myadvert']]
         self.sr.tabs.Startup(tabs, 'fleetfindertabs', 0)
-        uthread.new(self.sr.tabs.ShowPanelByName, mls.UI_FLEET_FINDFLEETS)
+        uthread.new(self.sr.tabs.ShowPanelByName, localization.GetByLabel('UI/Fleet/FleetRegistry/FindFleets'))
         uicls.Container(name='push', parent=findFleetsParent, width=const.defaultPadding, align=uiconst.TOLEFT)
         uicls.Container(name='push', parent=findFleetsParent, width=const.defaultPadding, align=uiconst.TORIGHT)
         self.sr.filterCont = uicls.Container(name='filterCont', parent=findFleetsParent, align=uiconst.TOTOP, height=35)
@@ -118,71 +119,71 @@ class FleetFinderWindow(uicls.Container):
 
 
     def SetupStuff(self):
-        options = [(mls.UI_FLEET_AVAILABLEFLEETS, INVITE_ALL), (mls.UI_FLEET_CORPFLEETS, INVITE_CORP)]
+        options = [(localization.GetByLabel('UI/Fleet/FleetRegistry/MyAvailableFleets'), INVITE_ALL), (localization.GetByLabel('UI/Fleet/FleetRegistry/MyCorpFleets'), INVITE_CORP)]
         selected = settings.user.ui.Get('fleetfinder_scopeFilter', None)
         if session.allianceid is not None:
-            options.append((mls.UI_FLEET_ALLIANCEFLEETS, INVITE_ALLIANCE))
+            options.append((localization.GetByLabel('UI/Fleet/FleetRegistry/MyAllianceFleets'), INVITE_ALLIANCE))
         elif selected == INVITE_ALLIANCE:
             selected = None
         if session.warfactionid is not None:
-            options.append((mls.UI_FLEET_MILITIAFLEETS, INVITE_MILITIA))
+            options.append((localization.GetByLabel('UI/Fleet/FleetRegistry/MyMilitiaFleets'), INVITE_MILITIA))
         elif selected == INVITE_MILITIA:
             selected = None
-        options.append((mls.UI_FLEET_STANDINGONLY, INVITE_PUBLIC))
+        options.append((localization.GetByLabel('UI/Fleet/FleetRegistry/BasedOnStandings'), INVITE_PUBLIC))
         l = 1
-        combo = self.sr.scopeCombo = uicls.Combo(label=mls.UI_FLEET_SCOPE, parent=self.sr.filterCont, options=options, name='fleetfinder_scopeFilter', select=selected, pos=(l,
+        combo = self.sr.scopeCombo = uicls.Combo(label=localization.GetByLabel('UI/Fleet/FleetRegistry/Scope'), parent=self.sr.filterCont, options=options, name='fleetfinder_scopeFilter', select=selected, pos=(l,
          14,
          0,
          0), width=COMBO_SIZES[0])
         self.sr.scopeCombo.OnChange = self.OnComboChange
         l += combo.width + 3
         selected = settings.user.ui.Get('fleetfinder_rangeFilter', None)
-        options = [(mls.UI_GENERIC_ANY, None),
-         (mls.UI_FLEET_NJUMPS % {'n': 5}, 5),
-         (mls.UI_FLEET_NJUMPS % {'n': 10}, 10),
-         (mls.UI_FLEET_REGION, -1)]
-        combo = self.sr.rangeCombo = uicls.Combo(label=mls.UI_FLEET_RANGE, parent=self.sr.filterCont, options=options, name='fleetfinder_rangeFilter', select=selected, pos=(l,
+        options = [(localization.GetByLabel('UI/Common/Any'), None),
+         (localization.GetByLabel('UI/Fleet/FleetRegistry/NumberOfJumps', numJumps=5), 5),
+         (localization.GetByLabel('UI/Fleet/FleetRegistry/NumberOfJumps', numJumps=10), 10),
+         (localization.GetByLabel('UI/Common/LocationTypes/Region'), -1)]
+        combo = self.sr.rangeCombo = uicls.Combo(label=localization.GetByLabel('UI/Fleet/FleetRegistry/Range'), parent=self.sr.filterCont, options=options, name='fleetfinder_rangeFilter', select=selected, pos=(l,
          14,
          0,
          0), width=COMBO_SIZES[1])
         self.sr.rangeCombo.OnChange = self.OnComboChange
         l += combo.width + 3
         selected = settings.user.ui.Get('fleetfinder_standingFilter', None)
-        options = [(mls.UI_GENERIC_ANY, None), (mls.UI_CONTACTS_GOODSTANDING, const.contactGoodStanding), (mls.UI_CONTACTS_HIGHSTANDING, const.contactHighStanding)]
-        combo = self.sr.standingCombo = uicls.Combo(label=mls.UI_FLEET_STANDING, parent=self.sr.filterCont, options=options, name='fleetfinder_standingFilter', select=selected, pos=(l,
+        options = [(localization.GetByLabel('UI/Common/Any'), None), (localization.GetByLabel('UI/Standings/Good'), const.contactGoodStanding), (localization.GetByLabel('UI/Standings/Excellent'), const.contactHighStanding)]
+        combo = self.sr.standingCombo = uicls.Combo(label=localization.GetByLabel('UI/Fleet/FleetRegistry/RequireStanding'), parent=self.sr.filterCont, options=options, name='fleetfinder_standingFilter', select=selected, pos=(l,
          14,
          0,
          0), width=COMBO_SIZES[2])
         self.sr.standingCombo.OnChange = self.OnComboChange
         l += combo.width + 3
-        self.sr.getFleetsBtn = btn = uicls.Button(parent=self.sr.filterCont, label=mls.UI_FLEET_GETFLEETS, pos=(0, 14, 0, 0), func=self.GetFleetsClick, align=uiconst.TOPRIGHT)
+        self.sr.getFleetsBtn = btn = uicls.Button(parent=self.sr.filterCont, label=localization.GetByLabel('UI/Fleet/FleetRegistry/FindFleets'), pos=(0, 14, 0, 0), func=self.GetFleetsClick, align=uiconst.TOPRIGHT)
         self.sr.scroll = uicls.Scroll(parent=self.sr.scrollCont)
         self.sr.scroll.sr.id = 'fleetfinderScroll'
         self.sr.scroll.multiSelect = 0
-        self.sr.scroll.Load(contentList=[], headers=[], scrolltotop=0, noContentHint=mls.UI_FLEET_FLEETFINDERSCROLLHINT)
-        self.sr.caption = uicls.CaptionLabel(text='', parent=self.sr.topInfoCont, align=uiconst.RELATIVE, fontsize=13, left=4, top=2, state=uiconst.UI_NORMAL)
-        self.sr.detailsText = uicls.Edit(parent=self.sr.descrCont, padTop=2, state=uiconst.UI_NORMAL, readonly=1, hideBackground=1)
+        self.sr.scroll.Load(contentList=[], headers=[], scrolltotop=0, noContentHint=localization.GetByLabel('UI/Fleet/FleetRegistry/SearchHint'))
+        self.sr.caption = uicls.EveLabelMediumBold(text='', parent=self.sr.topInfoCont, align=uiconst.RELATIVE, left=4, top=2, state=uiconst.UI_NORMAL)
+        self.sr.detailsText = uicls.EditPlainText(name='detailsText', parent=self.sr.descrCont, padTop=2, state=uiconst.UI_NORMAL, readonly=1)
+        self.sr.detailsText.HideBackground()
+        self.sr.detailsText.RemoveActiveFrame()
         uicls.Frame(parent=self.sr.detailsText, color=(0.4, 0.4, 0.4, 0.7))
-        self.sr.detailsText.AllowResizeUpdates(1)
         tabs = [110, 540]
-        self.sr.infoText = uicls.Label(text='', parent=self.sr.descrCont, top=const.defaultPadding, idx=0, tabs=tabs, state=uiconst.UI_NORMAL)
-        self.sr.joinBtn = btn = uicls.Button(parent=self.sr.topInfoCont, label=mls.UI_FLEET_JOINFLEET, pos=(0, 1, 0, 0), func=self.JoinFleet, align=uiconst.CENTERRIGHT)
-        self.sr.joinRequestBtn = btn = uicls.Button(parent=self.sr.topInfoCont, label=mls.UI_FLEET_REQUESTJOINFLEET, pos=(0, 1, 0, 0), func=self.JoinFleet, align=uiconst.CENTERRIGHT)
+        self.sr.infoText = uicls.EveLabelMedium(name='infoText', text='', parent=self.sr.descrCont, top=const.defaultPadding, idx=0, tabs=tabs, state=uiconst.UI_NORMAL)
+        self.sr.joinBtn = btn = uicls.Button(parent=self.sr.topInfoCont, label=localization.GetByLabel('UI/Fleet/FleetRegistry/JoinFleet'), pos=(0, 1, 0, 0), func=self.JoinFleet, align=uiconst.CENTERRIGHT)
+        self.sr.joinRequestBtn = btn = uicls.Button(parent=self.sr.topInfoCont, label=localization.GetByLabel('UI/Fleet/FleetRegistry/RequestJoinFleet'), pos=(0, 1, 0, 0), func=self.JoinFleet, align=uiconst.CENTERRIGHT)
         self.sr.myAdvertMainCont = uicls.Container(name='myAdvertMainCont', parent=self.sr.myAdvertCont, align=uiconst.TOALL, pos=(0, 0, 0, 0))
-        self.myAdvertButtons = [(mls.UI_FLEET_EDITREGISTRATION,
+        self.myAdvertButtons = [(localization.GetByLabel('UI/Fleet/FleetWindow/EditAdvert'),
           sm.GetService('fleet').OpenRegisterFleetWindow,
           (),
-          84), (mls.UI_FLEET_UNREGISTER,
+          84), (localization.GetByLabel('UI/Fleet/FleetWindow/RemoveAdvert'),
           sm.GetService('fleet').UnregisterFleet,
           (),
           84)]
         self.sr.myAdvertButtonWnd = uicls.ButtonGroup(btns=self.myAdvertButtons, parent=self.sr.myAdvertButtons, unisize=1)
-        self.sr.myAdvertCaption = uicls.CaptionLabel(text='', parent=self.sr.myAdvertCont, align=uiconst.TOTOP, fontsize=16, autowidth=0, left=0, top=7, state=uiconst.UI_DISABLED)
+        self.sr.myAdvertCaption = uicls.EveCaptionMedium(text='', parent=self.sr.myAdvertCont, align=uiconst.TOTOP, left=0, top=7, state=uiconst.UI_DISABLED)
         self.sr.myAdvertDescCont = uicls.Container(name='myAdvertDescCont', parent=self.sr.myAdvertCont, align=uiconst.TOALL, pos=(0, 0, 0, 0))
-        self.sr.myAdvertText = uicls.Label(text='', parent=self.sr.myAdvertCont, top=const.defaultPadding, tabs=tabs, autowidth=False, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
-        self.sr.myAdvertDesc = uicls.Edit(parent=self.sr.myAdvertDescCont, padTop=2, state=uiconst.UI_NORMAL, readonly=1)
-        self.sr.myAdvertDesc.AllowResizeUpdates(1)
-        self.myAdvertButtons_Register = [(mls.UI_FLEET_REGISTERFLEET,
+        self.sr.myAdvertText = uicls.EveLabelMedium(text='', parent=self.sr.myAdvertCont, top=const.defaultPadding, tabs=tabs, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        self.sr.myAdvertDesc = uicls.EditPlainText(parent=self.sr.myAdvertDescCont, padTop=2, state=uiconst.UI_NORMAL, readonly=1)
+        self.myAdvertButtons_Register = [(localization.GetByLabel('UI/Fleet/FleetWindow/CreateAdvert'),
           sm.GetService('fleet').OpenRegisterFleetWindow,
           (),
           84)]
@@ -195,15 +196,15 @@ class FleetFinderWindow(uicls.Container):
 
     def LoadMyAdvert(self):
         self.sr.myAdvertText.text = ''
-        self.sr.detailsText.LoadHTML('')
+        self.sr.detailsText.SetValue('')
         self.sr.myAdvertButtonWnd.state = uiconst.UI_HIDDEN
         self.sr.myAdvertButtonWnd_Register.state = uiconst.UI_HIDDEN
         self.sr.myAdvertMainCont.left = 0
         self.sr.myAdvertCaption.left = 4
         if session.fleetid is None:
-            caption = mls.UI_FLEET_NOTINAFLEET
+            caption = localization.GetByLabel('UI/Fleet/FleetRegistry/NotInAFleet')
             self.sr.myAdvertCaption.text = caption
-            self.sr.myAdvertText.text = mls.UI_FLEET_NOTINAFLEET_DESC
+            self.sr.myAdvertText.text = localization.GetByLabel('UI/Fleet/FleetRegistry/NotInAFleetDetailed')
             self.sr.myAdvertDesc.state = uiconst.UI_HIDDEN
             self.isNoAdvert = True
             self.sr.myAdvertCont.left = 10
@@ -211,9 +212,9 @@ class FleetFinderWindow(uicls.Container):
             return 
         fleet = sm.GetService('fleet').GetMyFleetFinderAdvert()
         if fleet is None:
-            caption = mls.UI_FLEET_NOADVERT
+            caption = localization.GetByLabel('UI/Fleet/FleetRegistry/DoNotHaveAnAdvert')
             self.sr.myAdvertCaption.text = caption
-            self.sr.myAdvertText.text = mls.UI_FLEET_NOADVERT_DESC
+            self.sr.myAdvertText.text = localization.GetByLabel('UI/Fleet/FleetRegistry/DoNotHaveAnAdvertDetailed')
             self.sr.myAdvertDesc.state = uiconst.UI_HIDDEN
             self.sr.myAdvertButtonWnd_Register.state = uiconst.UI_NORMAL
             self.isNoAdvert = True
@@ -224,23 +225,20 @@ class FleetFinderWindow(uicls.Container):
             return 
         self.isNoAdvert = False
         self.sr.myAdvertButtonWnd.state = uiconst.UI_NORMAL
-        caption = '%s' % (fleet.fleetName or mls.UI_GENERIC_UNNAMED)
+        caption = fleet.fleetName or localization.GetByLabel('UI/Fleet/FleetRegistry/UnnamedFleet')
         self.sr.myAdvertCaption.text = caption
         self.sr.dragIcon = dragIcon = xtriui.AdvertDraggableIcon(name='theicon', align=uiconst.TOPLEFT, parent=self.sr.myAdvertCont, height=64, width=64, top=const.defaultPadding, left=const.defaultPadding, state=uiconst.UI_NORMAL, idx=0)
         dragIcon.Startup(fleet)
-        dragIcon.hint = mls.UI_FLEET_DRAGTOSHAREADVERT
+        dragIcon.hint = localization.GetByLabel('UI/Fleet/FleetRegistry/DragToShareAdvertHint')
         dragIcon.state = uiconst.UI_NORMAL
         text = self.GetFleetDetailsEntry(fleet)
         h = 0
-        if fleet.joinNeedsApproval:
-            text += '<t><b>%s</b><t>' % mls.UI_FLEET_NEEDSAPPROVAL
-            h += 10
         self.sr.myAdvertText.text = text
         h += self.sr.myAdvertText.top + self.sr.myAdvertText.height - 5
         desc = fleet.description
-        self.sr.myAdvertDesc.top = h
+        self.sr.myAdvertDesc.padTop = h + 2
         self.sr.myAdvertDesc.state = [uiconst.UI_NORMAL, uiconst.UI_HIDDEN][(desc == '')]
-        self.sr.myAdvertDesc.LoadHTML('<html><body>%s</body></html>' % desc)
+        self.sr.myAdvertDesc.SetValue(desc)
         self._OnResize()
 
 
@@ -254,80 +252,66 @@ class FleetFinderWindow(uicls.Container):
         self.sr.infoCont.isOpen = True
         if self.Height() >= SIZE_FULLUI[1]:
             self.sr.infoCont.state = uiconst.UI_PICKCHILDREN
-        caption = '%s' % (fleet.fleetName or mls.UI_GENERIC_UNNAMED)
+        caption = fleet.fleetName or localization.GetByLabel('UI/Fleet/FleetRegistry/UnnamedFleet')
         self.sr.caption.text = caption
         text = self.GetFleetDetailsEntry(fleet)
         self.sr.infoText.text = text
-        self.sr.detailsText.top = self.sr.infoText.height - 5
+        self.sr.detailsText.padTop = self.sr.infoText.height + 2
         desc = fleet.description
         self.sr.detailsText.state = [uiconst.UI_NORMAL, uiconst.UI_HIDDEN][(desc == '')]
-        self.sr.detailsText.LoadHTML('<html><body>%s</body></html>' % desc)
+        self.sr.detailsText.SetValue(desc)
         self.sr.joinBtn.state = [uiconst.UI_NORMAL, uiconst.UI_HIDDEN][fleet.joinNeedsApproval]
         self.sr.joinRequestBtn.state = [uiconst.UI_NORMAL, uiconst.UI_HIDDEN][(not fleet.joinNeedsApproval)]
 
 
 
     def GetFleetDetailsEntry(self, fleet):
-
-        def AddBasicInfoRow(key, val):
-            return '<b>%(key)s</b><t>%(val)s<br>' % {'key': key,
-             'val': val}
-
-
         text = ''
-        bossName = '<url:showinfo:1376//%s>%s</url>' % (fleet.leader.charID, cfg.eveowners.Get(fleet.leader.charID).name)
+        text += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/Boss', boss=fleet.leader.charID, bossInfoData=('showinfo', 1376, fleet.leader.charID))
+        text += '<br>'
         if fleet.solarSystemID:
-            loc = mls.UI_FLEET_FLEETLOCATIONHINT % {'name': cfg.evelocations.Get(fleet.solarSystemID).name,
-             'jumps': fleet.numJumps}
-            bossName += ' - <url:showinfo:5//%s>%s</url> (<url:showrouteto:%s>%s</url>)' % (fleet.solarSystemID,
-             cfg.evelocations.Get(fleet.solarSystemID).name,
-             fleet.solarSystemID,
-             mls.UI_FLEET_JUMPS % {'num': fleet.numJumps})
-        text += AddBasicInfoRow(mls.UI_FLEET_FLEETBOSS, bossName)
-        text += AddBasicInfoRow(mls.UI_FLEET_FLEETAGE, util.FmtDate(blue.os.GetTime() - fleet.dateCreated, 'ss'))
-        hint = ''
+            text += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/Location', bossLocation=fleet.solarSystemID, locationData=('showinfo', const.groupSolarSystem, fleet.solarSystemID))
+            text += '<br>'
+        text += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/Age', fleetAge=blue.os.GetWallclockTime() - fleet.dateCreated)
+        text += '<br>'
         if fleet.numMembers:
-            text += AddBasicInfoRow(mls.UI_FLEET_NUMMEMBERS, fleet.numMembers)
+            text += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/MemberCount', memberCount=fleet.numMembers)
+            text += '<br>'
         scopeLines = []
         if IsOpenToCorp(fleet):
-            scopeLines.append('<b>%s</b> (<url:showinfo:%s//%s>%s</url>)' % (mls.UI_FLEET_CORP,
-             const.typeCorporation,
-             fleet.leader.corpID,
-             cfg.eveowners.Get(fleet.leader.corpID).name))
+            scopeLines.append(localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/CorporationAccessScope', corpName=cfg.eveowners.Get(fleet.leader.corpID).name, corpInfo=('showinfo', const.typeCorporation, fleet.leader.corpID)))
         if IsOpenToAlliance(fleet):
-            scopeLines.append('<b>%s</b> (<url:showinfo:%s//%s>%s</url>)' % (mls.UI_FLEET_ALLIANCE,
-             const.typeAlliance,
-             fleet.leader.allianceID,
-             cfg.eveowners.Get(fleet.leader.allianceID).name))
+            scopeLines.append(localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/AllianceAccessScope', allianceName=cfg.eveowners.Get(fleet.leader.allianceID).name, allianceInfo=('showinfo', const.typeAlliance, fleet.leader.allianceID)))
         if IsOpenToMilitia(fleet):
-            scopeLines.append('<b>%s</b> (<url:showinfo:%s//%s>%s</url>)' % (mls.UI_FLEET_MILITIA,
-             const.typeFaction,
-             fleet.leader.warFactionID,
-             cfg.eveowners.Get(fleet.leader.warFactionID).name))
+            scopeLines.append(localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/MilitiaAccessScope', militiaName=cfg.eveowners.Get(fleet.leader.warFactionID).name, militiaInfo=('showinfo', const.typeFaction, fleet.leader.warFactionID)))
         if fleet.local_minStanding is not None or fleet.local_minSecurity is not None:
-            lineText = ''
             if fleet.local_minStanding is not None:
                 if fleet.local_minStanding == const.contactGoodStanding:
-                    minStanding = mls.UI_CONTACTS_GOODSTANDING
+                    standing = localization.GetByLabel('UI/Standings/Good')
                 else:
-                    minStanding = mls.UI_CONTACTS_HIGHSTANDING
-                lineText += '%s: %s' % (mls.UI_FLEET_MINSTANDING, minStanding)
+                    standing = localization.GetByLabel('UI/Standings/Excellent')
                 if fleet.local_minSecurity is not None:
-                    lineText += ' - '
-            if fleet.local_minSecurity is not None:
-                lineText += '%s: %.1f' % (mls.UI_FLEET_MINSECURITY, fleet.local_minSecurity)
-            scopeLines.append(lineText)
+                    scopeLines.append(localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/MinimumStandingAndSecurity', standing=standing, security=fleet.local_minSecurity))
+                else:
+                    scopeLines.append(localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/MinimumStanding', standing=standing))
+            elif fleet.local_minSecurity is not None:
+                scopeLines.append(localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/MinimumSecurity', security=fleet.local_minSecurity))
         if IsOpenToPublic(fleet):
-            scopeLines.append('<b>%s</b>' % mls.UI_FLEET_STANDINGONLY)
-            if fleet.public_minStanding == const.contactGoodStanding:
-                minStanding = mls.UI_CONTACTS_GOODSTANDING
-            else:
-                minStanding = mls.UI_CONTACTS_HIGHSTANDING
-            lineText = '%s: %s' % (mls.UI_FLEET_MINSTANDING, minStanding)
-            if fleet.public_minSecurity is not None:
-                lineText += ' - %s: %.1f' % (mls.UI_FLEET_MINSECURITY, fleet.public_minSecurity)
-            scopeLines.append(lineText)
-        text += AddBasicInfoRow(mls.UI_FLEET_SCOPE, '<br><t>'.join(scopeLines))
+            scopeLines.append(localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/PublicAccessScope'))
+            if fleet.public_minStanding is not None:
+                if fleet.public_minStanding == const.contactGoodStanding:
+                    standing = localization.GetByLabel('UI/Standings/Good')
+                else:
+                    standing = localization.GetByLabel('UI/Standings/Excellent')
+                if fleet.public_minSecurity is not None:
+                    scopeLines.append(localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/MinimumStandingAndSecurity', standing=standing, security=fleet.local_minSecurity))
+                else:
+                    scopeLines.append(localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/MinimumStanding', standing=standing))
+            elif fleet.public_minSecurity is not None:
+                scopeLines.append(localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/MinimumSecurity', security=fleet.local_minSecurity))
+        text += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/Scope', scope='<br><t>'.join(scopeLines))
+        text += '<br>'
+        text += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/NeedsApproval')
         return text
 
 
@@ -335,7 +319,7 @@ class FleetFinderWindow(uicls.Container):
     def ClearInfoCont(self):
         self.sr.infoCont.state = uiconst.UI_HIDDEN
         self.sr.infoCont.isOpen = False
-        self.sr.detailsText.LoadHTML('')
+        self.sr.detailsText.SetValue('')
 
 
 
@@ -365,10 +349,8 @@ class FleetFinderWindow(uicls.Container):
             if sm.GetService('fleet').options.isRegistered:
                 self.EditDetail()
             else:
-                wnd = sm.GetService('window').GetWindow('RegisterFleetWindow')
-                if wnd:
-                    wnd.CloseX()
-                sm.GetService('window').GetWindow('RegisterFleetWindow', create=1, decoClass=form.RegisterFleetWindow)
+                form.RegisterFleetWindow.CloseIfOpen()
+                form.RegisterFleetWindow.Open()
 
 
 
@@ -395,10 +377,10 @@ class FleetFinderWindow(uicls.Container):
 
 
     def EnableButtonTimer(self):
-        blue.pyos.synchro.Sleep(GETFLEETS_THROTTLETIME)
+        blue.pyos.synchro.SleepWallclock(GETFLEETS_THROTTLETIME)
         try:
             self.sr.getFleetsBtn.state = uiconst.UI_NORMAL
-            self.sr.getFleetsBtn.SetLabel(mls.UI_FLEET_GETFLEETS)
+            self.sr.getFleetsBtn.SetLabel(localization.GetByLabel('UI/Fleet/FleetRegistry/FindFleets'))
         except:
             pass
 
@@ -453,13 +435,14 @@ class FleetFinderWindow(uicls.Container):
             if filterStanding is not None:
                 if filterStanding != fleet.standing:
                     continue
-            bossName = cfg.eveowners.Get(fleet.leader.charID).name
-            systemString = ' (%s)' % cfg.evelocations.Get(fleet.solarSystemID).locationName
-            numMembers = fleet.numMembers
+            bossName = localization.GetByLabel('UI/Common/CharacterNameLabel', charID=fleet.leader.charID)
             if fleet.hideInfo:
-                numMembers = '<color=0xff888888>%s</color>' % mls.UI_GENERIC_HIDDEN.lower()
-                systemString = ''
-            label = '%s%s<t>%s<t>%s<t>%s' % (bossName,
+                numMembers = '<color=0x7f888888>%s</color>' % localization.GetByLabel('UI/Generic/Private')
+                systemString = '<color=0x7f888888>%s</color>' % localization.GetByLabel('UI/Generic/Private')
+            else:
+                numMembers = fleet.numMembers
+                systemString = localization.GetByLabel('UI/Common/LocationDynamic', location=fleet.solarSystemID)
+            label = '%s<t>%s<t>%s<t>%s<t>%s' % (bossName,
              systemString,
              fleet.fleetName,
              numMembers,
@@ -475,11 +458,12 @@ class FleetFinderWindow(uicls.Container):
              'securityStatus': fleet.leader.securityStatus}
             scrolllist.append(listentry.Get('FleetFinderEntry', data))
 
-        headers = [mls.UI_FLEET_FLEETLEADER,
-         mls.UI_FLEET_NAMEOFFLEET,
-         mls.UI_FACWAR_PILOTS,
-         mls.UI_GENERIC_DESCRIPTION]
-        self.sr.scroll.Load(contentList=scrolllist, headers=headers, scrolltotop=0, noContentHint=mls.UI_RMR_TEXT10)
+        headers = [localization.GetByLabel('UI/Fleet/Ranks/Boss'),
+         localization.GetByLabel('UI/Fleet/FleetRegistry/BossLocationHeader'),
+         localization.GetByLabel('UI/Fleet/NameOfFleet'),
+         localization.GetByLabel('UI/Fleet/FleetRegistry/MemberCount'),
+         localization.GetByLabel('UI/Common/Description')]
+        self.sr.scroll.Load(contentList=scrolllist, headers=headers, scrolltotop=0, noContentHint=localization.GetByLabel('UI/Fleet/FleetRegistry/SearchNoResult'))
 
 
 
@@ -572,18 +556,18 @@ class FleetFinderEntry(listentry.Generic):
         fleet = self.sr.node.fleet
         fleetSvc = sm.GetService('fleet')
         if self.sr.node.fleetID != session.fleetid:
-            m += [(mls.UI_FLEET_JOINFLEET, fleetSvc.ApplyToJoinFleet, [fleet.fleetID])]
+            m += [(localization.GetByLabel('UI/Fleet/FleetRegistry/JoinFleet'), fleetSvc.ApplyToJoinFleet, [fleet.fleetID])]
             m += [None]
         elif fleetSvc.IsBoss():
-            m += [(mls.UI_FLEET_EDITREGISTRATION, fleetSvc.OpenRegisterFleetWindow)]
+            m += [(localization.GetByLabel('UI/Fleet/FleetWindow/EditAdvert'), fleetSvc.OpenRegisterFleetWindow)]
             if sm.GetService('fleet').GetMyFleetFinderAdvert() is not None:
-                m += [(mls.UI_FLEET_UNREGISTER, fleetSvc.UnregisterFleet)]
+                m += [(localization.GetByLabel('UI/Fleet/FleetWindow/RemoveAdvert'), fleetSvc.UnregisterFleet)]
             m += [None]
         fleetbossMenu = menuSvc.CharacterMenu(fleet.leader.charID)
-        fleetbossMenu.insert(0, (mls.UI_CMD_SHOWINFO, sm.StartService('info').ShowInfo, (const.typeCharacterGallente, fleet.leader.charID)))
-        m += [(mls.UI_FLEET_BOSS, fleetbossMenu)]
+        fleetbossMenu.insert(0, (localization.GetByLabel('UI/Commands/ShowInfo'), sm.StartService('info').ShowInfo, (const.typeCharacterGallente, fleet.leader.charID)))
+        m += [(localization.GetByLabel('UI/Fleet/Ranks/Boss'), fleetbossMenu)]
         if fleet.solarSystemID:
-            m += [(mls.UI_FLEET_BOSSLOCATION, menuSvc.CelestialMenu(itemID=fleet.solarSystemID))]
+            m += [(localization.GetByLabel('UI/Fleet/FleetRegistry/BossLocationHeader'), menuSvc.CelestialMenu(itemID=fleet.solarSystemID))]
         return m
 
 
@@ -591,38 +575,36 @@ class FleetFinderEntry(listentry.Generic):
     def GetHint(self):
         fleet = self.sr.node.fleet
         hint = ''
-        hint += '<b>%s:</b>%s<br>' % (mls.UI_FLEET_NAME, fleet.fleetName)
-        hint += '<b>%s:</b>%s<br>' % (mls.UI_FLEET_FLEETBOSS, cfg.eveowners.Get(fleet.leader.charID).name)
+        hint += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/HintFleetName', fleetName=fleet.fleetName) + '<br>'
+        hint += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/HintFleetBoss', charID=fleet.leader.charID) + '<br>'
         if fleet.standing is not None:
-            hint += '<b>%s:</b>%.2f<br>' % (mls.UI_GENERIC_STANDING, fleet.standing)
+            hint += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/HintBossStanding', standing=fleet.standing) + '<br>'
         if fleet.solarSystemID:
-            loc = mls.UI_FLEET_FLEETLOCATIONHINT % {'name': cfg.evelocations.Get(fleet.solarSystemID).name,
-             'jumps': fleet.numJumps}
-            hint += '<b>%s:</b>%s<br>' % (mls.UI_FLEET_BOSSLOCATION, loc)
-        hint += '<b>%s:</b>%s<br>' % (mls.UI_FLEET_FLEETAGE, util.FmtDate(blue.os.GetTime() - fleet.dateCreated, 'ss'))
+            hint += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/HintFleetLocation', location=fleet.solarSystemID) + '<br>'
+        hint += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/HintFleetAge', fleetAge=blue.os.GetWallclockTime() - fleet.dateCreated) + '<br>'
         if fleet.numMembers:
-            hint += '<b>%s:</b>%s<br>' % (mls.UI_FLEET_NUMMEMBERS, fleet.numMembers)
-        hint += '<b>%s:</b><br>' % mls.UI_FLEET_SCOPE
+            hint += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/HintFleetMemberCount', memberCount=fleet.numMembers) + '<br>'
+        hint += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/HintScope') + '<br>'
         if IsOpenToCorp(fleet):
-            hint += '%s<br>' % mls.CORPORATION
+            hint += localization.GetByLabel('UI/Common/Corporation') + '<br>'
         if IsOpenToAlliance(fleet):
-            hint += '%s<br>' % mls.ALLIANCE
+            hint += localization.GetByLabel('UI/Common/Alliance') + '<br>'
         if IsOpenToMilitia(fleet):
-            hint += '%s<br>' % mls.UI_FLEET_MILITIA
+            hint += localization.GetByLabel('UI/Common/Militia') + '<br>'
         if fleet.local_minStanding is not None:
-            hint += '<i>%s:</i>%.1f<br>' % (mls.UI_FLEET_MINSTANDING, fleet.local_minStanding)
+            hint += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/HintMinimumStanding', standing=fleet.local_minStanding) + '<br>'
         if fleet.local_minSecurity is not None:
-            hint += '<i>%s:</i>%.1f<br>' % (mls.UI_FLEET_MINSECURITY, fleet.local_minSecurity)
+            hint += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/HintMinimumSecurity', security=fleet.local_minSecurity) + '<br>'
         if IsOpenToPublic(fleet):
-            hint += '%s<br>' % mls.UI_FLEET_STANDINGONLY
+            hint += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/PublicAccessScope') + '<br>'
         if fleet.public_minStanding is not None:
-            hint += '<i>%s:</i>%.1f<br>' % (mls.UI_FLEET_MINSTANDING, fleet.public_minStanding)
+            hint += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/HintMinimumStanding', standing=fleet.public_minStanding) + '<br>'
         if fleet.public_minSecurity is not None:
-            hint += '<i>%s:</i>%.1f<br>' % (mls.UI_FLEET_MINSECURITY, fleet.public_minSecurity)
+            hint += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/HintMinimumSecurity', security=fleet.public_minSecurity) + '<br>'
         if fleet.joinNeedsApproval:
-            hint += '<b>%s</b><br>' % mls.UI_FLEET_JOINNEEDSAPPROVAL
+            hint += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/NeedsApproval') + '<br>'
         if fleet.description:
-            hint += '<b>%s:</b><br>%s<br>' % (mls.UI_FLEET_FLEETDESCRIPTION, fleet.description)
+            hint += localization.GetByLabel('UI/Fleet/FleetRegistry/AdvertDetails/HintFleetDescription', description=fleet.description)
         return hint
 
 

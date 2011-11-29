@@ -10,7 +10,7 @@ class MinigameAIView(cef.BaseComponentView):
     @classmethod
     def SetupInputs(cls):
         cls.RegisterComponent(cls)
-        cls._AddInput(cls.GAME_TYPE, -1, cls.MANDATORY, const.cef.COMPONENTDATA_ID_TYPE)
+        cls._AddInput(cls.GAME_TYPE, -1, cls.RECIPE, const.cef.COMPONENTDATA_ID_TYPE, displayName='Game Type')
 
 
 

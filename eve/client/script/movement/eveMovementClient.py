@@ -5,27 +5,16 @@ import geo2
 import log
 import sys
 import const
+import movement
 
-class MovementClientComponent:
+class MovementClientComponent(movement.CommonMovementComponent):
     __guid__ = 'movement.MovementClientComponent'
-    __gwattrs__ = ('pos', 'rot', 'vel', 'localHeading', 'moveMode')
 
     def __init__(self):
-        self.avatarInfo = GameWorld.GWAvatarInfo()
-        self.avatar = None
+        movement.CommonMovementComponent.__init__(self)
         self.IsFlyMode = False
         self.flySpeed = 0.15
         self.relay = None
-        self.allowMovement = True
-
-
-
-    def __getattr__(self, attr):
-        if attr in self.__gwattrs__:
-            return getattr(self.avatar, attr)
-        if self.__dict__.has_key(attr):
-            return self.__dict__[attr]
-        raise AttributeError(attr)
 
 
 
@@ -42,6 +31,7 @@ class EveMovementClient(svc.movementClient):
 
     def Run(self, *etc):
         svc.movementClient.Run(self)
+        self.movementStates = movement.MovementStates()
         self.cameraClient = sm.GetService('cameraClient')
         self.gameWorldClient = sm.GetService('gameWorldClient')
         self.mouseInput.RegisterCallback(const.INPUT_TYPE_MOUSEDOWN, self.OnMouseDown)
@@ -62,63 +52,22 @@ class EveMovementClient(svc.movementClient):
 
     def CreateComponent(self, name, state):
         component = MovementClientComponent()
-        avatarInfo = GameWorld.GWAvatarInfo()
-        avatarInfo.isPosed = False
-        avatarInfo.height = const.AVATAR_HEIGHT
-        avatarInfo.radius = const.AVATAR_RADIUS
-        avatarInfo.slopeLimitDegrees = 45.0
-        avatarInfo.stickRadius = const.AVATAR_RADIUS * 0.5
-        avatarInfo.stickSharpness = 0.2
-        avatarInfo.jumpHeight = 1.0
-        avatarInfo.maxRotate = 0.17
-        avatarInfo.stepHeight = const.AVATAR_STEP_HEIGHT
-        component.avatarInfo = avatarInfo
+        component.InitializeCapsuleInfo(state)
+        component.characterControllerInfo.stepHeight = const.AVATAR_STEP_HEIGHT
         return component
 
 
 
-    def PrepareComponent(self, sceneID, entityID, component):
-        component.avatarInfo.entityID = entityID
-        component.avatarInfo.name = 'Avatar_%s' % entityID
-        component.sceneID = sceneID
-
-
-
     def SetupComponent(self, entity, component):
-        component.avatarInfo.positionComponent = entity.GetComponent('position')
-        if entity.entityID == session.charid:
-            component.avatarInfo.avatarType = const.movement.AVATARTYPE_CLIENT_LOCALPLAYER
-        else:
-            component.avatarInfo.avatarType = const.movement.AVATARTYPE_CLIENT_NPC
-        gw = self.gameWorldClient.GetGameWorld(component.sceneID)
-        component.avatar = gw.CreateAvatar(component.avatarInfo)
-        if entity.entityID == session.charid:
-            component.avatar.PushMoveMode(GameWorld.KBMouseMode(0.0))
-            component.avatar.SetMaxSpeed(const.AVATAR_MOVEMENT_SPEED_MAX)
-        else:
-            positionComponent = entity.GetComponent('position')
-            pos = positionComponent.position
-            rot = positionComponent.rotation
-            netPredictMode = GameWorld.NetPredictMode(blue.os.GetTime(), 0L, pos, (0, 0, 0), rot)
-            netPredictMode.enableExtrapolation = False
-            component.avatar.PushMoveMode(netPredictMode)
-        component.avatar.movementBroadcastEnabled = not self.entityService.IsClientSideOnly(entity.scene.sceneID)
-        component.avatar.SetReady(True)
-        if entity.HasComponent('animation'):
-            component.avatar.animation = entity.GetComponent('animation').updater
+        svc.movementClient.SetupComponent(self, entity, component)
+        component.moveModeManager.movementBroadcastEnabled = not self.entityService.IsClientSideOnly(entity.scene.sceneID)
         component.IsFlyMode = False
         component.flySpeed = 0.15
-        if entity.entityID == session.charid:
-            if not self.entityService.IsClientSideOnly(entity.scene.sceneID):
-                relay = GameWorld.MovementRelay()
-                relay.remoteNodeID = self.LookupWorldSpaceNodeID(entity.scene.sceneID)
-                relay.Setup(component.avatar, entity.GetComponent('position'))
-                component.relay = relay
 
 
 
     def UnRegisterComponent(self, entity, component):
-        component.avatar.positionComponent = None
+        svc.movementClient.UnRegisterComponent(self, entity, component)
 
 
 
@@ -129,8 +78,8 @@ class EveMovementClient(svc.movementClient):
             my_mode = GameWorld.FlyMode()
             my_mode.velocity = (0.0, 0.01, 0.0)
         else:
-            my_mode = GameWorld.KBMouseMode(0.0)
-        myMovement.avatar.PushMoveMode(my_mode)
+            my_mode = GameWorld.PlayerInputMode()
+        myMovement.moveModeManager.PushMoveMode(my_mode)
 
 
 
@@ -145,7 +94,7 @@ class EveMovementClient(svc.movementClient):
                     cameraDir = geo2.Vec3Subtract(activeCamera.GetPointOfInterest(), activeCamera.GetPosition())
                     newVel = geo2.Vec3Scale(geo2.Vec3Normalize(cameraDir), myMovement.flySpeed)
                 try:
-                    myMovement.avatar.GetActiveMoveMode().velocity = newVel
+                    myMovement.moveModeManager.GetCurrentMode().velocity = newVel
                 except AttributeError:
                     log.LogException()
                     sys.exc_clear()
@@ -175,15 +124,6 @@ class EveMovementClient(svc.movementClient):
 
 
 
-    def PreTearDownComponent(self, entity, component):
-        gw = self.gameWorldClient.GetGameWorld(entity.scene.sceneID)
-        component.avatar.animation = None
-        if component.relay:
-            component.relay.Teardown()
-        gw.RemoveAvatar(component.avatar)
-
-
-
     def ProcessEntityMove(self, entid):
         pass
 
@@ -195,8 +135,6 @@ class EveMovementClient(svc.movementClient):
             positionComponent = entity.GetComponent('position')
             positionComponent.rotation = newRotation
             positionComponent.position = newPosition
-            entity.movement.avatar.vel = (0.0, 0.0, 0.0)
-            entity.movement.avatar.ResetOldPosition()
 
 
 
@@ -213,29 +151,23 @@ class EveMovementClient(svc.movementClient):
 
 
     def PathPlayerToCursorLocation(self):
-        playerAvatar = self.entityService.GetPlayerEntity()
-        if playerAvatar is None:
+        playerEntity = self.entityService.GetPlayerEntity()
+        if playerEntity is None:
             return 
         aoSvc = sm.GetService('actionObjectClientSvc')
-        if aoSvc.IsEntityUsingActionObject(playerAvatar.entityID) is True:
+        if aoSvc.IsEntityUsingActionObject(playerEntity.entityID) is True:
             return 
-        myMovement = playerAvatar.GetComponent('movement')
+        myMovement = playerEntity.GetComponent('movement')
         destination = self._PickPointToPath()
         if destination is None:
             return 
         sm.GetService('debugRenderClient').ClearAllShapes()
         sm.GetService('debugRenderClient').RenderSphere(destination, 0.2, 65280)
-        if isinstance(myMovement.avatar.GetActiveMoveMode(), GameWorld.PathToMode):
-            myMovement.avatar.GetActiveMoveMode().SetDestination(destination)
+        if isinstance(myMovement.moveModeManager.GetCurrentMode(), GameWorld.PathToMode):
+            myMovement.moveModeManager.GetCurrentMode().SetDestination(destination)
         else:
             pathToMode = GameWorld.PathToMode(destination, 0.1, False, True)
-            myMovement.avatar.PushMoveMode(pathToMode)
-
-
-
-    def ToggleCharacterController(self):
-        myMovement = self.entityService.GetPlayerEntity().GetComponent('movement')
-        myMovement.avatar.TogglePogoController()
+            myMovement.moveModeManager.PushMoveMode(pathToMode)
 
 
 
@@ -243,7 +175,7 @@ class EveMovementClient(svc.movementClient):
         for entity in self.entityService.GetEntityScene(session.worldspaceid).entities.values():
             if entity.HasComponent('movement'):
                 m = entity.GetComponent('movement')
-                mm = m.avatar.GetActiveMoveMode()
+                mm = m.moveModeManager.GetCurrentMode()
                 if hasattr(mm, 'enableExtrapolation'):
                     mm.enableExtrapolation = not mm.enableExtrapolation
 

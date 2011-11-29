@@ -16,7 +16,7 @@ class Message(uicls.Container):
 
 
     def Prepare_Text_(self):
-        self.message = uicls.Label(text='', parent=self, left=6, top=3, autowidth=False, width=288, fontsize=12, state=uiconst.UI_DISABLED)
+        self.message = uicls.EveLabelMedium(text='', parent=self, left=6, top=5, width=288, state=uiconst.UI_DISABLED)
 
 
 
@@ -30,7 +30,7 @@ class Message(uicls.Container):
         if self.message is None:
             self.Prepare_Text_()
             self.Prepare_Underlay_()
-        self.message.text = '<center>' + text
+        self.message.text = ['<center>', text]
         self.SetAlign(uiconst.CENTERTOP)
         self.SetSize(300, self.message.textheight + 8)
         offset = sm.GetService('window').GetCameraLeftOffset(self.width, align=uiconst.CENTERTOP, left=0)

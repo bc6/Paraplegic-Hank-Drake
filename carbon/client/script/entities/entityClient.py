@@ -1,8 +1,9 @@
 import locks
 import entities
 import svc
-import log
 import util
+import weakref
+import GameWorld
 
 class ClientEntityScene(entities.BaseEntityScene):
     __guid__ = 'entities.ClientEntityScene'
@@ -35,7 +36,8 @@ class EntityClient(svc.BaseEntityService):
     __dependencies__ = []
     __notifyevents__ = []
     __entitySceneType__ = ClientEntityScene
-    __entitysystems__ = ['actionObjectClientSvc',
+    __entitysystems__ = ['simpleStaticSpawnClient',
+     'actionObjectClientSvc',
      'aimingClient',
      'animationClient',
      'apertureClient',
@@ -43,6 +45,7 @@ class EntityClient(svc.BaseEntityService):
      'boxLightClient',
      'collisionMeshClient',
      'decisionTreeClient',
+     'directionalLightClient',
      'entityProcSvc',
      'entitySpawnClient',
      'gameWorldClient',
@@ -71,7 +74,8 @@ class EntityClient(svc.BaseEntityService):
      'genericProcClient',
      'uvPickingClient',
      'cameraClient',
-     'holoscreen']
+     'uiProcSvc',
+     'cylinderLightClient']
 
     def __init__(self):
         svc.BaseEntityService.__init__(self)
@@ -104,28 +108,21 @@ class EntityClient(svc.BaseEntityService):
 
 
     def CreateEntityFromServer(self, entityID, sceneID, initialComponentStates):
-        self.LogInfo('EntityClient creating entity: ', entityID)
+        self.LogInfo('EntityClient creating server entity: ', entityID, 'with initial state:')
+        self.LogInfo(initialComponentStates)
+        GameWorld.GetNetworkEntityQueueManager().AddEntity(entityID)
         scene = self.LoadEntitySceneAndBlock(sceneID)
         scene.WaitOnStartupEntities()
         entity = entities.Entity(scene, entityID)
-        logging = None
-        if boot.appname != 'WOD':
-            logging = entities.LoggingComponent()
-            entity.AddComponent('logging', logging)
-            logging.Log('Recreating from server')
         for (name, state,) in initialComponentStates.iteritems():
             componentFactory = self.componentFactories.get(name, None)
             if componentFactory:
-                self.LogInfo('Create Component ', name, ' with factory ', componentFactory, ' inital state: ')
-                self.LogInfo(state)
                 component = componentFactory.CreateComponent(name, state)
                 entity.AddComponent(name, component)
-                if logging:
-                    logging.Log('Added %s' % name)
             else:
-                self.LogError("I don't have a componentFactory for:", name)
+                self.LogWarn("I don't have a componentFactory for:", name, 'but I have these', ', '.join(self.__entitysystems__))
 
-        self.LogInfo('ClientEntityScene adding entity: ', entityID)
+        self.LogInfo('ClientEntityScene adding server entity: ', entity)
         scene.CreateAndRegisterEntity(entity)
 
 
@@ -141,11 +138,12 @@ class EntityClient(svc.BaseEntityService):
 
 
     def SetPlayerEntity(self, entity):
-        self.playerEntity = entity
         if entity:
+            self.playerEntity = weakref.proxy(entity)
             self.LogInfo('Received player entity')
             self.playerEntityLoaded.set()
         else:
+            self.playerEntity = None
             self.LogInfo('Player Entity Removed')
             self.playerEntityLoaded.clear()
 
@@ -170,6 +168,15 @@ class EntityClient(svc.BaseEntityService):
     def ServerReportState(self, entityID, componentName):
         entityService = sm.RemoteSvc('entityServer')
         return entityService.GetServerComponentState(entityID, componentName)
+
+
+
+    def FindEntityByID(self, entityID):
+        entity = svc.BaseEntityService.FindEntityByID(self, entityID)
+        if entity is not None:
+            return weakref.proxy(entity)
+        else:
+            return 
 
 
 

@@ -1,11 +1,8 @@
-import blue
-import collections
-import geo2
+import cef
 import graphics
 import graphicWrappers
-import service
 import trinity
-import uthread
+import util
 
 class BoxLightClientComponent:
     __guid__ = 'component.BoxLightClientComponent'
@@ -13,37 +10,46 @@ class BoxLightClientComponent:
 
 class BoxLightClient(graphics.LightClient):
     __guid__ = 'svc.boxLightClient'
-    __componentTypes__ = ['boxLight']
+    __componentTypes__ = [cef.BoxLightComponentView.GetComponentCodeName()]
 
     def CreateComponent(self, name, state):
         component = BoxLightClientComponent()
         renderObject = trinity.Tr2InteriorBoxLight()
         component.renderObject = renderObject
         graphicWrappers.Wrap(renderObject)
-        component.originalPrimaryLighting = state.GetPrimaryLighting()
-        component.originalSecondaryLighting = state.GetSecondaryLighting()
-        component.performanceLevel = state.GetPerformanceLevel()
-        renderObject.SetColor(state.GetColor())
-        renderObject.SetScaling(state.GetScaling())
-        renderObject.SetFalloff(state.GetFalloff())
-        renderObject.shadowImportance = state.GetShadowImportance()
-        renderObject.primaryLighting = component.originalPrimaryLighting
-        renderObject.secondaryLighting = component.originalSecondaryLighting
-        renderObject.secondaryLightingMultiplier = state.GetSecondaryLightingMultiplier()
-        renderObject.affectTransparentObjects = state.GetAffectTransparentObjects()
-        renderObject.shadowResolution = state.GetShadowResolution()
-        renderObject.shadowCasterTypes = state.GetShadowCasterTypes()
-        renderObject.projectedTexturePath = state.GetProjectedTexturePath().encode()
-        renderObject.isStatic = state.GetIsStatic()
-        renderObject.importanceScale = state.GetImportanceScale()
-        renderObject.importanceBias = state.GetImportanceBias()
-        renderObject.enableShadowLOD = state.GetEnableShadowLOD()
-        renderObject.cellIntersectionType = state.GetCellIntersectionType()
-        renderObject.useKelvinColor = state.GetUseKelvinColor()
-        renderObject.kelvinColor.temperature = state.GetKelvinColorTemperature()
-        renderObject.kelvinColor.tint = state.GetKelvinColorTint()
-        renderObject.kelvinColor.whiteBalance = state.GetKelvinColorWhiteBalance()
-        component.originalShadowCasterTypes = state.GetShadowCasterTypes()
+        component.originalPrimaryLighting = bool(state['primaryLighting'])
+        component.originalSecondaryLighting = bool(state['secondaryLighting'])
+        component.performanceLevel = state['performanceLevel']
+        renderObject.SetColor((state['red'], state['green'], state['blue']))
+        renderObject.SetScaling((state['scaleX'], state['scaleY'], state['scaleZ']))
+        renderObject.SetFalloff(state['falloff'])
+        renderObject.shadowImportance = state['shadowImportance']
+        renderObject.primaryLighting = bool(state['primaryLighting'])
+        renderObject.secondaryLighting = bool(state['secondaryLighting'])
+        renderObject.secondaryLightingMultiplier = state['secondaryLightingMultiplier']
+        renderObject.affectTransparentObjects = bool(state['affectTransparentObjects'])
+        renderObject.shadowResolution = int(state['shadowResolution'])
+        renderObject.shadowCasterTypes = int(state['shadowCasterTypes'])
+        renderObject.projectedTexturePath = state['projectedTexturePath'].encode()
+        renderObject.isStatic = bool(state['isStatic'])
+        renderObject.importanceScale = state['importanceScale']
+        renderObject.importanceBias = state['importanceBias']
+        renderObject.enableShadowLOD = bool(state['enableShadowLOD'])
+        renderObject.specularIntensity = float(state.get('specularIntensity', '1'))
+        renderObject.useKelvinColor = bool(state['useKelvinColor'])
+        if renderObject.useKelvinColor:
+            renderObject.kelvinColor.temperature = state['temperature']
+            renderObject.kelvinColor.tint = state['tint']
+            renderObject.kelvinColor.whiteBalance = int(state['whiteBalance'])
+        component.originalShadowCasterTypes = renderObject.shadowCasterTypes
+        component.useBoundingBox = bool(state['useBoundingBox'])
+        if component.useBoundingBox:
+            component.bbPos = util.UnpackStringToTuple(state['bbPos'])
+            component.bbRot = util.UnpackStringToTuple(state['bbRot'])
+            component.bbScale = util.UnpackStringToTuple(state['bbScale'])
+            renderObject.boundingBox = trinity.Tr2InteriorOrientedBoundingBox()
+        if '_spawnID' in state:
+            component.renderObject.name = self.GetName(state['_spawnID'])
         return component
 
 

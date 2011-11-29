@@ -4,9 +4,11 @@ import uthread
 FX_SCALE_EFFECT_NONE = 0
 FX_SCALE_EFFECT_SYMMETRICAL = 1
 FX_SCALE_EFFECT_BOUNDING = 2
+FX_USEBALLTRANSLATION = 1
+FX_USEBALLROTATION = 2
 
 def AudioWorker(emitter):
-    blue.synchro.Sleep(30000)
+    blue.synchro.SleepWallclock(30000)
 
 
 
@@ -32,84 +34,48 @@ class JumpDriveIn(effects.ShipEffect):
         if shipBall is None:
             self.sfxMgr.LogError(self.__guid__, ' could not find a ball')
             return 
-        radius = shipBall.radius
-        self.gfx.scaling = (radius, radius, radius)
         self.PlayOldAnimations(self.gfx)
 
 
 
+    def DelayedHide(self, shipBall, delay):
+        blue.pyos.synchro.SleepSim(delay)
+        if shipBall is not None and shipBall.model is not None:
+            shipBall.model.display = False
 
-class JumpDriveInBO(effects.ShipEffect):
+
+
+
+class JumpDriveInBO(JumpDriveIn):
     __guid__ = 'effects.JumpDriveInBO'
     __gfx__ = 'res:\\Model\\Effect3\\JumpDriveBO_in.red'
     __scaling__ = FX_SCALE_EFFECT_SYMMETRICAL
-
-    def _Key(trigger):
-        return (trigger.shipID,
-         None,
-         None,
-         None,
-         trigger.guid)
-
-
-    _Key = staticmethod(_Key)
-
-    def Start(self, duration):
-        shipID = self.ballIDs[0]
-        michelle = sm.StartService('michelle')
-        shipBall = michelle.GetBall(shipID)
-        if shipBall is None:
-            self.sfxMgr.LogError(self.__guid__, ' could not find a ball')
-            return 
-        radius = shipBall.radius
-        self.gfx.scaling = (radius, radius, radius)
-        self.PlayOldAnimations(self.gfx)
-
-
 
 
 class JumpDriveOut(JumpDriveIn):
     __guid__ = 'effects.JumpDriveOut'
     __gfx__ = 'res:\\Model\\Effect3\\JumpDrive_out.red'
     __scaling__ = FX_SCALE_EFFECT_SYMMETRICAL
+    __positioning__ = FX_USEBALLTRANSLATION
 
     def Start(self, duration):
         shipID = self.ballIDs[0]
         michelle = sm.StartService('michelle')
         shipBall = michelle.GetBall(shipID)
-        if shipBall.model:
-            FxSequencer = sm.StartService('FxSequencer')
-            FxSequencer.OnSpecialFX(shipID, None, None, None, None, None, 'effects.CloakRegardless', 0, 1, 0, -1, None)
         if eve.session.shipid == shipID:
             if hasattr(shipBall, 'KillBooster'):
                 shipBall.KillBooster()
-        radius = shipBall.radius
-        self.gfx.scaling = (radius, radius, radius)
         self.PlayOldAnimations(self.gfx)
+        uthread.new(self.DelayedHide, shipBall, 180)
 
 
 
 
-class JumpDriveOutBO(JumpDriveInBO):
+class JumpDriveOutBO(JumpDriveOut):
     __guid__ = 'effects.JumpDriveOutBO'
     __gfx__ = 'res:\\Model\\Effect3\\JumpDriveBO_out.red'
     __scaling__ = FX_SCALE_EFFECT_SYMMETRICAL
-
-    def Start(self, duration):
-        shipID = self.ballIDs[0]
-        michelle = sm.StartService('michelle')
-        shipBall = michelle.GetBall(shipID)
-        if shipBall.model:
-            FxSequencer = sm.StartService('FxSequencer')
-            FxSequencer.OnSpecialFX(shipID, None, None, None, None, None, 'effects.CloakRegardless', 0, 1, 0, -1, None)
-        if eve.session.shipid == shipID:
-            if hasattr(shipBall, 'KillBooster'):
-                shipBall.KillBooster()
-        radius = shipBall.radius
-        self.gfx.scaling = (radius, radius, radius)
-        self.PlayOldAnimations(self.gfx)
-
-
+    __positioning__ = FX_USEBALLTRANSLATION
 
 
 class JumpIn(JumpDriveIn):
@@ -124,8 +90,10 @@ class JumpIn(JumpDriveIn):
 
 
 
-class JumpOut(JumpDriveIn):
+class JumpOut(effects.ShipEffect):
     __guid__ = 'effects.JumpOut'
+    __gfx__ = 'res:\\Model\\Effect3\\Jump_out.red'
+    __scaling__ = FX_SCALE_EFFECT_SYMMETRICAL
 
     def __init__(self, trigger):
         self.ballIDs = [trigger.shipID, trigger.targetID]
@@ -133,6 +101,16 @@ class JumpOut(JumpDriveIn):
         self.gfxModel = None
 
 
+
+    def _Key(trigger):
+        return (trigger.shipID,
+         None,
+         None,
+         None,
+         trigger.guid)
+
+
+    _Key = staticmethod(_Key)
 
     def Start(self, duration):
         shipID = self.ballIDs[0]
@@ -166,7 +144,7 @@ class JumpOut(JumpDriveIn):
 
 
     def DelayedHide(self, shipBall):
-        blue.pyos.synchro.Sleep(880)
+        blue.pyos.synchro.SleepSim(880)
         FxSequencer = sm.StartService('FxSequencer')
         FxSequencer.OnSpecialFX(shipBall.id, None, None, None, None, None, 'effects.Uncloak', 0, 0, 0)
         if shipBall is not None and shipBall.model is not None:
@@ -193,7 +171,7 @@ class JumpOutWormhole(JumpDriveIn):
         if getattr(shipBall, 'model', None) is not None:
             FxSequencer = sm.StartService('FxSequencer')
             FxSequencer.OnSpecialFX(shipID, None, None, None, None, None, 'effects.CloakRegardless', 0, 1, 0, -1, None)
-        uthread.pool('JumpOutWormhole::HideShip', self.HideShipDelayed, shipBall)
+        uthread.new(self.DelayedHide, shipBall, 2000)
         wormholeID = self.ballIDs[1]
         wormholeBall = michelle.GetBall(wormholeID)
         if eve.session.shipid == shipID:
@@ -204,13 +182,6 @@ class JumpOutWormhole(JumpDriveIn):
             self.gfx.scaling = (radius, radius, radius)
         self.PlayNamedAnimations(wormholeBall.model, 'Activate')
         wormholeBall.PlaySound('worldobject_wormhole_jump_play')
-
-
-
-    def HideShipDelayed(self, ball):
-        blue.pyos.synchro.Sleep(2000)
-        if ball.model is not None:
-            ball.model.display = False
 
 
 

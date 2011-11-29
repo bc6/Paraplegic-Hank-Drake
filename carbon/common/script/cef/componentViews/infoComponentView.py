@@ -10,7 +10,7 @@ class InfoComponentView(cef.BaseComponentView):
     @classmethod
     def SetupInputs(cls):
         cls.RegisterComponent(cls)
-        cls._AddInput(cls.NAME_INPUT, '', cls.OPTIONAL, const.cef.COMPONENTDATA_STRING_TYPE, needsTranslation=True)
+        cls._AddInput(cls.NAME_INPUT, '', cls.RECIPE, const.cef.COMPONENTDATA_STRING_TYPE, needsTranslation=True, displayName='Entity Name')
 
 
 

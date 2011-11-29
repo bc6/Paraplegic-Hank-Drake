@@ -269,7 +269,7 @@ def GetDisplayAttribute(attributeName, attributeValue):
         attributeValue = FormatState(attributeValue)
     elif attributeName == 'align':
         attributeValue = FormatAlign(attributeValue)
-    elif type(attributeValue) in types.StringTypes:
+    elif isinstance(attributeValue, basestring):
         attributeValue = '"' + attributeValue + '"'
     return attributeValue
 
@@ -402,7 +402,7 @@ def Sort(lst):
 
 
 def SortListOfTuples(lst, reverse = 0):
-    lst.sort(reverse=reverse)
+    lst = sorted(lst, reverse=reverse, key=lambda data: data[0])
     return [ item[1] for item in lst ]
 
 
@@ -808,10 +808,11 @@ def AskAmount(caption = None, question = None, setvalue = '', intRange = None, f
 def AskName(caption = None, label = None, setvalue = '', maxLength = None, passwordChar = None, validator = None):
     import uiconst
     import uicls
+    import localization
     if caption is None:
-        caption = mls.UI_SHARED_TYPEINNAME
+        caption = localization.GetByLabel('UI/Common/Name/TypeInName')
     if label is None:
-        label = mls.UI_SHARED_TYPEINNAME
+        label = localization.GetByLabel('UI/Common/Name/TypeInName')
     wnd = GetFormWindow(caption)
     if label:
         uicls.Label(parent=wnd.sr.content, text=label, align=uiconst.TOTOP, pos=(0, 0, 0, 0))
@@ -841,7 +842,7 @@ def AskChoice(caption = '', question = '', choices = [], modal = False):
 
 def NamePopupErrorCheck(name):
     if not len(name) or len(name) and len(name.strip()) < 1:
-        return mls.UI_SHARED_PLEASETYPESOMETHING
+        return localization.GetByLabel('UI/Common/Name/PleaseTypeSomething')
     return ''
 
 
@@ -901,9 +902,8 @@ def RenderIconSheets(iconRoot = 'res:/UI/Texture/Icons', bgcolor = (0.5, 0.5, 0.
         os.makedirs(destRoot)
     except OSError as e:
         pass
-    fullIconRoot = iconRoot.replace('res:/', blue.os.respath)
+    fullIconRoot = iconRoot.replace('res:/', blue.os.ResolvePath(u'res:/'))
     textures = os.listdir(fullIconRoot)
-    rot = blue.os.CreateInstance('blue.Rot')
     dev = trinity.device
     iconSurface = dev.CreateOffscreenPlainSurface(256, 256, trinity.TRIFMT_A8R8G8B8, trinity.TRIPOOL_SYSTEMMEM)
     col = trinity.TriColor()
@@ -967,14 +967,13 @@ def BreakupUICoreIcons(iconRoot = 'res:/UICore/Texture/Icons'):
     import blue
     import trinity
     from util import ResFile
-    destRoot = blue.os.respath + '\\UICore\\Texture\\Icons'
+    destRoot = blue.os.ResolvePathForWriting(u'res:/UICore/Texture/Icons')
     try:
         os.makedirs(destRoot)
     except OSError as e:
         pass
-    fullIconRoot = iconRoot.replace('res:/', blue.os.respath)
+    fullIconRoot = iconRoot.replace('res:/', blue.os.ResolvePath(u'res:/'))
     textures = os.listdir(fullIconRoot)
-    rot = blue.os.CreateInstance('blue.Rot')
     dev = trinity.device
     iconSurface = dev.CreateOffscreenPlainSurface(256, 256, trinity.TRIFMT_A8R8G8B8, trinity.TRIPOOL_SYSTEMMEM)
     print 'textures',
@@ -1046,9 +1045,9 @@ def BreakupEveIcons():
 
     def CompileIcons(addTo):
         iconRoot = 'res:/UI/Texture/Icons'
-        fullIconRoot = iconRoot.replace('res:/', blue.os.respath)
+        fullIconRoot = iconRoot.replace('res:/', blue.os.ResolvePath(u'res:/'))
         textures = os.listdir(fullIconRoot)
-        destRoot = iconRoot.replace('res:/', blue.os.respath)
+        destRoot = iconRoot.replace('res:/', blue.os.ResolvePath(u'res:/'))
         iconPaths = []
         for textureName in textures:
             if not textureName.endswith('.dds') and not textureName.startswith('icons'):
@@ -1073,9 +1072,9 @@ def BreakupEveIcons():
 
     def CompileAllianceLogos(addTo):
         root = 'res:/UI/Texture/Alliance'
-        fullRoot = root.replace('res:/', blue.os.respath)
+        fullRoot = root.replace('res:/', blue.os.ResolvePath(u'res:/'))
         textures = os.listdir(fullRoot)
-        destRoot = root.replace('res:/', blue.os.respath)
+        destRoot = root.replace('res:/', blue.os.ResolvePath(u'res:/'))
         iconPaths = []
         for textureName in textures:
             if not textureName.endswith('.dds') and not textureName.startswith('alliance'):
@@ -1095,9 +1094,9 @@ def BreakupEveIcons():
 
     def CompileCorpLogos(addTo):
         root = 'res:/UI/Texture/Corps'
-        fullRoot = root.replace('res:/', blue.os.respath)
+        fullRoot = root.replace('res:/', blue.os.ResolvePath(u'res:/'))
         textures = os.listdir(fullRoot)
-        destRoot = root.replace('res:/', blue.os.respath)
+        destRoot = root.replace('res:/', blue.os.ResolvePath(u'res:/'))
         iconPaths = []
         for textureName in textures:
             if not textureName.endswith('.dds') and not textureName.startswith('corps'):
@@ -1117,7 +1116,7 @@ def BreakupEveIcons():
 
     def CompileRibbons(addTo):
         root = 'res:/UI/Texture/Medals/Ribbons'
-        fullRoot = root.replace('res:/', blue.os.respath)
+        fullRoot = root.replace('res:/', blue.os.ResolvePath(u'res:/'))
         textures = os.listdir(fullRoot)
         iconPaths = []
         for textureName in textures:

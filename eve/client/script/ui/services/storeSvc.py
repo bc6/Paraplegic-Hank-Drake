@@ -36,7 +36,7 @@ class storeSvc(service.Service):
 
 
     def AcceptOffer(self, offerID, quantity):
-        if session.stationid is None:
+        if session.stationid2 is None:
             raise UserError('VStoreNotAvailable')
         if offerID is None or quantity < 0:
             self.LogError('Trying to accept an offer without offerID or quantity', offerID, quantity)
@@ -47,14 +47,14 @@ class storeSvc(service.Service):
             if e.msg == 'OfferNotAvailableNow':
                 self.objectCaching.InvalidateCachedMethodCalls([('storeServer', 'GetAvailableOffers', ())])
             elif e.msg == 'VG_STORE_CLOSED':
-                self.storeClosed = blue.os.GetTime()
+                self.storeClosed = blue.os.GetWallclockTime()
                 self.CloseStoreWindow()
             raise 
 
 
 
     def CheckStoreOpen(self):
-        if self.storeClosed and blue.os.GetTime() - self.storeClosed < const.MIN * 15:
+        if self.storeClosed and blue.os.GetWallclockTime() - self.storeClosed < const.MIN * 15:
             self.CloseStoreWindow()
             raise UserError('VG_STORE_CLOSED')
         else:
@@ -63,13 +63,12 @@ class storeSvc(service.Service):
 
 
     def CloseStoreWindow(self):
-        winSvc = sm.StartService('window')
-        storeWnd = winSvc.GetWindow('virtualGoodsStore')
+        storeWnd = form.VirtualGoodsStore.GetIfOpen()
         if storeWnd is not None and not storeWnd.destroyed:
-            storeWnd.CloseX()
-        buyWnd = winSvc.GetWindow('buyVGoodsWindow')
+            storeWnd.CloseByUser()
+        buyWnd = form.BuyVGoodsWindow.GetIfOpen()
         if buyWnd is not None and not buyWnd.destroyed:
-            buyWnd.CloseX()
+            buyWnd.CloseByUser()
 
 
 
@@ -83,7 +82,7 @@ class storeSvc(service.Service):
             availableOffers = sm.RemoteSvc('storeServer').GetAvailableOffers()
         except UserError as e:
             if e.msg == 'VG_STORE_CLOSED':
-                self.storeClosed = blue.os.GetTime()
+                self.storeClosed = blue.os.GetWallclockTime()
                 self.CloseStoreWindow()
             raise 
         self.preparedOffers = {}
@@ -150,7 +149,7 @@ class storeSvc(service.Service):
 
 
     def GetAvailableLocalPlexes(self):
-        plexes = eve.GetInventory(const.containerHangar).List(flag=const.flagHangar, typeID=const.typePilotLicence)
+        plexes = sm.GetService('invCache').GetInventory(const.containerHangar).List(flag=const.flagHangar, typeID=const.typePilotLicence)
         return [ i for i in sorted(plexes, key=lambda p: p.stacksize, reverse=True) ]
 
 
@@ -169,7 +168,7 @@ class storeSvc(service.Service):
         self.GetPreparedOffers()
         if typeID not in self.offersByTypeIDs:
             raise UserError('VStoreTypeNotForSale')
-        if not session.stationid:
+        if not session.stationid2:
             raise UserError('VStoreNotAvailable')
         (offerID, price,) = self.offersByTypeIDs[typeID]
         self.GetBuyWnd(offerID)
@@ -180,15 +179,13 @@ class storeSvc(service.Service):
         offerKV = self.preparedOffers.get(offerID, None)
         if offerKV is None:
             raise UserError('VStoreTypeNotForSale')
-        wnd = sm.GetService('window').GetWindow('buyVGoodsWindow', decoClass=form.BuyVGoodsWindow, create=0)
+        wnd = form.BuyVGoodsWindow.GetIfOpen()
         if wnd:
-            if wnd.offerKV == offerKV:
-                wnd.Maximize()
-            else:
+            if wnd.offerKV != offerKV:
                 wnd.LoadWnd(offerKV=offerKV)
-                wnd.Maximize()
+            wnd.Maximize()
         else:
-            wnd = sm.GetService('window').GetWindow('buyVGoodsWindow', decoClass=form.BuyVGoodsWindow, create=1, maximize=1, offerKV=offerKV)
+            form.BuyVGoodsWindow.Open(offerKV=offerKV)
 
 
 

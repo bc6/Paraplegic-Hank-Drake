@@ -8,7 +8,7 @@ import uiutil
 def UpdateCQMainScreen(width, height, desktop, entityID):
     sm.GetService('holoscreen').OnMainScreenDesktopCreated(desktop, entityID)
     while True:
-        blue.pyos.synchro.Sleep(1000)
+        blue.pyos.synchro.SleepWallclock(1000)
 
 
 
@@ -16,7 +16,7 @@ def UpdateCQMainScreen(width, height, desktop, entityID):
 def UpdatePIScreen(width, height, desktop, entityID):
     sm.GetService('holoscreen').OnPIScreenDesktopCreated(desktop, entityID)
     while True:
-        blue.pyos.synchro.Sleep(1000)
+        blue.pyos.synchro.SleepWallclock(1000)
 
 
 
@@ -24,7 +24,7 @@ def UpdatePIScreen(width, height, desktop, entityID):
 def UpdateCorpFinderScreen(width, height, desktop, entityID):
     sm.GetService('holoscreen').OnCorpFinderScreenDesktopCreated(desktop, entityID)
     while True:
-        blue.pyos.synchro.Sleep(1000)
+        blue.pyos.synchro.SleepWallclock(1000)
 
 
 
@@ -84,8 +84,8 @@ CqMainScreen = (1408,
  LIVE_UPDATES,
  AUTO_MIPMAP,
  UpdateCQMainScreen)
-CqStationLogo = (256,
- 256,
+CqStationLogo = (128,
+ 128,
  ARGB_FORMAT,
  STATIC_IMAGE,
  AUTO_MIPMAP,

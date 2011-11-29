@@ -13,6 +13,8 @@ import types
 import uicls
 import copy
 import log
+import localization
+import localizationUtil
 GROUP_CHAR = 1
 GROUP_LIST = 2
 GROUP_CORP = 3
@@ -31,9 +33,13 @@ class MailWindow(uicls.Window):
     __notifyevents__ = ['OnNewMailReceived', 'OnNewNotificationReceived', 'OnMailStartStopBlinkingTab']
     default_width = 600
     default_height = 450
+    default_windowID = 'mail'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
+        if sm.GetService('mailSvc').IsFileCacheCorrupted():
+            self.Close()
+            raise UserError('MailCacheFileError')
         sm.GetService('mailSvc').SetBlinkNeocomState(False)
         sm.GetService('notificationSvc').SetBlinkNeocomState(False)
         self.SetHeaderIcon()
@@ -41,19 +47,19 @@ class MailWindow(uicls.Window):
         settingsIcon.state = uiconst.UI_NORMAL
         settingsIcon.GetMenu = self.GetArrowMenu
         settingsIcon.expandOnLeft = 1
-        settingsIcon.hint = mls.UI_GENERIC_SETTINGS
+        settingsIcon.hint = localization.GetByLabel('UI/Common/Settings')
         self.SetScope('station_inflight')
         self.SetMinSize([500, 350])
-        self.SetCaption(mls.UI_SHARED_EVEMAIL)
+        self.SetCaption(localization.GetByLabel('UI/Mail/EveMail'))
         self.SetWndIcon('ui_94_64_8', hidden=True)
         self.SetTopparentHeight(0)
         self.mailInited = 0
         self.sr.mail = form.MailForm(name='mailform', parent=self.sr.main, pos=(0, 0, 0, 0))
         self.sr.notifications = form.NotificationForm(name='notificationform', parent=self.sr.main, pos=(0, 0, 0, 0))
-        self.sr.tabs = uicls.TabGroup(name='tabs', parent=self.sr.main, tabs=[[mls.UI_SHARED_EVEMAIL,
+        self.sr.tabs = uicls.TabGroup(name='tabs', parent=self.sr.main, tabs=[[localization.GetByLabel('UI/Mail/EveMail'),
           self.sr.mail,
           self,
-          'mail'], [mls.UI_EVEMAIL_NOTIFICATIONS,
+          'mail'], [localization.GetByLabel('UI/Mail/Notifications/Notifications'),
           self.sr.notifications,
           self,
           'notifications']], groupID='tabs', autoselecttab=1, idx=0)
@@ -98,9 +104,10 @@ class MailWindow(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         if getattr(self, 'mailInited', 0):
-            self.sr.mail.OnClose_()
+            self.sr.mail._OnClose()
+        uicls.Window._OnClose(self, *args)
 
 
 
@@ -116,26 +123,24 @@ class MailWindow(uicls.Window):
 
     def OnMailStartStopBlinkingTab(self, configname, blink = 1):
         if configname == 'mail':
-            if settings.user.ui.Get('mail_blinkTab', 1) or blink == 0:
-                self.sr.tabs.BlinkPanelByName(mls.UI_SHARED_EVEMAIL, blink)
+            if not self.sr.tabs.destroyed and (settings.user.ui.Get('mail_blinkTab', 1) or blink == 0):
+                self.sr.tabs.BlinkPanelByName(localization.GetByLabel('UI/Mail/EveMail'), blink)
         elif configname == 'notifications':
-            if settings.user.ui.Get('notification_blinkTab', 1) or blink == 0:
-                self.sr.tabs.BlinkPanelByName(mls.UI_EVEMAIL_NOTIFICATIONS, blink)
+            if not self.sr.tabs.destroyed and (settings.user.ui.Get('notification_blinkTab', 1) or blink == 0):
+                self.sr.tabs.BlinkPanelByName(localization.GetByLabel('UI/Mail/Notifications/Notifications'), blink)
 
 
 
     def GetArrowMenu(self, *args):
-        m = [(mls.UI_GENERIC_SETTINGS, self.OpenMailSettings, ())]
+        m = [(localization.GetByLabel('UI/Common/Settings'), self.OpenMailSettings, ())]
         return m
 
 
 
     def OpenMailSettings(self, *args):
         if getattr(self, 'mailIniting', 0):
-            raise UserError('CustomNotify', {'notify': mls.UI_EVEMAIL_SYSTEMLOADING})
-        wnd = sm.GetService('window').GetWindow('mailSettings', 1, decoClass=form.MailSettings)
-        if wnd is not None:
-            wnd.Maximize()
+            raise UserError('CustomNotify', {'notify': localization.GetByLabel('UI/Mail/SystemLoading')})
+        form.MailSettings.Open()
 
 
 
@@ -159,14 +164,14 @@ class MailForm(uicls.Container):
         self.readingPaneVisible = settings.user.ui.Get('mail_readingPaneVisible', True)
         self.lastDeleted = 0
         self.inited = 0
-        sortBy = settings.user.ui.Get('evemail_sortBy', mls.UI_EVEMAIL_RECEIVED)
-        if sortBy in [mls.UI_EVEMAIL_STATUS,
-         mls.UI_EVEMAIL_SENDER,
-         mls.UI_EVEMAIL_SUBJECT,
-         mls.UI_EVEMAIL_RECEIVED]:
+        sortBy = settings.user.ui.Get('evemail_sortBy', localization.GetByLabel('UI/Mail/Received'))
+        if sortBy in [localization.GetByLabel('UI/Mail/Status'),
+         localization.GetByLabel('UI/Mail/Sender'),
+         localization.GetByLabel('UI/Mail/Subject'),
+         localization.GetByLabel('UI/Mail/Received')]:
             self.sortBy = sortBy
         else:
-            self.sortBy = mls.UI_EVEMAIL_RECEIVED
+            self.sortBy = localization.GetByLabel('UI/Mail/Received')
         self.sortOrder = settings.user.ui.Get('evemail_sortOrder', True)
         self.sr.main = self
         self.DrawStuff()
@@ -179,7 +184,7 @@ class MailForm(uicls.Container):
 
     def CheckInited(self):
         if not self.inited:
-            raise UserError('CustomNotify', {'notify': mls.UI_EVEMAIL_SYSTEMLOADING})
+            raise UserError('CustomNotify', {'notify': localization.GetByLabel('UI/Mail/SystemLoading')})
 
 
 
@@ -190,7 +195,7 @@ class MailForm(uicls.Container):
          0,
          leftContWidth,
          0))
-        self.sr.btns = uicls.ButtonGroup(btns=[[mls.UI_EVEMAIL_NEWMAILINGLISTS,
+        self.sr.btns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Mail/AddMailingList'),
           self.GetMailingListWnd,
           'self',
           None]], parent=self.sr.leftCont, line=0)
@@ -213,19 +218,19 @@ class MailForm(uicls.Container):
          0,
          0,
          readingContHeight))
-        self.sr.readingPane = uicls.Edit(setvalue='', parent=self.sr.readingPaneCont, align=uiconst.TOALL, readonly=1)
+        self.sr.readingPane = uicls.EditPlainText(setvalue='', parent=self.sr.readingPaneCont, align=uiconst.TOALL, readonly=1)
         self.sr.divider = xtriui.Divider(name='divider', align=uiconst.TOBOTTOM, height=const.defaultPadding, parent=self.sr.rightCont, state=uiconst.UI_NORMAL)
         self.sr.divider.Startup(self.sr.readingPaneCont, 'height', 'y', 64, self.scrollHeight)
         self.sr.divider.OnSizeChanged = self.OnReadingScrollSizeChanged
         self.sr.msgScroll = uicls.Scroll(name='msgScroll', parent=self.sr.rightCont)
         self.sr.msgScroll.sr.id = 'mail_msgs'
-        self.sr.msgScroll.sr.fixedColumns = {mls.UI_EVEMAIL_STATUS: 52}
-        self.sr.msgScroll.sr.maxDefaultColumns = {mls.UI_EVEMAIL_SUBJECT: 250}
+        self.sr.msgScroll.sr.fixedColumns = {localization.GetByLabel('UI/Mail/Status'): 52}
+        self.sr.msgScroll.sr.maxDefaultColumns = {localization.GetByLabel('UI/Mail/Subject'): 250}
         self.sr.msgScroll.Sort = self.SortMail
         self.sr.msgScroll.OnDelete = self.DeleteFromKeyboard
         self.sr.msgScroll.OnSelectionChange = self.MsgScrollSelectionChange
         self.sr.msgScroll.RefreshHeaders = self.RefreshMsgScrollHeaders
-        self.sr.msgScroll.Load(contentList=[], noContentHint=mls.UI_EVEMAIL_FETCHMAIL, ignoreSort=1)
+        self.sr.msgScroll.Load(contentList=[], noContentHint=localization.GetByLabel('UI/Mail/FetchingMails'), ignoreSort=1)
         self.inited = True
         self._OnResize()
         self.DrawToolbar()
@@ -244,21 +249,21 @@ class MailForm(uicls.Container):
         actions.deleteClicked = self.DeleteClicked
         self.sr.mailActions = xtriui.MailActionPanel(name='mailActionCont', parent=self.sr.toolbarCont, align=uiconst.TOPLEFT, pos=(0, 0, 250, 50))
         self.sr.mailActions.Startup(actions)
-        labelBtn = uix.GetBigButton(size=32, where=None, left=0, top=0, hint=mls.UI_EVEMAIL_LABELMGMT, align=uiconst.RELATIVE)
+        labelBtn = uix.GetBigButton(size=32, where=None, left=0, top=0, hint=localization.GetByLabel('UI/Mail/ManageLabels'), align=uiconst.RELATIVE)
         uiutil.MapIcon(labelBtn.sr.icon, 'ui_94_64_7', ignoreSize=True)
         labelBtn.OnClick = self.ManageLabels
-        self.sr.mailActions.AddExtraButton(labelBtn, withSpace=1, size=32, hint=mls.UI_EVEMAIL_LABELMGMT)
+        self.sr.mailActions.AddExtraButton(labelBtn, withSpace=1, size=32, hint=localization.GetByLabel('UI/Mail/ManageLabels'))
         self.sr.browseCont = uicls.Container(name='browseCont', parent=self.sr.toolbarCont, align=uiconst.BOTTOMRIGHT, pos=(8, 0, 48, 40))
-        self.sr.pageCount = uicls.Label(text='', parent=self.sr.browseCont, left=0, top=26, state=uiconst.UI_DISABLED, align=uiconst.CENTERTOP)
+        self.sr.pageCount = uicls.EveLabelMedium(text='', parent=self.sr.browseCont, left=0, top=26, state=uiconst.UI_DISABLED, align=uiconst.CENTERTOP)
         btn = uix.GetBigButton(24, self.sr.browseCont, 0, 0)
         btn.OnClick = (self.BrowseMail, -1)
-        btn.hint = mls.UI_GENERIC_PREVIOUS
+        btn.hint = localization.GetByLabel('UI/Common/Previous')
         btn.state = uiconst.UI_HIDDEN
         btn.sr.icon.LoadIcon('ui_23_64_1')
         self.sr.mailBackBtn = btn
         btn = uix.GetBigButton(24, self.sr.browseCont, 24, 0)
         btn.OnClick = (self.BrowseMail, 1)
-        btn.hint = mls.UI_CMD_NEXT
+        btn.hint = localization.GetByLabel('UI/Common/Next')
         btn.state = uiconst.UI_HIDDEN
         btn.sr.icon.LoadIcon('ui_23_64_2')
         self.sr.mailFwdBtn = btn
@@ -266,7 +271,7 @@ class MailForm(uicls.Container):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         if self.sr.leftCont:
             settings.user.ui.Set('evemail_leftContWidth', self.sr.leftCont.width)
         if self.sr.readingPaneCont:
@@ -278,10 +283,10 @@ class MailForm(uicls.Container):
 
     def SaveChangesWorker(self):
         while self and not self.destroyed:
-            blue.pyos.synchro.Sleep(SAVE_INTERVAL)
+            blue.pyos.synchro.SleepWallclock(SAVE_INTERVAL)
             try:
                 sm.GetService('mailSvc').SaveChangesToDisk()
-            except Exception as e:
+            except Exception:
                 log.LogTraceback('SaveChangesWorker', 'Error while saving to disk...', severity=log.LGERR)
                 sys.exc_clear()
 
@@ -329,9 +334,9 @@ class MailForm(uicls.Container):
         scrolllist.append(listentry.Get('Space', {'height': 16}))
         data = {'GetSubContent': self.GetLabelsSubContent,
          'MenuFunction': self.LabelGroupMenu,
-         'label': mls.UI_EVEMAIL_LABELS,
-         'cleanLabel': mls.UI_EVEMAIL_LABELS,
-         'id': ('evemail', 'Labels', mls.UI_EVEMAIL_LABELS),
+         'label': localization.GetByLabel('UI/Mail/Labels'),
+         'cleanLabel': localization.GetByLabel('UI/Mail/Labels'),
+         'id': ('evemail', 'Labels', localization.GetByLabel('UI/Mail/Labels')),
          'state': 'locked',
          'BlockOpenWindow': 1,
          'showicon': 'ui_73_16_9',
@@ -342,9 +347,9 @@ class MailForm(uicls.Container):
         scrolllist.append(listentry.Get('Group', data))
         scrolllist.append(listentry.Get('Space', {'height': 16}))
         data = {'GetSubContent': self.GetMaillistSubContent,
-         'label': mls.UI_EVEMAIL_MAILINGLISTS,
-         'cleanLabel': mls.UI_EVEMAIL_MAILINGLISTS,
-         'id': ('evemail', 'maillists', mls.UI_EVEMAIL_MAILINGLISTS),
+         'label': localization.GetByLabel('UI/Mail/MailingLists'),
+         'cleanLabel': localization.GetByLabel('UI/Mail/MailingLists'),
+         'id': ('evemail', 'maillists', localization.GetByLabel('UI/Mail/MailingLists')),
          'state': 'locked',
          'BlockOpenWindow': 1,
          'showicon': 'ui_38_16_190',
@@ -402,12 +407,12 @@ class MailForm(uicls.Container):
         else:
             viewingLabel = self.viewingLabel
         scrolllist = []
-        for (label, id, icon,) in [(mls.UI_EVEMAIL_LABEL_ALLMAILS, None, 'ui_73_16_5'),
-         (mls.UI_EVEMAIL_LABEL_INBOX, const.mailLabelInbox, 'ui_73_16_6'),
-         (mls.UI_EVEMAIL_LABEL_SENT, const.mailLabelSent, 'ui_73_16_7'),
-         (mls.UI_EVEMAIL_LABEL_CORP, const.mailLabelCorporation, 'ui_73_16_32'),
-         (mls.UI_EVEMAIL_LABEL_ALLIANCE, const.mailLabelAlliance, 'ui_73_16_31'),
-         (mls.UI_EVEMAIL_LABEL_TRASH, MAILLABELTRASH, 'ui_73_16_11')]:
+        for (label, id, icon,) in [(localization.GetByLabel('UI/Mail/LabelAllMails'), None, 'ui_73_16_5'),
+         (localization.GetByLabel('UI/Mail/LabelInbox'), const.mailLabelInbox, 'ui_73_16_6'),
+         (localization.GetByLabel('UI/Mail/LabelSent'), const.mailLabelSent, 'ui_73_16_7'),
+         (localization.GetByLabel('UI/Mail/LabelCorp'), const.mailLabelCorporation, 'ui_73_16_32'),
+         (localization.GetByLabel('UI/Mail/LabelAlliance'), const.mailLabelAlliance, 'ui_73_16_31'),
+         (localization.GetByLabel('UI/Mail/LabelTrash'), MAILLABELTRASH, 'ui_73_16_11')]:
             labelInfo = myLabels.get(id, None)
             colorID = None
             color = 'ffffff'
@@ -510,9 +515,7 @@ class MailForm(uicls.Container):
 
 
     def GetMailingListWnd(self, *args):
-        wnd = sm.GetService('window').GetWindow('MailinglistWnd', 1, decoClass=form.MailinglistWnd)
-        if wnd is not None:
-            wnd.Maximize()
+        form.MailinglistWnd.Open()
 
 
 
@@ -529,10 +532,8 @@ class MailForm(uicls.Container):
 
 
     def OpenMaillistSetup(self, listID, *args):
-        name = 'MaillistSetupWindow_%s' % listID
-        wnd = sm.GetService('window').GetWindow(name, 1, decoClass=form.MaillistSetupWindow, mailingListID=listID)
-        if wnd is not None:
-            wnd.Maximize()
+        windowID = 'MaillistSetupWindow_%s' % listID
+        form.MaillistSetupWindow.Open(windowID=windowID, mailingListID=listID)
 
 
 
@@ -564,20 +565,20 @@ class MailForm(uicls.Container):
         listID = entry.sr.node.listID
         data = entry.sr.node.listData
         if not data.isMuted:
-            m.append((mls.UI_EVEMAIL_SENDMAILTOLIST, self.SendMailToList, (listID,)))
+            m.append((localization.GetByLabel('UI/Mail/SendMailToList'), self.SendMailToList, (listID,)))
         if data.isOperator or data.isOwner:
-            m.append((mls.UI_EVEMAIL_OPENMAILINGLISTMGMT, self.OpenMaillistSetup, (listID,)))
+            m.append((localization.GetByLabel('UI/Mail/OpenMailingListMgmt'), self.OpenMaillistSetup, (listID,)))
         m.append(None)
         name = entry.sr.node.cleanLabel
-        text = '%s (%s)' % (mls.UI_EVEMAIL_MARKALLREAD, name)
+        text = localization.GetByLabel('UI/Mail/MarkAllAsReadWithFolderName', folderName=name)
         m.append((text, self.MarkAsReadByList, (listID, name)))
-        text = '%s (%s)' % (mls.UI_EVEMAIL_TRASHALL, name)
+        text = localization.GetByLabel('UI/Mail/TrashAllWithFolderName', folderName=name)
         m.append((text, self.MoveToTrashByList, (listID, name)))
         m.append(None)
         if data.isOwner:
-            m.append((mls.UI_EVEMAIL_DELETEMAILINGLIST, self.DeleteMaillist, (listID,)))
+            m.append((localization.GetByLabel('UI/Mail/DeleteMailingList'), self.DeleteMaillist, (listID,)))
         else:
-            m.append((mls.UI_EVEMAIL_LEAVEMAILINGLIST, self.LeaveMaillist, (listID,)))
+            m.append((localization.GetByLabel('UI/Mail/LeaveMailingList'), self.LeaveMaillist, (listID,)))
         return m
 
 
@@ -585,15 +586,15 @@ class MailForm(uicls.Container):
     def GetLabelMenu(self, entry):
         labelID = entry.sr.node.currentView
         m = []
-        m.append((mls.UI_EVEMAIL_ASSIGNCOLOR, self.GetAssignColorWnd, (labelID,)))
-        m.append((mls.UI_EVEMAIL_RENAMELABEL, sm.GetService('mailSvc').RenameLabelFromUI, (labelID,)))
+        m.append((localization.GetByLabel('UI/Mail/AssignColor'), self.GetAssignColorWnd, (labelID,)))
+        m.append((localization.GetByLabel('UI/Mail/LabelRename'), sm.GetService('mailSvc').RenameLabelFromUI, (labelID,)))
         m.append(None)
-        text = '%s (%s)' % (mls.UI_EVEMAIL_MARKALLREAD, entry.sr.node.cleanLabel)
+        text = localization.GetByLabel('UI/Mail/MarkAllAsReadWithFolderName', folderName=entry.sr.node.cleanLabel)
         m.append((text, self.MarkAsReadByLabel, (labelID, entry.sr.node.cleanLabel)))
-        text = '%s (%s)' % (mls.UI_EVEMAIL_TRASHALL, entry.sr.node.cleanLabel)
+        text = localization.GetByLabel('UI/Mail/TrashAllWithFolderName', folderName=entry.sr.node.cleanLabel)
         m.append((text, self.MoveToTrashByLabel, (labelID, entry.sr.node.cleanLabel)))
         m.append(None)
-        m.append((mls.UI_CMD_DELETE, sm.GetService('mailSvc').DeleteLabelFromUI, (labelID, entry.sr.node.label)))
+        m.append((localization.GetByLabel('UI/Common/Delete'), sm.GetService('mailSvc').DeleteLabelFromUI, (labelID, entry.sr.node.label)))
         return m
 
 
@@ -610,7 +611,7 @@ class MailForm(uicls.Container):
         name = dict.get('name', '').strip()
         myLabelNames = [ label.name for label in sm.GetService('mailSvc').GetAllLabels(assignable=0).values() ]
         if name in myLabelNames:
-            return mls.UI_EVEMAIL_LABELNAMETAKEN
+            return localization.GetByLabel('UI/Mail/LabelNameTaken')
 
 
 
@@ -674,12 +675,12 @@ class MailForm(uicls.Container):
             scrolllist.append(entry)
 
         self.sr.msgScroll.labelID = labelID
-        scrollHeaders = [mls.UI_EVEMAIL_STATUS,
-         mls.UI_EVEMAIL_SENDER,
-         mls.UI_EVEMAIL_SUBJECT,
-         mls.UI_EVEMAIL_RECEIVED,
-         mls.UI_EVEMAIL_LABELS]
-        self.sr.msgScroll.Load(contentList=scrolllist, headers=scrollHeaders, noContentHint=mls.UI_EVEMAIL_NOMAILS, ignoreSort=1, reversesort=self.sortOrder, sortby=self.sortBy)
+        scrollHeaders = [localization.GetByLabel('UI/Mail/Status'),
+         localization.GetByLabel('UI/Mail/Sender'),
+         localization.GetByLabel('UI/Mail/Subject'),
+         localization.GetByLabel('UI/Mail/Received'),
+         localization.GetByLabel('UI/Mail/Labels')]
+        self.sr.msgScroll.Load(contentList=scrolllist, headers=scrollHeaders, noContentHint=localization.GetByLabel('UI/Mail/NoMailsFound'), ignoreSort=1, reversesort=self.sortOrder, sortby=self.sortBy)
         if not refreshing:
             self.ClearReadingPane()
         else:
@@ -693,19 +694,19 @@ class MailForm(uicls.Container):
     def RefreshMsgScrollHeaders(self, headers, tabs = []):
         uicls.Scroll.RefreshHeaders(self.sr.msgScroll, headers, tabs)
         labelID = getattr(self.sr.msgScroll, 'labelID', None)
-        senderColumn = uiutil.FindChild(self.sr.msgScroll, mls.UI_EVEMAIL_SENDER)
+        senderColumn = uiutil.FindChild(self.sr.msgScroll, localization.GetByLabel('UI/Mail/Sender'))
         if senderColumn is not None:
             if labelID == const.mailLabelSent:
-                text = mls.UI_GENERIC_RECIPIENT
+                text = localization.GetByLabel('UI/Mail/Recipient')
             else:
-                text = mls.UI_EVEMAIL_SENDER
+                text = localization.GetByLabel('UI/Mail/Sender')
             senderColumn.sr.label.text = text
-        dateColumn = uiutil.FindChild(self.sr.msgScroll, mls.UI_EVEMAIL_RECEIVED)
+        dateColumn = uiutil.FindChild(self.sr.msgScroll, localization.GetByLabel('UI/Mail/Received'))
         if dateColumn is not None:
             if labelID == const.mailLabelSent:
-                text = mls.UI_SHARED_DATESENT
+                text = localization.GetByLabel('UI/Mail/DateSent')
             else:
-                text = mls.UI_EVEMAIL_RECEIVED
+                text = localization.GetByLabel('UI/Mail/Received')
             dateColumn.sr.label.text = text
 
 
@@ -728,10 +729,11 @@ class MailForm(uicls.Container):
         else:
             name = info.senderName
         data.name = name
-        data.label = '<t>%s<t>%s<t>%s<t>%s' % (name,
+        data.label = '<t>'.join(('',
+         name,
          info.subject,
          date,
-         labels)
+         labels))
         data.cleanLabel = data.label
         entry = listentry.Get('MailEntry', data=data)
         return entry
@@ -799,7 +801,7 @@ class MailForm(uicls.Container):
     def SetReadingPaneVisibility(self, on = True):
         if on:
             self.readingPaneVisible = True
-            self.sr.expander.hint = mls.UI_EVEMAIL_HIDEREADINGPANE
+            self.sr.expander.hint = localization.GetByLabel('UI/Mail/HideReadingPane')
             self.sr.expander.texturePath = 'res:/UI/Texture/Shared/expanderDown.png'
             sel = self.sr.msgScroll.GetSelected()
             if len(sel) > 0:
@@ -809,7 +811,7 @@ class MailForm(uicls.Container):
                 self.LoadReadingPane(self.viewing)
         else:
             self.readingPaneVisible = False
-            self.sr.expander.hint = mls.UI_EVEMAIL_SHOWREADINGPANE
+            self.sr.expander.hint = localization.GetByLabel('UI/Mail/ShowReadingPane')
             self.sr.expander.texturePath = 'res:/UI/Texture/Shared/expanderUp.png'
             self.ShowHideReadingPane(show=0)
 
@@ -827,9 +829,7 @@ class MailForm(uicls.Container):
 
 
     def OpenMailSettings(self, *args):
-        wnd = sm.GetService('window').GetWindow('mailSettings', 1, decoClass=form.MailSettings)
-        if wnd is not None:
-            wnd.Maximize()
+        form.MailSettings.Open()
 
 
 
@@ -935,10 +935,11 @@ class MailForm(uicls.Container):
         node.data = data.copy()
         labelText = self.GetLabelText(data.labels, myLabels)
         date = util.FmtDate(node.data.sentDate, 'ls')
-        node.cleanLabel = '<t>%s<t>%s<t>%s<t>%s' % (node.name,
+        node.cleanLabel = '<t>'.join(('',
+         node.name,
          node.data.subject,
          date,
-         labelText)
+         labelText))
         panel = node.Get('panel', None)
         if panel is None:
             return 
@@ -978,7 +979,7 @@ class MailForm(uicls.Container):
 
     def SortMail(self, by = None, reversesort = 0, forceHilite = 0):
         scroll = self.sr.msgScroll
-        if by == mls.UI_EVEMAIL_LABELS:
+        if by == localization.GetByLabel('UI/Mail/Labels'):
             return 
         self.sortBy = by
         self.sortOrder = reversesort
@@ -1010,28 +1011,28 @@ class MailForm(uicls.Container):
                 unreadMails[mail.id] = mail
 
         if len(readMails) > 0:
-            unreadText = mls.UI_EVEMAIL_MARKASUNREAD
+            unreadText = localization.GetByLabel('UI/Mail/MarkAsUnread')
             m.append((unreadText, self.MarkAsUnread, (readMails.keys(), readMails.values())))
         if len(unreadMails) > 0:
-            m.append((mls.UI_EVEMAIL_MARKASREAD, self.MarkAsRead, (unreadMails.keys(), unreadMails.values())))
+            m.append((localization.GetByLabel('UI/Mail/MarkAsRead'), self.MarkAsRead, (unreadMails.keys(), unreadMails.values())))
         if trashed:
             m.append(None)
-            m.append((mls.UI_EVEMAIL_RESTORE, self.RestoreMail, (sel, selIDs)))
+            m.append((localization.GetByLabel('UI/Mail/Restore'), self.RestoreMail, (sel, selIDs)))
             m.append(None)
             if len(sel) == 1:
                 m += self.GetSenderMenu(sel[0])
-            m.append((mls.UI_EVEMAIL_DELETE, self.DeleteMail, (sel, selIDs)))
+            m.append((localization.GetByLabel('UI/Mail/Delete'), self.DeleteMail, (sel, selIDs)))
         else:
             assignLabelMenu = self.GetAssignLabelMenu(sel, selIDs)
             if len(assignLabelMenu) > 0:
-                m.append((mls.UI_EVEMAIL_ASSIGNLABEL, assignLabelMenu))
+                m.append((localization.GetByLabel('UI/Mail/AssignLabel'), assignLabelMenu))
             removeLabelMenu = self.GetRemoveLabelMenu(sel, selIDs)
             if len(removeLabelMenu) > 0:
-                m.append((mls.UI_EVEMAIL_REMOVELABEL, removeLabelMenu))
+                m.append((localization.GetByLabel('UI/Mail/LabelRemove'), removeLabelMenu))
             m.append(None)
             if len(sel) == 1:
                 m += self.GetSenderMenu(sel[0])
-            m.append((mls.UI_EVEMAIL_TRASH, self.TrashMail, (sel, selIDs)))
+            m.append((localization.GetByLabel('UI/Mail/Trash'), self.TrashMail, (sel, selIDs)))
         return m
 
 
@@ -1041,7 +1042,7 @@ class MailForm(uicls.Container):
         m = []
         itemID = None
         typeID = None
-        text = mls.UI_GENERIC_CHARACTER
+        text = localization.GetByLabel('UI/Common/Character')
         if node.data.statusMask & const.mailStatusMaskAutomated == const.mailStatusMaskAutomated:
             return m
         if node.currentView == const.mailLabelSent:
@@ -1052,17 +1053,17 @@ class MailForm(uicls.Container):
                     typeID = const.typeCharacterAmarr
                 elif util.IsCorporation(itemID):
                     typeID = const.typeCorporation
-                    text = mls.UI_GENERIC_CORPORATION
+                    text = localization.GetByLabel('UI/Common/Corporation')
                 elif util.IsAlliance(itemID):
                     typeID = const.typeAlliance
-                    text = mls.UI_GENERIC_ALLIANCE
+                    text = localization.GetByLabel('UI/Common/Alliance')
         else:
             itemID = node.data.senderID
             typeID = const.typeCharacterAmarr
         if itemID:
             charMenu = sm.GetService('menu').GetMenuFormItemIDTypeID(itemID, typeID)
             if util.IsCharacter(itemID):
-                charMenu.insert(0, (mls.UI_CMD_SHOWINFO, sm.GetService('info').ShowInfo, (typeID, itemID)))
+                charMenu.insert(0, (localization.GetByLabel('UI/Commands/ShowInfo'), sm.GetService('info').ShowInfo, (typeID, itemID)))
         if len(charMenu):
             m.append((text, charMenu))
             m.append(None)
@@ -1085,7 +1086,7 @@ class MailForm(uicls.Container):
             static = getattr(each, 'static', 0)
             if static:
                 label = '  %s' % each.labelID
-            m.append((label, (each.name.lower(), self.AssignLabelFromMenu, (sel,
+            m.append((label, (each.name, self.AssignLabelFromMenu, (sel,
                selIDs,
                each.labelID,
                each.name))))
@@ -1122,8 +1123,7 @@ class MailForm(uicls.Container):
 
     def AssignLabelFromMenu(self, sel, selIDs, labelID, labelName):
         self.AssignLabelFromMailWnd(sel, selIDs, labelID)
-        text = mls.UI_EVEMAIL_LABELASSIGNED % {'labelName': labelName,
-         'numMails': len(selIDs)}
+        text = localization.GetByLabel('UI/Mail/LabelAssigned', labelName=labelName, numMails=len(selIDs))
         eve.Message('CustomNotify', {'notify': text})
 
 
@@ -1136,8 +1136,7 @@ class MailForm(uicls.Container):
 
     def RemoveLabelFromMenu(self, sel, selIDs, labelID, labelName):
         sm.StartService('mailSvc').RemoveLabels(selIDs, labelID)
-        text = mls.UI_EVEMAIL_LABELREMOVED % {'labelName': labelName,
-         'numMails': len(selIDs)}
+        text = localization.GetByLabel('UI/Mail/LabelRemoved', labelName=labelName, numMails=len(selIDs))
         eve.Message('CustomNotify', {'notify': text})
         self.RefreshLabels(sel, selIDs)
 
@@ -1178,7 +1177,7 @@ class MailForm(uicls.Container):
 
     def LabelGroupMenu(self, entry, *args):
         m = []
-        m.append((mls.UI_EVEMAIL_LABELMGMT, self.ManageLabels))
+        m.append((localization.GetByLabel('UI/Mail/ManageLabels'), self.ManageLabels))
         return m
 
 
@@ -1187,23 +1186,23 @@ class MailForm(uicls.Container):
         currentView = entry.currentView
         m = []
         if currentView == const.mailLabelCorporation and not util.IsNPC(session.corpid):
-            m.append((mls.UI_EVEMAIL_SENDMAILTOCORP, self.SendMailToCorp, (session.corpid,)))
+            m.append((localization.GetByLabel('UI/Mail/SendMailToCorp'), self.SendMailToCorp, (session.corpid,)))
         elif currentView == const.mailLabelAlliance and session.allianceid is not None and session.corprole & const.corpRoleChatManager == const.corpRoleChatManager:
-            m.append((mls.UI_EVEMAIL_SENDMAILTOALLIANCE, self.SendMailToAlliance, (session.allianceid,)))
+            m.append((localization.GetByLabel('UI/Mail/SendMailToAlliance'), self.SendMailToAlliance, (session.allianceid,)))
         if currentView is None:
-            text = '%s (%s)' % (mls.UI_EVEMAIL_MARKALLREAD, mls.UI_GENERIC_ALL)
+            text = localization.GetByLabel('UI/Mail/MarkAllAsReadWithFolderName', folderName=localization.GetByLabel('UI/Common/All'))
             m.append((text, self.MarkAllAsRead, ()))
-            text = '%s (%s)' % (mls.UI_EVEMAIL_TRASHALL, mls.UI_GENERIC_ALL)
+            text = localization.GetByLabel('UI/Mail/TrashAllWithFolderName', folderName=localization.GetByLabel('UI/Common/All'))
             m.append((text, self.MoveAllToTrash, ()))
         elif currentView == MAILLABELTRASH:
-            m.append((mls.UI_EVEMAIL_RESTOREALL, self.MoveAllFromTrash, ()))
-            m.append((mls.UI_EVEMAIL_EMPTYTRASH, self.EmptyTrash, ()))
+            m.append((localization.GetByLabel('UI/Mail/RestoreAll'), self.MoveAllFromTrash, ()))
+            m.append((localization.GetByLabel('UI/Mail/EmptyTrash'), self.EmptyTrash, ()))
         else:
-            m.append((mls.UI_EVEMAIL_ASSIGNCOLOR, self.GetAssignColorWnd, (entry.currentView,)))
+            m.append((localization.GetByLabel('UI/Mail/AssignColor'), self.GetAssignColorWnd, (entry.currentView,)))
             m.append(None)
-            text = '%s (%s)' % (mls.UI_EVEMAIL_MARKALLREAD, entry.cleanLabel)
+            text = localization.GetByLabel('UI/Mail/MarkAllAsReadWithFolderName', folderName=entry.cleanLabel)
             m.append((text, self.MarkAsReadByLabel, (entry.currentView, entry.cleanLabel)))
-            text = '%s (%s)' % (mls.UI_EVEMAIL_TRASHALL, entry.cleanLabel)
+            text = localization.GetByLabel('UI/Mail/TrashAllWithFolderName', folderName=entry.cleanLabel)
             m.append((text, self.MoveToTrashByLabel, (entry.currentView, entry.cleanLabel)))
         return m
 
@@ -1330,7 +1329,7 @@ class MailForm(uicls.Container):
     def DeleteFromKeyboard(self, *args):
         self.CheckInited()
         delete = self.viewingLabel == MAILLABELTRASH
-        if blue.os.GetTime() - self.lastDeleted < DELETE_INTERVAL:
+        if blue.os.GetWallclockTime() - self.lastDeleted < DELETE_INTERVAL:
             eve.Message('uiwarning03')
             return 
         if delete:
@@ -1338,7 +1337,7 @@ class MailForm(uicls.Container):
         else:
             self.TrashClicked()
         self.UpdateCounters()
-        self.lastDeleted = blue.os.GetTime()
+        self.lastDeleted = blue.os.GetWallclockTime()
 
 
 
@@ -1374,9 +1373,7 @@ class MailForm(uicls.Container):
 
     def ManageLabels(self, *args):
         self.CheckInited()
-        wnd = sm.GetService('window').GetWindow('ManageLabelsExistingMails', 1, decoClass=form.ManageLabelsExistingMails)
-        if wnd is not None:
-            wnd.Maximize()
+        form.ManageLabelsExistingMails.Open()
 
 
 
@@ -1472,10 +1469,10 @@ class MailForm(uicls.Container):
 
     def GetPanelLabel(self, label, count, forceBold = False):
         if count > 0:
-            return '<b>%s (%s)</b>' % (label, count)
+            return '<b>' + localization.GetByLabel('UI/Mail/FolderLabelWithCount', folderName=label, unreadCount=count) + '</b>'
         else:
             if forceBold:
-                return '<b>%s</b>' % label
+                return '<b>' + label + '</b>'
             return label
 
 
@@ -1486,7 +1483,7 @@ class MailForm(uicls.Container):
         if len(nodes) < 1 or nodes[0].__guid__ != 'listentry.MailEntry':
             return 
         if labelID is None or labelID == const.mailLabelSent:
-            uicore.Message('CustomNotify', {'notify': mls.UI_EVEMAIL_CANNOTASSIGN})
+            uicore.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Mail/CannotAssignLabel')})
             return 
         currentView = nodes[0].currentView
         allLabels = sm.GetService('mailSvc').GetAllLabels(assignable=0)
@@ -1506,11 +1503,9 @@ class MailForm(uicls.Container):
                 return 
             if currentView not in [MAILLABELTRASH, const.mailLabelSent]:
                 sm.StartService('mailSvc').RemoveLabels(messageIDs, currentView)
-                removeText = mls.UI_EVEMAIL_LABELREMOVED % {'labelName': currentName,
-                 'numMails': len(messageIDs)}
+                removeText = localization.GetByLabel('UI/Mail/LabelRemoved', labelName=currentName, numMails=len(messageIDs))
         self.AssignLabelFromMailWnd(nodes, messageIDs, labelID)
-        text = mls.UI_EVEMAIL_LABELASSIGNED % {'labelName': labelName,
-         'numMails': len(messageIDs)}
+        text = localization.GetByLabel('UI/Mail/LabelAssigned', labelName=labelName, numMails=len(messageIDs))
         if removeText:
             text += '<br>%s' % removeText
         eve.Message('CustomNotify', {'notify': text})
@@ -1559,19 +1554,19 @@ class MailEntry(listentry.Generic):
     def LoadMailEntry(self, node):
         uiutil.Flush(self.sr.statusIcon)
         iconPath = 'ui_73_16_15'
-        hint = mls.UI_EVEMAIL_READ
+        hint = localization.GetByLabel('UI/Mail/Read')
         data = node.data
         self.UpdateLabel(data)
         if not data.read:
             iconPath = 'ui_73_16_14'
-            hint = mls.UI_EVEMAIL_UNREAD
+            hint = localization.GetByLabel('UI/Mail/Unread')
         elif node.Get('showAllStatus', 1):
             if data.Get('replied', 0):
                 iconPath = 'ui_73_16_12'
-                hint = mls.UI_EVEMAIL_REPLIED
+                hint = localization.GetByLabel('UI/Mail/Replied')
             elif data.Get('forwarded', 0):
                 iconPath = 'ui_73_16_13'
-                hint = mls.UI_EVEMAIL_FORWARDED
+                hint = localization.GetByLabel('UI/Mail/Forwarded')
         icon = uicls.Icon(icon=iconPath, parent=self.sr.statusIcon, align=uiconst.CENTER, pos=(0, 0, 16, 16), state=uiconst.UI_PICKCHILDREN)
         icon.hint = hint
 
@@ -1590,7 +1585,7 @@ class MailEntry(listentry.Generic):
     def UpdateLabel(self, data):
         label = self.sr.node.cleanLabel
         if not data.read:
-            label = '<b>%s</b>' % label
+            label = '<b>' + label + '</b>'
         self.sr.label.text = label
         self.sr.node.label = label
 
@@ -1640,24 +1635,24 @@ class ManageLabelsBase(uicls.Window):
         self.SetScope('all')
         self.SetWndIcon('ui_94_64_7')
         self.SetMinSize([250, 250])
-        caption = mls.UI_EVEMAIL_LABELMGMT
+        caption = localization.GetByLabel('UI/Mail/ManageLabels')
         if labelType == 'contact':
-            caption = '%s - %s' % (mls.UI_EVEMAIL_LABELMGMT, mls.UI_CONTACTS_CONTACTS)
+            caption = localization.GetByLabel('UI/Mail/ManageLabelsWithType', labelType=localization.GetByLabel('UI/Mail/Contacts'))
         elif labelType == 'corpcontact':
-            caption = '%s - %s' % (mls.UI_EVEMAIL_LABELMGMT, mls.UI_CONTACTS_CORPCONTACTS)
+            caption = localization.GetByLabel('UI/Mail/ManageLabelsWithType', labelType=localization.GetByLabel('UI/Mail/CorpContacts'))
         elif labelType == 'alliancecontact':
-            caption = '%s - %s' % (mls.UI_EVEMAIL_LABELMGMT, mls.UI_CONTACTS_ALLIANCECONTACTS)
+            caption = localization.GetByLabel('UI/Mail/ManageLabelsWithType', labelType=localization.GetByLabel('UI/Mail/AllianceContacts'))
         self.SetCaption(caption)
         self.SetTopparentHeight(60)
         self.sr.bottom = uicls.Container(name='bottom', parent=self.sr.main, align=uiconst.TOBOTTOM, pos=(0, 0, 0, 26))
-        self.sr.inpt = inpt = uicls.SinglelineEdit(name='input', parent=self.sr.topParent, maxLength=const.mailMaxLabelSize, pos=(74, 20, 86, 0), label=mls.UI_EVEMAIL_LABELNAME)
-        createBtn = uicls.Button(parent=self.sr.topParent, label=mls.UI_CMD_CREATE, pos=(inpt.left + inpt.width + 4,
+        self.sr.inpt = inpt = uicls.SinglelineEdit(name='input', parent=self.sr.topParent, maxLength=const.mailMaxLabelSize, pos=(74, 20, 86, 0), label=localization.GetByLabel('UI/Mail/LabelName'))
+        createBtn = uicls.Button(parent=self.sr.topParent, label=localization.GetByLabel('UI/Mail/Create'), pos=(inpt.left + inpt.width + 4,
          inpt.top,
          0,
          0), func=self.CreateLabel, btn_default=1)
         self.sr.textCont = uicls.Container(name='textCont', parent=self.sr.main, align=uiconst.TOTOP, pos=(0, 0, 0, 42), state=uiconst.UI_HIDDEN)
         self.sr.textCont2 = uicls.Container(name='textCont', parent=self.sr.main, align=uiconst.TOBOTTOM, pos=(0, 0, 0, 18), state=uiconst.UI_HIDDEN)
-        self.sr.selectedText = uicls.Label(text='', parent=self.sr.textCont2, left=0, top=0, state=uiconst.UI_DISABLED, align=uiconst.CENTERTOP)
+        self.sr.selectedText = uicls.EveLabelMedium(text='', parent=self.sr.textCont2, left=0, top=0, state=uiconst.UI_DISABLED, align=uiconst.CENTERTOP)
         self.sr.labelScroll = uicls.Scroll(name='labelScroll', parent=self.sr.main, padding=(const.defaultPadding,
          0,
          const.defaultPadding,
@@ -1689,7 +1684,7 @@ class ManageLabelsBase(uicls.Window):
             eve.Message('LookupStringMinimum', {'minimum': 1})
             return 
         if len(labelName) > const.mailMaxLabelSize:
-            raise UserError('CustomNotify', {'notify': mls.UI_CHARCREA_ERROR_TOOLONG})
+            raise UserError('CustomNotify', {'notify': localization.GetByLabel('UI/Mail/LabelTooLong')})
         if self.labelType == 'mail_labels':
             wasCreated = sm.GetService('mailSvc').CreateLabel(labelName)
         else:
@@ -1743,7 +1738,7 @@ class ManageLabelsBase(uicls.Window):
         labelsChecked = self.FindLabelsChecked()
         numLabels = len(labelsChecked)
         if numLabels > 0:
-            self.sr.selectedText.text = mls.UI_EVEMAIL_LABELSSELECTED % {'numSelected': numLabels}
+            self.sr.selectedText.text = localization.GetByLabel('UI/Mail/LabelsSelected', numSelected=numLabels)
             self.sr.textCont2.state = uiconst.UI_DISABLED
         else:
             self.sr.textCont2.state = uiconst.UI_HIDDEN
@@ -1754,15 +1749,15 @@ class ManageLabelsBase(uicls.Window):
         labelID = entry.sr.node.retval
         m = []
         if self.labelType == 'mail_labels':
-            m.append((mls.UI_EVEMAIL_ASSIGNCOLOR, self.GetAssignColorWnd, (labelID,)))
+            m.append((localization.GetByLabel('UI/Mail/AssignColor'), self.GetAssignColorWnd, (labelID,)))
             if const.mailLabelsSystem & labelID == 0:
-                m.append((mls.UI_EVEMAIL_RENAMELABEL, sm.GetService('mailSvc').RenameLabelFromUI, (labelID,)))
+                m.append((localization.GetByLabel('UI/Mail/LabelRename'), sm.GetService('mailSvc').RenameLabelFromUI, (labelID,)))
                 m.append(None)
-                m.append((mls.UI_CMD_DELETE, sm.GetService('mailSvc').DeleteLabelFromUI, (labelID, entry.sr.node.label)))
+                m.append((localization.GetByLabel('UI/Mail/Delete'), sm.GetService('mailSvc').DeleteLabelFromUI, (labelID, entry.sr.node.label)))
         else:
-            m.append((mls.UI_EVEMAIL_RENAMELABEL, sm.GetService('addressbook').RenameContactLabelFromUI, (labelID,)))
+            m.append((localization.GetByLabel('UI/Mail/LabelRename'), sm.GetService('addressbook').RenameContactLabelFromUI, (labelID,)))
             m.append(None)
-            m.append((mls.UI_CMD_DELETE, sm.GetService('addressbook').DeleteContactLabelFromUI, (labelID, entry.sr.node.label)))
+            m.append((localization.GetByLabel('UI/Mail/Delete'), sm.GetService('addressbook').DeleteContactLabelFromUI, (labelID, entry.sr.node.label)))
         return m
 
 
@@ -1778,17 +1773,18 @@ class ManageLabelsBase(uicls.Window):
 
 class ManageLabelsExistingMails(ManageLabelsBase):
     __guid__ = 'form.ManageLabelsExistingMails'
+    default_windowID = 'ManageLabelsExistingMails'
 
     def ApplyAttributes(self, attributes):
         attributes.labelType = 'mail_labels'
         form.ManageLabelsBase.ApplyAttributes(self, attributes)
         self.storedSelection = []
         self.sr.textCont.state = uiconst.UI_DISABLED
-        text = uicls.Label(text=mls.UI_EVEMAIL_LABELTEXT, parent=self.sr.textCont, left=10, top=0, autowidth=0, autoheight=0, state=uiconst.UI_DISABLED, align=uiconst.TOALL)
-        btns = uicls.ButtonGroup(btns=[[mls.UI_EVEMAIL_ASSIGNLABEL,
+        text = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Mail/LabelText'), parent=self.sr.textCont, left=10, top=0, state=uiconst.UI_DISABLED, align=uiconst.TOALL)
+        btns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Mail/AssignLabel'),
           self.AssignLabelFromBtn,
           None,
-          81], [mls.UI_EVEMAIL_REMOVELABEL,
+          81], [localization.GetByLabel('UI/Mail/LabelRemove'),
           self.RemoveLabelFromBtn,
           None,
           81]], parent=self.sr.bottom, idx=0, line=1)
@@ -1810,10 +1806,10 @@ class ManageLabelsExistingMails(ManageLabelsBase):
         labelsChecked = self.FindLabelsChecked()
         numLabels = len(labelsChecked)
         if numLabels < 1:
-            raise UserError('CustomNotify', {'notify': mls.UI_EVEMAIL_NOLABELSSELECTED})
-        wnd = sm.GetService('mailSvc').GetMailWindow(0)
+            raise UserError('CustomNotify', {'notify': localization.GetByLabel('UI/Mail/NoLabelsSelected')})
+        wnd = form.MailWindow.GetIfOpen()
         if not wnd:
-            raise UserError('CustomNotify', {'notify': mls.UI_EVEMAIL_NOMAILSSELECTED})
+            raise UserError('CustomNotify', {'notify': localization.GetByLabel('UI/Mail/NoMailsSelected')})
         scroll = uiutil.FindChild(wnd, 'msgScroll')
         if scroll is None:
             selectedMails = []
@@ -1832,28 +1828,27 @@ class ManageLabelsExistingMails(ManageLabelsBase):
         numMails = len(mailIDs)
         if numMails > 0:
             if assign:
-                text = mls.UI_EVEMAIL_LABELSASSIGNED % {'numLabels': numLabels,
-                 'numMails': numMails}
+                text = localization.GetByLabel('UI/Mail/LabelsAssignedToMails', numLabels=numLabels, numMails=numMails)
             else:
-                text = mls.UI_EVEMAIL_LABELSREMOVED % {'numLabels': numLabels,
-                 'numMails': numMails}
+                text = localization.GetByLabel('UI/Mail/LabelsRemovedFromMails', numLabels=numLabels, numMails=numMails)
             eve.Message('CustomNotify', {'notify': text})
             wnd.sr.mail.RefreshLabels(selectedMails, mailIDs)
         else:
-            raise UserError('CustomNotify', {'notify': mls.UI_EVEMAIL_NOMAILSSELECTED})
+            raise UserError('CustomNotify', {'notify': localization.GetByLabel('UI/Mail/NoMailsSelected')})
 
 
 
 
 class ManageLabelsNewMails(ManageLabelsBase):
     __guid__ = 'form.ManageLabelsNewMails'
+    default_windowID = 'ManageLabelsNewMails'
 
     def ApplyAttributes(self, attributes):
         self.result = None
         attributes.labelType = 'mail_labels'
         form.ManageLabelsBase.ApplyAttributes(self, attributes)
         labels = attributes.labels
-        btns = uicls.ButtonGroup(btns=[[mls.UI_CMD_APPLY,
+        btns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Mail/Apply'),
           self.Apply,
           None,
           81]], parent=self.sr.bottom, idx=0, line=1)
@@ -1913,7 +1908,7 @@ class NewNewMessage(uicls.Window):
         self.isReplyTo = isReplyTo
         self.SetMinSize([250, 250])
         self.SetWndIcon('ui_94_64_1', hidden=True)
-        self.SetCaption(mls.UI_SHARED_MSGNEWMESSAGE)
+        self.SetCaption(localization.GetByLabel('UI/Mail/NewMessage'))
         self.SetTopparentHeight(64)
         main = uiutil.GetChild(self, 'main')
         self.configname = self.__hash__()
@@ -1923,7 +1918,7 @@ class NewNewMessage(uicls.Window):
         labelCont = uicls.Container(name='labelCont', parent=self.sr.topParent, align=uiconst.TOLEFT, pos=(0, 0, 50, 0))
         editCont = uicls.Container(name='editCont', parent=self.sr.topParent, align=uiconst.TOALL, pos=(0, 0, 0, 0))
         uicls.Container(name='push', parent=editCont, align=uiconst.TORIGHT, pos=(0, 0, 5, 0))
-        self.sr.sendBtn = sendBtn = uix.GetBigButton(size=48, where=sendCont, left=8, top=8, hint=mls.UI_EVEMAIL_SENDMAIL, align=uiconst.RELATIVE)
+        self.sr.sendBtn = sendBtn = uix.GetBigButton(size=48, where=sendCont, left=8, top=8, hint=localization.GetByLabel('UI/Mail/SendMail'), align=uiconst.RELATIVE)
         uiutil.MapIcon(sendBtn.sr.icon, 'ui_94_64_8', ignoreSize=True)
         sendBtn.OnClick = self.ClickSend
         sendBtn.isTabStop = 1
@@ -1932,11 +1927,11 @@ class NewNewMessage(uicls.Window):
         sendBtn.killfocus = 1
         uicls.Container(name='push', parent=self.sr.topParent, align=uiconst.TORIGHT, pos=(0, 0, 4, 0))
         uicls.Container(name='push', parent=self.sr.topParent, align=uiconst.TOTOP, pos=(0, 0, 0, 4))
-        toBtn = uicls.Button(parent=labelCont, label=mls.UI_EVEMAIL_TO, pos=(0, 7, 0, 0), func=self.OpenReceiverSearch)
+        toBtn = uicls.Button(parent=labelCont, label=localization.GetByLabel('UI/Mail/To'), pos=(0, 7, 0, 0), func=self.OpenReceiverSearch)
         toBtn.height = 23
         self.sr.receiver = receiver = self.GetReceiverEdit('toField', editCont, maxLength=const.mailMaxRecipients * 24, left=0, top=10, label='', align=uiconst.TOTOP)
         self.sr.subjecField = subjecField = uicls.SinglelineEdit(name='subjecField', parent=editCont, maxLength=const.mailMaxSubjectSize, pos=(30, 10, 0, 0), label='', align=uiconst.TOTOP)
-        subjectLabel = uicls.Label(text=mls.UI_EVEMAIL_SUBJECT, parent=labelCont, top=40, left=10, fontsize=10, letterspace=1, linespace=9, uppercase=1, state=uiconst.UI_NORMAL)
+        subjectLabel = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Mail/Subject'), parent=labelCont, top=40, left=10, state=uiconst.UI_NORMAL)
         labelCont.width = max(subjectLabel.textwidth + 15, toBtn.width + 5)
         receiver.blockSetValue = 1
         receiver.registerHistory = 0
@@ -1952,7 +1947,7 @@ class NewNewMessage(uicls.Window):
          const.defaultPadding), align=uiconst.TOALL, maxLength=const.mailMaxBodySize, showattributepanel=1)
         buttonCont = self.messageedit.sr.attribPanel
         if buttonCont is not None:
-            btn = uicls.Icon(name='channelWndIcon', icon='ui_73_16_9', parent=buttonCont, pos=(144, 0, 16, 16), align=uiconst.TOPLEFT, hint=mls.UI_EVEMAIL_LABELVERB, ignoreSize=True)
+            btn = uicls.Icon(name='channelWndIcon', icon='ui_73_16_9', parent=buttonCont, pos=(144, 0, 16, 16), align=uiconst.TOPLEFT, hint=localization.GetByLabel('UI/Mail/LabelMail'), ignoreSize=True)
             btn.OnClick = self.Label
         if subject is not None:
             subjecField.SetValue(subject)
@@ -1992,18 +1987,18 @@ class NewNewMessage(uicls.Window):
         if setvalue is not None:
             edit.SetValue(setvalue)
         if label:
-            _label = uicls.Label(text=label, parent=edit, align=uiconst.TOPLEFT, width=1000, height=13, left=0, top=-13, fontsize=10, letterspace=1, linespace=9, uppercase=1, autowidth=False, autoheight=False)
+            _label = uicls.EveHeaderSmall(text=label, parent=edit, align=uiconst.TOPLEFT, width=1000, height=13, left=0, top=-13)
             edit.sr.label = _label
         return edit
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         self.messageedit = None
         self.parsingReceivers = 0
-        wnd = sm.GetService('window').GetWindow('searchWindow_mail', 0, decoClass=form.SearchWindow)
+        wnd = form.SearchWindow.GetIfOpen()
         if wnd and wnd.configname == self.configname:
-            wnd.CloseX()
+            wnd.CloseByUser()
 
 
 
@@ -2067,7 +2062,7 @@ class NewNewMessage(uicls.Window):
         self.toListID = id
         if partly:
             return True
-        name = '%s[%s]' % (name, mls.UI_EVEMAIL_ML)
+        name = localization.GetByLabel('UI/Mail/MailEntry', entryName=name, entryType=localization.GetByLabel('UI/Mail/ML'))
         self.AddReceiver(id, name, checkNPC=False)
         return True
 
@@ -2079,7 +2074,7 @@ class NewNewMessage(uicls.Window):
         c = self.sr.receiver.GetValue()
         if c:
             c += ', '
-        if self.name == mls.UI_GENERIC_UNKNOWN:
+        if self.name == localization.GetByLabel('UI/Common/Unknown'):
             self.name = name
         c += name
         self.sr.receiver.SetValue(c)
@@ -2137,8 +2132,8 @@ class NewNewMessage(uicls.Window):
         lists = sm.GetService('mailinglists').GetMyMailingLists()
         for (key, value,) in lists.iteritems():
             if name == value.displayName:
-                if eve.Message('CustomQuestion', {'header': mls.UI_EVEMAIL_Q_SENDTOLIST1,
-                 'question': mls.UI_EVEMAIL_Q_SENDTOLIST2 % {'listName': name}}, uiconst.YESNO) == uiconst.ID_YES:
+                if eve.Message('CustomQuestion', {'header': localization.GetByLabel('UI/Mail/SendToMailingListQ'),
+                 'question': localization.GetByLabel('UI/Mail/SendToMailingListQ2', listName=name)}, uiconst.YESNO) == uiconst.ID_YES:
                     return key
 
 
@@ -2186,7 +2181,7 @@ class NewNewMessage(uicls.Window):
             elif group == GROUP_LIST:
                 canAdd = self.AddList(id, string, partly=1)
                 if canAdd:
-                    string += '[%s]' % mls.UI_EVEMAIL_ML
+                    string = localization.GetByLabel('UI/Mail/MailEntry', entryName=string, entryType=localization.GetByLabel('UI/Mail/ML'))
             elif group == GROUP_CORP:
                 canAdd = self.AddCorpAllianceReciver(id, partly=1)
             if canAdd:
@@ -2224,7 +2219,7 @@ class NewNewMessage(uicls.Window):
             corpNamesUsed = self.toCorpAlliance
         if listNamesUsed is None and self.toListID is not None:
             listNamesUsed = sm.GetService('mailinglists').GetMyMailingLists()[self.toListID]
-        groupName = mls.UI_GENERIC_UNKNOWN
+        groupName = localization.GetByLabel('UI/Common/Unknown')
         groups = corpNamesUsed.keys()
         if listNamesUsed is not None:
             groups.append(listNamesUsed.displayName)
@@ -2256,7 +2251,6 @@ class NewNewMessage(uicls.Window):
         self.parsingReceivers = 1
         inp = self.sr.receiver.GetValue()
         all = inp.split(',')
-        finalString = ''
         charNamesUsed = {}
         corpNamesUsed = {}
         listNamesUsed = {}
@@ -2265,6 +2259,7 @@ class NewNewMessage(uicls.Window):
         myListsNames = [ each.name.lower() for each in myLists.itervalues() ]
         if self.toListID in myLists:
             allReceivers.append(myLists[self.toListID].displayName)
+        finalString = ''
         for name in all:
             name = name.strip()
             if not name:
@@ -2299,7 +2294,7 @@ class NewNewMessage(uicls.Window):
                     cleanName = add.name
             nameToAdd = cleanName
             if group == GROUP_LIST:
-                nameToAdd += '[%s]' % mls.UI_EVEMAIL_ML
+                nameToAdd = localization.GetByLabel('UI/Mail/MailEntry', entryName=nameToAdd, entryType=localization.GetByLabel('UI/Mail/ML'))
             finalString += '%s, ' % nameToAdd
 
         if not self or self.destroyed:
@@ -2330,8 +2325,9 @@ class NewNewMessage(uicls.Window):
     def GetCleanNameAndGroup(self, name):
         name = name.strip()
         ret = util.KeyVal(name=name, group=None)
-        if name.endswith('[%s]' % mls.UI_EVEMAIL_ML):
-            ret.name = name.replace('[%s]' % mls.UI_EVEMAIL_ML, '')
+        strippedMaillistLabel = uiutil.StripTags(localization.GetByLabel('UI/Mail/ML'))
+        if name.endswith(' [%s]' % strippedMaillistLabel):
+            ret.name = name.replace(' [%s]' % strippedMaillistLabel, '')
             ret.group = GROUP_LIST
         return ret
 
@@ -2376,11 +2372,11 @@ class NewNewMessage(uicls.Window):
             if self.toListID in myLists:
                 allReceivers.append(myLists[self.toListID])
         if len(allReceivers) < 1:
-            eve.Message('CustomInfo', {'info': mls.UI_SHARED_MSGNORECEIVER})
+            eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Mail/NoRecipientForMessage')})
             self.SetSendBtnState(disable=0)
             return 
         if len(allReceivers) > const.mailMaxRecipients + 1:
-            info = mls.UI_SHARED_MSGMAXRECEIVER % {'max': const.mailMaxRecipients}
+            info = localization.GetByLabel('UI/Mail/TooManyRecipients', max=const.mailMaxRecipients)
             eve.Message('CustomInfo', {'info': info})
             self.SetSendBtnState(disable=0)
             return 
@@ -2390,7 +2386,7 @@ class NewNewMessage(uicls.Window):
             raise UserError('NoSubject')
         elif len(subject) > const.mailMaxSubjectSize:
             self.SetSendBtnState(disable=0)
-            raise UserError('CustomNotify', {'notify': mls.UI_CHARCREA_ERROR_TOOLONG})
+            raise UserError('CustomNotify', {'notify': localization.GetByLabel('UI/Mail/NameIsTooLong')})
         body = self.messageedit.GetValue()
         values = self.toCorpAlliance.values()
         corpAlliance = None
@@ -2413,9 +2409,9 @@ class NewNewMessage(uicls.Window):
             sum = sum + labelID
 
         sm.GetService('mailSvc').AssignLabels([messageID], sum)
-        setattr(sm.StartService('mailSvc'), 'lastMessageTime', blue.os.GetTime())
+        setattr(sm.StartService('mailSvc'), 'lastMessageTime', blue.os.GetWallclockTime())
         if self and not self.destroyed:
-            self.SelfDestruct()
+            self.Close()
 
 
 
@@ -2430,7 +2426,7 @@ class NewNewMessage(uicls.Window):
 
 
     def Label(self, *args):
-        wnd = sm.GetService('window').GetWindow('ManageLabelsNewMails', 1, decoClass=form.ManageLabelsNewMails, labels=self.labels)
+        wnd = form.ManageLabelsNewMails.Open(labels=self.labels)
         if wnd.ShowModal() == 1:
             self.labels = wnd.result
 
@@ -2461,13 +2457,13 @@ class NewNewMessage(uicls.Window):
 
 
     def GetSearchWnd(self, input = ''):
-        actionBtn = [(mls.UI_CMD_ADD, self.AddReceiverFromSearch, 1)]
-        caption = mls.UI_EVEMAIL_SEARCHFORRECEIVER
-        wnd = sm.GetService('window').GetWindow('searchWindow_mail', 0, decoClass=form.SearchWindow)
+        actionBtn = [(localization.GetByLabel('UI/Mail/Add'), self.AddReceiverFromSearch, 1)]
+        caption = localization.GetByLabel('UI/Mail/SearchForRecipients')
+        wnd = form.SearchWindow.GetIfOpen()
         if wnd:
-            wnd.CloseX()
-        extraIconHintFlag = ['ui_73_16_13', mls.UI_CAL_CHARACTERADDED, False]
-        wnd = sm.GetService('window').GetWindow('searchWindow_mail', 1, decoClass=form.SearchWindow, actionBtns=actionBtn, caption=caption, input=input, getMyCorp=True, getMyLists=True, getMyAlliance=True, showContactList=True, extraIconHintFlag=extraIconHintFlag, configname=self.configname)
+            wnd.CloseByUser()
+        extraIconHintFlag = ['ui_73_16_13', localization.GetByLabel('UI/Mail/CharacterAdded'), False]
+        wnd = form.SearchWindow.Open(actionBtns=actionBtn, caption=caption, input=input, getMyCorp=True, getMyLists=True, getMyAlliance=True, showContactList=True, extraIconHintFlag=extraIconHintFlag, configname=self.configname)
         if wnd is not None:
             wnd.IsAdded = self.IsAddedToMail
             wnd.Maximize()
@@ -2508,8 +2504,7 @@ class ReceiverEdit(uicls.SinglelineEdit):
     def GetValid(self):
         current = self.GetValue(registerHistory=0)
         rest = ''
-        splitOn = getattr(self, 'splitOn', ',')
-        lastComma = current.rfind(splitOn)
+        lastComma = current.rfind(',')
         if lastComma > -1:
             rest = current[:(lastComma + 1)]
             current = current[(lastComma + 1):]
@@ -2533,7 +2528,7 @@ class ReceiverEdit(uicls.SinglelineEdit):
         for (key, value,) in lists.iteritems():
             if value.displayName.lower().startswith(current.lower().strip()) and value.displayName != current:
                 valid.append((GROUP_LIST,
-                 '%s [%s]' % (value.displayName, mls.UI_EVEMAIL_ML),
+                 localization.GetByLabel('UI/Mail/MailEntry', entryName=value.displayName, entryType=localization.GetByLabel('UI/Mail/ML')),
                  value.displayName,
                  key))
 
@@ -2546,11 +2541,11 @@ class ReceiverEdit(uicls.SinglelineEdit):
             if name.lower().startswith(current.lower().strip()) and name != current:
                 text = ''
                 if each == session.corpid:
-                    text = mls.UI_EVEMAIL_LABEL_CORP
+                    text = localization.GetByLabel('UI/Mail/LabelCorp')
                 elif each == session.allianceid:
-                    text = mls.UI_EVEMAIL_LABEL_ALLIANCE
+                    text = localization.GetByLabel('UI/Mail/LabelAlliance')
                 valid.append((GROUP_CORP,
-                 '%s [%s]' % (name, text),
+                 localization.GetByLabel('UI/Mail/MailEntry', entryName=name, entryType=text),
                  name,
                  each))
 
@@ -2617,6 +2612,7 @@ class MailReadingWnd(uicls.Window):
     default_toolbar = True
     default_trashed = False
     default_type = None
+    detault_windowID = 'mailReadingWnd'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -2631,7 +2627,7 @@ class MailReadingWnd(uicls.Window):
         sm.RegisterNotify(self)
         self.SetMinSize([250, 250])
         self.SetWndIcon()
-        self.SetCaption(mls.UI_GENERIC_MESSAGE)
+        self.SetCaption(localization.GetByLabel('UI/Mail/Message'))
         self.SetTopparentHeight(0)
         main = self.sr.main
         self.mail = mail
@@ -2656,7 +2652,7 @@ class MailReadingWnd(uicls.Window):
          const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding))
-        self.sr.readingPane = uicls.Edit(setvalue=txt, parent=self.sr.rightCont, align=uiconst.TOALL, readonly=1)
+        self.sr.readingPane = uicls.EditPlainText(setvalue=txt, parent=self.sr.rightCont, align=uiconst.TOALL, readonly=1)
 
 
 
@@ -2665,8 +2661,9 @@ class MailReadingWnd(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         sm.UnregisterNotify(self)
+        uicls.Window._OnClose(self, *args)
 
 
 
@@ -2699,7 +2696,7 @@ class MailReadingWnd(uicls.Window):
             mailCopy = self.mail.copy()
             sm.GetService('mailSvc').DeleteMails([self.mail.messageID])
             sm.ScatterEvent('OnMailTrashedDeleted', mailCopy)
-            self.CloseX()
+            self.CloseByUser()
 
 
 
@@ -2709,10 +2706,10 @@ class MailReadingWnd(uicls.Window):
                 if what == 'trashed':
                     self.sr.mailActions.SetDeleteVisibility(disabled=0, showDelete=1)
                 elif what == 'deleted':
-                    self.CloseX()
+                    self.CloseByUser()
             elif type == const.mailTypeNotifications:
                 if what == 'deleted':
-                    self.CloseX()
+                    self.CloseByUser()
 
 
 
@@ -2730,42 +2727,42 @@ class MailActionPanel(uicls.Container):
         composeCont = uicls.Container(name='composeCont', parent=self, align=uiconst.TOPLEFT, pos=(left,
          top,
          size,
-         size), hint=mls.UI_EVEMAIL_COMPOSE)
-        self.sr.composeBtn = a = uix.GetBigButton(size=size, where=composeCont, left=0, top=0, menu=0, hint=mls.UI_EVEMAIL_COMPOSE)
+         size), hint=localization.GetByLabel('UI/Mail/Compose'))
+        self.sr.composeBtn = a = uix.GetBigButton(size=size, where=composeCont, left=0, top=0, menu=0, hint=localization.GetByLabel('UI/Mail/Compose'))
         uiutil.MapIcon(a.sr.icon, 'ui_94_64_1', ignoreSize=True)
         left += self.space + self.extraSpace
         replyCont = uicls.Container(name='replyCont', parent=self, align=uiconst.TOPLEFT, pos=(left,
          top,
          size,
-         size), hint=mls.UI_EVEMAIL_REPLY)
-        self.sr.replyBtn = b = uix.GetBigButton(size=size, where=replyCont, left=0, top=0, menu=0, hint=mls.UI_EVEMAIL_REPLY)
+         size), hint=localization.GetByLabel('UI/Mail/Reply'))
+        self.sr.replyBtn = b = uix.GetBigButton(size=size, where=replyCont, left=0, top=0, menu=0, hint=localization.GetByLabel('UI/Mail/Reply'))
         uiutil.MapIcon(b.sr.icon, 'ui_94_64_2', ignoreSize=True)
         left += self.space
         replyAllCont = uicls.Container(name='replyAllCont', parent=self, align=uiconst.TOPLEFT, pos=(left,
          top,
          size,
-         size), hint=mls.UI_EVEMAIL_REPLYALL)
-        self.sr.replyAllBtn = c = uix.GetBigButton(size=size, where=replyAllCont, left=0, top=0, menu=0, hint=mls.UI_EVEMAIL_REPLYALL)
+         size), hint=localization.GetByLabel('UI/Mail/ReplyAll'))
+        self.sr.replyAllBtn = c = uix.GetBigButton(size=size, where=replyAllCont, left=0, top=0, menu=0, hint=localization.GetByLabel('UI/Mail/ReplyAll'))
         uiutil.MapIcon(c.sr.icon, 'ui_94_64_3', ignoreSize=True)
         left += self.space
         forwardCont = uicls.Container(name='forwardCont', parent=self, align=uiconst.TOPLEFT, pos=(left,
          top,
          size,
-         size), hint=mls.UI_EVEMAIL_FORWARD)
-        self.sr.forwardBtn = d = uix.GetBigButton(size=size, where=forwardCont, left=0, top=0, menu=0, hint=mls.UI_EVEMAIL_FORWARD)
+         size), hint=localization.GetByLabel('UI/Mail/Forward'))
+        self.sr.forwardBtn = d = uix.GetBigButton(size=size, where=forwardCont, left=0, top=0, menu=0, hint=localization.GetByLabel('UI/Mail/Forward'))
         uiutil.MapIcon(d.sr.icon, 'ui_94_64_4', ignoreSize=True)
         left += self.space + self.extraSpace
         trashCont = uicls.Container(name='deleteCont', parent=self, align=uiconst.TOPLEFT, pos=(left,
          top,
          size,
-         size), hint=mls.UI_EVEMAIL_TRASH)
-        self.sr.trashBtn = e = uix.GetBigButton(size=size, where=trashCont, left=0, top=0, menu=0, hint=mls.UI_EVEMAIL_TRASH)
+         size), hint=localization.GetByLabel('UI/Mail/Trash'))
+        self.sr.trashBtn = e = uix.GetBigButton(size=size, where=trashCont, left=0, top=0, menu=0, hint=localization.GetByLabel('UI/Mail/Trash'))
         uiutil.MapIcon(e.sr.icon, 'ui_94_64_5', ignoreSize=True)
         deleteCont = uicls.Container(name='deleteCont', parent=self, align=uiconst.TOPLEFT, pos=(left,
          top,
          size,
-         size), hint=mls.UI_EVEMAIL_DELETE)
-        self.sr.deleteBtn = f = uix.GetBigButton(size=size, where=deleteCont, left=0, top=0, menu=0, hint=mls.UI_EVEMAIL_DELETE)
+         size), hint=localization.GetByLabel('UI/Mail/Delete'))
+        self.sr.deleteBtn = f = uix.GetBigButton(size=size, where=deleteCont, left=0, top=0, menu=0, hint=localization.GetByLabel('UI/Mail/Delete'))
         uiutil.MapIcon(f.sr.icon, 'ui_4_64_7', ignoreSize=True)
         left += self.space + self.extraSpace
         self.sr.singleMsgBtn = [b, c, d]
@@ -2897,19 +2894,20 @@ class MailActionPanel(uicls.Container):
 
 class MailSettings(uicls.Window):
     __guid__ = 'form.MailSettings'
+    default_windowID = 'mailSettings'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.SetScope('all')
         self.SetTopparentHeight(0)
-        self.SetCaption(mls.UI_EVEMAIL_MAILSETTINGS)
-        self.SetMinSize([350, 365])
+        self.SetCaption(localization.GetByLabel('UI/Mail/CommunicationSettings'))
+        self.SetMinSize([350, 375])
         self.SetWndIcon('ui_94_64_1')
-        self.sr.standardBtns = uicls.ButtonGroup(btns=[[mls.UI_CMD_APPLY,
+        self.sr.standardBtns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Mail/Apply'),
           self.OnApply,
           (),
-          81], [mls.UI_CMD_CANCEL,
-          self.CloseX,
+          81], [localization.GetByLabel('UI/Commands/Cancel'),
+          self.CloseByUser,
           (),
           81]])
         self.sr.main.children.insert(0, self.sr.standardBtns)
@@ -2919,37 +2917,37 @@ class MailSettings(uicls.Window):
          const.defaultPadding))
         uicls.Frame(parent=mainCont, color=(1.0, 1.0, 1.0, 0.25))
         cost = sm.GetService('account').GetDefaultContactCost()
-        uix.GetContainerHeader(mls.UI_EVEMAIL_CSPADEFAULTBLOCKING, mainCont, bothlines=0)
+        uix.GetContainerHeader(localization.GetByLabel('UI/Mail/IncomingCommunications'), mainCont, bothlines=0)
         comboCont = uicls.Container(name='comboCont', parent=mainCont, align=uiconst.TOTOP, pos=(0, 0, 0, 36))
-        self.sr.accessCb1 = uicls.Checkbox(text=mls.UI_EVEMAIL_CSPANOPENTEXT, parent=comboCont, configName='accessCb1', retval=0, checked=cost != -1, groupname='communications', callback=self.OnCheckboxChange, pos=(6, 0, 300, 0), align=uiconst.TOPLEFT)
-        self.sr.accessCb1.hint = mls.UI_EVEMAIL_CSPAHINT
-        self.sr.accessCb2 = uicls.Checkbox(text=mls.UI_EVEMAIL_CSPABLOCKED, parent=comboCont, configName='accessCb1', retval=1, checked=cost == -1, groupname='communications', callback=self.OnCheckboxChange, pos=(6, 17, 300, 0), align=uiconst.TOPLEFT)
-        self.sr.accessCb2.hint = mls.UI_EVEMAIL_CSPAHINT2
+        self.sr.accessCb1 = uicls.Checkbox(text=localization.GetByLabel('UI/Mail/RequireCSPNFromUnknown'), parent=comboCont, configName='accessCb1', retval=0, checked=cost != -1, groupname='communications', callback=self.OnCheckboxChange, pos=(6, 0, 300, 0), align=uiconst.TOPLEFT)
+        self.sr.accessCb1.hint = localization.GetByLabel('UI/Mail/CSPAHint')
+        self.sr.accessCb2 = uicls.Checkbox(text=localization.GetByLabel('UI/Mail/BlockUnknown'), parent=comboCont, configName='accessCb1', retval=1, checked=cost == -1, groupname='communications', callback=self.OnCheckboxChange, pos=(6, 17, 300, 0), align=uiconst.TOPLEFT)
+        self.sr.accessCb2.hint = localization.GetByLabel('UI/Mail/CSPAHint2')
         self.sr.chargeCont = uicls.Container(name='chargeCont', parent=mainCont, align=uiconst.TOTOP, pos=(0, 0, 0, 28))
         if cost == -1:
             self.sr.chargeCont.state = uiconst.UI_HIDDEN
             cost = 0
         self.sr.chargeEdit = uicls.SinglelineEdit(name='chargeField', parent=self.sr.chargeCont, setvalue=cost, maxLength=32, pos=(150, 0, 60, 0), label='', align=uiconst.TOPLEFT, ints=[0, 1000000])
-        label = uicls.Label(text=mls.UI_EVEMAIL_CSPACHARGE, parent=self.sr.chargeCont, align=uiconst.TOPLEFT, width=150, left=8, top=5, autowidth=False, fontsize=10, letterspace=1, linespace=9, uppercase=1)
+        label = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Mail/CSPACharge'), parent=self.sr.chargeCont, align=uiconst.TOPLEFT, width=150, left=8, top=5)
         uicls.Container(name='push', parent=mainCont, align=uiconst.TOTOP, pos=(0, 0, 0, 8))
-        uix.GetContainerHeader(mls.UI_EVEMAIL_MAILMAILSETTINGS, mainCont)
+        uix.GetContainerHeader(localization.GetByLabel('UI/Mail/MailSettings'), mainCont)
         perPageCont = uicls.Container(name='perPageCont', parent=mainCont, align=uiconst.TOTOP, pos=(0, 0, 0, 20))
         self.sr.perPageEdit = uicls.SinglelineEdit(name='perPageEdit', parent=perPageCont, setvalue=settings.user.ui.Get('mail_mailsPerPage', DEFAULTNUMMAILS), maxLength=32, pos=(150, 4, 60, 0), label='', align=uiconst.TOPLEFT, ints=[MINNUMMAILS, MAXNUMMAILS])
-        label = uicls.Label(text=mls.UI_EVEMAIL_MAILSPERPAGE, parent=perPageCont, align=uiconst.TOPLEFT, width=150, left=8, top=9, autowidth=False, fontsize=10, letterspace=1, linespace=9, uppercase=1)
+        label = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Mail/MailsPerPage'), parent=perPageCont, align=uiconst.TOPLEFT, width=150, left=8, top=9)
         searchCont = uicls.Container(name='searchCont', parent=mainCont, align=uiconst.TOTOP, pos=(0, 5, 0, 20))
-        self.sr.getSearchWnd = uicls.Checkbox(text=mls.UI_EVEMAIL_SHOWSEARCH, parent=searchCont, configName='getSearchWnd', retval=0, checked=settings.user.ui.Get('mail_getSearchWnd', 1), align=uiconst.TOPLEFT, pos=(6, 0, 300, 0))
+        self.sr.getSearchWnd = uicls.Checkbox(text=localization.GetByLabel('UI/Mail/ShowSearch'), parent=searchCont, configName='getSearchWnd', retval=0, checked=settings.user.ui.Get('mail_getSearchWnd', 1), align=uiconst.TOPLEFT, pos=(6, 0, 300, 0))
         textCont = uicls.Container(name='textCont', parent=mainCont, align=uiconst.TOTOP, pos=(0, 8, 0, 16))
-        t = uicls.Label(text=mls.UI_EVEMAIL_WHENMAILRECEIVED, parent=textCont, left=8, align=uiconst.TOALL, top=2, letterspace=1, fontsize=10, state=uiconst.UI_DISABLED, uppercase=1, autowidth=False, autoheight=False)
+        t = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Mail/WhenReceived'), parent=textCont, left=8, align=uiconst.TOALL, top=2, state=uiconst.UI_DISABLED)
         cbCont = uicls.Container(name='cbCont', parent=mainCont, align=uiconst.TOTOP, pos=(0, 0, 0, 56))
-        self.sr.mailBlinkNeocomCB = uicls.Checkbox(text=mls.UI_EVEMAIL_BLINKNEOCOM, parent=cbCont, configName='mailBlinkNeocomCB', retval=0, checked=settings.user.ui.Get('mail_blinkNecom', 1), align=uiconst.TOPLEFT, pos=(16, 0, 300, 0))
-        self.sr.mailBlinkTabCB = uicls.Checkbox(text=mls.UI_EVEMAIL_BLINKTAB, parent=cbCont, configName='mailBlinkTabCB', retval=0, checked=settings.user.ui.Get('mail_blinkTab', 1), align=uiconst.TOPLEFT, pos=(16, 17, 400, 0))
-        self.sr.mailNotificationCB = uicls.Checkbox(text=mls.UI_EVEMAIL_SHOWNOTIFICATION, parent=cbCont, configName='mailNotificationCB', retval=0, checked=settings.user.ui.Get('mail_showNotification', 1), align=uiconst.TOPLEFT, pos=(16, 34, 400, 0))
+        self.sr.mailBlinkNeocomCB = uicls.Checkbox(text=localization.GetByLabel('UI/Mail/BlinkMailNeoComButton'), parent=cbCont, configName='mailBlinkNeocomCB', retval=0, checked=settings.user.ui.Get('mail_blinkNecom', 1), align=uiconst.TOPLEFT, pos=(16, 0, 300, 0))
+        self.sr.mailBlinkTabCB = uicls.Checkbox(text=localization.GetByLabel('UI/Mail/BlinkTab'), parent=cbCont, configName='mailBlinkTabCB', retval=0, checked=settings.user.ui.Get('mail_blinkTab', 1), align=uiconst.TOPLEFT, pos=(16, 17, 400, 0))
+        self.sr.mailNotificationCB = uicls.Checkbox(text=localization.GetByLabel('UI/Mail/ShowNotification'), parent=cbCont, configName='mailNotificationCB', retval=0, checked=settings.user.ui.Get('mail_showNotification', 1), align=uiconst.TOPLEFT, pos=(16, 34, 400, 0))
         textCont2 = uicls.Container(name='textCont2', parent=mainCont, align=uiconst.TOTOP, pos=(0, 8, 0, 16))
-        t = uicls.Label(text=mls.UI_EVEMAIL_WHENNOTIFICATIONRECEIVED, parent=textCont2, left=8, align=uiconst.TOALL, top=2, letterspace=1, fontsize=10, state=uiconst.UI_DISABLED, uppercase=1)
+        t = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Mail/Notifications/WhenReceived'), parent=textCont2, left=8, align=uiconst.TOALL, top=2, state=uiconst.UI_DISABLED)
         cbCont2 = uicls.Container(name='cbCont2', parent=mainCont, align=uiconst.TOALL)
-        self.sr.nBlinkNeocomCB = uicls.Checkbox(text=mls.UI_EVEMAIL_BLINKNEOCOM, parent=cbCont2, configName='nBlinkNeocomCB', retval=0, checked=settings.user.ui.Get('notification_blinkNecom', 1), align=uiconst.TOPLEFT, pos=(16, 0, 300, 0))
-        self.sr.nBlinkTabCB = uicls.Checkbox(text=mls.UI_EVEMAIL_BLINKNOIFICATIONTAB, parent=cbCont2, configName='nBlinkTabCB', retval=0, checked=settings.user.ui.Get('notification_blinkTab', 1), align=uiconst.TOPLEFT, pos=(16, 17, 400, 0))
-        self.sr.nNotificationCB = uicls.Checkbox(text=mls.UI_EVEMAIL_SHOWNOTIFICATION, parent=cbCont2, configName='nNotificationCB', retval=0, checked=settings.user.ui.Get('notification_showNotification', 1), align=uiconst.TOPLEFT, pos=(16, 34, 400, 0))
+        self.sr.nBlinkNeocomCB = uicls.Checkbox(text=localization.GetByLabel('UI/Mail/BlinkMailNeoComButton'), parent=cbCont2, configName='nBlinkNeocomCB', retval=0, checked=settings.user.ui.Get('notification_blinkNecom', 1), align=uiconst.TOPLEFT, pos=(16, 0, 300, 0))
+        self.sr.nBlinkTabCB = uicls.Checkbox(text=localization.GetByLabel('UI/Mail/BlinkNotificationTab'), parent=cbCont2, configName='nBlinkTabCB', retval=0, checked=settings.user.ui.Get('notification_blinkTab', 1), align=uiconst.TOPLEFT, pos=(16, 17, 400, 0))
+        self.sr.nNotificationCB = uicls.Checkbox(text=localization.GetByLabel('UI/Mail/ShowNotification'), parent=cbCont2, configName='nNotificationCB', retval=0, checked=settings.user.ui.Get('notification_showNotification', 1), align=uiconst.TOPLEFT, pos=(16, 34, 400, 0))
 
 
 
@@ -2994,28 +2992,29 @@ class MailSettings(uicls.Window):
         if perPage != settings.user.ui.Get('mail_mailsPerPage', DEFAULTNUMMAILS):
             settings.user.ui.Set('mail_mailsPerPage', perPage)
             sm.ScatterEvent('OnMailSettingsChanged')
-        self.CloseX()
+        self.CloseByUser()
 
 
 
 
 class MailinglistWnd(uicls.Window):
     __guid__ = 'form.MailinglistWnd'
+    default_windowID = 'MailinglistWnd'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.scope = 'station_inflight'
         self.SetMinSize([240, 100], refresh=True)
         self.MakeUnResizeable()
-        self.SetCaption(mls.UI_EVEMAIL_CREATEJOINMAILINGLISTS)
+        self.SetCaption(localization.GetByLabel('UI/Mail/CreateOrJoinML'))
         self.SetWndIcon('ui_94_64_1')
         self.SetTopparentHeight(70)
-        self.sr.inpt = inpt = uicls.SinglelineEdit(name='input', parent=self.sr.topParent, maxLength=const.mailingListMaxNameSize, pos=(74, 20, 86, 0), label=mls.UI_EVEMAIL_MAILINGLISTNAME)
-        joinBtn = uicls.Button(parent=self.sr.topParent, label=mls.UI_CMD_JOIN, pos=(inpt.left,
+        self.sr.inpt = inpt = uicls.SinglelineEdit(name='input', parent=self.sr.topParent, maxLength=const.mailingListMaxNameSize, pos=(74, 20, 86, 0), label=localization.GetByLabel('UI/Mail/MailingListName'))
+        joinBtn = uicls.Button(parent=self.sr.topParent, label=localization.GetByLabel('UI/Mail/Join'), pos=(inpt.left,
          inpt.top + inpt.height + 4,
          0,
          0), func=self.JoinMaillist, args=(0,), btn_default=1)
-        createBtn = uicls.Button(parent=self.sr.topParent, label=mls.UI_CMD_CREATE, pos=(joinBtn.left + joinBtn.width + 2,
+        createBtn = uicls.Button(parent=self.sr.topParent, label=localization.GetByLabel('UI/Mail/Create'), pos=(joinBtn.left + joinBtn.width + 2,
          joinBtn.top,
          0,
          0), func=self.CreateMaillist, args=(1,))
@@ -3029,10 +3028,10 @@ class MailinglistWnd(uicls.Window):
             eve.Message('LookupStringMinimum', {'minimum': 1})
             return 
         if len(name) > const.mailingListMaxNameSize:
-            raise UserError('CustomNotify', {'notify': mls.UI_CHARCREA_ERROR_TOOLONG})
+            raise UserError('CustomNotify', {'notify': localization.GetByLabel('UI/Mail/NameIsTooLong')})
         ret = sm.GetService('mailinglists').CreateMailingList(name)
         if ret is not None:
-            self.CloseX()
+            self.CloseByUser()
 
 
 
@@ -3043,18 +3042,18 @@ class MailinglistWnd(uicls.Window):
             return 
         ret = sm.GetService('mailinglists').JoinMailingList(name)
         if ret is not None:
-            self.CloseX()
+            self.CloseByUser()
 
 
 
 
 class SearchWindow(uicls.Window):
     __guid__ = 'form.SearchWindow'
-    __nonpersistvars__ = ['scroll', 'listentry', 'result']
     __notifyevents__ = ['OnContactChange',
      'OnContactNoLongerContact',
      'OnSearcedUserRemoved',
      'OnSearcedUserAdded']
+    default_windowID = 'searchWindow_mail'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -3097,10 +3096,10 @@ class SearchWindow(uicls.Window):
              const.defaultPadding,
              const.defaultPadding))
             self.sr.contactsScroll.OnSelectionChange = self.RefreshSelection
-            self.sr.tabs = uicls.TabGroup(name='tabs', parent=self.sr.main, tabs=[[mls.UI_MARKET_SEARCH,
+            self.sr.tabs = uicls.TabGroup(name='tabs', parent=self.sr.main, tabs=[[localization.GetByLabel('UI/Mail/Search'),
               self.sr.searchCont,
               self,
-              'search'], [mls.UI_CONTACTS_ALL,
+              'search'], [localization.GetByLabel('UI/Mail/AllContacts'),
               self.sr.contactsScroll,
               self,
               'contacts']], groupID='calenderEvent_tabs', autoselecttab=1, idx=0)
@@ -3116,7 +3115,7 @@ class SearchWindow(uicls.Window):
         searchBtnCont = uicls.Container(name='searchBtnCont', parent=searchCont, align=uiconst.TORIGHT, pos=(0, 0, 40, 0))
         inputCont = uicls.Container(name='inputCont', parent=searchCont, align=uiconst.TOALL, padLeft=5)
         self.sr.inpt = inpt = uicls.SinglelineEdit(name='input', parent=inputCont, maxLength=50, pos=(10, 10, 86, 0), label='', setvalue=input, align=uiconst.TOTOP)
-        self.sr.searchBtn = uicls.Button(parent=searchBtnCont, label=mls.UI_CMD_SEARCH, pos=(4,
+        self.sr.searchBtn = uicls.Button(parent=searchBtnCont, label=localization.GetByLabel('UI/Mail/Search'), pos=(4,
          inpt.top,
          0,
          0), func=self.Search, btn_default=1)
@@ -3134,7 +3133,7 @@ class SearchWindow(uicls.Window):
 
         self.sr.btns = uicls.ButtonGroup(btns=btns, parent=self.sr.main, idx=0)
         self.sr.btns.state = uiconst.UI_HIDDEN
-        self.sr.scroll.Load(contentList=[], headers=[], noContentHint=mls.UI_MARKET_PLEASETYPEANDSEARCH)
+        self.sr.scroll.Load(contentList=[], headers=[], noContentHint=localization.GetByLabel('UI/Common/TypeInSearch'))
 
 
 
@@ -3187,14 +3186,14 @@ class SearchWindow(uicls.Window):
     def Search(self, *args):
         input = self.sr.inpt.GetValue()
         if input.strip() == '':
-            self.sr.scroll.Load(contentList=[], headers=[], noContentHint=mls.UI_MARKET_PLEASETYPEANDSEARCH)
+            self.sr.scroll.Load(contentList=[], headers=[], noContentHint=localization.GetByLabel('UI/Common/TypeInSearch'))
             return 
         hint = ''
         lst = uix.Search(input, const.groupCharacter, getWindow=0, hideNPC=1, notifyOneMatch=1, modal=0, getError=1)
         if type(lst) != list:
             lst = [lst]
         if len(lst) >= 25:
-            hint = mls.UI_EVEMAIL_25CHARFOUND % {'name': input}
+            hint = localization.GetByLabel('UI/Mail/25OrMoreFound', name=input)
         try:
             scrolllist = self.GetUserEntries(lst)
             extraEntries = []
@@ -3217,7 +3216,7 @@ class SearchWindow(uicls.Window):
                 if corpName.lower().startswith(input.lower()):
                     entry = self.GetCorpAllianceMailingListEntry(const.typeCorporation, 0, session.corpid, corpName)
                     scrolllist.insert(0, entry)
-            noContentHint = mls.UI_MARKET_NOTHINGFOUNDWITHSEARCH % {'search': input}
+            noContentHint = localization.GetByLabel('UI/Market/NothingFoundWithSearch', search=input)
             self.sr.scroll.Load(contentList=scrolllist, headers=[], noContentHint=noContentHint)
             self.SetHint(hint)
             self.RefreshSelection()
@@ -3233,7 +3232,7 @@ class SearchWindow(uicls.Window):
         data.confirmOnDblClick = 1
         if type is None:
             if mailingList:
-                data.label = '%s [%s]' % (name, mls.UI_EVEMAIL_ML)
+                data.label = localization.GetByLabel('UI/Mail/MailEntry', entryName=name, entryType=localization.GetByLabel('UI/Mail/ML'))
                 data.itemID = None
                 data.typeID = None
                 data.mailingListID = id
@@ -3241,9 +3240,9 @@ class SearchWindow(uicls.Window):
             else:
                 return 
         elif type == const.typeCorporation:
-            data.label = '%s [%s]' % (name, mls.UI_EVEMAIL_LABEL_CORP)
+            data.label = localization.GetByLabel('UI/Mail/MailEntry', entryName=name, entryType=localization.GetByLabel('UI/Mail/LabelCorp'))
         elif type == const.typeAlliance:
-            data.label = '%s [%s]' % (name, mls.UI_EVEMAIL_LABEL_ALLIANCE)
+            data.label = localization.GetByLabel('UI/Mail/MailEntry', entryName=name, entryType=localization.GetByLabel('UI/Mail/LabelAlliance'))
         data.itemID = id
         data.typeID = type
         data.name = name
@@ -3271,7 +3270,7 @@ class SearchWindow(uicls.Window):
         hp = self.sr.hintCont
         uix.Flush(hp)
         if hint:
-            t = uicls.Label(text=hint, parent=hp, top=-3, align=uiconst.CENTER, width=self.minsize[0] - 32, autowidth=False, state=uiconst.UI_DISABLED)
+            t = uicls.EveLabelMedium(text=hint, parent=hp, top=-3, align=uiconst.CENTER, width=self.minsize[0] - 32, state=uiconst.UI_DISABLED)
             hp.state = uiconst.UI_DISABLED
             hp.height = t.height + 4
         else:
@@ -3290,7 +3289,7 @@ class SearchWindow(uicls.Window):
             scrolllist.append(entryTuple)
 
         scrolllist = uiutil.SortListOfTuples(scrolllist)
-        self.sr.contactsScroll.Load(contentList=scrolllist, headers=[], noContentHint=mls.UI_CONTACTS_NOCONTACTS)
+        self.sr.contactsScroll.Load(contentList=scrolllist, headers=[], noContentHint=localization.GetByLabel('UI/AddressBook/NoContacts'))
 
 
 
@@ -3375,7 +3374,7 @@ class MailAssignColorWnd(uicls.Container):
 
     def Startup(self, labelID, doneCallback = None, doneArgs = (), *args):
         container = uicls.Container(name='headercontainer', parent=self, align=uiconst.TOTOP, pos=(0, 0, 0, 18), idx=0)
-        t = uicls.Label(text=mls.UI_EVEMAIL_SELECTCOLOR, parent=container, left=8, align=uiconst.TOALL, top=5, letterspace=1, fontsize=10, state=uiconst.UI_DISABLED, uppercase=1)
+        t = uicls.EveHeaderSmall(text=localization.GetByLabel('UI/Mail/Select Color'), parent=container, left=8, align=uiconst.TOALL, top=5, state=uiconst.UI_DISABLED)
         uicls.Line(parent=container, align=uiconst.TOBOTTOM, top=-1)
         colorCont = uicls.Container(name='colorCont', parent=self, align=uiconst.TOALL, padding=(const.defaultPadding,
          const.defaultPadding,

@@ -150,7 +150,7 @@ class SkinSpotLightShadows:
     @staticmethod
     def watchdog(weakSelf):
         while True:
-            blue.synchro.Sleep(2000)
+            blue.synchro.SleepWallclock(2000)
             selfRef = weakSelf()
             if selfRef is None:
                 return 
@@ -174,12 +174,13 @@ class SkinSpotLightShadows:
 
 
 
-    def __init__(self, scene2, size = None, format = None, applyBlur = True, debugVisualize = False, debugNoFiltering = False):
+    def __init__(self, scene2, size = None, format = None, applyBlur = True, debugVisualize = False, debugNoFiltering = False, lightFilter = None):
         size = size if size else SkinSpotLightShadows.DEFAULT_RESOLUTION
         trinity.device.RegisterResource(self)
         self.scene2 = scene2
         self.meshes = {}
         self.autoOptimizeFrustum = True
+        self.lightFilter = lightFilter
         if self.scene2 is not None and hasattr(self.scene2, 'updateShadowCubeMap'):
             self.oldShadowsEnabled = self.scene2.updateShadowCubeMap
             self.scene2.updateShadowCubeMap = False
@@ -205,6 +206,24 @@ class SkinSpotLightShadows:
 
 
 
+    def SetShadowMapResolution(self, size):
+        self.width = self.height = size
+        self.uvAdjustMatrix = ((0.5, 0, 0, 0),
+         (0, -0.5, 0, 0),
+         (0, 0, 1, 0),
+         (0.5 + 0.5 / self.width,
+          0.5 + 0.5 / self.height,
+          0,
+          1))
+        self.RefreshLights()
+
+
+
+    def GetShadowMapResolution(self):
+        return self.width
+
+
+
     def __del__(self):
         self.Clear(killThread=True)
         if self.scene2 is not None and hasattr(self.scene2, 'updateShadowCubeMap'):
@@ -213,7 +232,7 @@ class SkinSpotLightShadows:
 
 
     @staticmethod
-    def SetupForCharacterCreator(scene):
+    def SetupForCharacterCreator(scene, shadowMapSize = None, lightFilter = None):
         if scene is None:
             return 
         if SkinSpotLightShadows.instance is not None:
@@ -222,7 +241,7 @@ class SkinSpotLightShadows:
                 return 
             SkinSpotLightShadows.instance.Clear(killThread=True)
             SkinSpotLightShadows.instance = None
-        SkinSpotLightShadows.instance = SkinSpotLightShadows(scene)
+        SkinSpotLightShadows.instance = SkinSpotLightShadows(scene, size=shadowMapSize, lightFilter=lightFilter)
         SkinSpotLightShadows.instance.CreateRenderJobsForScene()
         SkinSpotLightShadows.SetupFloorDropShadow(scene)
         for dynamic in scene.dynamics:
@@ -420,7 +439,12 @@ class SkinSpotLightShadows:
             light.shadowCasterTypes = 0
         else:
             light.shadowResolution = 1024
-        if len(self.lights) > SkinSpotLightShadows.MAX_LIGHTS or light.coneAlphaOuter > 89:
+        ignoreLight = False
+        if self.lightFilter is not None and light.name not in self.lightFilter:
+            ignoreLight = True
+        elif len(self.lights) > SkinSpotLightShadows.MAX_LIGHTS or light.coneAlphaOuter > 89:
+            ignoreLight = True
+        if ignoreLight:
             light.importanceScale = 0
             light.importanceBias = -9999
             light.shadowCasterTypes = 0
@@ -446,7 +470,7 @@ class SkinSpotLightShadows:
                 RT = None
                 self.width /= 2
                 self.height /= 2
-                blue.synchro.Yield()
+                PD.Yield()
 
         self.RTs[light] = RT
         if False:
@@ -459,7 +483,7 @@ class SkinSpotLightShadows:
                 depth = None
                 self.width /= 2
                 self.height /= 2
-                blue.synchro.Yield()
+                PD.Yield()
 
         if not (RT and depth):
             return 
@@ -476,6 +500,7 @@ class SkinSpotLightShadows:
             fx.RebuildCachedData()
         else:
             v = None
+        rj.PushViewport()
         rj.PushRenderTarget(RT.GetSurfaceLevel(0))
         rj.PushDepthStencil(depth)
         clearColor = (100.0, 1.0, 1.0, 1.0)
@@ -485,7 +510,6 @@ class SkinSpotLightShadows:
         vp.y = 0
         vp.width = self.width
         vp.height = self.height
-        rj.PushViewport()
         rj.PushProjection()
         rj.PushViewTransform()
         rj.SetViewport(vp)
@@ -551,9 +575,8 @@ class SkinSpotLightShadows:
              0,
              0))
         rj.PopViewTransform().name = 'TriStepPopViewTransform Restoring state'
-        rj.PopProjection()
         rj.PopViewport()
-        rj.SetViewport(None)
+        rj.PopProjection()
         if SkinSpotLightShadows.renderJob is not None and SkinSpotLightShadows.renderJob.object is not None:
             step = trinity.TriStepRunJob()
             step.job = rj
@@ -713,8 +736,6 @@ class SkinSpotLightShadows:
     def SetupFloorDropShadow(scene, doYield = True):
         if scene is None or SkinSpotLightShadows.instance is None:
             return 
-        if len(scene.dynamics) != 1:
-            return 
 
         def SetupCurve(effect):
             doll = scene.dynamics[0]
@@ -772,7 +793,7 @@ class SkinSpotLightShadows:
                         area.effect.effectFilePath = 'res:/Graphics/Effect/Managed/Interior/Avatar/PortraitDropShadow.fx'
                         if doYield:
                             while area.effect.effectResource.isLoading:
-                                blue.synchro.Yield()
+                                PD.Yield()
 
                         SetupCurve(area.effect)
                         area.effect.RebuildCachedData()

@@ -1,7 +1,6 @@
+import cef
 import collections
 import geo2
-import graphicWrappers
-import prepassConversion
 import service
 import trinity
 import util
@@ -15,7 +14,7 @@ class InteriorPlaceableClientComponent:
 
 class InteriorPlaceableClient(service.Service):
     __guid__ = 'svc.interiorPlaceableClient'
-    __componentTypes__ = ['interiorPlaceable']
+    __componentTypes__ = [cef.InteriorPlaceableComponentView.GetComponentCodeName()]
     __dependencies__ = ['graphicClient']
     __notifyevents__ = ['OnGraphicSettingsChanged']
 
@@ -30,12 +29,8 @@ class InteriorPlaceableClient(service.Service):
         if 'graphicID' in state:
             component.graphicID = state['graphicID']
         else:
-            cfgGraphic = cfg.invtypes.Get(state['_typeID']).Graphic()
-            if cfgGraphic:
-                component.graphicID = cfgGraphic.id
-            else:
-                self.LogError('interiorPlaceable Component requires typeID: ', state['_typeID'], ' to have a graphicID')
-                component.graphicID = 0
+            self.LogError('interiorPlaceable Component requires graphicID in its state')
+            component.graphicID = 0
         if 'overrideMetaMaterialPath' in state:
             component.overrideMetaMaterialPath = state['overrideMetaMaterialPath']
         else:
@@ -44,6 +39,12 @@ class InteriorPlaceableClient(service.Service):
             component.minSpecOverideMetaMaterialPath = state['minSpecOverideMetaMaterialPath']
         else:
             component.minSpecOverideMetaMaterialPath = None
+        if 'probeOffsetX' in state and 'probeOffsetY' in state and 'probeOffsetZ' in state:
+            component.probeOffset = (float(state['probeOffsetX']), float(state['probeOffsetY']), float(state['probeOffsetZ']))
+        else:
+            component.probeOffset = (0, 0, 0)
+        component.depthOffset = float(state.get('depthOffset', 0))
+        component.scale = util.UnpackStringToTuple(state['scale'])
         return component
 
 
@@ -61,7 +62,7 @@ class InteriorPlaceableClient(service.Service):
 
 
     def WaitForGeometry(self, renderObject):
-        if renderObject.placeableRes is None:
+        if renderObject is None or renderObject.placeableRes is None:
             return 
         visualModel = renderObject.placeableRes.visualModel
         if visualModel is None:
@@ -79,20 +80,21 @@ class InteriorPlaceableClient(service.Service):
 
     def PrepareComponent(self, sceneID, entityID, component):
         modelFile = self.graphicClient.GetModelFilePath(component.graphicID)
-        renderObject = graphicWrappers.LoadAndWrap(modelFile)
+        renderObject = trinity.Tr2InteriorPlaceable()
+        if modelFile is not None:
+            renderObject.placeableResPath = modelFile
         self.WaitForGeometry(renderObject)
-        if renderObject is None or renderObject.__bluetype__ != 'trinity.Tr2InteriorPlaceable':
-            if renderObject is None:
-                self.LogWarn('!!! WARNING !!! Asset (', modelFile, ') is missing !!! WARNING !!!')
-            else:
-                self.LogWarn('!!! WARNING !!! Asset (', modelFile, ') is not a trinity.Tr2InteriorPlaceable but instead a ', renderObject.__bluetype__, ' !!! WARNING !!!')
-            renderObject = graphicWrappers.LoadAndWrap(const.BAD_ASSET_PATH_AND_FILE)
+        if renderObject.placeableRes is None:
+            self.LogWarn('!!! WARNING !!! Asset (', modelFile, ') is missing !!! WARNING !!!')
+            renderObject.placeableResPath = const.BAD_ASSET_PATH_AND_FILE
             self.WaitForGeometry(renderObject)
-            if renderObject is None:
+            if renderObject.placeableRes is None:
                 self.LogError('!!! ERROR !!! The InteriorPlaceable bad asset is missing ', const.BAD_ASSET_PATH_AND_FILE, '!!! ERROR !!!')
-                renderObject = trinity.Tr2InteriorPlaceable()
-        renderObject.name = str(entityID)
         renderObject.isStatic = True
+        renderObject.probeOffset = component.probeOffset
+        renderObject.depthOffset = component.depthOffset
+        graphicName = self.graphicClient.GetGraphicName(component.graphicID) or 'BadAsset'
+        renderObject.name = str(graphicName) + ': ' + str(entityID)
         component.renderObject = renderObject
         self.ApplyMaterials(entityID, component)
 
@@ -114,10 +116,10 @@ class InteriorPlaceableClient(service.Service):
 
         if isLoading:
             trinity.WaitForResourceLoads()
-        if component.minSpecOverideMetaMaterialPath is not None and sm.GetService('device').GetAppFeatureState('Interior.lowSpecMaterialsEnabled', False):
+        if component.minSpecOverideMetaMaterialPath is not None and component.minSpecOverideMetaMaterialPath != 'None' and sm.GetService('device').GetAppFeatureState('Interior.lowSpecMaterialsEnabled', False):
             materialRes = metaMaterials.LoadMaterialRes(component.minSpecOverideMetaMaterialPath)
             metaMaterials.ApplyMaterialRes(component.renderObject, materialRes)
-        elif component.overrideMetaMaterialPath is not None:
+        elif component.overrideMetaMaterialPath is not None and component.minSpecOverideMetaMaterialPath != 'None':
             materialRes = metaMaterials.LoadMaterialRes(component.overrideMetaMaterialPath)
             metaMaterials.ApplyMaterialRes(component.renderObject, materialRes)
         else:
@@ -128,7 +130,10 @@ class InteriorPlaceableClient(service.Service):
     def SetupComponent(self, entity, component):
         positionComponent = entity.GetComponent('position')
         if positionComponent:
-            component.renderObject.transform = util.ConvertTupleToTriMatrix(geo2.MatrixTransformation(None, None, None, None, positionComponent.rotation, positionComponent.position))
+            scale = None
+            if not entity.HasComponent('collisionMesh'):
+                scale = component.scale
+            component.renderObject.transform = util.ConvertTupleToTriMatrix(geo2.MatrixTransformation(None, None, scale, None, positionComponent.rotation, positionComponent.position))
         scene = self.graphicClient.GetScene(entity.scene.sceneID)
         scene.AddDynamic(component.renderObject)
 

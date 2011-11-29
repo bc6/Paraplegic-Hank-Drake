@@ -1,7 +1,109 @@
 import util
 import corpObject
 import uthread
-import sys
+
+class PagedCorpMembers(util.PagedCollection):
+    __notifyevents__ = ['OnCorporationMemberChanged']
+
+    def __init__(self, totalCount):
+        super(PagedCorpMembers, self).__init__()
+        self.notify = []
+        self.additions = []
+        self.totalCount = totalCount
+        sm.RegisterNotify(self)
+        self.charIdIdx = {}
+
+
+
+    def PopulatePage(self, page):
+        if not self.page or page > self.page:
+            rs = sm.GetService('corp').GetMembersPaged(page)
+            self.Add(rs)
+        start = self.perPage * (page - 1)
+        return self[start:(start + self.perPage)]
+
+
+
+    def GetMember(self, memberID):
+        return self.charIdIdx.get(memberID)
+
+
+
+    def FetchByKey(self, memberIDs):
+        missingKeys = []
+        hasKeys = []
+        for id in memberIDs:
+            if id in self.charIdIdx:
+                hasKeys.append(id)
+            else:
+                missingKeys.append(id)
+
+        rows = sm.GetService('corp').GetMembersByIds(missingKeys)
+        for member in rows:
+            self.charIdIdx[member.characterID] = member
+
+        for id in hasKeys:
+            rows.append(self.charIdIdx.get(id))
+
+        return rows
+
+
+
+    def GetByKey(self, memberID):
+        return self.charIdIdx.get(memberID)
+
+
+
+    def Add(self, resultSet):
+        super(PagedCorpMembers, self).Add(resultSet)
+        for character in resultSet:
+            self.charIdIdx[character.characterID] = character
+
+
+
+
+    def OnCorporationMemberChanged(self, memberID, changes):
+        member = self.GetMember(memberID)
+        if 'corporationID' in changes:
+            (oldCorpID, newCorpID,) = changes['corporationID']
+            if oldCorpID == eve.session.corpid:
+                if not member:
+                    self.totalCount -= 1
+                    return 
+                del self[member]
+            elif newCorpID == eve.session.corpid:
+                if self.page == self.PageCount():
+                    line = []
+                    for change in changes:
+                        line.append(change[1])
+
+                    self.append(line)
+                else:
+                    self.totalCount += 1
+        elif member:
+            for (key, values,) in changes.iteritems():
+                if hasattr(member, key):
+                    (oldValue, newValue,) = values
+                    member[key] = newValue
+
+        for listener in self.notify:
+            listener.DataChanged(memberID, changes)
+
+
+
+
+    def AddListener(self, listener):
+        if listener not in self.notify:
+            self.notify.append(listener)
+
+
+
+    def RemoveListener(self, listener):
+        if listener in self.notify:
+            self.notify.remove(listener)
+
+
+
 
 class CorporationMembersO(corpObject.base):
     __guid__ = 'corpObject.members'
@@ -46,10 +148,9 @@ class CorporationMembersO(corpObject.base):
             self._CorporationMembersO__memberIDs = []
             for owner in eveowners:
                 if not cfg.eveowners.data.has_key(owner.ownerID):
-                    cfg.eveowners.data[owner.ownerID] = owner.line
+                    cfg.eveowners.data[owner.ownerID] = list(owner) + [None]
                 self._CorporationMembersO__memberIDs.append(owner.ownerID)
 
-            self._CorporationMembersO__members = self.GetCorpRegistry().GetMembers()
 
         finally:
             self._CorporationMembersO__lock.release()
@@ -70,9 +171,9 @@ class CorporationMembersO(corpObject.base):
 
 
     def GetMembers(self):
-        self.GetMemberIDs()
+        memberCount = len(self.GetMemberIDs())
         if self._CorporationMembersO__members is None:
-            self._CorporationMembersO__members = self.GetCorpRegistry().GetMembers()
+            self._CorporationMembersO__members = PagedCorpMembers(totalCount=memberCount)
         return self._CorporationMembersO__members
 
 
@@ -81,12 +182,20 @@ class CorporationMembersO(corpObject.base):
         if charID not in self.GetMemberIDs():
             return 
         if self._CorporationMembersO__members is not None:
-            try:
-                return self._CorporationMembersO__members.GetByKey(charID)
-            except ValueError:
-                sys.exc_clear()
-                return 
+            member = self._CorporationMembersO__members.GetMember(charID)
+            if member:
+                return member
         return self.GetCorpRegistry().GetMember(charID)
+
+
+
+    def GetMembersPaged(self, page):
+        return self.GetCorpRegistry().GetMembersPaged(page)
+
+
+
+    def GetMembersByIds(self, memberIDs):
+        return self.GetCorpRegistry().GetMembersByIds(memberIDs)
 
 
 
@@ -236,6 +345,11 @@ class CorporationMembersO(corpObject.base):
             if member.blockRoles is not None:
                 blocksRoles = member.blockRoles
         return blocksRoles
+
+
+
+    def GetNumberOfPotentialCEOs(self):
+        return self.GetCorpRegistry().GetNumberOfPotentialCEOs()
 
 
 

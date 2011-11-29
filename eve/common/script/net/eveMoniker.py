@@ -39,8 +39,12 @@ def GetStationDogmaLocation():
 
 
 def GetShipAccess():
-    moniker = Moniker('ship', GetLocationBindParams())
-    moniker.SetSessionCheck(GetLocationSessionCheck())
+    if session.solarsystemid:
+        moniker = Moniker('ship', (session.solarsystemid, const.groupSolarSystem))
+        moniker.SetSessionCheck({'solarsystemid': session.solarsystemid})
+    elif session.stationid2:
+        moniker = Moniker('ship', (session.stationid2, const.groupStation))
+        moniker.SetSessionCheck({'stationid2': session.stationid2})
     return moniker
 
 
@@ -78,8 +82,8 @@ def CharGetSkillHandler():
 
 
 def GetReprocessingManager():
-    moniker = GetReprocessingManagerEx(session.stationid)
-    moniker.SetSessionCheck({'stationid': session.stationid})
+    moniker = GetReprocessingManagerEx(session.stationid2)
+    moniker.SetSessionCheck({'stationid2': session.stationid2})
     return moniker
 
 
@@ -90,8 +94,8 @@ def GetReprocessingManagerEx(stationID):
 
 
 def GetCorpStationManager():
-    moniker = GetCorpStationManagerEx(session.stationid)
-    moniker.SetSessionCheck({'stationid': session.stationid})
+    moniker = GetCorpStationManagerEx(session.stationid2)
+    moniker.SetSessionCheck({'stationid2': session.stationid2})
     return moniker
 
 
@@ -113,16 +117,6 @@ def GetStationInventoryMgr(stationID):
 
 def GetWorldSpaceInventoryMgr(worldSpaceID):
     return Moniker('invbroker', (worldSpaceID, const.groupWorldSpace))
-
-
-
-def GetMinigameController(worldspaceID, entityID):
-    return Moniker('minigameServer', (worldspaceID, entityID))
-
-
-
-def GetMinigameAIController(worldspaceID, entityID, gameTypeID):
-    return Moniker('minigameAIServer', (worldspaceID, entityID, gameTypeID))
 
 
 
@@ -231,6 +225,16 @@ def GetPlanet(planetID):
     return Moniker('planetMgr', planetID)
 
 
+
+def GetPlanetBaseManager(planetID):
+    return Moniker('planetBaseBroker', planetID)
+
+
+
+def GetPlanetOrbitalRegistry(solarSystemID):
+    return Moniker('planetOrbitalRegistryBroker', solarSystemID)
+
+
 exports = {'moniker.GetAgent': GetAgent,
  'moniker.CharGetDogmaLocation': CharGetDogmaLocation,
  'moniker.GetStationDogmaLocation': GetStationDogmaLocation,
@@ -245,8 +249,6 @@ exports = {'moniker.GetAgent': GetAgent,
  'moniker.GetStationInventoryMgr': GetStationInventoryMgr,
  'moniker.GetAggressionManager': GetAggressionManager,
  'moniker.GetBallPark': GetBallPark,
- 'moniker.GetMinigameController': GetMinigameController,
- 'moniker.GetMinigameAIController': GetMinigameAIController,
  'moniker.GetCourierMissionCreator': GetCourierMissionCreator,
  'moniker.GetReprocessingManager': GetReprocessingManager,
  'moniker.GetReprocessingManagerEx': GetReprocessingManagerEx,
@@ -257,5 +259,7 @@ exports = {'moniker.GetAgent': GetAgent,
  'moniker.GetWar': GetWar,
  'moniker.GetWarEx': GetWarEx,
  'moniker.GetFleet': GetFleet,
- 'moniker.GetPlanet': GetPlanet}
+ 'moniker.GetPlanet': GetPlanet,
+ 'moniker.GetPlanetBaseManager': GetPlanetBaseManager,
+ 'moniker.GetPlanetOrbitalRegistry': GetPlanetOrbitalRegistry}
 

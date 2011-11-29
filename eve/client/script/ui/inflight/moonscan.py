@@ -4,6 +4,7 @@ import listentry
 import util
 import types
 import uicls
+import localization
 
 class MoonScanView(uicls.Container):
     __guid__ = 'xtriui.MoonScanView'
@@ -36,13 +37,12 @@ class MoonScanView(uicls.Container):
              'id': ('moon', celestialID),
              'tabs': [],
              'state': 'locked',
-             'showlen': 0,
-             'posttext': ''}
+             'showlen': 0}
             scrolllist.append(listentry.Get('Group', data))
 
         scrolllist.append(listentry.Get('Space', {'height': 64}))
         pos = self.sr.scroll.GetScrollProportion()
-        self.sr.scroll.Load(contentList=scrolllist, headers=[mls.UI_INFLIGHT_MOONPRODUCT, mls.UI_INFLIGHT_ABUNDANCE], scrollTo=pos)
+        self.sr.scroll.Load(contentList=scrolllist, headers=[localization.GetByLabel('UI/Inflight/Scanner/MoonProduct'), localization.GetByLabel('UI/Inflight/Scanner/Abundance')], scrollTo=pos)
 
 
 
@@ -68,7 +68,7 @@ class MoonScanView(uicls.Container):
             note += '%s [%s]<br>' % (cfg.invtypes.Get(product.typeID).name, product.quantity)
 
         celestialMenu = sm.GetService('menu').CelestialMenu(celestialID, hint=note)
-        return celestialMenu + [None] + [(mls.UI_CMD_DELETE, self.ClearEntry, (celestialID,))]
+        return celestialMenu + [None] + [(localization.GetByLabel('UI/Common/Delete'), self.ClearEntry, (celestialID,))]
 
 
 

@@ -139,7 +139,7 @@ class PosAnchorSvc(service.Service):
         self.cursor = trinity.Load('res:/Model/UI/posCursor.red')
         self.cube = trinity.Load('res:/Model/UI/posGlassCube.red')
         s = float(boxSizes[(7 - self.boxSize)])
-        blue.pyos.synchro.Sleep(1)
+        blue.pyos.synchro.SleepWallclock(1)
         self.yCursor = [self.cursor.children[0], self.cursor.children[1]]
         self.xCursor = [self.cursor.children[4], self.cursor.children[5]]
         self.zCursor = [self.cursor.children[2], self.cursor.children[3]]
@@ -148,7 +148,7 @@ class PosAnchorSvc(service.Service):
         self.cursor.scaling = (newScale, newScale, newScale)
         bp = sm.GetService('michelle').GetBallpark()
         ball = bp.GetBall(self.posID)
-        pos = ball.GetVectorAt(blue.os.GetTime())
+        pos = ball.GetVectorAt(blue.os.GetSimTime())
         self.cursor.translation = (pos.x, pos.y, pos.z)
         scene.objects.append(self.cursor)
         scene.objects.append(self.cube)
@@ -262,7 +262,6 @@ class PosAnchorSvc(service.Service):
     def SubmitAnchorPosSelect(self):
         typeID = sm.GetService('michelle').GetItem(self.posID).typeID
         anchoringDelay = sm.GetService('godma').GetType(typeID).anchoringDelay
-        eve.Message('AnchoringObject', {'delay': anchoringDelay / 1000.0})
         bp = sm.GetService('michelle').GetBallpark()
         ship = bp.GetBall(eve.session.shipid)
         x = y = z = 0
@@ -270,6 +269,7 @@ class PosAnchorSvc(service.Service):
             (x, y, z,) = (self.cube.translation[0] + ship.x, self.cube.translation[1] + ship.y, self.cube.translation[2] + ship.z)
         sm.GetService('pwn').Anchor(self.posID, (x, y, z))
         self.CancelAchorPosSelect()
+        eve.Message('AnchoringObject', {'delay': anchoringDelay / 1000.0})
 
 
 

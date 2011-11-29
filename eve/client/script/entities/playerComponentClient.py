@@ -1,5 +1,6 @@
 import util
 import svc
+import localization
 
 class EvePlayerComponentClient(svc.playerComponentClient):
     __guid__ = 'svc.EvePlayerComponentClient'
@@ -10,11 +11,7 @@ class EvePlayerComponentClient(svc.playerComponentClient):
             ctx = entity.GetComponent('contextMenu')
             if ctx:
                 if util.IsCharacter(entity.entityID):
-                    ctx.AddMenuEntry(mls.UI_CMD_SHOWINFO, self.ShowInfo)
-        if entity.HasComponent('info'):
-            if self.entityService.IsClientSideOnly(entity.scene.sceneID):
-                infoComponent = entity.GetComponent('info')
-                infoComponent.name = cfg.eveowners.Get(entity.entityID).ownerName
+                    ctx.AddMenuEntry(localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo)
 
 
 

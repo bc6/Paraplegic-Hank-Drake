@@ -18,7 +18,7 @@ def ReadTimeCurvesF(tf):
 
 def ResetTimeCurvesF(curves, now = None):
     if not now:
-        now = blue.os.GetTime()
+        now = blue.os.GetSimTime()
     for curve in curves:
         curve.start = now
 
@@ -28,7 +28,7 @@ def ResetTimeCurvesF(curves, now = None):
 def ResetTimeAndSoundCurvesF(curves):
     mainctx = blue.pyos.taskletTimer.EnterTasklet('ResetTimeAndSoundCurvesF')
     try:
-        now = blue.os.GetTime()
+        now = blue.os.GetSimTime()
         prev = blue.pyos.taskletTimer.EnterTasklet('ResetTimeAndSoundCurvesF::Curves')
         try:
             for curve in curves:
@@ -108,7 +108,7 @@ def ResetTimeCurves(curves, starttime = None, scaling = None):
     if type(curves) != type([]):
         curves = ReadCurves(curves)
     if starttime is None:
-        starttime = blue.os.GetTime()
+        starttime = blue.os.GetSimTime()
     for curve in curves:
         curve.start = starttime
         if scaling:
@@ -125,7 +125,7 @@ def ResetTimeAndSoundCurves(tf, starttime = None):
     else:
         curves = tf
     if starttime is None:
-        now = blue.os.GetTime()
+        now = blue.os.GetSimTime()
     else:
         now = starttime
     for curve in curves:
@@ -145,7 +145,7 @@ def ResetTimeAndSoundCurvesAndCuePoints(tf, starttime = None):
     else:
         curves = tf
     if starttime is None:
-        now = blue.os.GetTime()
+        now = blue.os.GetSimTime()
     else:
         now = starttime
     for curve in curves:
@@ -187,7 +187,7 @@ def ReverseTimeCurves(tf):
 def ScaleTime(tf, scaling):
     if tf is None:
         return 
-    now = blue.os.GetTime()
+    now = blue.os.GetSimTime()
     if type(tf) != type([]):
         curves = ReadCurves(tf)
     else:
@@ -202,7 +202,7 @@ def ScaleTime(tf, scaling):
 def SetCurveExtrapolation(tf, value):
     if tf is None:
         return 
-    now = blue.os.GetTime()
+    now = blue.os.GetSimTime()
     if type(tf) != type([]):
         curves = ReadCurves(tf)
     else:

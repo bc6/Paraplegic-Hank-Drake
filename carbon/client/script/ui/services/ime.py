@@ -6,6 +6,7 @@ import uicls
 import uiconst
 import uiutil
 import browser
+import localization
 import blue
 INDICATOR_NON_IME = 'En'
 INDICATOR_CHS = unichr(31616)
@@ -116,7 +117,8 @@ class IME(service.Service):
      'KillFocus': [],
      'SetDebug': [],
      'SimulateHotKey': [],
-     'GetMenuDelegate': []}
+     'GetMenuDelegate': [],
+     'GetKeyboardLanguageID': []}
     __notifyevents__ = ['OnSessionChanged']
     __startupdependencies__ = ['settings']
     localeIndicator = {'INDICATOR_NON_IME': INDICATOR_NON_IME,
@@ -274,7 +276,7 @@ class IME(service.Service):
         self.ime.OnLanguageChanged()
         self.SetLanguage(self.ime.GetKeyboardLayout())
         self.indicator = self.GetLanguageIndicator()
-        self.measurer = sm.GetService('font').GetMeasurer()
+        self.measurer = trinity.Tr2FontMeasurer()
         self.ResetCompositionString()
         self.state = service.SERVICE_RUNNING
         self.compWindowParent = None
@@ -318,6 +320,12 @@ class IME(service.Service):
         triapp = trinity.app
         self.ime.SetHWND(triapp.GetHwnd())
         self.ime.OnLanguageChanged()
+
+
+
+    def GetKeyboardLanguageID(self):
+        current = self.ime.GetKeyboardLayout()
+        return self._SplitLangIdentifier(current)[0]
 
 
 
@@ -717,7 +725,7 @@ class IME(service.Service):
         if not self.compWindow:
             self.compWindow = uicls.Container(name='IME', parent=uicore.desktop, align=uiconst.TOPLEFT, idx=0)
             self.compCursor = uicls.Fill(parent=self.compWindow, align=uiconst.TOPLEFT, width=1, height=fontsize + 4, color=(1.0, 1.0, 1.0, 0.75))
-            self.compText = uicls.Label(text='', parent=self.compWindow, autowidth=1, autoheight=1, fontsize=fontsize, state=uiconst.UI_DISABLED, left=3, top=1)
+            self.compText = uicls.Label(text='', parent=self.compWindow, fontsize=fontsize, state=uiconst.UI_DISABLED, left=3, top=1)
             self.compFill = uicls.Fill(parent=self.compWindow, color=(0.0, 0.0, 0.0, 1.0))
         self.compWindow.width = self.compText.textwidth + 6
         self.compWindow.height = self.compText.textheight + 2
@@ -793,7 +801,7 @@ class IME(service.Service):
                         self.readingWindow.top = y + yOffset
                         break
 
-            blue.pyos.synchro.Sleep(sleeptime)
+            blue.pyos.synchro.SleepWallclock(sleeptime)
 
 
 
@@ -809,10 +817,11 @@ class IME(service.Service):
     def GetCompCursorPos(self, pos):
         if self.debug:
             self.LogInfo('    GetCompCursorPos')
-        self.measurer.Reset(None)
+        self.measurer.Reset()
         if pos:
+            uicore.font.ResolveFontFamily(self.compText.params)
             self.measurer.AddText(self.s_CompString[:pos], self.compText.params)
-        return self.measurer.cursor
+        return self.measurer.cursorX
 
 
 
@@ -903,7 +912,7 @@ class IME(service.Service):
             y = self.compWindow.top
             if not self.readingWindow:
                 self.readingWindow = uicls.Container(name='IME', parent=uicore.desktop, align=uiconst.TOPLEFT, idx=0)
-                self.readingText = uicls.Label(text='', parent=self.readingWindow, autowidth=1, autoheight=1, fontsize=14, state=uiconst.UI_DISABLED, left=5, top=3)
+                self.readingText = uicls.Label(text='', parent=self.readingWindow, fontsize=14, state=uiconst.UI_DISABLED, left=5, top=3)
                 uicls.Frame(parent=self.readingWindow)
                 uicls.Fill(parent=self.readingWindow, color=(0.0, 0.0, 0.0, 1.0))
             self.readingText.text = cList['display']
@@ -962,28 +971,28 @@ class IME(service.Service):
             self.LogInfo('    PRIMARY LANG:', self.primaryLanguage, 'SECONDARY:', self.subLanguage)
         if self.primaryLanguage == LANG_CHINESE and self.subLanguage == SUBLANG_CHINESE_SIMPLIFIED:
             if self.GetOpenStatus():
-                m.append((mls.UI_CMD_CLOSEIME, self.SetOpenStatus, (0,)))
+                m.append((localization.GetByLabel('/Carbon/UI/Commands/CloseIme'), self.SetOpenStatus, (0,)))
             else:
-                m.append((mls.UI_CMD_OPENIME, self.SetOpenStatus, (1,)))
-            m.append((mls.UI_CMD_SHAPE, self.SimulateHotKey, (IME_CHOTKEY_SHAPE_TOGGLE,)))
-            m.append((mls.UI_CMD_SYMBOL, self.SimulateHotKey, (IME_CHOTKEY_SYMBOL_TOGGLE,)))
+                m.append((localization.GetByLabel('/Carbon/UI/Commands/OpenIME'), self.SetOpenStatus, (1,)))
+            m.append((localization.GetByLabel('/Carbon/UI/Commands/CmdShape'), self.SimulateHotKey, (IME_CHOTKEY_SHAPE_TOGGLE,)))
+            m.append((localization.GetByLabel('/Carbon/UI/Commands/CmdSymbol'), self.SimulateHotKey, (IME_CHOTKEY_SYMBOL_TOGGLE,)))
         elif self.primaryLanguage == LANG_CHINESE and self.subLanguage == SUBLANG_CHINESE_TRADITIONAL:
             if self.GetOpenStatus():
-                m.append((mls.UI_CMD_CLOSEIME, self.SetOpenStatus, (0,)))
+                m.append((localization.GetByLabel('/Carbon/UI/Commands/CloseIme'), self.SetOpenStatus, (0,)))
             else:
-                m.append((mls.UI_CMD_OPENIME, self.SetOpenStatus, (1,)))
-            m.append((mls.UI_CMD_SHAPE, self.SimulateHotKey, (IME_THOTKEY_SHAPE_TOGGLE,)))
-            m.append((mls.UI_CMD_SYMBOL, self.SimulateHotKey, (IME_THOTKEY_SYMBOL_TOGGLE,)))
+                m.append((localization.GetByLabel('/Carbon/UI/Commands/OpenIME'), self.SetOpenStatus, (1,)))
+            m.append((localization.GetByLabel('/Carbon/UI/Commands/CmdShape'), self.SimulateHotKey, (IME_THOTKEY_SHAPE_TOGGLE,)))
+            m.append((localization.GetByLabel('/Carbon/UI/Commands/CmdSymbol'), self.SimulateHotKey, (IME_THOTKEY_SYMBOL_TOGGLE,)))
         elif self.primaryLanguage == LANG_JAPANESE:
             if self.GetOpenStatus():
-                m.append((mls.UI_CMD_CLOSEIME, self.SetOpenStatus, (0,)))
+                m.append((localization.GetByLabel('/Carbon/UI/Commands/CloseIme'), self.SetOpenStatus, (0,)))
             else:
-                m.append((mls.UI_CMD_OPENIME, self.SetOpenStatus, (1,)))
+                m.append((localization.GetByLabel('/Carbon/UI/Commands/OpenIME'), self.SetOpenStatus, (1,)))
         elif self.primaryLanguage == LANG_KOREAN:
-            m.append((mls.UI_CMD_CLOSEIME, self.SimulateHotKey, (IME_KHOTKEY_ENGLISH,)))
-            m.append((mls.UI_CMD_OPENIME, self.SimulateHotKey, (IME_KHOTKEY_ENGLISH,)))
-            m.append((mls.UI_CMD_SHAPE, self.SimulateHotKey, (IME_KHOTKEY_SHAPE_TOGGLE,)))
-            m.append((mls.UI_CMD_HANJA, self.SimulateHotKey, (IME_KHOTKEY_HANJACONVERT,)))
+            m.append((localization.GetByLabel('/Carbon/UI/Commands/CloseIme'), self.SimulateHotKey, (IME_KHOTKEY_ENGLISH,)))
+            m.append((localization.GetByLabel('/Carbon/UI/Commands/OpenIME'), self.SimulateHotKey, (IME_KHOTKEY_ENGLISH,)))
+            m.append((localization.GetByLabel('/Carbon/UI/Commands/CmdShape'), self.SimulateHotKey, (IME_KHOTKEY_SHAPE_TOGGLE,)))
+            m.append((localization.GetByLabel('/Carbon/UI/Commands/CmdHanja'), self.SimulateHotKey, (IME_KHOTKEY_HANJACONVERT,)))
 
 
 

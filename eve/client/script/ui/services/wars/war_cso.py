@@ -139,14 +139,14 @@ class Wars(Service):
     def CheckForStartOrEndOfWar(self):
         while self.state == SERVICE_RUNNING:
             if not session.charid:
-                blue.pyos.synchro.Sleep(10000)
+                blue.pyos.synchro.SleepWallclock(10000)
                 continue
             try:
                 self.wars.CheckForStartOrEndOfWar()
             except Exception:
                 log.LogException()
                 sys.exc_clear()
-            blue.pyos.synchro.Sleep(10000)
+            blue.pyos.synchro.SleepWallclock(10000)
 
 
 

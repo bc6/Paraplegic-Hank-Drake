@@ -52,7 +52,7 @@ class VoucherCache(service.Service):
     def GetVoucher(self, voucherID):
         while eve.session.mutating:
             self.LogInfo('GetVoucher - hang on session is mutating')
-            blue.pyos.synchro.Sleep(1)
+            blue.pyos.synchro.SleepWallclock(1)
 
         if not self.data.has_key(voucherID):
             voucher = self.GetVoucherSvc().GetObject(voucherID)

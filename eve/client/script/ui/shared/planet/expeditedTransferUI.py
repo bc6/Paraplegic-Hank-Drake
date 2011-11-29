@@ -12,9 +12,11 @@ import uicls
 import planetCommon
 import math
 import uthread
+import localization
 
 class ExpeditedTransferManagementWindow(uicls.Window):
     __guid__ = 'form.ExpeditedTransferManagementWindow'
+    default_windowID = 'createTransfer'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -43,12 +45,12 @@ class ExpeditedTransferManagementWindow(uicls.Window):
             prevID = pinID
 
         self.availableBandwidth = minBandwidth
-        self.SetCaption(mls.UI_PI_TRANSFER_TITLE % {'typeName': planetCommon.GetGenericPinName(self.sourcePin.typeID, self.sourcePin.id)})
+        sourceName = planetCommon.GetGenericPinName(self.sourcePin.typeID, self.sourcePin.id)
+        self.SetCaption(localization.GetByLabel('UI/PI/Common/ExpeditedTransferFrom', sourceName=sourceName))
         self.SetMinSize([500, 400])
         self.SetWndIcon('ui_7_64_16')
         self.MakeUnstackable()
-        uicls.WndCaptionLabel(text=mls.UI_PI_TRANSFER_PREPARETRANSFER, subcaption=mls.UI_PI_TRANSFER_EMERGENCYTRANSFERFORM, parent=self.sr.topParent, align=uiconst.RELATIVE)
-        self.sr.main = uiutil.GetChild(self, 'main')
+        uicls.WndCaptionLabel(text=localization.GetByLabel('UI/PI/Common/PreparingExpeditedTransferOrder'), subcaption=localization.GetByLabel('UI/PI/Common/ExpeditedTransferSubHeading'), parent=self.sr.topParent, align=uiconst.RELATIVE)
         self.ConstructLayout()
         self.SetSourcePinGaugeInfo()
         self.scope = 'station_inflight'
@@ -108,40 +110,40 @@ class ExpeditedTransferManagementWindow(uicls.Window):
         self.sr.destPinList = uicls.Container(name='destPinList', parent=self.sr.col3, align=uiconst.TOALL, state=uiconst.UI_PICKCHILDREN)
         self.sr.footerLeft = uicls.Container(name='footerLeft', parent=self.sr.footer, align=uiconst.TOLEFT)
         self.sr.footerRight = uicls.Container(name='footerRight', parent=self.sr.footer, align=uiconst.TORIGHT)
-        btns = [(mls.UI_PI_TRANSFER_CMDEXECUTETRANSFER,
+        btns = [(localization.GetByLabel('UI/PI/Common/ExecuteTransfer'),
           self.GoForTransfer,
           (),
           None)]
         uicls.ButtonGroup(btns=btns, parent=self.sr.footerRight, line=0)
-        self.sr.volumeText = uicls.Label(text='', parent=self.sr.transferHeader, fontsize=10, letterspace=1, left=0, top=20, state=uiconst.UI_NORMAL)
-        self.sr.timeText = uicls.Label(text='', parent=self.sr.transferHeader, fontsize=10, letterspace=1, left=0, top=35, state=uiconst.UI_NORMAL)
-        self.sr.timeText.hint = mls.UI_PI_TRANSFER_PROCESSINGTIMEHINT
-        self.sr.cooldownTimeText = uicls.Label(text='Cooldown time: 5 minutes', parent=self.sr.transferHeader, fontsize=10, letterspace=1, left=0, top=46)
-        self.sr.cooldownTimeText.hint = mls.UI_PI_COOLDOWNTIMEHINT
-        btns = [(mls.UI_GENERIC_ADD,
+        self.sr.volumeText = uicls.EveLabelSmall(text='', parent=self.sr.transferHeader, left=0, top=20, state=uiconst.UI_NORMAL)
+        self.sr.timeText = uicls.EveLabelSmall(text='', parent=self.sr.transferHeader, left=0, top=35, state=uiconst.UI_NORMAL)
+        self.sr.timeText.hint = localization.GetByLabel('UI/PI/Common/ExpeditedTransferProcessingHint')
+        self.sr.cooldownTimeText = uicls.EveLabelSmall(parent=self.sr.transferHeader, left=0, top=46)
+        self.sr.cooldownTimeText.hint = localization.GetByLabel('UI/PI/Common/CoolDownTimeHint')
+        btns = [(localization.GetByLabel('UI/PI/Common/Add'),
           self.AddBtnClicked,
           (),
-          None), (mls.UI_PI_TRANSFER_CMDREMOVE,
+          None), (localization.GetByLabel('UI/PI/Common/Remove'),
           self.RemoveBtnClicked,
           (),
           None)]
         btns = uicls.ButtonGroup(btns=btns, parent=self.sr.footerLeft, line=0)
         for b in btns.children[0].children:
-            b.SetHint(mls.UI_PI_HINT_HOLDSHIFTTOSPLIT)
+            b.SetHint(localization.GetByLabel('UI/PI/Common/ExpeditedTransferSplitHint'))
 
         self.OnResizeUpdate()
         self.sr.sourcePinHeaderText = uicls.Label(text=planetCommon.GetGenericPinName(self.sourcePin.typeID, self.sourcePin.id), parent=self.sr.sourcePinHeader, align=uiconst.TOPLEFT, fontsize=16, left=0, state=uiconst.UI_NORMAL)
-        self.sr.sourcePinSubGauge = uicls.Gauge(parent=self.sr.sourcePinHeader, value=0.0, color=planetCommon.PLANET_COLOR_STORAGE, label='%s:' % mls.UI_GENERIC_CAPACITY, left=0, top=24, state=uiconst.UI_NORMAL)
+        self.sr.sourcePinSubGauge = uicls.Gauge(parent=self.sr.sourcePinHeader, value=0.0, color=planetCommon.PLANET_COLOR_STORAGE, label=localization.GetByLabel('UI/PI/Common/Capacity'), left=0, top=24, state=uiconst.UI_NORMAL)
         self.sr.sourcePinListScroll = uicls.Scroll(parent=self.sr.sourcePinList, name='pinList')
         content = self.sr.sourcePinListScroll.sr.content
         content.OnDropData = self.OnSourceScrollDropData
-        self.sr.transferHeaderText = uicls.Label(text=mls.UI_PI_TRANSFER_TRANSFERCONTENTS, parent=self.sr.transferHeader, align=uiconst.TOPLEFT, fontsize=16, left=0, state=uiconst.UI_NORMAL)
+        self.sr.transferHeaderText = uicls.Label(text=localization.GetByLabel('UI/PI/Common/ToBeTransferred'), parent=self.sr.transferHeader, align=uiconst.TOPLEFT, fontsize=16, left=0, state=uiconst.UI_NORMAL)
         self.sr.transferListScroll = uicls.Scroll(parent=self.sr.transferList, name='transferList')
         content = self.sr.transferListScroll.sr.content
         content.OnDropData = self.OnTransferScrollDropData
         self.sr.destPinText = uicls.Label(text='', parent=self.sr.destPinHeader, align=uiconst.TOTOP, fontsize=16, state=uiconst.UI_NORMAL, singleline=True)
-        self.sr.destPinSubText = uicls.Label(text='', parent=self.sr.destPinHeader, align=uiconst.TOTOP, fontsize=14, top=5, state=uiconst.UI_HIDDEN)
-        self.sr.destPinSubGauge = uicls.Gauge(parent=self.sr.destPinHeader, value=0.0, color=planetCommon.PLANET_COLOR_STORAGE, label='%s:' % mls.UI_GENERIC_CAPACITY, left=0, top=24, state=uiconst.UI_HIDDEN)
+        self.sr.destPinSubText = uicls.EveLabelLarge(text='', parent=self.sr.destPinHeader, align=uiconst.TOTOP, top=5, state=uiconst.UI_HIDDEN)
+        self.sr.destPinSubGauge = uicls.Gauge(parent=self.sr.destPinHeader, value=0.0, color=planetCommon.PLANET_COLOR_STORAGE, label=localization.GetByLabel('UI/PI/Common/Capacity'), left=0, top=24, state=uiconst.UI_HIDDEN)
         self.sr.destPinListScroll = uicls.Scroll(parent=self.sr.destPinList)
 
 
@@ -195,7 +197,7 @@ class ExpeditedTransferManagementWindow(uicls.Window):
         if len(selected) == 1 and uicore.uilib.Key(uiconst.VK_SHIFT):
             typeID = selected[0].typeID
             typeName = cfg.invtypes.Get(typeID).name
-            ret = uix.QtyPopup(self.pinContents[typeID], 1, 1, None, mls.UI_PI_TRANSFER_SELECTQUANTITYTOTRANSFER % {'typeName': typeName})
+            ret = uix.QtyPopup(self.pinContents[typeID], 1, 1, None, localization.GetByLabel('UI/PI/Common/QuantityToTransfer', typeName=typeName))
             if ret and 'qty' in ret:
                 toMove[typeID] = min(self.pinContents[typeID], max(1, ret['qty']))
         else:
@@ -258,7 +260,7 @@ class ExpeditedTransferManagementWindow(uicls.Window):
         if len(selected) == 1 and uicore.uilib.Key(uiconst.VK_SHIFT):
             typeID = selected[0].typeID
             typeName = cfg.invtypes.Get(typeID).name
-            ret = uix.QtyPopup(self.transferContents[typeID], 1, 1, None, mls.UI_PI_TRANSFER_SELECTQUANTITYTOREMOVE % {'typeName': typeName})
+            ret = uix.QtyPopup(self.transferContents[typeID], 1, 1, None, localization.GetByLabel('UI/PI/Common/QuantityToRemove', typeName=typeName))
             if ret and 'qty' in ret:
                 toMove[typeID] = min(self.transferContents[typeID], max(1, ret['qty']))
         else:
@@ -298,7 +300,7 @@ class ExpeditedTransferManagementWindow(uicls.Window):
                 self.ResetPinContents()
                 self.HideLoad()
 
-            self.CloseX()
+            self.CloseByUser()
 
 
 
@@ -322,35 +324,35 @@ class ExpeditedTransferManagementWindow(uicls.Window):
             data = util.KeyVal(itemID=None, typeID=typeID, label=lbl, getIcon=1, quantity=qty, OnDropData=self.OnTransferScrollDropData)
             transferListItems.append(listentry.Get('DraggableItem', data=data))
 
-        self.sr.sourcePinListScroll.Load(contentList=pinListItems, headers=[mls.UI_GENERIC_TYPE, mls.UI_GENERIC_NAME, mls.UI_GENERIC_QTY], noContentHint=mls.UI_PI_STOREHOUSEEMPTY)
-        self.sr.transferListScroll.Load(contentList=transferListItems, headers=[mls.UI_GENERIC_TYPE, mls.UI_GENERIC_NAME, mls.UI_GENERIC_QTY], noContentHint=mls.UI_GENERIC_NOITEMSFOUND)
+        self.sr.sourcePinListScroll.Load(contentList=pinListItems, noContentHint=localization.GetByLabel('UI/PI/Common/StorehouseIsEmpty'), headers=[localization.GetByLabel('UI/Common/Type'), localization.GetByLabel('UI/Common/Name'), localization.GetByLabel('UI/Common/Quantity')])
+        self.sr.transferListScroll.Load(contentList=transferListItems, noContentHint=localization.GetByLabel('UI/PI/Common/NoItemsFound'), headers=[localization.GetByLabel('UI/Common/Type'), localization.GetByLabel('UI/Common/Name'), localization.GetByLabel('UI/Common/Quantity')])
         transferVolume = planetCommon.GetCommodityTotalVolume(self.transferContents)
-        self.sr.volumeText.text = '%s: %s m3' % (mls.UI_GENERIC_VOLUME, util.FmtAmt(transferVolume, showFraction=1))
+        self.sr.volumeText.text = localization.GetByLabel('UI/PI/Common/VolumeAmount', amount=transferVolume)
         self.SetNextTransferText()
         self.SetCooldownTimeText()
 
 
 
     def SetNextTransferText(self):
-        if self.sourcePin.lastRunTime is None or self.sourcePin.lastRunTime <= blue.os.GetTime():
-            nextTransfer = mls.UI_GENERIC_NOW
+        if self.sourcePin.lastRunTime is None or self.sourcePin.lastRunTime <= blue.os.GetWallclockTime():
+            self.sr.timeText.text = localization.GetByLabel('UI/PI/Common/NextTransferNow')
         else:
-            nextTransfer = util.FmtTime(self.sourcePin.lastRunTime - blue.os.GetTime())
-        self.sr.timeText.text = '%s %s' % (mls.UI_PI_TRANSFER_NEXTTRANSFER, nextTransfer)
+            self.sr.timeText.text = localization.GetByLabel('UI/PI/Common/NextTransferTime', time=self.sourcePin.lastRunTime - blue.os.GetWallclockTime())
 
 
 
     def SetCooldownTimeText(self):
         time = planetCommon.GetExpeditedTransferTime(self.availableBandwidth, self.transferContents)
-        self.sr.cooldownTimeText.text = '%s: %s' % (mls.UI_PI_COOLDOWNTIME, util.FmtTime(time))
+        self.sr.cooldownTimeText.text = localization.GetByLabel('UI/PI/Common/CooldownTime', time=time)
 
 
 
     def SetSourcePinGaugeInfo(self):
         self.sr.sourcePinSubGauge.state = uiconst.UI_DISABLED
-        self.sr.sourcePinSubGauge.SetText(mls.UI_GENERIC_CAPACITY)
-        self.sr.sourcePinSubGauge.SetSubText('%.1f / %.1f (%3.2f%%)' % (self.sourcePin.capacityUsed, self.sourcePin.GetCapacity(), self.sourcePin.capacityUsed / self.sourcePin.GetCapacity() * 100.0))
-        self.sr.sourcePinSubGauge.SetValue(self.sourcePin.capacityUsed / self.sourcePin.GetCapacity())
+        self.sr.sourcePinSubGauge.SetText(localization.GetByLabel('UI/PI/Common/Capacity'))
+        usageRatio = self.sourcePin.capacityUsed / self.sourcePin.GetCapacity()
+        self.sr.sourcePinSubGauge.SetSubText(localization.GetByLabel('UI/PI/Common/CapacityProportionUsed', capacityUsed=self.sourcePin.capacityUsed, capacityMax=self.sourcePin.GetCapacity(), percentage=usageRatio * 100.0))
+        self.sr.sourcePinSubGauge.SetValue(usageRatio)
 
 
 
@@ -358,22 +360,22 @@ class ExpeditedTransferManagementWindow(uicls.Window):
         self.sr.destPinSubText.state = uiconst.UI_HIDDEN
         self.sr.destPinSubGauge.state = uiconst.UI_HIDDEN
         if not self.destPin:
-            self.sr.destPinText.text = mls.UI_PI_TRANSFER_NOORIGINSELECTED
+            self.sr.destPinText.text = localization.GetByLabel('UI/PI/Common/NoOriginSelected')
             self.sr.destPinSubText.text = ''
             self.sr.destPinSubText.state = uiconst.UI_DISABLED
-            self.sr.destPinListScroll.Load(contentList=[], noContentHint=mls.UI_PI_TRANSFER_NOORIGINSELECTED)
+            self.sr.destPinListScroll.Load(contentList=[], noContentHint=localization.GetByLabel('UI/PI/Common/NoOriginSelected'))
             return 
-        self.sr.destPinText.text = '%s: %s' % (mls.UI_GENERIC_DESTINATION, planetCommon.GetGenericPinName(self.destPin.typeID, self.destPin.id))
+        self.sr.destPinText.text = localization.GetByLabel('UI/PI/Common/TransferDestinationName', typeName=planetCommon.GetGenericPinName(self.destPin.typeID, self.destPin.id))
         scrollHeaders = []
         scrollContents = []
         scrollNoContentText = ''
         if self.destPin.IsConsumer():
             self.sr.destPinSubText.state = uiconst.UI_DISABLED
             if self.destPin.schematicID is None:
-                self.sr.destPinSubText.text = mls.UI_PI_NOSCHEMATICINSTALLEDSHORT
-                scrollNoContentText = mls.UI_PI_NOSCHEMATICINSTALLEDSHORT
+                self.sr.destPinSubText.text = localization.GetByLabel('UI/PI/Common/NoSchematicInstalled')
+                scrollNoContentText = localization.GetByLabel('UI/PI/Common/NoSchematicInstalled')
             else:
-                self.sr.destPinSubText.text = '%s: %s' % (mls.UI_PI_SCHEMATIC, cfg.schematics.Get(self.destPin.schematicID).schematicName)
+                self.sr.destPinSubText.text = localization.GetByLabel('UI/PI/Common/SchematicName', schematicName=cfg.schematics.Get(self.destPin.schematicID).schematicName)
                 scrollHeaders = []
                 demands = self.destPin.GetConsumables()
                 for (typeID, qty,) in demands.iteritems():
@@ -384,10 +386,11 @@ class ExpeditedTransferManagementWindow(uicls.Window):
 
         elif self.destPin.IsStorage():
             self.sr.destPinSubGauge.state = uiconst.UI_DISABLED
-            self.sr.destPinSubGauge.SetText(mls.UI_GENERIC_CAPACITY)
-            self.sr.destPinSubGauge.SetSubText('%.1f / %.1f (%3.2f%%)' % (self.destPin.capacityUsed, self.destPin.GetCapacity(), self.destPin.capacityUsed / self.destPin.GetCapacity() * 100.0))
-            self.sr.destPinSubGauge.SetValue(self.destPin.capacityUsed / self.destPin.GetCapacity())
-            scrollHeaders = [mls.UI_GENERIC_TYPE, mls.UI_GENERIC_NAME, mls.UI_GENERIC_QTY]
+            self.sr.destPinSubGauge.SetText(localization.GetByLabel('UI/PI/Common/Capacity'))
+            usageRatio = self.destPin.capacityUsed / self.destPin.GetCapacity()
+            self.sr.destPinSubGauge.SetSubText(localization.GetByLabel('UI/PI/Common/CapacityProportionUsed', capacityUsed=self.destPin.capacityUsed, capacityMax=self.destPin.GetCapacity(), percentage=usageRatio * 100.0))
+            self.sr.destPinSubGauge.SetValue(usageRatio)
+            scrollHeaders = [localization.GetByLabel('UI/Common/Type'), localization.GetByLabel('UI/Common/Name'), localization.GetByLabel('UI/Common/Quantity')]
             contents = self.destPin.GetContents()
             for (typeID, qty,) in contents.iteritems():
                 lbl = '<t>%s<t>%d' % (cfg.invtypes.Get(typeID).name, qty)
@@ -397,7 +400,7 @@ class ExpeditedTransferManagementWindow(uicls.Window):
                  'getIcon': 1,
                  'quantity': qty}))
 
-            scrollNoContentText = mls.UI_PI_STOREHOUSEEMPTY
+            scrollNoContentText = localization.GetByLabel('UI/PI/Common/StorehouseIsEmpty')
         self.sr.destPinListScroll.Load(contentList=scrollContents, headers=scrollHeaders, noContentHint=scrollNoContentText)
 
 

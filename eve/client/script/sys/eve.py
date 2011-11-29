@@ -1,20 +1,16 @@
 import blue
 import base
 import uthread
-import form
 import types
 import traceback
 import log
-import weakref
-import _weakref
 import stackless
 import util
-import moniker
-import uix
 import sys
 import trinity
 import uiconst
 import triui
+import localization
 SEC = 10000000L
 MIN = SEC * 60L
 HOUR = MIN * 60L
@@ -117,8 +113,6 @@ class Eve():
             if self.session.stationid2 and self.HasInvalidStationItem():
                 self.SetStationItemBits(sm.RemoteSvc('stationSvc').GetStationItemBits())
             return self._Eve__stationItem
-        if key == 'inventorymgr':
-            return self.LocalSvc('invCache').GetInventoryMgr()
         if self.__dict__.has_key(key):
             return self.__dict__[key]
         raise AttributeError, key
@@ -141,21 +135,6 @@ class Eve():
 
 
 
-    def GetInventory(self, *args):
-        return self.LocalSvc('invCache').GetInventory(*args)
-
-
-
-    def GetInventoryFromId(self, *args):
-        return self.LocalSvc('invCache').GetInventoryFromId(*args)
-
-
-
-    def InvalidateLocationCache(self, *args):
-        return self.LocalSvc('invCache').InvalidateLocationCache(*args)
-
-
-
     def Message(self, *args, **kw):
         if args and args[0] == 'IgnoreToTop':
             return 
@@ -172,23 +151,13 @@ class Eve():
     def _Message(self, msgkey, dict = None, buttons = None, suppress = None, prioritize = 0, ignoreNotFound = 0, default = None, modal = True):
         if type(msgkey) not in types.StringTypes:
             raise RuntimeError('Invalid argument, msgkey must be a string', msgkey)
-        foundMessage = True
-        try:
-            msg = cfg.GetMessage(msgkey, dict, onNotFound='raise')
-            if settings.public.generic.Get('showMessageId', 0):
-                rawMsg = cfg.GetMessage(msgkey, None, onDictMissing=None)
+        msg = cfg.GetMessage(msgkey, dict, onNotFound='raise')
+        if msg.text and settings.public.generic.Get('showMessageId', 0):
+            rawMsg = cfg.GetMessage(msgkey, None, onDictMissing=None)
+            if rawMsg.text:
+                newMsgText = '{message}<br>------------------<br>[Message ID: <b>{messageKey}</b>]<br>{rawMessage}'
                 rawMsg.text = rawMsg.text.replace('<', '&lt;').replace('>', '&gt;')
-                msg.text += '<br>------------------<br>[Message ID: <b>%s</b>]<br>%s' % (msgkey, rawMsg)
-        except RuntimeError as what:
-            if what.args[0] == 'ErrMessageNotFound':
-                foundMessage = False
-                if ignoreNotFound:
-                    sys.exc_clear()
-                    return 
-                log.LogTraceback()
-                msg = cfg.GetMessage(msgkey, dict, onNotFound='return')
-            else:
-                raise 
+                msg.text = newMsgText.format(message=msg.text, messageKey=msgkey, rawMessage=rawMsg.text)
         if uicore.desktop is None:
             try:
                 log.general.Log("Some dude is trying to send a message with eve.Message before  it's ready.  %s,%s,%s,%s" % (strx(msgkey),
@@ -202,8 +171,8 @@ class Eve():
             except:
                 sys.exc_clear()
             return 
-        if foundMessage and buttons is not None and msg.type not in ('warning', 'question'):
-            raise RuntimeError('Cannot override buttons except in warning and question', msg, buttons, msg.type)
+        if buttons is not None and msg.type not in ('warning', 'question', 'fatal'):
+            raise RuntimeError('Cannot override buttons except in warning, question and fatal messages', msg, buttons, msg.type)
         supp = settings.user.suppress.Get('suppress.' + msgkey, None)
         if supp is not None:
             if suppress is not None:
@@ -226,9 +195,9 @@ class Eve():
             supptext = None
             if msg.suppress:
                 if buttons in [None, triui.OK]:
-                    supptext = mls.UI_SHARED_SUPPRESS1
+                    supptext = localization.GetByLabel('/Carbon/UI/Common/DoNotShowAgain')
                 else:
-                    supptext = mls.UI_SHARED_SUPPRESS2
+                    supptext = localization.GetByLabel('/Carbon/UI/Common/DoNotAskAgain')
             if gameui:
                 if buttons is None:
                     buttons = uiconst.OK
@@ -247,12 +216,13 @@ class Eve():
                     customicon = dict.get('customicon', None)
                 msgtitle = msg.title
                 if msg.title is None:
-                    msgtitle = {'info': mls.UI_GENERIC_INFORMATION,
-                     'infomodal': mls.UI_GENERIC_INFORMATION,
-                     'warning': mls.UI_GENERIC_WARNING,
-                     'question': mls.UI_GENERIC_QUESTION,
-                     'error': mls.UI_GENERIC_ERROR,
-                     'fatal': mls.UI_GENERIC_FATAL}.get(msg.type, mls.UI_GENERIC_INFORMATION)
+                    msgTitles = {'info': localization.GetByLabel('UI/Common/Information'),
+                     'infomodal': localization.GetByLabel('UI/Common/Information'),
+                     'warning': localization.GetByLabel('UI/Generic/Warning'),
+                     'question': localization.GetByLabel('UI/Common/Question'),
+                     'error': localization.GetByLabel('UI/Common/Error'),
+                     'fatal': localization.GetByLabel('UI/Common/Fatal')}
+                    msgtitle = msgTitles.get(msg.type, localization.GetByLabel('UI/Common/Information'))
                 (ret, supp,) = gameui.MessageBox(msg.text, msgtitle, buttons, icon, supptext, customicon, default=default, modal=modal)
                 if supp and ret not in (uiconst.ID_CLOSE, uiconst.ID_CANCEL):
                     if not suppress or ret == suppress:
@@ -374,18 +344,18 @@ class Eve():
         if display:
             print 'Pinging server ',
         for i in xrange(count):
-            t = blue.os.GetTime(1)
+            t = blue.os.GetWallclockTimeNow()
             servertime = server.GetTime()
             servertime = server.GetTime()
             servertime = server.GetTime()
             servertime = server.GetTime()
-            t2 = blue.os.GetTime(1)
+            t2 = blue.os.GetWallclockTimeNow()
             ping = blue.os.TimeAsDouble(t2 - t) / 4.0
             total = total + ping
             if display:
                 print int(ping * 1000),
                 print 'ms.',
-            blue.pyos.synchro.Sleep(1000)
+            blue.pyos.synchro.SleepWallclock(1000)
 
         avg = total * 1000 / float(count)
         if display:
@@ -397,11 +367,11 @@ class Eve():
     def SynchronizeClock(self, firstTime = 1, maxIterations = 5):
         log.general.Log('eve.synchronizeClock called', log.LGINFO)
         if not firstTime:
-            if self.clocklastsynchronized is not None and blue.os.GetTime() - self.clocklastsynchronized < HOUR:
+            if self.clocklastsynchronized is not None and blue.os.GetWallclockTime() - self.clocklastsynchronized < HOUR:
                 return 
         if self.clocksynchronizing:
             return 
-        self.clocklastsynchronized = blue.os.GetTime()
+        self.clocklastsynchronized = blue.os.GetWallclockTime()
         self.clocksynchronizing = 1
         try:
             diff = 0
@@ -409,9 +379,9 @@ class Eve():
             lastElaps = None
             log.general.Log('***   ***   ***   ***   Clock Synchronizing loop initiating      ***   ***   ***   ***', log.LGINFO)
             for i in range(maxIterations):
-                myTime = blue.os.GetTime(1)
+                myTime = blue.os.GetWallclockTimeNow()
                 serverTime = sm.ProxySvc('machoNet').GetTime()
-                now = blue.os.GetTime(1)
+                now = blue.os.GetWallclockTimeNow()
                 elaps = now - myTime
                 serverTime += elaps / 2
                 diff = float(now - serverTime) / float(SEC)

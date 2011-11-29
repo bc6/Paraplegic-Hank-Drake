@@ -1,6 +1,4 @@
-import xtriui
 import uix
-import uiutil
 import blue
 import util
 import log
@@ -8,33 +6,35 @@ import listentry
 import sys
 import uicls
 import uiconst
+import localization
 
 class AuditLogSecureContainerLogViewer(uicls.Window):
     __guid__ = 'form.AuditLogSecureContainerLogViewer'
+    default_windowID = 'alsclogviewer'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         itemID = attributes.itemID
         self.scope = 'all'
-        self.sr.container = eve.GetInventoryFromId(itemID)
+        self.sr.container = sm.GetService('invCache').GetInventoryFromId(itemID)
         self.sr.itemID = itemID
         self.sr.logIDmax = None
         self.sr.logIDmin = None
         self.SetMinSize([400, 400])
         self.SetWndIcon()
         self.SetTopparentHeight(0)
-        self.SetCaption(mls.UI_SHARED_AUDITLOGSECCONTAINER)
+        self.SetCaption(localization.GetByLabel('UI/AuditContainerLogViewer/AuditLogTitle'))
         self.sr.logOptions = uicls.Container(name='logOptions', parent=self.sr.main, align=uiconst.TOTOP, height=36, idx=1)
         sidepar = uicls.Container(name='sidepar', parent=self.sr.logOptions, align=uiconst.TORIGHT, width=54)
         btn = uix.GetBigButton(24, sidepar, 0, 12)
         btn.OnClick = (self.BrowseLog, 0)
-        btn.hint = mls.UI_GENERIC_PREVIOUS
+        btn.hint = localization.GetByLabel('UI/Common/Previous')
         btn.state = uiconst.UI_HIDDEN
         btn.sr.icon.LoadIcon('ui_23_64_1')
         self.sr.wndBackBtn = btn
         btn = uix.GetBigButton(24, sidepar, 24, 12)
         btn.OnClick = (self.BrowseLog, 1)
-        btn.hint = mls.UI_GENERIC_VIEWMORE
+        btn.hint = localization.GetByLabel('UI/Common/More')
         btn.state = uiconst.UI_HIDDEN
         btn.sr.icon.LoadIcon('ui_23_64_2')
         self.sr.wndFwdBtn = btn
@@ -43,7 +43,8 @@ class AuditLogSecureContainerLogViewer(uicls.Window):
          16,
          72,
          0), maxLength=16)
-        uicls.Label(text=mls.UI_GENERIC_DATE, parent=inpt, width=200, autowidth=False, left=0, top=-12, fontsize=9, letterspace=2, uppercase=1, state=uiconst.UI_NORMAL)
+        dateLabel = localization.GetByLabel('UI/Common/Date')
+        uicls.EveHeaderSmall(text=dateLabel, parent=inpt, width=200, top=-12, state=uiconst.UI_NORMAL)
         self.sr.wndFromDate = inpt
         self.sr.wndFromDate.OnReturn = self.GetDate
         self.sr.scroll = uicls.Scroll(parent=self.sr.main, padding=(const.defaultPadding,
@@ -60,7 +61,7 @@ class AuditLogSecureContainerLogViewer(uicls.Window):
 
 
     def GetNow(self):
-        return util.FmtDate(blue.os.GetTime(), 'sn')
+        return util.FmtDate(blue.os.GetWallclockTime(), 'sn')
 
 
 
@@ -91,14 +92,14 @@ class AuditLogSecureContainerLogViewer(uicls.Window):
                         fromLogID = 1
                 scrolllist = []
                 self.ShowLoad()
-                headers = [mls.UI_GENERIC_DATE,
-                 mls.UI_GENERIC_LOCATION,
-                 mls.UI_GENERIC_SUBLOCATION,
-                 mls.UI_GENERIC_WHO,
-                 mls.UI_GENERIC_ACTION,
-                 mls.UI_GENERIC_STATUS,
-                 mls.UI_GENERIC_TYPE,
-                 '%s/%s' % (mls.UI_GENERIC_QTY, mls.UI_GENERIC_OWNER)]
+                headers = [localization.GetByLabel('UI/Common/Date'),
+                 localization.GetByLabel('UI/Common/Location'),
+                 localization.GetByLabel('UI/AuditContainerLogViewer/SubLocation'),
+                 localization.GetByLabel('UI/AuditContainerLogViewer/Who'),
+                 localization.GetByLabel('UI/AuditContainerLogViewer/Action'),
+                 localization.GetByLabel('UI/AuditContainerLogViewer/Status'),
+                 localization.GetByLabel('UI/Common/Type'),
+                 localization.GetByLabel('UI/AuditContainerLogViewer/QuantityOwner')]
                 logs = self.sr.container.ALSCLogGet(fromDate, fromLogID, forward)
                 log.LogInfo('result count:', len(logs))
                 if len(logs):
@@ -113,7 +114,7 @@ class AuditLogSecureContainerLogViewer(uicls.Window):
                         self.sr.logIDmin = contLog.logID
                     if contLog.inventoryMgrLocationID == contLog.locationID:
                         if contLog.flagID == const.flagHangar:
-                            subLocation = mls.UI_GENERIC_PERSONALHANGAR
+                            subLocation = localization.GetByLabel('UI/AuditContainerLogViewer/PersonalHangar')
                     else:
                         divisionByFlag = {const.flagHangar: 1,
                          const.flagCorpSAG2: 2,
@@ -135,41 +136,43 @@ class AuditLogSecureContainerLogViewer(uicls.Window):
                     arg1 = '%s' % contLog.arg1
                     arg2 = '%s' % contLog.arg2
                     if contLog.actionID == const.ALSCActionAssemble:
-                        action = mls.UI_GENERIC_ASSEMBLED
+                        action = localization.GetByLabel('UI/AuditContainerLogViewer/Assembled')
                         arg1 = cfg.invtypes.Get(contLog.arg2).typeName
                         arg2 = cfg.eveowners.Get(contLog.arg1).ownerName
                     elif contLog.actionID == const.ALSCActionRepackage:
-                        action = mls.UI_GENERIC_REPACKAGED
-                        arg1 = arg2 = mls.UI_GENERIC_NOTAVAILABLESHORT
+                        action = localization.GetByLabel('UI/AuditContainerLogViewer/Repackaged')
+                        arg1 = arg2 = localization.GetByLabel('UI/Generic/NotAvailableShort')
                     elif contLog.actionID == const.ALSCActionSetName:
-                        action = mls.UI_GENERIC_SETNAME
-                        arg1 = arg2 = mls.UI_GENERIC_NOTAVAILABLESHORT
+                        action = localization.GetByLabel('UI/AuditContainerLogViewer/SetName')
+                        arg1 = arg2 = localization.GetByLabel('UI/Generic/NotAvailableShort')
                     elif contLog.actionID == const.ALSCActionSetPassword:
-                        action = mls.UI_GENERIC_SETPASSWORD
+                        action = localization.GetByLabel('UI/AuditContainerLogViewer/SetPassword')
                         if contLog.arg1 == const.SCCPasswordTypeGeneral:
-                            arg1 = mls.UI_GENERIC_GENERAL
+                            arg1 = localization.GetByLabel('UI/Generic/General')
                         elif contLog.arg1 == const.SCCPasswordTypeConfig:
-                            arg1 = mls.UI_GENERIC_CONFIGURATION
-                        arg2 = mls.UI_GENERIC_NOTAVAILABLESHORT
+                            arg1 = localization.GetByLabel('UI/AuditContainerLogViewer/Configuration')
+                        arg2 = localization.GetByLabel('UI/Generic/NotAvailableShort')
                     elif contLog.actionID == const.ALSCActionLock:
-                        action = mls.UI_GENERIC_LOCK
+                        action = localization.GetByLabel('UI/AuditContainerLogViewer/Lock')
                         arg1 = cfg.invtypes.Get(contLog.arg1).typeName
                         arg2 = '%s' % contLog.arg2
                     elif contLog.actionID == const.ALSCActionUnlock:
-                        action = mls.UI_GENERIC_UNLOCK
+                        action = localization.GetByLabel('UI/AuditContainerLogViewer/Unlock')
                         arg1 = cfg.invtypes.Get(contLog.arg1).typeName
                         arg2 = '%s' % contLog.arg2
                     elif contLog.actionID == const.ALSCActionEnterPassword:
-                        action = mls.UI_GENERIC_ENTERPASSWORD
+                        action = localization.GetByLabel('UI/AuditContainerLogViewer/EnterPassword')
                         if contLog.arg1 == const.SCCPasswordTypeGeneral:
-                            arg1 = mls.UI_GENERIC_GENERAL
+                            arg1 = localization.GetByLabel('UI/Generic/General')
                         elif contLog.arg1 == const.SCCPasswordTypeConfig:
-                            arg1 = mls.UI_GENERIC_CONFIGURATION
-                        arg2 = mls.UI_GENERIC_NOTAVAILABLESHORT
+                            arg1 = localization.GetByLabel('UI/AuditContainerLogViewer/Configuration')
+                        arg2 = localization.GetByLabel('UI/Generic/NotAvailableShort')
                     elif contLog.actionID == const.ALSCActionConfigure:
-                        action = mls.UI_GENERIC_CONFIGURE
-                        arg1 = arg2 = mls.UI_GENERIC_NOTAVAILABLESHORT
-                    failSucceed = [(mls.UI_GENERIC_FAIL, '0xffff0000'), (mls.UI_GENERIC_SUCCESS, '0xff00ff00')][contLog.status]
+                        action = localization.GetByLabel('UI/AuditContainerLogViewer/Configure')
+                        arg1 = arg2 = localization.GetByLabel('UI/Generic/NotAvailableShort')
+                    failLabel = localization.GetByLabel('UI/AuditContainerLogViewer/Fail')
+                    successLabel = localization.GetByLabel('UI/AuditContainerLogViewer/Success')
+                    failSucceed = [(failLabel, '0xffff0000'), (successLabel, '0xff00ff00')][contLog.status]
                     label = '%s' % util.FmtDate(contLog.logDate)
                     label += '<t>%s' % cfg.evelocations.Get(contLog.inventoryMgrLocationID).locationName
                     label += '<t>%s' % subLocation
@@ -214,9 +217,11 @@ class AuditLogSecureContainerLogViewer(uicls.Window):
                 (itemID, typeID,) = (contLog.inventoryMgrLocationID, const.typeSolarSystem)
             else:
                 (itemID, typeID,) = (contLog.inventoryMgrLocationID, const.groupStation)
-            m += [(mls.UI_CMD_LOCATION, sm.GetService('menu').CelestialMenu(itemID=itemID, mapItem=None, typeID=typeID))]
+            locationLabel = localization.GetByLabel('UI/Common/Location')
+            m += [(locationLabel, sm.GetService('menu').CelestialMenu(itemID=itemID, mapItem=None, typeID=typeID))]
             m += [None]
-            m += [('%s (%s)' % (cfg.eveowners.Get(contLog.actorID).ownerName, mls.UI_SHARED_OPERATOR), sm.GetService('menu').CharacterMenu(contLog.actorID))]
+            operatorLabel = localization.GetByLabel('UI/AuditContainerLogViewer/Operator', ownerName=cfg.eveowners.Get(contLog.actorID))
+            m += [(operatorLabel, sm.GetService('menu').CharacterMenu(contLog.actorID))]
             m += [None]
         return m
 

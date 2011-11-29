@@ -10,6 +10,7 @@ import listentry
 import uicls
 import uiconst
 import form
+import localization
 
 class CorpApplications(uicls.Container):
     __guid__ = 'form.CorpApplications'
@@ -20,21 +21,21 @@ class CorpApplications(uicls.Container):
         super(form.CorpApplications, self).ApplyAttributes(attributes)
         self.sr.viewingStatus = 0
         self.corpApplicationsContainer = uicls.Container(parent=self, name='corpApplicationsContainer', align=uiconst.TOALL)
-        self.corpApplicationsLabel = uicls.Label(parent=self.corpApplicationsContainer, name='corpApplicationsLabel', align=uiconst.TOTOP, uppercase=True)
+        self.corpApplicationsLabel = uicls.EveLabelMedium(parent=self.corpApplicationsContainer, name='corpApplicationsLabel', align=uiconst.TOTOP)
         self.sr.corpScroll = uicls.Scroll(parent=self.corpApplicationsContainer, name='corpScroll')
         self.sr.corpScroll.multiSelect = 0
         self.sr.corpScroll.stretchLastHeader = True
-        self.sr.corpScroll.rightAlignHeaderLabels = [mls.UI_GENERIC_DATE]
+        self.sr.corpScroll.rightAlignHeaderLabels = [localization.GetByLabel('UI/Common/Date')]
         self.sr.corpScroll.sr.ignoreTabTrimming = True
-        self.sr.corpScroll.sr.fixedColumns = {mls.UI_GENERIC_NAME: 256}
+        self.sr.corpScroll.sr.fixedColumns = {localization.GetByLabel('UI/Common/Name'): 256}
         self.personalApplicationsContainer = uicls.Container(parent=self, name='personalApplicationsContainer', align=uiconst.TOBOTTOM, padTop=const.defaultPadding, idx=0)
-        personalApplicationsLabel = uicls.Label(parent=self.personalApplicationsContainer, name='personalApplicationsLabel', align=uiconst.TOTOP, text=mls.UI_CORP_MYAPPLICATIONS, uppercase=True)
+        personalApplicationsLabel = uicls.EveLabelMedium(parent=self.personalApplicationsContainer, name='personalApplicationsLabel', align=uiconst.TOTOP, text=localization.GetByLabel('UI/Corporations/CorpApplications/MyApplications'))
         self.sr.personalScroll = uicls.Scroll(parent=self.personalApplicationsContainer, name='personalApplications')
         self.sr.personalScroll.multiSelect = 0
         self.sr.personalScroll.stretchLastHeader = True
-        self.sr.personalScroll.rightAlignHeaderLabels = [mls.UI_GENERIC_DATE]
+        self.sr.personalScroll.rightAlignHeaderLabels = [localization.GetByLabel('UI/Common/Date')]
         self.sr.personalScroll.sr.ignoreTabTrimming = True
-        self.sr.personalScroll.sr.fixedColumns = {mls.UI_GENERIC_NAME: 256}
+        self.sr.personalScroll.sr.fixedColumns = {localization.GetByLabel('UI/Common/Name'): 256}
         self.personalApplicationsContainer.height = self.DEFAULT_APPLICATIONS_HEIGHT
 
 
@@ -53,14 +54,14 @@ class CorpApplications(uicls.Container):
 
     def ShowCorporateApplications(self):
         log.LogInfo('ShowCorporateApplications')
-        self.corpApplicationsLabel.SetText(mls.UI_CORP_APPLICATIONS_TO + ' ' + cfg.eveowners.Get(session.corpid).ownerName)
+        self.corpApplicationsLabel.SetText(localization.GetByLabel('UI/Corporations/CorpApplications/ApplicationsToCorp', corporationName=cfg.eveowners.Get(session.corpid).ownerName))
         try:
             sm.GetService('corpui').ShowLoad()
             scrolllist = []
-            hint = mls.UI_CORP_HINT3
+            hint = localization.GetByLabel('UI/Corporations/CorpApplications/NoApplicationsFound')
             if const.corpRolePersonnelManager & eve.session.corprole != const.corpRolePersonnelManager:
                 log.LogInfo('ShowCorporateApplications Invalid Callee')
-                hint = mls.UI_CORP_HINT23
+                hint = localization.GetByLabel('UI/Corporations/AccessRestrictions/RequirePersonnelManagerRole')
             elif self is None or self.destroyed:
                 log.LogInfo('ShowCorporateApplications Destroyed or None')
                 hint = "You didn't see me."
@@ -78,7 +79,7 @@ class CorpApplications(uicls.Container):
                 for application in applications:
                     self._CorpApplications__AddApplicationToList(application, scrolllist, isMine=False)
 
-            self.sr.corpScroll.Load(contentList=scrolllist, headers=[mls.UI_GENERIC_NAME, mls.UI_GENERIC_DATE])
+            self.sr.corpScroll.Load(contentList=scrolllist, headers=[localization.GetByLabel('UI/Common/Name'), localization.GetByLabel('UI/Common/Date')])
             if scrolllist:
                 self.sr.corpScroll.ShowHint(None)
             else:
@@ -95,7 +96,7 @@ class CorpApplications(uicls.Container):
         try:
             sm.GetService('corpui').ShowLoad()
             scrolllist = []
-            hint = mls.UI_CORP_HINT3
+            hint = localization.GetByLabel('UI/Corporations/CorpApplications/NoApplicationsFound')
             if self is None or self.destroyed:
                 log.LogInfo('ShowMyApplications Destroyed or None')
             else:
@@ -113,7 +114,7 @@ class CorpApplications(uicls.Container):
                     self._CorpApplications__AddApplicationToList(application, scrolllist, isMine=True)
 
             if scrolllist:
-                self.sr.personalScroll.Load(contentList=scrolllist, headers=[mls.UI_GENERIC_NAME, mls.UI_GENERIC_DATE])
+                self.sr.personalScroll.Load(contentList=scrolllist, headers=[localization.GetByLabel('UI/Common/Name'), localization.GetByLabel('UI/Common/Date')])
                 self.sr.personalScroll.ShowHint(None)
             else:
                 self.sr.personalScroll.Load(fixedEntryHeight=19, contentList=scrolllist)
@@ -130,7 +131,7 @@ class CorpApplications(uicls.Container):
             return 
         status = ''
         if application.status == const.crpApplicationAppliedByCharacter:
-            status = mls.UI_CORP_UNPROCESSED
+            status = localization.GetByLabel('UI/Corporations/CorpApplications/ApplicationUnprocessed')
         data = util.KeyVal()
         data.statusLabel = status
         data.isMine = isMine
@@ -143,28 +144,27 @@ class CorpApplications(uicls.Container):
         else:
             dblClickFunc = lambda *args: self.CorpViewApplication(application.characterID, application.applicationText)
             id = application.characterID
-        scrolllist.append(listentry.Get('User', {'charID': id,
-         'applicationDate': application.applicationDateTime,
-         'OnDblClick': dblClickFunc}))
+        data.charID = id
+        data.applicationDate = application.applicationDateTime
+        data.OnDblClick = dblClickFunc
+        scrolllist.append(listentry.Get('User', data=data))
 
 
 
     def GetApplicationMenu(self, entry):
-        isMine = entry.sr.node.isMine
-        application = entry.sr.node.application
-        corporation = entry.sr.node.corporation
-        status = entry.sr.node.statusLabel
+        isMine = entry.isMine
+        application = entry.application
+        corporation = entry.corporation
+        status = entry.statusLabel
         menu = []
         if isMine:
             withdraw = None
-            menu.append((mls.UI_CMD_VIEWAPPLICATION, self.ViewApplication, (application.corporationID,)))
+            menu.append((localization.GetByLabel('UI/Corporations/CorpApplications/ViewApplication'), self.ViewApplication, (application.corporationID,)))
             if not (eve.session.charid == application.characterID and eve.session.corpid == application.corporationID):
-                menu.append((mls.UI_CMD_WITHDRAW, self.WithdrawApplication, (application.characterID, corporation.corporationID)))
+                menu.append((localization.GetByLabel('UI/Corporations/CorpApplications/WithdrawApplication'), self.WithdrawApplication, (application.characterID, corporation.corporationID)))
         else:
-            menu.extend([(mls.UI_CMD_VIEWAPPLICATION, self.CorpViewApplication, (application.characterID, application.applicationText)), (mls.UI_CMD_ACCEPT, self.AcceptOrRejectApplication, (application.characterID, '', const.crpApplicationAcceptedByCorporation)), (mls.UI_CMD_REJECT, self.AcceptOrRejectApplication, (application.characterID, '', const.crpApplicationRejectedByCorporation))])
+            menu.extend([(localization.GetByLabel('UI/Corporations/CorpApplications/ViewApplication'), self.CorpViewApplication, (application.characterID, application.applicationText)), (localization.GetByLabel('UI/Corporations/CorpApplications/AcceptApplication'), self.AcceptOrRejectApplication, (application.characterID, '', const.crpApplicationAcceptedByCorporation)), (localization.GetByLabel('UI/Corporations/CorpApplications/RejectApplication'), self.AcceptOrRejectApplication, (application.characterID, '', const.crpApplicationRejectedByCorporation))])
             menu.append(None)
-            menu.append((mls.UI_CMD_SHOWINFO, self.ShowInfo, (cfg.eveowners.Get(application.characterID).typeID, application.characterID)))
-            menu.extend(sm.GetService('menu').CharacterMenu(application.characterID))
         return menu
 
 
@@ -229,13 +229,13 @@ class CorpApplications(uicls.Container):
         if application is None:
             return 
         format = []
-        status = mls.UI_CORP_HINT24
+        status = localization.GetByLabel('UI/Corporations/CorpApplications/ApplicationNotProcessed')
         format.append({'type': 'text',
-         'text': mls.UI_CORP_YOURAPPLICATIONTOJOIN % {'corp': cfg.eveowners.Get(application.corporationID).name}})
+         'text': localization.GetByLabel('UI/Corporations/CorpApplications/YourApplicationToJoin', corpName=cfg.eveowners.Get(application.corporationID).name)})
         format.append({'type': 'push'})
         format.append({'type': 'bbline'})
         format.append({'type': 'labeltext',
-         'label': mls.UI_GENERIC_STATUS,
+         'label': localization.GetByLabel('UI/Corporations/CorpApplications/ApplicationStatus'),
          'text': status,
          'frame': 1})
         format.append({'type': 'bbline'})
@@ -252,10 +252,21 @@ class CorpApplications(uicls.Container):
         format.append({'type': 'push',
          'frame': 1})
         format.append({'type': 'bbline'})
+        format.append({'type': 'btnonly',
+         'frame': 1,
+         'height': 27,
+         'buttons': [{'caption': localization.GetByLabel('UI/Corporations/CorpApplications/WithdrawApplication'),
+                      'align': 'left',
+                      'btn_default': 1,
+                      'function': self.WithdrawApplication,
+                      'args': (application.characterID, corporationID)}]})
+        format.append({'type': 'push',
+         'frame': 1})
+        format.append({'type': 'bbline'})
         btn = uiconst.OK
         left = uicore.desktop.width / 2 - 400 / 2
         top = uicore.desktop.height / 2 - 400 / 2
-        retval = uix.HybridWnd(format, mls.UI_CORP_VIEWAPPLICATIONDETAILS, 1, None, btn, [left, top], 400, icon='ui_7_64_6')
+        retval = uix.HybridWnd(format, localization.GetByLabel('UI/Corporations/CorpApplications/ViewApplicationDetailCaption'), 1, None, btn, [left, top], 400, icon='ui_7_64_6')
 
 
 
@@ -263,7 +274,7 @@ class CorpApplications(uicls.Container):
         if retval.has_key('appltext'):
             applicationText = retval['appltext']
             if len(applicationText) > 1000:
-                return mls.UI_CORP_HINT4 % {'len': str(len(applicationText))}
+                return localization.GetByLabel('UI/Corporations/CorpApplications/ApplicationTextTooLong', len=len(applicationText))
         return ''
 
 
@@ -279,17 +290,17 @@ class CorpApplications(uicls.Container):
             return 
         stati = {}
         format = []
-        stati[const.crpApplicationRejectedByCorporation] = (mls.UI_CMD_REJECT, 1)
-        stati[const.crpApplicationAcceptedByCorporation] = (mls.UI_CMD_ACCEPT, 0)
+        stati[const.crpApplicationRejectedByCorporation] = (localization.GetByLabel('UI/Corporations/CorpApplications/RejectApplication'), 1)
+        stati[const.crpApplicationAcceptedByCorporation] = (localization.GetByLabel('UI/Corporations/CorpApplications/AcceptApplication'), 0)
         format.append({'type': 'push'})
         format.append({'type': 'text',
-         'text': '%s: <b>%s</b><br>' % (mls.UI_GENERIC_FROM, cfg.eveowners.Get(characterID).name)})
+         'text': localization.GetByLabel('UI/Corporations/CorpApplications/ApplicationSubjectLine', player=characterID)})
         format.append({'type': 'push'})
         format.append({'type': 'bbline'})
         i = 1
         for key in stati:
             if i == 1:
-                lbl = mls.UI_GENERIC_STATUS
+                lbl = localization.GetByLabel('UI/Corporations/CorpApplications/ApplicationStatus')
             else:
                 lbl = ''
             (text, selected,) = stati[key]
@@ -308,7 +319,7 @@ class CorpApplications(uicls.Container):
         format.append({'type': 'textedit',
          'setvalue': applicationText,
          'key': 'appltext',
-         'label': mls.UI_GENERIC_MESSAGE,
+         'label': localization.GetByLabel('UI/Corporations/CorpApplications/ApplicationMessage'),
          'required': 0,
          'frame': 1,
          'readonly': 1})
@@ -320,7 +331,7 @@ class CorpApplications(uicls.Container):
         btn = uiconst.OKCANCEL
         left = uicore.desktop.width / 2 - 400 / 2
         top = uicore.desktop.height / 2 - 400 / 2
-        retval = uix.HybridWnd(format, mls.UI_CORP_VIEWAPPLICATIONDETAILS, 1, None, btn, [left, top], 400)
+        retval = uix.HybridWnd(format, localization.GetByLabel('UI/Corporations/CorpApplications/ViewApplicationDetailCaption'), 1, None, btn, [left, top], 400)
         if retval is not None:
             applicationText = retval['appltext']
             status = retval['stati']

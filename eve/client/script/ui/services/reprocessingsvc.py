@@ -10,6 +10,8 @@ import uthread
 import sys
 import uiconst
 import uicls
+import form
+import localization
 
 class ReprocessingSvc(service.Service):
     __exportedcalls__ = {'ReprocessDlg': [],
@@ -60,13 +62,13 @@ class ReprocessingSvc(service.Service):
 
 
     def ProcessSessionChange(self, isremote, session, change):
-        if 'charid' in change or 'stationid' in change:
+        if 'charid' in change or 'stationid2' in change:
             self.ReleaseReprocessingSvc()
 
 
 
     def DoSessionChanging(self, isRemote, session, change):
-        if 'charid' in change or 'stationid' in change:
+        if 'charid' in change or 'stationid2' in change:
             sm.StopService(self.__guid__[4:])
 
 
@@ -93,7 +95,7 @@ class ReprocessingSvc(service.Service):
     def uthread_ReprocessDlg(self, items, outputOwner, outputFlag):
         self._ReprocessingSvc__EnterCriticalSection('reprocessingDlg')
         try:
-            wnd = sm.GetService('window').GetWindow('reprocessing')
+            wnd = form.ReprocessingDialog.GetIfOpen()
             if wnd:
                 if items is not None:
                     wnd.DoSelectItems(items)
@@ -130,7 +132,7 @@ class ReprocessingSvc(service.Service):
 
 
     def IsVisible(self):
-        wnd = sm.GetService('window').GetWindow('reprocessing')
+        wnd = form.ReprocessingDialog.GetIfOpen()
         if wnd is not None and not wnd.destroyed:
             return bool(wnd.state != uiconst.UI_HIDDEN)
         return False
@@ -143,6 +145,7 @@ class ReprocessingDialog(uicls.Window):
     __guid__ = 'form.ReprocessingDialog'
     default_width = 405
     default_height = 270
+    default_windowID = 'reprocessing'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -169,18 +172,18 @@ class ReprocessingDialog(uicls.Window):
         self.outputOwnerAndFlag = [outputOwner, outputFlag]
         self.SetScope('station')
         self.Confirm = self.ValidateOK
-        self.OnClose_ = self.OnCloseReprocessing
-        self.SetCaption(mls.UI_GENERIC_REPROCESSING)
+        self._OnClose = self.OnCloseReprocessing
+        self.SetCaption(localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/WindowLabel'))
         self.SetWndIcon('ui_17_128_1')
         self.SetMinSize([350, 270])
         (parentText, hintText,) = self._ReprocessingDialog__GetStdText()
         if self is None or self.destroyed:
             return 
-        self.sr.msgparent = uicls.Label(text=parentText, parent=self.sr.topParent, fontsize=10, letterspace=1, uppercase=1, left=12, width=150, tabs=[110, 164], idx=0, autowidth=False, align=uiconst.CENTERRIGHT, state=uiconst.UI_NORMAL)
+        self.sr.msgparent = uicls.EveLabelSmall(text=parentText, parent=self.sr.topParent, left=12, width=150, tabs=[110, 164], idx=0, align=uiconst.CENTERRIGHT, state=uiconst.UI_NORMAL)
         self.sr.msgparent.hint = hintText
         self.sr.msgparent.top = 3
         self.sr.textContainer = uicls.Container(name='textContainer', align=uiconst.TOBOTTOM, parent=self.sr.main, height=14, left=const.defaultPadding, top=const.defaultPadding, state=uiconst.UI_HIDDEN)
-        self.sr.statusText = uicls.Label(text=mls.UI_SHARED_REPROCESSINPROGRESS, parent=self.sr.textContainer, state=uiconst.UI_DISABLED, align=uiconst.CENTERTOP)
+        self.sr.statusText = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/InProgressMessage'), parent=self.sr.textContainer, state=uiconst.UI_DISABLED, align=uiconst.CENTERTOP)
         self.sr.mainContainer = uicls.Container(name='mainContainer', align=uiconst.TOALL, parent=self.sr.main, pos=(const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding,
@@ -194,7 +197,7 @@ class ReprocessingDialog(uicls.Window):
         self.sr.itemscroll.sr.id = 'reprocess'
         self.sr.itemscroll.Load(contentList=[])
         self.sr.itemscroll.multiSelect = 0
-        self.sr.itemscroll.sr.minColumnWidth = {mls.UI_GENERIC_NAME: 66}
+        self.sr.itemscroll.sr.minColumnWidth = {localization.GetByLabel('UI/Common/Name'): 66}
         self.sr.itemscroll.OnNewHeaders = self.OnNewHeadersSet
         self.sr.itemscroll.allowFilterColumns = 1
         self.sr.itemscroll.SetColumnsHiddenByDefault(uix.GetInvItemDefaultHiddenHeaders())
@@ -202,15 +205,15 @@ class ReprocessingDialog(uicls.Window):
         self.sr.quotescroll.sr.id = 'reprocessing_quotes'
         self.sr.quotescroll.Load(contentList=[])
         self.sr.standardBtns = uicls.ButtonGroup(btns=[['reprocessingServiceGetQuotesBtn',
-          mls.UI_STATION_GETQUOTE,
+          localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/GetQuoteButton'),
           self.OnGetQoutes,
           (),
           81], ['reprocessingServiceReprocessBtn',
-          mls.UI_CMD_REPROCESS,
+          localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/ReprocessButton'),
           self.OnOK,
           (),
           81], ['reprocessingServiceCancelBtn',
-          mls.UI_CMD_CANCEL,
+          localization.GetByLabel('UI/Common/Buttons/Cancel'),
           self.OnCancel,
           (),
           81]], forcedButtonNames=True, parent=self.sr.main, idx=0)
@@ -272,12 +275,12 @@ class ReprocessingDialog(uicls.Window):
         if ownerID == eve.session.corpid:
             office = sm.GetService('corp').GetOffice()
             if office is not None:
-                folder = eve.GetInventoryFromId(office.officeFolderID)
+                folder = sm.GetService('invCache').GetInventoryFromId(office.officeFolderID, locationID=session.stationid2)
                 folder.List()
-                hangar = eve.GetInventoryFromId(office.itemID)
+                hangar = sm.GetService('invCache').GetInventoryFromId(office.itemID, locationID=session.stationid2)
                 items = hangar.List(flag)
         elif ownerID == eve.session.charid:
-            hangar = eve.GetInventory(const.containerHangar)
+            hangar = sm.GetService('invCache').GetInventory(const.containerHangar)
             items = hangar.List(flag)
         self.selectedItemIDs = {}
         self.LoadItems(items)
@@ -339,11 +342,11 @@ class ReprocessingDialog(uicls.Window):
 
 
     def DrawLocationSelector(self, items, outputOwner, outputFlag, office = None):
-        optlist = [[mls.UI_GENERIC_MYHANGAR, (eve.session.charid, const.flagHangar)]]
+        optlist = [[localization.GetByLabel('UI/Common/MyHangar'), (eve.session.charid, const.flagHangar)]]
         if office is not None:
-            folder = eve.GetInventoryFromId(office.officeFolderID)
+            folder = sm.GetService('invCache').GetInventoryFromId(office.officeFolderID, locationID=session.stationid2)
             folder.List()
-            hangar = eve.GetInventoryFromId(office.itemID)
+            hangar = sm.GetService('invCache').GetInventoryFromId(office.itemID, locationID=session.stationid2)
             paramsByDivision = {1: (const.flagHangar, const.corpRoleHangarCanQuery1, const.corpRoleHangarCanTake1),
              2: (const.flagCorpSAG2, const.corpRoleHangarCanQuery2, const.corpRoleHangarCanTake2),
              3: (const.flagCorpSAG3, const.corpRoleHangarCanQuery3, const.corpRoleHangarCanTake3),
@@ -361,27 +364,27 @@ class ReprocessingDialog(uicls.Window):
                 if eve.session.corprole & roleCanTake != roleCanTake:
                     continue
                 divisionName = divisions[i]
-                optlist.append([divisionName + ' - %s' % mls.UI_GENERIC_CORPHANGAR, (eve.session.corpid, flag)])
+                optlist.append([localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/CorporateHangarSelection', divisionName=divisionName), (eve.session.corpid, flag)])
 
         toppar = uicls.Container(name='options', parent=self.sr.topParent, align=uiconst.TOPLEFT, pos=(0, 0, 120, 52))
         toppar.left = 72
         theLeft = 1
         if outputOwner is not None and outputFlag is not None:
-            self.comboLocationOutput = uicls.Combo(label=mls.UI_RMR_OUTPUTLOCATION, parent=toppar, options=optlist, name='location_output', callback=self.OnComboChangeOutput, pos=(theLeft,
+            self.comboLocationOutput = uicls.Combo(label=localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/OutputLocationComboBoxLabel'), parent=toppar, options=optlist, name='location_output', callback=self.OnComboChangeOutput, pos=(theLeft,
              16,
              0,
              0), width=98, align=uiconst.TOPLEFT)
             self.comboLocationOutput.SelectItemByValue((outputOwner, outputFlag))
         else:
             self.inputOwnerAndFlag = (eve.session.charid, const.flagHangar)
-            self.comboLocationInput = uicls.Combo(label=mls.UI_RMR_INPUTLOCATION, parent=toppar, options=optlist, name='location_input', callback=self.OnComboChangeInput, pos=(theLeft,
+            self.comboLocationInput = uicls.Combo(label=localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/InputLocationComboBoxLabel'), parent=toppar, options=optlist, name='location_input', callback=self.OnComboChangeInput, pos=(theLeft,
              16,
              0,
              0), width=98, align=uiconst.TOPLEFT)
             self.comboLocationInput.SelectItemByValue(self.inputOwnerAndFlag)
-            hangar = eve.GetInventory(const.containerHangar)
+            hangar = sm.GetService('invCache').GetInventory(const.containerHangar)
             items = hangar.List(const.flagHangar)
-        self.sr.showallcheckbox = uicls.Checkbox(text=mls.UI_STATION_SHOWALL, parent=toppar, configName='showallhangaritems', retval='show_all_items', callback=self.OnShowAllCheckboxChange, checked=self.showAllItems, pos=(theLeft,
+        self.sr.showallcheckbox = uicls.Checkbox(text=localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/ShowAllCheckBoxLabel'), parent=toppar, configName='showallhangaritems', retval='show_all_items', callback=self.OnShowAllCheckboxChange, checked=self.showAllItems, pos=(theLeft,
          36,
          98,
          0))
@@ -483,9 +486,9 @@ class ReprocessingDialog(uicls.Window):
 
             self.sr.itemscroll.sr.iconMargin = 24
             self.sr.itemscroll.sr.fixedEntryHeight = 24
-            self.sr.itemscroll.Load(None, scrolllist, headers=uix.GetInvItemDefaultHeaders(), noContentHint=mls.UI_STATION_NOTHINGFITFORREPROCESSING)
+            self.sr.itemscroll.Load(None, scrolllist, headers=uix.GetInvItemDefaultHeaders(), noContentHint=localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/NoItemsSelectedMessage'))
             if not len(scrolllist):
-                self.sr.itemscroll.ShowHint(mls.UI_STATION_NOTHINGFITFORREPROCESSING)
+                self.sr.itemscroll.ShowHint(localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/NoItemsSelectedMessage'))
 
         finally:
             self._ReprocessingDialog__LeaveCriticalSection('__LoadItems')
@@ -518,11 +521,11 @@ class ReprocessingDialog(uicls.Window):
     def UpdateButtons(self):
         self.sr.reprocessBtn.Disable()
         self.sr.quotesBtn.Disable()
-        self.sr.quotescroll.Load(contentList=[], noContentHint=mls.UI_STATION_NOTHINGFITFORREPROCESSING)
+        self.sr.quotescroll.Load(contentList=[], noContentHint=localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/NoItemsSelectedMessage'))
         for item in self.sr.itemscroll.GetNodes():
             if item.checked:
                 self.sr.quotesBtn.Enable()
-                self.sr.quotescroll.Load(contentList=[], noContentHint=mls.UI_STATION_NOQUOTE)
+                self.sr.quotescroll.Load(contentList=[], noContentHint=localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/OutputTable/NoQuoteMessage'))
                 break
 
 
@@ -563,10 +566,10 @@ class ReprocessingDialog(uicls.Window):
 
             self.sr.quotescroll.sr.iconMargin = 24
             self.sr.quotescroll.sr.fixedEntryHeight = 24
-            self.sr.quotescroll.Load(None, scrolllist, headers=[mls.UI_STATION_MATERIAL,
-             mls.UI_STATION_YOURECEIVE,
-             mls.UI_STATION_WETAKE,
-             mls.UI_STATION_UNRECOVERABLE], noContentHint=mls.UI_STATION_NOTHINGFITFORREPROCESSING)
+            self.sr.quotescroll.Load(None, scrolllist, headers=[localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/OutputTable/MaterialColumnHeader'),
+             localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/OutputTable/YouReceiveColumnHeader'),
+             localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/OutputTable/WeTakeColumnHeader'),
+             localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/OutputTable/UnrecoverableColumnHeader')], noContentHint=localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/NoItemsSelectedMessage'))
 
         finally:
             self._ReprocessingDialog__LeaveCriticalSection('__LoadQuotes')
@@ -576,25 +579,15 @@ class ReprocessingDialog(uicls.Window):
 
     def __GetStdText(self):
         rinfo = sm.GetService('reprocessing').GetReprocessingSvc().GetReprocessingInfo()
-        owner = cfg.eveowners.Get(eve.stationItem.ownerID)
-        location = cfg.evelocations.Get(eve.stationItem.itemID)
-        hintText = mls.UI_STATION_TEXT43 % {'ownername': owner.name,
-         'locationname': location.name,
-         'yield': self.FmtPercent(rinfo['yield'], 2),
-         'combinedyield': self.FmtPercent(rinfo['combinedyield'], 2),
-         'wetake1': util.FmtAmt(rinfo['wetake'][1], showFraction=2),
-         'wetake2': self.FmtPercent(rinfo['wetake'][0], 2)}
-        parentText = mls.UI_STATION_REPROCESSINGSTATS % {'yield': '<b>%s</b>' % self.FmtPercent(rinfo['yield'], 2),
-         'combinedyield': '<b>%s</b>' % self.FmtPercent(rinfo['combinedyield'], 2),
-         'wetake1': '<b>%s</b>' % util.FmtAmt(rinfo['wetake'][1], showFraction=2),
-         'wetake2': '<b>%s</b>' % self.FmtPercent(rinfo['wetake'][0], 2)}
+        ownerID = eve.stationItem.ownerID
+        stationID = eve.stationItem.itemID
+        baseYield = rinfo['yield'] * 100
+        netYield = rinfo['combinedyield'] * 100
+        standing = rinfo['wetake'][1]
+        weTake = rinfo['wetake'][0] * 100
+        hintText = localization.GetByLabel('UI/Reprocessing/StationMessage', owner=ownerID, station=stationID, baseYield=baseYield, netYield=netYield, standing=standing, weTake=weTake)
+        parentText = localization.GetByLabel('UI/Reprocessing/ReprocessingWindow/ReprocessingStats', baseYield=baseYield, netYield=netYield, standing=standing, weTake=weTake)
         return (parentText, hintText)
-
-
-
-    def FmtPercent(self, value, demicals = 1):
-        value = value * 100.0
-        return '%s%%' % util.FmtAmt(value, showFraction=demicals)
 
 
 
@@ -605,7 +598,7 @@ class ReprocessingDialog(uicls.Window):
 
     def OnCloseReprocessing(self, *args):
         self.Unregister()
-        uicls.Window.OnClose_(self, args)
+        uicls.Window._OnClose(self, args)
 
 
 
@@ -634,7 +627,7 @@ class ReprocessingDialog(uicls.Window):
             if item.ownerID != ownerID:
                 return False
             if item.ownerID == eve.session.charid:
-                if item.locationID != eve.session.stationid:
+                if item.locationID != session.stationid2:
                     return False
             elif item.ownerID == eve.session.corpid:
                 office = sm.GetService('corp').GetOffice()
@@ -762,7 +755,7 @@ class ReprocessingDialog(uicls.Window):
                     msg = 'lockRefining'
                 else:
                     msg = 'lockReprocessing'
-                sm.GetService('invCache').TryLockItem(item.itemID, msg, {'itemType': cfg.invtypes.Get(item.typeID).typeName}, 1)
+                sm.GetService('invCache').TryLockItem(item.itemID, msg, {'itemType': item.typeID}, 1)
                 lockedItemIDs.append(item.itemID)
                 items.append(itemID)
 
@@ -796,7 +789,7 @@ class ReprocessingDialog(uicls.Window):
             finally:
                 self.Unregister()
                 self.reprocessing = 0
-                self.CloseX()
+                self.CloseByUser()
 
 
         finally:
@@ -811,7 +804,7 @@ class ReprocessingDialog(uicls.Window):
 
     def OnCancel(self, *args):
         self.items = {}
-        self.CloseX()
+        self.CloseByUser()
 
 
 

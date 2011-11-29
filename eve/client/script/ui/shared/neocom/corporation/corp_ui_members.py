@@ -4,7 +4,6 @@ import uix
 import form
 import listentry
 import blue
-import types
 import uthread
 import lg
 import log
@@ -12,6 +11,8 @@ import corputil
 import uiconst
 import uicls
 import uiutil
+import localization
+import localizationUtil
 from corputil import *
 
 class CorpMembers(uicls.Container):
@@ -38,7 +39,7 @@ class CorpMembers(uicls.Container):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         self.OnTabDeselect()
         self.sr.members.RemoveListener(self)
 
@@ -57,21 +58,18 @@ class CorpMembers(uicls.Container):
 
 
 
-    def OnDataChanged(self, rowset, primaryKey, change, notificationParams):
+    def DataChanged(self, primaryKey, change):
         if not (self and not self.destroyed):
             return 
-        dataChangedBy = 'Unknown'
-        if notificationParams.has_key('charIDcallee'):
-            if notificationParams['charIDcallee'] > 0:
-                dataChangedBy = cfg.eveowners.Get(notificationParams['charIDcallee']).ownerName
+        if self.destroyed or not hasattr(self, 'sr') or self.sr.scroll is None:
+            return 
+        dataChangedBy = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/UpdatedByUnknown')
         if self.sr.progressTotal == 0:
             self.sr.progressCurrent = 0
             self.sr.progressTotal = 1
         self.sr.progressCurrent += 1
-        sm.GetService('loading').ProgressWnd(cfg.eveowners.Get(primaryKey).ownerName, '%s: %s' % (mls.UI_CORP_UPDATEDBY, dataChangedBy), self.sr.progressCurrent, self.sr.progressTotal)
+        sm.GetService('loading').ProgressWnd(cfg.eveowners.Get(primaryKey).ownerName, dataChangedBy, self.sr.progressCurrent, self.sr.progressTotal)
         blue.pyos.synchro.Yield()
-        if self.destroyed or not hasattr(self, 'sr') or self.sr.scroll is None:
-            return 
         for entry in self.sr.scroll.GetNodes():
             if entry is None or entry is None or entry.rec is None:
                 continue
@@ -83,7 +81,7 @@ class CorpMembers(uicls.Container):
                     self.sr.scroll.RemoveEntries([entry])
                     self.LogInfo('member list entry removed for charID:', primaryKey)
                     break
-                entry.panel.OnDataChanged(rowset, primaryKey, change, notificationParams)
+                entry.panel.DataChanged(primaryKey, change)
                 break
 
         if self.sr.progressCurrent >= self.sr.progressTotal:
@@ -93,32 +91,32 @@ class CorpMembers(uicls.Container):
 
 
     def Load(self, populateView = 1, *args):
-        sm.GetService('corpui').LoadTop('ui_7_64_11', mls.UI_CORP_MEMBERS)
+        sm.GetService('corpui').LoadTop('ui_7_64_11', localization.GetByLabel('UI/Corporations/Common/Members'))
         if not self.sr.Get('inited', 0):
             self.sr.inited = 1
             toppar = uicls.Container(name='options', parent=self, align=uiconst.TOTOP, height=54)
-            self.sr.fwdBtn = uicls.Button(parent=toppar, icon='ui_77_32_41', iconSize=20, align=uiconst.BOTTOMRIGHT, left=6, func=self.Navigate, args=1, hint=mls.UI_GENERIC_VIEWMORE)
-            self.sr.backBtn = uicls.Button(parent=toppar, icon='ui_77_32_42', iconSize=20, align=uiconst.BOTTOMRIGHT, left=32, func=self.Navigate, args=-1, hint=mls.UI_GENERIC_PREVIOUS)
+            self.sr.fwdBtn = uicls.Button(parent=toppar, icon='ui_77_32_41', iconSize=20, align=uiconst.BOTTOMRIGHT, left=6, func=self.Navigate, args=1, hint=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/ViewMoreCorpMembers'))
+            self.sr.backBtn = uicls.Button(parent=toppar, icon='ui_77_32_42', iconSize=20, align=uiconst.BOTTOMRIGHT, left=32, func=self.Navigate, args=-1, hint=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/ViewPreviousCorpMembers'))
             uicls.Container(name='push', parent=toppar, align=uiconst.TOTOP, height=6)
-            optlist = [['10', 10],
-             ['25', 25],
-             ['50', 50],
-             ['100', 100],
-             ['500', 500]]
-            countcombo = uicls.Combo(label=mls.UI_SHARED_PERPAGE, parent=toppar, options=optlist, name='membersperpage', callback=self.OnComboChange, width=92, pos=(5, 36, 0, 0))
+            optlist = [[localizationUtil.FormatNumeric(10), 10],
+             [localizationUtil.FormatNumeric(25), 25],
+             [localizationUtil.FormatNumeric(50), 50],
+             [localizationUtil.FormatNumeric(100), 100],
+             [localizationUtil.FormatNumeric(500), 500]]
+            countcombo = uicls.Combo(label=localization.GetByLabel('UI/Common/PerPage'), parent=toppar, options=optlist, name='membersperpage', callback=self.OnComboChange, width=92, pos=(5, 36, 0, 0))
             self.sr.MembersPerPage = countcombo
-            viewOptionsList1 = [[mls.UI_CORP_ROLES, VIEW_ROLES], [mls.UI_CORP_GRANTABLEROLES, VIEW_GRANTABLE_ROLES], [mls.UI_CORP_TITLES, VIEW_TITLES]]
+            viewOptionsList1 = [[localization.GetByLabel('UI/Corporations/Common/Roles'), VIEW_ROLES], [localization.GetByLabel('UI/Corporations/Common/GrantableRoles'), VIEW_GRANTABLE_ROLES], [localization.GetByLabel('UI/Corporations/Common/Titles'), VIEW_TITLES]]
             viewOptionsList2 = []
             for roleGrouping in self.sr.roleGroupings.itervalues():
-                viewOptionsList2.append([Tr(roleGrouping.roleGroupName, 'dbo.crpRoleGroups.roleGroupName', roleGrouping.roleGroupID), roleGrouping.roleGroupID])
+                viewOptionsList2.append([localization.GetByMessageID(roleGrouping.roleGroupNameID), roleGrouping.roleGroupID])
 
             i = 0
             for (optlist, label, config, defval, width,) in [(viewOptionsList1,
-              mls.UI_GENERIC_VIEW,
+              localization.GetByLabel('UI/Common/View'),
               'viewtype',
               1000,
               146), (viewOptionsList2,
-              mls.UI_GENERIC_TYPE,
+              localization.GetByLabel('UI/Common/Type'),
               'rolegroup',
               None,
               146)]:
@@ -135,7 +133,7 @@ class CorpMembers(uicls.Container):
              const.defaultPadding,
              const.defaultPadding))
             self.sr.scroll.OnColumnChanged = self.OnColumnChanged
-            buttons = [[mls.UI_CMD_SAVECHANGES,
+            buttons = [[localization.GetByLabel('UI/Common/Buttons/SaveChanges'),
               self.SaveChanges,
               (),
               81]]
@@ -166,42 +164,41 @@ class CorpMembers(uicls.Container):
 
     def PopulateView(self):
         log.LogInfo('PopulateView')
-        nIndex = 0
-        nCount = 0
         try:
-            nFrom = self.sr.viewFrom
-            nTo = nFrom + self.sr.viewPerPage
-            if nTo >= len(self.sr.members) - 1:
-                nTo = len(self.sr.members)
-                self.sr.fwdBtn.Disable()
-            else:
+            serverPage = self.sr.viewFrom / self.sr.members.perPage + 1
+            members = self.sr.members.PopulatePage(serverPage)
+            viewPage = self.sr.viewFrom / self.sr.viewPerPage + 1
+            viewPagesTotal = self.sr.members.totalCount / self.sr.viewPerPage + 1
+            blue.pyos.synchro.Yield()
+            if viewPage < viewPagesTotal:
                 self.sr.fwdBtn.Enable()
-            if nFrom < 0:
-                nFrom = 0
-            if nFrom == 0:
+            else:
+                self.sr.fwdBtn.Disable()
+            if viewPage == 1:
                 self.sr.backBtn.Disable()
             else:
                 self.sr.backBtn.Enable()
-            nCount = nTo - nFrom
-            sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_LOADING, '', nIndex, nCount)
-            blue.pyos.synchro.Yield()
             scrolllist = []
             strings = []
             headers = self.GetHeaderValues()
-            fixed = {mls.UI_GENERIC_BASE: 88}
+            fixed = {localization.GetByLabel('UI/Corporations/CorporationWindow/Members/CorpMemberBase'): 88}
             for each in headers:
-                if each in (mls.UI_GENERIC_NAME, mls.UI_GENERIC_BASE):
+                if each in (localization.GetByLabel('UI/Corporations/CorporationWindow/Members/CorpMemberName'), localization.GetByLabel('UI/Corporations/CorporationWindow/Members/CorpMemberBase')):
                     continue
                 fixed[each] = uix.GetTextWidth(each, 9, 2) + 24 + 4
 
             roleGroup = self.sr.roleGroupings[self.sr.viewRoleGroupingID]
-            log.LogWarn('About to Fetch from:', nFrom, 'count:', nTo - nFrom)
-            self.sr.members.Fetch(nFrom, nTo - nFrom)
-            for ix in range(nFrom, nTo):
-                nIndex += 1
-                rec = self.sr.members[ix]
+            count = min(self.sr.viewPerPage, self.sr.members.totalCount - self.sr.viewFrom)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/Loading'), '', 1, count)
+            for number in range(count):
+                index = (number + self.sr.viewFrom) % self.sr.members.perPage
+                currentServerPage = (number + self.sr.viewFrom) / self.sr.members.perPage + 1
+                if serverPage != currentServerPage:
+                    members = self.sr.members.PopulatePage(currentServerPage)
+                    serverPage = currentServerPage
+                rec = members[index]
                 text = cfg.eveowners.Get(rec.characterID).ownerName
-                sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_LOADING, text, nIndex, nCount)
+                sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/Loading'), cfg.eveowners.Get(rec.characterID).ownerName, number, count)
                 blue.pyos.synchro.Yield()
                 baseID = rec.baseID
                 base = cfg.evelocations.GetIfExists(baseID)
@@ -210,22 +207,27 @@ class CorpMembers(uicls.Container):
                 else:
                     baseName = '-'
                 text += '<t>%s' % baseName
+                nameColumnLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/CorpMemberName')
+                baseColumnLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/CorpMemberBase')
                 params = {'rec': None,
                  'srcRec': rec,
                  'viewtype': self.sr.viewType,
                  'rolegroup': self.sr.viewRoleGroupingID,
                  'parent': self,
-                 'sort_%s' % mls.UI_GENERIC_NAME: uiutil.UpperCase(cfg.eveowners.Get(rec.characterID).ownerName),
-                 'sort_%s' % mls.UI_GENERIC_BASE: baseName}
+                 'sort_%s' % nameColumnLabel: cfg.eveowners.Get(rec.characterID).ownerName,
+                 'sort_%s' % baseColumnLabel: baseName}
                 if self.sr.viewType == VIEW_TITLES:
                     titles = sm.GetService('corp').GetTitles()
                     titlesByID = util.IndexRowset(titles.header, titles.lines, 'titleID')
                     titleID = 1
-                    for ix in range(1, 1 + len(titles)):
+                    for x in range(1, 1 + len(titles)):
                         title = titlesByID[titleID]
                         sortvalue = rec.titleMask & titleID == titleID
-                        text += '<t>[%s]' % sortvalue
-                        params['sort_%s' % title.titleName] = '%s' % sortvalue
+                        text += ['<t>',
+                         '[',
+                         sortvalue,
+                         ']']
+                        params['sort_%s' % title.titleName] = sortvalue
                         titleID = titleID << 1
 
                 else:
@@ -237,7 +239,10 @@ class CorpMembers(uicls.Container):
                         sortmask = ''
                         for (subColumnName, role,) in subColumns:
                             isChecked = [roles, grantableRoles][self.sr.viewType] & role.roleID == role.roleID
-                            newtext += ' [%s] %s' % ([' ', 'X'][(not not isChecked)], subColumnName)
+                            if isChecked:
+                                newtext += ' [X] %s' % subColumnName
+                            else:
+                                newtext += ' [ ] %s' % subColumnName
                             sortmask += [' ', 'X'][(not not isChecked)]
 
                         params['sort_%s' % columnName] = sortmask
@@ -261,7 +266,7 @@ class CorpMembers(uicls.Container):
             self.sr.ignoreDirtyFlag = False
 
         finally:
-            sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_LOADING, '', nCount, nCount)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/Loading'), '', count, count)
             blue.pyos.synchro.Yield()
 
 
@@ -332,9 +337,9 @@ class CorpMembers(uicls.Container):
                 rec = entry.rec
                 characterID = rec.characterID
                 text = cfg.eveowners.Get(characterID).ownerName
-                sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_LOADING, text, nIndex, nCount)
+                sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/Loading'), text, nIndex, nCount)
                 blue.pyos.synchro.Yield()
-                sortvalues[characterID] = {mls.UI_GENERIC_NAME: uiutil.UpperCase(text)}
+                sortvalues[characterID] = {localization.GetByLabel('UI/Corporations/CorporationWindow/Members/CorpMemberName'): text}
                 baseID = rec.baseID
                 base = cfg.evelocations.GetIfExists(baseID)
                 if base is not None:
@@ -342,7 +347,7 @@ class CorpMembers(uicls.Container):
                 else:
                     baseName = '-'
                 text += '<t>%s' % baseName
-                sortvalues[characterID]['base'] = uiutil.UpperCase(baseName)
+                sortvalues[characterID]['base'] = baseName
                 if self.sr.viewType == VIEW_TITLES:
                     titles = sm.GetService('corp').GetTitles()
                     titlesByID = util.IndexRowset(titles.header, titles.lines, 'titleID')
@@ -364,7 +369,10 @@ class CorpMembers(uicls.Container):
                         for subColumn in subColumns:
                             for (subColumnName, role,) in subColumns:
                                 isChecked = [roles, grantableRoles][self.sr.viewType] & role.roleID == role.roleID
-                                newtext += ' [%s] %s' % ([' ', 'X'][(not not isChecked)], subColumnName)
+                                if isChecked:
+                                    newtext += ' [X] %s' % subColumnName
+                                else:
+                                    newtext += ' [ ] %s' % subColumnName
                                 sortvalue.append(isChecked)
 
 
@@ -380,9 +388,9 @@ class CorpMembers(uicls.Container):
               9,
               2,
               0)])
-            fixed = {mls.UI_GENERIC_BASE: 88}
+            fixed = {localization.GetByLabel('UI/Corporations/CorporationWindow/Members/CorpMemberBase'): 88}
             for header in headers:
-                if header in (mls.UI_GENERIC_NAME, mls.UI_GENERIC_BASE):
+                if header in (localization.GetByLabel('UI/Corporations/CorporationWindow/Members/CorpMemberName'), localization.GetByLabel('UI/Corporations/CorporationWindow/Members/CorpMemberBase')):
                     continue
                 fixed[header] = 100
 
@@ -393,7 +401,7 @@ class CorpMembers(uicls.Container):
                     continue
                 characterID = entry.rec.characterID
                 text = cfg.eveowners.Get(characterID).ownerName
-                sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_LOADING, text, nIndex, nCount)
+                sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/Loading'), text, nIndex, nCount)
                 blue.pyos.synchro.Yield()
                 for (columnName, sortvalue,) in sortvalues[characterID].iteritems():
                     entry.Set('sort_%s' % columnName, sortvalue)
@@ -408,7 +416,7 @@ class CorpMembers(uicls.Container):
             self.sr.scroll.LoadHeaders(headers)
 
         finally:
-            sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_LOADING, '', nCount, nCount)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/Loading'), '', nCount, nCount)
             blue.pyos.synchro.Yield()
 
 
@@ -417,7 +425,7 @@ class CorpMembers(uicls.Container):
     def GetHeaderValues(self):
         viewType = self.sr.viewType
         if viewType == VIEW_TITLES:
-            header = [mls.UI_GENERIC_NAME, mls.UI_GENERIC_BASE]
+            header = [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/CorpMemberName'), localization.GetByLabel('UI/Corporations/CorporationWindow/Members/CorpMemberBase')]
             titles = sm.GetService('corp').GetTitles()
             titlesByID = {}
             for title in titles:
@@ -431,25 +439,25 @@ class CorpMembers(uicls.Container):
 
         else:
             roleGroup = self.sr.roleGroupings[self.sr.viewRoleGroupingID]
-            header = [mls.UI_GENERIC_NAME, mls.UI_GENERIC_BASE]
+            header = [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/CorpMemberName'), localization.GetByLabel('UI/Corporations/CorporationWindow/Members/CorpMemberBase')]
             for column in roleGroup.columns:
                 (columnName, subColumns,) = column
-                header.append(columnName)
+                colName = uiutil.ReplaceStringWithTags(columnName)
+                header.append(colName)
 
-            header = [ header.replace(' ', '<br>').replace('PERSONNEL', 'PERS.') for header in header ]
         return header
 
 
 
     def MemberDetails(self, charid, *args):
         log.LogInfo('members.MemberDetails charid:', charid)
-        sm.GetService('window').GetWindow('EditMemberDialog', 1, charID=charid)
+        form.EditMemberDialog.Open(charID=charid)
 
 
 
     def IsDirty(self):
         try:
-            sm.GetService('loading').Cycle(mls.UI_GENERIC_PLEASEWAIT)
+            sm.GetService('loading').Cycle(localization.GetByLabel('UI/Common/PleaseWait'))
             if self and not self.destroyed and self.sr.scroll is not None:
                 nodes = self.sr.scroll.GetNodes()
                 for node in nodes:
@@ -491,7 +499,7 @@ class CorpMembers(uicls.Container):
     def SaveChanges(self, *args):
         nodesToUpdate = []
         try:
-            sm.GetService('loading').Cycle(mls.UI_GENERIC_PREPARINGTOUPDATE)
+            sm.GetService('loading').Cycle(localization.GetByLabel('UI/Common/PreparingToUpdate'))
             for node in self.sr.scroll.GetNodes():
                 if not node or not node or not node.rec:
                     continue
@@ -532,7 +540,7 @@ class CorpMembers(uicls.Container):
         self.sr.progressTotal = nCount
         nIndex = 0
         try:
-            sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_UPDATING, '', nIndex, nCount)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/Updating'), '', nIndex, nCount)
             blue.pyos.synchro.Yield()
             rows = None
             myRow = None
@@ -633,9 +641,9 @@ class CorpMembers(uicls.Container):
 
         finally:
             if nCount:
-                sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_UPDATED, '', nCount - 1, nCount)
-                blue.pyos.synchro.Sleep(500)
-                sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_UPDATED, '', nCount, nCount)
+                sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/Updated'), '', nCount - 1, nCount)
+                blue.pyos.synchro.SleepWallclock(500)
+                sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/Updated'), '', nCount, nCount)
                 blue.pyos.synchro.Yield()
 
 

@@ -9,6 +9,11 @@ class BaseDogma(service.Service):
 
 
 
+    def LoadExpressions(self):
+        pass
+
+
+
     def AddOwnerRequiredSkillModifier(self, env, arg1, arg2):
         affectingModuleID = env.itemID
         affectingAttributeID = arg2
@@ -229,6 +234,7 @@ class BaseDogma(service.Service):
             cpuOutput = dogmaLM.GetAttributeValue(shipID, const.attributeCpuOutput)
             args['remaining'] = cpuOutput - dogmaLM.GetAttributeValue(shipID, const.attributeCpuLoad)
             args['total'] = cpuOutput
+            args['moduleType'] = env.itemTypeID
         raise UserError(arg1, args)
 
 

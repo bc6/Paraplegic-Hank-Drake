@@ -16,32 +16,34 @@ import form
 import uicls
 from fleetcommon import *
 import uiconst
+import localization
 
 class FleetBroadcastView(uicls.Container):
     __guid__ = 'form.FleetBroadcastView'
     __notifyevents__ = ['OnFleetBroadcast_Local',
      'OnSpeakingEvent_Local',
      'OnFleetLootEvent_Local',
-     'OnFleetBroadcastFilterChange']
+     'OnFleetBroadcastFilterChange',
+     'OnFleetJoin_Local',
+     'OnFleetLeave_Local',
+     'OnFleetMemberChanged_Local']
 
     def PostStartup(self):
         sm.RegisterNotify(self)
         self.sr.broadcastHistory = []
-        self.sr.emptyData = util.KeyVal(label='<color=0x55ffffff>' + mls.UI_FLEET_NOBROADCASTS + '</color>', rawText=mls.UI_FLEET_NOBROADCASTS, height=16)
-        self.sr.emptyDataVoice = util.KeyVal(label='<color=0x55ffffff>' + mls.UI_FLEET_NOVOICEBROADCASTS + '</color>', rawText=mls.UI_FLEET_NOVOICEBROADCASTS, height=16)
         self.broadcastMenuItems = []
         header = self
         header.baseHeight = header.height
         self.panelHistory = uicls.Container(name='panelHistory', parent=self, left=const.defaultPadding, width=const.defaultPadding, top=const.defaultPadding, height=const.defaultPadding)
         historyType = settings.user.ui.Get('fleetHistoryFilter', 'all')
         comboPar = uicls.Container(parent=self.panelHistory, align=uiconst.TOTOP, height=36)
-        ops = [(mls.UI_GENERIC_ALL, 'all'),
-         (mls.UI_FLEET_BROADCASTHISTORY, 'broadcasthistory'),
-         (mls.UI_FLEET_VOICEHISTORY, 'voicehistory'),
-         (mls.UI_FLEET_MEMBERHISTORY, 'memberhistory'),
-         (mls.UI_FLEET_LOOTHISTORY, 'loothistory')]
-        self.combo = uicls.Combo(label=mls.UI_GENERIC_FILTERS, parent=comboPar, options=ops, name='filter', select=historyType, callback=self.LoadHistory, pos=(0, 12, 0, 0), width=110)
-        self.clearBtn = uicls.Button(parent=comboPar, label=mls.UI_GENERIC_CLEARHISTORY, func=self.OnClear, align=uiconst.BOTTOMRIGHT, top=const.defaultPadding)
+        ops = [(localization.GetByLabel('UI/Common/All'), 'all'),
+         (localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastHistory'), 'broadcasthistory'),
+         (localization.GetByLabel('UI/Fleet/FleetBroadcast/VoiceHistory'), 'voicehistory'),
+         (localization.GetByLabel('UI/Fleet/FleetBroadcast/MemberHistory'), 'memberhistory'),
+         (localization.GetByLabel('UI/Fleet/FleetBroadcast/LootHistory'), 'loothistory')]
+        self.combo = uicls.Combo(label=localization.GetByLabel('UI/Fleet/FleetBroadcast/Filters'), parent=comboPar, options=ops, name='filter', select=historyType, callback=self.LoadHistory, pos=(0, 12, 0, 0), width=110)
+        self.clearBtn = uicls.Button(parent=comboPar, label=localization.GetByLabel('UI/Fleet/FleetBroadcast/ClearHistory'), func=self.OnClear, align=uiconst.BOTTOMRIGHT, top=const.defaultPadding)
         self.scrollHistory = uicls.Scroll(name='allHistoryScroll', parent=self.panelHistory, align=uiconst.TOALL)
 
 
@@ -108,7 +110,7 @@ class FleetBroadcastView(uicls.Container):
         allHistory.extend(voiceHistory)
         allHistory.extend(lootHistory)
         allHistory.sort(key=lambda x: x.time, reverse=True)
-        hint = mls.UI_FLEET_NOEVENTSYET
+        hint = localization.GetByLabel('UI/Fleet/FleetBroadcast/NoEventsYet')
         return (allHistory, hint)
 
 
@@ -118,12 +120,12 @@ class FleetBroadcastView(uicls.Container):
         broadcastHistory = sm.GetService('fleet').GetBroadcastHistory()
         for kv in broadcastHistory:
             data = self.GetBroadcastListEntry(kv)
-            data.Set('sort_%s' % mls.UI_GENERIC_TIME, kv.time)
+            data.Set('sort_%s' % localization.GetByLabel('UI/Common/DateWords/Time'), kv.time)
             data.time = kv.time
             data.OnClick = self.OnBroadcastClick
             scrolllist.append(listentry.Get('Generic', data=data))
 
-        hint = mls.UI_FLEET_NOEVENTSYET
+        hint = localization.GetByLabel('UI/Fleet/FleetBroadcast/NoEventsYet')
         return (scrolllist, hint)
 
 
@@ -142,11 +144,11 @@ class FleetBroadcastView(uicls.Container):
         voiceHistory = sm.GetService('fleet').GetVoiceHistory()
         for data in voiceHistory:
             data2 = self.GetVoiceListEntry(data)
-            data2.Set('sort_%s' % mls.UI_GENERIC_TIME, data.time)
+            data2.Set('sort_%s' % localization.GetByLabel('UI/Common/DateWords/Time'), data.time)
             data2.time = data.time
             scrolllist.append(listentry.Get('Generic', data=data2))
 
-        hint = mls.UI_FLEET_NOEVENTSYET
+        hint = localization.GetByLabel('UI/Fleet/FleetBroadcast/NoEventsYet')
         return (scrolllist, hint)
 
 
@@ -155,18 +157,13 @@ class FleetBroadcastView(uicls.Container):
         scrolllist = []
         lootHistory = sm.GetService('fleet').GetLootHistory()
         for kv in lootHistory:
-            t = cfg.invtypes.Get(kv.typeID)
-            text = mls.UI_FLEET_BROADCAST_LOOT % {'num': kv.quantity}
-            label = '%s %s %s %s' % (util.FmtDate(kv.time, 'nl'),
-             cfg.eveowners.Get(kv.charID).name,
-             text,
-             t.name)
+            label = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventLoot', time=kv.time, charID=kv.charID, item=kv.typeID, itemQuantity=kv.quantity)
             data = util.KeyVal(charID=kv.charID, label=label, GetMenu=self.GetLootMenu, data=kv)
-            data.Set('sort_%s' % mls.UI_GENERIC_TIME, kv.time)
+            data.Set('sort_%s' % localization.GetByLabel('UI/Common/DateWords/Time'), kv.time)
             data.time = kv.time
             scrolllist.append(listentry.Get('Generic', data=data))
 
-        hint = mls.UI_FLEET_NOEVENTSYET
+        hint = localization.GetByLabel('UI/Fleet/FleetBroadcast/NoEventsYet')
         return (scrolllist, hint)
 
 
@@ -175,19 +172,19 @@ class FleetBroadcastView(uicls.Container):
         scrolllist = []
         memberHistory = sm.GetService('fleet').GetMemberHistory()
         for kv in memberHistory:
-            label = '%s %s %s' % (util.FmtDate(kv.time, 'nl'), cfg.eveowners.Get(kv.charID).name, kv.event)
+            label = localization.GetByLabel('UI/Fleet/FleetBroadcast/Event', time=kv.time, eventLabel=kv.event)
             data = util.KeyVal(charID=kv.charID, label=label, GetMenu=self.GetMemberMenu, data=kv)
-            data.Set('sort_%s' % mls.UI_GENERIC_TIME, kv.time)
+            data.Set('sort_%s' % localization.GetByLabel('UI/Common/DateWords/Time'), kv.time)
             data.time = kv.time
             scrolllist.append(listentry.Get('Generic', data=data))
 
-        hint = mls.UI_FLEET_NOEVENTSYET
+        hint = localization.GetByLabel('UI/Fleet/FleetBroadcast/NoEventsYet')
         return (scrolllist, hint)
 
 
 
     def OpenSettings(self):
-        sm.GetService('window').GetWindow('broadcastsettings', decoClass=BroadcastSettings, maximize=1, create=1)
+        form.BroadcastSettings.Open()
 
 
 
@@ -208,23 +205,16 @@ class FleetBroadcastView(uicls.Container):
 
 
     def GetBroadcastListEntry(self, data):
-        bn = data.broadcastName
-        if data.broadcastExtra:
-            bn += ' %s' % data.broadcastExtra
-        time = util.FmtDate(data.time, 'nl')
-        charName = data.charName
-        label = '%s %s' % (util.FmtDate(data.time, 'nl'), bn)
+        label = localization.GetByLabel('UI/Fleet/FleetBroadcast/Event', time=data.time, eventLabel=data.broadcastLabel)
         data2 = util.KeyVal(charID=data.charID, label=label, GetMenu=self.GetBroadcastMenu, data=data)
         return data2
 
 
 
     def GetVoiceListEntry(self, data):
-        label = '%s %s' % (util.FmtDate(data.time, 'nl'), mls.UI_FLEET_ISSPEAKINGIN % {'who': data.charName,
-          'where': data.channelName})
-        label2 = mls.UI_FLEET_ISSPEAKINGIN % {'who': data.charName,
-         'where': data.channelName}
-        data2 = util.KeyVal(channel=data.channelID, charID=data.charID, label=label, label2=label2, GetMenu=fleetbr.GetVoiceMenu)
+        eventText = localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastEventSpeaking', charID=data.charID, channelName=data.channelName)
+        label = localization.GetByLabel('UI/Fleet/FleetBroadcast/Event', time=data.time, eventLabel=eventText)
+        data2 = util.KeyVal(channel=data.channelID, charID=data.charID, label=label, GetMenu=fleetbr.GetVoiceMenu)
         return data2
 
 
@@ -239,6 +229,27 @@ class FleetBroadcastView(uicls.Container):
     def OnFleetLootEvent_Local(self):
         selectedValue = self.combo.selectedValue
         if selectedValue in ('loothistory', 'all'):
+            self.LoadHistory(self.combo, '', selectedValue)
+
+
+
+    def OnFleetJoin_Local(self, rec):
+        selectedValue = self.combo.selectedValue
+        if selectedValue in ('memberhistory', 'all'):
+            self.LoadHistory(self.combo, '', selectedValue)
+
+
+
+    def OnFleetLeave_Local(self, rec):
+        selectedValue = self.combo.selectedValue
+        if selectedValue in ('memberhistory', 'all'):
+            self.LoadHistory(self.combo, '', selectedValue)
+
+
+
+    def OnFleetMemberChanged_Local(self, *args):
+        selectedValue = self.combo.selectedValue
+        if selectedValue in ('memberhistory', 'all'):
             self.LoadHistory(self.combo, '', selectedValue)
 
 
@@ -299,8 +310,6 @@ class BroadcastEntryMixin():
         self.sr.iconRoleContainer = uicls.Container(name='iconRoleContainer', parent=self, align=uiconst.TORIGHT, width=16, height=16, state=uiconst.UI_DISABLED, left=const.defaultPadding)
         self.sr.labelclipper = uicls.Container(name='labelclipper', parent=self, align=uiconst.TOALL, state=uiconst.UI_DISABLED, clipChildren=True)
         uiutil.Transplant(self.sr.label, self.sr.labelclipper)
-        self.sr.label.autowidth = True
-        self.sr.label.autoheight = False
         self.sr.label.singleline = True
         self.sr.label.state = uiconst.UI_DISABLED
         self.sr.label.width = self.absoluteRight - self.absoluteLeft
@@ -348,25 +357,6 @@ class BroadcastEntryMixin():
 
 
 
-    def GetHint(self):
-        delta = blue.os.GetTime() - self.sr.node.timeReceived
-        (hours, minutes, seconds,) = util.HoursMinsSecsFromSecs(util.SecsFromBlueTimeDelta(delta))
-        t = util.FormatTimeDelta(hours=hours, minutes=minutes, seconds=seconds)
-        if t is None:
-            howLongAgo = mls.UI_GENERIC_RIGHTNOW
-        else:
-            howLongAgo = mls.UI_GENERIC_AGO_WITH_FORMAT % {'time': t}
-        return '%s<br>%s<br>(%s)' % (self.sr.node.label, mls.UI_FLEET_BROADCASTRECEIVEDAT % {'time': util.FmtDate(self.sr.node.timeReceived).split(' ')[1]}, howLongAgo)
-
-
-    GetHint = uiutil.ParanoidDecoMethod(GetHint, ('sr', 'node', 'timeReceived'))
-
-    def GetMenu(self):
-        return self.sr.node.menuGetter()
-
-
-    GetMenu = uiutil.ParanoidDecoMethod(GetMenu, ('sr', 'node', 'menuGetter'))
-
     def Flash(self):
         period = 0.7
         cycles = 3
@@ -376,12 +366,12 @@ class BroadcastEntryMixin():
         while True:
             if node != util.GetAttrs(self, 'sr', 'node'):
                 return 
-            time = (blue.os.GetTime() - node.Get('timeReceived', 0)) / 10000000.0
+            time = (blue.os.GetWallclockTime() - node.Get('timeReceived', 0)) / 10000000.0
             if time >= duration:
                 self.sr.icon.color.a = 1.0
                 return 
             self.sr.icon.color.a = 1.0 - math.sin(coeff * (time % period))
-            blue.pyos.synchro.Sleep(10)
+            blue.pyos.synchro.SleepWallclock(10)
 
 
 
@@ -400,16 +390,17 @@ def CopyFunctions(class_, locals):
 
 class BroadcastSettings(uicls.Window):
     __guid__ = 'form.BroadcastSettings'
+    default_windowID = 'broadcastsettings'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.scope = 'all'
-        self.SetCaption(mls.UI_FLEET_BROADCASTSETTINGS)
+        self.SetCaption(localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastSettings'))
         self.SetMinSize([300, 200])
         self.SetWndIcon()
         self.SetTopparentHeight(0)
         self.sr.main.left = self.sr.main.width = self.sr.main.top = self.sr.main.height = const.defaultPadding
-        uicls.Label(text=mls.UI_FLEET_BROADCASTSETTINGSHELP, parent=self.sr.main, align=uiconst.TOTOP, left=20, autowidth=False, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastSettingsHelp'), parent=self.sr.main, align=uiconst.TOTOP, left=20, state=uiconst.UI_NORMAL)
         uicls.Container(name='push', parent=self.sr.main, align=uiconst.TOTOP, height=6)
         self.sr.scrollBroadcasts = uicls.Scroll(name='scrollBroadcasts', parent=self.sr.main)
         self.sr.scrollBroadcasts.multiSelect = 0
@@ -419,22 +410,16 @@ class BroadcastSettings(uicls.Window):
 
     def LoadFilters(self):
         scrolllist = []
-        all = fleetbr.types.keys()
-        all.sort()
-        all.append('Event')
         history = sm.GetService('fleet').broadcastHistory
-        for name in all:
+        for (name, labelName,) in fleetbr.broadcastNames.iteritems():
             data = util.KeyVal()
-            rng = fleetbr.GetBroadcastWhere(name)
-            rngName = fleetbr.GetBroadcastWhereName(rng)
-            if rngName == '':
-                if name == 'Event':
-                    rngName = '-'
-                else:
-                    rngName = mls.UI_FLEET_GLOBAL
-            rngName = rngName.capitalize()
+            if name == 'Event':
+                rngName = ''
+            else:
+                rng = fleetbr.GetBroadcastWhere(name)
+                rngName = fleetbr.GetBroadcastWhereName(rng)
             n = len([ b for b in history if not b.name == name if name == 'Event' and b.name not in fleetbr.types.keys() ])
-            data.label = '<b>%s</b><t>%s<t>%d' % (getattr(mls, 'UI_FLEET_BROADCAST_%s' % name.upper()), rngName, n)
+            data.label = localization.GetByLabel(labelName) + '<t>' + rngName + '<t>%d' % n
             data.props = None
             data.checked = bool(settings.user.ui.Get('listenBroadcast_%s' % name, True))
             data.cfgname = name
@@ -444,7 +429,7 @@ class BroadcastSettings(uicls.Window):
             scrolllist.append(listentry.Get('Checkbox', data=data))
 
         self.sr.scrollBroadcasts.sr.id = 'scrollBroadcasts'
-        self.sr.scrollBroadcasts.Load(headers=[mls.UI_FLEET_BROADCAST, mls.UI_FLEET_RECIPIENTS, mls.UI_FLEET_NUM], contentList=scrolllist)
+        self.sr.scrollBroadcasts.Load(headers=[localization.GetByLabel('UI/Fleet/FleetBroadcast/BroadcastType'), localization.GetByLabel('UI/Fleet/FleetBroadcast/RecipientRange'), localization.GetByLabel('UI/Fleet/FleetBroadcast/NumBroadcasts')], contentList=scrolllist)
 
 
 

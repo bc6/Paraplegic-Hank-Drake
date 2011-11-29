@@ -3,6 +3,9 @@ import log
 import util
 import uthread
 import dbg
+import localization
+import localizationUtil
+import bluepy
 historyVersion = 7
 
 def OnLogin():
@@ -92,7 +95,7 @@ def StartSession():
 def EndSessionWorker(sessionID):
     while True:
         EndSession(sessionID)
-        blue.pyos.synchro.Sleep(_savePeriod.Milliseconds())
+        blue.pyos.synchro.SleepWallclock(_savePeriod.Milliseconds())
 
 
 
@@ -136,9 +139,9 @@ def LoginHistory(init = 0):
 
 
 def KickPlayer():
-    Schedule(Seconds(20), blue.pyos.Quit)
+    Schedule(Seconds(20), bluepy.Terminate)
     eve.Message('AntiAddictionTimeExceeded', {'waitTime': WaitLeft().displayStr()})
-    blue.pyos.Quit()
+    bluepy.Terminate()
 
 
 
@@ -188,7 +191,7 @@ def SessionDuration(s):
 
 
 def Now():
-    return BlueTime(blue.os.GetTime())
+    return BlueTime(blue.os.GetWallclockTime())
 
 
 
@@ -205,7 +208,7 @@ def ForgetTime():
 def Schedule(time, action):
 
     def f():
-        blue.pyos.synchro.Sleep(time.Milliseconds())
+        blue.pyos.synchro.SleepWallclock(time.Milliseconds())
         action()
 
 
@@ -292,23 +295,27 @@ class Time:
 
 
     def displayStr(self):
-        ret = []
-        hours = self.Hours()
-        if hours:
-            ret.append(u'%s %s' % (hours, mls.UI_GENERIC_HOURS))
-        minutes = self.Minutes() % 60
-        if minutes:
-            ret.append(u'%s %s' % (minutes, mls.UI_GENERIC_MINUTES))
-        if _displaySeconds:
-            seconds = self.Seconds() % 60
-            if seconds:
-                ret.append(u'%s %s' % (seconds, mls.UI_GENERIC_SECONDS))
-        return u', '.join(ret) or mls.UI_GENERIC_LESSTHANAMINUTE
+        hours = localizationUtil.FormatNumeric(self.Hours(), leadingZeroes=2)
+        minutes = localizationUtil.FormatNumeric(self.Minutes() % 60, leadingZeroes=2)
+        seconds = localizationUtil.FormatNumeric(self.Seconds() % 60, leadingZeroes=2)
+        if hours and minutes:
+            if _displaySeconds and seconds:
+                return localization.GetByLabel('Carbon/UI/Common/DateTimeQuantity/DateTimeShort3Elements', value1=hours, value2=minutes, value3=seconds)
+            else:
+                return localization.GetByLabel('Carbon/UI/Common/DateTimeQuantity/DateTimeShort2Elements', value1=hours, value2=minutes)
+        else:
+            if hours:
+                return hours
+            else:
+                if minutes:
+                    return minutes
+                return localization.GetByLabel('/Carbon/UI/Common/WrittenDateTimeQuantity/LessThanOneMinute')
 
 
 
     def __repr__(self):
-        return '<Time: %s:%s:%s>' % (self.Hours(), self.Minutes() % 60, self.Seconds() % 60)
+        label = localization.GetByLabel('/Carbon/UI/Common/DateTimeQuantity/DateTimeShort3Elements', value1=int(self.Hours()), value2=int(self.Minutes() % 60), value3=int(self.Seconds() % 60))
+        return '<Time: %s>' % label
 
 
 

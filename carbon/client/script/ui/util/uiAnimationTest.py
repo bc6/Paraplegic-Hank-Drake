@@ -10,6 +10,7 @@ class TestAnimationsWnd(uicls.Window):
     __notifyevents__ = ['OnUITestAnimationSelected', 'OnTestAnimationsPlayAnimation']
     default_minSize = (500, 300)
     default_caption = 'UI Animations'
+    default_windowID = 'UIAnimationTest'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)

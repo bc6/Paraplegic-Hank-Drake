@@ -3,39 +3,40 @@ import util
 import types
 import math
 import xml.parsers.expat
+import localization
 
 def CombatLog_CopyText(mail, *args):
-    args = {'system': cfg.evelocations.Get(mail.solarSystemID).name,
-     'target': cfg.invtypes.Get(mail.victimShipTypeID).name,
+    kwargs = {'system': mail.solarSystemID,
+     'target': mail.victimShipTypeID,
      'damage': mail.victimDamageTaken}
     if boot.role == 'client':
-        args['security'] = sm.GetService('map').GetSecurityStatus(mail.solarSystemID)
+        kwargs['security'] = sm.GetService('map').GetSecurityStatus(mail.solarSystemID)
     else:
-        args['security'] = cfg.solarsystems.Get(mail.solarSystemID).pseudoSecurity
+        kwargs['security'] = cfg.solarsystems.Get(mail.solarSystemID).pseudoSecurity
     if mail.moonID is not None:
-        args['moon'] = cfg.evelocations.Get(mail.moonID).name
+        kwargs['moon'] = cfg.evelocations.Get(mail.moonID).name
     else:
-        args['moon'] = mls.UNKNOWN
+        kwargs['moon'] = localization.GetByLabel('UI/Common/Unknown')
+    if mail.victimAllianceID is not None:
+        kwargs['alliance'] = cfg.eveowners.Get(mail.victimAllianceID).name
+    else:
+        kwargs['alliance'] = localization.GetByLabel('UI/Common/Unknown')
+    if mail.victimFactionID is not None:
+        kwargs['faction'] = cfg.eveowners.Get(mail.victimFactionID).name
+    else:
+        kwargs['faction'] = localization.GetByLabel('UI/Common/Unknown')
     if mail.victimCharacterID is not None:
         if mail.victimCorporationID is None:
             return 
-        copy = mls.AGGRESSION_KILLMAIL_MAIN_HEADER_SHIP3
-        args['victim'] = cfg.eveowners.Get(mail.victimCharacterID).name
-        args['victimc'] = cfg.eveowners.Get(mail.victimCorporationID).name
+        kwargs['victim'] = mail.victimCharacterID
+        kwargs['corporation'] = cfg.eveowners.Get(mail.victimCorporationID).name
+        headerLabel = 'UI/Util/CommonUtils/KillMailHeaderWithShip'
     elif mail.victimCorporationID is not None:
-        copy = mls.AGGRESSION_KILLMAIL_MAIN_HEADER_STRUCTURE3
-        args['victim'] = cfg.eveowners.Get(mail.victimCorporationID).name
+        kwargs['corporation'] = cfg.eveowners.Get(mail.victimCorporationID).name
+        headerLabel = 'UI/Util/CommonUtils/KillMailHeaderWithStructure'
     else:
         return 
-    if mail.victimAllianceID is not None:
-        args['victima'] = cfg.eveowners.Get(mail.victimAllianceID).name
-    else:
-        args['victima'] = mls.UI_GENERIC_UNKNOWN
-    if mail.victimFactionID is not None:
-        args['victimf'] = cfg.eveowners.Get(mail.victimFactionID).name
-    else:
-        args['victimf'] = mls.UI_GENERIC_UNKNOWN
-    copy = copy % args
+    header = localization.GetByLabel(headerLabel, **kwargs)
     import re
     rx = re.compile('=(\\d+(?:\\.\\d+)?)')
     tempBlob = rx.sub('="\\1"', mail.killBlob)
@@ -84,6 +85,7 @@ def CombatLog_CopyText(mail, *args):
             item = util.KeyVal()
             item.typeID = attrs.get('t', None)
             item.flag = int(float(attrs.get('f', 0)))
+            item.singleton = int(float(attrs.get('s', 0)))
             item.qtyDropped = int(float(attrs.get('d', 0)))
             item.qtyDestroyed = int(float(attrs.get('x', 0)))
             item.contents = []
@@ -93,6 +95,7 @@ def CombatLog_CopyText(mail, *args):
                     item2 = util.KeyVal()
                     item2.typeID = item.typeID
                     item2.flag = item.flag
+                    item2.singleton = item.singleton
                     item2.qtyDropped = item.qtyDropped
                     item2.qtyDestroyed = 0
                     item2.contents = []
@@ -169,102 +172,107 @@ def CombatLog_CopyText(mail, *args):
     finalBlow.finalBlow = True
     attackers.append((finalBlow.damageDone, finalBlow))
     attackers.sort(reverse=True)
+    attackerList = []
     for row in attackers:
         attacker = row[1]
         data = {'damage': attacker.damageDone}
+        attackerLabel = None
         if attacker.characterID is not None:
-            if attacker.finalBlow:
-                text = mls.AGGRESSION_KILLMAIL_PLAYER_KILLER_ENTRY3
-            else:
-                text = mls.AGGRESSION_KILLMAIL_PLAYER_ATTACKER_ENTRY3
             data['attacker'] = cfg.eveowners.Get(attacker.characterID).name
-            data['sec'] = attacker.secStatusText
-            data['corp'] = cfg.eveowners.Get(attacker.corporationID).name
+            data['security'] = attacker.secStatusText
+            data['corporation'] = cfg.eveowners.Get(attacker.corporationID).name
             if attacker.allianceID is not None:
-                data['attackera'] = cfg.eveowners.Get(attacker.allianceID).name
+                data['alliance'] = cfg.eveowners.Get(attacker.allianceID).name
             else:
-                data['attackera'] = mls.NONE
+                data['alliance'] = localization.GetByLabel('UI/Common/None')
             if attacker.factionID is not None:
-                data['attackerf'] = cfg.eveowners.Get(attacker.factionID).name
+                data['faction'] = cfg.eveowners.Get(attacker.factionID).name
             else:
-                data['attackerf'] = mls.NONE
+                data['faction'] = localization.GetByLabel('UI/Common/None')
             if attacker.shipTypeID is not None:
                 data['ship'] = cfg.invtypes.Get(attacker.shipTypeID).name
             else:
-                data['ship'] = mls.UNKNOWN
+                data['ship'] = localization.GetByLabel('UI/Common/Unknown')
             if attacker.weaponTypeID is not None:
                 data['weapon'] = cfg.invtypes.Get(attacker.weaponTypeID).name
             else:
-                data['weapon'] = mls.UNKNOWN
-        elif attacker.corporationID is not None:
+                data['weapon'] = localization.GetByLabel('UI/Common/Unknown')
             if attacker.finalBlow:
-                text = mls.AGGRESSION_KILLMAIL_NPC_KILLER_ENTRY2
+                attackerLabel = 'UI/Util/CommonUtils/KillMailPlayerAttackerWithFinalBlow'
             else:
-                text = mls.AGGRESSION_KILLMAIL_NPC_ATTACKER_ENTRY2
+                attackerLabel = 'UI/Util/CommonUtils/KillMailPlayerAttacker'
+        elif attacker.corporationID is not None:
             if attacker.shipTypeID is not None:
                 data['attacker'] = cfg.invtypes.Get(attacker.shipTypeID).name
             else:
-                data['attacker'] = mls.UNKNOWN
+                data['attacker'] = localization.GetByLabel('UI/Common/Unknown')
             data['owner'] = cfg.eveowners.Get(attacker.corporationID).name
-        else:
-            text = ''
-        copy += text % data
+            if attacker.finalBlow:
+                attackerLabel = 'UI/Util/CommonUtils/KillMailMPCAttackerWithFinalBlow'
+            else:
+                attackerLabel = 'UI/Util/CommonUtils/KillMailNPCAttacker'
+        if attackerLabel is not None:
+            attackerList.append(localization.GetByLabel(attackerLabel, **data))
 
+    droppedItemList = []
+    destroyedItemList = []
     textDropped = textDestroyed = ''
     for item in items:
-        data = {'type': cfg.invtypes.Get(item.typeID).name}
+        qty = None
         if item.qtyDropped > 0:
             qty = item.qtyDropped
             wasDropped = True
         else:
             qty = item.qtyDestroyed
             wasDropped = False
-        data['qty'] = qty
+        itemLocation = ''
         if item.flag == const.flagCargo:
-            data['loc'] = ' (%s)' % mls.CARGO
+            itemLocation = localization.GetByLabel('UI/Util/CommonUtils/KillMailItemLocation', itemLocation=localization.GetByLabel('UI/Generic/Cargo'))
         elif item.flag == const.flagDroneBay:
-            data['loc'] = ' (%s)' % mls.DRONEBAY
-        else:
-            data['loc'] = ''
-        if qty > 1:
-            text = mls.AGGRESSION_KILLMAIL_LOST_STACK_ENTRY
-        else:
-            text = mls.AGGRESSION_KILLMAIL_LOST_ITEM_ENTRY
+            itemLocation = localization.GetByLabel('UI/Util/CommonUtils/KillMailItemLocation', itemLocation=localization.GetByLabel('UI/Common/DroneBay'))
+        elif item.flag == const.flagImplant:
+            itemLocation = localization.GetByLabel('UI/Util/CommonUtils/KillMailItemLocation', itemLocation=localization.GetByLabel('UI/Common/Implant'))
+        itemText = GetItemText(item, qty, itemLocation)
         if wasDropped:
-            textDropped += text % data
+            droppedItemList.append(itemText)
         else:
-            textDestroyed += text % data
+            destroyedItemList.append(itemText)
         if len(item.contents) > 0:
             for subitem in item.contents:
-                subdata = {'type': cfg.invtypes.Get(subitem.typeID).name,
-                 'loc': ' (%s)' % mls.IN_CONTAINER}
+                itemLocation = localization.GetByLabel('UI/Util/CommonUtils/KillMailItemLocation', itemLocation=localization.GetByLabel('UI/Util/CommonUtils/InContainer'))
                 if subitem.qtyDropped > 0:
                     qty = subitem.qtyDropped
                 else:
                     qty = subitem.qtyDestroyed
-                subdata['qty'] = qty
-                if qty > 1:
-                    subtext = mls.AGGRESSION_KILLMAIL_LOST_CONTAINER_STACK_ENTRY
-                else:
-                    subtext = mls.AGGRESSION_KILLMAIL_LOST_CONTAINER_ITEM_ENTRY
+                itemText = '<t>' + GetItemText(subitem, qty, itemLocation)
                 if wasDropped:
-                    textDropped += subtext % subdata
+                    droppedItemList.append(itemText)
                 else:
-                    textDestroyed += subtext % subdata
+                    destroyedItemList.append(itemText)
 
 
-    extraBR = False
-    if textDestroyed != '':
-        extraBR = True
-        copy += mls.AGGRESSION_KILLMAIL_LOST_ITEM_HEADER + textDestroyed
-    if textDropped != '':
-        if extraBR:
-            copy += '<br>'
-        copy += mls.AGGRESSION_KILLMAIL_DROPPED_ITEM_HEADER + textDropped
-    copy = util.FmtDate(mail.killTime, fmt='ll') + '<br>' + copy
+    if len(droppedItemList) > 0:
+        textDropped = localization.GetByLabel('UI/Util/CommonUtils/KillMailDroppedItems', droppedItems=''.join(droppedItemList))
+    if len(destroyedItemList) > 0:
+        textDestroyed = localization.GetByLabel('UI/Util/CommonUtils/KillMailDestroyedItems', destroyedItems=''.join(destroyedItemList))
     pstate.Set('state', 0)
     pstate.Set('lastitem', None)
-    return copy
+    killmail = localization.GetByLabel('UI/Util/CommonUtils/KillMail', timestamp=util.FmtDate(mail.killTime, fmt='ll'), header=header, attackers=''.join(attackerList), droppedItems=textDropped, destroyedItems=textDestroyed)
+    return killmail.replace('\n', '')
+
+
+
+def GetItemText(item, qty, itemLocation):
+    if item.singleton == const.singletonBlueprintCopy and cfg.invtypes.Get(item.typeID).Group().categoryID == const.categoryBlueprint:
+        if qty > 1:
+            return localization.GetByLabel('UI/Util/CommonUtils/KillMailLostStackBPC', item=item.typeID, quantity=qty, itemLocation=itemLocation)
+        else:
+            return localization.GetByLabel('UI/Util/CommonUtils/KillMailLostItemBPC', item=item.typeID, itemLocation=itemLocation)
+    else:
+        if qty > 1:
+            return localization.GetByLabel('UI/Util/CommonUtils/KillMAilLostStack', item=item.typeID, quantity=qty, itemLocation=itemLocation)
+        else:
+            return localization.GetByLabel('UI/Util/CommonUtils/KillMailLostItem', item=item.typeID, itemLocation=itemLocation)
 
 
 

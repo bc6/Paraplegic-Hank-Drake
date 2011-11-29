@@ -1,6 +1,5 @@
 import base
 import blue
-import draw
 import form
 import listentry
 import log
@@ -13,12 +12,14 @@ import util
 import xtriui
 import uicls
 import uiconst
+import localization
 
 class MedicalWindow(uicls.Window):
     __guid__ = 'form.MedicalWindow'
     __notifyevents__ = ['OnCloneJumpUpdate', 'OnCloneTypeUpdatedClient']
     default_width = 400
     default_height = 300
+    default_windowID = 'medical'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -28,34 +29,35 @@ class MedicalWindow(uicls.Window):
         sm.RegisterNotify(self)
         self.SetWndIcon('ui_18_128_3', mainTop=-8)
         self.SetMinSize([350, 270])
-        self.SetCaption(mls.UI_STATION_MEDICAL)
-        uicls.WndCaptionLabel(text=mls.UI_SHARED_MAPOPS34, parent=self.sr.topParent, align=uiconst.RELATIVE)
+        self.SetCaption(localization.GetByLabel('UI/Medical/Medical'))
+        uicls.WndCaptionLabel(text=localization.GetByLabel('UI/Medical/Cloning'), parent=self.sr.topParent, align=uiconst.RELATIVE)
         self.scope = 'station'
-        btns = uicls.ButtonGroup(btns=[('medicalServicesChangeStationBtn',
-          mls.UI_CMD_CHANGESTATION,
+        cloneButtons = [('medicalServicesChangeStationBtn',
+          localization.GetByLabel('UI/Medical/Clone/ChangeStation'),
           self.PickNewHomeStation,
           None,
           81), ('medicalServicesUpgradeCloneBtn',
-          mls.UI_CMD_UPGRADECLONE,
+          localization.GetByLabel('UI/Medical/Clone/UpgradeClone'),
           self.PickNewCloneType,
           None,
-          81)], line=1, forcedButtonNames=True)
+          81)]
+        btns = uicls.ButtonGroup(btns=cloneButtons, line=1, forcedButtonNames=True)
         self.sr.main.children.append(btns)
         self.sr.cloneBtns = btns
-        btns = uicls.ButtonGroup(btns=[(mls.UI_CMD_INSTALL,
+        btns = uicls.ButtonGroup(btns=[(localization.GetByLabel('UI/Medical/JumpClone/Install'),
           self.InstallClone,
           (),
-          84), (mls.UI_CMD_DESTROY,
+          84), (localization.GetByLabel('UI/Medical/JumpClone/Destroy'),
           self.DestroyClone,
           (),
           84)], line=1)
         self.sr.main.children.append(btns)
         self.sr.jumpcloneBtns = btns
-        tabs = ([mls.UI_GENERIC_CLONE,
+        tabs = ([localization.GetByLabel('UI/Medical/Clone'),
           self.sr.main,
           self,
           'podclone',
-          self.sr.cloneBtns], [mls.UI_GENERIC_JUMPCLONE,
+          self.sr.cloneBtns], [localization.GetByLabel('UI/Medical/JumpClone'),
           self.sr.main,
           self,
           'jumpclone',
@@ -69,7 +71,7 @@ class MedicalWindow(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         sm.UnregisterNotify(self)
 
 
@@ -136,24 +138,31 @@ class MedicalWindow(uicls.Window):
 
 
     def ShowJumpCloneInfo(self):
-        cloneID = sm.GetService('clonejump').GetCloneAtLocation(eve.session.stationid)
+        cloneID = sm.GetService('clonejump').GetCloneAtLocation(session.stationid2)
         scrolllist = []
         if cloneID:
             self.sr.scroll.ShowHint(None)
-            scrolllist.append(listentry.Get('Header', {'label': '%s %s' % (mls.UI_SHARED_LOCATEDIN, cfg.evelocations.Get(eve.session.stationid).name)}))
+            locatedIn = localization.GetByLabel('UI/Medical/JumpClone/LocatedIn', stationLocation=session.stationid2)
+            scrolllist.append(listentry.Get('Header', {'label': locatedIn}))
             godma = sm.GetService('godma')
-            implants = uiutil.SortListOfTuples([ (getattr(godma.GetType(implant.typeID), 'implantness', None), implant) for implant in sm.GetService('clonejump').GetImplantsForClone(cloneID) ])
+            implantsPerClone = []
+            for implant in sm.GetService('clonejump').GetImplantsForClone(cloneID):
+                implantsPerClone.append((getattr(godma.GetType(implant.typeID), 'implantness', None), implant))
+
+            implants = uiutil.SortListOfTuples(implantsPerClone)
             if implants:
                 for cloneImplantRow in implants:
-                    scrolllist.append(listentry.Get('ImplantEntry', {'implant_booster': cloneImplantRow,
-                     'label': cfg.invtypes.Get(cloneImplantRow.typeID).name}))
+                    data = {'implant_booster': cloneImplantRow,
+                     'label': cfg.invtypes.Get(cloneImplantRow.typeID).name}
+                    scrolllist.append(listentry.Get('ImplantEntry', data))
 
             else:
-                scrolllist.append(listentry.Get('Text', {'label': mls.UI_SHARED_NOIMPLANTSINSTALLED,
-                 'text': mls.UI_SHARED_NOIMPLANTSINSTALLED}))
+                data = {'label': localization.GetByLabel('UI/Medical/JumpClone/NoImplantsInstalled'),
+                 'text': localization.GetByLabel('UI/Medical/JumpClone/NoImplantsInstalled')}
+                scrolllist.append(listentry.Get('Text', data))
         self.sr.scroll.Load(contentList=scrolllist)
         if not scrolllist:
-            self.sr.scroll.ShowHint(mls.UI_STATION_TEXT3)
+            self.sr.scroll.ShowHint(localization.GetByLabel('UI/Medical/JumpClone/NoClonesAtStation'))
 
 
 
@@ -164,18 +173,18 @@ class MedicalWindow(uicls.Window):
         currentCloneGodmaInfo = sm.GetService('godma').GetType(cloneTypeID)
         scrolllist = []
         data = {'line': 1,
-         'label': mls.UI_GENERIC_CLONETYPE,
+         'label': localization.GetByLabel('UI/Medical/Clone/CloneType'),
          'text': cloneType.name,
          'typeID': cloneTypeID,
          'iconID': cloneType.iconID}
         scrolllist.append(listentry.Get('LabelTextTop', data))
         data = {'line': 1,
-         'label': mls.UI_GENERIC_SKILLPOINTS,
-         'text': mls.UI_STATION_TEXT56 % {'skillPoints': '<b>%s</b>' % util.FmtAmt(currentCloneGodmaInfo.skillPointsSaved)},
+         'label': localization.GetByLabel('UI/Medical/Clone/SkillPoints'),
+         'text': localization.GetByLabel('UI/Medical/Clone/KeepsSkillPoints', skillPointsSaved=util.FmtAmt(currentCloneGodmaInfo.skillPointsSaved)),
          'iconID': cfg.invtypes.Get(const.typeScience).iconID}
         scrolllist.append(listentry.Get('LabelTextTop', data))
         data = {'line': 1,
-         'label': mls.UI_GENERIC_LOCATION,
+         'label': localization.GetByLabel('UI/Medical/Clone/Location'),
          'text': cfg.evelocations.Get(homeStationID).name,
          'isStation': 1,
          'itemID': homeStationID}
@@ -211,7 +220,7 @@ class MedicalWindow(uicls.Window):
                 secStatus = util.FmtSystemSecStatus(sec)
                 region = cfg.evelocations.Get(regionID)
                 data = util.KeyVal()
-                data.label = '%s<t><right>%s<t>%s' % (station.name, secStatus, region.name)
+                data.label = '%s<t>%s<t>%s' % (station.name, localization.GetByLabel('UI/Medical/Clone/NewHomeSecStatusEntry', securityStatus=secStatus), region.name)
                 data.itemID = stationID
                 data.typeID = typeID
                 data.listvalue = [station.name, stationID]
@@ -222,7 +231,7 @@ class MedicalWindow(uicls.Window):
                     stationsWithoutMedical.append(data)
 
             groupWithMedical = util.KeyVal()
-            groupWithMedical.label = mls.UI_STATION_STATIONSWITHCLONING
+            groupWithMedical.label = localization.GetByLabel('UI/Medical/Clone/StationsWithCloning')
             groupWithMedical.id = ('clonePicker', 1)
             groupWithMedical.showicon = 'hide'
             groupWithMedical.BlockOpenWindow = 1
@@ -231,7 +240,7 @@ class MedicalWindow(uicls.Window):
             groupWithMedical.sublevel = 0
             groupWithMedical.groupItems = stationsWithMedical
             groupWithoutMedical = util.KeyVal()
-            groupWithoutMedical.label = mls.UI_STATION_STATIONSWITHOUTCLONING
+            groupWithoutMedical.label = localization.GetByLabel('UI/Medical/Clone/StationsWithoutCloning')
             groupWithoutMedical.id = ('clonePicker', 2)
             groupWithoutMedical.showicon = 'hide'
             groupWithoutMedical.BlockOpenWindow = 1
@@ -239,8 +248,8 @@ class MedicalWindow(uicls.Window):
             groupWithoutMedical.showlen = 1
             groupWithoutMedical.sublevel = 0
             groupWithoutMedical.groupItems = stationsWithoutMedical
-            scrollHeaders = [mls.UI_GENERIC_STATION, mls.UI_GENERIC_SECURITYSHORT, mls.UI_GENERIC_REGION]
-            ret = uix.ListWnd([groupWithMedical, groupWithoutMedical], 'station', mls.UI_STATION_TEXT5, None, 1, windowName='newHomeStationWindow', lstDataIsGrouped=1, scrollHeaders=scrollHeaders)
+            scrollHeaders = [localization.GetByLabel('UI/Medical/Clone/Station'), localization.GetByLabel('UI/Medical/Clone/SecurityStatus'), localization.GetByLabel('UI/Common/LocationTypes/Region')]
+            ret = uix.ListWnd([groupWithMedical, groupWithoutMedical], 'station', localization.GetByLabel('UI/Medical/Clone/SelectHomeStation'), None, 1, windowName='newHomeStationWindow', lstDataIsGrouped=1, scrollHeaders=scrollHeaders)
             if ret:
                 if not stationTypeIDbyStationID[ret[1]][1] & const.stationServiceCloning == const.stationServiceCloning:
                     if eve.Message('AskSetHomeStationWithoutMedical', buttons=uiconst.YESNO, default=uiconst.ID_NO) != uiconst.ID_YES:
@@ -257,7 +266,7 @@ class MedicalWindow(uicls.Window):
                 if eve.Message('AskSetHomeStationAtPOS', {}, uiconst.YESNO) != uiconst.ID_YES:
                     self.picking = 0
                     return 
-            if eve.Message('AskAcceptCloneContractCost', {'cost': util.FmtCurrency(const.costCloneContract, currency=None)}, uiconst.YESNO) != uiconst.ID_YES:
+            if eve.Message('AskAcceptCloneContractCost', {'cost': const.costCloneContract}, uiconst.YESNO) != uiconst.ID_YES:
                 self.picking = 0
                 return 
             self.SetHomeStation(newHomeStationID)
@@ -290,16 +299,13 @@ class MedicalWindow(uicls.Window):
                 typeID = clone[0]
                 skillPointsSaved = clone[1]
                 basePrice = clone[2]
-                text = '%s - %s %s - %s' % (cfg.invtypes.Get(typeID).name,
-                 mls.UI_STATION_TEXT6,
-                 util.FmtAmt(skillPointsSaved),
-                 util.FmtISK(basePrice))
+                text = localization.GetByLabel('UI/Medical/Clone/SkillPointsKept', cloneType=typeID, skillPointsSaved=util.FmtAmt(skillPointsSaved), cloneCost=util.FmtISK(basePrice))
                 if skillPointsSaved < currentSkillPoints:
-                    text = '<color=gray>%s</color>' % text
+                    text = localization.GetByLabel('UI/Medical/Clone/InsufficientClone', skillPointsKept=text)
                 cloneDisplayList.append([text, typeID, typeID])
 
-            hint = mls.UI_STATION_TEXT7 % {'num': util.FmtAmt(currentSkillPoints)}
-            ret = uix.ListWnd(cloneDisplayList, 'type', mls.UI_STATION_TEXT8, hint, 0, 300)
+            hint = localization.GetByLabel('UI/Medical/Clone/CurrentSkillPoints', skillPoints=util.FmtAmt(currentSkillPoints))
+            ret = uix.ListWnd(cloneDisplayList, 'type', localization.GetByLabel('UI/Medical/Clone/SelectCloneType'), hint, 0, 300)
             if ret:
                 newCloneTypeID = ret[2]
             else:
@@ -307,7 +313,7 @@ class MedicalWindow(uicls.Window):
                 return 
             if sm.GetService('godma').GetType(newCloneTypeID).skillPointsSaved < sm.GetService('godma').GetType(self.GetCloneTypeID()).skillPointsSaved:
                 raise UserError('MedicalThisCloneIsWorse')
-            if eve.Message('AskAcceptCloneTypeCost', {'cost': util.FmtCurrency(cfg.invtypes.Get(newCloneTypeID).basePrice, currency=None)}, uiconst.YESNO) != uiconst.ID_YES:
+            if eve.Message('AskAcceptCloneTypeCost', {'cost': cfg.invtypes.Get(newCloneTypeID).basePrice}, uiconst.YESNO) != uiconst.ID_YES:
                 self.picking = 0
                 return 
             self.SetCloneTypeID(newCloneTypeID)
@@ -324,7 +330,7 @@ class MedicalWindow(uicls.Window):
 
 
     def DestroyClone(self, *args):
-        cloneID = sm.GetService('clonejump').GetCloneAtLocation(eve.session.stationid)
+        cloneID = sm.GetService('clonejump').GetCloneAtLocation(session.stationid2)
         if cloneID:
             sm.GetService('clonejump').DestroyInstalledClone(cloneID)
 

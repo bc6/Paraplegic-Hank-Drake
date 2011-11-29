@@ -9,6 +9,7 @@ import base
 import math
 import uicls
 import uthread
+import localization
 PAD = 6
 SPACING = 22
 EDITHEIGHT = 18
@@ -37,7 +38,7 @@ class MaillistSetupWindow(uicls.Window):
         self.sr.main = uiutil.GetChild(self, 'main')
         self.SetMinSize([350, 350])
         self.SetTopparentHeight(18)
-        self.SetCaption(mls.UI_EVEMAIL_MAILINGLISTSCAPTION % {'MailinglistName': self.groupName})
+        self.SetCaption(localization.GetByLabel('UI/EVEMail/MailingLists/Caption', mailinglistName=self.groupName))
         self.SetWndIcon('ui_94_64_1', hidden=True)
         self.welcomeText = None
         self.sr.membersPanel = uicls.Container(name='membersPanel', parent=self.sr.main, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(PAD,
@@ -53,13 +54,13 @@ class MaillistSetupWindow(uicls.Window):
          PAD,
          0))
         self.sr.tabs = uicls.TabGroup(name='tabs', parent=self.sr.topParent)
-        tabs = [[mls.UI_GENERIC_MEMBERS,
+        tabs = [[localization.GetByLabel('UI/EVEMail/MailingLists/MembersTab'),
           self.sr.membersPanel,
           self,
-          'members'], [mls.UI_INFLIGHT_ACCESS,
+          'members'], [localization.GetByLabel('UI/EVEMail/MailingLists/AccessTab'),
           self.sr.accessPanel,
           self,
-          'access'], [mls.UI_EVEMAIL_WELCOMEMAIL,
+          'access'], [localization.GetByLabel('UI/EVEMail/MailingLists/WelcomeMailTab'),
           self.sr.welcomePanel,
           self,
           'welcome']]
@@ -72,33 +73,33 @@ class MaillistSetupWindow(uicls.Window):
 
     def StartupMembersPanel(self):
         membersPanel = self.sr.membersPanel
-        comboOptions = [(mls.UI_GENERIC_ALL, FILTER_ALL),
-         (mls.UI_EVEMAIL_NORMALMEMBERS, FILTER_MEMBERS),
-         (mls.UI_EVEMAIL_MUTEDMEMBERS, FILTER_MUTED),
-         (mls.UI_SHARED_OPERATORS, FILTER_OPERATORS),
-         (mls.UI_EVEMAIL_SEARCHBYNAME, FILTER_BYNAME)]
+        comboOptions = [(localization.GetByLabel('UI/Common/All'), FILTER_ALL),
+         (localization.GetByLabel('UI/EVEMail/MailingLists/NormalMembers'), FILTER_MEMBERS),
+         (localization.GetByLabel('UI/EVEMail/MailingLists/MutedMembers'), FILTER_MUTED),
+         (localization.GetByLabel('UI/Chat/Operators'), FILTER_OPERATORS),
+         (localization.GetByLabel('UI/EVEMail/MailingLists/SearchByName'), FILTER_BYNAME)]
         topCont = uicls.Container(name='topCont', parent=membersPanel, align=uiconst.TOTOP, pos=(0, 10, 0, 28))
-        self.sr.membersPanel.showMembersCombo = uicls.Combo(label=mls.UI_GENERIC_SHOW, parent=topCont, options=comboOptions, name='showMembersCombo', callback=self.OnShowMembersComboChanged, width=100, align=uiconst.TOPLEFT)
-        self.sr.membersPanel.searchEdit = uicls.SinglelineEdit(label=mls.UI_SHARED_SEARCHSTRING, name='searchEdit', parent=topCont, align=uiconst.TOPLEFT, pos=(115,
+        self.sr.membersPanel.showMembersCombo = uicls.Combo(label=localization.GetByLabel('UI/EVEMail/MailingLists/ShowLabel'), parent=topCont, options=comboOptions, name='showMembersCombo', callback=self.OnShowMembersComboChanged, width=100, align=uiconst.TOPLEFT)
+        self.sr.membersPanel.searchEdit = uicls.SinglelineEdit(label=localization.GetByLabel('UI/PeopleAndPlaces/SearchString'), name='searchEdit', parent=topCont, align=uiconst.TOPLEFT, pos=(115,
          0,
          80,
          EDITHEIGHT), state=uiconst.UI_HIDDEN)
         self.sr.membersPanel.searchEdit.OnReturn = self.UpdateMembersScroll
-        self.sr.membersPanel.searchButton = uicls.Button(parent=topCont, label=mls.UI_CMD_SEARCH, left=200, func=self.UpdateMembersScroll, align=uiconst.TOPLEFT, state=uiconst.UI_HIDDEN)
+        self.sr.membersPanel.searchButton = uicls.Button(parent=topCont, label=localization.GetByLabel('UI/Common/Buttons/Search'), left=200, func=self.UpdateMembersScroll, align=uiconst.TOPLEFT, state=uiconst.UI_HIDDEN)
         browseCont = uicls.Container(name='browseCont', parent=topCont, align=uiconst.TOPRIGHT, pos=(0, -10, 50, 50))
         btn = uix.GetBigButton(24, browseCont, 0, 0)
         btn.OnClick = (self.ChangeMembersPage, -1)
-        btn.hint = mls.UI_GENERIC_PREVIOUS
+        btn.hint = localization.GetByLabel('UI/Common/Previous')
         btn.state = uiconst.UI_NORMAL
         btn.sr.icon.LoadIcon('ui_23_64_1')
         self.sr.pageBackBtn = btn
         btn = uix.GetBigButton(24, browseCont, 24, 0)
         btn.OnClick = (self.ChangeMembersPage, 1)
-        btn.hint = mls.UI_CMD_NEXT
+        btn.hint = localization.GetByLabel('UI/Generic/Next')
         btn.state = uiconst.UI_NORMAL
         btn.sr.icon.LoadIcon('ui_23_64_2')
         self.sr.pageFwdBtn = btn
-        self.sr.pageCount = uicls.Label(text='', parent=browseCont, left=16, top=26, autoheight=False, height=12, state=uiconst.UI_DISABLED)
+        self.sr.pageCount = uicls.EveLabelMedium(text='', parent=browseCont, left=16, top=26, height=12, state=uiconst.UI_DISABLED)
         bottomCont = uicls.Container(parent=membersPanel, align=uiconst.TOBOTTOM, pos=(0,
          0,
          100,
@@ -106,17 +107,17 @@ class MaillistSetupWindow(uicls.Window):
          3 * PAD,
          0,
          PAD), state=uiconst.UI_PICKCHILDREN)
-        comboOptions = [(mls.UI_EVEMAIL_SETROLEMEMBER, ACTION_SETMEMBER),
-         (mls.UI_EVEMAIL_SETROLEMUTED, ACTION_SETMUTED),
-         (mls.UI_EVEMAIL_SETROLEOPERATOR, ACTION_SETOPERATOR),
-         (mls.UI_CMD_KICK, ACTION_KICK)]
-        self.sr.membersPanel.actionCombo = uicls.Combo(label=mls.UI_EVEMAIL_APPLYTOSELECTED, parent=bottomCont, options=comboOptions, name='showMembersCombo', width=150, align=uiconst.TOPLEFT)
-        self.sr.membersPanel.ApplyBtn = uicls.Button(parent=bottomCont, label=mls.UI_CMD_APPLY, func=self.ApplyActionToMembers, align=uiconst.TOPRIGHT)
+        comboOptions = [(localization.GetByLabel('UI/EVEMail/MailingLists/SetRoleMember'), ACTION_SETMEMBER),
+         (localization.GetByLabel('UI/EVEMail/MailingLists/SetRoleMuted'), ACTION_SETMUTED),
+         (localization.GetByLabel('UI/EVEMail/MailingLists/SetRoleOperator'), ACTION_SETOPERATOR),
+         (localization.GetByLabel('UI/EVEMail/MailingLists/Kick'), ACTION_KICK)]
+        self.sr.membersPanel.actionCombo = uicls.Combo(label=localization.GetByLabel('UI/EVEMail/MailingLists/ApplyToSelected'), parent=bottomCont, options=comboOptions, name='showMembersCombo', width=150, align=uiconst.TOPLEFT)
+        self.sr.membersPanel.ApplyBtn = uicls.Button(parent=bottomCont, label=localization.GetByLabel('UI/Generic/Apply'), func=self.ApplyActionToMembers, align=uiconst.TOPRIGHT)
         self.sr.membersPanel.ApplyBtn.Disable()
-        self.roles = {const.mailingListMemberDefault: mls.UI_GENERIC_MEMBER,
-         const.mailingListMemberMuted: mls.UI_EVEMAIL_MUTEDMEMBER,
-         const.mailingListMemberOperator: mls.UI_SHARED_OPERATOR,
-         const.mailingListMemberOwner: mls.UI_GENERIC_OWNER}
+        self.roles = {const.mailingListMemberDefault: localization.GetByLabel('UI/EVEMail/MailingLists/Member'),
+         const.mailingListMemberMuted: localization.GetByLabel('UI/EVEMail/MailingLists/MutedMember'),
+         const.mailingListMemberOperator: localization.GetByLabel('UI/EVEMail/MailingLists/Operator'),
+         const.mailingListMemberOwner: localization.GetByLabel('UI/EVEMail/MailingLists/Owner')}
         self.sr.membersPanel.scroll = uicls.Scroll(parent=membersPanel, name='membersScroll', padTop=PAD)
         self.sr.membersPanel.scroll.sr.id = 'membersPanelScroll'
         self.sr.membersPanel.scroll.OnSelectionChange = self.OnMembersScrollSelectionChange
@@ -255,7 +256,7 @@ class MaillistSetupWindow(uicls.Window):
             data.GetMenu = self.GetCharMenu
             scrolllist.append(listentry.Get('Generic', data=data))
 
-        self.sr.membersPanel.scroll.Load(contentList=scrolllist, headers=[mls.UI_GENERIC_NAME, mls.UI_GENERIC_ROLE], customColumnWidths=True, noContentHint=mls.UI_EVEMAIL_NOMEMBERSFOUND)
+        self.sr.membersPanel.scroll.Load(contentList=scrolllist, headers=[localization.GetByLabel('UI/Generic/NamePerson'), localization.GetByLabel('UI/EVEMail/MailingLists/Role')], customColumnWidths=True, noContentHint=localization.GetByLabel('UI/EVEMail/MailingLists/NoMembersFound'))
         self.sr.membersPanel.ApplyBtn.Disable()
 
 
@@ -267,7 +268,7 @@ class MaillistSetupWindow(uicls.Window):
         if charID:
             charMenu = sm.GetService('menu').CharacterMenu(charID)
         if util.IsCharacter(charID):
-            charMenu.insert(0, (mls.UI_CMD_SHOWINFO, sm.GetService('info').ShowInfo, (typeID, charID)))
+            charMenu.insert(0, (localization.GetByLabel('UI/Commands/ShowInfo'), sm.GetService('info').ShowInfo, (typeID, charID)))
         return charMenu
 
 
@@ -342,45 +343,45 @@ class MaillistSetupWindow(uicls.Window):
 
 
     def UpdateBlockedScroll(self):
-        self.sr.blockedScroll.Load(contentList=self.scrolllist[const.mailingListBlocked], headers=[mls.UI_GENERIC_NAME, mls.UI_GENERIC_TYPE], customColumnWidths=True)
+        self.sr.blockedScroll.Load(contentList=self.scrolllist[const.mailingListBlocked], headers=[localization.GetByLabel('UI/Generic/NamePerson'), localization.GetByLabel('UI/Common/Type')], customColumnWidths=True)
 
 
 
     def UpdateAllowedScroll(self):
-        self.sr.allowedScroll.Load(contentList=self.scrolllist[const.mailingListAllowed], headers=[mls.UI_GENERIC_NAME, mls.UI_GENERIC_TYPE], customColumnWidths=True)
+        self.sr.allowedScroll.Load(contentList=self.scrolllist[const.mailingListAllowed], headers=[localization.GetByLabel('UI/Generic/NamePerson'), localization.GetByLabel('UI/Common/Type')], customColumnWidths=True)
 
 
 
     def StartupAccessPanel(self):
         accessPanel = self.sr.accessPanel
         topCont = uicls.Container(name='topCont', parent=accessPanel, align=uiconst.TOTOP, pos=(0, 0, 0, 90))
-        comboOptions = [(mls.UI_EVEMAIL_PRIVATE, const.mailingListBlocked), (mls.UI_EVEMAIL_PUBLIC, const.mailingListAllowed)]
-        self.sr.accessPanel.defaultAccessCombo = uicls.Combo(label=mls.UI_EVEMAIL_DEFAULTACCESS, parent=topCont, options=comboOptions, name='subcriptionAccessCombo', select=self.mlsvc.GetSettings(self.mailingListID).defaultAccess, pos=(0,
+        comboOptions = [(localization.GetByLabel('UI/EVEMail/MailingLists/PrivateAccess'), const.mailingListBlocked), (localization.GetByLabel('UI/EVEMail/MailingLists/PublicAccess'), const.mailingListAllowed)]
+        self.sr.accessPanel.defaultAccessCombo = uicls.Combo(label=localization.GetByLabel('UI/EVEMail/MailingLists/DefaultAccessLabel'), parent=topCont, options=comboOptions, name='subcriptionAccessCombo', select=self.mlsvc.GetSettings(self.mailingListID).defaultAccess, pos=(0,
          SPACING,
          0,
          0), width=200)
-        uicls.Button(parent=topCont, label=mls.UI_CMD_APPLY, pos=(0, 41, 0, 0), func=self.ApplySettings, align=uiconst.TOPRIGHT)
-        roleComboOptions = [(mls.UI_GENERIC_NORMAL, const.mailingListMemberDefault), (mls.UI_SHARED_CHANNELMUTED, const.mailingListMemberMuted)]
-        self.sr.accessPanel.defaultRoleCombo = uicls.Combo(label=mls.UI_EVEMAIL_DEFAULTROLE, parent=topCont, options=roleComboOptions, name='roleCombo', select=self.mlsvc.GetSettings(self.mailingListID).defaultMemberAccess, pos=(0,
+        uicls.Button(parent=topCont, label=localization.GetByLabel('UI/Common/Buttons/Apply'), pos=(0, 41, 0, 0), func=self.ApplySettings, align=uiconst.TOPRIGHT)
+        roleComboOptions = [(localization.GetByLabel('UI/EVEMail/MailingLists/Normal'), const.mailingListMemberDefault), (localization.GetByLabel('UI/EVEMail/MailingLists/MutedRole'), const.mailingListMemberMuted)]
+        self.sr.accessPanel.defaultRoleCombo = uicls.Combo(label=localization.GetByLabel('UI/EVEMail/MailingLists/DefaultMemberRole'), parent=topCont, options=roleComboOptions, name='roleCombo', select=self.mlsvc.GetSettings(self.mailingListID).defaultMemberAccess, pos=(0,
          self.sr.accessPanel.defaultAccessCombo.top + self.sr.accessPanel.defaultAccessCombo.height + SPACING,
          0,
          0), width=200)
         uicls.Line(parent=topCont, align=uiconst.TOBOTTOM)
         addToBlockCont = uicls.Container(name='AddToBlockCont', parent=accessPanel, align=uiconst.TOTOP, state=uiconst.UI_PICKCHILDREN, pos=(0, 0, 0, 22), padding=(0, 20, 0, 0))
-        self.sr.blockEdit = uicls.SinglelineEdit(label='%s/%s/%s' % (mls.UI_GENERIC_CHARACTER, mls.UI_GENERIC_CORP, mls.UI_GENERIC_ALLIANCE), name='AddToBlockEdit', parent=addToBlockCont, align=uiconst.TOPLEFT, pos=(0, 0, 100, 0))
-        b1 = uicls.Button(parent=addToBlockCont, label=mls.UI_GENERIC_ALLOW, func=self.AddToAllowed, align=uiconst.CENTERRIGHT)
-        uicls.Button(parent=addToBlockCont, label=mls.UI_CMD_BLOCK, func=self.AddToBlocked, align=uiconst.CENTERRIGHT, left=b1.width + b1.left + 4)
+        self.sr.blockEdit = uicls.SinglelineEdit(label=localization.GetByLabel('UI/EVEMail/MailingLists/EntitySearchLabel'), name='AddToBlockEdit', parent=addToBlockCont, align=uiconst.TOPLEFT, pos=(0, 0, 100, 0))
+        b1 = uicls.Button(parent=addToBlockCont, label=localization.GetByLabel('UI/EVEMail/MailingLists/Allow'), func=self.AddToAllowed, align=uiconst.CENTERRIGHT)
+        uicls.Button(parent=addToBlockCont, label=localization.GetByLabel('UI/PeopleAndPlaces/BlockContact'), func=self.AddToBlocked, align=uiconst.CENTERRIGHT, left=b1.width + b1.left + 4)
         self.sr.scrollCont = scrollCont = uicls.Container(name='scrollCont', parent=accessPanel, align=uiconst.TOALL)
-        uicls.Label(text=mls.UI_GENERIC_BLOCKED.upper(), parent=scrollCont, align=uiconst.TOTOP, fontsize=10, top=10, letterspace=1, state=uiconst.UI_NORMAL)
+        uicls.EveLabelSmall(text=localization.GetByLabel('UI/EVEMail/MailingLists/BlockedLabel'), parent=scrollCont, align=uiconst.TOTOP, top=10, state=uiconst.UI_NORMAL)
         self.sr.blockedScroll = uicls.Scroll(parent=scrollCont, name='blockedScroll', align=uiconst.TOTOP)
         self.sr.blockedScroll.OnSetFocus = self.BlockedScrollOnSetFocus
         self.sr.blockedScroll.sr.id = 'blockedScroll'
-        uicls.Label(text=mls.UI_SHARED_CHANNELALLOWED.upper(), parent=scrollCont, align=uiconst.TOTOP, fontsize=10, top=10, letterspace=1, state=uiconst.UI_NORMAL)
+        uicls.EveLabelSmall(text=localization.GetByLabel('UI/EVEMail/MailingLists/AllowedLabel'), parent=scrollCont, align=uiconst.TOTOP, top=10, state=uiconst.UI_NORMAL)
         self.sr.allowedScroll = uicls.Scroll(parent=scrollCont, name='allowedScroll', align=uiconst.TOTOP)
         self.sr.allowedScroll.OnSetFocus = self.AllowedScrollOnSetFocus
         self.sr.allowedScroll.sr.id = 'allowedScroll'
         self.UpdateAccessScrollData()
-        uicls.ButtonGroup(btns=[[mls.UI_CMD_REMOVESELECTED,
+        uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/EVEMail/MailingLists/RemoveSelected'),
           self.ClearAccessForSelected,
           None,
           None]], parent=accessPanel, line=False)
@@ -434,15 +435,15 @@ class MaillistSetupWindow(uicls.Window):
     def StartupWelcomePanel(self, *args):
         welcomePanel = self.sr.welcomePanel
         cbCont = uicls.Container(name='cbCont', parent=welcomePanel, align=uiconst.TOBOTTOM, pos=(0, 0, 0, 20))
-        self.sr.wekcomeToAllCB = uicls.Checkbox(text=mls.UI_EVEMAIL_WELCOMEMAILTOALL, parent=cbCont, configName='welcomeToAllCB', retval=self.mailingListID, checked=settings.user.ui.Get('welcomeToAllCB_%s' % self.mailingListID, 0), align=uiconst.TOPLEFT, pos=(0, 0, 330, 0), callback=self.OnCheckboxChange)
+        self.sr.wekcomeToAllCB = uicls.Checkbox(text=localization.GetByLabel('UI/EVEMail/MailingLists/SendWelcomeMailToAllCheckbox'), parent=cbCont, configName='welcomeToAllCB', retval=self.mailingListID, checked=settings.user.ui.Get('welcomeToAllCB_%s' % self.mailingListID, 0), align=uiconst.TOPLEFT, pos=(0, 0, 330, 0), callback=self.OnCheckboxChange)
         subjectCont = uicls.Container(name='subjectCont', parent=welcomePanel, align=uiconst.TOTOP, pos=(0, 0, 0, 30), padding=(0, 0, 1, 0))
         subjectTextCont = uicls.Container(name='subjectCont', parent=subjectCont, align=uiconst.TOLEFT, pos=(0, 0, 40, 0))
-        subjectLabel = uicls.Label(text=mls.UI_EVEMAIL_SUBJECT, parent=subjectTextCont, align=uiconst.TOPLEFT, top=2, left=0, fontsize=10, letterspace=1, linespace=9, uppercase=1, state=uiconst.UI_NORMAL)
+        subjectLabel = uicls.EveHeaderSmall(text=localization.GetByLabel('UI/EVEMail/MailingLists/WelcomeMailSubject'), parent=subjectTextCont, align=uiconst.TOPLEFT, top=2, left=0, state=uiconst.UI_NORMAL)
         subjectTextCont.width = subjectLabel.textwidth + 5
         self.sr.subjecField = uicls.SinglelineEdit(name='subjecField', parent=subjectCont, maxLength=const.mailMaxSubjectSize, pos=(0, 0, 0, 0), label='', align=uiconst.TOTOP)
         self.sr.welcomeScrollCont = scrollCont = uicls.Container(name='scrollCont', parent=welcomePanel, align=uiconst.TOALL)
         self.sr.welcomeEdit = uicls.EditPlainText(setvalue='', parent=self.sr.welcomeScrollCont, align=uiconst.TOALL, showattributepanel=1)
-        uicls.ButtonGroup(btns=[[mls.UI_CMD_SAVE,
+        uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Common/Buttons/Save'),
           self.SaveWelcomeMail,
           None,
           None]], parent=welcomePanel, idx=0, line=False)

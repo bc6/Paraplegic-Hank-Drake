@@ -16,6 +16,8 @@ import _weakref
 import fontflags
 import gps
 import fontConst
+import localization
+import localizationUtil
 from util import ResFile
 WORD_BOUNDARIES = [' ',
  '.',
@@ -39,7 +41,6 @@ class EditCore(parser.ParserBase, uicls.Scroll):
     default_showattributepanel = 0
     default_hideBackground = False
     default_setvalue = ''
-    default_font = fontConst.DEFAULT_FONT
     default_fontsize = fontConst.DEFAULT_FONTSIZE
     default_fontcolor = (1.0, 1.0, 1.0, 1.0)
     default_letterspace = fontConst.DEFAULT_LETTERSPACE
@@ -78,7 +79,6 @@ class EditCore(parser.ParserBase, uicls.Scroll):
         self.autoScrollToBottom = 0
         self.fontFlag = 0
         self.href = None
-        self.font = self.defaultFont = attributes.get('font', self.default_font)
         self.fontSize = self.defaultFontSize = attributes.get('fontsize', self.default_fontsize)
         self.fontColor = self.defaultFontColor = attributes.get('fontcolor', self.default_fontcolor)
         self.sr.cookieMgr = corebrowserutil.CookieManager()
@@ -321,8 +321,8 @@ class EditCore(parser.ParserBase, uicls.Scroll):
             return self.sr.currentTXT
         if self.sr.window and hasattr(self.sr.window, 'ShowLoad'):
             self.sr.window.ShowLoad()
-        self.startTime = blue.os.GetTime(1)
-        self.SetStatus('%s %s...' % (mls.UI_GENERIC_OPENING, url))
+        self.startTime = blue.os.GetWallclockTimeNow()
+        self.SetStatus(localization.GetByLabel('/Carbon/UI/Controls/EditRichText/OpeningURL', url=url))
         url = url.encode('ascii')
         try:
             if self.sr.window and getattr(self.sr.window, 'SetCaption', None):
@@ -417,29 +417,24 @@ class EditCore(parser.ParserBase, uicls.Scroll):
                 self.LoadHTML(txt, scrollTo=scrollTo, newThread=newThread)
             except OSError as what:
                 if what.errno == errno.ENOENT:
-                    self.LoadHTML('\n                            <html><body>\n                            <h1>%s</h1>\n                            <hr>\n                            <p>%s<blockquote>%s</blockquote>%s</p>\n                            </body></html>\n                            ' % (mls.UI_SHARED_HTMLERROR1,
-                     mls.UI_SHARED_HTMLERROR2,
-                     what.filename,
-                     mls.UI_SHARED_HTMLERROR3))
+                    self.LoadHTML(localization.GetByLabel('/Carbon/UI/Controls/EditRichText/HTMLErrorFileNotFound', filename=what.filename))
                 else:
-                    err = {'oserror': mls.UI_SHARED_HTMLERROR4}
-                    err.update(what.__dict__)
-                    self.LoadHTML('\n                            <html><body>\n                            <h2>%(oserror)s %(errno)s: %(strerror)s</h2>\n                            <hr>\n                            <p>%(filename)s</p>\n                            </body></html>' % err)
+                    self.LoadHTML(localization.GetByLabel('/Carbon/UI/Controls/EditRichText/HTMLErrorOSError', filename=what.filename, errorNumber=what.errno, errorString=what.strerror))
                 sys.exc_clear()
             except gps.ClientConnectFailed as what:
                 s = gps.ClientConnectFailedString(what)
                 if s.lower() in ('host not found', 'valid name, no data record of requested type'):
-                    self.LoadHTML('<html><body>\n                            <h1>%s</h1>\n                            <hr>\n                            <p>%s %s</p>\n                            </body></html>' % (mls.UI_SHARED_HTMLERROR5, mls.UI_SHARED_HTMLERROR6, mls.UI_SHARED_HTMLERROR3))
+                    self.LoadHTML(localization.GetByLabel('/Carbon/UI/Controls/EditRichText/HTMLErrorHostNotFound'))
                 elif s.lower() in ('connection timed out', 'valid name, no data record of requested type'):
-                    self.LoadHTML('<html><body>\n                            <h1>%s</h1>\n                            <hr>\n                            <p>%s %s</p>\n                            </body></html>' % (what.args[0], mls.UI_SHARED_HTMLERROR7, url))
+                    self.LoadHTML(localization.GetByLabel('/Carbon/UI/Controls/EditRichText/HTMLErrorConnectionTimeOut', title=what.args[0], hostAddress=url))
                 else:
-                    self.LoadHTML('<html><body>\n                            <h1>%s</h1>\n                            <hr>\n                            </body></html>' % what.args[0])
+                    self.LoadHTML(localization.GetByLabel('/Carbon/UI/Controls/EditRichText/HTMLErrorGeneric', title=what.args[0]))
                 sys.exc_clear()
             except urllib2.URLError as what:
-                self.LoadHTML('\n                        <html><body>\n                            <h1>%s</h1>\n                            <hr>\n                            <p>%s</p>\n                        </body></html>\n                        ' % (mls.UI_SHARED_HTMLERROR8, what))
+                self.LoadHTML(localization.GetByLabel('/Carbon/UI/Controls/EditRichText/HTMLErrorURLError', error=what))
                 sys.exc_clear()
             except ValueError as what:
-                self.LoadHTML('\n                        <html><body>\n                            <h1>%s</h1>\n                            <hr>\n                            <p>%s</p>\n                        </body></html>\n                        ' % (mls.UI_SHARED_HTMLERROR9, what))
+                self.LoadHTML(localization.GetByLabel('/Carbon/UI/Controls/EditRichText/HTMLErrorURLError', error=what))
                 log.LogException()
             except AttributeError:
                 if self is None or self.destroyed:
@@ -459,7 +454,7 @@ class EditCore(parser.ParserBase, uicls.Scroll):
 
     def HandleException(self):
         log.LogException()
-        self.LoadHTML('\n                <html><body>\n                    <h1>%s</h1>\n                    <hr>\n                </body></html>\n                ' % mls.UI_SHARED_HTMLERROR10)
+        self.LoadHTML(localization.GetByLabel('/Carbon/UI/Controls/EditRichText/HTMLErrorException'))
 
 
 
@@ -499,7 +494,6 @@ class EditCore(parser.ParserBase, uicls.Scroll):
 
 
     def SetValue(self, text, scrolltotop = 0, cursorPos = None, preformatted = 0, html = 1, fontColor = None):
-        self.font = self.defaultFont
         self.fontSize = self.defaultFontSize
         self.fontColor = fontColor or self.defaultFontColor
         self.fontFlag = 0
@@ -815,22 +809,22 @@ class EditCore(parser.ParserBase, uicls.Scroll):
         m = []
         if self.sr.window and getattr(self.sr.window, 'GetMenu', None):
             m = self.sr.window.GetMenu()
-        m.append((mls.UI_CMD_COPYALL, self.CopyAll))
+        m.append((localization.GetByLabel('/Carbon/UI/Controls/Common/CopyAll'), self.CopyAll))
         if self.HasSelection():
-            m.append((mls.UI_CMD_COPYSELECTED, self.Copy))
+            m.append((localization.GetByLabel('/Carbon/UI/Controls/Common/CopySelected'), self.Copy))
             if not self.readonly:
-                m.append((mls.UI_CMD_CUTSELECTED, self.Cut))
+                m.append((localization.GetByLabel('/Carbon/UI/Controls/Common/CutSelected'), self.Cut))
         clipboard = uiutil.GetClipboardData()
         if clipboard and not self.readonly:
-            m.append((mls.UI_CMD_PASTE, self.Paste, (clipboard,)))
+            m.append((localization.GetByLabel('/Carbon/UI/Controls/Common/Paste'), self.Paste, (clipboard,)))
         if not self.readonly:
             m.append(None)
-            linkmenu = [(mls.UI_GENERIC_CHARACTER, self.LinkCharacter),
-             (mls.UI_GENERIC_CORPORATION, self.LinkCorp),
-             (mls.UI_GENERIC_SOLARSYSTEM, self.LinkSolarSystem),
-             (mls.UI_GENERIC_STATION, self.LinkStation),
-             (mls.UI_GENERIC_ITEMTYPE, self.LinkItemType)]
-            m.append((mls.UI_CMD_AUTOLINK, linkmenu))
+            linkmenu = [(localization.GetByLabel('/EVE/UI/Common/Character'), self.LinkCharacter),
+             (localization.GetByLabel('/EVE/UI/Common/Corporation'), self.LinkCorp),
+             (localization.GetByLabel('/EVE/UI/Common/LocationTypes/SolarSystem'), self.LinkSolarSystem),
+             (localization.GetByLabel('/EVE/UI/Common/LocationTypes/Station'), self.LinkStation),
+             (localization.GetByLabel('/Carbon/UI/Controls/Common/ItemType'), self.LinkItemType)]
+            m.append((localization.GetByLabel('/Carbon/UI/Controls/Common/AutoLink'), linkmenu))
             sm.GetService('ime').GetMenuDelegate(self, node, m)
         return m
 
@@ -970,6 +964,10 @@ class EditCore(parser.ParserBase, uicls.Scroll):
                 for obj in stack:
                     if obj.type == '<text>':
                         ret += obj.letters
+                    elif obj.type == '<table>' and obj.control:
+                        tableValue = obj.control.GetValue()
+                        if tableValue:
+                            ret += tableValue + '\r\n'
 
                 ret += '\r\n'
 
@@ -983,6 +981,13 @@ class EditCore(parser.ParserBase, uicls.Scroll):
                 continue
             if node.selectionStartIndex is None:
                 continue
+            if node.inlines:
+                for (inline, x,) in node.inlines:
+                    if inline.type == '<table>' and inline.control:
+                        tableText = inline.control.GetValue()
+                        if tableText:
+                            newret += tableText + '\r\n'
+
             if node.glyphString is None:
                 continue
             if newret and node.pos == 0:
@@ -2091,38 +2096,39 @@ class FontAttribPanelCore(uicls.Container):
 
     def ApplyAttributes(self, attributes):
         uicls.Container.ApplyAttributes(self, attributes)
-        self.sr.bold = uicls.Label(text='<b>B</b>', parent=self, autowidth=0, pos=(6, 0, 12, 0), align=uiconst.TOPLEFT, fontsize=14, color=(1.0, 1.0, 1.0, 0.6), mousehilite=1, state=uiconst.UI_NORMAL)
-        self.sr.italic = uicls.Label(text='<i>I</i>', parent=self, autowidth=0, pos=(18, 0, 12, 0), align=uiconst.TOPLEFT, fontsize=14, color=(1.0, 1.0, 1.0, 0.6), mousehilite=1, state=uiconst.UI_NORMAL)
-        self.sr.underline = uicls.Label(text='<u>U</u>', parent=self, autowidth=0, pos=(30, 0, 12, 0), align=uiconst.TOPLEFT, fontsize=14, color=(1.0, 1.0, 1.0, 0.6), mousehilite=1, state=uiconst.UI_NORMAL)
+        self.sr.bold = uicls.Label(text=localization.GetByLabel('/Carbon/UI/Controls/EditRichText/BoldSymbol'), parent=self, pos=(6, 0, 12, 0), align=uiconst.TOPLEFT, fontsize=14, color=(1.0, 1.0, 1.0, 0.6), mousehilite=1, state=uiconst.UI_NORMAL)
+        self.sr.italic = uicls.Label(text=localization.GetByLabel('/Carbon/UI/Controls/EditRichText/ItalicSymbol'), parent=self, pos=(18, 0, 12, 0), align=uiconst.TOPLEFT, fontsize=14, color=(1.0, 1.0, 1.0, 0.6), mousehilite=1, state=uiconst.UI_NORMAL)
+        self.sr.underline = uicls.Label(text=localization.GetByLabel('/Carbon/UI/Controls/EditRichText/UnderlineSymbol'), parent=self, pos=(30, 0, 12, 0), align=uiconst.TOPLEFT, fontsize=14, color=(1.0, 1.0, 1.0, 0.6), mousehilite=1, state=uiconst.UI_NORMAL)
         self.sr.bold.OnClick = self.ToggleBold
         self.sr.italic.OnClick = self.ToggleItalic
         self.sr.underline.OnClick = self.ToggleUnderline
-        self.sr.bold.hint = mls.UI_GENERIC_BOLD
-        self.sr.italic.hint = mls.UI_GENERIC_ITALIC
-        self.sr.underline.hint = mls.UI_GENERIC_UNDERLINE
+        self.sr.bold.hint = localization.GetByLabel('/Carbon/UI/Controls/EditRichText/Bold')
+        self.sr.italic.hint = localization.GetByLabel('/Carbon/UI/Controls/EditRichText/Italic')
+        self.sr.underline.hint = localization.GetByLabel('/Carbon/UI/Controls/EditRichText/Underline')
         self.sr.color = uicls.Container(parent=self, align=uiconst.RELATIVE, pos=(45, 2, 12, 12), state=uiconst.UI_NORMAL)
         uicls.Fill(parent=self.sr.color, pos=(1, 1, 1, 1))
         self.sr.colorborder = uicls.Frame(parent=self.sr.color, color=(1.0, 1.0, 1.0, 0.25))
         self.sr.color.OnClick = self.OnColorChange
-        self.sr.color.sr.hint = mls.UI_GENERIC_TEXTCOLOR
-        options = [['8', 8],
-         ['9', 9],
-         ['10', 10],
-         ['11', 11],
-         ['12', 12],
-         ['14', 14],
-         ['18', 18],
-         ['24', 24],
-         ['30', 30],
-         ['36', 36]]
+        self.sr.color.sr.hint = localization.GetByLabel('/Carbon/UI/Controls/EditRichText/TextColor')
+        options = [[localizationUtil.FormatNumeric(8), 8],
+         [localizationUtil.FormatNumeric(9), 9],
+         [localizationUtil.FormatNumeric(10), 10],
+         [localizationUtil.FormatNumeric(11), 11],
+         [localizationUtil.FormatNumeric(12), 12],
+         [localizationUtil.FormatNumeric(14), 14],
+         [localizationUtil.FormatNumeric(18), 18],
+         [localizationUtil.FormatNumeric(24), 24],
+         [localizationUtil.FormatNumeric(30), 30],
+         [localizationUtil.FormatNumeric(36), 36]]
         combo = uicls.Combo(parent=self, options=options, name='fontsize', select='12', callback=self.OnFontSizeChange, align=uiconst.TOPLEFT, pos=(67, 0, 0, 0), width=38)
         self.sr.comboFontSize = combo
-        self.sr.comboFontSize.SetHint(mls.UI_GENERIC_FONTSIZE)
-        self.sr.anchor = uicls.Label(text='url', parent=self, pos=(110, 3, 14, 16), color=(1.0, 1.0, 1.0, 0.6), align=uiconst.TOPLEFT, mousehilite=1, hint=mls.UI_SHARED_ADDLINKHINT, fontsize=9, hspace=1, state=uiconst.UI_NORMAL)
+        self.sr.comboFontSize.SetHint(localization.GetByLabel('/Carbon/UI/Controls/EditRichText/FontSize'))
+        self.sr.anchor = uicls.Label(text=localization.GetByLabel('/Carbon/UI/Controls/EditRichText/LinkSymbol'), parent=self, pos=(110, 3, 18, 16), color=(1.0, 1.0, 1.0, 0.6), align=uiconst.TOPLEFT, mousehilite=1, hint=localization.GetByLabel('/Carbon/UI/Controls/EditRichText/AddLink'), fontsize=9, hspace=1, state=uiconst.UI_NORMAL)
         self.sr.anchor.OnClick = self.AddAnchor
-        self.sr.clearnote = uicls.Label(text='C', parent=self, pos=(130, 0, 12, 16), color=(1.0, 1.0, 1.0, 0.6), align=uiconst.TOPLEFT, mousehilite=1, hint=mls.UI_SHARED_CLEARTEXT, fontsize=14, state=uiconst.UI_NORMAL)
+        self.sr.clearnote = uicls.Label(text=localization.GetByLabel('/Carbon/UI/Controls/EditRichText/ClearTextSymbol'), parent=self, pos=(130, 0, 12, 16), color=(1.0, 1.0, 1.0, 0.6), align=uiconst.TOPLEFT, mousehilite=1, hint=localization.GetByLabel('/Carbon/UI/Controls/EditRichText/ClearText'), fontsize=14, state=uiconst.UI_NORMAL)
         self.sr.clearnote.OnClick = self.ClearNote
-        self.sr.langIndicator = uicls.Label(text=sm.GetService('ime').GetLanguageIndicator(), parent=self, color=(1.0, 1.0, 1.0, 0.6), fontsize=12, width=14, height=16, align=uiconst.TOPRIGHT, state=uiconst.UI_DISABLED)
+        languageIndicator = sm.GetService('ime').GetLanguageIndicator()
+        self.sr.langIndicator = uicls.Label(text=languageIndicator, parent=self, color=(1.0, 1.0, 1.0, 0.6), fontsize=12, width=14, height=16, align=uiconst.TOPRIGHT, state=uiconst.UI_DISABLED)
         self.expanding = 0
         self.expanded = 0
 

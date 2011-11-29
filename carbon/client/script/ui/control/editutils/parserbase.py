@@ -30,7 +30,7 @@ class ParserBaseCore(object):
         self.tagdepth = 0
         self.readonly = 1
         self.htmldebug = 0
-        self.wordMeasurer = uicore.font.GetMeasurer()
+        self.wordMeasurer = trinity.Tr2FontMeasurer()
         self.glyphString = None
         self.plainload = 0
         self.title = None
@@ -131,7 +131,7 @@ class ParserBaseCore(object):
         f = getattr(self, 'OnData_%s' % (tag or ''), None)
         if f:
             f(data, attrs)
-        elif type(data) in types.StringTypes:
+        elif isinstance(data, basestring):
             data = self.StripText(data)
             if data:
                 self.AddTextToBuffer(data, fromW='Ondata')
@@ -166,10 +166,10 @@ class ParserBaseCore(object):
     def OnEnd_default(self, tag):
         idx = -1
         while self.attrStack[idx]['tag'] != tag:
-            log.LogWarn('Incorrect order of tags in html string, trying to close', tag, 'but lasttag is', self.attrStack[idx]['tag'])
+            log.LogInfo('Incorrect order of tags in html string, trying to close', tag, 'but lasttag is', self.attrStack[idx]['tag'])
             idx -= 1
             if len(self.attrStack) <= abs(idx):
-                log.LogWarn('Reached begining of attrStack while trying to close tag:', tag)
+                log.LogInfo('Reached begining of attrStack while trying to close tag:', tag)
                 return 
 
         self.attrStack.pop(idx)
@@ -251,11 +251,6 @@ class ParserBaseCore(object):
 
 
 
-    def GetDefaultFont(self):
-        return getattr(self, 'font', None) or fontConst.DEFAULT_FONT
-
-
-
     def _Reset(self):
         for form in self.sr.get('forms', []):
             if form is not None:
@@ -285,8 +280,6 @@ class ParserBaseCore(object):
         self.sr.form = None
         self.sr.select = None
         attrEntry = {}
-        attrEntry['font'] = getattr(self, 'defaultFont', None) or fontConst.DEFAULT_FONT
-        attrEntry['font-family'] = None
         attrEntry['font-size'] = getattr(self, 'defaultFontSize', 12)
         attrEntry['font-style'] = ''
         attrEntry['font-weight'] = ''
@@ -413,7 +406,7 @@ class ParserBaseCore(object):
          'URLHandler': self.sr.window}
         entry = uicls.ScrollEntryNode(**data)
         self.contentHeight = max(self.contentHeight, self.contentHeight + baseHeight)
-        self.contentWidth = max(lineWidth + lpush + rpush, self.contentWidth)
+        self.contentWidth = max(self.ReverseScaleDpi(lineWidth) + lpush + rpush, self.contentWidth)
         return entry
 
 
@@ -429,12 +422,10 @@ class ParserBaseCore(object):
     def Simplify(self, quiet = 0):
         rem = []
         for (idx, (stack, attrs,),) in enumerate(self.textbuffers):
-            oldFont = None
             oldSize = None
             oldColor = None
             oldFlags = None
             oldA = None
-            oldFontFamily = None
             i = 0
             while i < len(stack):
                 obj = stack[i]
@@ -446,11 +437,10 @@ class ParserBaseCore(object):
                         obj.color = (1.0, 0.65, 0.0, 1.0)
                         obj.lcolor = (1.0, 0.65, 0.0, 1.0)
                         obj.fontFlags |= fontflags.b | fontflags.u
-                    if obj.fontFamily == oldFontFamily and obj.fontSize == oldSize and obj.fontFlags == oldFlags and obj.color == oldColor and obj.a == oldA and stack[(i - 1)].type == '<text>':
+                    if obj.fontSize == oldSize and obj.fontFlags == oldFlags and obj.color == oldColor and obj.a == oldA and stack[(i - 1)].type == '<text>':
                         stack[(i - 1)].letters += obj.letters
                         stack.pop(i)
                         continue
-                    oldFontFamily = obj.fontFamily
                     oldSize = obj.fontSize
                     oldColor = obj.color
                     oldFlags = obj.fontFlags
@@ -496,8 +486,6 @@ class ParserBaseCore(object):
         obj.wordSpacing = self.attrStack[-1]['word-spacing']
         obj.letterSpacing = self.attrStack[-1]['letter-spacing']
         obj.fontSize = obj.fontsize = self.attrStack[-1]['font-size']
-        obj.fontFamily = self.attrStack[-1]['font-family']
-        obj.font = self.attrStack[-1]['font']
         return obj
 
 
@@ -516,13 +504,12 @@ class ParserBaseCore(object):
 
 
     def GetWidthInBuffer(self):
-        self.wordMeasurer.Reset(None)
+        self.wordMeasurer.Reset()
         for obj in self.textbuffer:
             if obj.type == '<overlay>':
                 continue
             elif obj.type == '<text>':
                 fParams = obj
-                fParams.font = obj.font
                 fParams.fontsize = obj.fontSize
                 fParams.letterspace = obj.letterSpacing
                 fParams.wordspace = obj.wordSpacing
@@ -533,7 +520,7 @@ class ParserBaseCore(object):
             elif obj.type in '<table><img><input>':
                 self.wordMeasurer.AddSpace(obj.width)
 
-        return self.wordMeasurer.cursor
+        return self.wordMeasurer.cursorX
 
 
 
@@ -662,11 +649,11 @@ class ParserBaseCore(object):
         curr = stackless.getcurrent()
         onMainThread = curr.is_main
         contentWidth = self.GetContentWidth()
-        startTime = blue.os.GetTime()
+        startTime = blue.os.GetWallclockTime()
         while contentWidth <= 0 and not onMainThread and not self.destroyed:
             blue.synchro.Yield()
             contentWidth = self.GetContentWidth()
-            if blue.os.TimeDiffInMs(startTime) > 500:
+            if blue.os.TimeDiffInMs(startTime, blue.os.GetWallclockTime()) > 500:
                 contentWidth = 256
                 warning = 'Someone is trying to load text into uicls.Edit which has 0 or less width. This controls visible state under desktop is: ' + str(uiutil.IsVisible(self)) + '. Edit location: ' + uiutil.GetTrace(self, trace='', div='/')
                 log.LogWarn(warning)
@@ -693,12 +680,12 @@ class ParserBaseCore(object):
                 fParams.italic = bool(obj.fontFlags & fontflags.i)
                 if astart is not None and aa != obj.a:
                     links.append((astart,
-                     s.width,
+                     uicore.ReverseScaleDpi(s.width),
                      aa,
                      acolor))
                     astart = None
                 if obj.a and astart is None:
-                    astart = s.width
+                    astart = uicore.ReverseScaleDpi(s.width)
                     aa = obj.a
                     acolor = obj.lcolor
                 if pos:
@@ -710,14 +697,14 @@ class ParserBaseCore(object):
                 objectWidth = obj.width
                 obj.inlineWidth = obj.control.width
                 obj.inlineHeight = obj.control.height
-                inlines.append((obj, s.GetWidth()))
+                inlines.append((obj, uicore.ReverseScaleDpi(s.GetWidth())))
                 s.AddSpace(fParams, objectWidth)
             else:
                 s.AddSpace(fParams, obj.width)
 
         if astart is not None:
             links.append((astart,
-             s.width,
+             uicore.ReverseScaleDpi(s.width),
              aa,
              acolor))
         i = linewidth = lastlinepos = lastspace = lastlinewidth = lslinewidth = xpos = 0
@@ -725,15 +712,16 @@ class ParserBaseCore(object):
         contentWidth = self.GetContentWidth()
         maxwidth = contentWidth - (lpush + rpush)
         for t in s:
+            advance = uicore.ReverseScaleDpi(t[0])
             if t[4] == u' ':
                 lastspace = i + 1
-                lslinewidth = linewidth + t[0]
-            linewidth += t[0]
-            xpos += t[0]
+                lslinewidth = linewidth + advance
+            linewidth += advance
+            xpos += advance
             if linewidth > maxwidth:
                 if lastspace == lastlinepos:
                     lastspace = i
-                    lslinewidth = linewidth - t[0]
+                    lslinewidth = linewidth - advance
                 line = uicore.font.GetGlyphString()
                 line.shadow = None
                 line += s[lastlinepos:lastspace]
@@ -798,8 +786,8 @@ class ParserBaseCore(object):
         for (rpush, lpush, startpos, s, others,) in self.GetLine(textbuffer, abspos, recurse):
             (inlines, links,) = others
             bBox = s.GetBBox()
-            baseHeight = max(s.baseHeight, self.attrStack[-1]['line-height']) or self.attrStack[-1]['font-size']
-            baseLine = s.baseLine
+            baseHeight = max(uicore.ReverseScaleDpi(s.baseHeight), self.attrStack[-1]['line-height']) or self.attrStack[-1]['font-size']
+            baseLine = uicore.ReverseScaleDpi(s.baseLine)
             for (obj, pos,) in inlines:
                 objectWidth = obj.width
                 objectHeight = obj.height
@@ -1748,8 +1736,6 @@ class ParserBaseCore(object):
 
     def OnStart_font(self, attrs):
         s = {}
-        fontfamily = getattr(attrs, 'style', None) or self.attrStack[-1]['font-family']
-        s['font-family'] = fontfamily
         fontsize = getattr(attrs, 'size', None)
         basefontsize = None
         if unicode(fontsize).startswith('+') or unicode(fontsize).startswith('-'):
@@ -1897,7 +1883,6 @@ class ParserBaseCore(object):
 
 
     def OnStart_code(self, attrs):
-        s = {'font-family': fontConst.DEFAULT_FONT}
         self.OnStart_default('code', attrs, s)
         self.plainload = 1
 

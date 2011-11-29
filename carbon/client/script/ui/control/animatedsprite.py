@@ -25,7 +25,7 @@ class AnimSpriteCore(uicls.IconCore):
             if self.step >= self.steps:
                 self.step = 0
             self.LoadIcon(self.icons[self.step], ignoreSize=True)
-            blue.pyos.synchro.Sleep(125)
+            blue.pyos.synchro.SleepWallclock(125)
             if self.destroyed:
                 return 
             if not self.play and self.step == 0:

@@ -6,6 +6,7 @@ import listentry
 import uicls
 import uiconst
 import log
+import localization
 
 class CorpWars(uicls.Container):
     __guid__ = 'form.CorpWars'
@@ -13,16 +14,16 @@ class CorpWars(uicls.Container):
 
     def Load(self, args):
         if not self.sr.Get('inited', 0):
-            self.sr.headers = [mls.UI_GENERIC_STARTED,
-             mls.UI_GENERIC_ISSUEDBY,
-             mls.UI_CORP_AGAINST,
-             mls.UI_GENERIC_FINISHED,
-             mls.UI_CORP_CANFIGHT,
-             mls.UI_CORP_RETRACTED,
-             mls.UI_CORP_MUTUAL]
+            self.sr.headers = [localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/Started'),
+             localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/DeclaredBy'),
+             localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/DeclaredAgainst'),
+             localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/Finished'),
+             localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/CanFight'),
+             localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/Retracted'),
+             localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/Mutual')]
             self.sr.scroll = None
             self.sr.inited = 1
-            btns = [[mls.UI_CMD_SELECT,
+            btns = [[localization.GetByLabel('UI/Common/Buttons/Select'),
               self.SelectCorpOrAlliance,
               None,
               None]]
@@ -33,28 +34,28 @@ class CorpWars(uicls.Container):
              const.defaultPadding,
              const.defaultPadding,
              const.defaultPadding))
-            warTabs = [[mls.UI_CORP_OURWARS,
+            warTabs = [[localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/OurWars'),
               self,
               self,
-              'our'], [mls.UI_CORP_OTHERWARS,
+              'our'], [localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/OtherWars'),
               self,
               self,
               'all']]
             if not util.IsNPC(eve.session.corpid) and const.corpRoleDirector & eve.session.corprole == const.corpRoleDirector or sm.GetService('corp').UserIsCEO():
-                warTabs += [[mls.UI_COMBATLOG_CONFIRMEDKILLS,
+                warTabs += [[localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/ConfirmedKills'),
                   self,
                   self,
-                  'combat_kills'], [mls.UI_COMBATLOG_RECORDEDLOSSES,
+                  'combat_kills'], [localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/RecordedLosses'),
                   self,
                   self,
                   'combat_losses']]
                 btnContainer = uicls.Container(name='pageBtnContainer', parent=self, align=uiconst.TOBOTTOM, idx=0, padBottom=const.defaultPadding)
                 btn = uix.GetBigButton(size=22, where=btnContainer, left=4, top=0, align=uiconst.TORIGHT)
-                btn.hint = mls.UI_GENERIC_VIEWMORE
+                btn.hint = localization.GetByLabel('UI/Common/ViewMore')
                 btn.state = uiconst.UI_HIDDEN
                 btn.sr.icon.LoadIcon('ui_23_64_2')
                 btn = uix.GetBigButton(size=22, where=btnContainer, left=4, top=0, align=uiconst.TOLEFT)
-                btn.hint = mls.UI_GENERIC_PREVIOUS
+                btn.hint = localization.GetByLabel('UI/Common/Previous')
                 btn.state = uiconst.UI_HIDDEN
                 btn.sr.icon.LoadIcon('ui_23_64_1')
                 btnContainer.height = max([ c.height for c in btnContainer.children ])
@@ -65,7 +66,7 @@ class CorpWars(uicls.Container):
             tabs = uicls.TabGroup(name='tabparent', parent=self, idx=0)
             tabs.Startup(warTabs, 'corporationwars')
             self.killentries = 25
-        sm.GetService('corpui').LoadTop('ui_7_64_7', mls.UI_CORP_WARS)
+        sm.GetService('corpui').LoadTop('ui_7_64_7', localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/WarsTitle'))
         self.myWars = 1
         self.viewingOwnerID = eve.session.allianceid or eve.session.corpid
         extrahint = ''
@@ -76,8 +77,8 @@ class CorpWars(uicls.Container):
             self.ShowWars()
         elif args.startswith('combat_'):
             self.ShowCombatLog(args)
-            extrahint = mls.UI_CORP_DELAYED15MINUTES
-        sm.GetService('corpui').LoadTop('ui_7_64_7', mls.UI_CORP_WARS, extrahint)
+            extrahint = localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/DelayedKillboardDetails')
+        sm.GetService('corpui').LoadTop('ui_7_64_7', localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/WarsTitle'), extrahint)
 
 
 
@@ -138,9 +139,9 @@ class CorpWars(uicls.Container):
             self.prevIDs.append(max(killIDs) + 1)
         noContentHintText = ''
         if combatType == 'kills':
-            noContentHintText = mls.UI_GENERIC_NOKILLSFOUND
+            noContentHintText = localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/NoKillsFound')
         elif combatType == 'losses':
-            noContentHintText = mls.UI_GENERIC_NOLOSSESFOUND
+            noContentHintText = localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/NoLossesFound')
         self.SetHint()
         self.sr.scroll.Load(contentList=scrolllist, headers=headers, noContentHint=noContentHintText)
 
@@ -214,13 +215,13 @@ class CorpWars(uicls.Container):
 
 
     def __GetLabel(self, war):
-        label = '%s<t>%s<t>%s<t>%s<t>%s<t>%s<t>%s' % (util.FmtDate(war.timeDeclared) if war.timeDeclared else mls.UI_GENERIC_UNKNOWN,
+        label = '%s<t>%s<t>%s<t>%s<t>%s<t>%s<t>%s' % (util.FmtDate(war.timeDeclared) if war.timeDeclared else localization.GetByLabel('UI/Common/Unknown'),
          cfg.eveowners.Get(war.declaredByID).name,
          cfg.eveowners.Get(war.againstID).name,
          util.FmtDate(war.timeFinished) if war.timeFinished else '',
-         mls.UI_GENERIC_YES if util.IsWarInHostileState(war) else mls.UI_GENERIC_NO if war.timeDeclared else mls.UI_GENERIC_YES,
+         localization.GetByLabel('UI/Common/Yes') if util.IsWarInHostileState(war) else localization.GetByLabel('UI/Common/No') if war.timeDeclared else localization.GetByLabel('UI/Common/Yes'),
          util.FmtDate(war.retracted) if war.retracted is not None else '',
-         mls.UI_GENERIC_YES if war.mutual else mls.UI_GENERIC_NO)
+         localization.GetByLabel('UI/Common/Yes') if war.mutual else localization.GetByLabel('UI/Common/No'))
         return label
 
 
@@ -248,7 +249,7 @@ class CorpWars(uicls.Container):
     def ShowAllWars(self, *args):
         self.myWars = 0
         self.toolbarContainer.state = uiconst.UI_NORMAL
-        self.sr.scroll.Load(contentList=[], headers=self.sr.headers, noContentHint=mls.UI_CORP_SELECTCORPORALLIANCE)
+        self.sr.scroll.Load(contentList=[], headers=self.sr.headers, noContentHint=localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/SelectCorpOrAlliance'))
 
 
 
@@ -310,7 +311,9 @@ class CorpWars(uicls.Container):
                     self._CorpWars__AddToList(war, scrolllist)
 
 
-            self.sr.scroll.Load(contentList=scrolllist, headers=self.sr.headers, noContentHint=mls.UI_CORP_SOMEONEISNOTINVOLVED % {'who': cfg.eveowners.Get(self.viewingOwnerID).ownerName})
+            corpName = cfg.eveowners.Get(self.viewingOwnerID).ownerName
+            notContentHint = localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/CorpOrAllianceNotInvolvedInWars', corpName=corpName)
+            self.sr.scroll.Load(contentList=scrolllist, headers=self.sr.headers, noContentHint=notContentHint)
 
         finally:
             sm.GetService('corpui').HideLoad()
@@ -319,7 +322,7 @@ class CorpWars(uicls.Container):
 
 
     def SelectCorpOrAlliance(self, *args):
-        dlg = sm.GetService('window').GetWindow('CorporationOrAlliancePickerDailog', 1, warableEntitysOnly=True)
+        dlg = form.CorporationOrAlliancePickerDailog.Open(warableEntitysOnly=True)
         dlg.ShowModal()
         if dlg.ownerID:
             self.PopulateView(dlg.ownerID)
@@ -344,14 +347,17 @@ class CorpWars(uicls.Container):
         menu = []
         if entry.sr.node.war.warID != -1:
             if entry.sr.node.war.againstID in [eve.session.corpid, eve.session.allianceid] and entry.sr.node.war.retracted == None:
-                menu.append((mls.UI_CMD_SURRENDER, self.Surrender, (entry.sr.node.war.declaredByID, entry.sr.node.war.againstID, entry.sr.node.war.warID)))
+                menu.append((localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/SurrenderMenuOption'), self.Surrender, (entry.sr.node.war.declaredByID, entry.sr.node.war.againstID, entry.sr.node.war.warID)))
                 if 0 == entry.sr.node.war.mutual:
-                    menu.append((mls.UI_CMD_DECLAREMUTUAL, self.ChangeMutualWarFlag, (entry.sr.node.war.warID, 1)))
+                    label = localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/DeclareMutualMenuOption')
+                    menu.append((label, self.ChangeMutualWarFlag, (entry.sr.node.war.warID, 1)))
                 else:
-                    menu.append((mls.UI_CMD_CANCELMUTUAL, self.ChangeMutualWarFlag, (entry.sr.node.war.warID, 0)))
+                    label = localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/CancelMutualMenuOption')
+                    menu.append((label, self.ChangeMutualWarFlag, (entry.sr.node.war.warID, 0)))
             if entry.sr.node.war.declaredByID in [eve.session.corpid, eve.session.allianceid] and entry.sr.node.war.retracted == None:
                 if self.IsInCharge():
-                    menu.append((mls.UI_CORP_RETRACT, self.Retract, (entry.sr.node.war.warID,)))
+                    label = localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/RetractMenuOption')
+                    menu.append((label, self.Retract, (entry.sr.node.war.warID,)))
         return menu
 
 
@@ -359,9 +365,9 @@ class CorpWars(uicls.Container):
     def Retract(self, warID, *args):
         if not self.IsInCharge():
             if eve.session.allianceid is not None:
-                raise UserError('CrpAccessDenied', {'reason': mls.UI_CORP_ACCESSDENIED11})
+                raise UserError('CrpAccessDenied', {'reason': localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/AccessDeniedNotDirector')})
             else:
-                raise UserError('CrpAccessDenied', {'reason': mls.UI_CORP_ACCESSDENIED12})
+                raise UserError('CrpAccessDenied', {'reason': localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/AccessDeniedNotCEO')})
         if eve.Message('CrpConfirmRetractWar', {}, uiconst.YESNO) == uiconst.ID_YES:
             if eve.session.allianceid is not None:
                 sm.GetService('alliance').RetractWar(warID)
@@ -374,9 +380,9 @@ class CorpWars(uicls.Container):
     def ChangeMutualWarFlag(self, warID, mutual, *args):
         if not self.IsInCharge():
             if eve.session.allianceid is not None:
-                raise UserError('CrpAccessDenied', {'reason': mls.UI_CORP_ACCESSDENIED11})
+                raise UserError('CrpAccessDenied', {'reason': localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/AccessDeniedNotDirector')})
             else:
-                raise UserError('CrpAccessDenied', {'reason': mls.UI_CORP_ACCESSDENIED12})
+                raise UserError('CrpAccessDenied', {'reason': localization.GetByLabel('UI/Corporations/CorporationWindow/Wars/AccessDeniedNotCEO')})
         if eve.Message(['CrpConfirmUnmutualWar', 'CrpConfirmMutualWar'][mutual], {}, uiconst.YESNO) == uiconst.ID_YES:
             if eve.session.allianceid is not None:
                 sm.GetService('alliance').ChangeMutualWarFlag(warID, mutual)

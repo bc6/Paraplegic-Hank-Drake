@@ -144,7 +144,7 @@ class ConeControlBracket(uicls.Container):
         self._drag = False
         self._rangeMode = False
         self._angleMode = False
-        self.sr.readout = uicls.Label(text='', parent=self, state=uiconst.UI_DISABLED, left=20)
+        self.sr.readout = uicls.EveLabelMedium(text='', parent=self, state=uiconst.UI_DISABLED, left=20)
 
 
 

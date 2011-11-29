@@ -88,16 +88,12 @@ class PlayerOwnedTargetMgr(service.Service):
 
 
     def ShowTargetingCursor(self):
-        nav = uix.GetInflightNav()
-        if nav:
-            nav.sr.tcursor.state = uiconst.UI_DISABLED
+        uicore.layer.inflight.sr.tcursor.display = True
 
 
 
     def HideTargetingCursor(self):
-        nav = uix.GetInflightNav()
-        if nav:
-            nav.sr.tcursor.state = uiconst.UI_HIDDEN
+        uicore.layer.inflight.sr.tcursor.display = False
 
 
 

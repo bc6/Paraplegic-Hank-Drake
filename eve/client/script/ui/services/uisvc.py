@@ -1,19 +1,12 @@
 import service
-import uix
 import uiutil
 import uiconst
 import mathUtil
 import uthread
-import util
 import log
 import blue
-import menu
 import form
-import _weakref
 import trinity
-import draw
-import types
-import base
 import sys
 from util import ResFile
 
@@ -83,7 +76,7 @@ class UI(service.Service):
 
 
 
-    def BlinkSpriteA(self, sprite, a, time = 1000.0, maxCount = 10, passColor = 1, minA = 0.0):
+    def BlinkSpriteA(self, sprite, a, time = 1000.0, maxCount = 10, passColor = 1, minA = 0.0, timeFunc = blue.os.GetWallclockTime):
         if not hasattr(self, 'blinksA'):
             self.blinksA = {}
         key = id(sprite)
@@ -92,7 +85,8 @@ class UI(service.Service):
          minA,
          time,
          maxCount,
-         passColor)
+         passColor,
+         timeFunc)
         if key in getattr(self, 'remPending', []):
             self.remPending.remove(key)
         if not getattr(self, 'blink_running', False):
@@ -101,7 +95,7 @@ class UI(service.Service):
 
 
 
-    def BlinkSpriteRGB(self, sprite, r, g, b, time = 1000.0, maxCount = 10, passColor = 1):
+    def BlinkSpriteRGB(self, sprite, r, g, b, time = 1000.0, maxCount = 10, passColor = 1, timeFunc = blue.os.GetWallclockTime):
         if not hasattr(self, 'blinksRGB'):
             self.blinksRGB = {}
         key = id(sprite)
@@ -111,7 +105,8 @@ class UI(service.Service):
          b,
          time,
          maxCount,
-         passColor)
+         passColor,
+         timeFunc)
         if key in getattr(self, 'remPending', []):
             self.remPending.remove(key)
         if not getattr(self, 'blink_running', False):
@@ -121,7 +116,7 @@ class UI(service.Service):
 
 
     def _BlinkThread(self):
-        start = blue.os.GetTime()
+        startTimes = {}
         countsA = {}
         countsRGB = {}
         if not hasattr(self, 'blinksA'):
@@ -132,10 +127,10 @@ class UI(service.Service):
             while 1:
                 if not self:
                     return 
-                diff = blue.os.TimeDiffInMs(start)
+                diffTimes = {}
                 rem = []
                 for (key, each,) in self.blinksA.iteritems():
-                    (sprite, a, minA, time, maxCount, passColor,) = each
+                    (sprite, a, minA, time, maxCount, passColor, timeFunc,) = each
                     if not sprite or sprite.destroyed:
                         rem.append(key)
                         continue
@@ -147,6 +142,12 @@ class UI(service.Service):
                         rem.append(key)
                         color.a = minA or a
                         continue
+                    now = timeFunc()
+                    try:
+                        diff = blue.os.TimeDiffInMs(now, startTimes[timeFunc])
+                    except KeyError:
+                        startTimes[timeFunc] = now
+                        diff = 0
                     pos = diff % time
                     if pos < time / 2.0:
                         ndt = min(pos / (time / 2.0), 1.0)
@@ -155,8 +156,8 @@ class UI(service.Service):
                         ndt = min((pos - time / 2.0) / (time / 2.0), 1.0)
                         color.a = mathUtil.Lerp(minA, a, ndt)
                     if key not in countsA:
-                        countsA[key] = blue.os.GetTime()
-                    if maxCount and blue.os.TimeDiffInMs(countsA[key]) / time > maxCount:
+                        countsA[key] = timeFunc()
+                    if maxCount and blue.os.TimeDiffInMs(countsA[key], timeFunc()) / time > maxCount:
                         rem.append(key)
                         color.a = minA or a
                         if key in countsA:
@@ -168,7 +169,7 @@ class UI(service.Service):
 
                 rem = []
                 for (key, each,) in self.blinksRGB.iteritems():
-                    (sprite, r, g, b, time, maxCount, passColor,) = each
+                    (sprite, r, g, b, time, maxCount, passColor, timeFunc,) = each
                     if not sprite or sprite.destroyed:
                         rem.append(key)
                         continue
@@ -182,6 +183,12 @@ class UI(service.Service):
                         color.g = g
                         color.b = b
                         continue
+                    now = timeFunc()
+                    try:
+                        diff = blue.os.TimeDiffInMs(now, startTimes[timeFunc])
+                    except KeyError:
+                        startTimes[timeFunc] = now
+                        diff = 0
                     pos = diff % time
                     if pos < time / 2.0:
                         ndt = min(pos / (time / 2.0), 1.0)
@@ -194,8 +201,8 @@ class UI(service.Service):
                         color.g = mathUtil.Lerp(0.0, g, ndt)
                         color.b = mathUtil.Lerp(0.0, b, ndt)
                     if key not in countsRGB:
-                        countsRGB[key] = blue.os.GetTime()
-                    if maxCount and blue.os.TimeDiffInMs(countsRGB[key]) / time > maxCount:
+                        countsRGB[key] = timeFunc()
+                    if maxCount and blue.os.TimeDiffInMs(countsRGB[key], timeFunc()) / time > maxCount:
                         rem.append(key)
                         color.r = r
                         color.g = g
@@ -222,22 +229,22 @@ class UI(service.Service):
 
 
 
-    def Fade(self, fr, to, sprite, time = 500.0):
+    def Fade(self, fr, to, sprite, time = 500.0, timeFunc = blue.os.GetWallclockTime):
         ndt = 0.0
-        start = blue.os.GetTime(1)
+        start = timeFunc()
         while ndt != 1.0:
-            ndt = min(blue.os.TimeDiffInMs(start) / time, 1.0)
+            ndt = min(blue.os.TimeDiffInMs(start, timeFunc()) / time, 1.0)
             sprite.color.a = mathUtil.Lerp(fr, to, ndt)
             blue.pyos.synchro.Yield()
 
 
 
 
-    def FadeRGB(self, fr, to, sprite, time = 500.0):
+    def FadeRGB(self, fr, to, sprite, time = 500.0, timeFunc = blue.os.GetWallclockTime):
         ndt = 0.0
-        start = blue.os.GetTime(1)
+        start = timeFunc()
         while ndt != 1.0:
-            ndt = min(float(blue.os.TimeDiffInMs(start)) / float(time), 1.0)
+            ndt = min(float(blue.os.TimeDiffInMs(start, timeFunc())) / float(time), 1.0)
             sprite.color.r = mathUtil.Lerp(fr[0], to[0], ndt)
             sprite.color.g = mathUtil.Lerp(fr[1], to[1], ndt)
             sprite.color.b = mathUtil.Lerp(fr[2], to[2], ndt)
@@ -246,18 +253,18 @@ class UI(service.Service):
 
 
 
-    def Rotate(self, uitransform, time = 1.0, fromRot = 360.0, toRot = 0.0):
-        uthread.new(self._Rotate, uitransform, time, fromRot, toRot)
+    def Rotate(self, uitransform, time = 1.0, fromRot = 360.0, toRot = 0.0, timeFunc = blue.os.GetWallclockTime):
+        uthread.new(self._Rotate, uitransform, time, fromRot, toRot, timeFunc)
 
 
 
-    def _Rotate(self, uitransform, time, fromRot, toRot):
+    def _Rotate(self, uitransform, time, fromRot, toRot, timeFunc):
         time *= 1000
         i = 0
         while not uitransform.destroyed:
-            (start, ndt,) = (blue.os.GetTime(), 0.0)
+            (start, ndt,) = (timeFunc(), 0.0)
             while ndt != 1.0:
-                ndt = max(ndt, min(blue.os.TimeDiffInMs(start) / time, 1.0))
+                ndt = max(ndt, min(blue.os.TimeDiffInMs(start, timeFunc()) / time, 1.0))
                 deg = mathUtil.Lerp(fromRot, toRot, ndt)
                 rad = mathUtil.DegToRad(deg)
                 uitransform.SetRotation(rad)
@@ -278,21 +285,6 @@ class UI(service.Service):
     def ForceCursorUpdate(self):
         if uicore.uilib:
             uicore.UpdateCursor(uicore.uilib.mouseOver, 1)
-
-
-
-    def SortGlobalLayer(self):
-        order = ['mapbrowser',
-         'neocom',
-         'mapbutton',
-         'locationInfo']
-        order.reverse()
-        glbl = uicore.layer.main
-        for each in order:
-            wnd = uiutil.FindChild(glbl, each)
-            if wnd:
-                uiutil.SetOrder(wnd, 0)
-
 
 
 
@@ -348,8 +340,6 @@ class UI(service.Service):
     def CheckCtrlUp(self, wnd, msgID, ckey):
         sm.StartService('tactical').RemoveDelayedOverviewEntries()
         self.freezeOverview = 0
-        if uix.GetInflightNav(0):
-            uix.GetInflightNav(0).CloseZoomCursor()
         if eve.chooseWndMenu and not eve.chooseWndMenu.destroyed and eve.chooseWndMenu.state != uiconst.UI_HIDDEN:
             eve.chooseWndMenu.ChooseHilited()
         eve.chooseWndMenu = None
@@ -361,9 +351,8 @@ class UI(service.Service):
         ctrl = uicore.uilib.Key(uiconst.VK_CONTROL)
         alt = uicore.uilib.Key(uiconst.VK_MENU)
         shift = uicore.uilib.Key(uiconst.VK_SHIFT)
-        if ctrl and alt and not shift and session.solarsystemid and not getattr(eve, 'chooseWndMenu', None) and uix.GetInflightNav(0):
-            uix.GetInflightNav(0).ShowZoomCursor()
-        elif not ctrl and alt and not shift and session.solarsystemid:
+        view = sm.GetService('viewState').GetCurrentView()
+        if not ctrl and alt and not shift and session.solarsystemid:
             sm.GetService('bracket').ShowAllHidden()
         return 1
 

@@ -6,7 +6,6 @@ import bluepy
 import uthread
 import log
 import yaml
-import types
 import TextureCompositor.TextureCompositor as tc
 import RenderTargetManager.RenderTargetManager as rtm
 import paperDoll as PD
@@ -22,28 +21,229 @@ COMPRESS_DXT1 = trinity.TR2DXT_COMPRESS_SQUISH_DXT1
 COMPRESS_DXT5 = trinity.TR2DXT_COMPRESS_SQUISH_DXT5
 COMPRESS_DXT5n = trinity.TR2DXT_COMPRESS_RT_DXT5N
 
+class UVCalculator(object):
+    UVs = {PD.DOLL_PARTS.HEAD: PD.HEAD_UVS,
+     PD.DOLL_PARTS.BODY: PD.BODY_UVS,
+     PD.DOLL_PARTS.HAIR: PD.HAIR_UVS,
+     PD.DOLL_PARTS.ACCESSORIES: PD.ACCE_UVS}
+
+    @staticmethod
+    def BoxCoversX(x, box):
+        if x >= box[0] and x < box[2]:
+            return True
+        return False
+
+
+
+    @staticmethod
+    def GetHeightAt(x, returnUVs):
+        height = 0
+        newX = x
+        for r in returnUVs:
+            if UVCalculator.BoxCoversX(x, r):
+                if r[3] > height:
+                    height = r[3]
+                    newX = r[2]
+
+        return (height, newX)
+
+
+
+    @staticmethod
+    def BoxIntersects(x, y, box, uv):
+        for vert in ((x, y),
+         (x + box[0], y),
+         (x, y + box[1]),
+         (x + box[0], y + box[1])):
+            if vert[0] > uv[0] and vert[0] < uv[2] and vert[1] > uv[1] and vert[1] < uv[3]:
+                return True
+
+        return False
+
+
+
+    @staticmethod
+    def BoxFits(x, y, box, target, returnUVs):
+        if x < 0 or x + box[0] > target[0] or y < 0:
+            return False
+        for r in returnUVs:
+            if UVCalculator.BoxIntersects(x, y, box, r):
+                return False
+
+        return True
+
+
+
+    @staticmethod
+    def PackTextures(textures, target):
+        watermark = 0
+        returnUVs = []
+        xinc = 0.001953125
+        for t in textures:
+            candidates = {}
+            minInc = 100000
+            x = 0.0
+            while x < 1.0:
+                currentX = x
+                (h, x,) = UVCalculator.GetHeightAt(currentX, returnUVs)
+                inc = h + t[1]
+                if UVCalculator.BoxFits(currentX, h, t, target, returnUVs):
+                    if inc < minInc:
+                        minInc = inc
+                        candidates[inc] = (currentX, h)
+                if x == currentX:
+                    x += xinc
+
+            if candidates:
+                final = candidates[minInc]
+                returnUVs.append((final[0],
+                 final[1],
+                 final[0] + t[0],
+                 final[1] + t[1]))
+                watermark = final[1] + t[1]
+
+        if watermark > target[1]:
+            factor = target[1] / watermark
+            for ix in xrange(len(returnUVs)):
+                returnUVs[ix] = [returnUVs[ix][0] * factor,
+                 returnUVs[ix][1] * factor,
+                 returnUVs[ix][2] * factor,
+                 returnUVs[ix][3] * factor]
+
+        return returnUVs
+
+
+
+    @staticmethod
+    def GetMapSize(modifier):
+        tag = PD.ACCESSORIES_CATEGORIES.ACCESSORIES
+        path = modifier.mapL.get(tag) or modifier.mapD.get(tag)
+        if path:
+            param = trinity.TriTexture2DParameter()
+            param.resourcePath = path
+            while param.resource.isLoading:
+                PD.Yield()
+
+            return (param.resource.width, param.resource.height)
+
+
+
+    @staticmethod
+    def CalculateAccessoryUVs(buildDataManager):
+        accesorieModifiers = buildDataManager.GetModifiersByPart(PD.DOLL_PARTS.ACCESSORIES, showHidden=True)
+        targetBox = (1.0, 1.0)
+        textures = []
+        for modifier in iter(accesorieModifiers):
+            adjustedSize = (0.0, 0.0)
+            amSize = modifier.accessoryMapSize or UVCalculator.GetMapSize(modifier)
+            if amSize:
+                adjustedSize = [amSize[0] / 512.0, amSize[1] / 512.0]
+                if adjustedSize[0] > 0.5:
+                    adjustedSize[0] = 0.5
+                if adjustedSize[1] > 0.5:
+                    adjustedSize[1] = 0.5
+            textures.append(adjustedSize)
+
+        result = UVCalculator.PackTextures(textures, targetBox)
+        for ix in xrange(len(accesorieModifiers)):
+            mod = accesorieModifiers[ix]
+            mod.ulUVs = (result[ix][0], result[ix][1])
+            mod.lrUVs = (result[ix][2], result[ix][3])
+
+
+
+
+    @staticmethod
+    def ApplyUVs(buildDataManager, renderDriver):
+        UVCalculator.CalculateAccessoryUVs(buildDataManager)
+        defaultUVs = dict(UVCalculator.UVs)
+        modifierGenerator = (modifier for modifier in buildDataManager.GetSortedModifiers() if modifier.weight > 0 if modifier.IsMeshContainingModifier())
+        for modifier in modifierGenerator:
+            meshes = list(modifier.meshes)
+            if modifier.clothData:
+                meshes.append(modifier.clothData)
+            modifierUVCategory = buildDataManager.CategoryToPart(modifier.categorie)
+            for mesh in iter(meshes):
+                uvCategory = modifierUVCategory
+                if uvCategory == PD.DOLL_PARTS.HAIR and hasattr(mesh, 'decalAreas') and mesh.decalAreas:
+                    for area in mesh.decalAreas:
+                        if 'stubble' in area.name.lower():
+                            uvCategory = PD.DOLL_PARTS.HEAD
+                            break
+
+                if hasattr(mesh, 'opaqueAreas') and hasattr(mesh, 'decalAreas') and hasattr(mesh, 'transparentAreas'):
+                    for area in tuple(mesh.opaqueAreas) + tuple(mesh.decalAreas) + tuple(mesh.transparentAreas):
+                        for category in defaultUVs:
+                            if category.lower() + 'uv' in area.name.lower():
+                                uvCategory = category
+                                break
+
+
+                fxs = PD.GetEffectsFromMesh(mesh)
+                for fx in iter(fxs):
+                    if type(fx) != trinity.Tr2ShaderMaterial and fx.effectResource and fx.effectResource.isLoading:
+                        while fx.effectResource.isLoading:
+                            PD.Yield()
+
+                    transformUV0 = None
+                    for effectParameter in iter(fx.parameters):
+                        if effectParameter.name == 'TransformUV0':
+                            transformUV0 = effectParameter
+                            break
+
+                    if not transformUV0:
+                        transformUV0 = trinity.Tr2Vector4Parameter()
+                        transformUV0.name = 'TransformUV0'
+                        fx.parameters.append(transformUV0)
+                    computedUVs = None
+                    if uvCategory == PD.DOLL_PARTS.ACCESSORIES:
+                        width = defaultUVs[uvCategory][2] - defaultUVs[uvCategory][0]
+                        height = defaultUVs[uvCategory][3] - defaultUVs[uvCategory][1]
+                        computedUVs = (defaultUVs[uvCategory][0] + modifier.ulUVs[0] * width,
+                         defaultUVs[uvCategory][1] + modifier.ulUVs[1] * height,
+                         defaultUVs[uvCategory][0] + modifier.lrUVs[0] * width,
+                         defaultUVs[uvCategory][1] + modifier.lrUVs[1] * height)
+                    elif type(mesh) is trinity.Tr2ClothingActor:
+                        computedUVs = (defaultUVs[uvCategory][0],
+                         defaultUVs[uvCategory][3],
+                         defaultUVs[uvCategory][2],
+                         defaultUVs[uvCategory][1])
+                    else:
+                        computedUVs = (defaultUVs[uvCategory][0],
+                         defaultUVs[uvCategory][1],
+                         defaultUVs[uvCategory][2],
+                         defaultUVs[uvCategory][3])
+                    transformUV0.value = computedUVs
+
+
+            renderDriver.OnModifierUVChanged(modifier)
+
+
+
+
+
 class UpdateRuleBundle(object):
+    __metaclass__ = bluepy.CCP_STATS_ZONE_PER_METHOD
     __guid__ = 'paperDoll.UpdateRuleBundle'
-    blendShapesOnly = property(fget=lambda self: self._UpdateRuleBundle__blendShapesOnly)
-    decalsOnly = property(fget=lambda self: self._UpdateRuleBundle__decalsOnly)
-
-    def setdoDecals(self, value):
-        self._UpdateRuleBundle__doDecals = value
-
-
-    doDecals = property(fget=lambda self: self._UpdateRuleBundle__doDecals or self._UpdateRuleBundle__decalsOnly, fset=setdoDecals)
 
     def __init__(self):
         self.forcesLooseTop = False
         self.hidesBootShin = False
+        self.swapTops = False
+        self.swapBottom = False
+        self.swapSocks = False
         self.undoMaskedShaders = False
         self.rebuildHair = False
         self.mapsToComposite = list(PD.MAPS)
-        self._UpdateRuleBundle__blendShapesOnly = False
-        self._UpdateRuleBundle__decalsOnly = False
-        self.meshesAddedOrRemoved = False
+        self.blendShapesOnly = False
+        self.decalsOnly = False
+        self.doDecals = False
+        self.doBlendShapes = False
+        self.doStubble = False
+        self.meshesChanged = False
         self.partsToComposite = []
-        self._UpdateRuleBundle__doDecals = False
+        self.dirtyDecalModifiers = []
+        self.videoMemoryFailure = False
 
 
 
@@ -56,18 +256,33 @@ class UpdateRuleBundle(object):
 
 
 
-    def SetBlendShapesOnly(self, value):
-        self._UpdateRuleBundle__blendShapesOnly = value
+    def DiscoverState(self, dirtyModifiers, avatar):
+        allModifiersBlendShapes = False
+        someModifiersBlendShapes = False
+        allModifiersDecals = False
+        someModifiersDecals = False
+        for modifier in iter(dirtyModifiers):
+            isBlendShapeModifier = modifier.IsBlendshapeModifier()
+            isDecalModifier = not isBlendShapeModifier and modifier.decalData is not None and (modifier.IsDirty or not modifier.IsTextureContainingModifier())
+            if modifier.stubblePath:
+                self.doStubble = True
+            if isDecalModifier:
+                self.dirtyDecalModifiers.append(modifier)
+            someModifiersBlendShapes = isBlendShapeModifier or someModifiersBlendShapes
+            allModifiersBlendShapes = isBlendShapeModifier and allModifiersBlendShapes
+            someModifiersDecals = isDecalModifier or someModifiersDecals
+            allModifiersDecals = isDecalModifier and allModifiersDecals
 
-
-
-    def SetDecalsOnly(self, value):
-        self._UpdateRuleBundle__decalsOnly = value
+        self.blendShapesOnly = allModifiersBlendShapes
+        self.decalsOnly = allModifiersDecals and avatar is not None
+        self.doBlendShapes = someModifiersBlendShapes
+        self.doDecals = someModifiersDecals and avatar is not None
 
 
 
 
 class MapBundle(object):
+    __metaclass__ = bluepy.CCP_STATS_ZONE_PER_METHOD
     __guid__ = 'paperDoll.MapBundle'
 
     def __init__(self):
@@ -77,10 +292,10 @@ class MapBundle(object):
         self.maskMap = None
         self.baseResolution = None
         self.hashKeys = {}
-        self.mapResolutions = {}
-        self.mapResolutionRatios = {}
+        self.mapResolutions = {PD.MASK_MAP: PD.PerformanceOptions.maskMapTextureSize}
+        self.mapResolutionFactors = {}
         self.SetBaseResolution(2048, 1024)
-        self._busyDownScaling = False
+        self.busyDownScaling = False
 
 
 
@@ -99,8 +314,9 @@ class MapBundle(object):
 
     def SetBaseResolution(self, width, height):
         self.baseResolution = (width, height)
-        for mapType in PD.MAPS:
-            self.SetMapTypeResolutionRatio(mapType, self.mapResolutionRatios.get(mapType, PD.MAPSIZERATIOS[mapType]))
+        for mapType in PD.RESIZABLE_MAPS:
+            factor = self.mapResolutionFactors.get(mapType, PD.PerformanceOptions.textureSizeFactors[mapType])
+            self.SetMapTypeResolutionFactor(mapType, factor)
 
 
 
@@ -129,16 +345,17 @@ class MapBundle(object):
     def DoAsyncDownScale(self, mapType, mapSource, resolution):
 
         def fun(mapType, mapSource, resolution):
-            while self._busyDownScaling:
-                blue.synchro.Yield()
+            while self.busyDownScaling:
+                PD.Yield(frameNice=False)
 
-            self._busyDownScaling = True
+            self.busyDownScaling = True
             sourceIsCompressed = mapSource.format == trinity.TRIFMT_DXT5
-            targetTex = trinity.device.CreateTexture(resolution[0], resolution[1], 1, 0, trinity.TRIFMT_A8R8G8B8, trinity.TRIPOOL_MANAGED)
+            targetTex = trinity.device.CreateTexture(resolution[0], resolution[1], 1, trinity.TRIUSAGE_DYNAMIC if trinity.device.UsingEXDevice() else 0, trinity.TRIFMT_A8R8G8B8, trinity.TRIPOOL_DEFAULT if trinity.device.UsingEXDevice() else trinity.TRIPOOL_MANAGED)
             fx = trinity.Tr2Effect()
             fx.effectFilePath = 'res:/Graphics/Effect/Utility/Compositing/Copyblit.fx'
+            PD.BeFrameNice()
             while fx.effectResource.isLoading:
-                blue.synchro.Yield()
+                PD.Yield()
 
             v = trinity.Tr2Vector4Parameter()
             v.name = 'SourceUVs'
@@ -151,7 +368,12 @@ class MapBundle(object):
             vp = trinity.TriViewport()
             vp.width = targetTex.width
             vp.height = targetTex.height
-            renderTarget = trinity.TriSurfaceManaged(trinity.device.CreateRenderTarget, vp.width, vp.height, trinity.TRIFMT_A8R8G8B8, trinity.TRIMULTISAMPLE_NONE, 0, 1)
+            try:
+                renderTarget = RTM.GetRenderTarget(trinity.TRIFMT_A8R8G8B8, vp.width, vp.height)
+            except (trinity.E_OUTOFMEMORY, trinity.D3DERR_OUTOFVIDEOMEMORY):
+                sys.exc_clear()
+                self.busyDownScaling = False
+                return 
             rj = trinity.CreateRenderJob('Resizing texture')
             rj.PushRenderTarget(renderTarget)
             rj.SetProjection(trinity.TriProjection())
@@ -171,7 +393,7 @@ class MapBundle(object):
             if sourceIsCompressed:
                 targetTex = Factory.PerformTextureCompression(targetTex, mapType)
             self.SetMapByTypeIndex(mapType, targetTex)
-            self._busyDownScaling = False
+            self.busyDownScaling = False
 
 
         t = uthread.new(fun, mapType, mapSource, resolution)
@@ -179,9 +401,14 @@ class MapBundle(object):
 
 
 
-    def SetMapTypeResolutionRatio(self, mapType, ratio):
-        self.mapResolutionRatios[mapType] = ratio
-        newResolution = (int(ratio * self.baseResolution[0]), int(ratio * self.baseResolution[1]))
+    def SetMapTypeResolutionFactor(self, mapType, factor):
+        oldFactor = self.mapResolutionFactors.get(mapType, 1)
+        self.mapResolutionFactors[mapType] = factor
+        shift = factor - 1
+        newResolution = (self.baseResolution[0] >> shift, self.baseResolution[1] >> shift)
+        if newResolution[0] < 16:
+            self.mapResolutionFactors[mapType] = oldFactor
+            return 
         oldResolution = self.mapResolutions.get(mapType, self.baseResolution)
         if newResolution[0] < oldResolution[0]:
             map = self[mapType]
@@ -208,16 +435,32 @@ class MapBundle(object):
 
 
 
-    def ReCreate(self):
+    def ReCreate(self, includeFixedSizeMaps = True):
         del self.diffuseMap
         del self.specularMap
         del self.normalMap
-        del self.maskMap
+        if includeFixedSizeMaps:
+            del self.maskMap
         self.diffuseMap = None
         self.specularMap = None
         self.normalMap = None
-        self.maskMap = None
-        self.hashKeys = {}
+        if includeFixedSizeMaps:
+            self.maskMap = None
+        for key in list(self.hashKeys.iterkeys()):
+            if not self[key]:
+                del self.hashKeys[key]
+
+
+
+
+    def __repr__(self):
+        s = 'Base resolution: w{}\th{}'.format(self.baseResolution[0], self.baseResolution[1])
+        for mapType in PD.MAPS:
+            if self[mapType]:
+                cMap = self[mapType]
+                s = '{}\n{}\tw{}\th{}'.format(s, PD.MAPNAMES[mapType], cMap.width, cMap.height)
+
+        return s
 
 
 
@@ -226,87 +469,6 @@ class MapBundle(object):
         del self.specularMap
         del self.normalMap
         del self.maskMap
-
-
-
-
-class PerformanceOptions():
-    __guid__ = 'paperDoll.PerformanceOptions'
-    useLodForRedfiles = False
-    if hasattr(const, 'PAPERDOLL_LOD_RED_FILES'):
-        useLodForRedfiles = const.PAPERDOLL_LOD_RED_FILES
-    collapseShadowMesh = False
-    if hasattr(const, 'PAPERDOLL_COLLAPSE_SHADOWMESH'):
-        collapseShadowMesh = const.PAPERDOLL_COLLAPSE_SHADOWMESH
-    collapseMainMesh = False
-    if hasattr(const, 'PAPERDOLL_COLLAPSE_MAINMESH'):
-        collapseMainMesh = const.PAPERDOLL_COLLAPSE_MAINMESH
-    collapsePLPMesh = False
-    if hasattr(const, 'PAPERDOLL_COLLAPSE_PLPMESH'):
-        collapsePLPMesh = const.PAPERDOLL_COLLAPSE_PLPMESH
-    preloadNudeAssets = False
-    if hasattr(const, 'PAPERDOLL_PRELOAD_NUDE_ASSETS'):
-        preloadNudeAssets = const.PAPERDOLL_PRELOAD_NUDE_ASSETS
-    shadowLod = 2
-    collapseVerbose = False
-    updateFreq = {}
-    useLod2DDS = False
-    logLodPerformance = False
-    maxLodQueueActive = 1
-
-    @staticmethod
-    def SetEnableYamlCache(enable, verbose = False, preloadModularLOD = True):
-
-        def SetEnableYamlCache_t(enable, verbose, preloadModularLOD):
-            if enable:
-                yamlPreloader = PD.YamlPreloader(verbose=verbose)
-                extensions = ['.yaml',
-                 '.pose',
-                 '.type',
-                 '.color']
-                yamlPreloader.Preload(rootFolder=PD.MALE_BASE_PATH, extensions=extensions)
-                yamlPreloader.Preload(rootFolder=PD.FEMALE_BASE_PATH, extensions=extensions)
-                if preloadModularLOD:
-                    maleModLodPath = PD.MALE_BASE_PATH.lower().replace('modular', 'modularlod')
-                    yamlPreloader.Preload(rootFolder=maleModLodPath, extensions=extensions)
-                    femaleModLodPath = PD.FEMALE_BASE_PATH.lower().replace('modular', 'modularlod')
-                    yamlPreloader.Preload(rootFolder=femaleModLodPath, extensions=extensions)
-                PD.YamlPreloader.instance = yamlPreloader
-            else:
-                PD.YamlPreloader.instance = None
-
-
-        uthread.new(SetEnableYamlCache_t, enable, verbose, preloadModularLOD)
-
-
-
-    @staticmethod
-    def SetEnableLodQueue(enable):
-        if enable:
-            PD.LodQueue.instance = PD.LodQueue()
-        else:
-            PD.LodQueue.instance = None
-
-
-
-    @staticmethod
-    def EnableOptimizations():
-        PerformanceOptions.useLodForRedfiles = True
-        PerformanceOptions.collapseShadowMesh = False
-        PerformanceOptions.collapseMainMesh = False
-        PerformanceOptions.collapsePLPMesh = False
-        PerformanceOptions.shadowLod = 1
-        PerformanceOptions.useLod2DDS = True
-        PerformanceOptions.updateFreq = {0: 0,
-         1: 20,
-         2: 8}
-        trinity.settings.SetValue('skinnedLowDetailThreshold', 250)
-        trinity.settings.SetValue('skinnedMediumDetailThreshold', 650)
-        PerformanceOptions.preloadNudeAssets = True
-        Factory.PreloadShaders()
-        PerformanceOptions.SetEnableYamlCache(True)
-        PerformanceOptions.SetEnableLodQueue(True)
-        PerformanceOptions.logLodPerformance = True
 
 
 
@@ -383,7 +545,6 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
         if gender:
             log.LogWarn('PaperDoll: Deprication warning, Gender is no longer a property of the Factory.')
         self.allowTextureCache = False
-        self.saveTexturesToDisk = False
         self.verbose = False
         self.skipCompositing = False
         self.preloadedResources = list()
@@ -393,7 +554,7 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
          PD.GENDER.FEMALE: None}
         self.PreloadShaders()
         uthread.new(self.PreloadGenericHeadsOnceLoaded_t)
-        if PerformanceOptions.preloadNudeAssets:
+        if PD.PerformanceOptions.preloadNudeAssets:
             uthread.new(self.PreloadNudeResources_t)
 
 
@@ -432,40 +593,37 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
 
     def PreloadNudeResources_t(self):
         while not self.IsLoaded:
-            blue.synchro.Yield()
+            PD.Yield()
 
-        settingKey = 'preloadTextureToDeviceOnPrepare'
-        originalSetting = trinity.settings.GetValue(settingKey)
-        trinity.settings.SetValue(settingKey, False)
-        for gender in PD.GENDER:
-            if gender == PD.GENDER.FEMALE:
-                basePath = PD.FEMALE_BASE_PATH
-            else:
-                basePath = PD.MALE_BASE_PATH
+        for genderData in self.resData.genderData.itervalues():
             for respath in PD.DEFAULT_NUDE_PARTS:
-                path = '{0}/{1}'.format(basePath, respath)
-                for (root, dirs, filenames,) in bluepy.walk(path):
-                    for filename in filenames:
-                        if '_4k' in filename:
+                entry = genderData.GetPathsToEntries()[respath]
+                filenames = entry.files
+                for filename in filenames:
+                    if '_4k' in filename:
+                        continue
+                    if 'wrinkle' in filename or filename.startswith('skinmap'):
+                        continue
+                    if filename.endswith('.png'):
+                        ddsTest = filename[:-4] + '.dds'
+                        if ddsTest in filenames:
                             continue
-                        resource = blue.resMan.GetResource('{0}/{1}'.format(root, filename))
-                        blue.synchro.Yield()
-                        if resource and resource not in self.preloadedResources:
-                            self.preloadedResources.append(resource)
+                    resourcePath = entry.GetFullResPath(filename)
+                    resource = blue.resMan.GetResource(resourcePath)
+                    if resource and resource not in self.preloadedResources:
+                        self.preloadedResources.append(resource)
 
 
 
-
-        trinity.settings.SetValue(settingKey, originalSetting)
 
 
 
     def PreloadGenericHeadsOnceLoaded_t(self):
         while not self.IsLoaded:
-            blue.synchro.Yield()
+            PD.Yield()
 
-        self.PreloadedGenericHeadModifiers[PD.GENDER.MALE] = self.CollectBuildData('head/head_generic', self.GetOptionsByGender(PD.GENDER.MALE))
-        self.PreloadedGenericHeadModifiers[PD.GENDER.FEMALE] = self.CollectBuildData('head/head_generic', self.GetOptionsByGender(PD.GENDER.FEMALE))
+        self.PreloadedGenericHeadModifiers[PD.GENDER.MALE] = self.CollectBuildData(PD.GENDER.MALE, 'head/head_generic')
+        self.PreloadedGenericHeadModifiers[PD.GENDER.FEMALE] = self.CollectBuildData(PD.GENDER.FEMALE, 'head/head_generic')
 
 
 
@@ -501,7 +659,6 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
         clothMorphValues = clothMorphValues if clothMorphValues is not None else {}
         blendShapeMeshCache = blendShapeMeshCache if blendShapeMeshCache is not None else {}
         loadingGrannyResources = {}
-        blue.statistics.EnterZone('ApplyMorphTargetsToMeshes::meshAnalysis')
         meshGenerator = (mesh for mesh in meshes if not (blendShapeMeshCache.get(mesh.name) and blendShapeMeshCache.get(mesh.name)[1].isGood))
         for mesh in meshGenerator:
             index = mesh.meshIndex
@@ -526,8 +683,6 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
             grannyResource = blue.resMan.GetResource(gr2, 'raw')
             loadingGrannyResources[mesh.name] = grannyResource
 
-        blue.statistics.LeaveZone()
-        blue.statistics.EnterZone('ApplyMorphTargetsToMeshes::loadYield')
         while doYield:
             doYield = False
             for lgr in loadingGrannyResources.itervalues():
@@ -537,14 +692,11 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
 
             if doYield:
                 try:
-                    blue.synchro.Yield()
+                    PD.Yield(frameNice=False)
                 except RuntimeError:
-                    blue.pyos.BeNice()
+                    PD.BeFrameNice()
 
-        blue.statistics.LeaveZone()
-        blue.statistics.EnterZone('ApplyMorphTargetsToMeshes::finalizeCache')
         if loadingGrannyResources:
-            StripDigits = PD.StripDigits
             meshCount = len(meshes)
             for mIdx in xrange(meshCount):
                 mesh = meshes[mIdx]
@@ -552,18 +704,12 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
                 index = mesh.meshIndex
                 if grannyResource and grannyResource.isGood and grannyResource.meshCount > index:
                     geometryRes = grannyResource.CreateGeometryRes()
-                    count = grannyResource.GetMeshMorphCount(index)
-                    morphNames = []
-                    for i in xrange(count):
-                        name = grannyResource.GetMeshMorphName(index, i)
-                        morphNames.append(StripDigits(name))
-
+                    geometryRes.name = 'PaperDoll: ' + mesh.name + ' morphed'
+                    morphNames = grannyResource.GetAllMeshMorphNamesNoDigits(index)
                     blendShapeMeshCache[mesh.name] = (grannyResource, geometryRes, morphNames)
                 elif loadingGrannyResources.get(mesh.name):
                     del loadingGrannyResources[mesh.name]
 
-        blue.statistics.LeaveZone()
-        blue.statistics.EnterZone('ApplyMorphTargetsToMeshes::bakeBlendshape')
         meshGenerator = (mesh for mesh in meshes if blendShapeMeshCache.get(mesh.name))
         for mesh in meshGenerator:
             (grannyResource, geometryRes, morphNames,) = blendShapeMeshCache[mesh.name]
@@ -578,7 +724,6 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
             for cm in clothMeshes:
                 Factory.ProcessBlendshapesForCloth(cm, morphTargets, avatar, clothMorphValues=clothMorphValues)
 
-        blue.statistics.LeaveZone()
 
 
 
@@ -589,7 +734,7 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
         if clothActor.morphRes is None:
             clothActor.morphRes = blue.resMan.GetResource(clothActor.resPath.lower().replace('.apb', '_bs.gr2'), 'raw')
         while clothActor.morphRes.isLoading:
-            blue.synchro.Yield()
+            PD.Yield()
 
         updateBlends = True
         if clothActor.morphRes.meshCount > 0:
@@ -617,44 +762,66 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
 
 
 
-    @bluepy.CCP_STATS_ZONE_METHOD
-    def BindGlobalMaps(self, meshes):
-        effects = []
+    @staticmethod
+    @bluepy.CCP_STATS_ZONE_FUNCTION
+    def BindMapsToMeshes(meshes, mapBundle, prepass = False):
+        colorNdotLLookupMap = 'ColorNdotLLookupMap'
+        fresnelLookupMap = 'FresnelLookupMap'
+        ndotLLibrary = 'res:/Texture/Global/NdotLLibrary.png'
         for mesh in iter(meshes):
-            effects += PD.GetEffectsFromMesh(mesh)
+            effects = PD.GetEffectsFromMesh(mesh, allowShaderMaterial=prepass, includePLP=prepass)
+            for fx in (effect for effect in effects if effect is not None):
+                if type(fx) != trinity.Tr2ShaderMaterial:
+                    for r in iter(fx.resources):
+                        if mapBundle.diffuseMap and r.name == PD.MAPNAMES[PD.DIFFUSE_MAP]:
+                            Factory.SetResourceTexture(r, mapBundle.diffuseMap)
+                        elif mapBundle.specularMap and r.name == PD.MAPNAMES[PD.SPECULAR_MAP]:
+                            Factory.SetResourceTexture(r, mapBundle.specularMap)
+                        elif mapBundle.normalMap and r.name == PD.MAPNAMES[PD.NORMAL_MAP]:
+                            Factory.SetResourceTexture(r, mapBundle.normalMap)
+                        elif mapBundle.maskMap and r.name == PD.MAPNAMES[PD.MASK_MAP]:
+                            Factory.SetResourceTexture(r, mapBundle.maskMap)
 
-        for each in iter(effects):
-            if each is None:
-                continue
-            NdotLres = None
-            FresnelLookupMapRes = None
-            if type(each) != trinity.Tr2ShaderMaterial:
-                for r in iter(each.resources):
-                    if r.name == 'ColorNdotLLookupMap':
-                        NdotLres = r
-                    elif r.name == 'FresnelLookupMap':
-                        FresnelLookupMapRes = r
+                elif type(fx) == trinity.Tr2ShaderMaterial:
+                    if mapBundle.diffuseMap and PD.MAPNAMES[PD.DIFFUSE_MAP] in fx.parameters:
+                        fx.parameters[PD.MAPNAMES[PD.DIFFUSE_MAP]].SetResource(mapBundle.diffuseMap)
+                    if mapBundle.specularMap and PD.MAPNAMES[PD.SPECULAR_MAP] in fx.parameters:
+                        fx.parameters[PD.MAPNAMES[PD.SPECULAR_MAP]].SetResource(mapBundle.specularMap)
+                    if mapBundle.normalMap and PD.MAPNAMES[PD.NORMAL_MAP] in fx.parameters:
+                        fx.parameters[PD.MAPNAMES[PD.NORMAL_MAP]].SetResource(mapBundle.normalMap)
+                    if mapBundle.maskMap and PD.MAPNAMES[PD.MASK_MAP] in fx.parameters:
+                        fx.parameters[PD.MAPNAMES[PD.MASK_MAP]].SetResource(mapBundle.maskMap)
+                    fx.RebuildCachedDataInternal()
+                ndotLres = None
+                fresnelLookupMapRes = None
+                if type(fx) != trinity.Tr2ShaderMaterial:
+                    for r in iter(fx.resources):
+                        if r.name == colorNdotLLookupMap:
+                            ndotLres = r
+                        elif r.name == fresnelLookupMap:
+                            fresnelLookupMapRes = r
 
-            if NdotLres is None:
-                res = trinity.TriTexture2DParameter()
-                res.name = 'ColorNdotLLookupMap'
-                res.resourcePath = 'res:/Texture/Global/NdotLLibrary.png'
-                if type(each) == trinity.Tr2ShaderMaterial:
-                    each.parameters[res.name] = res
+                if ndotLres is None:
+                    res = trinity.TriTexture2DParameter()
+                    res.name = colorNdotLLookupMap
+                    res.resourcePath = ndotLLibrary
+                    if type(fx) == trinity.Tr2ShaderMaterial:
+                        fx.parameters[res.name] = res
+                    else:
+                        fx.resources.append(res)
                 else:
-                    each.resources.append(res)
-            else:
-                NdotLres.resourcePath = 'res:/Texture/Global/NdotLLibrary.png'
-            if FresnelLookupMapRes is None:
-                res = trinity.TriTexture2DParameter()
-                res.name = 'FresnelLookupMap'
-                res.resourcePath = PD.FRESNEL_LOOKUP_MAP
-                if type(each) == trinity.Tr2ShaderMaterial:
-                    each.parameters[res.name] = res
+                    ndotLres.resourcePath = ndotLLibrary
+                if fresnelLookupMapRes is None:
+                    res = trinity.TriTexture2DParameter()
+                    res.name = fresnelLookupMap
+                    res.resourcePath = PD.FRESNEL_LOOKUP_MAP
+                    if type(fx) == trinity.Tr2ShaderMaterial:
+                        fx.parameters[res.name] = res
+                    else:
+                        fx.resources.append(res)
                 else:
-                    each.resources.append(res)
-            else:
-                FresnelLookupMapRes.resourcePath = PD.FRESNEL_LOOKUP_MAP
+                    fresnelLookupMapRes.resourcePath = PD.FRESNEL_LOOKUP_MAP
+
 
 
 
@@ -705,6 +872,7 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
                     rf = blue.ResFile()
                     if rf.FileExists(filePath):
                         rotPath = blue.rot.FilenameToPath(filePath)
+                        os.utime(filePath, None)
                         cachedTexture = blue.resMan.GetResourceW(rotPath)
                         return cachedTexture
         except Exception:
@@ -713,13 +881,14 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def SaveMaps(self, hashKey, textureWidth, maps):
+    def SaveMaps(self, hashKey, maps):
         cachePath = self.GetMapCachePath()
         if not cachePath:
             return 
         try:
             for (i, each,) in enumerate(maps):
                 if each is not None:
+                    textureWidth = each.width
                     filePath = self.GetCacheFilePath(cachePath, hashKey, textureWidth, i)
                     if filePath:
                         folder = os.path.split(filePath)[0]
@@ -821,13 +990,22 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
 
 
 
+    def RebindAnimations(self, avatar, visualModel):
+        if avatar:
+            avatar.ResetAnimationBindings()
+        elif visualModel:
+            visualModel.ResetAnimationBindings()
+
+
+
     @bluepy.CCP_STATS_ZONE_METHOD
     def CreateAnimationOffsets(self, avatar, doll):
         if avatar.animationUpdater and getattr(avatar.animationUpdater, 'network', None):
             if doll.boneOffsets:
-                for bone in doll.boneOffsets:
+                setOffset = avatar.animationUpdater.network.boneOffset.SetOffset
+                for bone in doll.boneOffsets.iterkeys():
                     trans = doll.boneOffsets[bone][PD.TRANSLATION]
-                    avatar.animationUpdater.network.boneOffset.SetOffset(bone, trans[0], trans[1], trans[2])
+                    setOffset(bone, *trans)
 
 
 
@@ -844,67 +1022,63 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
             genTex = genericHeadMod.mapN
         elif mapType == PD.MASK_MAP:
             genTex = genericHeadMod.mapMask
+        isNormalMap = mapType == PD.NORMAL_MAP
         if not partsToComposite or PD.DOLL_PARTS.BODY in partsToComposite:
+            PD.BeFrameNice()
             baseBodyTexture = genTex.get(PD.DOLL_PARTS.BODY, '')
             if baseBodyTexture:
-                comp.CopyBlitTexture(baseBodyTexture, self.GetSubRect(PD.DOLL_PARTS.BODY, w, h))
+                comp.CopyBlitTexture(baseBodyTexture, self.GetSubRect(PD.DOLL_PARTS.BODY, w, h), isNormalMap=isNormalMap, alphaMultiplier=0.0 if isNormalMap else 1.0)
             self._CompositeTexture(modifierList, PD.DOLL_PARTS.BODY, comp, mapType, w, h, addAlpha=True, lod=lod)
         if not partsToComposite or PD.DOLL_PARTS.HEAD in partsToComposite or PD.DOLL_PARTS.HAIR in partsToComposite:
+            PD.BeFrameNice()
             baseHeadTexture = genTex.get(PD.DOLL_PARTS.HEAD, '')
             if baseHeadTexture:
-                comp.CopyBlitTexture(baseHeadTexture, self.GetSubRect(PD.DOLL_PARTS.HEAD, w, h))
+                comp.CopyBlitTexture(baseHeadTexture, self.GetSubRect(PD.DOLL_PARTS.HEAD, w, h), isNormalMap=isNormalMap, alphaMultiplier=0.0 if isNormalMap else 1.0)
             self._CompositeTexture(modifierList, PD.DOLL_PARTS.HEAD, comp, mapType, w, h, addAlpha=False, lod=lod)
         if not partsToComposite or PD.DOLL_PARTS.HAIR in partsToComposite:
+            PD.BeFrameNice()
             self._CompositeTexture(modifierList, PD.DOLL_PARTS.HAIR, comp, mapType, w, h, addAlpha=False, lod=lod)
         if not partsToComposite or PD.DOLL_PARTS.ACCESSORIES in partsToComposite:
+            PD.BeFrameNice()
             self._CompositeTexture(modifierList, PD.DOLL_PARTS.ACCESSORIES, comp, mapType, w, h, addAlpha=False, lod=lod)
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def CompositeCombinedTexture(self, dollName, mapType, gender, buildDataManager, mapBundle, compressionSettings = None, textureCompositor = None, partsToComposite = None, copyToExistingTexture = False, lod = None):
+    def CompositeCombinedTexture(self, mapType, gender, buildDataManager, mapBundle, textureCompositor, compressionSettings = None, partsToComposite = None, copyToExistingTexture = False, lod = None):
         try:
             if compressionSettings is None:
                 compressionSettings = self
-            textureFormat = trinity.TRIFMT_A8R8G8B8
             (w, h,) = mapBundle.GetResolutionByMapType(mapType)
+            textureFormat = trinity.TRIFMT_A8R8G8B8
             renderTarget = RTM.GetRenderTarget(textureFormat, w, h)
-            if renderTarget.width < w:
-                log.LogWarn('PaperDoll:Factory:CompositeCombinedTexture - RenderTarget width less than requested due to low video memory.')
             w = renderTarget.width
             h = renderTarget.height
-            if textureCompositor is None:
-                comp = tc.TextureCompositor(renderTarget, targetWidth=w)
-            else:
-                comp = textureCompositor
-            comp.Start(clear=False)
+            textureCompositor.renderTarget = renderTarget
+            textureCompositor.targetWidth = w
+            textureCompositor.Start(clear=False)
             if mapBundle[mapType]:
-                comp.CopyBlitTexture(mapBundle[mapType])
-            self.CompositeStepsFunction(buildDataManager, gender, mapType, partsToComposite, comp, w, h, lod=lod)
-            comp.End()
-            while not comp.isReady:
-                blue.synchro.Yield()
+                textureCompositor.CopyBlitTexture(mapBundle[mapType])
+            self.CompositeStepsFunction(buildDataManager, gender, mapType, partsToComposite, textureCompositor, w, h, lod=lod)
+            textureCompositor.End()
+            while not textureCompositor.isReady:
+                PD.Yield()
 
             if copyToExistingTexture:
-                tex = comp.Finalize(textureFormat, w, h, generateMipmap=compressionSettings.generateMipmap, textureToCopyTo=mapBundle[mapType])
+                tex = textureCompositor.Finalize(textureFormat, w, h, generateMipmap=compressionSettings.generateMipmap, textureToCopyTo=mapBundle[mapType])
             else:
-                tex = comp.Finalize(textureFormat, w, h, generateMipmap=compressionSettings.generateMipmap)
-            comp.renderTarget = None
+                tex = textureCompositor.Finalize(textureFormat, w, h, generateMipmap=compressionSettings.generateMipmap)
+            textureCompositor.renderTarget = None
             compressedTexture = Factory.ApplyCompressionSettingToTexture(compressionSettings, tex, mapType)
             if compressedTexture:
                 tex = compressedTexture
-            if self.saveTexturesToDisk:
-                AddMarker('save')
-                cachePath = blue.rot.PathToFilename('cache:/Avatars/' + dollName)
-                if not os.path.exists(cachePath):
-                    os.makedirs(cachePath)
-                tex.SaveToDDS(cachePath + '/' + '/comp' + marker + '.dds')
-                tex.WaitForSave()
-                AddMarker('save done')
             return tex
+        except (trinity.E_OUTOFMEMORY, trinity.D3DERR_OUTOFVIDEOMEMORY):
+            raise 
         except TaskletExit:
             if textureCompositor:
                 textureCompositor.renderTarget = None
+            raise 
 
 
 
@@ -921,10 +1095,16 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
     @staticmethod
     def PerformTextureCompression(tex, mapType, qualityLevel = trinity.TR2DXT_COMPRESS_SQ_RANGE_FIT):
         AddMarker('compress')
-        compressedTexture = trinity.device.CreateTexture(tex.width, tex.height, 1, 0, trinity.TRIFMT_DXT5, trinity.TRIPOOL_MANAGED)
+        compressedTexture = trinity.device.CreateTexture(tex.width, tex.height, 1, trinity.TRIUSAGE_DYNAMIC if trinity.device.UsingEXDevice() else 0, trinity.TRIFMT_DXT5, trinity.TRIPOOL_DEFAULT if trinity.device.UsingEXDevice() else trinity.TRIPOOL_MANAGED)
         compressionFormat = COMPRESS_DXT5n if mapType is PD.NORMAL_MAP else COMPRESS_DXT5
+        while not compressedTexture.isPrepared:
+            PD.Yield(frameNice=False)
+
         try:
             trinity.device.CompressSurfaceWithQuality(tex.GetSurfaceLevel(0), compressedTexture.GetSurfaceLevel(0), compressionFormat, qualityLevel)
+            while not compressedTexture.isPrepared:
+                PD.Yield(frameNice=False)
+
         except TaskletExit:
             raise 
         AddMarker('compress done')
@@ -935,7 +1115,8 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
     @bluepy.CCP_STATS_ZONE_METHOD
     def _CompositeDiffuseMap(self, modifierList, bodyPart, textureCompositor, width, height, addAlpha = False, lod = 0):
         for m in iter(modifierList):
-            if m.stubblePath and lod < 0:
+            PD.BeFrameNice()
+            if m.stubblePath and lod in [PD.LOD_SKIN, PD.LOD_SCATTER_SKIN]:
                 continue
             subrect = self.GetSubRect(bodyPart, width, height, m)
             srcRect = None
@@ -944,19 +1125,20 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
             useAlphaTest = False
             if m.colorize and bodyPart in m.mapL:
                 if bodyPart not in m.mapO:
-                    m.mapO[bodyPart] = 'res:/texture/global/stub.dds'
+                    m.mapO[bodyPart] = PD.TEXTURE_STUB
                 if bodyPart not in m.mapZ:
-                    m.mapZ[bodyPart] = 'res:/texture/global/stub.dds'
+                    m.mapZ[bodyPart] = PD.TEXTURE_STUB
                 if m.categorie in (PD.BODY_CATEGORIES.SKINTONE,
+                 PD.BODY_CATEGORIES.SKINTYPE,
                  PD.HEAD_CATEGORIES.MAKEUP,
                  PD.BODY_CATEGORIES.TATTOO,
                  PD.BODY_CATEGORIES.SCARS,
                  PD.DOLL_EXTRA_PARTS.BODYSHAPES,
                  PD.HEAD_CATEGORIES.FACEMODIFIERS):
-                    if 'implants/' in m.name:
+                    if PD.MAKEUP_GROUPS.IMPLANTS in m.group:
                         skipAlpha = False
                         addAlpha = True
-                    elif 'eyelashes/' in m.name or 'eyebrows/' in m.name:
+                    elif PD.MAKEUP_GROUPS.EYELASHES in m.group or PD.MAKEUP_GROUPS.EYEBROWS in m.group:
                         skipAlpha = False
                         addAlpha = True
                         useAlphaTest = True
@@ -975,27 +1157,28 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
                 else:
                     colors = m.patternData
                     patternDir = self.GetPatternDir()
-                    patternPath = patternDir + '/' + m.pattern + '_z.dds'
+                    patternPath = '{0}/{1}_z.dds'.format(patternDir, m.pattern)
                     if blue.rot.loadFromContent:
                         if not os.path.exists(PD.OUTSOURCING_JESSICA_PATH):
                             patternPath = patternPath.replace('.dds', '.tga')
                     textureCompositor.PatternBlitTexture(patternPath, m.mapL[bodyPart], m.mapZ[bodyPart], m.mapO[bodyPart], colors[0], colors[1], colors[2], colors[3], colors[4], subrect, patternTransform=colors[5], patternRotation=colors[6], addAlpha=addAlpha, skipAlpha=skipAlpha)
             if bodyPart in texture and not (m.colorize and m.categorie == PD.BODY_CATEGORIES.TATTOO):
                 maskname = tname = texture[bodyPart]
-                if not (type(tname) in types.StringTypes and '/skin/generic/' in tname.lower()):
+                if not (isinstance(tname, basestring) and PD.SKIN_GENERIC_PATH in tname.lower()):
                     if bodyPart in texture:
                         maskname = texture[bodyPart]
                     elif bodyPart in m.mapL:
                         maskname = m.mapL[bodyPart]
                     skipAlpha = False
                     if m.categorie in (PD.BODY_CATEGORIES.SKINTONE,
+                     PD.BODY_CATEGORIES.SKINTYPE,
                      PD.HEAD_CATEGORIES.MAKEUP,
                      PD.BODY_CATEGORIES.TATTOO,
                      PD.BODY_CATEGORIES.SCARS,
                      PD.DOLL_EXTRA_PARTS.BODYSHAPES,
                      PD.HEAD_CATEGORIES.ARCHETYPES,
                      PD.HEAD_CATEGORIES.FACEMODIFIERS):
-                        if 'eyelashes/' in m.name:
+                        if PD.MAKEUP_GROUPS.EYELASHES in m.group:
                             skipAlpha = False
                             addAlpha = False
                         else:
@@ -1013,54 +1196,317 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def _CompositeSpecularMap(self, modifierList, bodyPart, textureCompositor, width, height, addAlpha = False, lod = 0):
-        for m in iter(modifierList):
-            if m.stubblePath and lod < 0:
-                continue
-            subrect = self.GetSubRect(bodyPart, width, height, m)
-            srcRect = None
-            skipAlpha = False
-            maskname = tname = m.mapSRG.get(bodyPart)
-            if bodyPart in m.mapSRG and not (m.categorie == PD.BODY_CATEGORIES.TATTOO or type(tname) in types.StringTypes and '/skin/generic/' in tname.lower()):
-                if bodyPart in m.mapD:
-                    maskname = m.mapD[bodyPart]
-                elif bodyPart in m.mapL:
-                    maskname = m.mapL[bodyPart]
-                skipAlpha = True
-                addAlpha = True
-                if m.useSkin:
-                    tname = tname.replace('_S.', '_SR.')
-                doColorizedStep = False
-                if m.colorize and m.specularColorData:
-                    doColorizedStep = bodyPart in m.mapL
-                    if bodyPart == PD.DOLL_PARTS.HAIR:
-                        textureCompositor.CopyBlitTexture(tname, subrect=subrect, srcRect=srcRect)
-                        doColorizedStep = True
-                    if doColorizedStep:
-                        if bodyPart not in m.mapO:
-                            m.mapO[bodyPart] = 'res:/texture/global/stub.dds'
-                        if bodyPart not in m.mapZ:
-                            m.mapZ[bodyPart] = 'res:/texture/global/stub.dds'
-                        colors = m.specularColorData
-                        textureCompositor.ColorizedBlitTexture(m.mapSRG[bodyPart], m.mapZ[bodyPart], m.mapO[bodyPart], colors[0], colors[1], colors[2], mask=maskname, subrect=subrect, addAlpha=addAlpha, skipAlpha=skipAlpha, weight=m.weight)
-                if not doColorizedStep:
-                    textureCompositor.BlitTexture(tname, maskname, m.weight, subrect=subrect, addAlpha=addAlpha, skipAlpha=skipAlpha, srcRect=srcRect, multAlpha=False)
-                if m.colorize and m.specularColorData and bodyPart in m.mapZ:
-                    values = (m.specularColorData[0][3],
-                     m.specularColorData[1][3],
-                     m.specularColorData[2][3],
-                     1.0)
-                    textureCompositor.BlitAlphaIntoAlphaWithMaskAndZones(tname, maskname, m.mapZ[bodyPart], values, subrect=subrect, srcRect=srcRect)
-                else:
-                    textureCompositor.BlitAlphaIntoAlphaWithMask(tname, maskname, subrect=subrect, srcRect=srcRect)
+    def _CompositeSpecularMap--- This code section failed: ---
+0	SETUP_LOOP        '801'
+3	LOAD_GLOBAL       'iter'
+6	LOAD_FAST         'modifierList'
+9	CALL_FUNCTION_1   ''
+12	GET_ITER          ''
+13	FOR_ITER          '800'
+16	STORE_FAST        'm'
+19	LOAD_GLOBAL       'PD'
+22	LOAD_ATTR         'BeFrameNice'
+25	CALL_FUNCTION_0   ''
+28	POP_TOP           ''
+29	LOAD_FAST         'm'
+32	LOAD_ATTR         'stubblePath'
+35	POP_JUMP_IF_FALSE '68'
+38	LOAD_FAST         'lod'
+41	LOAD_GLOBAL       'PD'
+44	LOAD_ATTR         'LOD_SKIN'
+47	LOAD_GLOBAL       'PD'
+50	LOAD_ATTR         'LOD_SCATTER_SKIN'
+53	BUILD_LIST_2      ''
+56	COMPARE_OP        'in'
+59_0	COME_FROM         '35'
+59	POP_JUMP_IF_FALSE '68'
+62	JUMP_BACK         '13'
+65	JUMP_FORWARD      '68'
+68_0	COME_FROM         '65'
+68	LOAD_FAST         'self'
+71	LOAD_ATTR         'GetSubRect'
+74	LOAD_FAST         'bodyPart'
+77	LOAD_FAST         'width'
+80	LOAD_FAST         'height'
+83	LOAD_FAST         'm'
+86	CALL_FUNCTION_4   ''
+89	STORE_FAST        'subrect'
+92	LOAD_CONST        ''
+95	STORE_FAST        'srcRect'
+98	LOAD_GLOBAL       'False'
+101	STORE_FAST        'skipAlpha'
+104	LOAD_FAST         'm'
+107	LOAD_ATTR         'mapSRG'
+110	LOAD_ATTR         'get'
+113	LOAD_FAST         'bodyPart'
+116	CALL_FUNCTION_1   ''
+119	DUP_TOP           ''
+120	STORE_FAST        'maskname'
+123	STORE_FAST        'tname'
+126	LOAD_FAST         'bodyPart'
+129	LOAD_FAST         'm'
+132	LOAD_ATTR         'mapSRG'
+135	COMPARE_OP        'in'
+138	POP_JUMP_IF_FALSE '13'
+141	LOAD_FAST         'm'
+144	LOAD_ATTR         'categorie'
+147	LOAD_GLOBAL       'PD'
+150	LOAD_ATTR         'BODY_CATEGORIES'
+153	LOAD_ATTR         'TATTOO'
+156	COMPARE_OP        '=='
+159	JUMP_IF_TRUE_OR_POP '195'
+162	LOAD_GLOBAL       'isinstance'
+165	LOAD_FAST         'tname'
+168	LOAD_GLOBAL       'basestring'
+171	CALL_FUNCTION_2   ''
+174	JUMP_IF_FALSE_OR_POP '195'
+177	LOAD_GLOBAL       'PD'
+180	LOAD_ATTR         'SKIN_GENERIC_PATH'
+183	LOAD_FAST         'tname'
+186	LOAD_ATTR         'lower'
+189	CALL_FUNCTION_0   ''
+192	COMPARE_OP        'in'
+195_0	COME_FROM         '159'
+195_1	COME_FROM         '174'
+195	UNARY_NOT         ''
+196	POP_JUMP_IF_FALSE '13'
+199	LOAD_FAST         'bodyPart'
+202	LOAD_FAST         'm'
+205	LOAD_ATTR         'mapD'
+208	COMPARE_OP        'in'
+211	POP_JUMP_IF_FALSE '230'
+214	LOAD_FAST         'm'
+217	LOAD_ATTR         'mapD'
+220	LOAD_FAST         'bodyPart'
+223	BINARY_SUBSCR     ''
+224	STORE_FAST        'maskname'
+227	JUMP_FORWARD      '261'
+230	LOAD_FAST         'bodyPart'
+233	LOAD_FAST         'm'
+236	LOAD_ATTR         'mapL'
+239	COMPARE_OP        'in'
+242	POP_JUMP_IF_FALSE '261'
+245	LOAD_FAST         'm'
+248	LOAD_ATTR         'mapL'
+251	LOAD_FAST         'bodyPart'
+254	BINARY_SUBSCR     ''
+255	STORE_FAST        'maskname'
+258	JUMP_FORWARD      '261'
+261_0	COME_FROM         '227'
+261_1	COME_FROM         '258'
+261	LOAD_GLOBAL       'True'
+264	STORE_FAST        'skipAlpha'
+267	LOAD_GLOBAL       'True'
+270	STORE_FAST        'addAlpha'
+273	LOAD_FAST         'm'
+276	LOAD_ATTR         'useSkin'
+279	POP_JUMP_IF_FALSE '303'
+282	LOAD_FAST         'tname'
+285	LOAD_ATTR         'replace'
+288	LOAD_CONST        '_S.'
+291	LOAD_CONST        '_SR.'
+294	CALL_FUNCTION_2   ''
+297	STORE_FAST        'tname'
+300	JUMP_FORWARD      '303'
+303_0	COME_FROM         '300'
+303	LOAD_GLOBAL       'False'
+306	STORE_FAST        'doColorizedStep'
+309	LOAD_FAST         'm'
+312	LOAD_ATTR         'colorize'
+315	POP_JUMP_IF_FALSE '577'
+318	LOAD_FAST         'm'
+321	LOAD_ATTR         'specularColorData'
+324_0	COME_FROM         '315'
+324	POP_JUMP_IF_FALSE '577'
+327	LOAD_FAST         'bodyPart'
+330	LOAD_FAST         'm'
+333	LOAD_ATTR         'mapL'
+336	COMPARE_OP        'in'
+339	STORE_FAST        'doColorizedStep'
+342	LOAD_FAST         'bodyPart'
+345	LOAD_GLOBAL       'PD'
+348	LOAD_ATTR         'DOLL_PARTS'
+351	LOAD_ATTR         'HAIR'
+354	COMPARE_OP        '=='
+357	POP_JUMP_IF_FALSE '394'
+360	LOAD_FAST         'textureCompositor'
+363	LOAD_ATTR         'CopyBlitTexture'
+366	LOAD_FAST         'tname'
+369	LOAD_CONST        'subrect'
+372	LOAD_FAST         'subrect'
+375	LOAD_CONST        'srcRect'
+378	LOAD_FAST         'srcRect'
+381	CALL_FUNCTION_513 ''
+384	POP_TOP           ''
+385	LOAD_GLOBAL       'True'
+388	STORE_FAST        'doColorizedStep'
+391	JUMP_FORWARD      '394'
+394_0	COME_FROM         '391'
+394	LOAD_FAST         'doColorizedStep'
+397	POP_JUMP_IF_FALSE '577'
+400	LOAD_FAST         'bodyPart'
+403	LOAD_FAST         'm'
+406	LOAD_ATTR         'mapO'
+409	COMPARE_OP        'not in'
+412	POP_JUMP_IF_FALSE '434'
+415	LOAD_GLOBAL       'PD'
+418	LOAD_ATTR         'TEXTURE_STUB'
+421	LOAD_FAST         'm'
+424	LOAD_ATTR         'mapO'
+427	LOAD_FAST         'bodyPart'
+430	STORE_SUBSCR      ''
+431	JUMP_FORWARD      '434'
+434_0	COME_FROM         '431'
+434	LOAD_FAST         'bodyPart'
+437	LOAD_FAST         'm'
+440	LOAD_ATTR         'mapZ'
+443	COMPARE_OP        'not in'
+446	POP_JUMP_IF_FALSE '468'
+449	LOAD_GLOBAL       'PD'
+452	LOAD_ATTR         'TEXTURE_STUB'
+455	LOAD_FAST         'm'
+458	LOAD_ATTR         'mapZ'
+461	LOAD_FAST         'bodyPart'
+464	STORE_SUBSCR      ''
+465	JUMP_FORWARD      '468'
+468_0	COME_FROM         '465'
+468	LOAD_FAST         'm'
+471	LOAD_ATTR         'specularColorData'
+474	STORE_FAST        'colors'
+477	LOAD_FAST         'textureCompositor'
+480	LOAD_ATTR         'ColorizedBlitTexture'
+483	LOAD_FAST         'm'
+486	LOAD_ATTR         'mapSRG'
+489	LOAD_FAST         'bodyPart'
+492	BINARY_SUBSCR     ''
+493	LOAD_FAST         'm'
+496	LOAD_ATTR         'mapZ'
+499	LOAD_FAST         'bodyPart'
+502	BINARY_SUBSCR     ''
+503	LOAD_FAST         'm'
+506	LOAD_ATTR         'mapO'
+509	LOAD_FAST         'bodyPart'
+512	BINARY_SUBSCR     ''
+513	LOAD_FAST         'colors'
+516	LOAD_CONST        ''
+519	BINARY_SUBSCR     ''
+520	LOAD_FAST         'colors'
+523	LOAD_CONST        1
+526	BINARY_SUBSCR     ''
+527	LOAD_FAST         'colors'
+530	LOAD_CONST        2
+533	BINARY_SUBSCR     ''
+534	LOAD_CONST        'mask'
+537	LOAD_FAST         'maskname'
+540	LOAD_CONST        'subrect'
+543	LOAD_FAST         'subrect'
+546	LOAD_CONST        'addAlpha'
+549	LOAD_FAST         'addAlpha'
+552	LOAD_CONST        'skipAlpha'
+555	LOAD_FAST         'skipAlpha'
+558	LOAD_CONST        'weight'
+561	LOAD_FAST         'm'
+564	LOAD_ATTR         'weight'
+567	CALL_FUNCTION_1286 ''
+570	POP_TOP           ''
+571	JUMP_ABSOLUTE     '577'
+574	JUMP_FORWARD      '577'
+577_0	COME_FROM         '574'
+577	LOAD_FAST         'doColorizedStep'
+580	POP_JUMP_IF_TRUE  '638'
+583	LOAD_FAST         'textureCompositor'
+586	LOAD_ATTR         'BlitTexture'
+589	LOAD_FAST         'tname'
+592	LOAD_FAST         'maskname'
+595	LOAD_FAST         'm'
+598	LOAD_ATTR         'weight'
+601	LOAD_CONST        'subrect'
+604	LOAD_FAST         'subrect'
+607	LOAD_CONST        'addAlpha'
+610	LOAD_FAST         'addAlpha'
+613	LOAD_CONST        'skipAlpha'
+616	LOAD_FAST         'skipAlpha'
+619	LOAD_CONST        'srcRect'
+622	LOAD_FAST         'srcRect'
+625	LOAD_CONST        'multAlpha'
+628	LOAD_GLOBAL       'False'
+631	CALL_FUNCTION_1283 ''
+634	POP_TOP           ''
+635	JUMP_FORWARD      '638'
+638_0	COME_FROM         '635'
+638	LOAD_FAST         'm'
+641	LOAD_ATTR         'colorize'
+644	POP_JUMP_IF_FALSE '766'
+647	LOAD_FAST         'm'
+650	LOAD_ATTR         'specularColorData'
+653	POP_JUMP_IF_FALSE '766'
+656	LOAD_FAST         'bodyPart'
+659	LOAD_FAST         'm'
+662	LOAD_ATTR         'mapZ'
+665	COMPARE_OP        'in'
+668_0	COME_FROM         '644'
+668_1	COME_FROM         '653'
+668	POP_JUMP_IF_FALSE '766'
+671	LOAD_FAST         'm'
+674	LOAD_ATTR         'specularColorData'
+677	LOAD_CONST        ''
+680	BINARY_SUBSCR     ''
+681	LOAD_CONST        3
+684	BINARY_SUBSCR     ''
+685	LOAD_FAST         'm'
+688	LOAD_ATTR         'specularColorData'
+691	LOAD_CONST        1
+694	BINARY_SUBSCR     ''
+695	LOAD_CONST        3
+698	BINARY_SUBSCR     ''
+699	LOAD_FAST         'm'
+702	LOAD_ATTR         'specularColorData'
+705	LOAD_CONST        2
+708	BINARY_SUBSCR     ''
+709	LOAD_CONST        3
+712	BINARY_SUBSCR     ''
+713	LOAD_CONST        1.0
+716	BUILD_TUPLE_4     ''
+719	STORE_FAST        'values'
+722	LOAD_FAST         'textureCompositor'
+725	LOAD_ATTR         'BlitAlphaIntoAlphaWithMaskAndZones'
+728	LOAD_FAST         'tname'
+731	LOAD_FAST         'maskname'
+734	LOAD_FAST         'm'
+737	LOAD_ATTR         'mapZ'
+740	LOAD_FAST         'bodyPart'
+743	BINARY_SUBSCR     ''
+744	LOAD_FAST         'values'
+747	LOAD_CONST        'subrect'
+750	LOAD_FAST         'subrect'
+753	LOAD_CONST        'srcRect'
+756	LOAD_FAST         'srcRect'
+759	CALL_FUNCTION_516 ''
+762	POP_TOP           ''
+763	JUMP_ABSOLUTE     '797'
+766	LOAD_FAST         'textureCompositor'
+769	LOAD_ATTR         'BlitAlphaIntoAlphaWithMask'
+772	LOAD_FAST         'tname'
+775	LOAD_FAST         'maskname'
+778	LOAD_CONST        'subrect'
+781	LOAD_FAST         'subrect'
+784	LOAD_CONST        'srcRect'
+787	LOAD_FAST         'srcRect'
+790	CALL_FUNCTION_514 ''
+793	POP_TOP           ''
+794	JUMP_BACK         '13'
+797	JUMP_BACK         '13'
+800_0	COME_FROM         '13'
+800	POP_BLOCK         ''
+801_0	COME_FROM         '0'
 
-
-
+Syntax error at or near `COME_FROM' token at offset 800_0
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def _CompositeNormalMap(self, modifierList, bodyPart, textureCompositor, width, height, addAlpha = False, lod = None):
         for m in iter(modifierList):
-            if m.categorie == PD.DOLL_EXTRA_PARTS.BODYSHAPES and lod in (1, 2):
+            PD.BeFrameNice()
+            if m.categorie == PD.DOLL_EXTRA_PARTS.BODYSHAPES and lod > PD.LOD_0:
                 continue
             texture = m.mapN
             subrect = self.GetSubRect(bodyPart, width, height, m)
@@ -1074,6 +1520,7 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
                     maskname = m.mapL[bodyPart]
                 skipAlpha = False
                 if m.categorie in (PD.BODY_CATEGORIES.SKINTONE,
+                 PD.BODY_CATEGORIES.SKINTYPE,
                  PD.HEAD_CATEGORIES.MAKEUP,
                  PD.BODY_CATEGORIES.TATTOO,
                  PD.BODY_CATEGORIES.SCARS,
@@ -1097,6 +1544,7 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
             if mapTN:
                 textureCompositor.TwistNormalBlitTexture(mapTN, m.weight, subrect, srcRect=srcRect)
             if mapD and m.categorie not in (PD.BODY_CATEGORIES.SKINTONE,
+             PD.BODY_CATEGORIES.SKINTYPE,
              PD.BODY_CATEGORIES.TATTOO,
              PD.BODY_CATEGORIES.SCARS,
              PD.DOLL_EXTRA_PARTS.BODYSHAPES,
@@ -1116,21 +1564,19 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
     @bluepy.CCP_STATS_ZONE_METHOD
     def _CompositeMaskMap(self, modifierList, bodyPart, textureCompositor, width, height, addAlpha = False, lod = None):
         for m in iter(modifierList):
+            PD.BeFrameNice()
             texture = m.mapMask
             subrect = self.GetSubRect(bodyPart, width, height, m)
             srcRect = None
             skipAlpha = False
             if bodyPart in texture:
-                tname = texture[bodyPart].lower()
-                textureCompositor.CopyBlitTexture(tname, subrect)
                 maskname = tname = texture[bodyPart]
-                if not (type(tname) in types.StringTypes and '/skin/generic/' in tname.lower()):
-                    if bodyPart in m.mapD:
-                        maskname = m.mapD[bodyPart]
-                    elif bodyPart in m.mapL:
-                        maskname = m.mapL[bodyPart]
+                tname = texture[bodyPart].lower()
+                textureCompositor.BlitTexture(tname, maskname, m.weight, subrect=subrect, addAlpha=addAlpha, skipAlpha=skipAlpha, srcRect=srcRect, multAlpha=False)
+                if not (isinstance(tname, basestring) and PD.SKIN_GENERIC_PATH in tname):
                     skipAlpha = False
                     if m.categorie in (PD.BODY_CATEGORIES.SKINTONE,
+                     PD.BODY_CATEGORIES.SKINTYPE,
                      PD.HEAD_CATEGORIES.MAKEUP,
                      PD.BODY_CATEGORIES.TATTOO,
                      PD.BODY_CATEGORIES.SCARS,
@@ -1171,37 +1617,6 @@ class Factory(object, CompressionSettings, PD.ModifierLoader):
         else:
             effectResource.resourcePath = ''
             effectResource.SetResource(texture)
-
-
-
-    @staticmethod
-    @bluepy.CCP_STATS_ZONE_FUNCTION
-    def BindCompositeTexturesToMeshes(meshes, mapBundle):
-        for mesh in iter(meshes):
-            effects = PD.GetEffectsFromMesh(mesh)
-            for f in iter(effects):
-                if type(f) != trinity.Tr2ShaderMaterial:
-                    for r in iter(f.resources):
-                        if mapBundle.diffuseMap and r.name == PD.MAPNAMES[PD.DIFFUSE_MAP]:
-                            Factory.SetResourceTexture(r, mapBundle.diffuseMap)
-                        elif mapBundle.specularMap and r.name == PD.MAPNAMES[PD.SPECULAR_MAP]:
-                            Factory.SetResourceTexture(r, mapBundle.specularMap)
-                        elif mapBundle.normalMap and r.name == PD.MAPNAMES[PD.NORMAL_MAP]:
-                            Factory.SetResourceTexture(r, mapBundle.normalMap)
-                        elif mapBundle.maskMap and r.name == PD.MAPNAMES[PD.MASK_MAP]:
-                            Factory.SetResourceTexture(r, mapBundle.maskMap)
-
-                else:
-                    if mapBundle.diffuseMap:
-                        f.parameters[PD.MAPNAMES[PD.DIFFUSE_MAP]] = mapBundle.diffuseMap
-                    if mapBundle.specularMap:
-                        f.parameters[PD.MAPNAMES[PD.SPECULAR_MAP]] = mapBundle.specularMap
-                    if mapBundle.normalMap:
-                        f.parameters[PD.MAPNAMES[PD.NORMAL_MAP]] = mapBundle.normalMap
-                    if mapBundle.maskMap:
-                        f.parameters[PD.MAPNAMES[PD.MASK_MAP]] = mapBundle.maskMap
-
-
 
 
 
@@ -1364,6 +1779,10 @@ class KillUpdateException(Exception):
     __guid__ = 'paperDoll.KillUpdateException'
 
 
+class OutOfVideoMemoryException(Exception):
+    __guid__ = 'paperDoll.OutOfVideoMemoryException'
+
+
 class Doll(object):
     __metaclass__ = bluepy.CCP_STATS_ZONE_PER_METHOD
     __guid__ = 'paperDoll.Doll'
@@ -1387,7 +1806,6 @@ class Doll(object):
         self.instanceID = Doll.GetInstanceID()
         self.mapBundle = MapBundle()
         self.compressionSettings = None
-        self._Doll__quitRequested = False
         self.hasDelayedUpdateCallPending = False
         self.onUpdateDoneListeners = []
         self.name = name
@@ -1413,21 +1831,19 @@ class Doll(object):
         self.bindPose = None
         self.skinLightmapRenderer = None
         self.modifierLimits = {}
-        self.textureCompositor = None
         self._Doll__updateFrameStamp = -1
         self._Doll__useFastShader = False
+        self.renderDriver = PD.renderDrivers.RenderDriverNCC()
+        self.lastRenderDriverClass = None
         self._currentUpdateTasklet = None
         self._UpdateTaskletChildren = []
         self.decalBaker = None
         trinity.device.RegisterResource(self)
         self.deviceResetAvatar = None
         self.useMaskedShaders = False
-        self.useHeroHead = False
         self.useDXT5N = False
+        self.usePrepassAlphaTestHair = False
         self.blendShapeMeshCache = {}
-        self.lodsInSeparateFolder = False
-        if hasattr(const, 'PAPERDOLL_LODS_IN_SEPARATE_FOLDER'):
-            self.lodsInSeparateFolder = const.PAPERDOLL_LODS_IN_SEPARATE_FOLDER
         self.tempClothMeshes = []
         self.tempClothCache = {}
         self.clothMorphValues = {}
@@ -1437,6 +1853,7 @@ class Doll(object):
     def __del__(self):
         self.StopPaperDolling()
         self.skinLightmapRenderer = None
+        del self.mapBundle
 
 
 
@@ -1475,7 +1892,7 @@ class Doll(object):
 
 
     def OnCreate(self, dev):
-        if self.currentLOD <= PD.LOD_SCATTER_SKIN:
+        if self.currentLOD == PD.LOD_SCATTER_SKIN and not self.usePrepass:
 
             def skinCreate_t():
                 if self.skinLightmapRenderer is None:
@@ -1490,16 +1907,28 @@ class Doll(object):
 
 
 
-    def StopPaperDolling(self):
+    def StopPaperDolling(self, clearMaps = True):
         for each in self.buildDataManager.GetModifiersAsList():
             each.ClearCachedData()
 
-        self.mapBundle.ReCreate()
+        if clearMaps:
+            self.mapBundle.ReCreate()
+        self.decalBaker = None
 
 
 
     def SetUsePrepass(self, val = True):
         self.usePrepass = val
+        if val == True:
+            self.lastRenderDriverClass = self.renderDriver.__class__
+            if PD.PerformanceOptions.collapseShadowMesh or PD.PerformanceOptions.collapseMainMesh or PD.PerformanceOptions.collapsePLPMesh:
+                self.renderDriver = PD.renderDrivers.RenderDriverCollapsePLP()
+            else:
+                self.renderDriver = PD.renderDrivers.RenderDriverPLP()
+        elif self.lastRenderDriverClass:
+            lastClass = self.renderDriver.__class__
+            self.renderDriver = self.lastRenderDriverClass()
+            self.lastRenderDriverClass = lastClass
 
 
 
@@ -1515,7 +1944,7 @@ class Doll(object):
         resMan = blue.resMan
         gr2Res = resMan.GetResource(gr2Path, 'raw')
         while gr2Res.isLoading:
-            blue.synchro.Yield()
+            PD.Yield()
 
         meshCount = gr2Res.GetMeshCount()
         for i in xrange(meshCount):
@@ -1532,138 +1961,92 @@ class Doll(object):
 
 
     def _AnalyzeBuildDataForRules(self, updateRuleBundle, buildDataManager):
-        modifierList = buildDataManager.GetSortedModifiers()
+        modifierList = buildDataManager.GetModifiersAsList()
         forcesLooseTop = False
         hidesBootShin = False
+        swapTops = False
+        swapBottom = False
+        swapSocks = False
         useMaskedShaders = False
         for modifier in iter(modifierList):
-            useMaskedShaders = useMaskedShaders or modifier.categorie == PD.BODY_CATEGORIES.OUTER and len(modifier.mapMask) > 0
+            useMaskedShaders = True
             metaData = modifier.metaData
             if metaData:
                 forcesLooseTop = forcesLooseTop or metaData.forcesLooseTop
                 hidesBootShin = hidesBootShin or metaData.hidesBootShin
+                swapTops = swapTops or metaData.swapTops
+                swapBottom = swapBottom or metaData.swapBottom
+                swapSocks = swapSocks or metaData.swapSocks
 
         if not useMaskedShaders and self.useMaskedShaders:
             updateRuleBundle.undoMaskedShaders = True
         if hidesBootShin:
-            buildDataManager.ChangeDesiredOrder(PD.BODY_CATEGORIES.FEET, PD.BODY_CATEGORIES.BOTTOMOUTER)
+            buildDataManager.ChangeDesiredOrder(PD.BODY_CATEGORIES.FEET, PD.BODY_CATEGORIES.FEETTUCKED)
         else:
-            buildDataManager.ChangeDesiredOrder(PD.BODY_CATEGORIES.BOTTOMOUTER, PD.BODY_CATEGORIES.FEET)
+            buildDataManager.ChangeDesiredOrder(PD.BODY_CATEGORIES.FEETTUCKED, PD.BODY_CATEGORIES.FEET)
         if forcesLooseTop:
-            buildDataManager.ChangeDesiredOrder(PD.BODY_CATEGORIES.TOPMIDDLE, PD.BODY_CATEGORIES.BOTTOMOUTER)
+            buildDataManager.ChangeDesiredOrder(PD.BODY_CATEGORIES.BOTTOMOUTERTUCKED, PD.BODY_CATEGORIES.BOTTOMOUTER)
         else:
-            buildDataManager.ChangeDesiredOrder(PD.BODY_CATEGORIES.BOTTOMOUTER, PD.BODY_CATEGORIES.TOPMIDDLE)
+            buildDataManager.ChangeDesiredOrder(PD.BODY_CATEGORIES.BOTTOMOUTER, PD.BODY_CATEGORIES.BOTTOMOUTERTUCKED)
+        if swapTops:
+            buildDataManager.ChangeDesiredOrder(PD.BODY_CATEGORIES.TOPMIDDLE, PD.BODY_CATEGORIES.TOPTIGHT)
+        else:
+            buildDataManager.ChangeDesiredOrder(PD.BODY_CATEGORIES.TOPTIGHT, PD.BODY_CATEGORIES.TOPMIDDLE)
+        if swapBottom:
+            buildDataManager.ChangeDesiredOrder(PD.BODY_CATEGORIES.TOPUNDERWEARTUCKED, PD.BODY_CATEGORIES.TOPUNDERWEAR)
+        else:
+            buildDataManager.ChangeDesiredOrder(PD.BODY_CATEGORIES.TOPUNDERWEAR, PD.BODY_CATEGORIES.TOPUNDERWEARTUCKED)
+        if swapSocks:
+            buildDataManager.ChangeDesiredOrder(PD.BODY_CATEGORIES.SOCKS, PD.BODY_CATEGORIES.SOCKSTUCKED)
+        else:
+            buildDataManager.ChangeDesiredOrder(PD.BODY_CATEGORIES.SOCKSTUCKED, PD.BODY_CATEGORIES.SOCKS)
         self.useMaskedShaders = useMaskedShaders
-        self.useHeroHead = self.currentLOD == PD.LOD_HERO
         updateRuleBundle.forcesLooseTop = forcesLooseTop
         updateRuleBundle.hidesBootShin = hidesBootShin
+        updateRuleBundle.swapTops = swapTops
+        updateRuleBundle.swapBottom = swapBottom
+        updateRuleBundle.swapSocks = swapSocks
 
 
 
-    def GetLODPathsToReplace(self):
-        nonLodFolder = '/modular/'
-        lodFolder = '/modularlod/'
-        if PD.GENDER_ROOT:
-            nonLodFolder = '/paperdoll/'
-            lodFolder = '/paperdoll_lod/'
-        return (nonLodFolder, lodFolder)
+    def AdjustGr2PathForLod(self, gr2Path, resDataEntry):
+        adjustedGr2Path = resDataEntry.GetGeoLodMatch(gr2Path, self.currentLOD)
+        return adjustedGr2Path
 
 
 
-    def AdjustGr2PathForLod(self, gr2Path):
-        (nonLodFolder, lodFolder,) = self.GetLODPathsToReplace()
-        gr2Path = gr2Path.lower()
-        originalgr2Path = gr2Path
-        gr2PathWithoutExtension = gr2Path.split('.')[0]
-        resfile = blue.ResFile()
-        lodInPath = '_lod' in gr2Path and not gr2PathWithoutExtension.endswith('0')
-        lodsInSeparateFolder = self.lodsInSeparateFolder
-        if self.currentLOD > 0:
-            if lodInPath:
-                gr2Path = '{0}{1}.gr2'.format(gr2PathWithoutExtension[:-1], self.currentLOD)
-            else:
-                gr2Path = gr2Path.replace('.gr2', '_lod{0}.gr2'.format(self.currentLOD))
-            if lodsInSeparateFolder:
-                gr2Path = gr2Path.replace(nonLodFolder, lodFolder)
-        elif self.currentLOD == 0:
-            overridePath = ''
-            if lodInPath:
-                overridePath = '{0}a.gr2'.format(gr2PathWithoutExtension.replace(nonLodFolder, lodFolder)[:-1])
-            else:
-                overridePath = gr2Path.replace(nonLodFolder, lodFolder).replace('.gr2', '_loda.gr2')
-            if resfile.FileExists(overridePath):
-                gr2Path = overridePath
-            else:
-                if lodInPath:
-                    gr2Path = '{0}.gr2'.format(gr2PathWithoutExtension[:-5])
-                if lodsInSeparateFolder:
-                    gr2Path = gr2Path.replace(lodFolder, nonLodFolder)
-        elif lodInPath:
-            gr2Path = '{0}.gr2'.format(gr2PathWithoutExtension[:-5])
-        if lodsInSeparateFolder:
-            gr2Path = gr2Path.replace(lodFolder, nonLodFolder)
-        if not resfile.FileExists(originalgr2Path):
-            gr2Path = originalgr2Path
-        return gr2Path
+    def __AdjustMeshForLod(self, mesh, resDataEntry):
+        mesh.geometryResPath = self.AdjustGr2PathForLod(mesh.geometryResPath, resDataEntry)
 
 
 
-    def __AdjustMeshForLod(self, mesh):
-        mesh.geometryResPath = self.AdjustGr2PathForLod(mesh.geometryResPath)
-
-
-
-    def AdjustRedFileForLod(self, redfile):
-        (nonLodFolder, lodFolder,) = self.GetLODPathsToReplace()
-        if not PerformanceOptions.useLodForRedfiles:
+    def AdjustRedFileForLod(self, redfile, resDataEntry):
+        if not (resDataEntry and PD.PerformanceOptions.useLodForRedfiles):
             return redfile
-        resfile = blue.ResFile()
-        redfileWithoutExtension = redfile.split('.')[0]
-        lodInPath = '_lod' in redfile and not redfileWithoutExtension.endswith('0')
-        lodsInSeparateFolder = self.lodsInSeparateFolder
-        if self.currentLOD > 0:
-            if lodInPath:
-                newRedfilePath = redfileWithoutExtension[:-1] + '{0}.red'.format(self.currentLOD)
-            else:
-                newRedfilePath = redfile.replace('.red', '_lod{0}.red'.format(self.currentLOD))
-            if lodsInSeparateFolder:
-                newRedfilePath = newRedfilePath.replace(nonLodFolder, lodFolder)
-            if resfile.FileExists(newRedfilePath):
-                redfile = newRedfilePath
-            return redfile
-        if self.currentLOD == 0:
-            if lodInPath:
-                overridePath = redfileWithoutExtension.replace(nonLodFolder, lodFolder)[:-1] + 'a.red'
-            else:
-                overridePath = redfile.replace(nonLodFolder, lodFolder).replace('.red', '_loda.red')
-            if resfile.FileExists(overridePath):
-                redfile = overridePath
-            return redfile
-        if lodInPath:
-            redfile = redfile.split('.')[0][:-5] + '.red'
-        if lodsInSeparateFolder:
-            redfile = redfile.replace(lodFolder, nonLodFolder)
-        return redfile
+        return resDataEntry.GetGeoLodMatch(redfile, self.currentLOD)
 
 
 
-    def _ProcessRules(self, buildDataManager, modifierList, updateRuleBundle, useCloth = False):
+    def _ProcessRules(self, factory, buildDataManager, modifierList, updateRuleBundle, useCloth = False):
+        if not modifierList:
+            return 
         if updateRuleBundle.rebuildHair:
             hairModifiers = [ x for x in buildDataManager.GetHairModifiers() if x not in modifierList ]
             modifierList.extend(hairModifiers)
         loadedObjects = {}
-        modifiersWithDataToLoad = [ modifier for modifier in modifierList if modifier.redfile if modifier.weight > 0 ]
+        modifiersWithDataToLoad = [ modifier for modifier in modifierList if modifier.weight > 0 and modifier.redfile and not modifier.meshes or modifier.IsMeshDirty() ]
         modLen = len(modifiersWithDataToLoad)
         remIdx = []
         AdjustRedFileForLod = self.AdjustRedFileForLod
+        GetResDataEntryByFullResPath = factory.resData.GetEntryByFullResPath
         LoadObject = blue.os.LoadObject
         for i in xrange(modLen):
             modifier = modifiersWithDataToLoad[i]
             redfile = modifier.clothOverride if useCloth and modifier.clothOverride else modifier.redfile
-            if redfile not in loadedObjects:
-                if self.useHeroHead and modifier.categorie == PD.DOLL_PARTS.HEAD:
-                    redfile = redfile.replace('_generic', '_detailed')
-                redfileLod = AdjustRedFileForLod(redfile)
+            if id(modifier) not in loadedObjects:
+                resDataEntry = GetResDataEntryByFullResPath(redfile)
+                redfileLod = AdjustRedFileForLod(redfile, resDataEntry)
+                self.renderDriver.OnModifierRedfileLoaded(modifier, redfileLod)
                 if not modifier.meshes or redfileLod != modifier.redfile:
                     objToLoad = LoadObject(redfileLod)
                     if objToLoad is None:
@@ -1671,17 +2054,24 @@ class Doll(object):
                     loadedObjects[id(modifier)] = objToLoad
                 else:
                     remIdx.insert(0, i)
-            blue.pyos.BeNice()
+            PD.BeFrameNice()
 
         for i in iter(remIdx):
             del modifiersWithDataToLoad[i]
 
+        pathCache = {}
         for modifier in iter(modifiersWithDataToLoad):
             modifier.ClearCachedData()
             newBodyPart = loadedObjects.get(id(modifier), None)
             if newBodyPart and hasattr(newBodyPart, 'meshes'):
                 for (i, mesh,) in enumerate(newBodyPart.meshes):
-                    self._Doll__AdjustMeshForLod(mesh)
+                    oldPath = mesh.geometryResPath
+                    newPath = pathCache.get(oldPath)
+                    if newPath:
+                        mesh.geometryResPath = newPath
+                    else:
+                        self._Doll__AdjustMeshForLod(mesh, resDataEntry)
+                        pathCache[oldPath] = mesh.geometryResPath
                     if modifier.categorie == PD.DOLL_PARTS.HAIR:
                         if mesh.name == PD.HAIR_MESH_SHAPE:
                             PD.MoveAreas(mesh.opaqueAreas, mesh.transparentAreas)
@@ -1701,265 +2091,17 @@ class Doll(object):
                     modifier.meshGeometryResPaths[mesh.name] = mesh.geometryResPath
 
 
-        loadedObjects.clear()
 
 
 
-    def __CalculateAccessoryUVs(self):
-
-        def PackTextures(textures, target):
-            watermark = 0
-            returnUVs = []
-
-            def BoxCoversX(x, box):
-                if x >= box[0] and x < box[2]:
-                    return True
-                return False
-
-
-
-            def GetHeightAt(x):
-                height = 0
-                newX = x
-                for r in returnUVs:
-                    if BoxCoversX(x, r):
-                        if r[3] > height:
-                            height = r[3]
-                            newX = r[2]
-
-                return (height, newX)
-
-
-
-            def BoxIntersects(x, y, box, uv):
-                for vert in ((x, y),
-                 (x + box[0], y),
-                 (x, y + box[1]),
-                 (x + box[0], y + box[1])):
-                    if vert[0] > uv[0] and vert[0] < uv[2] and vert[1] > uv[1] and vert[1] < uv[3]:
-                        return True
-
-
-
-
-            def BoxFits(x, y, box):
-                if x < 0 or x + box[0] > target[0] or y < 0:
-                    return False
-                for r in returnUVs:
-                    if BoxIntersects(x, y, box, r):
-                        return False
-
-                return True
-
-
-            for t in textures:
-                candidates = {}
-                minInc = 100000
-                x = 0.0
-                while x < 1.0:
-                    currentX = x
-                    (h, x,) = GetHeightAt(currentX)
-                    inc = h + t[1]
-                    if BoxFits(currentX, h, t):
-                        if inc < minInc:
-                            minInc = inc
-                            candidates[inc] = (currentX, h)
-                    if x == currentX:
-                        x += 1 / 512.0
-
-                if len(candidates):
-                    final = candidates[minInc]
-                    returnUVs.append((final[0],
-                     final[1],
-                     final[0] + t[0],
-                     final[1] + t[1]))
-                    watermark = final[1] + t[1]
-
-            if watermark > target[1]:
-                factor = target[1] / watermark
-                for ix in range(len(returnUVs)):
-                    returnUVs[ix] = [returnUVs[ix][0] * factor,
-                     returnUVs[ix][1] * factor,
-                     returnUVs[ix][2] * factor,
-                     returnUVs[ix][3] * factor]
-
-            return returnUVs
-
-
-
-        def GetMapSize(path):
-            param = trinity.TriTexture2DParameter()
-            param.resourcePath = path
-            while param.resource.isLoading:
-                blue.synchro.Yield()
-
-            return (param.resource.width, param.resource.height)
-
-
-        accesorieModifiers = self.buildDataManager.GetModifiersByPart(PD.DOLL_PARTS.ACCESSORIES)
-        targetBox = (1.0, 1.0)
-        textures = []
-        for acc in iter(accesorieModifiers):
-            tag = 'accessories'
-            mapTarget = ''
-            if tag in acc.mapD:
-                mapTarget = acc.mapD[tag]
-            if tag in acc.mapL:
-                mapTarget = acc.mapL[tag]
-            size = (0.0, 0.0)
-            adjustedSize = (0.0, 0.0)
-            if mapTarget:
-                size = GetMapSize(mapTarget)
-                adjustedSize = [size[0] / 512.0, size[1] / 512.0]
-                if adjustedSize[0] > 0.5:
-                    adjustedSize[0] = 0.5
-                if adjustedSize[1] > 0.5:
-                    adjustedSize[1] = 0.5
-            textures.append(adjustedSize)
-
-        result = PackTextures(textures, targetBox)
-        for ix in range(len(accesorieModifiers)):
-            mod = accesorieModifiers[ix]
-            mod.ulUVs = (result[ix][0], result[ix][1])
-            mod.lrUVs = (result[ix][2], result[ix][3])
-
-
-
-
-    def __CalculateAccessorieUVs(self):
-        useProperAlgorithm = True
-        if useProperAlgorithm:
-            self._Doll__CalculateAccessoryUVs()
-            return 
-        accesorieModifiers = self.buildDataManager.GetModifiersByPart(PD.DOLL_PARTS.ACCESSORIES)
-        numAcc = len(accesorieModifiers)
-        if numAcc > 0:
-            split = 1
-            if numAcc == 1:
-                split = 1
-            elif numAcc < 5:
-                split = 2
-            elif numAcc < 10:
-                split = 3
-            elif numAcc < 17:
-                split = 4
-            else:
-                split = 5
-                if numAcc > 25:
-                    numAcc = 25
-                    accesorieModifiers = accesorieModifiers[0:25]
-            uvs = []
-            for x in xrange(split):
-                for y in xrange(split):
-                    w = 1.0 / split
-                    uv = [x * w,
-                     y * w,
-                     (x + 1) * w,
-                     (y + 1) * w]
-                    uvs.append(uv)
-
-
-            uvIndex = 0
-            for acc in iter(accesorieModifiers):
-                (ula, ulb, lra, lrb,) = uvs[uvIndex]
-                acc.ulUVs = (ula, ulb)
-                acc.lrUVs = (lra, lrb)
-                uvIndex += 1
-
-
-
-
+    @bluepy.CCP_STATS_ZONE_METHOD
     def __ApplyUVs(self):
-        self._Doll__CalculateAccessorieUVs()
-        UVs = {PD.DOLL_PARTS.HEAD: PD.HEAD_UVS,
-         PD.DOLL_PARTS.BODY: PD.BODY_UVS,
-         PD.DOLL_PARTS.HAIR: PD.HAIR_UVS,
-         PD.DOLL_PARTS.ACCESSORIES: PD.ACCE_UVS}
-        modifierGenerator = (modifier for modifier in self.buildDataManager.GetSortedModifiers() if modifier.weight > 0 if modifier.IsMeshContainingModifier())
-        for modifier in modifierGenerator:
-            meshes = list(modifier.meshes)
-            if modifier.clothData:
-                meshes.append(modifier.clothData)
-            modifierUVCategory = self.buildDataManager.CategoryToPart(modifier.categorie)
-            for mesh in iter(meshes):
-                uvCategory = modifierUVCategory
-                if uvCategory == PD.DOLL_PARTS.HAIR and hasattr(mesh, 'decalAreas') and mesh.decalAreas:
-                    for area in mesh.decalAreas:
-                        if 'stubble' in area.name.lower():
-                            uvCategory = PD.DOLL_PARTS.HEAD
-                            break
-
-                if hasattr(mesh, 'opaqueAreas') and hasattr(mesh, 'decalAreas') and hasattr(mesh, 'transparentAreas'):
-                    for area in tuple(mesh.opaqueAreas) + tuple(mesh.decalAreas) + tuple(mesh.transparentAreas):
-                        for category in UVs:
-                            if category.lower() + 'uv' in area.name.lower():
-                                uvCategory = category
-                                break
-
-
-                fxs = PD.GetEffectsFromMesh(mesh)
-                for fx in iter(fxs):
-                    if type(fx) != trinity.Tr2ShaderMaterial and fx.effectResource and fx.effectResource.isLoading:
-                        while fx.effectResource.isLoading:
-                            blue.synchro.Yield()
-
-                    transformUV0 = None
-                    for effectParameter in iter(fx.parameters):
-                        if effectParameter.name == 'TransformUV0':
-                            transformUV0 = effectParameter
-                            break
-
-                    if not transformUV0:
-                        transformUV0 = trinity.Tr2Vector4Parameter()
-                        transformUV0.name = 'TransformUV0'
-                        fx.parameters.append(transformUV0)
-                    computedUVs = None
-                    if uvCategory == PD.DOLL_PARTS.ACCESSORIES:
-                        width = UVs[uvCategory][2] - UVs[uvCategory][0]
-                        height = UVs[uvCategory][3] - UVs[uvCategory][1]
-                        computedUVs = (UVs[uvCategory][0] + modifier.ulUVs[0] * width,
-                         UVs[uvCategory][1] + modifier.ulUVs[1] * height,
-                         UVs[uvCategory][0] + modifier.lrUVs[0] * width,
-                         UVs[uvCategory][1] + modifier.lrUVs[1] * height)
-                    elif type(mesh) is trinity.Tr2ClothingActor:
-                        computedUVs = (UVs[uvCategory][0],
-                         UVs[uvCategory][3],
-                         UVs[uvCategory][2],
-                         UVs[uvCategory][1])
-                    else:
-                        computedUVs = (UVs[uvCategory][0],
-                         UVs[uvCategory][1],
-                         UVs[uvCategory][2],
-                         UVs[uvCategory][3])
-                    transformUV0.value = computedUVs
-
-
-
-
-
-
-    def GetMorphTargets(self, removedModifiers = None):
-        modifierList = self.buildDataManager.GetSortedModifiers()
-        removedModifiers = removedModifiers or self.buildDataManager.GetDirtyModifiers(removedBit=True)
-        morphTargets = {}
-
-        def Qualifier(modifier):
-            return modifier.categorie in PD.BLENDSHAPE_CATEGORIES and modifier.weight != 0.0
-
-
-        for modifier in iter(removedModifiers):
-            if Qualifier(modifier):
-                morphTargets[modifier.name] = 0
-
-        for modifier in iter(modifierList):
-            if Qualifier(modifier):
-                morphTargets[modifier.name] = modifier.weight
-
-        return morphTargets
+        UVCalculator.ApplyUVs(self.buildDataManager, self.renderDriver)
 
 
 
     def _HandleBlendShapes(self, removedModifiers = None, avatar = None, updateClothMeshes = True):
+        self.decalBaker = None
         self.SpawnUpdateChildTasklet(self._Doll__HandleBlendShapes_t, removedModifiers, updateClothMeshes, avatar)
 
 
@@ -1968,8 +2110,9 @@ class Doll(object):
     def __HandleBlendShapes_t(self, removedModifiers, updateClothMeshes, avatar):
         try:
             self.busyHandlingBlendshapes = True
-            modifierList = self.buildDataManager.GetSortedModifiers()
-            morphTargets = self.GetMorphTargets(removedModifiers)
+            PD.BeFrameNice()
+            modifierList = self.buildDataManager.GetModifiersAsList()
+            morphTargets = self.buildDataManager.GetMorphTargets()
             if morphTargets:
                 meshGeometryResPaths = {}
                 for modifier in iter(modifierList):
@@ -1979,6 +2122,7 @@ class Doll(object):
                 clothMeshes = [ mesh for mesh in meshesWithCloth if type(mesh) == trinity.Tr2ClothingActor ]
                 meshes = [ mesh for mesh in meshesWithCloth if type(mesh) == trinity.Tr2Mesh ]
                 Factory.ApplyMorphTargetsToMeshes(meshes, morphTargets, self.blendShapeMeshCache, meshGeometryResPaths, clothMeshes=clothMeshes, updateClothMeshes=updateClothMeshes, avatar=avatar, clothMorphValues=self.clothMorphValues)
+                self.renderDriver.OnApplyMorphTargets(meshes, morphTargets, self.clothMorphValues)
                 for mesh in iter(meshes):
                     if mesh.name not in self.blendShapeMeshCache:
                         mesh.deferGeometryLoad = False
@@ -1998,10 +2142,10 @@ class Doll(object):
 
     def ApplyBoneOffsets(self):
         self.boneOffsets = {}
-        modifiersDone = []
-        for modifier in (modifier for modifier in self.buildDataManager.GetSortedModifiers() if modifier.poseData):
+        modifiersDone = {}
+        for modifier in (modifier for modifier in self.buildDataManager.GetModifiersAsList() if modifier.poseData):
             if modifier.respath not in modifiersDone:
-                modifiersDone.append(modifier.respath)
+                modifiersDone[modifier.respath] = None
                 weight = modifier.weight
                 for bone in iter(modifier.poseData):
                     if bone not in self.boneOffsets:
@@ -2041,8 +2185,9 @@ class Doll(object):
             makeupModifiers = self.buildDataManager.GetModifiersByCategory(PD.HEAD_CATEGORIES.MAKEUP)
             foundEyelashes = False
             for makeup in iter(makeupModifiers):
-                if makeup.name.startswith('eyelashes'):
+                if PD.MAKEUP_GROUPS.EYELASHES in makeup.group:
                     foundEyelashes = True
+                    break
 
             if not foundEyelashes:
                 self.AddResource(PD.DEFAULT_NUDE_EYELASHES, 1.0, factory, privilegedCaller=True)
@@ -2074,20 +2219,21 @@ class Doll(object):
 
 
         pathlower = footPrint[PD.DNA_STRINGS.PATH].lower()
-        if pathlower not in factory.GetOptionsByGender(self.gender):
+        if not factory.resData.QueryPathByGender(self.gender, pathlower):
             log.LogWarn("Paperdoll - Doll::CreateModifierFromFootPrint is creating modifier that doesn't exist in options.")
             modifier = PD.BuildData(pathlower)
             modifier.weight = float(footPrint[PD.DNA_STRINGS.WEIGHT])
             doDecal(modifier)
         else:
-            modifier = factory.CollectBuildData(pathlower, factory.GetOptionsByGender(self.gender))
-            modifier.weight = footPrint[PD.DNA_STRINGS.WEIGHT]
+            variation = footPrint.get(PD.DNA_STRINGS.VARIATION)
+            modifier = self._AddResource(pathlower, footPrint.get(PD.DNA_STRINGS.WEIGHT), factory, variation=variation)
             modifier.pattern = footPrint.get(PD.DNA_STRINGS.PATTERN, '')
             modifier.tuck = footPrint.get(PD.DNA_STRINGS.TUCK, False)
-            if type(footPrint.get(PD.DNA_STRINGS.COLORS)) in types.StringTypes:
+            if isinstance(footPrint.get(PD.DNA_STRINGS.COLORS), basestring):
                 colorData = eval(footPrint.get(PD.DNA_STRINGS.COLORS))
             else:
                 colorData = footPrint.get(PD.DNA_STRINGS.COLORS)
+            colorizeDataSet = False
             if colorData:
                 if modifier.pattern:
                     modifier.patternData = colorData
@@ -2096,23 +2242,13 @@ class Doll(object):
                         modifier.patternData.append(0.0)
                 else:
                     modifier.colorizeData = colorData
+                    colorizeDataSet = True
             if PD.DNA_STRINGS.SPECULARCOLORS in footPrint:
                 modifier.specularColorData = footPrint.get(PD.DNA_STRINGS.SPECULARCOLORS)
-            if footPrint.get(PD.DNA_STRINGS.COLORVARIATION, ''):
+            colorVariation = footPrint.get(PD.DNA_STRINGS.COLORVARIATION, '')
+            if colorVariation and not (colorVariation == 'default' and colorizeDataSet):
                 modifier.SetColorVariation(footPrint[PD.DNA_STRINGS.COLORVARIATION])
-            if footPrint.get(PD.DNA_STRINGS.VARIATION, ''):
-                modifier.SetVariation(footPrint[PD.DNA_STRINGS.VARIATION])
             doDecal(modifier)
-        depModFullData = modifier.GetDependantModifiersFullData()
-        if depModFullData:
-            for entry in depModFullData:
-                depFootPrint = {}
-                depFootPrint[PD.DNA_STRINGS.PATH] = entry[0]
-                depFootPrint[PD.DNA_STRINGS.COLORVARIATION] = entry[1]
-                depFootPrint[PD.DNA_STRINGS.VARIATION] = entry[2]
-                depFootPrint[PD.DNA_STRINGS.WEIGHT] = entry[3]
-                modifier.AddDependantModifier(self.CreateModifierFromFootPrint(factory, depFootPrint))
-
         return modifier
 
 
@@ -2144,7 +2280,7 @@ class Doll(object):
         for footPrint in iter(data):
             modifier = self.CreateModifierFromFootPrint(factory, footPrint)
             modifiers.append(modifier)
-            blue.pyos.BeNice()
+            PD.BeFrameNice()
 
         modifiers = self.SortModifiersForBatchAdding(modifiers)
         for modifier in iter(modifiers):
@@ -2236,9 +2372,34 @@ class Doll(object):
         parts = res.split(PD.SEPERATOR_CHAR)
         if len(parts) == 1:
             raise Exception('Can not add a whole category to the character')
-        options = factory.GetOptionsByGender(self.gender)
-        modifier = factory.CollectBuildData(res, options, weight)
+        PD.BeFrameNice()
+        modifier = None
+        removedModifiers = self.buildDataManager.GetDirtyModifiers(removedBit=True)
+        for removedModifier in iter(removedModifiers):
+            if removedModifier.respath == res:
+                removedModifier.weight = weight
+                removedModifier.dependantModifiers = {}
+                modifier = removedModifier
+                break
+
+        modifier = modifier or factory.CollectBuildData(self.gender, res, weight)
         categorie = modifier.categorie
+        l1rModifier = None
+        if modifier.metaData.lod1Replacement:
+            modifier.lodCutoff = PD.LOD_0
+            l1rModifier = self._AddResource(modifier.metaData.lod1Replacement, 1.0, factory, privilegedCaller=privilegedCaller)
+            l1rModifier.lodCutoff = PD.LOD_99
+            l1rModifier.lodCutin = PD.LOD_1
+            self.buildDataManager.HideModifier(l1rModifier)
+        if modifier.metaData.lod2Replacement:
+            if l1rModifier:
+                l1rModifier.lodCutoff = PD.LOD_1
+            else:
+                modifier.lodCutoff = PD.LOD_1
+            l2rModifier = self._AddResource(modifier.metaData.lod2Replacement, 1.0, factory, privilegedCaller=privilegedCaller)
+            l2rModifier.lodCutoff = PD.LOD_99
+            l2rModifier.lodCutin = PD.LOD_2
+            self.buildDataManager.HideModifier(l2rModifier)
         self.ApplyVariationsToModifier(modifier, colorization, variation, colorVariation, rawColorVariation=rawColorVariation)
         dependantModifiersFullData = modifier.GetDependantModifiersFullData()
         if dependantModifiersFullData:
@@ -2262,28 +2423,31 @@ class Doll(object):
 
     def SetItemType(self, factory, itemType, weight = 1.0, rawColorVariation = None):
         if type(itemType) is not tuple:
-            itemType = factory.GetItemType(itemType)
-        self.RemoveResource(itemType[0], factory)
-        return self.AddItemType(factory, itemType, weight, rawColorVariation)
+            item = factory.GetItemType(itemType, gender=self.gender)
+        if item is None:
+            log.LogError('Unable to Set Item type:', itemType, 'on doll')
+            return 
+        self.RemoveResource(item[0], factory)
+        return self.AddItemType(factory, item, weight, rawColorVariation)
 
 
 
     def AddItemType(self, factory, itemType, weight = 1.0, rawColorVariation = None):
         if type(itemType) is not tuple:
-            itemType = factory.GetItemType(itemType)
+            itemType = factory.GetItemType(itemType, gender=self.gender)
         if type(itemType) is tuple:
             return self.AddResource(itemType[0], weight, factory, variation=itemType[1], colorVariation=itemType[2], rawColorVariation=rawColorVariation)
 
 
 
     def ApplyVariationsToModifier(self, modifier, colorization = None, variation = None, colorVariation = None, rawColorVariation = None):
-        if colorization:
+        if colorization is not None:
             modifier.SetColorizeData(colorization)
-        if variation:
+        if variation is not None:
             modifier.SetVariation(variation)
-        if colorVariation:
+        if colorVariation is not None:
             modifier.SetColorVariation(colorVariation)
-        if rawColorVariation:
+        if rawColorVariation is not None:
             if colorVariation:
                 log.LogWarn('paperDoll::Doll:: ApplyVariationsToModifier: applying both colorVariation and rawColorVariation')
             modifier.SetColorVariationDirectly(rawColorVariation)
@@ -2361,12 +2525,6 @@ class Doll(object):
 
 
 
-    def __CheckQuitRequested(self):
-        if self._Doll__quitRequested:
-            raise KillUpdateException('Preemptively killing Update')
-
-
-
     def SpawnUpdateChildTasklet(self, fun, *args):
         t = uthread.new(fun, *args)
         t.context = 'paperDoll::Doll::Update'
@@ -2379,7 +2537,8 @@ class Doll(object):
         try:
             try:
                 for t in self._UpdateTaskletChildren:
-                    t.kill()
+                    if t:
+                        t.kill()
 
             except KillUpdateException:
                 sys.exc_clear()
@@ -2392,38 +2551,39 @@ class Doll(object):
 
     def _DelayedUpdateCall(self, factory, avatar, visualModel, LODMode):
         self.hasDelayedUpdateCallPending = True
-        blue.synchro.Yield()
-        while self._currentUpdateTasklet:
-            blue.synchro.Yield()
+        PD.Yield()
+        while self._currentUpdateTasklet and self._currentUpdateTasklet.alive:
+            PD.Yield()
 
         self.hasDelayedUpdateCallPending = False
         self.Update(factory, avatar, visualModel, LODMode)
 
 
 
-    def KillUpdateIfSafe(self):
-        currentFrame = trinity.GetCurrentFrameCounter()
-        if self._currentUpdateTasklet and self._Doll__updateFrameStamp < currentFrame and self._currentUpdateTasklet.alive:
-            self._currentUpdateTasklet.raise_exception(KillUpdateException, 'Preemptively killing Update')
-            return True
-        return False
-
-
-
     def Update(self, factory, avatar = None, visualModel = None, LODMode = False):
         currentFrame = trinity.GetCurrentFrameCounter()
+        PD.statistics.updateCount.Inc()
+        if self.hasDelayedUpdateCallPending:
+            return 
         if self._Doll__updateFrameStamp == currentFrame:
             log.LogWarn('paperDoll::Doll::Update is being called more than once on the same frame for the same doll instance! Fix your code so you only call Update after all needed changes have been applied.')
             return 
-        if self._currentUpdateTasklet and self._Doll__updateFrameStamp < currentFrame:
-            if self.KillUpdateIfSafe():
-                if not self.hasDelayedUpdateCallPending:
-                    uthread.new(self._DelayedUpdateCall, factory, avatar, visualModel, LODMode)
+        if self._currentUpdateTasklet and self._currentUpdateTasklet.alive and self._Doll__updateFrameStamp < currentFrame:
+            self.KillUpdate()
+            if not self.hasDelayedUpdateCallPending:
+                uthread.new(self._DelayedUpdateCall, factory, avatar, visualModel, LODMode)
             return 
         self._Doll__updateFrameStamp = currentFrame
         self._currentUpdateTasklet = uthread.new(self.Update_t, *(factory, avatar, visualModel))
         self._currentUpdateTasklet.context = 'paperDoll::Doll::Update'
-        uthread.schedule(self._currentUpdateTasklet)
+        if blue.os.GetWallclockTimeNow() - blue.os.GetWallclockTime() < 50000:
+            uthread.schedule(self._currentUpdateTasklet)
+
+
+
+    def KillUpdate(self):
+        if self._currentUpdateTasklet and self._currentUpdateTasklet.alive:
+            self._currentUpdateTasklet.raise_exception(KillUpdateException, 'Preemptively killing Update')
 
 
 
@@ -2435,22 +2595,24 @@ class Doll(object):
     def Update_t(self, factory, avatar, visualModel):
         try:
             try:
+                sTime = blue.os.GetTime()
                 buildDataManager = self.buildDataManager
                 while self.busyLoadingDNA or not factory.IsLoaded:
-                    blue.synchro.Yield()
+                    PD.Yield()
 
                 LODMode = self.previousLOD != self.currentLOD
                 buildDataManager.Lock()
                 updateRuleBundle = UpdateRuleBundle()
-                if not LODMode:
-                    blue.pyos.BeNice()
+                if LODMode:
+                    PD.Yield()
                 else:
-                    blue.synchro.Yield()
+                    PD.BeFrameNice()
                 if avatar and hasattr(avatar, 'visualModel') and not visualModel:
                     visualModel = avatar.visualModel
                 AddMarker('Update Start')
-                PD.FullOptixRenderer.Pause()
-                self._EnsureCompleteBody(factory)
+                self.renderDriver.OnBeginUpdate(self)
+                if PD.PerformanceOptions.EnsureCompleteBody:
+                    self._EnsureCompleteBody(factory)
                 self.HandleChangedDependencies(factory)
                 gdm = buildDataManager.GetDirtyModifiers
                 addedModifiers = gdm(addedBit=True, getWeightless=False)
@@ -2462,23 +2624,18 @@ class Doll(object):
                 else:
                     dirtyModifiers = addedModifiers
                     addedAndChangedModifiers = addedModifiers
-                if not dirtyModifiers:
+                if not dirtyModifiers and self.mapBundle.AllMapsGood():
                     raise RedundantUpdateException('Warning - Call made to PaperDoll.Update() when no modifier is dirty!')
-                if self.hasUpdatedOnce:
-                    updateRuleBundle.SetBlendShapesOnly(self.QueryModifiers(dirtyModifiers, fun=lambda x: x.IsBlendshapeModifier()))
-                    updateRuleBundle.SetDecalsOnly(self.QueryModifiers(dirtyModifiers, fun=lambda x: x.decalData is not None))
-                if not updateRuleBundle.blendShapesOnly and avatar and self.currentLOD < 2:
-                    dirtyDecalModifiers = [ decalModifier for decalModifier in buildDataManager.GetModifiersByCategory(PD.BODY_CATEGORIES.TATTOO) if decalModifier.decalData if decalModifier.IsDirty or not decalModifier.IsTextureContainingModifier() ]
-                    updateRuleBundle.doDecals = len(dirtyDecalModifiers) > 0 and not updateRuleBundle.blendShapesOnly and avatar and self.currentLOD < 2
+                PD.BeFrameNice()
+                self._AnalyzeBuildDataForRules(updateRuleBundle, buildDataManager)
+                updateRuleBundle.DiscoverState(dirtyModifiers, avatar)
                 if not (updateRuleBundle.blendShapesOnly or updateRuleBundle.decalsOnly):
-                    self._AnalyzeBuildDataForRules(updateRuleBundle, buildDataManager)
-                    self._ProcessRules(buildDataManager, addedAndChangedModifiers, updateRuleBundle, factory.clothSimulationActive)
+                    self._ProcessRules(factory, buildDataManager, addedAndChangedModifiers, updateRuleBundle, factory.clothSimulationActive)
                     self.ApplyBoneOffsets()
-                updateRuleBundle.meshesAddedOrRemoved = not (updateRuleBundle.blendShapesOnly or updateRuleBundle.decalsOnly)
-                wrinkleFx = []
-                if not updateRuleBundle.blendShapesOnly and avatar:
+                updateRuleBundle.meshesChanged = not self.hasUpdatedOnce or any((modifier for modifier in addedAndChangedModifiers if modifier.IsMeshContainingModifier() if modifier.IsMeshDirty() or modifier.HasWeightPulse())) or any((modifier.IsMeshContainingModifier() for modifier in removedModifiers))
+                if not updateRuleBundle.blendShapesOnly and updateRuleBundle.meshesChanged and avatar:
                     factory.CreateAnimationOffsets(avatar, self)
-                if not updateRuleBundle.decalsOnly and self.modifierLimits:
+                if self.modifierLimits:
                     for modifier in iter(addedAndChangedModifiers):
                         limit = self.modifierLimits.get(modifier.name)
                         if limit:
@@ -2487,50 +2644,57 @@ class Doll(object):
                             elif modifier.weight < limit[0]:
                                 modifier.weight = limit[0]
 
-                if updateRuleBundle.blendShapesOnly or updateRuleBundle.doDecals:
-                    if not updateRuleBundle.decalsOnly:
-                        self._HandleBlendShapes(removedModifiers, avatar)
-                    if updateRuleBundle.doDecals:
-                        self.BakeDecals_t(factory, dirtyDecalModifiers)
-                    self.WaitForChildTaskletsToFinish()
-                if factory.clothSimulationActive and avatar and not (updateRuleBundle.decalsOnly or updateRuleBundle.blendShapesOnly):
+                if updateRuleBundle.doDecals:
+                    self.BakeDecals_t(factory, updateRuleBundle.dirtyDecalModifiers)
+                if updateRuleBundle.doBlendShapes and not updateRuleBundle.meshesChanged:
+                    self._HandleBlendShapes(removedModifiers, avatar)
+                if factory.clothSimulationActive and avatar and updateRuleBundle.meshesChanged:
                     self.LoadClothData(addedAndChangedModifiers)
-                hashStubble = PD.PortraitTools.GetStubbleHash(addedAndChangedModifiers)
-                if updateRuleBundle.meshesAddedOrRemoved:
+                if self.currentLOD <= PD.LOD_SKIN:
+                    hashStubble = PD.PortraitTools.GetStubbleHash(addedAndChangedModifiers)
+                else:
+                    hashStubble = None
+                if updateRuleBundle.meshesChanged:
                     self._Doll__ApplyUVs()
-                while self.mapBundle._busyDownScaling:
-                    blue.synchro.Yield()
-
                 if visualModel and (self.currentLOD <= self.previousLOD or not self.mapBundle.AllMapsGood()):
-                    updateRuleBundle.partsToComposite = buildDataManager.GetPartsFromMaps(dirtyModifiers)
-                    if self.currentLOD > 1:
-                        updateRuleBundle.mapsToComposite = [PD.DIFFUSE_MAP]
-                    elif self.currentLOD == 1:
-                        updateRuleBundle.mapsToComposite = [PD.DIFFUSE_MAP, PD.NORMAL_MAP]
-                    elif self.hasUpdatedOnce and self.mapBundle.AllMapsGood():
+                    textureCompositingStartTime = blue.os.GetTime()
+                    if self.hasUpdatedOnce and self.mapBundle.AllMapsGood():
+                        updateRuleBundle.partsToComposite = buildDataManager.GetPartsFromMaps(dirtyModifiers)
+                    self.WaitForChildTaskletsToFinish()
+                    while self.mapBundle.busyDownScaling:
+                        PD.Yield()
+
+                    if self.hasUpdatedOnce and self.mapBundle.AllMapsGood():
                         updateRuleBundle.mapsToComposite = buildDataManager.GetMapsToComposite(dirtyModifiers)
                     if buildDataManager.desiredOrderChanged:
-                        if PD.DOLL_PARTS.BODY not in updateRuleBundle.partsToComposite:
+                        if (self.mapBundle.AllMapsGood() or updateRuleBundle.partsToComposite) and PD.DOLL_PARTS.BODY not in updateRuleBundle.partsToComposite:
                             updateRuleBundle.partsToComposite.append(PD.DOLL_PARTS.BODY)
                         updateRuleBundle.mapsToComposite = list(PD.MAPS)
-                    blendShapeVector = [ modifier.weight for modifier in buildDataManager.GetSortedModifiers() if modifier.categorie in PD.BLENDSHAPE_CATEGORIES if modifier.weight != 0.0 ]
+                    blendShapeVector = [ modifier.weight for modifier in buildDataManager.GetModifiersAsList() if modifier.IsBlendshapeModifier() if modifier.weight != 0.0 ]
                     hES = (self.compressionSettings, hashStubble, blendShapeVector)
                     hashKey = buildDataManager.HashForMaps(hashableElements=hES)
                     mapsTypesComposited = self.CompositeTextures(factory, hashKey, updateRuleBundle)
-                    if updateRuleBundle.meshesAddedOrRemoved:
-                        self.WaitForTexturesToComposite(factory, hashKey, mapsTypesComposited)
-                if updateRuleBundle.meshesAddedOrRemoved:
-                    meshes = buildDataManager.GetMeshes(includeClothMeshes=factory.clothSimulationActive)
+                    if updateRuleBundle.videoMemoryFailure:
+                        raise OutOfVideoMemoryException('Out of video memory!')
+                    if not updateRuleBundle.blendShapesOnly:
+                        self.WaitForTexturesToComposite(factory, hashKey, mapsTypesComposited, textureCompositingStartTime)
+                    else:
+                        timeCompositedSec = PD.statistics.GetTimeDiffInSeconds(textureCompositingStartTime)
+                        PD.statistics.compositeTime.Add(timeCompositedSec)
+                compSet = self.compressionSettings if self.compressionSettings is not None else factory
+                self.useDXT5N = compSet and compSet.compressTextures and compSet.AllowCompress(PD.NORMAL_MAP)
+                meshes = buildDataManager.GetMeshes(includeClothMeshes=factory.clothSimulationActive)
+                if updateRuleBundle.meshesChanged:
                     self._HandleBlendShapes(removedModifiers, avatar)
-                    self.WaitForChildTaskletsToFinish()
-                    Factory.BindCompositeTexturesToMeshes(meshes, self.mapBundle)
-                    factory.BindGlobalMaps(meshes)
+                self.WaitForChildTaskletsToFinish()
+                if updateRuleBundle.meshesChanged:
                     self.ConfigureMaskedShader(updateRuleBundle)
-                    self.ApplyShaders(meshes, wrinkleFx, factory)
+                    self.renderDriver.ApplyShaders(self, meshes)
                     if visualModel:
                         factory.RemoveMeshesFromVisualModel(visualModel)
                     if visualModel:
                         factory.AppendMeshesToVisualModel(visualModel, meshes)
+                        visualModel.ResetAnimationBindings()
                     if avatar and avatar.clothMeshes is not None:
                         if len(avatar.clothMeshes) > 0:
                             del avatar.clothMeshes[:]
@@ -2539,45 +2703,37 @@ class Doll(object):
                                 if type(mesh) is trinity.Tr2ClothingActor:
                                     avatar.clothMeshes.append(mesh)
 
-                if not updateRuleBundle.blendShapesOnly and visualModel:
-                    visualModel.ResetAnimationBindings()
-                if visualModel and self.currentLOD < 0 and not (updateRuleBundle.decalsOnly or updateRuleBundle.blendShapesOnly):
+                Factory.BindMapsToMeshes(meshes, self.mapBundle, self.usePrepass)
+                if avatar and self.usePrepass:
+                    avatar.BindLowLevelShaders()
+                if self.currentLOD <= PD.LOD_SKIN and updateRuleBundle.doStubble:
 
                     def doStubble():
                         PD.PortraitTools.HandleRemovedStubble(removedModifiers, buildDataManager)
                         PD.PortraitTools.HandleUpdatedStubble(addedAndChangedModifiers, buildDataManager)
+                        factory.RebindAnimations(avatar, visualModel)
 
 
                     self.SpawnUpdateChildTasklet(doStubble)
-                if not (updateRuleBundle.decalsOnly or updateRuleBundle.blendShapesOnly) and len(wrinkleFx) > 0:
-                    self.LoadBindPose()
-                    PD.PortraitTools().SetupWrinkleMapControls(avatar, wrinkleFx, self)
-                if visualModel and avatar and self.IsPrepass():
-                    PD.prePassFixup.AddPrepassAreasToAvatar(avatar, visualModel, self, factory.clothSimulationActive)
+                self.renderDriver.OnFinalizeAvatar(visualModel, avatar, updateRuleBundle, self, factory)
+                self.previousLOD = self.currentLOD
                 self.WaitForChildTaskletsToFinish()
-                if not updateRuleBundle.blendShapesOnly:
-                    if avatar:
-                        avatar.ResetAnimationBindings()
-                    elif visualModel:
-                        visualModel.ResetAnimationBindings()
+                self.renderDriver.OnEndUpdate(avatar, visualModel, self, factory)
+                factory.RebindAnimations(avatar, visualModel)
                 if avatar:
-                    freq = PerformanceOptions.updateFreq.get(self.currentLOD, 0)
+                    freq = PD.PerformanceOptions.updateFreq.get(self.overrideLod, 0)
                     if freq == 0:
                         avatar.updatePeriod = 0
                     else:
                         avatar.updatePeriod = 1.0 / freq
-                buildDataManager.NotifyUpdate()
-                self.lastUpdateRedundant = False
-                PD.FullOptixRenderer.NotifyUpdate()
-                self.previousLOD = self.currentLOD
-                self.WaitForChildTaskletsToFinish()
-                if self.currentLOD <= PD.LOD_SCATTER_SKIN and self.skinLightmapRenderer is None:
+                if self.currentLOD == PD.LOD_SCATTER_SKIN and self.skinLightmapRenderer is None:
                     self.skinLightmapRenderer = PD.SkinLightmapRenderer(useOptix=self.currentLOD == PD.LOD_RAYTRACE)
                     self.skinLightmapRenderer.SetSkinnedObject(avatar)
                     self.skinLightmapRenderer.StartRendering()
-                if visualModel and avatar and not LODMode:
-                    if self.skinLightmapRenderer is not None:
-                        self.skinLightmapRenderer.SetSkinnedObject(avatar)
+                if self.skinLightmapRenderer is not None and visualModel and avatar and not LODMode:
+                    self.skinLightmapRenderer.SetSkinnedObject(avatar)
+                buildDataManager.NotifyUpdate()
+                self.lastUpdateRedundant = False
                 self.hasUpdatedOnce = True
             except RedundantUpdateException as err:
                 self.lastUpdateRedundant = True
@@ -2585,25 +2741,35 @@ class Doll(object):
             except KillUpdateException as err:
                 self.lastUpdateRedundant = True
                 sys.exc_clear()
+            except OutOfVideoMemoryException as err:
+                self.lastUpdateRedundant = True
+                log.LogException(str(err))
+                newSize = map(lambda x: x / 2, self.mapBundle.baseResolution)
+                shadow = PD.SkinSpotLightShadows.instance
+                if shadow and shadow.GetShadowMapResolution() > newSize[0]:
+                    shadow.SetShadowMapResolution(shadow.GetShadowMapResolution() / 2)
+                self.hasUpdatedOnce = False
+                self.SetTextureSize(newSize)
             except Exception as err:
                 log.LogException(str(err))
                 sys.exc_clear()
 
         finally:
             self.ReapUpdateChildTasklets()
-            buildDataManager.UnLock()
+            self.buildDataManager.UnLock()
+            timeUpdatingSec = PD.statistics.GetTimeDiffInSeconds(sTime)
+            PD.statistics.updateTime.Add(timeUpdatingSec)
+            if not updateRuleBundle.videoMemoryFailure:
+                uthread.new(self.NotifyUpdateDoneListeners_t)
             self._currentUpdateTasklet = None
+            if updateRuleBundle.videoMemoryFailure:
+                uthread.new(self.Update, factory, avatar, visualModel)
             AddMarker('End Start')
-            t = uthread.new(self.NotifyUpdateDoneListeners_t)
-            uthread.schedule(t)
 
 
 
 
     def NotifyUpdateDoneListeners_t(self):
-        while self.busyUpdating:
-            blue.synchro.Yield()
-
         for listener in self.onUpdateDoneListeners:
             uthread.new(listener)
 
@@ -2618,32 +2784,30 @@ class Doll(object):
 
     def WaitForChildTaskletsToFinish(self):
         try:
-            while any(map(lambda x: x.alive, self._UpdateTaskletChildren)):
-                blue.synchro.Yield()
-
+            PD.WaitForAll(self._UpdateTaskletChildren, lambda x: x.alive)
         except KillUpdateException:
             raise 
 
 
 
-    def WaitForTexturesToComposite(self, factory, hashKey, mapsTypesComposited):
-        while any(map(lambda x: x.alive, self._UpdateTaskletChildren)):
-            blue.synchro.Yield()
-
+    def WaitForTexturesToComposite(self, factory, hashKey, mapsTypesComposited, textureCompositingStartTime):
+        self.WaitForChildTaskletsToFinish()
+        PD.statistics.mapsComposited.Add(len(mapsTypesComposited))
         if factory.allowTextureCache and mapsTypesComposited:
             mapsToSave = [ self.mapBundle[mapType] for mapType in mapsTypesComposited if self.mapBundle[mapType].isGood ]
-            uthread.new(factory.SaveMaps, hashKey, self.mapBundle.baseResolution[0], mapsToSave)
+            uthread.new(factory.SaveMaps, hashKey, mapsToSave)
+        timeCompositedSec = PD.statistics.GetTimeDiffInSeconds(textureCompositingStartTime)
+        PD.statistics.compositeTime.Add(timeCompositedSec)
 
 
 
     def ConfigureMaskedShader(self, updateRuleBundle):
         if self.useMaskedShaders or updateRuleBundle.undoMaskedShaders:
-            applicableModifiers = (modifier for modifier in self.buildDataManager.GetSortedModifiers() if modifier.categorie in PD.MASKING_CATEGORIES)
+            applicableModifiers = (modifier for modifier in self.buildDataManager.GetModifiersAsList() if modifier.categorie in PD.MASKING_CATEGORIES)
             for modifier in applicableModifiers:
                 for mesh in iter(modifier.meshes):
                     self.ConfigureMeshForMaskedShader(mesh, remove=updateRuleBundle.undoMaskedShaders)
 
-                blue.pyos.BeNice()
 
 
 
@@ -2659,6 +2823,8 @@ class Doll(object):
 
         for decalArea in mesh.decalAreas:
             f = decalArea.effect
+            if f is None:
+                continue
             for p in f.parameters:
                 if p.name == 'CutMaskInfluence':
                     if remove:
@@ -2676,25 +2842,51 @@ class Doll(object):
 
         else:
             PD.MoveAreas(mesh.opaqueAreas, mesh.decalAreas)
+        for transparentArea in mesh.transparentAreas:
+            f = transparentArea.effect
+            if f is None:
+                continue
+            for p in f.parameters:
+                if p.name == 'CutMaskInfluence':
+                    p.value = 1.0
+
+
 
 
 
     def BakeDecals_t(self, factory, decalModifiers):
         if decalModifiers:
+            createTargetAvatar = False
             if self.decalBaker is None:
+                createTargetAvatar = True
                 self.decalBaker = PD.DecalBaker(factory)
-            while self.busyHandlingBlendshapes:
-                blue.synchro.Yield()
-
-            self.decalBaker.CreateTargetAvatarFromDoll(self)
+            elif not self.decalBaker.HasAvatar():
+                createTargetAvatar = True
+            self.decalBaker.Initialize()
+            if createTargetAvatar:
+                self.decalBaker.CreateTargetAvatarFromDoll(self)
+                self._UpdateTaskletChildren.append(self.decalBaker.avatarShaderSettingTasklet)
             self.decalBaker.SetSize(self.textureResolution)
             for decalModifier in decalModifiers:
-                self.decalBaker.BakeDecalToModifier(decalModifier.decalData, decalModifier)
-                while not self.decalBaker.isReady:
-                    blue.synchro.Yield()
+                try:
+                    try:
+                        try:
+                            self.decalBaker.BakeDecalToModifier(decalModifier.decalData, decalModifier)
+                        except TypeError:
+                            return 
 
-                decalModifier.mapL.update(decalModifier.mapD)
-                decalModifier.colorize = True
+                    finally:
+                        self._UpdateTaskletChildren.append(self.decalBaker.decalSettingTasklet)
+                        self._UpdateTaskletChildren.append(self.decalBaker.bakingTasklet)
+
+                    while not self.decalBaker.isReady:
+                        PD.Yield()
+
+                    decalModifier.mapL.update(decalModifier.mapD)
+                    decalModifier.colorize = True
+                except KillUpdateException:
+                    decalModifier.IsDirty = True
+                    raise 
 
 
 
@@ -2714,12 +2906,12 @@ class Doll(object):
             textureCache = {}
             mapCount = len(PD.MAPS)
             for i in xrange(mapCount):
-                tex = factory.FindCachedTexture(hashKey, self.mapBundle.baseResolution[0], PD.MAPS[i])
+                tex = factory.FindCachedTexture(hashKey, self.mapBundle.GetResolutionByMapType(i)[0], PD.MAPS[i])
+                if tex:
+                    tex.Reload()
                 textureCache[i] = tex
 
-            while any(map(lambda x: x is not None and x.isLoading, textureCache.values())):
-                blue.synchro.Yield()
-
+            PD.WaitForAll(textureCache.values(), lambda x: x is not None and x.isLoading)
             for i in xrange(mapCount):
                 if textureCache.get(i) and textureCache[i].isGood:
                     self.mapBundle.SetMapByTypeIndex(i, textureCache[i], hashKey)
@@ -2727,6 +2919,7 @@ class Doll(object):
         if self.compressionSettings is not None:
             self.compressionSettings.generateMipmap = False
         mapsTypesComposited = []
+        textureCompositor = tc.TextureCompositor(resData=factory.resData)
         for mapTypeIndex in updateRuleBundle.mapsToComposite:
             existingMap = self.mapBundle[mapTypeIndex]
             if existingMap and existingMap.isGood and hashKey == self.mapBundle.hashKeys.get(mapTypeIndex):
@@ -2734,136 +2927,25 @@ class Doll(object):
             else:
                 mapsTypesComposited.append(mapTypeIndex)
 
-            def CompositeTasklet_t(mapTypeIndex):
-                texture = factory.CompositeCombinedTexture(self.name, mapTypeIndex, self.gender, self.buildDataManager, self.mapBundle, self.compressionSettings, textureCompositor=self.textureCompositor, partsToComposite=updateRuleBundle.partsToComposite, copyToExistingTexture=not updateRuleBundle.meshesAddedOrRemoved, lod=self.currentLOD)
+
+        def CompositeTasklet_t():
+            copyToExistingTexture = len(mapsTypesComposited) == 1 and not updateRuleBundle.meshesChanged
+            for mapTypeIndex in mapsTypesComposited:
+                PD.BeFrameNice()
+                texture = None
+                try:
+                    texture = factory.CompositeCombinedTexture(mapTypeIndex, self.gender, self.buildDataManager, self.mapBundle, textureCompositor, self.compressionSettings, partsToComposite=updateRuleBundle.partsToComposite, copyToExistingTexture=copyToExistingTexture, lod=self.currentLOD)
+                except (trinity.E_OUTOFMEMORY, trinity.D3DERR_OUTOFVIDEOMEMORY):
+                    updateRuleBundle.videoMemoryFailure = True
+                    sys.exc_clear()
+                    break
                 if texture:
                     self.mapBundle.SetMapByTypeIndex(mapTypeIndex, texture, hashKey)
 
 
-            self.SpawnUpdateChildTasklet(CompositeTasklet_t, mapTypeIndex)
 
+        self.SpawnUpdateChildTasklet(CompositeTasklet_t)
         return mapsTypesComposited
-
-
-
-    def ApplyShaders(self, meshes, wrinkleFx, factory):
-        if not meshes:
-            return 
-        compSet = self.compressionSettings if self.compressionSettings is not None else factory
-        self.useDXT5N = compSet and compSet.compressTextures and compSet.AllowCompress(PD.NORMAL_MAP)
-        skinSpotLightShadowsActive = PD.SkinSpotLightShadows.instance is not None
-        skinLightmapRendererActive = self.skinLightmapRenderer is not None
-        ShaderApplyFun = self.SetInteriorShader
-        tasklets = []
-        asyncMeshes = {}
-
-        def DoClothMesh(mesh):
-            isHair = False
-            if self.currentLOD <= 0:
-                fx = PD.GetEffectsFromMesh(mesh)
-                for f in iter(fx):
-                    isHair = PD.PortraitTools.BindHeroHairShader(f, '.fx') or isHair
-                    if self.currentLOD <= PD.LOD_SKIN:
-                        PD.PortraitTools.BindHeroClothShader(f, self.useDXT5N)
-
-            if mesh.effect:
-                while type(mesh.effect) == trinity.Tr2Effect and mesh.effect.effectResource.isLoading:
-                    blue.synchro.Yield()
-
-                mesh.effect.PopulateParameters()
-            if mesh.effectReversed:
-                while type(mesh.effect) == trinity.Tr2Effect and mesh.effectReversed.effectResource.isLoading:
-                    blue.synchro.Yield()
-
-                mesh.effectReversed.PopulateParameters()
-            if PD.SkinSpotLightShadows.instance is not None:
-                PD.SkinSpotLightShadows.instance.CreateEffectParamsForMesh(mesh, isClothMesh=True)
-            if isHair and hasattr(mesh, 'useTransparentBatches'):
-                mesh.useTransparentBatches = True
-
-
-        for mesh in iter(meshes):
-            if type(mesh) is trinity.Tr2ClothingActor:
-                t = uthread.new(DoClothMesh, mesh)
-            elif skinSpotLightShadowsActive or skinLightmapRendererActive:
-                asyncMeshes[mesh] = False
-            if PD.DOLL_PARTS.HEAD in mesh.name:
-                t = uthread.new(ShaderApplyFun, *(asyncMeshes, mesh, wrinkleFx))
-            else:
-                t = uthread.new(ShaderApplyFun, *(asyncMeshes, mesh, None))
-            tasklets.append(t)
-            uthread.schedule(t)
-
-        while any(map(lambda x: x.alive, tasklets)):
-            blue.synchro.Yield()
-
-        for mesh in asyncMeshes.iterkeys():
-            if skinSpotLightShadowsActive:
-                PD.SkinSpotLightShadows.instance.CreateEffectParamsForMesh(mesh)
-            if skinLightmapRendererActive and asyncMeshes[mesh]:
-                self.skinLightmapRenderer.BindLightmapShader(mesh)
-
-
-
-
-    def SetInteriorShader(self, asyncMeshes, mesh, wrinkleFx):
-        fx = PD.GetEffectsFromMesh(mesh)
-        tasklets = []
-        for f in iter(fx):
-            if type(f) == trinity.Tr2ShaderMaterial:
-                continue
-            t = uthread.new(self.SetInteriorShaderForFx_t, *(f,
-             asyncMeshes,
-             mesh,
-             wrinkleFx))
-            tasklets.append(t)
-
-        while any(map(lambda x: x.alive, tasklets)):
-            blue.synchro.Yield()
-
-
-
-
-    def SetInteriorShaderForFx_t(self, effect, asyncMeshes, mesh, wrinkleFx):
-        path = effect.effectFilePath.lower()
-        if 'masked.fx' in path:
-            return 
-        name = effect.name.lower()
-        if name.startswith('c_custom') or name.startswith('c_s2'):
-            PD.PortraitTools.BindCustomShaders(effect, useFastShaders=self._Doll__useFastShader)
-            return 
-        if asyncMeshes:
-            asyncMeshes[mesh] = True
-        suffix = '.fx'
-        if self._Doll__useFastShader and ('_fast.fx' in path or path in PD.SHADERS_THAT_CAN_SWITCH_TO_FAST_SHADER_MODE):
-            suffix = '_fast.fx'
-        if self.useDXT5N and ('_dxt5n.fx' in path or path in PD.SHADERS_TO_ENABLE_DXT5N):
-            suffix = '{0}_dxt5n.fx'.format(suffix[:-3])
-        if PD.DOLL_PARTS.HAIR not in path:
-            if self.currentLOD >= 0:
-                if 'skinnedavatarbrdf' not in path:
-                    effect.effectFilePath = '{0}{1}'.format(PD.INTERIOR_AVATAR_EFFECT_FILE_PATH[:-3], suffix)
-                    foundBRDF = False
-                    for r in effect.resources:
-                        if r.name == 'FresnelLookupMap':
-                            foundBRDF = True
-                            continue
-
-                    if not foundBRDF:
-                        res = trinity.TriTexture2DParameter()
-                        res.name = 'FresnelLookupMap'
-                        res.resourcePath = PD.FRESNEL_LOOKUP_MAP
-                        effect.resources.append(res)
-            elif self.currentLOD == PD.LOD_HERO:
-                PD.PortraitTools.BindHeroShader(effect, self.isOptimized, suffix)
-            elif self.currentLOD == PD.LOD_SKIN:
-                PD.PortraitTools.BindSkinShader(effect, wrinkleFx, scattering=False, buildDataManager=self.buildDataManager, gender=self.gender, use_png=PD.USE_PNG, fxSuffix=suffix)
-                PD.PortraitTools.BindLinearAvatarBRDF(effect, suffix)
-            elif self.currentLOD <= PD.LOD_SCATTER_SKIN:
-                PD.PortraitTools.BindSkinShader(effect, wrinkleFx, scattering=True, buildDataManager=self.buildDataManager, gender=self.gender, use_png=PD.USE_PNG, fxSuffix=suffix)
-                PD.PortraitTools.BindLinearAvatarBRDF(effect, suffix)
-        elif self.currentLOD <= 0:
-            PD.PortraitTools.BindHeroHairShader(effect, suffix)
 
 
 
@@ -2877,37 +2959,28 @@ class Doll(object):
 
     def LoadClothData(self, modifierList):
         clothMeshes = []
-        resFile = blue.ResFile()
-        for modifier in iter(modifierList):
+        clothModifierGenerator = (modifier for modifier in modifierList if modifier.clothPath if not modifier.clothData)
+        for modifier in clothModifierGenerator:
             clothLoadPath = modifier.clothPath
             if not clothLoadPath:
                 modifier.clothData = None
                 continue
-            if self.currentLOD > 0:
-                clothLod = clothLoadPath.replace('.red', '_lod{0}.red'.format(self.currentLOD))
-                if self.lodsInSeparateFolder:
-                    (nonLodFolder, lodFolder,) = self.GetLODPathsToReplace()
-                    clothLod = clothLod.lower().replace(nonLodFolder, lodFolder)
-                if resFile.FileExists(clothLod):
-                    clothLoadPath = clothLod
-                else:
-                    clothLoadPath = None
             if clothLoadPath:
                 clothData = blue.os.LoadObject(clothLoadPath)
-                if clothData:
+                if clothData and type(clothData) == trinity.Tr2ClothingActor:
                     clothData.name = modifier.name
                     clothMeshes.append(clothData)
+                else:
+                    clothData = None
                 modifier.clothData = clothData
 
-        while any(map(lambda x: x.clothingRes.isLoading, clothMeshes)):
-            blue.synchro.Yield()
-
+        PD.WaitForAll(clothMeshes, lambda x: x.clothingRes.isLoading)
         return clothMeshes
 
 
 
     def SuspendCloth(self, avatar = None, factory = None):
-        for m in self.buildDataManager.GetSortedModifiers():
+        for m in self.buildDataManager.GetModifiersAsList():
             if m.categorie != PD.DOLL_PARTS.HAIR and m.clothData:
                 meshPath = m.clothPath.lower().replace('_physx.red', '.red')
                 bsMesh = m.clothData.resPath.lower().replace('.apb', '_bs.gr2')
@@ -2916,7 +2989,7 @@ class Doll(object):
                     item = blue.os.LoadObject(meshPath)
                     if hasattr(item, 'meshes') and len(item.meshes):
                         while item.meshes[0].isLoading:
-                            blue.synchro.Yield()
+                            PD.Yield()
 
                         dl = []
                         for mesh in item.meshes:
@@ -2925,8 +2998,7 @@ class Doll(object):
                         for delMesh in dl:
                             item.meshes.remove(delMesh)
 
-                        factory.BindGlobalMaps(item.meshes)
-                        Factory.BindCompositeTexturesToMeshes(item.meshes, self.mapBundle)
+                        Factory.BindMapsToMeshes(item.meshes, self.mapBundle)
                     self.tempClothCache[cacheKey] = item
                 else:
                     item = self.tempClothCache[cacheKey]
@@ -2950,7 +3022,7 @@ class Doll(object):
 
     def UpdateTempClothBlends(self, factory):
         meshGeometryResPaths = {}
-        morphTargets = self.GetMorphTargets()
+        morphTargets = self.buildDataManager.GetMorphTargets()
         uthread.new(factory.ApplyMorphTargetsToMeshes, self.tempClothMeshes, morphTargets, self.tempClothCache, meshGeometryResPaths)
 
 
@@ -2970,7 +3042,7 @@ class Doll(object):
                         clothInScene = False
 
             if not clothInScene:
-                blue.synchro.Yield()
+                PD.Yield()
 
         dl = []
         for mesh in avatar.visualModel.meshes:
@@ -2993,9 +3065,9 @@ class Doll(object):
         (oldX, oldY,) = self.mapBundle.baseResolution
         self.mapBundle.SetBaseResolution(x, y)
         if x > oldX and y > oldY:
-            self.mapBundle.ReCreate()
-        for modifier in self.buildDataManager.GetSortedModifiers():
-            if modifier.IsTextureContainingModifier():
+            self.mapBundle.ReCreate(includeFixedSizeMaps=False)
+        for modifier in self.buildDataManager.GetModifiersAsList():
+            if modifier.IsTextureContainingModifier() and not modifier.IsDirty:
                 modifier.IsDirty = True
 
 
@@ -3007,25 +3079,30 @@ class Doll(object):
 
     busyUpdating = property(fget=lambda self: self.getbusyUpdating())
 
-    def setoverrideLod(self, newLod):
+    def setoverrideLod(self, newLod, affectTextureSize = True):
         oldLod = self.currentLOD
         self.currentLOD = newLod
         self.previousLOD = oldLod
-        if oldLod == PD.LOD_SKIN and newLod <= PD.LOD_SCATTER_SKIN:
+        self.buildDataManager.SetLOD(newLod)
+        if oldLod == PD.LOD_SKIN and newLod == PD.LOD_SCATTER_SKIN:
             self.buildDataManager.SetAllAsDirty()
             return 
-        if oldLod <= PD.LOD_SCATTER_SKIN and newLod >= PD.LOD_SKIN:
+        if oldLod == PD.LOD_SCATTER_SKIN and newLod >= PD.LOD_SKIN:
             self.skinLightmapRenderer = None
             if newLod == PD.LOD_SKIN:
                 return 
-        for modifier in self.buildDataManager.GetSortedModifiers():
+        if self.gender == PD.GENDER.MALE:
+            for bm in self.buildDataManager.GetModifiersByCategory(PD.HAIR_CATEGORIES.BEARD):
+                bm.IsDirty = True
+
+        for modifier in self.buildDataManager.GetModifiersAsList():
             if modifier.IsMeshContainingModifier():
                 modifier.IsDirty = True
                 del modifier.meshes[:]
                 modifier.meshGeometryResPaths = {}
 
-        if newLod >= 0 and newLod < len(PD.LOD_TEXTURE_SIZES):
-            self.SetTextureSize(*PD.LOD_TEXTURE_SIZES[newLod])
+        if affectTextureSize and newLod >= 0 and newLod < len(PD.PerformanceOptions.lodTextureSizes):
+            self.SetTextureSize(*PD.PerformanceOptions.lodTextureSizes[newLod])
 
 
     overrideLod = property(fget=lambda self: self.currentLOD, fset=setoverrideLod)

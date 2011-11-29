@@ -1,10 +1,21 @@
 import uicls
-import uiutil
-import uiconst
 import util
 import log
 import blue
 import browserutil
+import localization
+import form
+import uiconst
+import uiutil
+HINTLABELS = {'showinfo': localization.GetByLabel('UI/Commands/ShowInfo'),
+ 'contract': localization.GetByLabel('UI/Contracts/ShowContract'),
+ 'note': localization.GetByLabel('UI/Notepad/ShowNote'),
+ 'fleet': localization.GetByLabel('UI/Fleet/ClickToJoinFleet'),
+ 'localsvc': None,
+ 'showrouteto': localization.GetByLabel('UI/Map/Navigation/ShowRoute'),
+ 'fitting': localization.GetByLabel('UI/Fitting/ShowFitting'),
+ 'preview': localization.GetByLabel('UI/Preview/Preview'),
+ 'CertSlot': localization.GetByLabel('UI/Certificates/PlannerWindow/OpenCertificationPlanner')}
 
 class BaseLink(uicls.BaseLinkCore):
     __guid__ = 'uicls.BaseLink'
@@ -84,14 +95,14 @@ class BaseLink(uicls.BaseLinkCore):
                 if len(ids) > 2:
                     invtype = cfg.invtypes.Get(typeID)
                     if invtype.categoryID == const.categoryBlueprint:
-                        filterFunc = {mls.UI_CMD_SHOWINFO}
+                        filterFunc = {localization.GetByLabel('UI/Commands/ShowInfo')}
                     else:
                         bookmark = self.GetBookmark(ids, itemID, typeID)
                 m += sm.GetService('menu').GetMenuFormItemIDTypeID(itemID, typeID, bookmark, ignoreMarketDetails=0, filterFunc=filterFunc)
                 m += sm.GetService('menu').GetGMTypeMenu(typeID, divs=True)
                 for item in m:
                     if item is not None:
-                        if item[0] == mls.UI_CMD_SETNEWPASSWORD:
+                        if item[0] == localization.GetByLabel('UI/Inventory/ItemActions/SetNewPasswordForContainer'):
                             m.remove(item)
 
             except:
@@ -100,25 +111,68 @@ class BaseLink(uicls.BaseLinkCore):
         elif url.startswith('preview:'):
             return []
         if url.startswith('contract:'):
-            m += [(mls.UI_CMD_SHOWCONTRACT, self.Contract, (url[9:],))]
+            m += [(localization.GetByLabel('UI/Contracts/ShowContract'), self.Contract, (url[9:],))]
             return m
         if url.startswith('CertSlot:'):
-            m += [(mls.UI_CMD_OPENCERTIFICATEPLANNER, sm.StartService('certificates').OpenCertificateWindow, (url[9:],))]
+            m += [(localization.GetByLabel('UI/Commands/OpenCertificatePlanner'), sm.StartService('certificates').OpenCertificateWindow, (url[9:],))]
             return m
         if self.ValidateURL(url):
             url = url.replace('&amp;', '&')
             url = browserutil.GetFixedURL(parent, url)
-            m += [(mls.UI_BROWSER_OPENLINKINNEWTAB, self.UrlHandlerDelegate, (parent,
+            m += [(localization.GetByLabel('UI/Browser/OpenLinkInNewTab'), self.UrlHandlerDelegate, (parent,
                'NewView',
                url,
                True))]
-            m += [(mls.UI_CMD_OPEN, self.UrlHandlerDelegate, (parent,
+            m += [(localization.GetByLabel('UI/Common/Open'), self.UrlHandlerDelegate, (parent,
                'GoTo',
                url,
                False))]
         if url.lower().startswith('http'):
-            m += [(mls.UI_CMD_COPYURL, self.CopyUrl, (url,))]
+            m += [(localization.GetByLabel('/Carbon/UI/Commands/CopyURL'), self.CopyUrl, (url,))]
         return m
+
+
+
+    def GetStandardLinkHint(self, url):
+        if url.startswith('showinfo'):
+            parsedArgs = uicls.BaseLink().ParseShowInfo(url[9:])
+            if not parsedArgs:
+                return localization.GetByLabel('UI/Commands/ShowInfo')
+            (typeID, itemID, data,) = parsedArgs
+            return localization.GetByLabel('UI/Common/ShowTypeInfo', groupName=cfg.invtypes.Get(typeID).Group().name)
+        for (k, v,) in HINTLABELS.iteritems():
+            if url.startswith('%s:' % k):
+                return v
+
+
+
+
+    def GetLinkFormat(self, url, linkState = None, linkStyle = None):
+        linkState = linkState or uiconst.LINK_IDLE
+        linkStyle = linkStyle or uiconst.LINKSTYLE_REGULAR
+        fmt = uiutil.Bunch()
+        if linkStyle == uiconst.LINKSTYLE_SUBTLE:
+            if linkState in (uiconst.LINK_ACTIVE, uiconst.LINK_HOVER):
+                fmt.color = -256
+            elif linkState in (uiconst.LINK_IDLE, uiconst.LINK_DISABLED):
+                if url.startswith('showinfo'):
+                    pass
+                elif url.startswith('http'):
+                    fmt.color = -23040
+                else:
+                    fmt.color = -552162
+        elif linkState in (uiconst.LINK_ACTIVE, uiconst.LINK_HOVER):
+            fmt.color = -256
+            fmt.underline = True
+        elif linkState in (uiconst.LINK_IDLE, uiconst.LINK_DISABLED):
+            if url.startswith('showinfo'):
+                fmt.color = -23040
+            elif url.startswith('http'):
+                fmt.color = -23040
+            else:
+                fmt.color = -552162
+        fmt.bold = True
+        return fmt
 
 
 
@@ -136,7 +190,7 @@ class BaseLink(uicls.BaseLinkCore):
         bookmark.typeID = typeID
         bookmark.flag = None
         bookmark.memo = ''
-        bookmark.created = blue.os.GetTime()
+        bookmark.created = blue.os.GetWallclockTime()
         bookmark.x = x
         bookmark.y = y
         bookmark.z = z
@@ -191,7 +245,8 @@ class BaseLink(uicls.BaseLinkCore):
 
 
     def Note(self, noteID):
-        sm.GetService('notepad').ShowNote(noteID)
+        noteWindow = form.Notepad.Open()
+        noteWindow.ShowNote(noteID)
 
 
 
@@ -244,7 +299,9 @@ class BaseLink(uicls.BaseLinkCore):
 
 
 
-    def ShowInfo(self, args):
+    def ParseShowInfo(self, args):
+        if args.startswith('showinfo:'):
+            args = args[9:]
         ids = args.split('//')
         try:
             typeID = int(ids[0])
@@ -254,9 +311,18 @@ class BaseLink(uicls.BaseLinkCore):
                 itemID = int(ids[1])
             if len(ids) > 2:
                 data = ids[2:]
+            return (typeID, itemID, data)
         except:
             log.LogError('failed to convert string to ids in Browser:ShowInfo. Args:', args)
             return 
+
+
+
+    def ShowInfo(self, args):
+        parsedArgs = self.ParseShowInfo(args)
+        if not parsedArgs:
+            return 
+        (typeID, itemID, data,) = parsedArgs
         typeObj = cfg.invtypes.Get(typeID)
         if typeObj.categoryID == const.categoryAbstract:
             abstractinfo = util.KeyVal()
@@ -283,8 +349,7 @@ class BaseLink(uicls.BaseLinkCore):
         except:
             log.LogError('failed to convert string to ids in Browser:ShowInMap. Args:', args)
             return 
-        sm.GetService('map').OpenStarMap()
-        sm.GetService('starmap').SetInterest(solarsystemIDs[0], forceframe=1)
+        sm.GetService('viewState').ActivateView('starmap', interestID=solarsystemIDs[0])
 
 
 
@@ -306,9 +371,7 @@ class BaseLink(uicls.BaseLinkCore):
         sourceID = None
         if len(fromto) == 2:
             sourceID = int(fromto[1])
-        sm.GetService('map').OpenStarMap()
-        sm.GetService('starmap').SetInterest(sourceID or eve.session.regionid, forceframe=1)
-        sm.GetService('starmap').DrawRouteTo(destinationID, sourceID=sourceID)
+        sm.GetService('viewState').ActivateView('starmap', interestID=sourceID or session.regionid, drawRoute=(sourceID, destinationID))
 
 
 

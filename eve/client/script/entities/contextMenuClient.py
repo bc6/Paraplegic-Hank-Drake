@@ -63,7 +63,7 @@ class ContextMenuClient(service.Service):
             QAMenu = ('GM / WM Extras', (('entityID: %s' % entityID, self.CopyEntityID, (entityID,)), ('Entity Monitor', self.ShowEntityMonitor, (entityID,)), None))
             m.append(QAMenu)
             actionList = self.actionObjectClient.GetActionList(session.charid, entityID)
-            for (actionID, (label, isEnabled,),) in actionList.iteritems():
+            for (actionID, (label, isEnabled, trash,),) in actionList.iteritems():
                 if isEnabled:
                     args = (session.charid, entityID, actionID)
                 else:
@@ -81,7 +81,8 @@ class ContextMenuClient(service.Service):
 
     def ShowEntityMonitor(self, entityID):
         if session.role & service.ROLE_QA:
-            sm.GetService('window').GetWindow('EntityMonitor_%d' % entityID, create=1, maximize=1, decoClass=uicls.EntityMonitor, entID=entityID)
+            windowID = 'EntityMonitor_%d' % entityID
+            uicls.EntityMonitor.Open(windowID=windowID, entID=entityID)
 
 
 

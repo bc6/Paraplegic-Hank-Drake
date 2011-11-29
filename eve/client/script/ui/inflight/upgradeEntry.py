@@ -1,3 +1,4 @@
+import localization
 import uix
 import xtriui
 import util
@@ -20,8 +21,8 @@ class BaseUpgradeEntry(uicls.SE_BaseClassCore):
         self.sr.icon = uicls.Container(name='icon', parent=self.sr.icons, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(0, 0, 0, 0))
         self.sr.name = uicls.Container(name='name', parent=self.sr.textstuff, align=uiconst.TOTOP, pos=(0, 0, 0, 16), padding=(0, 0, 0, 0))
         self.sr.level = uicls.Container(name='level', parent=self.sr.textstuff, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(0, 0, 0, 0))
-        self.sr.nameLabel = uicls.Label(text='', parent=self.sr.name, left=0, top=0, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, clipped=1, singleline=1)
-        self.sr.levelLabel = uicls.Label(text='', parent=self.sr.level, left=0, top=0, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, clipped=1, singleline=1)
+        self.sr.nameLabel = uicls.EveLabelMedium(text='', parent=self.sr.name, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, clipped=1, singleline=1)
+        self.sr.levelLabel = uicls.EveLabelMedium(text='', parent=self.sr.level, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, clipped=1, singleline=1)
         self.sr.selection = uicls.Fill(parent=self, padTop=1, padBottom=1, color=(1.0, 1.0, 1.0, 0.25))
         self.sr.infoicon = uicls.InfoIcon(size=16, left=0, top=0, parent=self.sr.infoIcons, idx=0, align=uiconst.CENTERRIGHT, name='infoicon')
         self.sr.infoicon.OnClick = self.ShowInfo
@@ -51,26 +52,26 @@ class BaseUpgradeEntry(uicls.SE_BaseClassCore):
         if info is None:
             levelText = ''
         else:
-            levelText = '%s %d' % (mls.UI_GENERIC_LEVEL, sovSvc.GetUpgradeLevel(self.typeID).level)
+            levelText = localization.GetByLabel('UI/InfrastructureHub/LevelX', level=sovSvc.GetUpgradeLevel(self.typeID).level)
         self.sr.levelLabel.text = levelText
         typeIcon = uicls.Icon(parent=self.sr.icon, align=uiconst.CENTER, pos=(0, 0, 24, 24), ignoreSize=True, typeID=self.typeID, size=24)
         hint = ''
         if self.item is not None:
             statusIconPath = 'ui_38_16_193'
-            hint = mls.UI_SHARED_UPGRADEINSTALLED
+            hint = localization.GetByLabel('UI/InfrastructureHub/UpgradeAlreadyInstalled')
         elif self.typeInfo.canInstall:
             statusIconPath = 'ui_38_16_195'
-            hint = mls.UI_SHARED_UPGRADEMEETSREQUIREMENTS
+            hint = localization.GetByLabel('UI/InfrastructureHub/UpgradeMeetsRequirements')
         else:
             statusIconPath = 'ui_38_16_194'
-            hint = mls.UI_SHARED_UPGRADECANNOTBEINSTALLED
+            hint = localization.GetByLabel('UI/InfrastructureHub/UpgradeRequirementsNotMet')
         statusIcon = uicls.Icon(icon=statusIconPath, parent=self.sr.status, align=uiconst.CENTER, pos=(0, 0, 16, 16))
         statusIcon.hint = hint
         self.SetOnline(self.online)
-        hinttext = hinttext = '%s:<br>%s' % (mls.UI_SHARED_CERTPREREQ, levelText)
+        hinttext = localization.GetByLabel('UI/InfrastructureHub/PrereqsShort', level=sovSvc.GetUpgradeLevel(self.typeID).level)
         preReqs = sovSvc.GetPrerequisite(self.typeID)
         if preReqs is not None:
-            hinttext = '%s:<br>%s<br>%s' % (mls.UI_SHARED_CERTPREREQ, levelText, preReqs)
+            hinttext = localization.GetByLabel('UI/InfrastructureHub/PrereqsLong', level=sovSvc.GetUpgradeLevel(self.typeID).level, preReqs=preReqs)
         self.hint = hinttext
 
 
@@ -97,9 +98,9 @@ class BaseUpgradeEntry(uicls.SE_BaseClassCore):
         color = self.GetOnlineColor(online)
         self.sr.onlinestatus.SetRGB(*color)
         if online:
-            self.sr.onlinestatus.hint = mls.UI_GENERIC_ONLINE
+            self.sr.onlinestatus.hint = localization.GetByLabel('UI/InfrastructureHub/Online')
         else:
-            self.sr.onlinestatus.hint = mls.UI_GENERIC_OFFLINE
+            self.sr.onlinestatus.hint = localization.GetByLabel('UI/InfrastructureHub/Offline')
         self.sr.onlinestatus.state = uiconst.UI_NORMAL
 
 

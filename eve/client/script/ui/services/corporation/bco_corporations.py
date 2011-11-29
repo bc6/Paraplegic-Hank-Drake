@@ -2,6 +2,9 @@ import uthread
 import util
 import corpObject
 import blue
+import localization
+import uicls
+import form
 
 class CorporationsO(corpObject.base):
     __guid__ = 'corpObject.corporations'
@@ -118,44 +121,37 @@ class CorporationsO(corpObject.base):
                 self.corp__members.MemberCanRunForCEO_ = None
                 resetCorpWindow = 1
                 showOffices = 1
-            lobby = None
             if resetCorpWindow:
                 sm.GetService('corpui').ResetWindow(1)
             if loadLogo:
                 sm.GetService('corpui').LoadLogo(corpID)
             if updateDivisionNames:
                 uthread.new(self._CorporationsO__UpdateDivisionNamesInTheUI).context = 'svc.corp.OnCorporationChanged'
-            if showOffices:
-                if lobby is None:
-                    lobby = sm.GetService('station').GetLobby()
-                if lobby is not None:
-                    if lobby.sr and lobby.sr.lobbytabs:
-                        if lobby.sr.lobbytabs.GetSelectedArgs() == 'lobby_offices':
-                            lobby.ShowOffices()
-            if loadButtons:
-                if lobby is None:
-                    lobby = sm.GetService('station').GetLobby()
-                if lobby is not None:
+            lobby = form.Lobby.GetIfOpen()
+            if lobby:
+                if showOffices:
+                    lobby.ReloadOfficesIfVisible()
+                if loadButtons:
                     lobby.LoadButtons()
 
 
 
     def GetDivisionNames(self, new = 0):
         corp = self.GetCorporation()
-        return {1: corp.division1 or mls.UI_CORP_DIVISION_FIRSTDIVISION,
-         2: corp.division2 or mls.UI_CORP_DIVISION_SECONDDIVISION,
-         3: corp.division3 or mls.UI_CORP_DIVISION_THIRDDIVISION,
-         4: corp.division4 or mls.UI_CORP_DIVISION_FOURTHDIVISION,
-         5: corp.division5 or mls.UI_CORP_DIVISION_FIFTHDIVISION,
-         6: corp.division6 or mls.UI_CORP_DIVISION_SIXTHDIVISION,
-         7: corp.division7 or mls.UI_CORP_DIVISION_SEVENTHDIVISION,
-         8: mls.UI_CORP_MASTERWALLET,
-         9: corp.walletDivision2 or mls.UI_CORP_DIVISION_SECONDWALLETDIVISION,
-         10: corp.walletDivision3 or mls.UI_CORP_DIVISION_THIRDWALLETDIVISION,
-         11: corp.walletDivision4 or mls.UI_CORP_DIVISION_FOURTHWALLETDIVISION,
-         12: corp.walletDivision5 or mls.UI_CORP_DIVISION_FIFTHWALLETDIVISION,
-         13: corp.walletDivision6 or mls.UI_CORP_DIVISION_SIXTHWALLETDIVISION,
-         14: corp.walletDivision7 or mls.UI_CORP_DIVISION_SEVENTHWALLETDIVISION}
+        return {1: corp.division1 or localization.GetByLabel('UI/Corporations/Common/CorporateDivisionFirst'),
+         2: corp.division2 or localization.GetByLabel('UI/Corporations/Common/CorporateDivisionSecond'),
+         3: corp.division3 or localization.GetByLabel('UI/Corporations/Common/CorporateDivisionThird'),
+         4: corp.division4 or localization.GetByLabel('UI/Corporations/Common/CorporateDivisionFourth'),
+         5: corp.division5 or localization.GetByLabel('UI/Corporations/Common/CorporateDivisionFifth'),
+         6: corp.division6 or localization.GetByLabel('UI/Corporations/Common/CorporateDivisionSixth'),
+         7: corp.division7 or localization.GetByLabel('UI/Corporations/Common/CorporateDivisionSeventh'),
+         8: localization.GetByLabel('UI/Corporations/Common/CorporateDivisionMasterWallet'),
+         9: corp.walletDivision2 or localization.GetByLabel('UI/Corporations/Common/CorporateDivisionWalletSecond'),
+         10: corp.walletDivision3 or localization.GetByLabel('UI/Corporations/Common/CorporateDivisionWalletThird'),
+         11: corp.walletDivision4 or localization.GetByLabel('UI/Corporations/Common/CorporateDivisionWalletFourth'),
+         12: corp.walletDivision5 or localization.GetByLabel('UI/Corporations/Common/CorporateDivisionWalletFifth'),
+         13: corp.walletDivision6 or localization.GetByLabel('UI/Corporations/Common/CorporateDivisionWalletSixth'),
+         14: corp.walletDivision7 or localization.GetByLabel('UI/Corporations/Common/CorporateDivisionWalletSeventh')}
 
 
 
@@ -168,7 +164,7 @@ class CorporationsO(corpObject.base):
             self.LogInfo('There are no offices here.')
             return 
         self.LogInfo("Char's corp has a hangar wndid", wndid)
-        wnd = sm.GetService('window').GetWindow(wndid)
+        wnd = uicls.Window.GetIfOpen(windowID=wndid)
         if not wnd:
             self.LogInfo("Can't find char's corp hangar window")
         else:

@@ -1,17 +1,13 @@
 from service import *
-import sys
 import blue
 import trinity
 import log
-import xtriui
 import math
-import uix
 import uiutil
 import form
 import uthread
 import random
 import util
-import listentry
 import uicls
 import uiconst
 import paperDoll as pd
@@ -20,6 +16,7 @@ import ccUtil
 import ccConst
 import geo2
 import turret
+import localization
 MESH_NAMES_BY_GROUPID = {1083: 'accessories',
  1084: pd.BODY_CATEGORIES.TATTOO,
  1085: 'TODO',
@@ -51,7 +48,8 @@ def GetPaperDollResource(typeID):
 
 
 class Preview(Service):
-    __exportedcalls__ = {'PreviewType': []}
+    __exportedcalls__ = {'PreviewType': [],
+     'PreviewCharacter': []}
     __dependencies__ = []
     __update_on_reload__ = 0
     __guid__ = 'svc.preview'
@@ -64,8 +62,26 @@ class Preview(Service):
 
 
     def PreviewType(self, typeID, subsystems = None):
-        wnd = sm.GetService('window').GetWindow('PreviewWnd', create=1)
-        wnd.PreviewType(typeID, subsystems)
+        wnd = form.PreviewWnd.GetIfOpen()
+        if wnd:
+            wnd.PreviewType(typeID, subsystems)
+        else:
+            form.PreviewWnd.Open(previewType=(typeID, subsystems))
+
+
+
+    def PreviewCharacter(self, charID):
+        if getattr(self, 'running', False) or charID in const.auraAgentIDs:
+            return 
+        dna = sm.RemoteSvc('paperDollServer').GetPaperDollData(charID)
+        if dna is None:
+            raise UserError('CharacterHasNoDNA', {'charID': charID})
+        wnd = form.PreviewWnd.GetIfOpen()
+        if wnd:
+            wnd.PreviewCharacter(charID, dna=dna)
+        else:
+            wnd = form.PreviewWnd.Open(previewCharacter=charID, dna=dna)
+        return wnd
 
 
 
@@ -73,12 +89,13 @@ class Preview(Service):
 class PreviewWnd(uicls.Window):
     __guid__ = 'form.PreviewWnd'
     __notifyevents__ = ['OnSetDevice', 'OnResizeUpdate']
+    default_windowID = 'previewWnd'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.typeID = None
         self.scope = 'all'
-        self.SetCaption(mls.UI_GENERIC_PREVIEW)
+        self.SetCaption(localization.GetByLabel('UI/Preview/PreviewCaption'))
         self.sr.main = uiutil.GetChild(self, 'main')
         self.SetWndIcon()
         self.SetTopparentHeight(0)
@@ -91,16 +108,17 @@ class PreviewWnd(uicls.Window):
         listbtn.align = uiconst.NOALIGN
         listbtn.left = 2
         listbtn.top = 10
-        listbtn.hint = mls.UI_SHARED_LISTITEMSINSOLARSYSTEM
+        listbtn.hint = localization.GetByLabel('UI/Neocom/ListItemsInSystem')
         listbtn.GetMenu = self.GetShipMenu
         self.listbtn = listbtn
-        self.sr.title = t = uicls.Label(text='', parent=rightSide, left=17, top=4, letterspace=1, fontsize=20, state=uiconst.UI_NORMAL, idx=0, uppercase=1)
+        self.sr.title = t = uicls.EveCaptionMedium(text='', parent=rightSide, left=17, top=4, state=uiconst.UI_NORMAL, idx=0)
         t.mmbold = 0.5
         self.sr.title.GetMenu = self.GetShipMenu
         self.sr.title.expandOnLeft = 1
-        self.sr.subtitle = t = uicls.Label(text='', parent=rightSide, left=19, top=28, letterspace=2, fontsize=9, state=uiconst.UI_DISABLED, idx=0, uppercase=1)
+        self.sr.subtitle = t = uicls.EveHeaderSmall(text='', parent=rightSide, left=19, top=28, state=uiconst.UI_DISABLED, idx=0)
         self.textCont = uicls.Container(parent=self.sr.rightSide, align=uiconst.TOBOTTOM, pos=(0, 0, 0, 150))
-        self.desc = uicls.Edit(parent=self.textCont, readonly=1, hideBackground=1, padding=(6, 6, 6, 6), fontsize=12)
+        self.desc = uicls.EditPlainText(parent=self.textCont, readonly=1, padding=6, fontsize=12)
+        self.desc.HideBackground()
         sc = form.SceneContainer(parent=self.sr.rightSide, align=uiconst.TOALL, state=uiconst.UI_DISABLED)
         sc.Startup()
         self.sr.sceneContainer = sc
@@ -109,14 +127,34 @@ class PreviewWnd(uicls.Window):
         nav.OnClick = self.OnClickNav
         self.sr.navigation = nav
         self.mannequin = None
+        self.loadingCharacterThread = None
+        self.previewingWhat = ''
+        self.previewCharacterInfo = None
+        previewType = attributes.previewType
+        charID = attributes.previewCharacter
+        if previewType is not None:
+            self.PreviewType(*previewType)
+        elif charID is not None:
+            dna = attributes.dna
+            if dna:
+                self.PreviewCharacter(charID, dna)
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
+        if self.previewCharacterInfo is not None:
+            charID = self.previewCharacterInfo[0]
+            sm.GetService('character').RemoveCharacter(charID)
+            self.previewCharacterInfo = None
         self.CloseSubSystemWnd()
         self.sr.sceneContainer.scene = None
+        self.sr.sceneContainer.renderJob = None
         self.sr.sceneContainer = None
         self.mannequin = None
+        self.running = None
+        if self.loadingCharacterThread is not None:
+            self.loadingCharacterThread.kill()
+            self.loadingCharacterThread = None
 
 
 
@@ -127,18 +165,124 @@ class PreviewWnd(uicls.Window):
 
     def BringToFront(self):
         self.Maximize()
-        wnd = sm.GetService('window').GetWindow('PreviewSubSystems', create=0)
+        wnd = form.AssembleShip.GetIfOpen(windowID='PreviewSubSystems')
         if wnd:
             wnd.Maximize()
 
 
 
     def GetShipMenu(self, *args):
-        return sm.GetService('menu').GetMenuFormItemIDTypeID(None, getattr(self, 'typeID', None), ignoreMarketDetails=False, filterFunc=[mls.UI_CMD_PREVIEW])
+        return sm.GetService('menu').GetMenuFormItemIDTypeID(None, getattr(self, 'typeID', None), ignoreMarketDetails=False, filterFunc=[localization.GetByLabel('UI/Preview/Preview')])
+
+
+
+    def PreviewCharacter(self, charID, dna):
+        if getattr(self, 'running', False):
+            return 
+        self.running = True
+        if self.previewCharacterInfo is not None:
+            prevCharID = self.previewCharacterInfo[0]
+            sm.GetService('character').RemoveCharacter(prevCharID)
+        self.previewCharacterInfo = (charID, dna)
+        self.loadingCharacterThread = uthread.new(self.PreviewCharacter_thread, charID, dna)
+
+
+
+    def PreviewCharacter_thread(self, charID, dna):
+        try:
+            try:
+                self.previewingWhat = 'character'
+                caption = localization.GetByLabel('UI/InfoWindow/PortraitCaption', character=charID)
+                self.SetCaption(caption)
+                self.sr.title.display = False
+                self.sr.subtitle.display = False
+                if getattr(self, 'btnGroup', None):
+                    self.btnGroup.display = True
+                else:
+                    btns = [[localization.GetByLabel('UI/Preview/ViewPortrait'),
+                      self.SwitchToPortrait,
+                      (charID,),
+                      81,
+                      1,
+                      1,
+                      0]]
+                    self.btnGroup = uicls.ButtonGroup(btns=btns, parent=self.sr.main, idx=0)
+                self.textCont.display = False
+                charSvc = sm.GetService('character')
+                self.sr.sceneContainer.PrepareInteriorScene(addShadowStep=True)
+                scene = self.sr.sceneContainer.scene
+                if scene.apexScene is not None:
+                    scene.apexScene.CreatePlane((0, 0, 0), (0, 1, 0), 0)
+                owner = cfg.eveowners.Get(charID)
+                bloodlineID = sm.GetService('info').GetBloodlineByTypeID(owner.typeID).bloodlineID
+                if not hasattr(owner, 'gender') or owner.gender is None:
+                    return 
+                gender = ccUtil.GenderIDToPaperDollGender(owner.gender)
+                character = charSvc.AddCharacterToScene(charID, scene, gender, bloodlineID, dna=dna, lod=pd.LOD_SKIN, updateDoll=False)
+                textureQuality = prefs.GetValue('charTextureQuality', sm.GetService('device').GetDefaultCharTextureQuality())
+                character.doll.textureResolution = ccConst.DOLL_VIEWER_TEXTURE_RESOLUTIONS[textureQuality]
+                slowMachine = prefs.GetValue('fastCharacterCreation', False) or prefs.GetValue('shaderQuality', 3) <= 2
+                character.doll.useFastShader = slowMachine
+                charSvc.UpdateDoll(charID)
+                floor = trinity.Load(ccConst.CUSTOMIZATION_FLOOR)
+                if floor is not None:
+                    scene.dynamics.append(floor)
+                camera = self.sr.sceneContainer.camera
+                navigation = self.sr.navigation
+                while character.doll.busyUpdating:
+                    blue.synchro.Yield()
+
+                if not slowMachine and prefs.GetValue('shaderQuality', 3) > 2:
+                    shadowMapSize = 512 if textureQuality == 0 else 256
+                    lightFilter = ['FrontMain']
+                    pd.SkinSpotLightShadows.SetupForCharacterCreator(scene, shadowMapSize=shadowMapSize, lightFilter=lightFilter)
+                aabb = character.visualModel.GetBoundingBoxInLocalSpace()
+                p0 = aabb[0]
+                p1 = aabb[1]
+                center = (0.5 * (p0.x + p1.x), 0.5 * (p0.y + p1.y), 0.5 * (p0.z + p1.z))
+                self.sr.sceneContainer.cameraParent.translation = trinity.TriVector(*center)
+                self.sr.sceneContainer.camera.maxPitch = 0.1
+                diff = (p0.x - p1.x, p0.y - p1.y, p0.z - p1.z)
+                rad = geo2.Vec3Length(diff)
+                rad = max(rad, 0.3)
+                minZoom = 3 * rad + self.sr.sceneContainer.frontClip
+                alpha = self.sr.sceneContainer.fieldOfView / 2.0
+                maxZoom = min(rad * (1 / math.tan(alpha * 1.5)), 9.0)
+                camera.translationFromParent.z = minZoom * 3
+                navigation.SetMinMaxZoom(minZoom, maxZoom)
+                self.sr.sceneContainer.UpdateViewPort()
+                self.Maximize()
+                self.characterFailedToLoad = False
+            except Exception as e:
+                self.characterFailedToLoad = True
+                raise e
+
+        finally:
+            self.loadingWheel.Hide()
+            self.running = False
+            self.loadingCharacterThread = None
+
+
+
+
+    def SwitchToPortrait(self, charID):
+        form.PortraitWindow.CloseIfOpen()
+        portraitWnd = form.PortraitWindow.Open(charID=charID)
+        portraitWnd.Maximize()
+        self.CloseByUser()
 
 
 
     def PreviewType(self, typeID, subsystems = None):
+        if getattr(self, 'running', False):
+            return 
+        self.running = True
+        self.previewingWhat = 'type'
+        if getattr(self, 'btnGroup', None):
+            self.btnGroup.display = False
+        self.SetCaption(localization.GetByLabel('UI/Preview/PreviewCaption'))
+        self.sr.title.display = True
+        self.sr.subtitle.display = True
         typeID = int(typeID)
         if typeID != self.typeID:
             self.CloseSubSystemWnd()
@@ -150,24 +294,12 @@ class PreviewWnd(uicls.Window):
         self.categoryID = categoryID
         self.groupID = groupID
         self.typeID = typeID
-        self.sr.title.text = '%s' % cfg.invtypes.Get(typeID).name
-        raceID = typeOb.raceID
-        races = sm.GetService('cc').GetData('races')
-        raceName = ''
-        radius2 = typeOb.radius * 2.0
+        self.sr.title.text = cfg.invtypes.Get(typeID).name
         rad = 4.0
         self.textCont.display = False
         self.SetMinSize([420, 320])
         self.SetMaxSize([None, None])
-        for r in races:
-            if r.raceID == raceID:
-                raceName = '%s - ' % Tr(r.raceName, 'character.races.raceName', r.dataID)
-                break
-
-        if self.categoryID not in paperDollCategories:
-            self.sr.subtitle.text = '%s%s (%s)' % (raceName, groupOb.groupName, mls.UI_GENERIC_AXISLENGTH % {'length': util.FmtDist(radius2)})
-        else:
-            self.sr.subtitle.text = ''
+        self.sr.subtitle.text = ''
         godma = sm.GetService('godma')
         try:
             techLevel = godma.GetTypeAttribute(typeID, const.attributeTechLevel)
@@ -191,9 +323,10 @@ class PreviewWnd(uicls.Window):
                     subsystems[k] = random.choice(v)
 
             model = sm.StartService('t3ShipSvc').GetTech3ShipFromDict(typeID, subsystems)
+            radius = round(model.GetBoundingSphereRadius() * 2, 0)
+            self.SetShipSubLabel(typeOb, groupOb, radius)
             kv = util.KeyVal(typeID=typeID)
-            wnd = sm.GetService('window').GetWindow('PreviewSubSystems', create=1, decoClass=form.AssembleShip, ship=kv, groupIDs=None, isPreview=True)
-            wnd.SetSelected(subsystems)
+            wnd = form.AssembleShip.Open(windowID='PreviewSubSystems', ship=kv, groupIDs=None, isPreview=True, setselected=subsystems)
         elif self.categoryID in paperDollCategories:
             desc = typeOb.description
             desc = desc or ''
@@ -293,7 +426,7 @@ class PreviewWnd(uicls.Window):
                     ts.ForceStateDeactive()
                     ts.EnterStateIdle()
 
-                self.sr.subtitle.text = '%s (%s)' % (groupOb.groupName, mls.UI_GENERIC_AXISLENGTH % {'length': util.FmtDist(model.boundingSphereRadius)})
+                self.sr.subtitle.text = localization.GetByLabel('UI/Preview/ShipSubLabelNoRace', groupName=groupOb.groupName, length=util.FmtDist(model.boundingSphereRadius))
         else:
             self.sr.sceneContainer.PrepareSpaceScene()
             fileName = typeOb.GraphicFile()
@@ -304,6 +437,8 @@ class PreviewWnd(uicls.Window):
             fileName = fileName.replace(':/Model', ':/dx9/Model').replace('.blue', '.red')
             fileName = fileName.partition(' ')[0]
             model = trinity.Load(fileName)
+            radius = round(model.GetBoundingSphereRadius() * 2, 0)
+            self.SetShipSubLabel(typeOb, groupOb, radius)
             if model is None:
                 self.sr.sceneContainer.ClearScene()
                 self.loadingWheel.Hide()
@@ -337,6 +472,19 @@ class PreviewWnd(uicls.Window):
         if isFirst:
             uthread.new(self.OrbitParent)
         self.loadingWheel.Hide()
+        self.running = False
+
+
+
+    def SetShipSubLabel(self, typeObject, groupObject, modelRadius):
+        race = None
+        if typeObject.raceID in cfg.races:
+            race = cfg.races.Get(typeObject.raceID)
+        if race is None:
+            self.sr.subtitle.text = localization.GetByLabel('UI/Preview/ShipSubLabelNoRace', groupName=groupObject.groupName, length=util.FmtDist(modelRadius))
+        else:
+            raceName = localization.GetByMessageID(race.raceNameID)
+            self.sr.subtitle.text = localization.GetByLabel('UI/Preview/ShipSubLabel', raceName=raceName, groupName=groupObject.groupName, length=util.FmtDist(modelRadius))
 
 
 
@@ -346,9 +494,7 @@ class PreviewWnd(uicls.Window):
 
 
     def CloseSubSystemWnd(self):
-        wnd = sm.GetService('window').GetWindow('PreviewSubSystems')
-        if wnd:
-            wnd.Close()
+        form.AssembleShip.CloseIfOpen(windowID='PreviewSubSystems')
 
 
 
@@ -366,6 +512,15 @@ class PreviewWnd(uicls.Window):
     def OnResizeUpdate(self, *args):
         if self.sr.Get('sceneContainer'):
             self.sr.sceneContainer.UpdateViewPort()
+        if self.previewCharacterInfo:
+            if self.loadingCharacterThread is not None or getattr(self, 'characterFailedToLoad', False):
+                if self.loadingCharacterThread:
+                    self.loadingCharacterThread.kill()
+                    self.loadingCharacterThread = None
+                self.running = False
+                charID = self.previewCharacterInfo[0]
+                dna = self.previewCharacterInfo[1]
+                self.PreviewCharacter(charID, dna)
 
 
 

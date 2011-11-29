@@ -1,14 +1,15 @@
 import svc
 import util
+import uix
 
 class EveEntityClient(svc.entityClient):
     __guid__ = 'svc.eveEntityClient'
     __replaceservice__ = 'entityClient'
     __notifyevents__ = ['ProcessSessionChange']
     __dependencies__ = svc.entityClient.__dependencies__[:]
-    __dependencies__.extend(('proximity', 'movementClient', 'paperDollClient', 'apertureClient', 'gameWorldClient', 'minigameClient', 'collisionMeshClient', 'playerComponentClient', 'animationClient', 'zactionClient', 'perceptionClient', 'contextMenuClient', 'proximityTrigger', 'position', 'boundingVolume', 'elevatorClient', 'aimingClient', 'simpleTestClient', 'netStateClient', 'entitySpawnClient', 'selectionClient'))
+    __dependencies__.extend(('proximity', 'movementClient', 'paperDollClient', 'apertureClient', 'gameWorldClient', 'collisionMeshClient', 'playerComponentClient', 'animationClient', 'zactionClient', 'perceptionClient', 'decisionTreeClient', 'contextMenuClient', 'proximityTrigger', 'position', 'boundingVolume', 'aimingClient', 'simpleTestClient', 'netStateClient', 'entitySpawnClient', 'selectionClient'))
     __entitysystems__ = svc.entityClient.__entitysystems__[:]
-    __entitysystems__.extend(('audio', 'selectionClient', 'contextMenuClient', 'infoClient', 'tutorial', 'netStateClient', 'bracketClient', 'proximityTrigger', 'shipHologram'))
+    __entitysystems__.extend(('audio', 'selectionClient', 'contextMenuClient', 'infoClient', 'tutorial', 'netStateClient', 'bracketClient', 'proximityTrigger', 'shipHologram', 'holoscreen', 'spawnLocationClient'))
 
     def Run(self, *etc):
         svc.entityClient.Run(self)
@@ -18,11 +19,9 @@ class EveEntityClient(svc.entityClient):
     def ProcessSessionChange(self, isRemote, session, change):
         if 'worldspaceid' in change:
             (leavingWorldSpaceID, enteringWorldSpaceID,) = change['worldspaceid']
-            if leavingWorldSpaceID != enteringWorldSpaceID and leavingWorldSpaceID in self.scenes:
+            if leavingWorldSpaceID != enteringWorldSpaceID and not self.IsClientSideOnly(leavingWorldSpaceID):
                 self.UnloadEntityScene(leavingWorldSpaceID)
-            if util.IsStation(enteringWorldSpaceID):
-                return 
-            if enteringWorldSpaceID:
+            if enteringWorldSpaceID and not self.IsClientSideOnly(enteringWorldSpaceID):
                 self.LoadEntitySceneAndBlock(enteringWorldSpaceID)
 
 

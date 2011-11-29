@@ -10,7 +10,7 @@ import service
 import base
 import uicls
 import uiconst
-import trinity
+import localization
 
 class FittingSlot(uicls.FittingSlotLayout):
     __guid__ = 'xtriui.FittingSlot'
@@ -39,6 +39,7 @@ class FittingSlot(uicls.FittingSlotLayout):
         self.flag = flag
         self.locationFlag = flag
         self.powerType = powerType
+        self.invCache = sm.GetService('invCache')
         self._emptyHint = self.PrimeToEmptySlotHint()
         self.invReady = 1
         self.sr.groupMark.parent.left = int(self.sr.groupMark.parent.left * scaleFactor)
@@ -103,7 +104,7 @@ class FittingSlot(uicls.FittingSlotLayout):
 
             groupNumber = availGroups[0] if availGroups else ''
         self.sr.groupMark.LoadIcon('ui_73_16_%s' % (176 + groupNumber))
-        self.sr.groupMark.hint = mls.UI_SHARED_WEAPONLINK_GROUPNUM % {'groupNumber': groupNumber}
+        self.sr.groupMark.hint = localization.GetByLabel('UI/Fitting/GroupNumber', groupNumber=groupNumber)
         groupDict[ret.masterID] = groupNumber
         allGroupsDict[shipID] = groupDict
         settings.user.ui.Set('linkedWeapons_groupsDict', allGroupsDict)
@@ -149,15 +150,15 @@ class FittingSlot(uicls.FittingSlotLayout):
         self.utilButtons = []
         if not self.module:
             return 
-        toggleLabel = mls.UI_CMD_PUTOFFLINE if bool(self.module.IsOnline) is True else mls.UI_CMD_PUTONLINE
+        toggleLabel = localization.GetByLabel('UI/Fitting/PutOffline') if bool(self.module.IsOnline) is True else localization.GetByLabel('UI/Fitting/PutOnline')
         (myrad, cos, sin, cX, cY,) = self.radCosSin
         btns = []
         if self.charge:
-            btns += [(mls.UI_CMD_REMOVECHARGE,
+            btns += [(localization.GetByLabel('UI/Fitting/RemoveCharge'),
               'ui_38_16_200',
               self.Unfit,
               1,
-              0), (mls.UI_CMD_SHOW_CHARGE_INFO,
+              0), (localization.GetByLabel('UI/Fitting/ShowChargeInfo'),
               'ui_38_16_208',
               self.ShowChargeInfo,
               1,
@@ -175,33 +176,33 @@ class FittingSlot(uicls.FittingSlotLayout):
         isSubSystem = cfg.invtypes.Get(self.typeID).categoryID == const.categorySubSystem
         isOnlinable = self.IsOnlineable()
         if isRig:
-            btns += [(mls.UI_CMD_DESTROY,
+            btns += [(localization.GetByLabel('UI/Fitting/Destroy'),
               'ui_38_16_200',
               self.Unfit,
               1,
-              0), (mls.UI_CMD_SHOWINFO,
+              0), (localization.GetByLabel('UI/Commands/ShowInfo'),
               'ui_38_16_208',
               self.ShowInfo,
               1,
               0)]
         elif isSubSystem:
-            btns += [(mls.UI_CMD_SHOWINFO,
+            btns += [(localization.GetByLabel('UI/Commands/ShowInfo'),
               'ui_38_16_208',
               self.ShowInfo,
               1,
               0)]
         else:
-            btns += [(mls.UI_CMD_UNFIT_MODULE,
+            btns += [(localization.GetByLabel('UI/Fitting/UnfitModule'),
               'ui_38_16_200',
               self.UnfitModule,
               1,
-              0), (mls.UI_CMD_SHOWINFO,
+              0), (localization.GetByLabel('UI/Commands/ShowInfo'),
               'ui_38_16_208',
               self.ShowInfo,
               1,
               0), (toggleLabel,
               'ui_38_16_207',
-              self.ToggleOnline,
+              self.ChangeOnline,
               isOnlinable,
               1)]
         rad = myrad - 34
@@ -220,7 +221,7 @@ class FittingSlot(uicls.FittingSlotLayout):
             if active:
                 icon.OnClick = func
             else:
-                icon.hint += ' (%s)' % mls.UI_GENERIC_DISABLED
+                icon.hint = localization.GetByLabel('UI/Fitting/Disabled', moduleName=hint)
             if onlinebtn == 1:
                 self.sr.onlineButton = icon
             self.utilButtons.append(icon)
@@ -238,7 +239,7 @@ class FittingSlot(uicls.FittingSlotLayout):
          const.flagHiSlot5,
          const.flagHiSlot6,
          const.flagHiSlot7]:
-            return mls.UI_GENERIC_EMPTY_HIGH_POWER_SLOT
+            return localization.GetByLabel('UI/Fitting/EmptyHighPowerSlot')
         if self.flag in [const.flagMedSlot0,
          const.flagMedSlot1,
          const.flagMedSlot2,
@@ -247,7 +248,7 @@ class FittingSlot(uicls.FittingSlotLayout):
          const.flagMedSlot5,
          const.flagMedSlot6,
          const.flagMedSlot7]:
-            return mls.UI_GENERIC_EMPTY_MEDIUM_POWER_SLOT
+            return localization.GetByLabel('UI/Fitting/EmptyMediumPowerSlot')
         if self.flag in [const.flagLoSlot0,
          const.flagLoSlot1,
          const.flagLoSlot2,
@@ -256,16 +257,16 @@ class FittingSlot(uicls.FittingSlotLayout):
          const.flagLoSlot5,
          const.flagLoSlot6,
          const.flagLoSlot7]:
-            return mls.UI_GENERIC_EMPTY_LOW_POWER_SLOT
+            return localization.GetByLabel('UI/Fitting/EmptyLowPowerSlot')
         if self.flag in [const.flagSubSystemSlot0,
          const.flagSubSystemSlot1,
          const.flagSubSystemSlot2,
          const.flagSubSystemSlot3,
          const.flagSubSystemSlot4]:
-            return mls.UI_GENERIC_EMPTY_SUBSYSTEM_SLOT
+            return localization.GetByLabel('UI/Fitting/EmptySubsystemSlot')
         if self.flag in [const.flagRigSlot0, const.flagRigSlot1, const.flagRigSlot2]:
-            return mls.UI_GENERIC_EMPTY_RIG_SLOT
-        return mls.UI_GENERIC_EMPTY_SLOT
+            return localization.GetByLabel('UI/Fitting/EmptyRigSlot')
+        return localization.GetByLabel('UI/Fitting/EmptySlot')
 
 
 
@@ -275,11 +276,9 @@ class FittingSlot(uicls.FittingSlotLayout):
         lg.Info('fitting', 'SetFitting', self.flag, invItem and cfg.invtypes.Get(invItem.typeID).Group().name)
         self.Draggable_blockDrag = invItem is None
         self.shell = shell or self.shell
-        chargehint = ''
         if invItem and self.IsCharge(invItem.typeID):
             self.charge = invItem
             chargeQty = self.shell.GetQuantity(invItem.itemID)
-            chargehint = '%s %s: %s' % (cfg.invtypes.Get(invItem.typeID).name, mls.UI_GENERIC_QTY, chargeQty)
             if self.module is None:
                 portion = 1.0
             else:
@@ -312,14 +311,14 @@ class FittingSlot(uicls.FittingSlotLayout):
                 self.isChargeable = 1
                 self.sr.chargeIndicator.rectTop = 0
                 self.sr.chargeIndicator.state = uiconst.UI_NORMAL
-                self.sr.chargeIndicator.hint = mls.UI_INFLIGHT_NOCHARGE
+                self.sr.chargeIndicator.hint = localization.GetByLabel('UI/Fitting/NoCharge')
             else:
                 self.isChargeable = 0
                 self.sr.chargeIndicator.state = uiconst.UI_HIDDEN
         if self.typeID:
-            modulehint = '%s' % cfg.invtypes.Get(self.typeID).name
+            modulehint = cfg.invtypes.Get(self.typeID).name
             if self.charge:
-                modulehint += '<br>%s %s: %s' % (cfg.invtypes.Get(self.charge.typeID).name, mls.UI_GENERIC_QTY, chargeQty)
+                modulehint += '<br>%s' % localization.GetByLabel('UI/Fitting/ChargeQuantity', charge=self.charge.typeID, chargeQuantity=chargeQty)
         else:
             modulehint = self._emptyHint
         self.hint = modulehint
@@ -376,33 +375,21 @@ class FittingSlot(uicls.FittingSlotLayout):
             isActive = const.effectOnline in self.shell.dogmaStaticMgr.effectsByType[self.module.typeID]
             if self.module.IsOnline():
                 self.sr.flagIcon.color.a = 1.0
-                if util.GetAttrs(self, 'sr', 'onlineButton') and self.sr.onlineButton.hint == mls.UI_CMD_PUTONLINE:
-                    self.sr.onlineButton.hint = mls.UI_CMD_PUTOFFLINE
+                if util.GetAttrs(self, 'sr', 'onlineButton') and self.sr.onlineButton.hint == localization.GetByLabel('UI/Fitting/PutOnline'):
+                    self.sr.onlineButton.hint = localization.GetByLabel('UI/Fitting/PutOffline')
                     uicore.UpdateHint(self.sr.onlineButton)
             else:
                 self.sr.flagIcon.color.a = 0.25
-                if util.GetAttrs(self, 'sr', 'onlineButton') and self.sr.onlineButton.hint == mls.UI_CMD_PUTOFFLINE:
-                    self.sr.onlineButton.hint = mls.UI_CMD_PUTONLINE
+                if util.GetAttrs(self, 'sr', 'onlineButton') and self.sr.onlineButton.hint == localization.GetByLabel('UI/Fitting/PutOffline'):
+                    self.sr.onlineButton.hint = localization.GetByLabel('UI/Fitting/PutOnline')
                     uicore.UpdateHint(self.sr.onlineButton)
         elif self.sr.flagIcon:
             self.sr.flagIcon.color.a = 1.0
 
 
 
-    def ToggleOnline(self, *args):
-        if self.module is None:
-            return 
-        if self.module.flagID in xrange(const.flagRigSlot0, const.flagRigSlot7 + 1):
-            return 
-        if self.module.IsOnline():
-            self.shell.OfflineModule(self.module.itemID)
-        else:
-            self.shell.OnlineModule(self.module.itemID)
-
-
-
     def DelayedOnlineAttempt(self, shipID, moduleID):
-        blue.pyos.synchro.Sleep(500)
+        blue.pyos.synchro.SleepWallclock(500)
         if shipID != eve.session.shipid:
             return 
         ship = sm.GetService('godma').GetItem(shipID)
@@ -481,7 +468,7 @@ class FittingSlot(uicls.FittingSlotLayout):
                                     self.shell.LinkWeapons(self.module.locationID, self.module.itemID, item.itemID)
                                     return 
                                 else:
-                                    eve.Message('CustomNotify', {'notify': mls.UI_SHARED_WEAPONLINK_NOTSAME})
+                                    eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Fitting/GroupingIncompatible')})
                                     return 
                         self.shell.TryFit(item, self.locationFlag)
                     return 
@@ -490,7 +477,7 @@ class FittingSlot(uicls.FittingSlotLayout):
                  'itempower': cfg.dgmeffects.Get(effect.effectID).displayName})
 
         if not validFitting:
-            raise UserError('ItemNotHardware', {'itemname': (TYPEID, item.typeID)})
+            raise UserError('ItemNotHardware', {'itemname': item.typeID})
 
 
 
@@ -515,17 +502,16 @@ class FittingSlot(uicls.FittingSlotLayout):
             m = []
             if eve.session.role & (service.ROLE_GML | service.ROLE_WORLDMOD):
                 m += [(str(self.id), self.CopyItemIDToClipboard, (self.id,)), None]
-            m += [(mls.UI_CMD_SHOWINFO, self.ShowInfo)]
+            m += [(localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo)]
             if self.shell.dogmaStaticMgr.TypeHasEffect(self.module.typeID, const.effectRigSlot):
-                if session.stationid2 is not None:
-                    m += [(mls.UI_CMD_DESTROY, self.Unfit)]
+                m += [(localization.GetByLabel('UI/Fitting/Destroy'), self.Unfit)]
             elif session.stationid2 is not None:
-                m += [(mls.UI_CMD_UNFIT, self.Unfit)]
+                m += [(localization.GetByLabel('UI/Fitting/Unfit'), self.Unfit)]
             if self.IsOnlineable():
                 if self.module.IsOnline():
-                    m.append((mls.UI_CMD_PUTOFFLINE, self.ChangeOnline, (0,)))
+                    m.append((localization.GetByLabel('UI/Fitting/PutOffline'), self.ChangeOnline))
                 else:
-                    m.append((mls.UI_CMD_PUTONLINE, self.ChangeOnline, (1,)))
+                    m.append((localization.GetByLabel('UI/Fitting/PutOnline'), self.ChangeOnline))
             m += self.GetGroupMenu()
             return m
 
@@ -534,26 +520,25 @@ class FittingSlot(uicls.FittingSlotLayout):
     def GetGroupMenu(self, *args):
         masterID = self.shell.IsInWeaponBank(self.module.locationID, self.id)
         if masterID:
-            return [(mls.UI_CMD_UNLINK, self.UnlinkModule, (masterID,))]
+            return [(localization.GetByLabel('UI/Fitting/ClearGroup'), self.UnlinkModule, (masterID,))]
         return []
 
 
 
     def OnClick(self, *args):
         uicore.registry.SetFocus(self)
-        self.ToggleOnline()
+        if self.IsOnlineable():
+            self.ChangeOnline()
 
 
 
-    def ChangeOnline(self, on = 1):
-        masterID = False
-        if masterID:
-            if not on:
-                ret = eve.Message('CustomQuestion', {'header': mls.UI_GENERIC_CONFIRM,
-                 'question': mls.UI_SHARED_WEAPONLINK_OFFLINE}, uiconst.YESNO)
+    def ChangeOnline(self):
+        if self.module.IsOnline():
+            if self.module.dogmaLocation.IsInWeaponBank(self.module.locationID, self.module.itemID):
+                ret = eve.Message('CustomQuestion', {'header': localization.GetByLabel('UI/Common/Confirm'),
+                 'question': localization.GetByLabel('UI/Fitting/QueryGroupOffline')}, uiconst.YESNO)
                 if ret != uiconst.ID_YES:
                     return 
-        if self.module.IsOnline():
             self.module.dogmaLocation.OfflineModule(self.module.itemID)
         else:
             self.module.dogmaLocation.OnlineModule(self.module.itemID)
@@ -579,7 +564,7 @@ class FittingSlot(uicls.FittingSlotLayout):
 
     def UnfitModule(self, *args):
         if session.stationid2:
-            containerHangar = eve.GetInventory(const.containerHangar).Add(self.module.itemID, self.module.locationID)
+            self.invCache.GetInventory(const.containerHangar).Add(self.module.itemID, self.module.locationID)
         else:
             self.shell.UnloadModuleToContainer(session.shipid, self.id, (session.shipid,), flag=const.flagCargo)
 
@@ -588,10 +573,10 @@ class FittingSlot(uicls.FittingSlotLayout):
     def Unfit(self, *args):
         if self.module is not None:
             shipID = self.module.locationID
-            shipInv = sm.GetService('invCache').GetInventoryFromId(self.module.locationID, locationID=session.stationid2)
+            shipInv = self.invCache.GetInventoryFromId(self.module.locationID, locationID=session.stationid2)
         elif self.charge is not None:
             shipID = self.charge.locationID
-            shipInv = sm.GetService('invCache').GetInventoryFromId(self.charge.locationID, locationID=session.stationid2)
+            shipInv = self.invCache.GetInventoryFromId(self.charge.locationID, locationID=session.stationid2)
         else:
             return 
         if self.powerType == const.effectRigSlot:
@@ -604,9 +589,9 @@ class FittingSlot(uicls.FittingSlotLayout):
                 chargeIDs = self.shell.GetSubLocationsInBank(shipID, self.charge.itemID)
                 if chargeIDs:
                     if session.stationid2:
-                        eve.GetInventory(const.containerHangar).MultiAdd(chargeIDs, shipID, flag=const.flagHangar, fromManyFlags=True)
+                        self.invCache.GetInventory(const.containerHangar).MultiAdd(chargeIDs, shipID, flag=const.flagHangar, fromManyFlags=True)
                     else:
-                        eve.GetInventoryFromId(eve.session.shipid).MultiAdd(chargeIDs, shipID, flag=const.flagCargo)
+                        self.invCache.GetInventoryFromId(eve.session.shipid).MultiAdd(chargeIDs, shipID, flag=const.flagCargo)
                 elif session.stationid2:
                     shipInv.RemoveChargeToHangar(self.charge.itemID)
                 else:
@@ -615,22 +600,22 @@ class FittingSlot(uicls.FittingSlotLayout):
                 crystalIDs = self.shell.GetCrystalsInBank(shipID, self.charge.itemID)
                 if crystalIDs:
                     if session.stationid2:
-                        eve.GetInventory(const.containerHangar).MultiAdd(crystalIDs, shipID, flag=const.flagHangar, fromManyFlags=True)
+                        self.invCache.GetInventory(const.containerHangar).MultiAdd(crystalIDs, shipID, flag=const.flagHangar, fromManyFlags=True)
                     else:
                         shipInv.MultiAdd(crystalIDs, shipID, flag=const.flagCargo)
                 elif session.stationid2:
-                    eve.GetInventory(const.containerHangar).Add(self.charge.itemID, shipID)
+                    self.invCache.GetInventory(const.containerHangar).Add(self.charge.itemID, shipID)
                 else:
                     shipInv.Add(self.charge.itemID, shipID, qty=None, flag=const.flagCargo)
         else:
             masterID = self.shell.IsInWeaponBank(shipID, self.id)
             if masterID:
-                ret = eve.Message('CustomQuestion', {'header': mls.UI_GENERIC_CONFIRM,
-                 'question': mls.UI_SHARED_WEAPONLINK_UNFIT}, uiconst.YESNO)
+                ret = eve.Message('CustomQuestion', {'header': localization.GetByLabel('UI/Common/Confirm'),
+                 'question': localization.GetByLabel('UI/Fitting/ClearGroupModule')}, uiconst.YESNO)
                 if ret != uiconst.ID_YES:
                     return 
             if session.stationid2:
-                eve.GetInventory(const.containerHangar).Add(self.id, shipID)
+                self.invCache.GetInventory(const.containerHangar).Add(self.id, shipID)
             else:
                 shipInv.Add(self.id, shipID, qty=None, flag=const.flagCargo)
 
@@ -722,7 +707,7 @@ class FittingSlot(uicls.FittingSlotLayout):
         chargeTypeID = None
         chargeItems = []
         for node in nodes:
-            if node.__guid__ not in ('listentry.InvItem', 'xtriui.InvItem', 'listentry.InvFittingItem'):
+            if node.__guid__ not in ('listentry.InvItem', 'xtriui.InvItem'):
                 continue
             item = node.rec
             if not getattr(item, 'typeID', None):
@@ -734,8 +719,8 @@ class FittingSlot(uicls.FittingSlotLayout):
                 if chargeTypeID == item.typeID:
                     chargeItems.append(item)
             elif self.shell.IsInWeaponBank(item.locationID, item.itemID):
-                ret = eve.Message('CustomQuestion', {'header': mls.UI_GENERIC_CONFIRM,
-                 'question': mls.UI_SHARED_WEAPONLINK_UNFIT}, uiconst.YESNO)
+                ret = eve.Message('CustomQuestion', {'header': localization.GetByLabel('UI/Common/Confirm'),
+                 'question': localization.GetByLabel('UI/Fitting/ClearGroupModule')}, uiconst.YESNO)
                 if ret == uiconst.ID_YES:
                     eve.Message('DragDropSlot')
                     uthread.new(self.Add, item)

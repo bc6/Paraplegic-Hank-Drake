@@ -3,15 +3,15 @@ import copy
 
 class BaseComponentView(object):
     __guid__ = 'cef.BaseComponentView'
-    OPTIONAL = 1
-    MANDATORY = 2
+    RECIPE = 1
+    SPAWN_ONLY = 2
     RUNTIME = 4
-    SPAWN_OPTIONAL = 8
-    SPAWN_MANDATORY = 16
-    ALL_STATIC_RECIPE = OPTIONAL | MANDATORY
-    ALL_STATIC = SPAWN_OPTIONAL | SPAWN_MANDATORY | ALL_STATIC_RECIPE
-    ALL_SPAWN = SPAWN_OPTIONAL | SPAWN_MANDATORY
+    ALL_STATIC_RECIPE = RECIPE
+    ALL_STATIC = SPAWN_ONLY | RECIPE
+    ALL_SPAWN = SPAWN_ONLY
     __COMPONENT_CLASS_BY_ID__ = {}
+    __SHOULD_SPAWN__ = {}
+    __DESCRIPTION__ = 'No description for component'
 
     @classmethod
     def RegisterComponent(cls, componentClass):
@@ -21,6 +21,7 @@ class BaseComponentView(object):
         cls.__INPUT_DATATYPES__ = collections.OrderedDict()
         cls.__INPUT_GROUP__ = {}
         cls.__INPUT_CALLBACKS__ = {}
+        cls.__INPUT_KEYWORDS__ = {}
         cls.__INPUT_DISPLAY_NAMES__ = {}
         cls.__INPUT_NEEDS_TRANSLATED__ = set()
         cls.__INIT_DEFAULTS__ = {}
@@ -37,6 +38,7 @@ class BaseComponentView(object):
     __COMPONENT_DISPLAY_NAME__ = 'INVALID NAME'
     __COMPONENT_CODE_NAME__ = 'INVALID'
     __COMPONENT_CUSTOM_DISPLAY__ = None
+    __COMPONENT_DEPENDENCIES__ = []
 
     @classmethod
     def SetupInputs(cls):
@@ -45,7 +47,7 @@ class BaseComponentView(object):
 
 
     @classmethod
-    def _AddInput(cls, initValueNameTuple, defaultTuple, group, datatypeID, callback = None, needsTranslation = False, displayName = None):
+    def _AddInput(cls, initValueNameTuple, defaultTuple, group, datatypeID, callback = None, needsTranslation = False, displayName = None, **kw):
         if isinstance(initValueNameTuple, str):
             initValueNameTuple = (initValueNameTuple,)
             defaultTuple = (defaultTuple,)
@@ -58,6 +60,7 @@ class BaseComponentView(object):
         cls.__INPUT_DISPLAY_NAMES__[initValueNameTuple] = displayName
         if callback is not None:
             cls.__INPUT_CALLBACKS__[initValueNameTuple] = callback
+        cls.__INPUT_KEYWORDS__[initValueNameTuple] = kw
         if needsTranslation:
             cls.__INPUT_NEEDS_TRANSLATED__.update(initValueNameTuple)
         cls.__INIT_DEFAULTS__.update(zip(initValueNameTuple, defaultTuple))
@@ -67,6 +70,12 @@ class BaseComponentView(object):
     @classmethod
     def GetInputs(cls, groupFilter = ALL_STATIC):
         return [ initValueNameTuple for initValueNameTuple in cls.__INPUT_DATATYPES__.iterkeys() if cls.__INPUT_GROUP__[initValueNameTuple] & groupFilter ]
+
+
+
+    @classmethod
+    def GetDependencies(cls):
+        return set(cls.__COMPONENT_DEPENDENCIES__)
 
 
 
@@ -85,6 +94,12 @@ class BaseComponentView(object):
     @classmethod
     def GetCallback(cls, initValueNameTuple):
         return cls.__INPUT_CALLBACKS__.get(initValueNameTuple)
+
+
+
+    @classmethod
+    def GetKeywords(cls, initValueNameTuple):
+        return cls.__INPUT_KEYWORDS__.get(initValueNameTuple, {})
 
 
 
@@ -133,29 +148,29 @@ class BaseComponentView(object):
 
 
 
-    @classmethod
-    def AddAllFilteredParameters(cls, bsdObj, groupFilter):
-        for initValueNameTuple in cls.GetInputs(groupFilter=groupFilter):
-            for initialValueName in initValueNameTuple:
-                cls._SetInitDefaultValue(bsdObj, initialValueName, cls.__INIT_DEFAULTS__[initialValueName])
+    @staticmethod
+    def GetDefaultRecipe(componentID, groupFilter = RECIPE):
+        componentView = BaseComponentView.GetComponentViewByID(componentID)
+        if componentView is None:
+            return {}
+        filteredInputTuples = componentView.GetInputs(groupFilter=groupFilter)
+        filteredInputNames = set()
+        for initValueNameTuple in filteredInputTuples:
+            filteredInputNames.update(initValueNameTuple)
 
-
-
-
-
-    @classmethod
-    def _SetInitDefaultValue(cls, bsdObj, initialValueName, defaultValue):
-        import cef
-        if isinstance(bsdObj, cef.Spawn):
-            bsdObj.SetInitValue(cls.__COMPONENT_ID__, initialValueName, defaultValue)
-        elif isinstance(bsdObj, cef.Ingredient):
-            bsdObj.SetInitValue(initialValueName, defaultValue)
+        return {initialValueName:defaultValue for (initialValueName, defaultValue,) in componentView.__INIT_DEFAULTS__.iteritems() if initialValueName in filteredInputNames}
 
 
 
     @classmethod
-    def ValidateComponent(cls, result, parentID, parentType, recipeDict):
-        pass
+    def GetComponentCodeName(cls):
+        return cls.__COMPONENT_CODE_NAME__
+
+
+
+    @classmethod
+    def ValidateComponent(cls, result, recipeID, recipeDict):
+        return True
 
 
 

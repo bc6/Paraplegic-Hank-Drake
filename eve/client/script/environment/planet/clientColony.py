@@ -5,6 +5,7 @@ import blue.heapq as heapq
 import util
 import weakref
 import math
+import localization
 
 class ClientColony(planet.BaseColony):
     __guid__ = 'planet.ClientColony'
@@ -81,9 +82,11 @@ class ClientColony(planet.BaseColony):
         for (skillTypeID, level,) in requiredSkills:
             myLevel = sm.GetService('skills').HasSkill(skillTypeID)
             if myLevel is None or myLevel.skillLevel < level:
-                lacked = cfg.invtypes.Get(skillTypeID).name
                 if level:
-                    lacked += ' %s %d' % (mls.SKILL_LEVEL, level)
+                    levelTxt = localization.GetByLabel('UI/PI/Common/SkillLevel', skillLevel=level)
+                else:
+                    levelTxt = ''
+                lacked = localization.GetByLabel('UI/PI/Common/SkillNameAndLevel', skillName=cfg.invtypes.Get(skillTypeID).name, skillLevel=levelTxt)
                 lackingSkills.append(lacked)
 
         if len(lackingSkills) > 0:
@@ -117,7 +120,7 @@ class ClientColony(planet.BaseColony):
     def PostValidateInstallProgram(self, pinID, typeID, headRadius):
         pin = self.GetPin(pinID)
         if not pin.inEditMode:
-            currentTime = blue.os.GetTime()
+            currentTime = blue.os.GetWallclockTime()
             pin.CanInstallProgram(currentTime)
 
 
@@ -137,9 +140,9 @@ class ClientColony(planet.BaseColony):
         cpuDelta = pin.GetCpuUsage(numHeads=len(pin.heads) + 1) - pin.GetCpuUsage()
         powerDelta = pin.GetPowerUsage(numHeads=len(pin.heads) + 1) - pin.GetPowerUsage()
         if cpuDelta + self.colonyData.GetColonyCpuUsage() > self.colonyData.GetColonyCpuSupply():
-            raise UserError('CannotAddToColonyCPUUsageExceeded', {'typeName': mls.UI_PI_EXTRACTORHEAD})
+            raise UserError('CannotAddToColonyCPUUsageExceeded', {'typeName': localization.GetByLabel('UI/PI/Common/ExtractorHead')})
         if powerDelta + self.colonyData.GetColonyPowerUsage() > self.colonyData.GetColonyPowerSupply():
-            raise UserError('CannotAddToColonyPowerUsageExceeded', {'typeName': mls.UI_PI_EXTRACTORHEAD})
+            raise UserError('CannotAddToColonyPowerUsageExceeded', {'typeName': localization.GetByLabel('UI/PI/Common/ExtractorHead')})
 
 
 

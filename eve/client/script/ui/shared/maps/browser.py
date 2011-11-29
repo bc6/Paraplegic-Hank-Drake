@@ -1,13 +1,9 @@
-import uix
 import uiutil
 import xtriui
 import uthread
-import blue
-import os
-import util
-import trinity
 import uicls
 import uiconst
+import localization
 DRAWLVLREG = 1
 DRAWLVLCON = 2
 DRAWLVLSOL = 3
@@ -147,19 +143,30 @@ class MapBrowser(uicls.Container):
         pilmapList.append(pilmap)
         listicon = xtriui.ListSurroundingsBtn(parent=addstuff, align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL, pos=(0, 0, 16, 16), idx=0, showIcon=True)
         locConsts = {0: {const.typeUniverse: ''},
-         1: {const.typeRegion: mls.UI_GENERIC_REGION},
-         2: {const.typeConstellation: mls.UI_GENERIC_CONSTELLATION},
-         3: {const.typeSolarSystem: mls.UI_GENERIC_SOLARSYSTEM}}
-        locStr = ''
-        for id in ids:
-            locStr += '%s ' % {False: cfg.evelocations.Get(id).name,
-             True: mls.UNIVERSE}[(id == const.typeUniverse)]
-
+         1: {const.typeRegion: localization.GetByLabel('UI/Common/LocationTypes/Region')},
+         2: {const.typeConstellation: localization.GetByLabel('UI/Common/LocationTypes/Constellation')},
+         3: {const.typeSolarSystem: localization.GetByLabel('UI/Common/LocationTypes/SolarSystem')}}
         levelName = locConsts.get(idlevel, '').values()[0]
         levelID = locConsts.get(idlevel, '').keys()[0]
-        locStr += '%s ' % levelName
-        listbtn = uicls.Label(text=['', {False: cfg.evelocations.Get(ids[0]).name,
-          True: mls.UNIVERSE}[(ids[0] == const.typeUniverse)]][(len(ids) == 1)] + ' ' + levelName + ['s', ''][(len(ids) == 1)], parent=addstuff, left=listicon.left + listicon.width + 4, top=5, color=(1.0, 1.0, 1.0, 0.75), idx=0, state=uiconst.UI_NORMAL)
+        for id in ids:
+            if levelID != const.typeUniverse:
+                locName = cfg.evelocations.Get(id).name
+
+        hintStr = ''
+        buttonStr = ''
+        if levelID == const.typeUniverse:
+            buttonStr = localization.GetByLabel('UI/Common/LocationTypes/Universe')
+            hintStr = localization.GetByLabel('UI/Map/MapBrowser/ListRegions')
+        elif levelID == const.typeRegion:
+            buttonStr = localization.GetByLabel('UI/Map/MapBrowser/NameRegion', name=locName)
+            hintStr = localization.GetByLabel('UI/Map/MapBrowser/ListConstellations', name=locName)
+        elif levelID == const.typeConstellation:
+            buttonStr = localization.GetByLabel('UI/Map/MapBrowser/NameConstellation', name=locName)
+            hintStr = localization.GetByLabel('UI/Map/MapBrowser/ListSolarSystems', name=locName)
+        elif levelID == const.typeSolarSystem:
+            buttonStr = localization.GetByLabel('UI/Map/MapBrowser/NameSolarSystem', name=locName)
+            hintStr = localization.GetByLabel('UI/Map/MapBrowser/ListCelestials', name=locName)
+        listbtn = uicls.EveLabelMedium(text=buttonStr, parent=addstuff, left=listicon.left + listicon.width + 4, top=5, color=(1.0, 1.0, 1.0, 0.75), idx=0, state=uiconst.UI_NORMAL)
         listbtn.expandOnLeft = True
         listbtn.GetMenu = listicon.GetMenu
         for id in ids:
@@ -167,11 +174,7 @@ class MapBrowser(uicls.Container):
                 listicon.sr.typeID = listbtn.sr.typeID = levelID
                 listicon.sr.itemID = listbtn.sr.itemID = id
 
-        listbtn.sr.hint = mls.UI_SHARED_LISTITEMSINSYSTEM % {'typeName': [mls.UI_GENERIC_REGIONS,
-                      mls.UI_GENERIC_CONSTELLATIONS,
-                      mls.UI_GENERIC_SOLARSYSTEMS,
-                      mls.UI_GENERIC_CELESTIALS][(drawlevel - 1)],
-         'where': locStr}
+        listbtn.sr.hint = hintStr
         if self.destroyed:
             return 
         if drawlevel == DRAWLVLSYS:
@@ -196,16 +199,15 @@ class MapBrowser(uicls.Container):
 
     def ShowOnMap(self, itemID, *args):
         if itemID >= const.mapWormholeRegionMin and itemID <= const.mapWormholeRegionMax or itemID >= const.mapWormholeConstellationMin and itemID <= const.mapWormholeConstellationMax or itemID >= const.mapWormholeSystemMin and itemID <= const.mapWormholeSystemMax:
-            raise UserError('MapShowWormholeSpaceInfo', {'name': (OWNERID, eve.session.charid)})
+            raise UserError('MapShowWormholeSpaceInfo', {'char': eve.session.charid})
         initing = 0
         if eve.session.stationid:
             sm.GetService('station').CleanUp()
-        sm.GetService('map').OpenStarMap()
-        sm.GetService('starmap').SetInterest(itemID, 1)
+        sm.GetService('viewState').ActivateView('starmap', interestID=itemID)
 
 
 
-    def SetLoadExternalPointer(self, where, id, func = None, args = None, hint = mls.UI_SHARED_MAPSHOWINWORLDMAP):
+    def SetLoadExternalPointer(self, where, id, func = None, args = None, hint = localization.GetByLabel('UI/Map/MapBrowser/ShowInWorldMap')):
         pointer = uicls.Sprite(parent=where, name='pointer', align=uiconst.BOTTOMLEFT, pos=(2, 2, 16, 16), texturePath='res:/UI/Texture/Shared/arrowLeft.png', color=(1.0, 1.0, 1.0, 0.5))
         pointer.hint = hint
         pointer.OnClick = (self.ShowOnMap, id)
@@ -226,7 +228,7 @@ class MapBrowser(uicls.Container):
             return 
         if drawlevel == DRAWLVLSYS:
             if shift:
-                uthread.new(eve.Message, 'CustomInfo', {'info': mls.UI_SHARED_MAPCANNOTSHIFTSELECT})
+                uthread.new(eve.Message, 'CustomInfo', {'info': localization.GetByLabel('UI/Map/MapBrowser/CannotShiftSelect')})
         elif shift and len(self.children) > idlevel:
             currentids = self.children[idlevel].ids
             ids += currentids

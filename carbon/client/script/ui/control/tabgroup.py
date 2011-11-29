@@ -33,7 +33,6 @@ class TabGroupCore(uicls.Container):
         self.sr.tabsmenu = None
         self.sr.tabs = []
         self.sr.mytabs = []
-        self.sr.stretch = None
         self._resizing = 0
         self._settingsID = None
         self.sr.linkedrows = []
@@ -46,12 +45,14 @@ class TabGroupCore(uicls.Container):
 
 
 
-    def Prepare_Fill_(self):
-        stretch = uicls.Icon(icon='ui_1_16_96', parent=self, align=uiconst.TOALL, state=uiconst.UI_DISABLED, color=MAINCOLOR, name='stretch', idx=0)
-        stretch.rectWidth = 2
-        self.sr.stretch = stretch
-        right = uicls.Icon(icon='ui_1_16_96', parent=self, align=uiconst.TORIGHT, state=uiconst.UI_DISABLED, color=MAINCOLOR, name='right', width=self.rightMargin, idx=0, ignoreSize=True)
-        self.sr.right = right
+    def Prepare_LeftSide_(self):
+        if self.leftMargin:
+            leftSideLine = uicls.Frame(parent=self, align=uiconst.TOLEFT, state=uiconst.UI_DISABLED, color=MAINCOLOR, name='leftSideLine', width=self.leftMargin, frameConst=('ui_1_16_93', 4, 0, 0), idx=0)
+
+
+
+    def Prepare_RightSide_(self):
+        rightSideLine = uicls.Frame(parent=self, align=uiconst.TOALL, state=uiconst.UI_DISABLED, color=MAINCOLOR, name='rightSideLine', frameConst=('ui_1_16_96', 4, 0, 0))
 
 
 
@@ -60,31 +61,22 @@ class TabGroupCore(uicls.Container):
         self.sr.tabs = []
         self.sr.mytabs = []
         self.sr.tabsmenu = None
-        uiutil.Flush(self)
-        left = uicls.Icon(icon='ui_1_16_93', parent=self, align=uiconst.TOLEFT, state=uiconst.UI_DISABLED, color=MAINCOLOR, name='left', idx=0, width=self.leftMargin, ignoreSize=True)
-        self.Prepare_Fill_()
+        self.Flush()
+        self.Prepare_LeftSide_()
         maxTextHeight = 0
         for data in tabs:
             newtab = self.GetTabClass()(parent=self)
             self.sr.mytabs.append(newtab)
             newtab.Startup(self, data)
+            newtab.align = uiconst.TOLEFT
             self.sr.Set('%s_tab' % data.label, newtab)
             self.sr.tabs.append(newtab)
             maxTextHeight = max(maxTextHeight, newtab.sr.label.textheight)
             if newtab.sr.icon:
                 maxTextHeight = max(maxTextHeight, newtab.sr.icon.height)
 
-        lt = max(2, maxTextHeight / 12)
-        for newtab in self.sr.tabs:
-            newtab.height = max(MINTABGROUPHEIGHT, maxTextHeight + lt * 2)
-            newtab.sr.label.top = lt
-
-        self.height = max(MINTABGROUPHEIGHT, maxTextHeight + lt * 2)
-        left.padTop = self.height - 16
-        if self.sr.right:
-            self.sr.right.padTop = self.height - 16
-        if self.sr.stretch:
-            self.sr.stretch.padTop = self.height - 16
+        self.Prepare_RightSide_()
+        self.height = max(MINTABGROUPHEIGHT, maxTextHeight + 6)
         self._inited = 1
         self._settingsID = settingsID
         self.UpdateSizes()
@@ -123,9 +115,12 @@ class TabGroupCore(uicls.Container):
         if absSize:
             (mw, mh,) = absSize
         else:
-            (mw, mh,) = (self.displayWidth, self.displayHeight)
+            (mw, mh,) = self.GetAbsoluteSize()
         if self.destroyed:
             return 
+        for tab in self.sr.mytabs:
+            tab.UpdateTabSize()
+
         totalTabWidth = sum([ each.sr.width for each in self.sr.mytabs ])
         totalSpace = mw - self.leftMargin - self.rightMargin
         needToShrink = max(0, totalTabWidth - totalSpace)
@@ -151,15 +146,11 @@ class TabGroupCore(uicls.Container):
 
             allMin = _allMin
 
-        left = self.leftMargin
         allMin = 1
         for each in self.sr.mytabs:
-            each.left = left
-            left += each.width
             if each.width != self.minTabsize:
                 allMin = 0
 
-        hidden = 0
         if self.sr.tabsmenu:
             self.sr.tabsmenu.Close()
             self.sr.tabsmenu = None
@@ -168,10 +159,11 @@ class TabGroupCore(uicls.Container):
         i2 = 0
         totalWidth = 0
         totalVisible = 0
+        hidden = 0
         countActive = None
         startHiddenIdx = None
         for each in self.sr.mytabs:
-            if allMin and (hidden or each.left + each.width > totalSpace):
+            if allMin and (hidden or totalWidth + each.width > totalSpace):
                 if each == active:
                     countActive = i2
                 each.state = uiconst.UI_HIDDEN
@@ -205,11 +197,9 @@ class TabGroupCore(uicls.Container):
         leftover = max(0, totalSpace - totalWidth)
         for each in self.sr.mytabs:
             if each.state == uiconst.UI_NORMAL:
-                each.left = totalVisibleWidth
                 each.width = min(each.sr.width, max(self.minTabsize, each.width + leftover / totalVisible))
                 totalVisibleWidth += each.width
 
-        self.UpdateStretch(mw, totalVisibleWidth)
         if hidden:
             self.Prepare_Tabsmenu_()
             self.sr.tabsmenu.left = totalVisibleWidth
@@ -225,12 +215,6 @@ class TabGroupCore(uicls.Container):
     def GetTabs(self):
         if not self.destroyed:
             return self.sr.tabs
-
-
-
-    def UpdateStretch(self, fullWidth, totalVisibleWidth):
-        if self.sr.stretch:
-            self.sr.stretch.padLeft = totalVisibleWidth
 
 
 
@@ -370,10 +354,18 @@ class TabGroupCore(uicls.Container):
 
 class TabCore(uicls.Container):
     __guid__ = 'uicls.TabCore'
-    default_align = uiconst.TOPLEFT
+    default_align = uiconst.TOLEFT
+    default_fontsize = 10
+    default_fontStyle = None
+    default_fontFamily = None
+    default_fontPath = None
 
     def ApplyAttributes(self, attributes):
         uicls.Container.ApplyAttributes(self, attributes)
+        self.fontStyle = attributes.get('fontStyle', self.default_fontStyle)
+        self.fontFamily = attributes.get('fontFamily', self.default_fontFamily)
+        self.fontPath = attributes.get('fontPath', self.default_fontPath)
+        self.fontsize = attributes.get('fontsize', self.default_fontsize)
         self.ignoreWndDrag = 1
         self.selecting = 0
         self.sr.icon = None
@@ -385,14 +377,14 @@ class TabCore(uicls.Container):
 
 
     def Prepare_(self):
-        self.sr.clipper = uicls.Container(parent=self, align=uiconst.TOALL, padding=(6, 0, 6, 0), clipChildren=True, state=uiconst.UI_PICKCHILDREN, name='labelClipper')
-        self.sr.label = uicls.Label(parent=self.sr.clipper, left=1, fontsize=10, letterspace=1, uppercase=1, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT, name='tabLabel')
+        self.sr.clipper = uicls.Container(parent=self, align=uiconst.TOALL, padding=(6, 1, 6, 1), clipChildren=True, state=uiconst.UI_PICKCHILDREN, name='labelClipper')
+        self.sr.label = uicls.Label(parent=self.sr.clipper, fontStyle=self.fontStyle, fontFamily=self.fontFamily, fontPath=self.fontPath, fontsize=self.fontsize, letterspace=1, uppercase=1, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT, name='tabLabel')
         self.sr.underlay = uicls.Frame(parent=self, name='tabBackground', color=MAINCOLOR, frameConst=('ui_1_16_94', 7, 0))
 
 
 
     def Startup(self, tabgroup, data):
-        self.sr.blink = uicls.Frame(parent=self, align=uiconst.TOTOP, height=1, padding=(2, 3, 2, 0), state=uiconst.UI_HIDDEN, blendMode=trinity.TR2_SBM_ADD, color=(0.5, 0.5, 0.5), frameConst=('res:/UI/Texture/Frames/FILLED_BLUR4.png', 6, -6, 1))
+        self.sr.blink = uicls.StretchSpriteHorizontal(parent=self, align=uiconst.TOTOP_NOPUSH, state=uiconst.UI_HIDDEN, color=(0.5, 0.5, 0.5), name='blinker', height=11, leftEdgeSize=6, rightEdgeSize=6, offset=-2, blendMode=trinity.TR2_SBM_ADD, texturePath='res:/UI/Texture/Lines/BLUR4.png')
         self.sr.args = data.get('args', None)
         self.sr.grab = [0, 0]
         self.sr.tabgroup = tabgroup
@@ -434,11 +426,16 @@ class TabCore(uicls.Container):
         if self.sr.tabgroup._iconOnly:
             self.sr.label.text = ''
         else:
-            self.sr.label.text = label.strip()
-            self.sr.width = self.sr.label.width + self.sr.label.left + self.sr.label.parent.padLeft * 2
+            self.sr.label.text = label
+            self.UpdateTabSize()
         self.sr.label.hint = hint
         self.hint = hint
         self.sr.tabgroup.UpdateSizes()
+
+
+
+    def UpdateTabSize(self):
+        self.sr.width = self.sr.label.width + self.sr.label.left + self.sr.label.parent.padLeft * 2
 
 
 
@@ -468,7 +465,7 @@ class TabCore(uicls.Container):
         self.sr.hint = hint
         if iconNo is None:
             if self.sr.label:
-                self.sr.label.left = 1
+                self.sr.label.left = 0
         else:
             self.sr.icon = uicls.Icon(icon=iconNo, parent=self, pos=(2, 3, 16, 16), align=uiconst.TOPLEFT, idx=0, state=uiconst.UI_DISABLED)
             if self.sr.label:
@@ -478,7 +475,7 @@ class TabCore(uicls.Container):
                 self.sr.icon.expandOnLeft = 1
                 self.sr.icon.state = uiconst.UI_NORMAL
         self.sr.hint = hint
-        self.sr.width = self.sr.label.textwidth + self.sr.label.left + self.sr.label.parent.padLeft * 2
+        self.UpdateTabSize()
         self.sr.tabgroup.UpdateSizes()
 
 
@@ -521,14 +518,14 @@ class TabCore(uicls.Container):
     def ShowDeselected_(self):
         if self.sr.underlay:
             self.sr.underlay.LoadFrame(('ui_1_16_94', 7, 0))
-        self.padTop = 1
+        self.sr.label.top = 2
 
 
 
     def ShowSelected_(self):
         if self.sr.underlay:
             self.sr.underlay.LoadFrame(('ui_1_16_95', 7, 0))
-        self.padTop = 0
+        self.sr.label.top = 1
 
 
 

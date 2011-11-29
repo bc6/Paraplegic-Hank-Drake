@@ -236,10 +236,8 @@ def GetGroupDict():
      const.groupConstructionPlatform: spaceObject.PlayerOwnedStructure,
      const.groupSovereigntyClaimMarkers: spaceObject.SovereigntyClaimMarker,
      const.groupInfrastructureHub: spaceObject.SovereigntyInfrastructueHub,
-     const.groupPlanetaryCustomsOffices: spaceObject.CargoLink,
      const.groupBeacon: spaceObject.SpaceObject,
-     const.groupFlashpoint: spaceObject.SpaceObject,
-     const.groupImpactor: spaceObject.SpaceObject}
+     const.groupPlanetaryCustomsOffices: spaceObject.CustomsOffice}
     for group in cfg.invgroups:
         if group.fittableNonSingleton and not d.has_key(group.groupID):
             d[group.groupID] = spaceObject.Missile

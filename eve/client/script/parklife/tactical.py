@@ -17,9 +17,34 @@ import bracket
 import form
 import math
 import uicls
-import uiconst
+import entities
+from collections import OrderedDict
+import localization
+import bluepy
 from math import sqrt
 BRACKETBORDER = 17
+entities.POS_STRUCTURE_STATE = {const.pwnStructureStateAnchored: localization.GetByLabel('Entities/States/Anchored'),
+ const.pwnStructureStateAnchoring: localization.GetByLabel('Entities/States/Anchoring'),
+ const.pwnStructureStateIncapacitated: localization.GetByLabel('Entities/States/Incapacitated'),
+ const.pwnStructureStateInvulnerable: localization.GetByLabel('Entities/States/Invulnerable'),
+ const.pwnStructureStateOnline: localization.GetByLabel('Entities/States/Online'),
+ const.pwnStructureStateOnlining: localization.GetByLabel('Entities/States/Onlining'),
+ const.pwnStructureStateOperating: localization.GetByLabel('Entities/States/Operating'),
+ const.pwnStructureStateReinforced: localization.GetByLabel('Entities/States/Reinforced'),
+ const.pwnStructureStateUnanchored: localization.GetByLabel('Entities/States/Unanchored'),
+ const.pwnStructureStateUnanchoring: localization.GetByLabel('Entities/States/Unanchoring'),
+ const.pwnStructureStateVulnerable: localization.GetByLabel('Entities/States/Vulnerable'),
+ const.pwnStructureStateAnchor: localization.GetByLabel('UI/Inflight/MoonMining/Structures/Anchor'),
+ const.pwnStructureStateUnanchor: localization.GetByLabel('UI/Inflight/MoonMining/Structures/Unanchor'),
+ const.pwnStructureStateOffline: localization.GetByLabel('UI/Inflight/MoonMining/Structures/Offline'),
+ const.pwnStructureStateOnlineActive: localization.GetByLabel('UI/Inflight/MoonMining/States/OnlineActive'),
+ const.pwnStructureStateOnlineStartingUp: localization.GetByLabel('UI/Inflight/MoonMining/States/OnlineStartingUp')}
+
+@util.Memoized
+def GetCacheByLabel(key):
+    return localization.GetByLabel(key)
+
+
 
 class TacticalSvc(service.Service):
     __guid__ = 'svc.tactical'
@@ -59,6 +84,20 @@ class TacticalSvc(service.Service):
      'OnEveGetsFocus',
      'OnContactChange']
     __startupdependencies__ = ['settings']
+    ALL_COLUMNS = OrderedDict([('ICON', 'UI/Generic/Icon'),
+     ('DISTANCE', 'UI/Common/Distance'),
+     ('NAME', 'UI/Common/Name'),
+     ('TYPE', 'UI/Common/Type'),
+     ('TAG', 'UI/Common/Tag'),
+     ('CORPORATION', 'UI/Common/Corporation'),
+     ('ALLIANCE', 'UI/Common/Alliance'),
+     ('FACTION', 'UI/Common/Faction'),
+     ('MILITIA', 'UI/Common/Militia'),
+     ('SIZE', 'UI/Inventory/ItemSize'),
+     ('VELOCITY', 'UI/Overview/Velocity'),
+     ('RADIALVELOCITY', 'UI/Overview/RadialVelocity'),
+     ('TRANSVERSALVELOCITY', 'UI/Overview/TraversalVelocity'),
+     ('ANGULARVELOCITY', 'UI/Generic/AngularVelocity')])
 
     def __init__(self):
         service.Service.__init__(self)
@@ -108,7 +147,7 @@ class TacticalSvc(service.Service):
             slimItem = bp.GetInvItem(argTuple[0])
             if not slimItem:
                 return 
-            overview = self.GetPanelForUpdate('overview')
+            overview = self.GetPanelForUpdate(form.OverView.default_windowID)
             if overview and self.sr is not None:
                 self.InvalidateFlags()
 
@@ -135,14 +174,14 @@ class TacticalSvc(service.Service):
 
             self.attackers = {}
             droneview = self.GetPanel('droneview')
-            overview = self.GetPanelForUpdate('overview')
+            overview = self.GetPanelForUpdate(form.OverView.default_windowID)
             if overview:
                 overview.FlushEwarStates()
             if droneview:
                 if getattr(self, '_initingDrones', False):
                     self.LogInfo('Tactical: ProcessSessionChange: busy initing drones, cannot close the window')
                 else:
-                    droneview.SelfDestruct()
+                    droneview.Close()
 
 
 
@@ -153,7 +192,7 @@ class TacticalSvc(service.Service):
             if settings.user.overview.Get('viewTactical', 0):
                 self.Init()
             self.CheckInitDrones()
-            overview = self.GetPanelForUpdate('overview')
+            overview = self.GetPanelForUpdate(form.OverView.default_windowID)
             if 'shipid' in change and overview:
                 overview.UpdateAll()
             self.InvalidateFlags()
@@ -180,7 +219,7 @@ class TacticalSvc(service.Service):
             update = 1
         if update:
             updateOverview = 0
-            overview = self.GetPanelForUpdate('overview')
+            overview = self.GetPanelForUpdate(form.OverView.default_windowID)
             if not overview:
                 return 
             ball = sm.GetService('michelle').GetBall(newSlim.itemID)
@@ -221,8 +260,8 @@ class TacticalSvc(service.Service):
                 if getattr(slimItem, 'corpID', None):
                     tickerName = '[' + cfg.corptickernames.Get(slimItem.corpID).tickerName + ']'
                 name = uix.GetSlimItemName(slimItem)
-                overviewEntry.Set('sort_' + mls.UI_GENERIC_NAME, name.lower())
-                overviewEntry.Set(mls.UI_GENERIC_NAME, name)
+                overviewEntry.Set('sort_' + localization.GetByLabel('UI/Common/Name'), name.lower())
+                overviewEntry.Set(localization.GetByLabel('UI/Common/Name'), name)
                 overviewEntry.NAME = name
                 overviewEntry.name = name
                 overviewEntry.hint = sm.GetService('bracket').GetBracketName(slimItem.itemID)
@@ -242,7 +281,7 @@ class TacticalSvc(service.Service):
         if eve.session.solarsystemid:
             if not not (eve.rookieState and eve.rookieState < 23):
                 self.CleanUp()
-            elif not self.GetPanel('overview'):
+            elif not self.GetPanel(form.OverView.default_windowID):
                 self.Setup()
 
 
@@ -279,7 +318,7 @@ class TacticalSvc(service.Service):
         if getattr(self, 'delayedOnAggressionChanged', False):
             return 
         setattr(self, 'delayedOnAggressionChanged', True)
-        blue.pyos.synchro.Sleep(1000)
+        blue.pyos.synchro.SleepWallclock(1000)
         self.InvalidateFlags()
         setattr(self, 'delayedOnAggressionChanged', False)
 
@@ -356,7 +395,7 @@ class TacticalSvc(service.Service):
     def CheckInitDrones(self):
         mySlim = uix.GetBallparkRecord(eve.session.shipid)
         if mySlim and mySlim.groupID != const.groupCapsule:
-            dronesInBay = eve.GetInventoryFromId(eve.session.shipid).ListDroneBay()
+            dronesInBay = sm.GetService('invCache').GetInventoryFromId(eve.session.shipid).ListDroneBay()
             if dronesInBay:
                 self.InitDrones()
             else:
@@ -405,7 +444,7 @@ class TacticalSvc(service.Service):
                 overviewEntry = self.GetOverviewEntry(itemID)
                 if not overviewEntry:
                     continue
-                overviewEntry.Set('sort_' + mls.UI_GENERIC_TAG, tag)
+                overviewEntry.Set('sort_' + localization.GetByLabel('UI/Common/Tag'), tag)
                 overviewEntry.TAG = tag
                 if overviewEntry.panel:
                     overviewEntry.panel.Load(overviewEntry)
@@ -424,16 +463,16 @@ class TacticalSvc(service.Service):
             self.LogInfo('Tactical::OnTacticalPresetChange', label, set)
         if self.inited:
             self.InitConnectors()
-        overview = self.GetPanelForUpdate('overview')
+        overview = self.GetPanelForUpdate(form.OverView.default_windowID)
         if overview:
             overview.UpdateAll()
             if label == 'ccp_notsaved':
-                label = mls.UI_GENERIC_NOTSAVED
+                label = localization.GetByLabel('UI/Overview/NotSaved')
             overviewName = self.overviewPresetSvc.GetDefaultOverviewName(label)
             if overviewName is not None:
                 label = overviewName
             overview.sr.presetMenu.hint = label
-            overview.SetCaption(mls.UI_GENERIC_OVERVIEW + ' (' + label + ')')
+            overview.SetCaption(localization.GetByLabel('UI/Tactical/OverviewCaption', preset=label))
 
 
 
@@ -441,7 +480,7 @@ class TacticalSvc(service.Service):
         self.InvalidateFlags()
         if self.inited:
             self.InitConnectors()
-        overview = self.GetPanelForUpdate('overview')
+        overview = self.GetPanelForUpdate(form.OverView.default_windowID)
         if overview:
             overview.UpdateAll()
 
@@ -522,14 +561,14 @@ class TacticalSvc(service.Service):
 
 
     def RefreshOverview(self):
-        overview = self.GetPanelForUpdate('overview')
+        overview = self.GetPanelForUpdate(form.OverView.default_windowID)
         if overview:
             overview.UpdateAll()
 
 
 
     def UpdateOverviewForOneCharacter(self, member):
-        overview = self.GetPanelForUpdate('overview')
+        overview = self.GetPanelForUpdate(form.OverView.default_windowID)
         if overview:
             overview.UpdateForOneCharacter(member.charID)
 
@@ -568,7 +607,7 @@ class TacticalSvc(service.Service):
                 else:
                     flag = self.UpdateFlag(slimItem, uiwindow)
                 if uiwindow.sr.node:
-                    uiwindow.sr.node.Set('sort_' + mls.UI_GENERIC_ICON, (flag,
+                    uiwindow.sr.node.Set('sort_' + localization.GetByLabel('UI/Generic/Icon'), (flag,
                      icon,
                      bg,
                      slimItem.typeID))
@@ -712,7 +751,7 @@ class TacticalSvc(service.Service):
             return 
         self.miniflag = settings.user.overview.Get('useSmallColorTags', 0)
         sm.GetService('bracket').RenewFlags()
-        overview = self.GetPanelForUpdate('overview')
+        overview = self.GetPanelForUpdate(form.OverView.default_windowID)
         if overview:
             for entry in overview.sr.scroll.GetNodes():
                 if entry.updateItem:
@@ -816,21 +855,16 @@ class TacticalSvc(service.Service):
 
 
     def GetAllColumns(self):
-        allColumns = ['ICON',
-         'DISTANCE',
-         'NAME',
-         'TYPE',
-         'TAG',
-         'CORPORATION',
-         'ALLIANCE',
-         'FACTION',
-         'MILITIA',
-         'SIZE',
-         'VELOCITY',
-         'RADIALVELOCITY',
-         'TRANSVERSALVELOCITY',
-         'ANGULARVELOCITY']
-        return allColumns
+        return self.ALL_COLUMNS.keys()
+
+
+
+    @util.Memoized
+    def GetColumnLabel(self, key):
+        if key in self.ALL_COLUMNS.keys():
+            return localization.GetByLabel(self.ALL_COLUMNS[key])
+        else:
+            return key
 
 
 
@@ -840,7 +874,7 @@ class TacticalSvc(service.Service):
         if userSet is None:
             userSet = default
         userSetOrder = self.GetColumnOrder()
-        return ([ label for label in userSetOrder if label in userSet ], [ getattr(mls, 'UI_GENERIC_' + label, label) for label in userSetOrder if label in userSet ])
+        return ([ label for label in userSetOrder if label in userSet ], [ self.GetColumnLabel(label) for label in userSetOrder if label in userSet ])
 
 
 
@@ -967,25 +1001,25 @@ class TacticalSvc(service.Service):
         for label in p:
             if label == 'ccp_notsaved':
                 continue
-            m.append((mls.UI_CMD_LOAD + ' ' + label, self.LoadPreset, (label,)))
+            m.append((localization.GetByLabel('UI/Tactical/LoadPreset', presetName=label), self.LoadPreset, (label,)))
             dm.append((label, self.DeletePreset, (label,)))
 
         m.append(None)
-        m.append((mls.UI_CMD_LOADDEFAULT, defaultm))
+        m.append((localization.GetByLabel('UI/Tactical/LoadDefault'), defaultm))
         if dm:
             m.append(None)
-            m.append((mls.UI_CMD_DELETE, dm))
+            m.append((localization.GetByLabel('UI/Common/Delete'), dm))
         bracketMgr = sm.GetService('bracket')
         if not bracketMgr.ShowingAll():
-            m.append((mls.UI_CMD_SHOWALLBRACKETS, bracketMgr.ShowAll))
+            m.append((localization.GetByLabel('UI/Overview/ShowAllBrackets'), bracketMgr.ShowAll))
         else:
-            m.append((mls.UI_CMD_STOPSHOWALLBRACKETS, bracketMgr.StopShowingAll))
+            m.append((localization.GetByLabel('UI/Tactical/StopSowingAllBrackets'), bracketMgr.StopShowingAll))
         if not bracketMgr.ShowingNone():
-            m.append((mls.UI_CMD_SHOWNOBRACKETS, bracketMgr.ShowNone))
+            m.append((localization.GetByLabel('UI/Tactical/HideAllBrackets'), bracketMgr.ShowNone))
         else:
-            m.append((mls.UI_CMD_STOPSHOWNOBRACKETS, bracketMgr.StopShowingNone))
-        m += [None, (mls.UI_CMD_SAVECURRENTTYPESELECTION, self.SavePreset), (mls.UI_CMD_OPENOVERVIEWSETTINGS, self.OpenSettings)]
-        m += [None, (mls.UI_CMD_EXPORTOVERVIEWSETTINGS, self.ExportOverviewSettings), (mls.UI_CMD_IMPORTOVERVIEWSETTINGS, self.ImportOverviewSettings)]
+            m.append((localization.GetByLabel('UI/Tactical/StopHidingAllBrackets'), bracketMgr.StopShowingNone))
+        m += [None, (localization.GetByLabel('UI/Tactical/SaveCurrentTypeSelectionAs'), self.SavePreset), (localization.GetByLabel('UI/Commands/OpenOverviewSettings'), self.OpenSettings)]
+        m += [None, (localization.GetByLabel('UI/Commands/ExportOverviewSettings'), self.ExportOverviewSettings), (localization.GetByLabel('UI/Overview/ImportOverviewSettings'), self.ImportOverviewSettings)]
         return m
 
 
@@ -1003,12 +1037,12 @@ class TacticalSvc(service.Service):
         if label is not 'ccp_notsaved' and label not in presets and label not in defaultPresetNames:
             return 
         if updateTabSettings:
-            overview = self.GetPanelForUpdate('overview')
+            overview = self.GetPanelForUpdate(form.OverView.default_windowID)
             if overview is not None and hasattr(overview, 'GetSelectedTabKey'):
                 tabKey = overview.GetSelectedTabKey()
                 tabSettings = settings.user.overview.Get('tabsettings', {})
                 if tabKey in tabSettings.keys():
-                    tabSettings[tabKey]['overview'] = label
+                    tabSettings[tabKey][form.OverView.default_windowID] = label
                 sm.ScatterEvent('OnOverviewTabChanged', tabSettings, None)
         settings.user.overview.Set('activeOverviewPreset', label)
         self.activePreset = label
@@ -1036,7 +1070,7 @@ class TacticalSvc(service.Service):
     def SavePreset(self, *args):
         if self.logme:
             self.LogInfo('Tactical::SavePreset')
-        ret = uix.NamePopup(mls.UI_INFLIGHT_TYPELABELFORPRESET, mls.UI_INFLIGHT_TYPELABEL, maxLength=20)
+        ret = uix.NamePopup(localization.GetByLabel('UI/Tactical/TypeInLabelForPreset'), localization.GetByLabel('UI/Overview/TypeInLabel'), maxLength=20)
         if ret:
             presetName = ret['name'].lower()
             if presetName == 'default':
@@ -1144,6 +1178,7 @@ class TacticalSvc(service.Service):
         self.TargetingRange = None
         self.OptimalRange = None
         self.FalloffRange = None
+        self.OffsetRange = None
         self.direction = None
         self.directionCurveSet = None
         self.updateDirectionTimer = None
@@ -1153,6 +1188,7 @@ class TacticalSvc(service.Service):
         scene2 = sm.GetService('sceneManager').GetRegisteredScene2('default')
         if scene2 and arena and arena in scene2.objects:
             scene2.objects.remove(arena)
+            scene2.objects.remove(self.rootTransform)
         usedCurves = getattr(self, 'usedCurveSets', None)
         if scene2 is not None and usedCurves is not None:
             for cs in self.usedCurveSets:
@@ -1234,6 +1270,9 @@ class TacticalSvc(service.Service):
             self.usedCurveSets = []
             self.directionCurveSet = None
             self.updateDirectionTimer = None
+            ball = sm.GetService('michelle').GetBall(session.shipid)
+            if not ball:
+                return 
             for child in self.arena.children:
                 if child.name == 'connectors':
                     self.connectors = child
@@ -1241,6 +1280,8 @@ class TacticalSvc(service.Service):
                     self.TargetingRange = child
                 elif child.name == 'OptimalRange':
                     self.OptimalRange = child
+                elif child.name == 'OffsetRange':
+                    self.OffsetRange = child
                 elif child.name == 'FalloffRange':
                     self.FalloffRange = child
                 elif child.name == 'circleLineSet':
@@ -1248,16 +1289,20 @@ class TacticalSvc(service.Service):
                 elif child.name == 'directionLineSet':
                     self.direction = child
 
+            self.rootTransform = trinity.EveRootTransform()
+            self.rootTransform.children.append(self.OffsetRange)
+            self.arena.children.remove(self.OffsetRange)
             self.InitDistanceCircles()
             self.InitDirectionLines()
             scene2.objects.append(self.arena)
+            scene2.objects.append(self.rootTransform)
             self.inited = True
             self.InitConnectors()
             self.UpdateTargetingRanges()
 
 
 
-    def UpdateTargetingRanges(self, module = None):
+    def UpdateTargetingRanges(self, module = None, charge = None):
         if not self or not self.inited:
             self.targetingRanges = None
             return 
@@ -1266,6 +1311,8 @@ class TacticalSvc(service.Service):
         if not eve.session.shipid:
             self.FalloffRange.display = False
             self.OptimalRange.display = False
+            self.OffsetRange.display = False
+            self.rootTransform.translationCurve = self.rootTransform.rotationCurve = None
             self.TargetingRange.display = False
             self.UpdateDirection()
             return 
@@ -1273,6 +1320,8 @@ class TacticalSvc(service.Service):
         maxTargetRange = ship.maxTargetRange * 2
         self.TargetingRange.display = True
         self.TargetingRange.scaling = (maxTargetRange, maxTargetRange, maxTargetRange)
+        self.OffsetRange.translation = (0.0, 0.0, 0.0)
+        self.OffsetRange.display = False
         self.intersections = [ship.maxTargetRange]
         if module is None:
             self.FalloffRange.display = False
@@ -1294,6 +1343,30 @@ class TacticalSvc(service.Service):
 
             self.FalloffRange.display = False
             self.OptimalRange.display = False
+        if not optimal and charge:
+            flightTime = 0
+            velocity = 0
+            bombRadius = 0
+            chargeInfo = sm.GetService('godma').GetItem(charge.itemID)
+            for attribute in chargeInfo.displayAttributes:
+                if attribute.attributeID == const.attributeExplosionDelay:
+                    flightTime = attribute.value
+                elif attribute.attributeID == const.attributeMaxVelocity:
+                    velocity = attribute.value
+                elif attribute.attributeID == const.attributeEmpFieldRange:
+                    bombRadius = attribute.value
+
+            maxRange = flightTime * velocity / 1000.0
+            if bombRadius:
+                aoeRad = bombRadius * 2
+                ball = sm.GetService('michelle').GetBall(session.shipid)
+                if ball:
+                    self.rootTransform.translationCurve = self.rootTransform.rotationCurve = ball
+                    self.OffsetRange.translation = (0, 0, maxRange)
+                    self.OffsetRange.scaling = (aoeRad, aoeRad, aoeRad)
+                    self.OffsetRange.display = True
+            else:
+                optimal = maxRange * 2
         if optimal:
             self.OptimalRange.scaling = (optimal, optimal, optimal)
             self.OptimalRange.display = True
@@ -1315,7 +1388,7 @@ class TacticalSvc(service.Service):
 
 
     def GetPanel(self, what):
-        wnd = sm.GetService('window').GetWindow(what)
+        wnd = uicls.Window.GetIfOpen(what)
         if wnd and not wnd.destroyed:
             return wnd
 
@@ -1326,7 +1399,8 @@ class TacticalSvc(service.Service):
             return 
         self._initingDrones = True
         try:
-            sm.GetService('window').GetWindow('droneview', decoClass=form.DroneView, create=1, expandIfCollapsed=False, panelID='droneview', showActions=False, panelName=mls.UI_GENERIC_DRONES)
+            if not form.DroneView.GetIfOpen():
+                form.DroneView.Open(showActions=False, panelName=localization.GetByLabel('UI/Drones/Drones'))
 
         finally:
             self._initingDrones = False
@@ -1335,12 +1409,14 @@ class TacticalSvc(service.Service):
 
 
     def InitOverview(self):
-        sm.GetService('window').GetWindow('overview', decoClass=form.OverView, create=1, expandIfCollapsed=False, panelID='overview', showActions=False, panelName=mls.UI_GENERIC_OVERVIEW)
+        if not form.OverView.GetIfOpen():
+            form.OverView.Open(showActions=False, panelName=localization.GetByLabel('UI/Overview/Overview'))
 
 
 
     def InitSelectedItem(self):
-        sm.GetService('window').GetWindow('selecteditemview', decoClass=form.ActiveItem, create=1, expandIfCollapsed=False, panelname=mls.UI_GENERIC_SELECTEDITEM)
+        if not form.ActiveItem.GetIfOpen():
+            form.ActiveItem.Open(panelname=localization.GetByLabel('UI/Inflight/ActiveItem/SelectedItem'))
 
 
 
@@ -1616,6 +1692,7 @@ class TacticalSvc(service.Service):
         droneview = self.GetPanel('droneview')
         if droneview and slimItem.categoryID == const.categoryDrone and slimItem.ownerID == eve.session.charid:
             droneview.CheckDrones()
+        overview = self.GetPanelForUpdate(form.OverView.default_windowID)
         overview = self.GetPanelForUpdate('overview')
         freezeOverview = sm.StartService('ui').GetOverviewFreezeMode()
         if overview and overview.sr.scroll:
@@ -1629,7 +1706,7 @@ class TacticalSvc(service.Service):
                     self.LogInfo('Tactical -  about to remove ball, id:', ball.id)
                     overview.sr.scroll.RemoveEntries([overviewEntry])
             if not overview.sr.scroll.GetNodes():
-                overview.sr.scroll.ShowHint(mls.UI_GENERIC_NOTHINGFOUND)
+                overview.sr.scroll.ShowHint(localization.GetByLabel('UI/Common/NothingFound'))
 
 
 
@@ -1644,7 +1721,7 @@ class TacticalSvc(service.Service):
 
 
     def GetOverviewEntry(self, itemID):
-        overview = self.GetPanelForUpdate('overview')
+        overview = self.GetPanelForUpdate(form.OverView.default_windowID)
         if not overview:
             return None
         if self.logme:
@@ -1656,6 +1733,7 @@ class TacticalSvc(service.Service):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def GetEntryData(self, slimItem, ball):
         itemID = slimItem.itemID
         (iconNo, _dockType, _minDist, _maxDist, _iconOffset, _logflag,) = sm.GetService('bracket').GetBracketProps(slimItem, ball)
@@ -1680,38 +1758,38 @@ class TacticalSvc(service.Service):
         if slimItem.typeID:
             typeName = cfg.invtypes.Get(slimItem.typeID).typeName
         data = uiutil.Bunch()
-        data.Set('sort_' + mls.UI_GENERIC_NAME, name.lower())
-        data.Set('sort_' + mls.UI_GENERIC_CORPORATION, corporationTickerName.lower())
-        data.Set('sort_' + mls.UI_GENERIC_ALLIANCE, allianceShortName.lower())
-        data.Set('sort_' + mls.UI_GENERIC_FACTION, factionName.lower())
-        data.Set('sort_' + mls.UI_GENERIC_MILITIA, militiaName.lower())
-        data.Set('sort_' + mls.UI_GENERIC_VELOCITY, None)
-        data.Set('sort_' + mls.UI_GENERIC_RADIALVELOCITY, None)
-        data.Set('sort_' + mls.UI_GENERIC_TRANSVERSALVELOCITY, None)
-        data.Set('sort_' + mls.UI_GENERIC_ANGULARVELOCITY, None)
-        data.Set('sort_' + mls.UI_GENERIC_DISTANCE, ball.surfaceDist)
-        data.Set('sort_' + mls.UI_GENERIC_SIZE, ball.radius * 2)
-        data.Set('sort_' + mls.UI_GENERIC_ICON, (slimItem.categoryID, slimItem.groupID))
-        data.Set('sort_' + mls.UI_GENERIC_TAG, sm.GetService('fleet').GetTargetTag(itemID) or '')
-        data.Set('sort_' + mls.UI_GENERIC_TYPE, typeName)
+        data.Set('sort_' + GetCacheByLabel('UI/Common/Name'), name.lower())
+        data.Set('sort_' + GetCacheByLabel('UI/Common/Corporation'), corporationTickerName.lower())
+        data.Set('sort_' + GetCacheByLabel('UI/Common/Alliance'), allianceShortName.lower())
+        data.Set('sort_' + GetCacheByLabel('UI/Common/Faction'), factionName.lower())
+        data.Set('sort_' + GetCacheByLabel('UI/Common/Militia'), militiaName.lower())
+        data.Set('sort_' + GetCacheByLabel('UI/Overview/Velocity'), None)
+        data.Set('sort_' + GetCacheByLabel('UI/Overview/RadialVelocity'), None)
+        data.Set('sort_' + GetCacheByLabel('UI/Overview/TraversalVelocity'), None)
+        data.Set('sort_' + GetCacheByLabel('UI/Generic/AngularVelocity'), None)
+        data.Set('sort_' + GetCacheByLabel('UI/Common/Distance'), ball.surfaceDist)
+        data.Set('sort_' + GetCacheByLabel('UI/Inventory/ItemSize'), ball.radius * 2)
+        data.Set('sort_' + GetCacheByLabel('UI/Generic/Icon'), (slimItem.categoryID, slimItem.groupID))
+        data.Set('sort_' + GetCacheByLabel('UI/Common/Tag'), sm.GetService('fleet').GetTargetTag(itemID) or '')
+        data.Set('sort_' + GetCacheByLabel('UI/Common/Type'), typeName)
         data.NAME = name
         data.TYPE = typeName
         data.CORPORATION = corporationTickerName
         data.ALLIANCE = allianceShortName
         data.FACTION = factionName
         data.MILITIA = militiaName
-        data.SIZE = util.FmtDist(data.Get('sort_' + mls.UI_GENERIC_SIZE))
-        data.TAG = data.Get('sort_' + mls.UI_GENERIC_TAG)
+        data.SIZE = util.FmtDist(data.Get('sort_' + GetCacheByLabel('UI/Inventory/ItemSize')))
+        data.TAG = data.Get('sort_' + GetCacheByLabel('UI/Common/Tag'))
         data.ICON = ''
-        data.Set('fmt_' + mls.UI_GENERIC_VELOCITY, None)
-        data.Set('fmt_' + mls.UI_GENERIC_RADIALVELOCITY, None)
-        data.Set('fmt_' + mls.UI_GENERIC_TRANSVERSALVELOCITY, None)
-        data.Set('fmt_' + mls.UI_GENERIC_ANGULARVELOCITY, None)
-        data.Set('fmt_' + mls.UI_GENERIC_DISTANCE, None)
+        data.Set('fmt_' + GetCacheByLabel('UI/Overview/Velocity'), None)
+        data.Set('fmt_' + GetCacheByLabel('UI/Overview/RadialVelocity'), None)
+        data.Set('fmt_' + GetCacheByLabel('UI/Overview/TraversalVelocity'), None)
+        data.Set('fmt_' + GetCacheByLabel('UI/Generic/AngularVelocity'), None)
+        data.Set('fmt_' + GetCacheByLabel('UI/Common/Distance'), None)
         data.name = name
         data.label = ''
         data.icon = ''
-        data.tag = data.Get('sort_' + mls.UI_GENERIC_TAG)
+        data.tag = data.Get('sort_' + GetCacheByLabel('UI/Common/Tag'))
         data.hint = hint
         data.itemID = slimItem.itemID
         data.typeID = slimItem.typeID
@@ -1866,16 +1944,12 @@ class TacticalSvc(service.Service):
 
 
     def ImportOverviewSettings(self):
-        wnd = sm.GetService('window').GetWindow('ImportOverviewWindow', create=1)
-        if wnd is not None and not wnd.destroyed:
-            wnd.Maximize()
+        form.ImportOverviewWindow.Open()
 
 
 
     def ExportOverviewSettings(self):
-        wnd = sm.GetService('window').GetWindow('ExportOverviewWindow', create=1)
-        if wnd is not None and not wnd.destroyed:
-            wnd.Maximize()
+        form.ExportOverviewWindow.Open()
 
 
 

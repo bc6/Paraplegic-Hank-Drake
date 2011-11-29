@@ -4,7 +4,6 @@ import math
 import trinity
 import uicls
 import planet
-import draw
 import blue
 import uthread
 import geo2
@@ -13,6 +12,7 @@ import uix
 from service import ROLE_GML, ROLE_GMH
 import planetCommon
 import random
+import localization
 RADIUS_PIN = 0.006
 RADIUS_PINEXTENDED = RADIUS_PIN * 1.65
 RADIUS_CYCLE = RADIUS_PIN * 0.7
@@ -294,7 +294,7 @@ class BasePlanetPin(SpherePinStack):
             if self.pin.GetCycleTime() and self.pin.GetNextRunTime() and self.pin.IsActive() and not self.pin.IsInEditMode():
                 self.cycle.display = True
                 self.cycle.pinColor = util.Color.WHITE
-                currCycle = self.pin.GetCycleTime() - (self.pin.GetNextRunTime() - blue.os.GetTime())
+                currCycle = self.pin.GetCycleTime() - (self.pin.GetNextRunTime() - blue.os.GetWallclockTime())
                 cycleProportion = currCycle / float(self.pin.GetCycleTime())
                 if self.lastCycleProportion > cycleProportion:
                     self.firstCycle = not self.firstCycle
@@ -356,15 +356,15 @@ class BasePlanetPin(SpherePinStack):
     def GetMenu(self):
         ret = []
         if session.role & ROLE_GML == ROLE_GML:
-            ret.append((mls.UI_CMD_GMEXTRAS, self.GetGMMenu()))
-        ret.extend([(mls.UI_PI_CMD_CREATELINK, sm.GetService('planetUI').eventManager.BeginCreateLink, [self.pin.id]), (mls.UI_CMD_SHOWINFO, sm.GetService('info').ShowInfo, [self.pin.typeID, self.pin.id])])
+            ret.append(('GM / WM Extras', self.GetGMMenu()))
+        ret.extend([(localization.GetByLabel('UI/PI/Common/CreateLink'), sm.GetService('planetUI').eventManager.BeginCreateLink, [self.pin.id]), (localization.GetByLabel('UI/Commands/ShowInfo'), sm.GetService('info').ShowInfo, [self.pin.typeID, self.pin.id])])
         return ret
 
 
 
     def GetGMMenu(self):
         ret = []
-        ret.append(('%s: %s' % (mls.UI_PI_GENERIC_PIN, self.pin.id), blue.pyos.SetClipboardData, [str(self.pin.id)]))
+        ret.append(('PinID: %s' % (self.pin.id,), blue.pyos.SetClipboardData, [str(self.pin.id)]))
         return ret
 
 
@@ -507,7 +507,7 @@ class CommandCenterPin(BasePlanetPin):
         menu = []
         menu.extend(BasePlanetPin.GetGMMenu(self))
         if session.role & ROLE_GMH == ROLE_GMH and not sm.GetService('planetUI').GetCurrentPlanet().IsInEditMode():
-            menu.append((mls.UI_PI_GM_CONVERTCOMMANDCENTER, self.ConvertCommandCenter))
+            menu.append(('Convert Command Center', self.ConvertCommandCenter))
         return menu
 
 
@@ -753,7 +753,7 @@ class EcuPin(BasePlanetPin):
     def _SetExtractionHeadRadius(self, radius, time):
         for head in self.extractionHeadsByNum.values():
             head.SetExtractionHeadRadius(radius, time)
-            blue.pyos.synchro.Sleep(100)
+            blue.pyos.synchro.SleepWallclock(100)
 
 
 
@@ -813,7 +813,7 @@ class EcuPin(BasePlanetPin):
         menu = []
         menu.extend(BasePlanetPin.GetGMMenu(self))
         if session.role & ROLE_GMH == ROLE_GMH and not sm.GetService('planetUI').GetCurrentPlanet().IsInEditMode():
-            menu.append((mls.UI_PI_GM_DEPOSITDESIGNER, self.HotProgramInjection))
+            menu.append(('Deposit Designer', self.HotProgramInjection))
         return menu
 
 
@@ -963,7 +963,7 @@ class Link():
         self.bracketCurveSet.curves.append(self.infoBracket.projectBracket)
         sm.GetService('planetUI').planetTransform.children.append(self.infoBracket.trackTransform)
         sm.GetService('planetUI').pinInfoParent.children.insert(0, self.infoBracket)
-        self.infoText = uicls.Label(text='', parent=self.infoBracket, align=uiconst.TOPLEFT, width=self.infoBracket.width, autoheight=1, autowidth=1, left=pad, top=pad, letterspace=1, fontsize=9, color=util.Color.WHITE, state=uiconst.UI_NORMAL)
+        self.infoText = uicls.EveLabelSmall(text='', parent=self.infoBracket, align=uiconst.TOPLEFT, width=self.infoBracket.width, left=pad, top=pad, color=util.Color.WHITE, state=uiconst.UI_NORMAL)
         self._UpdateInfoBracket()
         self._ResizeInfoBracket()
         uicls.Fill(parent=self.infoBracket, color=(0.0, 0.0, 0.0, 0.5))
@@ -982,14 +982,15 @@ class Link():
     def _UpdateInfoBracket(self):
         linkBandwidthUsage = self.link.GetBandwidthUsage()
         if self.currentRouteVolume is not None:
-            addedVolume = '<br><textsize=5>+%4.2f%%</textsize>' % (self.currentRouteVolume / self.link.GetTotalBandwidth() * 100.0)
+            addedPercentage = self.currentRouteVolume / self.link.GetTotalBandwidth() * 100.0
             if self.currentRouteVolume + linkBandwidthUsage > self.link.GetTotalBandwidth():
-                addedVolume = '<color=red>%s</color>' % addedVolume
+                addedText = localization.GetByLabel('UI/PI/Common/LinkCapacityAddedInvalid', addedPercentage=addedPercentage)
             else:
-                addedVolume = '<color=gray>%s</color>' % addedVolume
+                addedText = localization.GetByLabel('UI/PI/Common/LinkCapacityAddedOK', addedPercentage=addedPercentage)
         else:
-            addedVolume = ''
-        bandwidthUsage = '%4.2f%%%s' % (linkBandwidthUsage / self.link.GetTotalBandwidth() * 100.0, addedVolume)
+            addedText = ''
+        usedPercentage = linkBandwidthUsage / self.link.GetTotalBandwidth() * 100.0
+        bandwidthUsage = localization.GetByLabel('UI/PI/Common/LinkCapacityUsed', usedPercentage=usedPercentage, addedText=addedText)
         self.infoText.text = bandwidthUsage
         self._ResizeInfoBracket()
 
@@ -1284,10 +1285,10 @@ class OtherPlayersPin(SpherePinStack):
 
     def GetMenu(self):
         charTypeID = cfg.eveowners.Get(self.ownerID).typeID
-        charName = '%s: %s' % (mls.UI_GENERIC_OWNER, cfg.eveowners.Get(self.ownerID).name)
-        charMenu = [(mls.UI_CMD_SHOWINFO, sm.GetService('info').ShowInfo, [charTypeID, self.ownerID])]
+        charName = localization.GetByLabel('UI/PI/Common/OwnerName', ownerName=cfg.eveowners.Get(self.ownerID).name)
+        charMenu = [(localization.GetByLabel('UI/Commands/ShowInfo'), sm.GetService('info').ShowInfo, [charTypeID, self.ownerID])]
         charMenu.extend(sm.GetService('menu').GetMenuFormItemIDTypeID(self.ownerID, charTypeID))
-        ret = [(mls.UI_CMD_SHOWINFO, sm.GetService('info').ShowInfo, [self.typeID, self.pinID]), None, (charName, charMenu)]
+        ret = [(localization.GetByLabel('UI/Commands/ShowInfo'), sm.GetService('info').ShowInfo, [self.typeID, self.pinID]), None, (charName, charMenu)]
         return ret
 
 
@@ -1428,7 +1429,7 @@ class ExtractionHeadPin(SpherePinStack):
                  self.disturbanceVal * 1.0)
             else:
                 self.noisePin.display = False
-            blue.pyos.synchro.Sleep(10)
+            blue.pyos.synchro.SleepWallclock(10)
 
 
 

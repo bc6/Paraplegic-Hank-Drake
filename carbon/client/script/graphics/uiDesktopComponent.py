@@ -116,6 +116,8 @@ class UIDesktopComponentManager(service.Service):
             else:
                 rt = trinity.device.CreateTexture(component.width, component.height, 1, trinity.TRIUSAGE_RENDERTARGET, component.format, trinity.TRIPOOL_DEFAULT)
             component.renderTarget.AttachToTexture(rt)
+            if hasattr(component.renderTarget, 'name'):
+                component.renderTarget.name = component.uiDesktopName
             if component.uiDesktop is not None:
                 component.uiDesktop.renderTargetStep.target = rt.GetSurfaceLevel(0)
 
@@ -124,7 +126,7 @@ class UIDesktopComponentManager(service.Service):
     def CreateComponent(self, name, state):
         component = UIDesktopComponent()
         if 'uiDesktopName' in state:
-            component.uiDesktopName = state['uiDesktopName']
+            component.uiDesktopName = str(state['uiDesktopName'])
             component.renderTarget = blue.resMan.GetResource('dynamic:/%s' % component.uiDesktopName)
             if component.renderTarget is None:
                 log.LogError('Failed to acquire a render target texture for %s' % component.uiDesktopName)

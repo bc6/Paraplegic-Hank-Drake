@@ -1,8 +1,5 @@
 import uicls
-import blue
 import uiconst
-import uix
-import form
 import uthread
 import uiutil
 
@@ -13,14 +10,13 @@ class WindowStack(uicls.WindowStackCore):
         if self is None or self.destroyed:
             return 
         if checknone and len(self.sr.content.children) == 0:
-            sm.GetService('window').UnregisterStack(self.name)
-            self.SelfDestruct()
+            self.Close()
             return 
         self.SetMinWH()
         tabs = []
         label = ''
         someoneunkillable = 0
-        allLite = True
+        allPinned = True
         for wnd in self.sr.content.children:
             if wnd is None or wnd.destroyed:
                 continue
@@ -31,13 +27,13 @@ class WindowStack(uicls.WindowStackCore):
             wnd.HideHeader()
             wnd.HideBackground()
             if not wnd.IsPinned():
-                allLite = False
+                allPinned = False
             wnd.state = uiconst.UI_PICKCHILDREN
             label = label + wnd.GetCaption() + '-'
             if not wnd._killable:
                 someoneunkillable = 1
 
-        sm.GetService('window').ToggleLiteWindowAppearance(self, allLite)
+        self._SetPinned(allPinned)
         if someoneunkillable:
             self.MakeUnKillable()
         else:
@@ -60,7 +56,8 @@ class WindowStack(uicls.WindowStackCore):
 
 
 
-    def OnPin_(self, *args):
+    def Pin(self, *args, **kwds):
+        uicls.WindowStackCore.Pin(self, *args, **kwds)
         for wnd in self.sr.content.children:
             if wnd is None or wnd.destroyed:
                 continue
@@ -69,7 +66,8 @@ class WindowStack(uicls.WindowStackCore):
 
 
 
-    def OnUnpin_(self, *args):
+    def Unpin(self, *args, **kwds):
+        uicls.WindowStackCore.Unpin(self, *args, **kwds)
         for wnd in self.sr.content.children:
             if wnd is None or wnd.destroyed:
                 continue
@@ -116,14 +114,7 @@ class WindowStack(uicls.WindowStackCore):
             return 
         if len(self.sr.content.children) == 0:
             self.sr.tabs.Close()
-            self.SelfDestruct()
-
-
-
-    def Detach(self, wnd, grab):
-        if settings.user.windows.Get('lockwhenpinned', 0) and self.IsPinned():
-            return 0
-        return uicls.WindowStackCore.Detach(self, wnd, grab)
+            self.Close()
 
 
 

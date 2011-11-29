@@ -4,6 +4,7 @@ import uthread
 import util
 import uicls
 import uiconst
+import localization
 
 class Slots(uicls.Container):
     __guid__ = 'xtriui.Slots'
@@ -16,8 +17,8 @@ class Slots(uicls.Container):
         self.sr.hint = name
         self.sr.hilite = uicls.Fill(parent=self, name='hilite', align=uiconst.TOALL, state=uiconst.UI_HIDDEN)
         self.sr.textCont = uicls.Container(name='textCont', align=uiconst.TOPLEFT, parent=self, left=32, width=self.width - 32, top=0, clipChildren=0, height=self.height)
-        self.sr.text = uicls.Label(text=name, parent=self.sr.textCont, align=uiconst.TOALL, top=4, left=8, fontsize=9, letterspace=2, state=uiconst.UI_DISABLED, uppercase=1)
-        self.sr.status = uicls.Label(text='', parent=self, width=self.width - 32, color=None, autowidth=False, top=16, left=40, state=uiconst.UI_DISABLED)
+        self.sr.text = uicls.EveLabelSmall(text=name, parent=self.sr.textCont, align=uiconst.TOALL, top=3, left=8, state=uiconst.UI_DISABLED, lineSpacing=-0.3)
+        self.sr.status = uicls.EveLabelSmall(text='', parent=self, width=self.width - 32, top=16, left=40, state=uiconst.UI_DISABLED)
 
 
 
@@ -146,8 +147,8 @@ class FittingSlot(Slots):
                 if ret is None:
                     return 
                 qty = ret['qty']
-            return eve.GetInventoryFromId(eve.session.shipid).Add(itemlist[0].itemID, itemLocation, qty=qty, flag=self.flag)
-        return eve.GetInventoryFromId(eve.session.shipid).MultiAdd([ item.itemID for item in itemlist ], itemLocation, flag=self.flag)
+            return sm.GetService('invCache').GetInventoryFromId(eve.session.shipid).Add(itemlist[0].itemID, itemLocation, qty=qty, flag=self.flag)
+        return sm.GetService('invCache').GetInventoryFromId(eve.session.shipid).MultiAdd([ item.itemID for item in itemlist ], itemLocation, flag=self.flag)
 
 
 
@@ -163,10 +164,10 @@ class CargoSlots(uicls.Container):
         self.sr.icon.color.a = 0.8
         uicls.Container(name='push', parent=self, align=uiconst.TOLEFT, width=32)
         self.sr.statusCont = uicls.Container(name='statusCont', parent=self, align=uiconst.TOLEFT, width=50)
-        self.sr.statustext1 = uicls.Label(text='status', parent=self.sr.statusCont, name='cargo_statustext', left=0, top=2, idx=0, state=uiconst.UI_DISABLED, mousehilite=1, align=uiconst.TOPRIGHT)
-        self.sr.statustext2 = uicls.Label(text='status', parent=self.sr.statusCont, name='cargo_statustext', left=0, top=14, idx=0, state=uiconst.UI_DISABLED, mousehilite=1, align=uiconst.TOPRIGHT)
+        self.sr.statustext1 = uicls.EveLabelMedium(text='status', parent=self.sr.statusCont, name='cargo_statustext', left=0, top=2, idx=0, state=uiconst.UI_DISABLED, mousehilite=1, align=uiconst.TOPRIGHT)
+        self.sr.statustext2 = uicls.EveLabelMedium(text='status', parent=self.sr.statusCont, name='cargo_statustext', left=0, top=14, idx=0, state=uiconst.UI_DISABLED, mousehilite=1, align=uiconst.TOPRIGHT)
         m3TextCont = uicls.Container(name='m3Cont', parent=self, align=uiconst.TOLEFT, width=12)
-        self.sr.m3Text = uicls.Label(text='m3', parent=m3TextCont, name='m3', left=4, top=14, idx=0, state=uiconst.UI_NORMAL, mousehilite=1)
+        self.sr.m3Text = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Fitting/FittingWindow/CubicMeters'), parent=m3TextCont, name='m3', left=4, top=14, idx=0, state=uiconst.UI_NORMAL, mousehilite=1)
         self.dogmaLocation = dogmaLocation
         sm.GetService('inv').Register(self)
         self.invReady = 1
@@ -230,7 +231,7 @@ class CargoSlots(uicls.Container):
 
     def SetStatusText(self, text1, text2, color):
         self.sr.statustext1.text = text1
-        self.sr.statustext2.text = '/ %s%s' % (color, text2)
+        self.sr.statustext2.text = localization.GetByLabel('UI/Fitting/FittingWindow/CargoUsage', color=color, text=text2)
         self.sr.statusCont.width = max(0, self.sr.statustext1.textwidth, self.sr.statustext2.textwidth)
 
 

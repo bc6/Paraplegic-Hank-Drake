@@ -6,9 +6,9 @@ import uix
 import form
 import listentry
 import lg
-import draw
 import uiconst
 import uicls
+import localization
 
 class CorpMembersViewTaskManagement(uicls.Container):
     __guid__ = 'form.CorpMembersViewTaskManagement'
@@ -30,33 +30,33 @@ class CorpMembersViewTaskManagement(uicls.Container):
         self.locationalRoles = sm.GetService('corp').GetLocationalRoles()
         self.offices.Fetch(0, len(self.offices))
         self.currentlyEditing = None
-        self.verbList = [[mls.UI_CMD_ADD, const.CTV_ADD],
-         [mls.UI_CMD_REMOVE, const.CTV_REMOVE],
-         [mls.UI_CMD_SET, const.CTV_SET],
-         [mls.UI_CMD_GIVE, const.CTV_GIVE]]
-        self.propertyList = [[mls.UI_CORP_ROLE, 'roles'],
-         [mls.UI_CORP_ROLEATHQ, 'rolesAtHQ'],
-         [mls.UI_CORP_ROLEATBASE, 'rolesAtBase'],
-         [mls.UI_CORP_ROLEATOTHER, 'rolesAtOther'],
-         [mls.UI_CORP_GRANTABLEROLE, 'grantableRoles'],
-         [mls.UI_CORP_GRANTABLEROLEATHQ, 'grantableRolesAtHQ'],
-         [mls.UI_CORP_GRANTABLEROLEATBASE, 'grantableRolesAtBase'],
-         [mls.UI_CORP_GRANTABLEROLEATOTHER, 'grantableRolesAtOther'],
-         [mls.UI_GENERIC_BASE, 'baseID'],
-         [mls.UI_GENERIC_CASH, const.CTPG_CASH],
-         [mls.UI_GENERIC_SHARES, const.CTPG_SHARES],
-         [mls.UI_GENERIC_TITLE, 'titleMask']]
-        self.bitmaskablesList = [[mls.UI_CORP_ROLE, 'roles'],
-         [mls.UI_CORP_ROLEATHQ, 'rolesAtHQ'],
-         [mls.UI_CORP_ROLEATBASE, 'rolesAtBase'],
-         [mls.UI_CORP_ROLEATOTHER, 'rolesAtOther'],
-         [mls.UI_CORP_GRANTABLEROLE, 'grantableRoles'],
-         [mls.UI_CORP_GRANTABLEROLEATHQ, 'grantableRolesAtHQ'],
-         [mls.UI_CORP_GRANTABLEROLEATBASE, 'grantableRolesAtBase'],
-         [mls.UI_CORP_GRANTABLEROLEATOTHER, 'grantableRolesAtOther'],
-         [mls.UI_GENERIC_TITLE, 'titleMask']]
-        self.setList = [[mls.UI_GENERIC_BASE, 'baseID']]
-        self.giveList = [[mls.UI_GENERIC_CASH, const.CTPG_CASH], [mls.UI_GENERIC_SHARES, const.CTPG_SHARES]]
+        self.verbList = [[localization.GetByLabel('UI/Commands/AddItem'), const.CTV_ADD],
+         [localization.GetByLabel('UI/Commands/Remove'), const.CTV_REMOVE],
+         [localization.GetByLabel('UI/Common/CommandSet'), const.CTV_SET],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Give'), const.CTV_GIVE]]
+        self.propertyList = [[localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Role'), 'roles'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/RoleAtHQ'), 'rolesAtHQ'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/RoleAtBase'), 'rolesAtBase'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/RoleAtOther'), 'rolesAtOther'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/GrantableRole'), 'grantableRoles'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/GrantableRoleAtHQ'), 'grantableRolesAtHQ'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/GrantableRoleAtBase'), 'grantableRolesAtBase'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/GrantableRoleAtOther'), 'grantableRolesAtOther'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Base'), 'baseID'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Cash'), const.CTPG_CASH],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Shares'), const.CTPG_SHARES],
+         [localization.GetByLabel('UI/Corporations/Common/Title'), 'titleMask']]
+        self.bitmaskablesList = [[localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Role'), 'roles'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/RoleAtHQ'), 'rolesAtHQ'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/RoleAtBase'), 'rolesAtBase'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/RoleAtOther'), 'rolesAtOther'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/GrantableRole'), 'grantableRoles'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/GrantableRoleAtHQ'), 'grantableRolesAtHQ'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/GrantableRoleAtBase'), 'grantableRolesAtBase'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/GrantableRoleAtOther'), 'grantableRolesAtOther'],
+         [localization.GetByLabel('UI/Corporations/Common/Title'), 'titleMask']]
+        self.setList = [[localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Base'), 'baseID']]
+        self.giveList = [[localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Cash'), const.CTPG_CASH], [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Shares'), const.CTPG_SHARES]]
         self.optionsByVerb = {const.CTV_ADD: self.bitmaskablesList,
          const.CTV_REMOVE: self.bitmaskablesList,
          const.CTV_SET: self.setList,
@@ -84,10 +84,10 @@ class CorpMembersViewTaskManagement(uicls.Container):
     def CreateWindow(self):
         self.LogInfo('CreateWindow')
         self.wndTabs = uicls.TabGroup(name='tabparent', parent=self, idx=0)
-        self.wndTabs.Startup([[mls.UI_GENERIC_ACTIONS,
+        self.wndTabs.Startup([[localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Actions'),
           self,
           self,
-          'actions'], [mls.UI_GENERIC_TARGETS,
+          'actions'], [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Targets'),
           self,
           self,
           'targets']], 'taskManagement')
@@ -103,7 +103,7 @@ class CorpMembersViewTaskManagement(uicls.Container):
         wndOutputArea = uicls.Container(name='output', parent=self.wndAction, align=uiconst.TOTOP, height=48)
         captionparent = uicls.Container(name='captionparent', parent=wndOutputArea, align=uiconst.TOTOP, height=16)
         label = uicls.Container(name='text', parent=wndOutputArea, align=uiconst.TOTOP, height=16)
-        uicls.Label(text=mls.UI_CORP_HINT50, parent=label, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/HintActionTargetRelation'), parent=label, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         wndQueryContainer = uicls.Container(name='queryinput', parent=self.wndAction, height=150, align=uiconst.TOTOP)
         self.wndQueryContainer = wndQueryContainer
         self.scrollQuery = uicls.Scroll(parent=wndQueryContainer)
@@ -123,12 +123,12 @@ class CorpMembersViewTaskManagement(uicls.Container):
         self.wndInputFieldArea = wndInputControlArea
         self.ShowAppropriateInputField()
         wndAddButtonContainer = uicls.Container(name='sidepar', parent=wndSearchBuilderToolbar, align=uiconst.TORIGHT, width=104)
-        self.addEditButton = uicls.Button(parent=wndAddButtonContainer, label=mls.UI_CMD_ADD, func=self.AddSearchTerm, btn_default=0, align=uiconst.TOPRIGHT)
-        self.saveEditButton = uicls.Button(parent=wndAddButtonContainer, label=mls.UI_CMD_SAVE, pos=(self.addEditButton.width + 6,
+        self.addEditButton = uicls.Button(parent=wndAddButtonContainer, label=localization.GetByLabel('UI/Commands/AddItem'), func=self.AddSearchTerm, btn_default=0, align=uiconst.TOPRIGHT)
+        self.saveEditButton = uicls.Button(parent=wndAddButtonContainer, label=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Save'), pos=(self.addEditButton.width + 6,
          0,
          0,
          0), func=self.SaveEditedSearchTerm, btn_default=0, align=uiconst.TOPRIGHT)
-        self.cancelEditButton = uicls.Button(parent=wndAddButtonContainer, label=mls.UI_CMD_CANCEL, pos=(self.saveEditButton.left + self.saveEditButton.width + 6,
+        self.cancelEditButton = uicls.Button(parent=wndAddButtonContainer, label=localization.GetByLabel('UI/Commands/Cancel'), pos=(self.saveEditButton.left + self.saveEditButton.width + 6,
          0,
          0,
          0), func=self.CancelEditedSearchTerm, btn_default=0, align=uiconst.TOPRIGHT)
@@ -136,7 +136,7 @@ class CorpMembersViewTaskManagement(uicls.Container):
         self.saveEditButton.state = uiconst.UI_HIDDEN
         self.cancelEditButton.state = uiconst.UI_HIDDEN
         wndButtonBar = uicls.Container(name='execute', parent=self.wndAction, align=uiconst.TOTOP, height=28)
-        button = uicls.Button(parent=wndButtonBar, label=mls.UI_CMD_COMMITACTIONSONTARGETS, align=uiconst.CENTER, func=self.ExecuteActions, btn_default=0)
+        button = uicls.Button(parent=wndButtonBar, label=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/CommitActionsOnTargets'), align=uiconst.CENTER, func=self.ExecuteActions, btn_default=0)
         self.UpdateActionsTabLabel()
 
 
@@ -155,42 +155,43 @@ class CorpMembersViewTaskManagement(uicls.Container):
 
 
     def MakeLabel(self, verb, property, value):
-        label = ''
+        label = None
+        labelVerb = None
+        labelProperty = None
         currentControlType = self.controlsByProperty[property]
-        for (display_text, field_name,) in self.verbList:
-            if verb == field_name:
-                label += display_text + ' '
+        for (displayText, fieldName,) in self.verbList:
+            if verb == fieldName:
+                labelVerb = displayText
                 break
 
-        for (display_text, field_name,) in self.propertyList:
-            if property == field_name:
-                label += display_text + ' '
+        for (displayText, fieldName,) in self.propertyList:
+            if property == fieldName:
+                labelProperty = displayText
                 break
 
-        if value:
-            if currentControlType in ('role_picker', 'role_picker_locational'):
-                for role in self.roles:
-                    if role.roleID == value:
-                        label += role.shortDescription
-                        break
+        if currentControlType in ('role_picker', 'role_picker_locational'):
+            for role in self.roles:
+                if role.roleID == value:
+                    label = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/TaskMgt/TextRecord', verb=labelVerb, property=labelProperty, value=role.shortDescription)
+                    break
 
-            elif currentControlType == 'title_picker':
-                for title in self.titles:
-                    if title.titleID == value:
-                        label += title.titleName
-                        break
+        elif currentControlType == 'title_picker':
+            for title in self.titles:
+                if title.titleID == value:
+                    label = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/TaskMgt/TextRecord', verb=labelVerb, property=labelProperty, value=title.titleName)
+                    break
 
-            elif currentControlType == 'location_picker':
-                if value is None:
-                    label += mls.UI_GENERIC_NONE
-                else:
-                    label += cfg.evelocations.Get(value).locationName
-            elif currentControlType == 'isk_amount_picker':
-                label += util.FmtISK(value)
-            elif currentControlType == 'share_amount_picker':
-                label += str(value)
-            elif currentControlType == 'date_picker':
-                label += util.FmtDate(value, 'ls')
+        elif currentControlType == 'location_picker':
+            if value is None:
+                label = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/TaskMgt/LocationRecordWithNone', verb=labelVerb, property=labelProperty)
+            else:
+                label = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/TaskMgt/LocationRecord', verb=labelVerb, property=labelProperty, station=value)
+        elif currentControlType == 'isk_amount_picker':
+            label = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/TaskMgt/CashRecord', verb=labelVerb, property=labelProperty, cash=util.FmtISK(value))
+        elif currentControlType == 'share_amount_picker':
+            label = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/TaskMgt/SharesRecord', verb=labelVerb, property=labelProperty, shares=value)
+        elif currentControlType == 'date_picker':
+            label = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/TaskMgt/DateRecord', verb=labelVerb, property=labelProperty, dateValue=value)
         return label
 
 
@@ -212,8 +213,8 @@ class CorpMembersViewTaskManagement(uicls.Container):
             self.LogInfo('value: ', value)
             label = self.MakeLabel(verb, property, value)
             params = {'label': label,
-             'caption1': mls.UI_CMD_EDIT,
-             'caption2': mls.UI_CMD_REMOVE,
+             'caption1': localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Edit'),
+             'caption2': localization.GetByLabel('UI/Commands/Remove'),
              'OnClick1': self.OnClickEdit,
              'OnClick2': self.OnClickRemove,
              'args1': label,
@@ -399,15 +400,15 @@ class CorpMembersViewTaskManagement(uicls.Container):
         wndOutputArea = uicls.Container(name='output', parent=self.wndTargets, align=uiconst.TOTOP, height=44)
         captionparent = uicls.Container(name='captionparent', parent=wndOutputArea, align=uiconst.TOTOP, height=16)
         label = uicls.Container(name='text', parent=wndOutputArea, align=uiconst.TOTOP, width=150, height=16)
-        uicls.Label(text=mls.UI_CORP_HINT51, parent=label, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/SelectMembersYouWantToTarget'), parent=label, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         label = uicls.Container(name='text', parent=wndOutputArea, align=uiconst.TOTOP, width=150, height=16)
-        uicls.Label(text='%s:' % mls.UI_CORP_TARGETTHESEMEMBERS, parent=label, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/TargetTheseMembers'), parent=label, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         targetsScrollContainer = uicls.Container(name='targets', parent=self.wndTargets, height=150, align=uiconst.TOTOP)
         self.scrollTargets = uicls.Scroll(parent=targetsScrollContainer)
         uicls.Container(name='push', parent=self.wndTargets, align=uiconst.TOTOP, height=2)
         wndOutputArea = uicls.Container(name='output', parent=self.wndTargets, align=uiconst.TOTOP, height=18)
         label = uicls.Container(name='text', parent=wndOutputArea, align=uiconst.TOLEFT, width=150, height=16)
-        uicls.Label(text='%s:' % mls.UI_CORP_DONOTTARGETTHESEMEMBERS, parent=label, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/DoNotTargetTheseMembers'), parent=label, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         noneTargetsScrollContainer = uicls.Container(name='noneTargets', parent=self.wndTargets, align=uiconst.TOALL, pos=(0, 0, 0, 0))
         self.scrollNoneTargets = uicls.Scroll(parent=noneTargetsScrollContainer)
         self.UpdateTargetsTabLabel()
@@ -454,7 +455,7 @@ class CorpMembersViewTaskManagement(uicls.Container):
         for memberID in self.memberIDs:
             self.targetIDs.append(memberID)
             scrolllist.append(listentry.Get('Button', {'label': cfg.eveowners.Get(memberID).ownerName,
-             'caption': mls.UI_CMD_REMOVE,
+             'caption': localization.GetByLabel('UI/Commands/Remove'),
              'OnClick': self.OnRemove,
              'args': (memberID,)}))
 
@@ -466,20 +467,24 @@ class CorpMembersViewTaskManagement(uicls.Container):
 
     def UpdateActionsTabLabel(self):
         if self.wndTabs is not None:
-            self.wndTabs.sr.Get('%s_tab' % mls.UI_GENERIC_ACTIONS, None).SetLabel('%s [%s]' % (mls.UI_GENERIC_ACTIONS, len(self.scrollQuery.GetNodes())))
+            actionsTabName = '%s_tab' % localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Actions')
+            actionsLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/ActionsTabLabel', numberOfActions=len(self.scrollQuery.GetNodes()))
+            self.wndTabs.sr.Get(actionsTabName, None).SetLabel(actionsLabel)
 
 
 
     def UpdateTargetsTabLabel(self):
         if self.wndTabs is not None:
-            self.wndTabs.sr.Get('%s_tab' % mls.UI_GENERIC_TARGETS, None).SetLabel('%s [%s/%s]' % (mls.UI_GENERIC_TARGETS, len(self.targetIDs), len(self.noneTargetIDs)))
+            targetsTabName = '%s_tab' % localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Targets')
+            targetsLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/TargetsTabLabel', targetCount=len(self.targetIDs), nonTargetCount=len(self.noneTargetIDs))
+            self.wndTabs.sr.Get(targetsTabName, None).SetLabel(targetsLabel)
 
 
 
     def OnRemove(self, memberID, button):
         self.LogInfo('OnRemove memberID:', memberID)
         control = listentry.Get('Button', {'label': cfg.eveowners.Get(memberID).ownerName,
-         'caption': mls.UI_CMD_ADD,
+         'caption': localization.GetByLabel('UI/Commands/AddItem'),
          'OnClick': self.OnAdd,
          'args': (memberID,)})
         self.scrollNoneTargets.AddEntries(-1, [control])
@@ -494,7 +499,7 @@ class CorpMembersViewTaskManagement(uicls.Container):
     def OnAdd(self, memberID, button):
         self.LogInfo('OnAdd memberID:', memberID)
         control = listentry.Get('Button', {'label': cfg.eveowners.Get(memberID).ownerName,
-         'caption': mls.UI_CMD_ADD,
+         'caption': localization.GetByLabel('UI/Commands/AddItem'),
          'OnClick': self.OnRemove,
          'args': (memberID,)})
         self.scrollTargets.AddEntries(-1, [control])

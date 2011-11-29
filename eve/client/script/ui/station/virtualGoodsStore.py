@@ -7,6 +7,7 @@ import form
 import util
 import uiutil
 import blue
+import localization
 
 class VirtualGoodsStore(uicls.Window):
     __guid__ = 'form.VirtualGoodsStore'
@@ -16,14 +17,15 @@ class VirtualGoodsStore(uicls.Window):
     default_windowID = 'VirtualGoodsStore'
 
     def ApplyAttributes(self, attributes):
-        self.openTime = blue.os.GetTime()
+        self.openTime = blue.os.GetWallclockTime()
         uicls.Window.ApplyAttributes(self, attributes)
         self.storeSvc = sm.GetService('store')
         self.scope = 'station'
         self.SetMinSize([700, 360])
-        self.SetCaption(mls.UI_VGSTORE_VGSTORE)
+        self.SetCaption(localization.GetByLabel('UI/VirtualGoodsStore/StoreNameCaption'))
         self.SetTopparentHeight(0)
         self.lastWidth = self.width
+        self.stationID = session.stationid2
         cornerSize = 7
         imageHeight = 160
         imageWidth = 215
@@ -76,26 +78,26 @@ class VirtualGoodsStore(uicls.Window):
             setattr(self, contName, cont)
 
         moneyCont = uicls.Container(parent=topButtonCont, name='moneyCont', align=uiconst.TOTOP, pos=(0, 22, 0, 50))
-        b = uicls.Label(text='<right>%s' % mls.UI_GENERIC_BALANCE, parent=moneyCont, align=uiconst.TOPRIGHT, pos=(16, 6, 100, 32), state=uiconst.UI_DISABLED, fontsize=9, letterspace=2, uppercase=1, autoheight=False, autowidth=False)
-        self.aurWealthLabel = uicls.Label(text='<right>%s' % util.FmtAUR(0), parent=moneyCont, name='aurWealth', align=uiconst.TOPRIGHT, state=uiconst.UI_DISABLED, pos=(16, 20, 300, 32), fontsize=14, autoheight=False, autowidth=False)
+        b = uicls.EveHeaderSmall(text=localization.GetByLabel('UI/VirtualGoodsStore/Balance'), parent=moneyCont, align=uiconst.TOPRIGHT, pos=(16, 6, 100, 32), state=uiconst.UI_DISABLED)
+        self.aurWealthLabel = uicls.EveLabelLarge(text='<right>%s' % util.FmtAUR(0), parent=moneyCont, name='aurWealth', align=uiconst.TOPRIGHT, state=uiconst.UI_DISABLED, pos=(16, 20, 300, 32))
         self.aurWealthLabel.amount = 0
         btnPadding = 6
-        redeemPlexBtn = uicls.Button(parent=topButtonCont, name='redeemPlexBtn', label=mls.UI_VGSTORE_REDEEMPLEX, func=self.RedeemPlex, pos=(0,
+        redeemPlexBtn = uicls.Button(parent=topButtonCont, name='redeemPlexBtn', label=localization.GetByLabel('UI/VirtualGoodsStore/RedeemPLEX'), func=self.RedeemPlex, pos=(0,
          const.defaultPadding + cornerSize,
          0,
          0), align=uiconst.BOTTOMRIGHT)
         top = redeemPlexBtn.top + redeemPlexBtn.height + btnPadding
-        buyPlexOnlineBtn = uicls.Button(parent=topButtonCont, name='buyPlexOnline', label=mls.UI_VGSTORE_BUYPLEXONLINE, func=self.BuyPlexOnline, pos=(0,
+        buyPlexOnlineBtn = uicls.Button(parent=topButtonCont, name='buyPlexOnline', label=localization.GetByLabel('UI/VirtualGoodsStore/BuyPlexOnline'), func=self.BuyPlexOnline, pos=(0,
          top,
          0,
          0), align=uiconst.BOTTOMRIGHT)
         top = buyPlexOnlineBtn.top + buyPlexOnlineBtn.height + btnPadding
-        buyPlexMarketBtn = uicls.Button(parent=topButtonCont, name='buyPlexMarket', label=mls.UI_VGSTORE_BUYPLEXMARKET, func=self.BuyPlexFromMarket, pos=(0,
+        buyPlexMarketBtn = uicls.Button(parent=topButtonCont, name='buyPlexMarket', label=localization.GetByLabel('UI/VirtualGoodsStore/BuyPLEXOnMarket'), func=self.BuyPlexFromMarket, pos=(0,
          top,
          0,
          0), align=uiconst.BOTTOMRIGHT)
         top = buyPlexMarketBtn.top + buyPlexMarketBtn.height + btnPadding
-        sellPlexBtn = uicls.Button(parent=topButtonCont, name='sellPlexBtn', label=mls.UI_VGSTORE_CONVERTPLEX, func=self.SellPlex, pos=(0,
+        sellPlexBtn = uicls.Button(parent=topButtonCont, name='sellPlexBtn', label=localization.GetByLabel('UI/VirtualGoodsStore/Buttons/ExchangePLEXForAUR'), func=self.SellPlex, pos=(0,
          top,
          0,
          50), align=uiconst.BOTTOMRIGHT)
@@ -112,10 +114,10 @@ class VirtualGoodsStore(uicls.Window):
         uthread.new(self.DisplayAurWealth)
         self.scroll.sr.id = 'vsgScroll'
         self.scroll.sr.fixedColumns = {' ': 72,
-         mls.UI_GENERIC_GENDER: 100,
-         mls.UI_GENERIC_PRICE: 100}
-        self.scroll.sr.defaultColumnWidth = {mls.UI_VGSTORE_ITEMNAME: 350}
-        self.scroll.sr.minColumnWidth = {mls.UI_VGSTORE_ITEMNAME: 100}
+         localization.GetByLabel('UI/VirtualGoodsStore/Gender'): 100,
+         localization.GetByLabel('UI/VirtualGoodsStore/Price'): 100}
+        self.scroll.sr.defaultColumnWidth = {localization.GetByLabel('UI/VirtualGoodsStore/ItemName'): 350}
+        self.scroll.sr.minColumnWidth = {localization.GetByLabel('UI/VirtualGoodsStore/ItemName'): 100}
         self.scroll.sr.notSortableColumns = [' ']
         self.scroll.ScalingCol = self.StoreScalingCol
         self.scroll.showColumnLines = False
@@ -138,8 +140,7 @@ class VirtualGoodsStore(uicls.Window):
         for (offerID, offerKV,) in offers.iteritems():
             invType = cfg.invtypes.Get(offerKV.typeID)
             if offerKV.numberOffered > 1:
-                itemName = mls.UI_VGSTORE_ITEMNAMEWITHQTY % {'itemName': invType.typeName,
-                 'qty': offerKV.numberOffered}
+                itemName = localization.GetByLabel('UI/VirtualGoodsStore/ItemNameAndQuantity', itemName=invType.typeName, quantity=offerKV.numberOffered)
             else:
                 itemName = invType.typeName
             if invType.categoryID == const.categoryBlueprint:
@@ -148,48 +149,44 @@ class VirtualGoodsStore(uicls.Window):
                  'PE': offerKV.bpPE,
                  'runs': offerKV.bpRuns}
                 if offerKV.bpRuns > 0:
-                    itemName += mls.UI_CONTRACTS_ITEMDETAILS_BLUEPRINTCOPY % opts
+                    itemName += localization.GetByLabel('UI/VirtualGoodsStore/BlueprintCopy', **opts)
                 else:
-                    itemName += mls.UI_CONTRACTS_ITEMDETAILS_BLUEPRINTORIGINAL % opts
+                    itemName += localization.GetByLabel('UI/VirtualGoodsStore/OriginalBlueprint', **opts)
             if offerKV.genderRestrictions == const.FEMALE:
-                genderText = mls.UI_GENERIC_FEMALE
+                genderText = localization.GetByLabel('UI/Common/Gender/Female')
             elif offerKV.genderRestrictions == const.MALE:
-                genderText = mls.UI_GENERIC_MALE
+                genderText = localization.GetByLabel('UI/Common/Gender/Male')
             else:
-                genderText = mls.UI_GENERIC_UNISEX
+                genderText = localization.GetByLabel('UI/VirtualGoodsStore/Unisex')
             url = '<url=showinfo:%d>' % offerKV.typeID
-            label = '%(url)s<color=-2039584>%(itemName)s</url><t>%(gender)s<t><right><fontsize=14><b>%(price)s</b>' % {'url': url,
-             'itemName': itemName,
-             'gender': genderText,
-             'price': util.FmtAUR(offerKV.price)}
             data = uiutil.Bunch()
-            data.itemLabel = '%s<color=-2039584>%s</url>' % (url, itemName)
+            data.itemLabel = '%s%s</url>' % (url, itemName)
             data.genderLabel = genderText
-            data.priceLabel = '<right><fontsize=14><b>%s</b>' % util.FmtAUR(offerKV.price)
+            data.priceLabel = localization.GetByLabel('UI/VirtualGoodsStore/PriceLabel', price=util.FmtAUR(offerKV.price))
             data.offerID = offerID
             data.offerKV = offerKV
             data.label = 'bla'
             data.Set('sort_ ', offerID)
-            data.Set('sort_%s' % mls.UI_VGSTORE_ITEMNAME, itemName)
-            data.Set('sort_%s' % mls.UI_GENERIC_GENDER, genderText)
-            data.Set('sort_%s' % mls.UI_GENERIC_PRICE, offerKV.price)
+            data.Set('sort_%s' % localization.GetByLabel('UI/VirtualGoodsStore/ItemName'), itemName)
+            data.Set('sort_%s' % localization.GetByLabel('UI/VirtualGoodsStore/Gender'), genderText)
+            data.Set('sort_%s' % localization.GetByLabel('UI/VirtualGoodsStore/Price'), offerKV.price)
             entry = listentry.Get('VStoreEntry', data=data)
             scrolllist.append(entry)
 
         self.scroll.Load(contentList=scrolllist, headers=[' ',
-         mls.UI_VGSTORE_ITEMNAME,
-         mls.UI_GENERIC_GENDER,
-         mls.UI_GENERIC_PRICE])
+         localization.GetByLabel('UI/VirtualGoodsStore/ItemName'),
+         localization.GetByLabel('UI/VirtualGoodsStore/Gender'),
+         localization.GetByLabel('UI/VirtualGoodsStore/Price')])
 
 
 
     def SellPlex(self, *args):
-        sm.GetService('window').GetWindow('convertPlexWindow', decoClass=form.ConvertPlexWindow, create=1, maximize=1)
+        form.ConvertPlexWindow.Open()
 
 
 
     def RedeemPlex(self, *args):
-        sm.GetService('redeem').OpenRedeemWindow(session.charid, session.stationid)
+        sm.GetService('redeem').OpenRedeemWindow(session.charid, session.stationid2)
 
 
 
@@ -273,10 +270,10 @@ class VirtualGoodsStore(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
-        closeTime = blue.os.GetTime()
+    def _OnClose(self, *args):
+        closeTime = blue.os.GetWallclockTime()
         openFor = int(round(float(closeTime - self.openTime) / SEC))
-        sm.GetService('infoGatheringSvc').LogInfoEvent(eventTypeID=const.infoEventNexCloseNex, itemID=session.charid, itemID2=session.stationid, int_1=openFor)
+        sm.GetService('infoGatheringSvc').LogInfoEvent(eventTypeID=const.infoEventNexCloseNex, itemID=session.charid, itemID2=self.stationID, int_1=openFor)
 
 
 
@@ -295,16 +292,16 @@ class VStoreEntry(uicls.SE_BaseClassCore):
         self.typeIconCont = uicls.Container(name='typeIconCont', parent=self, state=uiconst.UI_PICKCHILDREN, align=uiconst.TOLEFT, clipChildren=False, width=68)
         self.typeIcon = uicls.Icon(parent=self.typeIconCont, pos=(0, 0, 64, 64), ignoreSize=True, align=uiconst.CENTER, state=uiconst.UI_NORMAL)
         self.itemNameCont = uicls.Container(name='itemNameCont', parent=self, state=uiconst.UI_PICKCHILDREN, align=uiconst.TOLEFT, clipChildren=False)
-        self.itemNameCont.label = uicls.Label(parent=self.itemNameCont, name='itemNameLabel', left=self.labelMargin, align=uiconst.CENTERLEFT, state=uiconst.UI_NORMAL)
+        self.itemNameCont.label = uicls.EveLabelMedium(parent=self.itemNameCont, name='itemNameLabel', left=self.labelMargin, align=uiconst.CENTERLEFT, state=uiconst.UI_NORMAL)
         self.itemNameCont.label.OnMouseEnter = self.OnItemNameEnter
         self.itemNameCont.label.OnClick = (self.OnItemNameClick, self.itemNameCont.label)
         self.itemNameCont.label.GetMenu = self.ItemNameGetMenu
         self.genderCont = uicls.Container(name='genderCont', parent=self, state=uiconst.UI_PICKCHILDREN, align=uiconst.TOLEFT, clipChildren=False)
-        self.genderCont.label = uicls.Label(parent=self.genderCont, name='genderLabel', left=self.labelMargin, align=uiconst.CENTERLEFT)
+        self.genderCont.label = uicls.EveLabelMedium(parent=self.genderCont, name='genderLabel', left=self.labelMargin, align=uiconst.CENTERLEFT)
         self.priceCont = uicls.Container(name='priceCont', parent=self, state=uiconst.UI_PICKCHILDREN, align=uiconst.TOLEFT, clipChildren=False)
-        self.priceCont.label = uicls.Label(parent=self.priceCont, name='priceLabel', left=self.labelMargin + 5, align=uiconst.CENTERRIGHT)
+        self.priceCont.label = uicls.EveLabelMedium(parent=self.priceCont, name='priceLabel', left=self.labelMargin + 5, align=uiconst.CENTERRIGHT)
         self.buyCont = uicls.Container(name='buyCont', parent=self, state=uiconst.UI_PICKCHILDREN, align=uiconst.TOALL, clipChildren=True)
-        buyBtn = uicls.Button(parent=self.buyCont, name='buyBtn', label=mls.UI_CMD_BUY, func=self.BuyItem, pos=(34, 0, 0, 0), align=uiconst.CENTERRIGHT, idx=0, top=1)
+        buyBtn = uicls.Button(parent=self.buyCont, name='buyBtn', label=localization.GetByLabel('UI/VirtualGoodsStore/Buttons/Buy'), func=self.BuyItem, pos=(34, 0, 0, 0), align=uiconst.CENTERRIGHT, idx=0, top=1)
         self.columnContainers = [self.typeIconCont,
          self.itemNameCont,
          self.genderCont,
@@ -376,10 +373,10 @@ class VStoreEntry(uicls.SE_BaseClassCore):
 
 
     def GetMenu(self, *args):
-        m = [(mls.UI_CMD_BUYTHIS, self.BuyItem)]
+        m = [(localization.GetByLabel('UI/VirtualGoodsStore/BuyItem'), self.BuyItem)]
         m += sm.GetService('menu').GetMenuFormItemIDTypeID(itemID=None, typeID=self.typeID, ignoreMarketDetails=0)
         if util.IsPreviewable(self.typeID):
-            m += [(mls.UI_CMD_PREVIEW, sm.GetService('preview').PreviewType, (self.typeID,))]
+            m += [(localization.GetByLabel('UI/VirtualGoodsStore/PreviewItem'), sm.GetService('preview').PreviewType, (self.typeID,))]
         m += sm.GetService('menu').GetGMTypeMenu(self.typeID, divs=True)
         return m
 
@@ -391,7 +388,7 @@ class VStoreEntry(uicls.SE_BaseClassCore):
 
 
     def OnItemNameClick(self, label, *args):
-        if label._activeLink is None:
+        if label.GetMouseOverUrl() is None:
             self.OnClick()
         else:
             uicls.Label.OnClick(label)
@@ -424,34 +421,34 @@ class VGoodsBuyWindow(uicls.Window):
          padding,
          64,
          64), texturePath='res:/UI/Texture/Icons/102_128_2.png', align=uiconst.TOPLEFT, idx=0)
-        self.captionLabel = uicls.CaptionLabel(parent=self.sr.topParent, name='itemName', align=uiconst.CENTERLEFT, text='', pos=(64 + 2 * padding,
+        self.captionLabel = uicls.EveCaptionMedium(parent=self.sr.topParent, name='itemName', align=uiconst.CENTERLEFT, text='', pos=(64 + 2 * padding,
          0,
-         0,
-         0), uppercase=False, letterspace=0)
+         320,
+         0))
         firstCont = uicls.Container(parent=self.sr.main, name='firstCont', align=uiconst.TOTOP, pos=(0,
          0,
          0,
          self.contHeights))
-        self.firstLabel = uicls.Label(text='', parent=firstCont, name='firstLabel', align=uiconst.CENTERLEFT, left=padding, top=0, fontsize=9, letterspace=2, linespace=9)
-        self.firstValue = uicls.Label(text='', parent=firstCont, name='firstValue', align=uiconst.CENTERLEFT, left=inputLeft, top=0, fontsize=9, letterspace=2, linespace=9)
+        self.firstLabel = uicls.EveLabelSmall(text='', parent=firstCont, name='firstLabel', align=uiconst.CENTERLEFT, left=padding, top=0)
+        self.firstValue = uicls.EveLabelSmall(text='', parent=firstCont, name='firstValue', align=uiconst.CENTERLEFT, left=inputLeft, top=0)
         qtyCont = uicls.Container(parent=self.sr.main, name='secondCont', align=uiconst.TOTOP, pos=(0,
          0,
          0,
          self.contHeights))
-        self.qtyLabel = uicls.Label(text=mls.UI_GENERIC_QUANTITY, parent=qtyCont, name='secondLabel', align=uiconst.CENTERLEFT, left=padding, top=0, fontsize=9, letterspace=2, linespace=9)
+        self.qtyLabel = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Common/Quantity'), parent=qtyCont, name='secondLabel', align=uiconst.CENTERLEFT, left=padding, top=0)
         self.qtyEdit = uicls.SinglelineEdit(name='qtyEdit', parent=qtyCont, setvalue=0, maxLength=32, pos=(inputLeft,
          0,
          60,
          0), label='', align=uiconst.CENTERLEFT, ints=[0, 1000000])
         self.qtyEdit.OnChange = self.OnChanged_quantity
-        self.qtyAvailLabel = uicls.Label(text='', parent=qtyCont, name='qtyAvailLabel', align=uiconst.CENTERLEFT, left=self.qtyEdit.left + self.qtyEdit.width + padding, top=0, fontsize=9, letterspace=2, linespace=9)
+        self.qtyAvailLabel = uicls.EveLabelSmall(text='', parent=qtyCont, name='qtyAvailLabel', align=uiconst.CENTERLEFT, left=self.qtyEdit.left + self.qtyEdit.width + padding, top=0)
         totalCont = uicls.Container(parent=self.sr.main, name='totalCont', align=uiconst.TOTOP, pos=(0,
          0,
          0,
          self.contHeights))
         width = self.width - inputLeft - 20
-        self.totalLabel = uicls.Label(text='', parent=totalCont, name='totalLabel', align=uiconst.CENTERLEFT, left=padding, top=0, fontsize=9, letterspace=2, linespace=9)
-        self.totalValueLabel = uicls.CaptionLabel(text='', parent=totalCont, align=uiconst.CENTERLEFT, left=inputLeft, uppercase=False, letterspace=0, width=width, autowidth=0)
+        self.totalLabel = uicls.EveLabelSmall(text='', parent=totalCont, name='totalLabel', align=uiconst.CENTERLEFT, left=padding, top=0)
+        self.totalValueLabel = uicls.CaptionLabel(text='', parent=totalCont, align=uiconst.CENTERLEFT, left=inputLeft, uppercase=False, letterspace=0, width=width)
 
 
 
@@ -471,7 +468,7 @@ class VGoodsBuyWindow(uicls.Window):
 
 
     def Cancel(self, *args):
-        self.CloseX()
+        self.CloseByUser()
 
 
 
@@ -484,24 +481,30 @@ class VGoodsBuyWindow(uicls.Window):
             qty = self.qtyEdit.integermode[1]
             self.qtyEdit.SetValue(qty)
         total = qty * self.rate
-        totalText = '<color=%s>%s' % (self.totalColor, util.FmtAUR(total))
+        totalText = self.GetTotalText(total)
         self.totalValueLabel.text = totalText
         self.CheckHeights(self.totalValueLabel)
+
+
+
+    def GetTotalText(self, quantity):
+        pass
 
 
 
 
 class BuyVGoodsWindow(VGoodsBuyWindow):
     __guid__ = 'form.BuyVGoodsWindow'
+    default_windowID = 'buyVGoodsWindow'
 
     def ApplyAttributes(self, attributes):
         VGoodsBuyWindow.ApplyAttributes(self, attributes)
         self.totalColor = '0xfff1f202'
         self.LoadWnd(attributes.offerKV)
-        self.btns = uicls.ButtonGroup(btns=[[mls.UI_CMD_BUY,
+        self.btns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/VirtualGoodsStore/Buttons/Buy'),
           self.Buy,
           (),
-          None], [mls.UI_CMD_CANCEL,
+          None], [localization.GetByLabel('UI/Common/Buttons/Cancel'),
           self.Cancel,
           (),
           None]], parent=self.sr.main, idx=0)
@@ -519,23 +522,21 @@ class BuyVGoodsWindow(VGoodsBuyWindow):
             self.topImage.OnClick = (sm.GetService('preview').PreviewType, self.typeID)
             self.topImage.cursor = uiconst.UICURSOR_MAGNIFIER
         typeName = cfg.invtypes.Get(self.typeID).typeName
-        self.SetCaption(mls.UI_VGSTORE_BUYTYPENAME % {'typeName': typeName})
+        self.SetCaption(localization.GetByLabel('UI/VirtualGoodsStore/BuyItemCaption', buyItem=typeName))
         if self.offerKV.numberOffered > 1:
             text = '%sx %s' % (self.offerKV.numberOffered, typeName)
         else:
             text = typeName
         self.captionLabel.text = text
-        self.firstLabel.text = mls.UI_GENERIC_PRICE
+        self.firstLabel.text = localization.GetByLabel('UI/VirtualGoodsStore/Price')
         priceText = util.FmtAUR(self.pricePerItem)
         self.firstValue.text = priceText
         initialQty = 1
         self.qtyEdit.SetValue(initialQty)
         self.qtyAvailLabel.text = ''
-        self.totalLabel.text = mls.UI_GENERIC_TOTAL
+        self.totalLabel.text = localization.GetByLabel('UI/Common/Total')
         initialTotalValue = initialQty * self.pricePerItem
-        totalText = util.FmtAUR(initialTotalValue)
-        totalText = '<color=%s>%s' % (self.totalColor, totalText)
-        self.totalValueLabel.text = text = totalText
+        self.totalValueLabel.text = self.GetTotalText(initialTotalValue)
 
 
 
@@ -545,25 +546,31 @@ class BuyVGoodsWindow(VGoodsBuyWindow):
         if qty <= 0:
             return 
         sm.GetService('store').AcceptOffer(self.offerKV.offerID, qty)
-        self.CloseX()
+        self.CloseByUser()
+
+
+
+    def GetTotalText(self, quantity):
+        return localization.GetByLabel('UI/VirtualGoodsStore/TotalAmount', totalAmount=quantity)
 
 
 
 
 class ConvertPlexWindow(VGoodsBuyWindow):
     __guid__ = 'form.ConvertPlexWindow'
+    default_windowID = 'convertPlexWindow'
 
     def ApplyAttributes(self, attributes):
         VGoodsBuyWindow.ApplyAttributes(self, attributes)
         self.totalColor = '0xff05adae'
-        windowText = mls.UI_VGSTORE_CONVERTPLEX
+        windowText = localization.GetByLabel('UI/VirtualGoodsStore/ExchangePlexCaption')
         self.exchangeRate = self.rate = sm.GetService('store').GetPlexToAURExchangeRate()
         self.localPlexes = sm.GetService('store').GetAvailableLocalPlexes()
         self.topImage.SetTexturePath('res:/UI/Texture/Icons/7_64_12.png')
         self.SetCaption(windowText)
         self.captionLabel.text = windowText
-        self.firstLabel.text = mls.UI_VGSTORE_EXCHANGERATE
-        self.firstValue.text = mls.UI_VGSTORE_AURFORPLEX % {'numAUR': util.FmtAmt(self.exchangeRate)}
+        self.firstLabel.text = localization.GetByLabel('UI/VirtualGoodsStore/ExchangeRate')
+        self.firstValue.text = localization.GetByLabel('UI/VirtualGoodsStore/AURperPLEX', numAUR=self.exchangeRate)
         numLocalPlexes = sum((i.stacksize for i in self.localPlexes))
         if numLocalPlexes > 0:
             initialQty = 1
@@ -571,17 +578,16 @@ class ConvertPlexWindow(VGoodsBuyWindow):
             initialQty = 0
         self.qtyEdit.SetValue(initialQty)
         self.qtyEdit.IntMode(0, numLocalPlexes)
-        availableText = mls.UI_VGSTORE_NUMAVAILABLE % {'numItems': util.FmtAmt(numLocalPlexes)}
-        self.qtyAvailLabel.text = availableText
-        self.totalLabel.text = mls.UI_VGSTORE_PAYOUT
+        self.qtyAvailLabel.text = localization.GetByLabel('UI/VirtualGoodsStore/PlexAvailableInHangar', numPLEX=numLocalPlexes)
+        self.totalLabel.text = localization.GetByLabel('UI/VirtualGoodsStore/Payout')
         initialTotalValue = initialQty * self.exchangeRate
         totalText = util.FmtAmt(initialTotalValue)
-        self.totalText = '<color=%s>%s x %s' % (self.totalColor, totalText, mls.UI_GENERIC_AUR)
+        self.totalText = self.GetTotalText(initialTotalValue)
         self.totalValueLabel.text = self.totalText
-        self.btns = uicls.ButtonGroup(btns=[[mls.UI_VGSTORE_EXCHANGE,
+        self.btns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/VirtualGoodsStore/Buttons/Exchange'),
           self.Sell,
           (),
-          None], [mls.UI_CMD_CANCEL,
+          None], [localization.GetByLabel('UI/Common/Buttons/Cancel'),
           self.Cancel,
           (),
           None]], parent=self.sr.main, idx=0)
@@ -595,7 +601,12 @@ class ConvertPlexWindow(VGoodsBuyWindow):
         if qty <= 0:
             return 
         sm.GetService('store').SellLocalPlexForAur([ p.itemID for p in self.localPlexes ], qty)
-        self.CloseX()
+        self.CloseByUser()
+
+
+
+    def GetTotalText(self, quantity):
+        return localization.GetByLabel('UI/VirtualGoodsStore/TotalAURValue', totalValue=quantity)
 
 
 

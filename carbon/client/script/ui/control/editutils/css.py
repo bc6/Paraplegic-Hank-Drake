@@ -322,12 +322,7 @@ class css:
             v = self.ParseStyleNum(v)
             if v is None or not type(v) == int and not v.isdigit():
                 return 
-            if v in self.fontFamilies:
-                self.s['font-size'] = int(v)
-                self.s['font-family'] = self.fontFamilies[int(v)]
-            else:
-                self.s['font-size'] = int(v or 10)
-            self.s['font-family'] = fontConst.DEFAULT_FONT
+            self.s['font-size'] = int(v)
 
 
 
@@ -601,11 +596,6 @@ class css:
      'large': 12,
      'larger': 14,
      'x-large': 20}
-    fontFamilies = {8: fontConst.DEFAULT_FONT,
-     10: fontConst.DEFAULT_FONT,
-     12: fontConst.DEFAULT_FONT,
-     14: fontConst.DEFAULT_FONT,
-     20: fontConst.DEFAULT_FONT}
     vertStyles = {'top': 0,
      'middle': 1,
      'bottom': 2,

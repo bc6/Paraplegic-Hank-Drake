@@ -11,7 +11,7 @@ class ActionComponentView(cef.BaseComponentView):
     @classmethod
     def SetupInputs(cls):
         cls.RegisterComponent(cls)
-        cls._AddInput(cls.DEFAULT_ACTION_ID, None, cls.OPTIONAL, const.cef.COMPONENTDATA_ARBITRARY_DROPDOWN_TYPE, callback=cls._GetActionList)
+        cls._AddInput(cls.DEFAULT_ACTION_ID, None, cls.RECIPE, const.cef.COMPONENTDATA_ARBITRARY_DROPDOWN_TYPE, callback=cls._GetActionList, displayName='Default Action')
 
 
 

@@ -11,8 +11,8 @@ class BoundingVolumeComponentView(cef.BaseComponentView):
     @classmethod
     def SetupInputs(cls):
         cls.RegisterComponent(cls)
-        cls._AddInput(cls.MIN, None, cls.RUNTIME, const.cef.COMPONENTDATA_NON_PRIMITIVE_TYPE)
-        cls._AddInput(cls.MAX, None, cls.RUNTIME, const.cef.COMPONENTDATA_NON_PRIMITIVE_TYPE)
+        cls._AddInput(cls.MIN, None, cls.RUNTIME, const.cef.COMPONENTDATA_NON_PRIMITIVE_TYPE, displayName='Min')
+        cls._AddInput(cls.MAX, None, cls.RUNTIME, const.cef.COMPONENTDATA_NON_PRIMITIVE_TYPE, displayName='Max')
 
 
 

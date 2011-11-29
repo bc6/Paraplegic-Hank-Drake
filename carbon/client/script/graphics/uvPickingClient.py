@@ -34,7 +34,7 @@ class UVPickingClient(service.Service):
 
 
 
-    def Pick(self, entity, rayOrigin, rayDirection):
+    def PickEntity(self, entity, rayOrigin, rayDirection):
         pickingComponent = entity.GetComponent('uvPicking')
         if pickingComponent is None:
             return 
@@ -46,9 +46,14 @@ class UVPickingClient(service.Service):
         if placeableComponent.renderObject is None:
             return 
         object = placeableComponent.renderObject
-        if object.placeableRes is None:
+        return self.PickObject(object, rayOrigin, rayDirection, areaName=pickingComponent.areaName)
+
+
+
+    def PickObject(self, obj, rayOrigin, rayDirection, areaName = None):
+        if obj.placeableRes is None:
             return 
-        model = object.placeableRes.visualModel
+        model = obj.placeableRes.visualModel
         if model is None:
             return 
         pickingGeometry = None
@@ -57,7 +62,7 @@ class UVPickingClient(service.Service):
         pickingCount = None
         for mesh in model.meshes:
             for area in mesh.transparentAreas:
-                if area.name == pickingComponent.areaName:
+                if areaName is None or area.name == areaName:
                     pickingGeometry = mesh.geometry
                     pickingMesh = mesh.meshIndex
                     pickingArea = area.index
@@ -65,7 +70,7 @@ class UVPickingClient(service.Service):
                     break
 
             for area in mesh.opaquePrepassAreas:
-                if area.name == pickingComponent.areaName:
+                if areaName is None or area.name == areaName:
                     pickingGeometry = mesh.geometry
                     pickingMesh = mesh.meshIndex
                     pickingArea = area.index
@@ -74,29 +79,29 @@ class UVPickingClient(service.Service):
 
 
         if pickingGeometry is not None:
-            world = ((object.transform._11,
-              object.transform._12,
-              object.transform._13,
-              object.transform._14),
-             (object.transform._21,
-              object.transform._22,
-              object.transform._23,
-              object.transform._24),
-             (object.transform._31,
-              object.transform._32,
-              object.transform._33,
-              object.transform._34),
-             (object.transform._41,
-              object.transform._42,
-              object.transform._43,
-              object.transform._44))
+            world = ((obj.transform._11,
+              obj.transform._12,
+              obj.transform._13,
+              obj.transform._14),
+             (obj.transform._21,
+              obj.transform._22,
+              obj.transform._23,
+              obj.transform._24),
+             (obj.transform._31,
+              obj.transform._32,
+              obj.transform._33,
+              obj.transform._34),
+             (obj.transform._41,
+              obj.transform._42,
+              obj.transform._43,
+              obj.transform._44))
             worldInv = geo2.MatrixInverse(world)
             origin = geo2.Vec3Transform(rayOrigin, worldInv)
             direction = geo2.Vec3TransformNormal(rayDirection, worldInv)
             for area in range(pickingCount):
                 result = pickingGeometry.GetRayAreaIntersection(origin, direction, pickingMesh, pickingArea + area, trinity.TriGeometryCollisionResultFlags.ANY)
                 if result is not None:
-                    return result[1]
+                    return result
 
 
 

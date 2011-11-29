@@ -88,7 +88,7 @@ class DamageService(service.Service):
                     return []
                 if (targetID, attackerID) in self.targets:
                     (cachedResultTime, cachedResultList,) = self.targets[(targetID, attackerID)]
-                    if blue.os.TimeDiffInMs(cachedResultTime, blue.os.GetTime(1)) < self.targetResultCacheTime:
+                    if blue.os.TimeDiffInMs(cachedResultTime, blue.os.GetWallclockTimeNow()) < self.targetResultCacheTime:
                         if len(cachedResultList) >= locatorVariance:
                             return cachedResultList[:locatorVariance]
                     if targetID in self.failedTargets:
@@ -117,7 +117,7 @@ class DamageService(service.Service):
 
                 closestTargets.sort()
                 result = [ x[1] for x in closestTargets ]
-                self.targets[(targetID, attackerID)] = (blue.os.GetTime(1), result)
+                self.targets[(targetID, attackerID)] = (blue.os.GetWallclockTimeNow(), result)
                 result = result[:locatorVariance]
             except:
                 log.LogException()

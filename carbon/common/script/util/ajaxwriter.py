@@ -60,11 +60,10 @@ class AjaxWriter(htmlwriter.HtmlWriter):
 
 
 
-    def Lookup(self, schema, table, key_field, value_field):
+    def Lookup(self, table, key_field, value_field):
         if not self.HasAccess:
             return self.Write('[]')
-        dbzsystem = self.DB2.GetSchema(schema)
-        rs = dbzsystem.Lookup(table, key_field, value_field, None, None, None, util.EscapeSQL(str(self.ajaxfilter)), 0)
+        rs = self.DB2.GetSchema('zsystem').Lookup(table, key_field, value_field, None, None, None, util.EscapeSQL(str(self.ajaxfilter)), 0)
         return self.WriteJsonList(key_field, value_field, rs)
 
 

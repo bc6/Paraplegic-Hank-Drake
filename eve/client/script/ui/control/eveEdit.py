@@ -9,15 +9,29 @@ import trinity
 import listentry
 import _weakref
 import log
+import localization
 
 class Edit(uicls.EditCore):
     __guid__ = 'uicls.Edit'
+    __notifyevents__ = ['OnUIScalingChange']
     default_align = uiconst.TOALL
     default_left = 0
     default_top = 0
     default_width = 0
     default_height = 0
     default_fontcolor = (1.0, 1.0, 1.0, 0.75)
+
+    def ApplyAttributes(self, attributes):
+        uicls.EditCore.ApplyAttributes(self, attributes)
+        sm.RegisterNotify(self)
+
+
+
+    def OnUIScalingChange(self, *args):
+        if not self.destroyed:
+            self.DoContentResize()
+
+
 
     def OnDropDataDelegate(self, node, nodes):
         uicls.EditCore.OnDropDataDelegate(self, node, nodes)
@@ -29,10 +43,11 @@ class Edit(uicls.EditCore):
                 self.AddLink(entry.info.name, link)
             elif entry.__guid__ == 'listentry.PlaceEntry' and self.allowPrivateDrops:
                 bookmarkID = entry.bm.bookmarkID
-                bms = sm.GetService('addressbook').GetBookmarks()
+                bookmarkSvc = sm.GetService('bookmarkSvc')
+                bms = bookmarkSvc.GetBookmarks()
                 if bookmarkID in bms:
                     bookmark = bms[bookmarkID]
-                    (hint, comment,) = sm.GetService('addressbook').UnzipMemo(bookmark.memo)
+                    (hint, comment,) = bookmarkSvc.UnzipMemo(bookmark.memo)
                 link = 'showinfo:' + str(bms[bookmarkID].typeID) + '//' + str(bms[bookmarkID].itemID)
                 self.AddLink(hint, link)
             elif entry.__guid__ == 'listentry.NoteItem' and self.allowPrivateDrops:
@@ -59,7 +74,7 @@ class Edit(uicls.EditCore):
                 self.AddLink(entry.name.replace('&gt;', '>'), link)
             elif entry.__guid__ in ('listentry.FleetFinderEntry',):
                 link = 'fleet:%s' % entry.fleet.fleetID
-                self.AddLink(entry.fleet.fleetName or mls.UI_GENERIC_UNKNOWN, link)
+                self.AddLink(entry.fleet.fleetName or localization.GetByLabel('UI/Common/Unknown'), link)
             elif entry.__guid__ == 'xtriui.ListSurroundingsBtn':
                 if not entry.typeID and not entry.itemID:
                     return 
@@ -105,7 +120,7 @@ class Edit(uicls.EditCore):
                  {'type': 'btline'},
                  {'type': 'checkbox',
                   'label': '_hide',
-                  'text': mls.UI_GENERIC_CHARACTER,
+                  'text': localization.GetByLabel('UI/Common/Character'),
                   'key': 'char',
                   'required': 1,
                   'setvalue': 0,
@@ -114,7 +129,7 @@ class Edit(uicls.EditCore):
                   'onchange': self.OnLinkTypeChange},
                  {'type': 'checkbox',
                   'label': '_hide',
-                  'text': mls.UI_GENERIC_CORPORATION,
+                  'text': localization.GetByLabel('UI/Common/Corporation'),
                   'key': 'corp',
                   'required': 1,
                   'setvalue': 0,
@@ -124,7 +139,7 @@ class Edit(uicls.EditCore):
                  {'type': 'btline'},
                  {'type': 'checkbox',
                   'label': '_hide',
-                  'text': mls.UI_GENERIC_ITEMTYPE,
+                  'text': localization.GetByLabel('UI/Common/ItemType'),
                   'key': 'type',
                   'required': 1,
                   'setvalue': 0,
@@ -134,7 +149,7 @@ class Edit(uicls.EditCore):
                  {'type': 'btline'},
                  {'type': 'checkbox',
                   'label': '_hide',
-                  'text': mls.UI_GENERIC_SOLARSYSTEM,
+                  'text': localization.GetByLabel('UI/Common/SolarSystem'),
                   'key': 'solarsystem',
                   'required': 1,
                   'setvalue': 0,
@@ -143,7 +158,7 @@ class Edit(uicls.EditCore):
                   'onchange': self.OnLinkTypeChange},
                  {'type': 'checkbox',
                   'label': '_hide',
-                  'text': mls.UI_GENERIC_STATION,
+                  'text': localization.GetByLabel('UI/Common/Station'),
                   'key': 'station',
                   'required': 1,
                   'setvalue': 0,
@@ -152,13 +167,13 @@ class Edit(uicls.EditCore):
                   'onchange': self.OnLinkTypeChange},
                  {'type': 'btline'},
                  {'type': 'edit',
-                  'label': mls.GENERIC_LINK,
+                  'label': localization.GetByLabel('UI/Common/HtmlLink'),
                   'text': 'http://',
                   'labelwidth': 100,
                   'required': 1,
                   'key': 'txt',
                   'frame': 1}]
-                key = self.AskLink(mls.UI_GENERIC_ENTERLINK, format, width=400)
+                key = self.AskLink(localization.GetByLabel('UI/Common/EnterLink'), format, width=400)
             anchor = -1
             if key:
                 link = key['link']
@@ -185,7 +200,7 @@ class Edit(uicls.EditCore):
             self.itemID = self.typeID = 0
             self.key = chkbox.data['key']
             text = uiutil.GetChild(chkbox, 'text')
-            wnd = chkbox.FindParentByName(mls.UI_SHARED_GENERATELINK)
+            wnd = chkbox.FindParentByName(localization.GetByLabel('UI/Common/GenerateLink'))
             if not wnd:
                 return 
             editParent = uiutil.FindChild(wnd, 'editField')
@@ -197,7 +212,7 @@ class Edit(uicls.EditCore):
                 self.sr.searchbutt = uiutil.FindChild(editParent, 'button')
                 if self.key in ('char', 'corp', 'type', 'solarsystem', 'station'):
                     if self.sr.searchbutt == None:
-                        self.sr.searchbutt = uicls.Button(parent=editParent, label=mls.UI_CMD_SEARCH, func=self.OnSearch, btn_default=0, align=uiconst.TOPRIGHT)
+                        self.sr.searchbutt = uicls.Button(parent=editParent, label=localization.GetByLabel('UI/Common/SearchForItemType'), func=self.OnSearch, btn_default=0, align=uiconst.TOPRIGHT)
                     else:
                         self.sr.searchbutt.state = uiconst.UI_NORMAL
                     edit.width = 55
@@ -208,7 +223,7 @@ class Edit(uicls.EditCore):
 
 
     def OnSearch(self, *args):
-        wnd = self.sr.searchbutt.FindParentByName(mls.UI_SHARED_GENERATELINK)
+        wnd = self.sr.searchbutt.FindParentByName(localization.GetByLabel('UI/Common/GenerateLink'))
         if not wnd:
             return 
         editParent = uiutil.FindChild(wnd, 'editField')
@@ -237,7 +252,7 @@ class Edit(uicls.EditCore):
             if not itemTypes:
                 eve.Message('NoItemTypesFound')
                 return 
-            id = uix.ListWnd(itemTypes, 'item', mls.UI_GENERIC_SELECTITEMTYPE, None, 1)
+            id = uix.ListWnd(itemTypes, 'item', localization.GetByLabel('UI/Common/SelectItemType'), None, 1)
         else:
             group = None
             cat = None
@@ -284,7 +299,7 @@ class Edit(uicls.EditCore):
           'text': label,
           'frame': 1}] + lines + [{'type': 'bbline'}]
         btns = uiconst.OKCANCEL
-        retval = uix.HybridWnd(format, mls.UI_SHARED_GENERATELINK, 1, None, uiconst.OKCANCEL, minW=width, minH=110, icon=icon)
+        retval = uix.HybridWnd(format, localization.GetByLabel('UI/Common/GenerateLink'), 1, None, uiconst.OKCANCEL, minW=width, minH=110, icon=icon)
         if retval:
             return retval
         else:
@@ -294,6 +309,7 @@ class Edit(uicls.EditCore):
 
     def AddLink(self, text, link = None):
         self.SetSelectionRange(None, None)
+        text = uiutil.StripTags(text, stripOnly=['localized'])
         shiftCursor = len(text)
         (node, obj, npos,) = self.GetNodeAndTextObjectFromGlobalCursor()
         if obj.letters:

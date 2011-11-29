@@ -12,7 +12,6 @@ import util
 import xtriui
 import sys
 import fleetbr
-import bracket
 import mapcommon
 from mapcommon import STARMAP_SCALE, SUN_DATA, JUMP_TYPES, JUMP_COLORS, ZOOM_MAX_STARMAP, ZOOM_MIN_STARMAP, TILE_MODE_SOVEREIGNTY, TILE_MODE_STANDIGS
 import geo2
@@ -20,6 +19,8 @@ import uiconst
 import hexmap
 import starmap
 import uicls
+import localization
+import maputils
 SUNBASE = 15.0
 SEC = 10000000L
 MIN = SEC * 60L
@@ -39,6 +40,7 @@ SHOW_ALL = 4
 PARTICLE_EFFECT = 'res:/Graphics/Effect/Managed/Space/SpecialFX/Particles/ParticleStarmap.fx'
 PARTICLE_SPRITE_TEXTURE = 'res:/Texture/Particle/MapSprite.dds'
 OVERGLOW_FACTOR = 'OverGlowFactor'
+DISTANCE_RANGE = 'distanceRange'
 DEFAULT_STAR_PARTICLE_COLOR = (0.1,
  0.1,
  0.1,
@@ -47,9 +49,9 @@ NEUTRAL_COLOR = (0.25,
  0.25,
  0.25,
  1.0)
-HINT_LOCATION_HEADERS = (mls.UI_GENERIC_REGION,
- mls.UI_GENERIC_CONSTELLATION,
- mls.UI_GENERIC_SOLARSYSTEM,
+HINT_LOCATION_HEADERS = (localization.GetByLabel('UI/Common/LocationTypes/Region'),
+ localization.GetByLabel('UI/Common/Constellation'),
+ localization.GetByLabel('UI/Common/SolarSystem'),
  '')
 PICK_SCALE = 0.3
 PICK_RADIUS = 400.0
@@ -68,82 +70,12 @@ MAP_XYZW_INV_ROTATION = (-1.0,
  0.0)
 HEX_TILE_SIZE = 60
 
-class PriorityDictionary(dict):
-
-    def __init__(self):
-        self._PriorityDictionary__heap = []
-        dict.__init__(self)
-
-
-
-    def smallest(self):
-        if len(self) == 0:
-            raise IndexError, 'smallest of empty PriorityDictionary'
-        heap = self._PriorityDictionary__heap
-        while heap[0][1] not in self or self[heap[0][1]] != heap[0][0]:
-            lastItem = heap.pop()
-            insertionPoint = 0
-            while 1:
-                smallChild = 2 * insertionPoint + 1
-                if smallChild + 1 < len(heap) and heap[smallChild] > heap[(smallChild + 1)]:
-                    smallChild += 1
-                if smallChild >= len(heap) or lastItem <= heap[smallChild]:
-                    heap[insertionPoint] = lastItem
-                    break
-                heap[insertionPoint] = heap[smallChild]
-                insertionPoint = smallChild
-
-
-        return heap[0][1]
-
-
-
-    def __iter__(self):
-
-        def iterfn():
-            while len(self) > 0:
-                x = self.smallest()
-                yield x
-                del self[x]
-
-
-
-        return iterfn()
-
-
-
-    def __setitem__(self, key, val):
-        dict.__setitem__(self, key, val)
-        heap = self._PriorityDictionary__heap
-        if len(heap) > 2 * len(self):
-            self._PriorityDictionary__heap = [ (v, k) for (k, v,) in self.iteritems() ]
-            self._PriorityDictionary__heap.sort()
-        else:
-            newPair = (val, key)
-            insertionPoint = len(heap)
-            heap.append(None)
-            while insertionPoint > 0 and newPair < heap[((insertionPoint - 1) // 2)]:
-                heap[insertionPoint] = heap[((insertionPoint - 1) // 2)]
-                insertionPoint = (insertionPoint - 1) // 2
-
-            heap[insertionPoint] = newPair
-
-
-
-    def setdefault(self, key, val):
-        if key not in self:
-            self[key] = val
-        return self[key]
-
-
-
-
 class StarMapSvc(service.Service):
     __guid__ = 'svc.starmap'
-    __notifyevents__ = ['OnSessionChanged',
-     'OnServerMapDataPush',
+    __notifyevents__ = ['OnServerMapDataPush',
      'OnAvoidanceItemsChanged',
-     'OnMapReset']
+     'OnMapReset',
+     'OnUIRefresh']
     __servicename__ = 'starmap'
     __displayname__ = 'Star Map Client Service'
     __dependencies__ = ['neocom', 'pathfinder', 'map']
@@ -167,28 +99,20 @@ class StarMapSvc(service.Service):
 
 
     def Open(self, interestID = None, starColorMode = None, *args):
-        self.map.OpenStarMap()
-        if interestID:
-            sm.GetService('starmap').SetInterest(interestID)
-        if starColorMode:
-            self.SetStarColorMode(starColorMode)
-
-
-
-    def OnSessionChanged(self, isremote, session, change):
-        if eve.session.charid is None:
-            return 
-        if self.map.ViewingStarMap():
-            self.ShowWhereIAm()
-        self.UpdateRoute(fakeUpdate=1)
+        sm.GetService('viewState').ActivateView('starmap', interestID=interestID, starColorMode=starColorMode)
 
 
 
     def OnAvoidanceItemsChanged(self):
-        if self.map.ViewingStarMap():
+        if sm.GetService('viewState').IsViewActive('starmap'):
             starColorMode = settings.user.ui.Get('starscolorby', mapcommon.STARMODE_SECURITY)
             if starColorMode == mapcommon.STARMODE_AVOIDANCE:
                 self.SetStarColorMode(mapcommon.STARMODE_AVOIDANCE)
+
+
+
+    def OnUIRefresh(self):
+        self.DecorateNeocom()
 
 
 
@@ -201,7 +125,7 @@ class StarMapSvc(service.Service):
         cachedDestinationPath = self.destinationPath
         self.Reset()
         self.destinationPath = cachedDestinationPath
-        for child in uicore.layer.map.children:
+        for child in uicore.layer.starmap.children:
             if child.name == '__cursor' or child.name == 'myloc':
                 child.Close()
 
@@ -211,6 +135,8 @@ class StarMapSvc(service.Service):
             del scene1.models[:]
         if scene2:
             del scene2.objects[:]
+            scene2.curveSets.remove(self.curveSet)
+            self.curveSet = None
         sm.GetService('sceneManager').UnregisterScene('starmap')
         sm.GetService('sceneManager').UnregisterScene2('starmap')
         sm.GetService('sceneManager').UnregisterCamera('starmap')
@@ -287,7 +213,7 @@ class StarMapSvc(service.Service):
 
 
     def OnServerMapDataPush(self, tricolors, data):
-        self.map.OpenStarMap()
+        sm.GetService('viewState').ActivateView('starmap')
         processedData = {}
         for (systemID, blobSize, colorScale, descriptionText, overrideColor,) in data:
             if overrideColor == (None, None, None):
@@ -299,9 +225,9 @@ class StarMapSvc(service.Service):
                 processedData[systemID] = (blobSize,
                  colorScale,
                  descriptionText,
-                 trinity.TriColor(overrideColor[0], overrideColor[1], overrideColor[2]))
+                 trinity.TriColor(*overrideColor))
 
-        self.HighlightSolarSystems(processedData, [ trinity.TriColor(x[0], x[1], x[2]) for x in tricolors ])
+        self.HighlightSolarSystems(processedData, [ trinity.TriColor(r, g, b) for (r, g, b,) in tricolors ])
 
 
 
@@ -309,7 +235,8 @@ class StarMapSvc(service.Service):
         if self.starParticles is None:
             return 
         (projection, view, viewport,) = uix.GetFullscreenProjectionViewAndViewport()
-        particleID = self.starParticles.PickParticle(uicore.uilib.x, uicore.uilib.y, projection, view, viewport, PICK_SCALE, self.GetStarPickRadius())
+        (x, y,) = (int(uicore.uilib.x * uicore.desktop.dpiScaling), int(uicore.uilib.y * uicore.desktop.dpiScaling))
+        particleID = self.starParticles.PickParticle(x, y, projection, view, viewport, PICK_SCALE, self.GetStarPickRadius())
         return self.particleIDToSystemIDMap.get(particleID, None)
 
 
@@ -319,7 +246,8 @@ class StarMapSvc(service.Service):
             return 
         else:
             (projection, view, viewport,) = uix.GetFullscreenProjectionViewAndViewport()
-            particleID = self.starParticles.PickParticle(uicore.uilib.x + 1, uicore.uilib.y + 1, projection, view, viewport, PICK_SCALE, self.GetStarPickRadius())
+            (x, y,) = (uicore.ScaleDpi(uicore.uilib.x), uicore.ScaleDpi(uicore.uilib.y))
+            particleID = self.starParticles.PickParticle(x + 1, y + 1, projection, view, viewport, PICK_SCALE, self.GetStarPickRadius())
             if particleID != -1:
                 return particleID
             return 
@@ -331,13 +259,15 @@ class StarMapSvc(service.Service):
         if not item:
             return []
         m = []
-        m.append(('%s - %s' % (item.item.itemName, cfg.invgroups.Get(item.item.typeID).name), self.SetInterest, (item.item.itemID,)))
+        itemLabel = localization.GetByLabel('UI/Map/StarMap/ItemMenuLabel', loc=itemID, item=item.item.typeID)
+        m.append((itemLabel, self.SetInterest, (item.item.itemID,)))
         hierarchy = item.hierarchy[:]
         hierarchy.reverse()
         for parentID in hierarchy[1:]:
             parent = self.map.GetItem(parentID)
             if parent is not None:
-                m.append((' ( %s - %s )' % (parent.itemName, cfg.invgroups.Get(parent.typeID).name), self.SetInterest, (parentID,)))
+                parentLabel = localization.GetByLabel('UI/Map/StarMap/ItemMenuParentLabel', loc=parentID, item=parent.typeID)
+                m.append((parentLabel, self.SetInterest, (parentID,)))
 
         m.append(None)
         mm = []
@@ -346,15 +276,15 @@ class StarMapSvc(service.Service):
 
         (solarSystemID, constellationID, regionID,) = hierarchy
         if solarSystemID:
-            mm.append((mls.SYSTEM, self.DrillToLocation, (solarSystemID, constellationID, regionID)))
+            mm.append((localization.GetByLabel('UI/Common/LocationTypes/System'), self.DrillToLocation, (solarSystemID, constellationID, regionID)))
         if constellationID:
-            mm.append((mls.CONSTELLATION, self.DrillToLocation, (None, constellationID, regionID)))
-        mm.append((mls.REGION, self.DrillToLocation, (None, None, regionID)))
-        m.append((mls.SOVEREIGNTY_VIEWINDASHBOARD, mm))
+            mm.append((localization.GetByLabel('UI/Common/LocationTypes/Constellation'), self.DrillToLocation, (None, constellationID, regionID)))
+        mm.append((localization.GetByLabel('UI/Common/LocationTypes/Region'), self.DrillToLocation, (None, None, regionID)))
+        m.append((localization.GetByLabel('UI/Sovereignty/ViewInSovDashboard'), mm))
         m.append(None)
         m += sm.GetService('menu').CelestialMenu(itemID, noTrace=1, mapItem=item.item)
         m.append(None)
-        m.append((mls.UI_CMD_CENTERONSCREEN, self.SetInterest, (itemID, 1)))
+        m.append((localization.GetByLabel('UI/Map/StarMap/CenterOnScreen'), self.SetInterest, (itemID, 1)))
         return m
 
 
@@ -377,7 +307,7 @@ class StarMapSvc(service.Service):
         loc = self.map.GetItem(itemID)
         pos = (loc.x * STARMAP_SCALE, loc.y * STARMAP_SCALE, loc.z * STARMAP_SCALE)
         tracker.translation = pos
-        anchor = xtriui.Bracket(parent=uicore.layer.map)
+        anchor = xtriui.Bracket(parent=uicore.layer.starmap)
         anchor.state = uiconst.UI_DISABLED
         anchor.width = anchor.height = 1
         anchor.align = uiconst.NOALIGN
@@ -425,7 +355,8 @@ class StarMapSvc(service.Service):
             self.doinghint = 0
             return 
         (projection, view, viewport,) = uix.GetFullscreenProjectionViewAndViewport()
-        particleID = self.starParticles.PickParticle(uicore.uilib.x, uicore.uilib.y, projection, view, viewport, PICK_SCALE, self.GetStarPickRadius())
+        (x, y,) = (uicore.ScaleDpi(uicore.uilib.x), uicore.ScaleDpi(uicore.uilib.y))
+        particleID = self.starParticles.PickParticle(x, y, projection, view, viewport, PICK_SCALE, self.GetStarPickRadius())
         if getattr(self, 'lastpick', None) == particleID:
             self.doinghint = 0
             return 
@@ -473,9 +404,13 @@ class StarMapSvc(service.Service):
 
         else:
             return 
-        if eve.session.regionid > const.mapWormholeRegionMin or session.shipid is None:
+        if eve.session.regionid > const.mapWormholeRegionMin:
             return 
-        driveRange = sm.GetService('godma').GetItem(session.shipid).jumpDriveRange
+        shipID = util.GetActiveShip()
+        if shipID is None:
+            return 
+        dogmaLM = sm.GetService('clientDogmaIM').GetDogmaLocation()
+        driveRange = dogmaLM.GetAttributeValue(shipID, const.attributeJumpDriveRange)
         if driveRange is None or driveRange == 0:
             return 
         scale = 2.0 * driveRange * const.LIGHTYEAR * STARMAP_SCALE
@@ -512,7 +447,7 @@ class StarMapSvc(service.Service):
                 self.mapRoot.children.append(tracker)
                 label = self.GetCurrLocationBracket()
                 label.Startup('myloc', locationid, None, tracker, None, 1)
-                labeltext = uicls.Label(text=mls.UI_SHARED_MAPYOUAREHERE, parent=label, left=210, top=0, autoheight=False, height=12, letterspace=2, fontsize=9, state=uiconst.UI_DISABLED, uppercase=1, idx=0)
+                labeltext = uicls.EveHeaderSmall(text=localization.GetByLabel('UI/Map/StarMap/lblYouAreHere'), parent=label, left=210, top=0, state=uiconst.UI_DISABLED, idx=0)
                 sm.GetService('ui').BlinkSpriteA(labeltext, 1.0, 750, None, passColor=0, minA=0.5)
                 self.labeltext = labeltext
                 self.mylocationBracket = label
@@ -538,7 +473,7 @@ class StarMapSvc(service.Service):
 
 
     def ShowDestination(self):
-        if not self.map.IsOpen():
+        if not sm.GetService('viewState').IsViewActive('starmap'):
             return 
         waypoints = self.GetWaypoints()
         self.mydestination = getattr(self, 'mydestination', [])
@@ -556,49 +491,43 @@ class StarMapSvc(service.Service):
         if len(waypoints) > 0:
             currentExtractWaypoint = waypoints[0]
             waypointIndex = 0
-            waypointSystemList = []
-            currentSystemList = [lastWaypoint]
-            for systemID in self.destinationPath:
-                currentSystemList.append(systemID)
-                if systemID == currentExtractWaypoint:
-                    waypointSystemList.append(currentSystemList)
-                    currentSystemList = [systemID]
+            waypointDestinationList = []
+            currentDestinationList = [lastWaypoint]
+            for locationID in self.destinationPath:
+                currentDestinationList.append(locationID)
+                if locationID == currentExtractWaypoint:
+                    waypointDestinationList.append(currentDestinationList)
+                    currentDestinationList = [locationID]
                     waypointIndex += 1
                     if waypointIndex == len(waypoints):
                         break
                     currentExtractWaypoint = waypoints[waypointIndex]
 
         else:
-            waypointSystemList = []
+            waypointDestinationList = []
         waypointIndex = 0
         for (waypointIndex, waypointID,) in enumerate(waypoints):
-            if waypointIndex < len(waypointSystemList):
-                solarsystems = waypointSystemList[waypointIndex]
+            if waypointIndex < len(waypointDestinationList):
+                destinations = waypointDestinationList[waypointIndex]
             else:
-                solarsystems = []
-            if not len(solarsystems):
-                comment = ' - %s ' % mls.UI_GENERIC_UNREACHABLE
+                destinations = []
+            targetItemName = cfg.evelocations.Get(waypointID).locationName
+            wpIdx = waypointIndex + 1
+            if not len(destinations):
+                wpLabel = localization.GetByLabel('UI/Map/StarMap/ShowDestinationWaypointUnreachable', waypointNumber=wpIdx, targetName=targetItemName)
             else:
-                totalJumps = totalJumps + len(solarsystems) - 1
-                comment = ' - %s' % (uix.Plural(totalJumps, 'UI_SHARED_NUM_JUMP') % {'num': totalJumps})
-                lastWaypoint = solarsystems[-1]
+                totalJumps = totalJumps + len(destinations) - 1
+                wpLabel = localization.GetByLabel('UI/Map/StarMap/ShowDestinationWaypoint', waypointNumber=wpIdx, targetName=targetItemName, jumps=totalJumps)
             tracker = trinity.EveTransform()
             tracker.name = '__waypoint_%d' % waypointIndex
             if self.mapRoot:
                 self.mapRoot.children.append(tracker)
             label = self.GetCurrLocationBracket()
             label.Startup('myDest', waypointID, const.groupSolarSystem, tracker, None, 1)
-            targetItem = self.map.GetItem(waypointID)
-            extraText = ''
-            if targetItem.groupID == const.groupConstellation:
-                extraText = ' %s ' % mls.UI_GENERIC_CONSTELLATION
-            elif targetItem.groupID == const.groupRegion:
-                extraText = ' %s ' % mls.UI_GENERIC_REGION
-            text = '%s ' % mls.UI_SHARED_MAPWAYPOINT + str(waypointIndex + 1) + ': ' + extraText + targetItem.itemName + comment
-            labeltext = uicls.Label(text=text, parent=label, left=210, top=7, autoheight=False, height=12, letterspace=2, fontsize=9, state=uiconst.UI_DISABLED, uppercase=1, idx=0)
+            labeltext = uicls.EveHeaderSmall(text=wpLabel, parent=label, left=210, top=7, height=12, state=uiconst.UI_DISABLED, idx=0)
             labeltext.color.SetRGB(1.0, 1.0, 0.0)
             sm.GetService('ui').BlinkSpriteA(labeltext, 1.0, 750, None, passColor=0, minA=0.5)
-            location = self.map.GetItem(waypointID)
+            location = cfg.evelocations.Get(waypointID)
             pos = (location.x * STARMAP_SCALE, location.y * STARMAP_SCALE, location.z * STARMAP_SCALE)
             tracker.translation = pos
             self.mydestination.append(util.KeyVal(waypointID=waypointID, tracker=tracker, label=label))
@@ -608,7 +537,7 @@ class StarMapSvc(service.Service):
 
 
     def GetCurrLocationBracket(self):
-        currentLocation = xtriui.MapLabel(parent=uicore.layer.map, name='currentlocation', pos=(0, 0, 280, 20), align=uiconst.NOALIGN, state=uiconst.UI_PICKCHILDREN, dock=False)
+        currentLocation = xtriui.MapLabel(parent=uicore.layer.starmap, name='currentlocation', pos=(0, 0, 280, 20), align=uiconst.NOALIGN, state=uiconst.UI_PICKCHILDREN, dock=False)
         white = uicls.Fill(parent=currentLocation, name='white', pos=(154, 11, 48, 1), state=uiconst.UI_DISABLED, color=(1.0, 1.0, 1.0, 0.25), align=uiconst.TOPLEFT)
         frame = uicls.Sprite(parent=currentLocation, name='frame', pos=(0, 0, 32, 32), align=uiconst.CENTER, state=uiconst.UI_DISABLED, texturePath='res:/UI/Texture/classes/StarMapSvc/currentLocation.png')
         return currentLocation
@@ -626,7 +555,7 @@ class StarMapSvc(service.Service):
             return 
         try:
             uicore.desktop.state = uiconst.UI_DISABLED
-            start = blue.os.GetTime()
+            start = blue.os.GetSimTime()
             cameraParent = sm.GetService('camera').GetCameraParent(source='starmap')
             current = self.mapRoot.rotationCurve.GetQuaternionAt(start)
             self.mapRoot.rotationCurve.keys[0].value.SetXYZW(current.x, current.y, current.z, current.w)
@@ -655,7 +584,7 @@ class StarMapSvc(service.Service):
             self.regionLabelParent.display = False
             ndt = 0.0
             while ndt != 1.0:
-                ndt = max(0.0, min(blue.os.TimeDiffInMs(start) / 1000.0, 1.0))
+                ndt = max(0.0, min(blue.os.TimeDiffInMs(start, blue.os.GetSimTime()) / 1000.0, 1.0))
                 self.mapRoot.scaling = self.solarSystemJumpLineSet.scaling = (1.0, mathUtil.Lerp(0.0001, 1.0, ndt), 1.0)
                 if posBegin and posEnd:
                     pos = geo2.Vec3Lerp(posBegin, posEnd, ndt)
@@ -675,6 +604,7 @@ class StarMapSvc(service.Service):
                 self.UpdateRoute()
             if redrawGenericRoute and self.genericRoutePath:
                 self.DrawRouteTo(targetID=self.genericRoutePath[-1], sourceID=self.genericRoutePath[0])
+            self.OnCameraMoved()
 
         finally:
             uicore.desktop.state = uiconst.UI_NORMAL
@@ -693,7 +623,7 @@ class StarMapSvc(service.Service):
                 duration = 0.0001
             else:
                 duration = 1.0
-            start = blue.os.GetTime()
+            start = blue.os.GetSimTime()
             cameraParent = sm.GetService('camera').GetCameraParent(source='starmap')
             camera = sm.GetService('sceneManager').GetRegisteredCamera('starmap')
             (cY, cP, cR,) = camera.rotationAroundParent.GetYawPitchRoll()
@@ -721,7 +651,7 @@ class StarMapSvc(service.Service):
             self.regionLabelParent.display = False
             ndt = 0.0
             while ndt != 1.0:
-                ndt = max(0.0, min(blue.os.TimeDiffInMs(start) / (duration * 1000.0), 1.0))
+                ndt = max(0.0, min(blue.os.TimeDiffInMs(start, blue.os.GetSimTime()) / (duration * 1000.0), 1.0))
                 self.mapRoot.scaling = self.solarSystemJumpLineSet.scaling = (1.0, mathUtil.Lerp(1.0, 0.0001, ndt), 1.0)
                 if posBegin and posEnd:
                     pos = geo2.Vec3Lerp(posBegin, posEnd, ndt)
@@ -748,6 +678,7 @@ class StarMapSvc(service.Service):
                 self.UpdateRoute()
             if redrawGenericRoute and self.genericRoutePath:
                 self.DrawRouteTo(targetID=self.genericRoutePath[-1], sourceID=self.genericRoutePath[0])
+            self.OnCameraMoved()
 
         finally:
             uicore.desktop.state = uiconst.UI_NORMAL
@@ -774,6 +705,10 @@ class StarMapSvc(service.Service):
         overglowFactor.name = OVERGLOW_FACTOR
         overglowFactor.value = 0.0
         self.overglowFactor = overglowFactor
+        distanceRange = trinity.Tr2Vector4Parameter()
+        distanceRange.name = DISTANCE_RANGE
+        distanceRange.value = (0, 1, 0, 0)
+        self.distanceRange = distanceRange
         self.starParticles = trinity.EveSpriteParticleSystem()
         self.starParticles.maxParticleCount = 8200
         self.starParticles.updateSimulation = False
@@ -781,6 +716,8 @@ class StarMapSvc(service.Service):
         self.starParticles.effect.effectFilePath = PARTICLE_EFFECT
         self.starParticles.effect.resources.append(tex)
         self.starParticles.effect.parameters.append(overglowFactor)
+        self.starParticles.effect.parameters.append(distanceRange)
+        self.solarSystemJumpLineSet.lineEffect.parameters.append(self.distanceRange)
         emitter = trinity.EveEmitterStatic()
         emitter.particleSystem = self.starParticles
         self.mapStars.particleSystems.append(self.starParticles)
@@ -816,7 +753,7 @@ class StarMapSvc(service.Service):
     def InitMap(self):
         self.LogInfo('MapSvc: InitStarMap')
         init = False
-        self.StartLoadingBar('starmap_init', mls.UI_SHARED_MAPINITINGMAP, mls.UI_SHARED_MAPBUILDINGMODEL, 4)
+        self.StartLoadingBar('starmap_init', localization.GetByLabel('UI/Map/StarMap/InitializingMap'), localization.GetByLabel('UI/Map/StarMap/BuildingModel'), 4)
         if self.mapRoot is None:
             init = True
             scene = trinity.EveSpaceScene()
@@ -841,7 +778,7 @@ class StarMapSvc(service.Service):
             scene1.pointStarfield.display = 0
             self.starmapCamera = camera = trinity.EveCamera()
             camera.idleMove = 0
-            camera.friction = 25.0
+            camera.friction = 10.0
             camera.translationFromParent.z = settings.user.ui.Get('starmapTFP', 0.6 * ZOOM_MAX_STARMAP)
             if camera.translationFromParent.z < 0:
                 camera.translationFromParent.z = -camera.translationFromParent.z
@@ -861,16 +798,28 @@ class StarMapSvc(service.Service):
             self.localCameraParent = localCameraParent
             self.mapRoot.name = 'universe'
             self.mapRoot.display = 1
-            lineSet = self.map.CreateLineSet()
-            scene.objects.append(lineSet)
+            lineSet = self.map.CreateCurvedLineSet(effectPath=mapcommon.LINESET_3D_EFFECT_STARMAP)
+            transform = trinity.EveTransform()
+            curveBinding = trinity.TriValueBinding()
+            curveBinding.sourceObject = rotationCurve
+            curveBinding.sourceAttribute = 'value'
+            curveBinding.destinationObject = transform
+            curveBinding.destinationAttribute = 'rotation'
+            curveSet = trinity.TriCurveSet()
+            curveSet.bindings.append(curveBinding)
+            scene.curveSets.append(curveSet)
+            self.curveSet = curveSet
+            curveSet.Play()
+            transform.children.append(lineSet)
+            scene.objects.append(transform)
             self.solarSystemJumpLineSet = lineSet
-            self.solarSystemJumpLineSet.rotationCurve = rotationCurve
             self.DrawPoints(self.mapRoot)
             self.DrawSystemJumpLines()
+            self.DrawAllianceJumpLines()
             self.cursor = trinity.EveTransform()
             self.cursor.name = '__cursorTF'
             self.mapRoot.children.append(self.cursor)
-            self.uicursor = uicls.Bracket(parent=uicore.layer.map, align=uiconst.NOALIGN)
+            self.uicursor = uicls.Bracket(parent=uicore.layer.starmap, align=uiconst.NOALIGN)
             self.uicursor.name = '__cursor'
             self.uicursor.width = uicore.uilib.desktop.width * 2
             self.uicursor.height = uicore.uilib.desktop.height * 2
@@ -899,21 +848,19 @@ class StarMapSvc(service.Service):
                 self.rollCamera = False
             self.SetInterest(session.solarsystemid2)
             self.RegisterStarColorModes()
-        uicore.layer.map.state = uiconst.UI_PICKCHILDREN
-        uicore.layer.systemmap.state = uiconst.UI_HIDDEN
-        uix.GetMapNav()
         sm.GetService('sceneManager').SetRegisteredScenes('starmap')
-        self.UpdateLoadingBar('starmap_init', mls.UI_SHARED_MAPINITINGMAP, mls.UI_SHARED_MAPGETTINGDATA, 1, 4)
+        self.UpdateLoadingBar('starmap_init', localization.GetByLabel('UI/Map/StarMap/InitializingMap'), localization.GetByLabel('UI/Map/StarMap/GettingData'), 1, 4)
         self.SetStarColorMode()
-        self.UpdateLoadingBar('starmap_init', mls.UI_SHARED_MAPINITINGMAP, mls.UI_SHARED_MAPGETTINGDATA, 2, 4)
+        self.UpdateLoadingBar('starmap_init', localization.GetByLabel('UI/Map/StarMap/InitializingMap'), localization.GetByLabel('UI/Map/StarMap/GettingData'), 2, 4)
         self.UpdateLines(updateColor=1, hint='InitStarMap')
         self.UpdateRoute()
         self.CheckAllLabels('InitStarMap')
-        self.UpdateLoadingBar('starmap_init', mls.UI_SHARED_MAPINITINGMAP, mls.UI_SHARED_MAPGETTINGDATA, 3, 4)
+        self.UpdateLoadingBar('starmap_init', localization.GetByLabel('UI/Map/StarMap/InitializingMap'), localization.GetByLabel('UI/Map/StarMap/GettingData'), 3, 4)
         self.UpdateHexMap()
         self.ShowWhereIAm()
         if init:
             self.SetInterest(session.solarsystemid2)
+        self.OnCameraMoved()
         self.StopLoadingBar('starmap_init')
 
 
@@ -1038,6 +985,60 @@ class StarMapSvc(service.Service):
         if self.mapRoot is None:
             return 
         uthread.new(self.CheckCloudLabels, 'checkLabelDist')
+
+
+
+    def OnCameraMoved(self):
+        if self.IsFlat():
+            self.distanceRange.value = (0, 0, 0, 0)
+            return 
+        camera = sm.GetService('sceneManager').GetRegisteredCamera('starmap')
+        if camera is None:
+            return 
+        view = camera.view
+        geoView = ((view._11,
+          view._12,
+          view._13,
+          view._14),
+         (view._21,
+          view._22,
+          view._23,
+          view._24),
+         (view._31,
+          view._32,
+          view._33,
+          view._34),
+         (view._41,
+          view._42,
+          view._43,
+          view._44))
+        aabbMin = self.starParticles.aabbMin
+        aabbMax = self.starParticles.aabbMax
+        znear = 0
+        zfar = 1
+        p = geo2.Vec3Transform(aabbMin, geoView)
+        znear = zfar = geo2.Vec3Length(p)
+
+        def Update(x, y, z, znear, zfar):
+            p = geo2.Vec3Transform((x, y, z), geoView)
+            dist = geo2.Vec3Length(p)
+            return (min(znear, dist), max(zfar, dist))
+
+
+        (znear, zfar,) = Update(aabbMin[0], aabbMax[1], aabbMin[2], znear, zfar)
+        (znear, zfar,) = Update(aabbMin[0], aabbMin[1], aabbMax[2], znear, zfar)
+        (znear, zfar,) = Update(aabbMin[0], aabbMax[1], aabbMax[2], znear, zfar)
+        (znear, zfar,) = Update(aabbMax[0], aabbMin[1], aabbMin[2], znear, zfar)
+        (znear, zfar,) = Update(aabbMax[0], aabbMax[1], aabbMin[2], znear, zfar)
+        (znear, zfar,) = Update(aabbMax[0], aabbMin[1], aabbMax[2], znear, zfar)
+        (znear, zfar,) = Update(aabbMax[0], aabbMax[1], aabbMax[2], znear, zfar)
+        znear = max(0, znear)
+        if zfar <= znear:
+            zfar = znear + 1
+        self.distanceRange.value = (znear,
+         1.0 / (zfar - znear),
+         0,
+         0)
 
 
 
@@ -1200,7 +1201,7 @@ class StarMapSvc(service.Service):
         uicore.desktop.state = uiconst.UI_DISABLED
         count = 50
         while getattr(self, 'moving', False) and count:
-            blue.pyos.synchro.Sleep(100)
+            blue.pyos.synchro.SleepWallclock(100)
             count -= 1
 
         try:
@@ -1209,10 +1210,10 @@ class StarMapSvc(service.Service):
                 cameraParent = sm.GetService('camera').GetCameraParent(source='starmap')
                 startPos = cameraParent.translation
                 posBegin = geo2.Vector(startPos.x, startPos.y, startPos.z)
-                start = blue.os.GetTime()
+                start = blue.os.GetWallclockTime()
                 ndt = 0.0
                 while ndt != 1.0:
-                    ndt = max(0.0, min(blue.os.TimeDiffInMs(start) / time, 1.0))
+                    ndt = max(0.0, min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / time, 1.0))
                     if posBegin and posEnd:
                         pos = geo2.Vec3Lerp(posBegin, posEnd, ndt)
                         cameraParent.translation.SetXYZ(*pos)
@@ -1272,31 +1273,56 @@ class StarMapSvc(service.Service):
         scene2 = sm.GetService('sceneManager').GetRegisteredScene2('starmap')
         scene2.objects.append(route.model)
         if not len(routeList):
-            if self.map.ViewingStarMap():
+            if sm.GetService('viewState').IsViewActive('starmap'):
                 if verbose == 1:
-                    eve.Message('Command', {'command': '%s ' % mls.UI_SHARED_MAPNOPATHFOUND + targetItem.itemName + '.'})
+                    eve.Message('Command', {'command': localization.GetByLabel('UI/Map/StarMap/NoPathFoundTo', targetItem=targetItem.itemName)})
             return []
         self.CheckAllLabels('DrawRouteTo')
-        if self.map.ViewingStarMap():
+        if sm.GetService('viewState').IsViewActive('starmap'):
             if verbose == 1:
                 jumptype = ''
-                if targetItem.groupID == const.typeRegion:
-                    jumptype = ' ' + mls.UI_GENERIC_REGION
-                hopCount = len(routeList) - 1
+                jumps = len(routeList) - 1
+                routeType = settings.user.ui.Get('pfRouteType', 'safe')
+                targetItemName = targetItem.itemName
                 if sourceID:
                     sourceItem = self.map.GetItem(sourceID)
-                    eve.Message('Command', {'command': mls.UI_SHARED_MAPTHEPATHBETWEENWILLTAKEYOU % {'path': self.GetRouteType(1),
-                                 'startlocation': sourceItem.itemName,
-                                 'endlocation': targetItem.itemName,
-                                 'hops': hopCount,
-                                 'jumptype': jumptype,
-                                 'jump': uix.Plural(hopCount, 'UI_GENERIC_JUMP')}})
+                    sourceItemName = sourceItem.itemName
+                    if routeType == 'shortest':
+                        if targetItem.groupID == const.typeRegion:
+                            labelText = localization.GetByLabel('UI/Map/StarMap/TheShortestRouteFromToTakesRegionJumps', sourceItem=sourceItemName, targetItem=targetItemName, jumps=jumps)
+                        else:
+                            labelText = localization.GetByLabel('UI/Map/StarMap/TheShortestRouteFromToTakesJumps', sourceItem=sourceItemName, targetItem=targetItemName, jumps=jumps)
+                    elif routeType == 'safe':
+                        if targetItem.groupID == const.typeRegion:
+                            labelText = localization.GetByLabel('UI/Map/StarMap/TheSafestRouteFromToTakesRegionJumps', sourceItem=sourceItemName, targetItem=targetItemName, jumps=jumps)
+                        else:
+                            labelText = localization.GetByLabel('UI/Map/StarMap/TheSafestRouteFromToTakesJumps', sourceItem=sourceItemName, targetItem=targetItemName, jumps=jumps)
+                    elif routeType == 'unsafe':
+                        if targetItem.groupID == const.typeRegion:
+                            labelText = localization.GetByLabel('UI/Map/StarMap/TheUnSafestRouteFromToTakesRegionJumps', sourceItem=sourceItemName, targetItem=targetItemName, jumps=jumps)
+                        else:
+                            labelText = localization.GetByLabel('UI/Map/StarMap/TheUnSafestRouteFromToTakesJumps', sourceItem=sourceItemName, targetItem=targetItemName, jumps=jumps)
+                    else:
+                        labelText = localization.GetByLabel('UI/Map/StarMap/NoKnownRouteFromTo')
+                    eve.Message('Command', {'command': labelText})
+                elif routeType == 'shortest':
+                    if targetItem.groupID == const.typeRegion:
+                        labelText = localization.GetByLabel('UI/Map/StarMap/TheShortestRouteToTakesRegionJumps', targetItem=targetItemName, jumps=jumps)
+                    else:
+                        labelText = localization.GetByLabel('UI/Map/StarMap/TheShortestRouteToTakesJumps', targetItem=targetItemName, jumps=jumps)
+                elif routeType == 'safe':
+                    if targetItem.groupID == const.typeRegion:
+                        labelText = localization.GetByLabel('UI/Map/StarMap/TheSafestRouteToTakesRegionJumps', targetItem=targetItemName, jumps=jumps)
+                    else:
+                        labelText = localization.GetByLabel('UI/Map/StarMap/TheSafestRouteToTakesJumps', targetItem=targetItemName, jumps=jumps)
+                elif routeType == 'unsafe':
+                    if targetItem.groupID == const.typeRegion:
+                        labelText = localization.GetByLabel('UI/Map/StarMap/TheUnSafestRouteToTakesJumps', targetItem=targetItemName, jumps=jumps)
+                    else:
+                        labelText = localization.GetByLabel('UI/Map/StarMap/TheUnSafestRouteToTakesRegionJumps', targetItem=targetItemName, jumps=jumps)
                 else:
-                    eve.Message('Command', {'command': mls.UI_SHARED_MAPTHEPATHWILLTAKEYOU % {'path': self.GetRouteType(1),
-                                 'endlocation': targetItem.itemName,
-                                 'hops': hopCount,
-                                 'jumptype': jumptype,
-                                 'jump': uix.Plural(hopCount, 'UI_GENERIC_JUMP')}})
+                    labelText = localization.GetByLabel('UI/Map/StarMap/NoKnownRouteTo')
+                eve.Message('Command', {'command': labelText})
         self.genericRoutePath = routeList
         self.UpdateLines(updateColor=1)
         return routeList
@@ -1317,62 +1343,6 @@ class StarMapSvc(service.Service):
             if route.model in scene2.objects:
                 scene2.objects.fremove(route.model)
             setattr(self, routeName, None)
-
-
-
-    def Dijkstra(self, start, end):
-        D = {}
-        P = {}
-        Q = PriorityDictionary()
-        Q[start] = 0.0
-        securityBias = float(settings.user.ui.Get('autopilot_safety', 0) - 1)
-        if settings.user.ui.Get('autopilot_safety', 0) == 3:
-            omitUnsafe = 1
-            securityBias = 0.0
-        else:
-            omitUnsafe = 0
-        AVOIDPODKILLS = settings.user.ui.Get('autopilot_avoidpodkill', 0) == 1
-        if AVOIDPODKILLS:
-            historyDB = sm.RemoteSvc('map').GetHistory(3, 24)
-            killsites = {}
-            for each in historyDB:
-                if each.value3 > 0:
-                    killsites[each.solarSystemID] = each.value3
-
-            killsiteL = killsites.keys()
-        cache = self.map.GetMapCache()
-        for v in Q:
-            D[v] = Q[v]
-            if v == end:
-                break
-            item = self.map.GetItem(v, 1)
-            ssitem = item[0]
-            if ssitem.groupID == const.typeRegion:
-                dests = cache['neighbors'][v]
-            else:
-                dests = [ locID for jumpgroup in item[2] for locID in jumpgroup ]
-            for w in dests:
-                if securityBias == 0.0:
-                    vwLength = D[v] + 1.0
-                else:
-                    destSec = self.map.GetSecurityStatus(w) - 0.5
-                    if securityBias * destSec > 0.0:
-                        vwLength = D[v] + 1000000.0
-                    else:
-                        destSec = destSec * securityBias
-                        vwLength = D[v] + 0.1 + (0.5 + destSec) * 1.0
-                if AVOIDPODKILLS:
-                    if w in killsiteL:
-                        vwLength = D[v] + 10000000000.0
-                if w in D:
-                    if vwLength < D[w]:
-                        raise ValueError, 'Dijkstra: found better path to already-final vertex'
-                elif w not in Q or vwLength < Q[w]:
-                    Q[w] = vwLength
-                    P[w] = v
-
-
-        return (D, P)
 
 
 
@@ -1475,19 +1445,6 @@ class StarMapSvc(service.Service):
 
 
 
-    def GetFactionColor(self, factionID):
-        if not hasattr(self, 'factionColors'):
-            self.factionColors = {}
-        if factionID not in self.factionColors:
-            col = trinity.TriColor()
-            hue = factionID * 12.345 * 3.0
-            s = factionID % 2 * 0.5 + 0.5
-            col.SetHSV(hue % 360.0, s, 1.0)
-            self.factionColors[factionID] = col
-        return self.factionColors[factionID]
-
-
-
     def GetFactionOrAllianceColor(self, entityID):
         if not hasattr(self, 'factionOrAllianceColors'):
             self.factionOrAllianceColors = {}
@@ -1511,7 +1468,46 @@ class StarMapSvc(service.Service):
 
         lineSet = self.solarSystemJumpLineSet
         for info in self.jumpLines:
-            lineSet.AddLine(info.fromPos, info.fromColor, info.toPos, info.toColor)
+            lineSet.AddStraightLine(info.fromPos, info.fromColor, info.toPos, info.toColor, 2)
+
+        lineSet.SubmitChanges()
+
+
+
+    def DrawAllianceJumpLines(self):
+        self.allianceJumpLines = []
+        if not hasattr(session, 'allianceid') or session.allianceid == None:
+            return 
+        m = sm.RemoteSvc('map')
+        jumpKeys = []
+        bridgesByLocation = m.GetAllianceJumpBridges()
+        lineSet = self.solarSystemJumpLineSet
+        for (toLocID, fromLocID,) in bridgesByLocation:
+            toLoc = self.map.GetItem(toLocID)
+            fromLoc = self.map.GetItem(fromLocID)
+            toPos = (toLoc.x * STARMAP_SCALE, toLoc.y * STARMAP_SCALE, toLoc.z * STARMAP_SCALE)
+            fromPos = (fromLoc.x * STARMAP_SCALE, fromLoc.y * STARMAP_SCALE, fromLoc.z * STARMAP_SCALE)
+            worldUp = geo2.Vector(0.0, 1.0, 0.0)
+            linkVec = geo2.Vec3Subtract(toPos, fromPos)
+            normLinkVec = geo2.Vec3Normalize(linkVec)
+            rightVec = geo2.Vec3Cross(worldUp, normLinkVec)
+            upVec = geo2.Vec3Cross(rightVec, normLinkVec)
+            offsetVec = geo2.Vec3Scale(geo2.Vec3Normalize(upVec), geo2.Vec3Length(linkVec) * mapcommon.JUMPBRIDGE_CURVE_SCALE)
+            midPos = geo2.Vec3Add(geo2.Vec3Scale(geo2.Vec3Add(toPos, fromPos), 0.5), offsetVec)
+            scaledColor = geo2.Vec3Scale(mapcommon.JUMPBRIDGE_COLOR, mapcommon.JUMPBRIDGE_COLOR_SCALE)
+            toColor = [scaledColor[0],
+             scaledColor[1],
+             scaledColor[2],
+             1.0]
+            fromColor = [scaledColor[0],
+             scaledColor[1],
+             scaledColor[2],
+             1.0]
+            lineID = lineSet.AddCurvedLineCrt(toPos, toColor, fromPos, fromColor, midPos, 2)
+            lineSet.ChangeLineAnimation(lineID, mapcommon.JUMPBRIDGE_COLOR, mapcommon.JUMPBRIDGE_ANIMATION_SPEED, 1)
+            info = util.KeyVal(lineID=lineID, toID=toLocID, toPos=toPos, toColor=toColor, fromID=fromLocID, fromPos=fromPos, fromColor=fromColor)
+            self.allianceJumpLines.append(lineID)
+            self.jumpLineInfoByLineID[lineID] = info
 
         lineSet.SubmitChanges()
 
@@ -1542,6 +1538,7 @@ class StarMapSvc(service.Service):
     def UpdateLines(self, hiliteID = None, updateColor = 0, showlines = None, hint = '', path = None):
         if showlines is None:
             showlines = settings.user.ui.Get('showlines', SHOW_ALL)
+        showAllianceLines = settings.user.ui.Get('map_alliance_jump_lines', 1)
         interest = self.GetInterest()
         if showlines == SHOW_NONE:
             self.SetJumpLineAlpha(0.0)
@@ -1602,6 +1599,7 @@ class StarMapSvc(service.Service):
                 self.SetJumpLineAlpha(1.0, lineIDs)
         if updateColor:
             self.UpdateLineColor()
+        self.SetJumpLineAlpha(1.0 if showAllianceLines else 0.0, self.allianceJumpLines)
         if path:
             self.ShowPath(path)
         if self.genericRoutePath:
@@ -1614,29 +1612,45 @@ class StarMapSvc(service.Service):
     def SetJumpLineAlpha(self, alpha, lineIDs = None):
         lineSet = self.solarSystemJumpLineSet
         if lineIDs is None:
-            lineIDs = [ info.lineID for info in self.jumpLines ]
+            lineIDs = self.jumpLineInfoByLineID.iterkeys()
         for id in lineIDs:
-            fromColor = self.jumpLines[id].fromColor
-            toColor = self.jumpLines[id].toColor
+            info = self.jumpLineInfoByLineID[id]
+            fromColor = info.fromColor
+            toColor = info.toColor
             fromColor[3] = alpha
             toColor[3] = alpha
-            lineSet.ChangeLineColor(id, fromColor, toColor)
+            self.ChangeLineColor(lineSet, id, fromColor, toColor)
 
+
+
+
+    def ChangeLineColor(self, lineSet, lineID, _fromColor, _toColor):
+        fromColor = list(_fromColor)
+        toColor = list(_toColor)
+        if lineID in self.allianceJumpLines:
+            overlayColor = _fromColor
+            lineSet.ChangeLineAnimation(lineID, overlayColor, mapcommon.JUMPBRIDGE_ANIMATION_SPEED, 1)
+            for i in xrange(3):
+                fromColor[i] = _fromColor[i] * mapcommon.JUMPBRIDGE_COLOR_SCALE
+                toColor[i] = _toColor[i] * mapcommon.JUMPBRIDGE_COLOR_SCALE
+
+        lineSet.ChangeLineColor(lineID, fromColor, toColor)
 
 
 
     def SetJumpLineColor(self, color, lineIDs = None):
         lineSet = self.solarSystemJumpLineSet
         if lineIDs is None:
-            lineIDs = [ info.lineID for info in self.jumpLines ]
+            lineIDs = self.jumpLineInfoByLineID.iterkeys()
         for id in lineIDs:
-            fromColor = self.jumpLines[id].fromColor
-            toColor = self.jumpLines[id].toColor
+            info = self.jumpLineInfoByLineID[id]
+            fromColor = info.fromColor
+            toColor = info.toColor
             for (i, val,) in enumerate(color):
                 fromColor[i] = val
                 toColor[i] = val
 
-            lineSet.ChangeLineColor(id, fromColor, toColor)
+            self.ChangeLineColor(lineSet, id, fromColor, toColor)
 
 
 
@@ -1644,22 +1658,23 @@ class StarMapSvc(service.Service):
     def SetJumpLineColors(self, lineIDs, fromColor, toColor):
         lineSet = self.solarSystemJumpLineSet
         for id in lineIDs:
-            _fromColor = self.jumpLines[id].fromColor
-            _toColor = self.jumpLines[id].toColor
+            info = self.jumpLineInfoByLineID[id]
+            _fromColor = info.fromColor
+            _toColor = info.toColor
             for (i, val,) in enumerate(fromColor):
                 _fromColor[i] = val
 
             for (i, val,) in enumerate(toColor):
                 _toColor[i] = val
 
-            lineSet.ChangeLineColor(id, _fromColor, _toColor)
+            self.ChangeLineColor(lineSet, id, _fromColor, _toColor)
 
 
 
 
     def SetJumpLineColorAt(self, lineID, atID, color):
         lineSet = self.solarSystemJumpLineSet
-        info = self.jumpLines[lineID]
+        info = self.jumpLineInfoByLineID[id]
         if atID == info.fromID:
             changeColor = info.fromColor
         else:
@@ -1667,18 +1682,18 @@ class StarMapSvc(service.Service):
         for (i, val,) in enumerate(color):
             changeColor[i] = val
 
-        lineSet.ChangeLineColor(lineID, info.fromColor, info.toColor)
+        self.ChangeLineColor(lineSet, lineID, info.fromColor, info.toColor)
 
 
 
     def SetJumpLineAlphaAt(self, lineID, atID, alpha):
         lineSet = self.solarSystemJumpLineSet
-        info = self.jumpLines[lineID]
+        info = self.jumpLineInfoByLineID[id]
         if atID == info.fromID:
             info.fromColor[3] = alpha
         else:
             info.toColor[3] = alpha
-        lineSet.ChangeLineColor(lineID, info.fromColor, info.toColor)
+        self.ChangeLineColor(lineSet, lineID, info.fromColor, info.toColor)
 
 
 
@@ -1725,10 +1740,11 @@ class StarMapSvc(service.Service):
                 lineIDs = self.solarSystemJumpIDdict['jumpType'][jumpType]
                 self.SetJumpLineColor(JUMP_COLORS[jumpType][:3], lineIDs)
 
+            self.SetJumpLineColor(mapcommon.JUMPBRIDGE_COLOR, self.allianceJumpLines)
         elif colorMode == mapcommon.COLORMODE_REGION:
             if not hasattr(self, 'regionJumpColorList'):
                 self.regionJumpColorList = []
-                for info in self.jumpLines:
+                for info in self.jumpLineInfoByLineID.itervalues():
                     fromColor = self.GetRegionColor(self.map.GetRegionForSolarSystem(info.fromID))
                     toColor = self.GetRegionColor(self.map.GetRegionForSolarSystem(info.toID))
                     self.regionJumpColorList.append(([info.lineID], (fromColor.r, fromColor.g, fromColor.b), (toColor.r, toColor.g, toColor.b)))
@@ -1742,7 +1758,7 @@ class StarMapSvc(service.Service):
                 colorByFaction[factionID] = self.GetColorByStandings(factionID)
 
             allianceSolarSystems = self.GetAllianceSolarSystems()
-            for info in self.jumpLines:
+            for info in self.jumpLineInfoByLineID.itervalues():
                 fromColor = colorByFaction.get(self._GetFactionIDFromSolarSystem(allianceSolarSystems, info.fromID), mapcommon.COLOR_STANDINGS_NEUTRAL)
                 toColor = colorByFaction.get(self._GetFactionIDFromSolarSystem(allianceSolarSystems, info.toID), mapcommon.COLOR_STANDINGS_NEUTRAL)
                 self.SetJumpLineColors([info.lineID], fromColor, toColor)
@@ -1796,6 +1812,8 @@ class StarMapSvc(service.Service):
             for a in range(len(destPath) - 1):
                 fromID = destPath[a]
                 toID = destPath[1:][a]
+                if not util.IsSolarSystem(fromID) or not util.IsSolarSystem(toID) or fromID == toID:
+                    continue
                 (lineID, id1,) = self.solarSystemJumpIDdict[(fromID, toID)]
                 if fromID == id1:
                     id2 = toID
@@ -1845,89 +1863,89 @@ class StarMapSvc(service.Service):
 
 
     def RegisterStarColorModes(self):
-        self.starColorHandlers = {mapcommon.STARMODE_ASSETS: (mls.UI_SHARED_MAPSHOWASSETS, starmap.ColorStarsByAssets),
-         mapcommon.STARMODE_VISITED: (mls.UI_SHARED_MAPSHOWVISITEDSYSTEMS, starmap.ColorStarsByVisited),
-         mapcommon.STARMODE_SECURITY: (mls.UI_SHARED_MAPSECSTATUS, starmap.ColorStarsBySecurity),
-         mapcommon.STARMODE_INDEX_STRATEGIC: (mls.SOVEREIGNTY_STRATEGIC,
+        self.starColorHandlers = {mapcommon.STARMODE_ASSETS: (localization.GetByLabel('UI/Map/StarMap/ShowAssets'), starmap.ColorStarsByAssets),
+         mapcommon.STARMODE_VISITED: (localization.GetByLabel('UI/Map/StarMap/ShowSystemsVisited'), starmap.ColorStarsByVisited),
+         mapcommon.STARMODE_SECURITY: (localization.GetByLabel('UI/Map/StarMap/SecurityStatus'), starmap.ColorStarsBySecurity),
+         mapcommon.STARMODE_INDEX_STRATEGIC: (localization.GetByLabel('UI/Map/StarMap/Strategic'),
                                               starmap.ColorStarsByDevIndex,
                                               const.attributeDevIndexSovereignty,
-                                              mls.SOVEREIGNTY_STRATEGIC),
-         mapcommon.STARMODE_INDEX_MILITARY: (mls.UI_TUTORIAL_MILITARY,
+                                              localization.GetByLabel('UI/Map/StarMap/Strategic')),
+         mapcommon.STARMODE_INDEX_MILITARY: (localization.GetByLabel('UI/Map/StarMap/Military'),
                                              starmap.ColorStarsByDevIndex,
                                              const.attributeDevIndexMilitary,
-                                             mls.UI_TUTORIAL_MILITARY),
-         mapcommon.STARMODE_INDEX_INDUSTRY: (mls.UI_TUTORIAL_INDUSTRY,
+                                             localization.GetByLabel('UI/Map/StarMap/Military')),
+         mapcommon.STARMODE_INDEX_INDUSTRY: (localization.GetByLabel('UI/Map/StarMap/Industry'),
                                              starmap.ColorStarsByDevIndex,
                                              const.attributeDevIndexIndustrial,
-                                             mls.UI_TUTORIAL_INDUSTRY),
-         mapcommon.STARMODE_SOV_CHANGE: (mls.SOVEREIGNTY_RECENTCHANGES, starmap.ColorStarsBySovChanges, mapcommon.SOV_CHANGES_ALL),
-         mapcommon.STARMODE_SOV_GAIN: (mls.SOVEREIGNTY_SOVGAIN, starmap.ColorStarsBySovChanges, mapcommon.SOV_CHANGES_SOV_GAIN),
-         mapcommon.STARMODE_SOV_LOSS: (mls.SOVEREIGNTY_SOVLOSS, starmap.ColorStarsBySovChanges, mapcommon.SOV_CHANGES_SOV_LOST),
-         mapcommon.STARMODE_OUTPOST_GAIN: (mls.SOVEREIGNTY_STATIONGAIN, starmap.ColorStarsBySovChanges, mapcommon.SOV_CHANGES_OUTPOST_GAIN),
-         mapcommon.STARMODE_OUTPOST_LOSS: (mls.SOVEREIGNTY_STATIONLOSS, starmap.ColorStarsBySovChanges, mapcommon.SOV_CHANGES_OUTPOST_LOST),
-         mapcommon.STARMODE_SOV_STANDINGS: (mls.UI_GENERIC_STANDINGS, starmap.ColorStarsByFactionStandings),
-         mapcommon.STARMODE_FACTION: (mls.UI_SHARED_MAPSOVEREIGNTYMAP, starmap.ColorStarsByFaction),
-         mapcommon.STARMODE_FACTIONEMPIRE: (mls.UI_SHARED_MAPSOVEREIGNTYMAP, starmap.ColorStarsByFaction),
-         mapcommon.STARMODE_MILITIA: (mls.UI_SHARED_OCCUPANCY, starmap.ColorStarsByMilitia),
-         mapcommon.STARMODE_MILITIAOFFENSIVE: (mls.UI_SHARED_MAPSHOWSOCCUPANCY, starmap.ColorStarsByMilitiaActions),
-         mapcommon.STARMODE_MILITIADEFENSIVE: (mls.UI_SHARED_MAPSHOWSOCCUPANCY, starmap.ColorStarsByMilitiaActions),
-         mapcommon.STARMODE_REGION: (mls.UI_SHARED_MAPCOLORSTARSMYREG, starmap.ColorStarsByRegion),
-         mapcommon.STARMODE_CARGOILLEGALITY: (mls.UI_SHARED_MAPOPS26, starmap.ColorStarsByCargoIllegality),
-         mapcommon.STARMODE_PLAYERCOUNT: ('%s %s' % (mls.UI_GENERIC_SHOW, mls.UI_SHARED_MAPPILOTSINSPACE), starmap.ColorStarsByNumPilots),
-         mapcommon.STARMODE_PLAYERDOCKED: ('%s %s' % (mls.UI_GENERIC_SHOW, mls.UI_SHARED_MAPPILOTSDOCKED), starmap.ColorStarsByNumPilots),
-         mapcommon.STARMODE_STATIONCOUNT: (mls.UI_SHARED_MAPSHOWSTATIONCOUNT, starmap.ColorStarsByStationCount),
-         mapcommon.STARMODE_DUNGEONS: (mls.UI_SHARED_MAPSHOWDEADSPACECOMPL, starmap.ColorStarsByDungeons),
-         mapcommon.STARMODE_DUNGEONSAGENTS: (mls.UI_SHARED_MAPSHOWAGENTSITES, starmap.ColorStarsByDungeons),
-         mapcommon.STARMODE_JUMPS1HR: (mls.UI_SHARED_MAPSHOWRECENTJUMPS, starmap.ColorStarsByJumps1Hour),
-         mapcommon.STARMODE_SHIPKILLS1HR: (mls.UI_SHARED_MAPSHOWSHIPSDESTROYED,
+                                             localization.GetByLabel('UI/Map/StarMap/Industry')),
+         mapcommon.STARMODE_SOV_CHANGE: (localization.GetByLabel('UI/Map/StarMap/RecentSovereigntyChanges'), starmap.ColorStarsBySovChanges, mapcommon.SOV_CHANGES_ALL),
+         mapcommon.STARMODE_SOV_GAIN: (localization.GetByLabel('UI/Map/StarMap/SovereigntyGain'), starmap.ColorStarsBySovChanges, mapcommon.SOV_CHANGES_SOV_GAIN),
+         mapcommon.STARMODE_SOV_LOSS: (localization.GetByLabel('UI/Map/StarMap/SovereigntyLoss'), starmap.ColorStarsBySovChanges, mapcommon.SOV_CHANGES_SOV_LOST),
+         mapcommon.STARMODE_OUTPOST_GAIN: (localization.GetByLabel('UI/Map/StarMap/StationGain'), starmap.ColorStarsBySovChanges, mapcommon.SOV_CHANGES_OUTPOST_GAIN),
+         mapcommon.STARMODE_OUTPOST_LOSS: (localization.GetByLabel('UI/Map/StarMap/StationLoss'), starmap.ColorStarsBySovChanges, mapcommon.SOV_CHANGES_OUTPOST_LOST),
+         mapcommon.STARMODE_SOV_STANDINGS: (localization.GetByLabel('UI/Map/StarMap/Standings'), starmap.ColorStarsByFactionStandings),
+         mapcommon.STARMODE_FACTION: (localization.GetByLabel('UI/Map/StarMap/SovereigntyMap'), starmap.ColorStarsByFaction),
+         mapcommon.STARMODE_FACTIONEMPIRE: (localization.GetByLabel('UI/Map/StarMap/SovereigntyMap'), starmap.ColorStarsByFaction),
+         mapcommon.STARMODE_MILITIA: (localization.GetByLabel('UI/Map/StarMap/Occupancy'), starmap.ColorStarsByMilitia),
+         mapcommon.STARMODE_MILITIAOFFENSIVE: (localization.GetByLabel('UI/Map/StarMap/ShowOccupancyData'), starmap.ColorStarsByMilitiaActions),
+         mapcommon.STARMODE_MILITIADEFENSIVE: (localization.GetByLabel('UI/Map/StarMap/ShowOccupancyData'), starmap.ColorStarsByMilitiaActions),
+         mapcommon.STARMODE_REGION: (localization.GetByLabel('UI/Map/StarMap/ColorStarsByRegion'), starmap.ColorStarsByRegion),
+         mapcommon.STARMODE_CARGOILLEGALITY: (localization.GetByLabel('UI/Map/StarMap/MyCargoIllegality'), starmap.ColorStarsByCargoIllegality),
+         mapcommon.STARMODE_PLAYERCOUNT: (localization.GetByLabel('UI/Map/StarMap/ShowPilotsInSpace'), starmap.ColorStarsByNumPilots),
+         mapcommon.STARMODE_PLAYERDOCKED: (localization.GetByLabel('UI/Map/StarMap/ShowPilotsDocked'), starmap.ColorStarsByNumPilots),
+         mapcommon.STARMODE_STATIONCOUNT: (localization.GetByLabel('UI/Map/StarMap/ShowStationCount'), starmap.ColorStarsByStationCount),
+         mapcommon.STARMODE_DUNGEONS: (localization.GetByLabel('UI/Map/StarMap/ShowDeadspaceComplexes'), starmap.ColorStarsByDungeons),
+         mapcommon.STARMODE_DUNGEONSAGENTS: (localization.GetByLabel('UI/Map/StarMap/ShowAgentSites'), starmap.ColorStarsByDungeons),
+         mapcommon.STARMODE_JUMPS1HR: (localization.GetByLabel('UI/Map/StarMap/ShowRecentJumps'), starmap.ColorStarsByJumps1Hour),
+         mapcommon.STARMODE_SHIPKILLS1HR: (localization.GetByLabel('UI/Map/StarMap/ShowShipsDestroyed'),
                                            starmap.ColorStarsByKills,
                                            3,
                                            1),
-         mapcommon.STARMODE_SHIPKILLS24HR: (mls.UI_SHARED_MAPSHOWSHIPSDESTROYED,
+         mapcommon.STARMODE_SHIPKILLS24HR: (localization.GetByLabel('UI/Map/StarMap/ShowShipsDestroyed'),
                                             starmap.ColorStarsByKills,
                                             3,
                                             24),
-         mapcommon.STARMODE_MILITIAKILLS1HR: (mls.UI_SHARED_MAPSHOWMILITIASHIPSDESTROYED,
+         mapcommon.STARMODE_MILITIAKILLS1HR: (localization.GetByLabel('UI/Map/StarMap/ShowMilitiaShipsDestroyed'),
                                               starmap.ColorStarsByKills,
                                               5,
                                               1),
-         mapcommon.STARMODE_MILITIAKILLS24HR: (mls.UI_SHARED_MAPSHOWMILITIASHIPSDESTROYED,
+         mapcommon.STARMODE_MILITIAKILLS24HR: (localization.GetByLabel('UI/Map/StarMap/ShowMilitiaShipsDestroyed'),
                                                starmap.ColorStarsByKills,
                                                5,
                                                24),
-         mapcommon.STARMODE_PODKILLS1HR: (mls.UI_SHARED_MAPSHOWMILITIASHIPSDESTROYED, starmap.ColorStarsByPodKills),
-         mapcommon.STARMODE_PODKILLS24HR: (mls.UI_SHARED_MAPSHOWMILITIASHIPSDESTROYED, starmap.ColorStarsByPodKills),
-         mapcommon.STARMODE_FACTIONKILLS1HR: (mls.UI_SHARED_MAPSHOWFACTIONSHIPS, starmap.ColorStarsByFactionKills),
-         mapcommon.STARMODE_BOOKMARKED: (mls.UI_SHARED_MAPSHOWBOOKMARKS, starmap.ColorStarsByBookmarks),
-         mapcommon.STARMODE_CYNOSURALFIELDS: (mls.UI_SHARED_MAPACTIVECYNO, starmap.ColorStarsByCynosuralFields),
-         mapcommon.STARMODE_CORPOFFICES: (mls.UI_SHARED_MAPSHOWASSETS,
+         mapcommon.STARMODE_PODKILLS1HR: (localization.GetByLabel('UI/Map/StarMap/ShowMilitiaShipsDestroyed'), starmap.ColorStarsByPodKills),
+         mapcommon.STARMODE_PODKILLS24HR: (localization.GetByLabel('UI/Map/StarMap/ShowMilitiaShipsDestroyed'), starmap.ColorStarsByPodKills),
+         mapcommon.STARMODE_FACTIONKILLS1HR: (localization.GetByLabel('UI/Map/StarMap/ShowFactionShipsDestroyed'), starmap.ColorStarsByFactionKills),
+         mapcommon.STARMODE_BOOKMARKED: (localization.GetByLabel('UI/Map/StarMap/ShowBookmarks'), starmap.ColorStarsByBookmarks),
+         mapcommon.STARMODE_CYNOSURALFIELDS: (localization.GetByLabel('UI/Map/StarMap/ActiveCynosuralFields'), starmap.ColorStarsByCynosuralFields),
+         mapcommon.STARMODE_CORPOFFICES: (localization.GetByLabel('UI/Map/StarMap/ShowAssets'),
                                           starmap.ColorStarsByCorpAssets,
                                           'offices',
-                                          mls.UI_CORP_OFFICES),
-         mapcommon.STARMODE_CORPIMPOUNDED: (mls.UI_SHARED_MAPSHOWASSETS,
+                                          localization.GetByLabel('UI/Map/StarMap/Offices')),
+         mapcommon.STARMODE_CORPIMPOUNDED: (localization.GetByLabel('UI/Map/StarMap/ShowAssets'),
                                             starmap.ColorStarsByCorpAssets,
                                             'junk',
-                                            mls.UI_CORP_IMPOUNDED),
-         mapcommon.STARMODE_CORPPROPERTY: (mls.UI_SHARED_MAPSHOWASSETS,
+                                            localization.GetByLabel('UI/Map/StarMap/Impounded')),
+         mapcommon.STARMODE_CORPPROPERTY: (localization.GetByLabel('UI/Map/StarMap/ShowAssets'),
                                            starmap.ColorStarsByCorpAssets,
                                            'property',
-                                           mls.UI_CORP_PROPERTY),
-         mapcommon.STARMODE_CORPDELIVERIES: (mls.UI_SHARED_MAPSHOWASSETS,
+                                           localization.GetByLabel('UI/Map/StarMap/Property')),
+         mapcommon.STARMODE_CORPDELIVERIES: (localization.GetByLabel('UI/Map/StarMap/ShowAssets'),
                                              starmap.ColorStarsByCorpAssets,
                                              'deliveries',
-                                             mls.UI_CORP_DELIVERIES),
-         mapcommon.STARMODE_FRIENDS_FLEET: (mls.UI_SHARED_MAPFINDASSOCIATES, starmap.ColorStarsByFleetMembers),
-         mapcommon.STARMODE_FRIENDS_CORP: (mls.UI_SHARED_MAPFINDASSOCIATES, starmap.ColorStarsByCorpMembers),
-         mapcommon.STARMODE_FRIENDS_AGENT: (mls.UI_SHARED_MAPFINDASSOCIATES, starmap.ColorStarsByMyAgents),
-         mapcommon.STARMODE_AVOIDANCE: (mls.UI_SHARED_MAPOPS73, starmap.ColorStarsByAvoidedSystems),
-         mapcommon.STARMODE_REAL: (mls.UI_SHARED_MAPOPS11, starmap.ColorStarsByRealSunColor),
-         mapcommon.STARMODE_SERVICE: (mls.UI_SHARED_MAPFINDSTATIONSVC, starmap.ColorStarsByServices),
-         mapcommon.STARMODE_PISCANRANGE: (mls.UI_PI_SCAN_RANGE, starmap.ColorStarsByPIScanRange),
-         mapcommon.STARMODE_MYCOLONIES: (mls.UI_PI_MY_COLONIES, starmap.ColorStarsByMyColonies),
-         mapcommon.STARMODE_PLANETTYPE: (mls.UI_SHARED_MAP_PLANET_TYPES, starmap.ColorStarsByPlanetType),
-         mapcommon.STARMODE_INCURSION: (mls.UI_SHARED_MAP_INCURSIONS, starmap.ColorStarsByIncursions)}
+                                             localization.GetByLabel('UI/Map/StarMap/Deliveries')),
+         mapcommon.STARMODE_FRIENDS_FLEET: (localization.GetByLabel('UI/Map/StarMap/FindAssociates'), starmap.ColorStarsByFleetMembers),
+         mapcommon.STARMODE_FRIENDS_CORP: (localization.GetByLabel('UI/Map/StarMap/FindAssociates'), starmap.ColorStarsByCorpMembers),
+         mapcommon.STARMODE_FRIENDS_AGENT: (localization.GetByLabel('UI/Map/StarMap/FindAssociates'), starmap.ColorStarsByMyAgents),
+         mapcommon.STARMODE_AVOIDANCE: (localization.GetByLabel('UI/Map/StarMap/AvoidanceSystems'), starmap.ColorStarsByAvoidedSystems),
+         mapcommon.STARMODE_REAL: (localization.GetByLabel('UI/Map/StarMap/ActualColor'), starmap.ColorStarsByRealSunColor),
+         mapcommon.STARMODE_SERVICE: (localization.GetByLabel('UI/Map/StarMap/FindStationServices'), starmap.ColorStarsByServices),
+         mapcommon.STARMODE_PISCANRANGE: (localization.GetByLabel('UI/Map/StarMap/PlanetScanRange'), starmap.ColorStarsByPIScanRange),
+         mapcommon.STARMODE_MYCOLONIES: (localization.GetByLabel('UI/Map/StarMap/MyColonies'), starmap.ColorStarsByMyColonies),
+         mapcommon.STARMODE_PLANETTYPE: (localization.GetByLabel('UI/Map/StarMap/ShowSystemsByPlanetTypes'), starmap.ColorStarsByPlanetType),
+         mapcommon.STARMODE_INCURSION: (localization.GetByLabel('UI/Map/StarMap/Incursions'), starmap.ColorStarsByIncursions)}
         if eve.session.role & ROLE_GML:
-            self.starColorHandlers[mapcommon.STARMODE_INCURSIONGM] = (mls.UI_SHARED_MAP_INCURSIONSGM, starmap.ColorStarsByIncursionsGM)
+            self.starColorHandlers[mapcommon.STARMODE_INCURSIONGM] = (localization.GetByLabel('UI/Map/StarMap/IncursionsGm'), starmap.ColorStarsByIncursionsGM)
 
 
 
@@ -1939,15 +1957,15 @@ class StarMapSvc(service.Service):
         solarSystemDict = {}
         self.starLegend = []
         mode = starColorMode[0] if type(starColorMode) == types.TupleType else starColorMode
-        definition = self.starColorHandlers.get(mode, (mls.UI_SHARED_MAPOPS11, starmap.ColorStarsByRealSunColor))
+        definition = self.starColorHandlers.get(mode, (localization.GetByLabel('UI/Map/StarMap/ActualColor'), starmap.ColorStarsByRealSunColor))
         (desc, colorFunc, args,) = (definition[0], definition[1], definition[2:])
-        self.StartLoadingBar('set_star_color', mls.UI_SHARED_MAPGETTINGDATA, desc, 2)
-        blue.pyos.synchro.Sleep(1)
+        self.StartLoadingBar('set_star_color', localization.GetByLabel('UI/Map/StarMap/GettingData'), desc, 2)
+        blue.pyos.synchro.SleepWallclock(1)
         colorInfo = util.KeyVal(solarSystemDict={}, colorList=None, overglowFactor=0.0, legend=set())
         colorFunc(colorInfo, starColorMode, *args)
         self.starLegend = list(colorInfo.legend)
-        self.UpdateLoadingBar('set_star_color', desc, mls.UI_SHARED_MAPGETTINGDATA, 1, 2)
-        blue.pyos.synchro.Sleep(1)
+        self.UpdateLoadingBar('set_star_color', desc, localization.GetByLabel('UI/Map/StarMap/GettingData'), 1, 2)
+        blue.pyos.synchro.SleepWallclock(1)
         self.HighlightSolarSystems(colorInfo.solarSystemDict, colorInfo.colorList, colorInfo.overglowFactor)
         self.StopLoadingBar('set_star_color')
         self.DecorateNeocom()
@@ -2079,35 +2097,35 @@ class StarMapSvc(service.Service):
     def GetRouteType(self, label = False):
         pfRouteType = settings.user.ui.Get('pfRouteType', 'safe')
         if label:
-            return {'shortest': mls.UI_GENERIC_SHORTEST,
-             'safe': mls.UI_GENERIC_SAFEST,
-             'unsafe': mls.UI_GENERIC_LESSSECURE}.get(pfRouteType, mls.UI_GENERIC_UNKNOWN).lower()
+            return {'shortest': localization.GetByLabel('UI/Map/StarMap/Shortest'),
+             'safe': localization.GetByLabel('UI/Map/StarMap/Safest'),
+             'unsafe': localization.GetByLabel('UI/Map/StarMap/LessSecure')}.get(pfRouteType, localization.GetByLabel('UI/Common/Unknown')).lower()
         return pfRouteType
 
 
 
-    def SetWaypoint(self, solarSystemID, clearOtherWaypoints = 0, first = 0):
+    def SetWaypoint(self, destinationID, clearOtherWaypoints = False, first = False):
         waypoints = self.GetWaypoints()
-        if solarSystemID in waypoints:
+        if destinationID in waypoints:
             eve.Message('WaypointAlreadySet')
             return 
-        if solarSystemID == eve.session.constellationid:
+        if destinationID == session.constellationid:
             eve.Message('WaypointAlreadyInConstellation')
             return 
-        if solarSystemID == eve.session.regionid:
+        if destinationID == session.regionid:
             eve.Message('WaypointAlreadyInRegion')
             return 
         if clearOtherWaypoints:
             if len(waypoints):
                 pass
             waypoints = []
-        if not self.map.GetItem(solarSystemID):
-            eve.Message('Command', {'command': mls.UI_SHARED_MAPHINT4})
+        if not self.map.GetItem(destinationID) and util.IsSolarSystem(destinationID):
+            eve.Message('Command', {'command': localization.GetByLabel('UI/Map/StarMap/CantSetWaypoint')})
             return 
         if first:
-            waypoints.insert(0, solarSystemID)
+            waypoints.insert(0, destinationID)
         else:
-            waypoints.append(solarSystemID)
+            waypoints.append(destinationID)
         settings.char.ui.Set('autopilot_waypoints', waypoints)
         self.UpdateRoute()
         self.ShowWhereIAm()
@@ -2126,17 +2144,17 @@ class StarMapSvc(service.Service):
 
 
 
-    def ClearWaypoints(self, solarSystemID = None):
+    def ClearWaypoints(self, locationID = None):
         self.LogInfo('Map: ClearWaypoints')
-        waypoints = self.GetWaypoints()
-        if solarSystemID is not None:
-            if solarSystemID in waypoints:
-                waypoints.remove(solarSystemID)
+        if locationID is not None:
+            waypoints = self.GetWaypoints()
+            if locationID in waypoints:
+                waypoints.remove(locationID)
                 settings.char.ui.Set('autopilot_waypoints', waypoints)
                 self.UpdateRoute()
                 self.ShowWhereIAm()
                 return 
-            self.LogError('Utried to remove waypoint %s  that was not in waypoint list &s ' % (solarSystemID, waypoints))
+            self.LogError('Utried to remove waypoint %s  that was not in waypoint list %s ' % (locationID, waypoints))
         else:
             waypoints = []
             self.destinationPath = [None]
@@ -2153,7 +2171,7 @@ class StarMapSvc(service.Service):
 
     def GetRouteFromWaypoints(self, waypoints, startSystem = None):
         if startSystem == None:
-            startSystem = eve.session.solarsystemid2
+            startSystem = session.solarsystemid2
         fullWaypointList = [startSystem] + waypoints
         destinationPath = sm.GetService('pathfinder').GetWaypointPath(fullWaypointList)
         if destinationPath is None:
@@ -2162,7 +2180,7 @@ class StarMapSvc(service.Service):
 
 
 
-    def UpdateRoute(self, updateLabels = 1, fakeUpdate = 0):
+    def UpdateRoute(self, updateLabels = 1, fakeUpdate = 0, autopilotSaysRouteDone = False):
         if not updateLabels:
             if getattr(self, 'doingRouteUpdate', 0) == 1:
                 return 
@@ -2170,7 +2188,10 @@ class StarMapSvc(service.Service):
         waypoints = self.GetWaypoints()
         self.LogInfo('UpdateRoute - waypoints ', waypoints)
         if len(waypoints):
-            for each in [eve.session.solarsystemid2, eve.session.constellationid, eve.session.regionid]:
+            for each in [session.stationid2,
+             session.solarsystemid2,
+             session.constellationid,
+             session.regionid]:
                 if waypoints[0] == each:
                     waypoints = waypoints[1:]
                     settings.char.ui.Set('autopilot_waypoints', waypoints)
@@ -2182,7 +2203,7 @@ class StarMapSvc(service.Service):
         self.ClearRoute('autoPilotRoute')
         if not len(waypoints):
             self.destinationPath = [None]
-            if self.map.ViewingStarMap():
+            if sm.GetService('viewState').IsViewActive('starmap'):
                 self.UpdateLines(hint='UpdateRoute')
             self.DecorateNeocom()
             self.ShowDestination()
@@ -2195,25 +2216,28 @@ class StarMapSvc(service.Service):
         else:
             destinationPath = self.destinationPath[1:]
         if not len(destinationPath):
-            self.destinationPath = [None]
-            if self.map.ViewingStarMap():
-                self.UpdateLines(hint='UpdateRoute2')
-            self.DecorateNeocom()
-            self.ShowDestination()
-            sm.ScatterEvent('OnDestinationSet', None)
-            self.LogInfo('UpdateRoute done no route to wp')
-            self.doingRouteUpdate = 0
-            return 
+            if len(self.destinationPath) and (util.IsSolarSystem(self.destinationPath[0]) or self.destinationPath[0] is None or autopilotSaysRouteDone):
+                self.destinationPath = [None]
+                if sm.GetService('viewState').IsViewActive('starmap'):
+                    self.UpdateLines(hint='UpdateRoute2')
+                self.DecorateNeocom()
+                self.ShowDestination()
+                sm.ScatterEvent('OnDestinationSet', None)
+                self.LogInfo('UpdateRoute done no route to wp')
+                self.doingRouteUpdate = 0
+                return 
+            destinationPath = self.destinationPath
         self.destinationPath = destinationPath
-        if self.destinationPath[0] == eve.session.solarsystemid2:
+        if self.destinationPath[0] == session.solarsystemid2:
             self.LogWarn('self destination path 0 is own solarsystem, picking next node instead. Path: ', self.destinationPath)
             self.destinationPath = self.destinationPath[1:]
             if not len(self.destinationPath):
                 self.destinationPath = [None]
-        if self.map.ViewingStarMap():
+        if sm.GetService('viewState').IsViewActive('starmap'):
             if updateLabels:
                 route = xtriui.MapRoute()
-                route.DrawRoute([eve.session.solarsystemid2] + self.destinationPath, flattened=self.flattened, rotationQuaternion=self.GetCurrentStarmapRotation())
+                pathOnlySolarSystems = [ locationID for locationID in destinationPath if util.IsSolarSystem(locationID) ]
+                route.DrawRoute([session.solarsystemid2] + pathOnlySolarSystems, flattened=self.flattened, rotationQuaternion=self.GetCurrentStarmapRotation())
                 self.autoPilotRoute = route
                 scene2 = sm.GetService('sceneManager').GetRegisteredScene2('starmap')
                 scene2.objects.append(route.model)
@@ -2320,14 +2344,15 @@ class StarMapSvc(service.Service):
             typeID = iteminfo.typeID
         else:
             lm = self.map.GetMapCache()['landmarks'][(itemID * -1)]
+            landmarkName = maputils.GetNameFromMapCache(lm.landmarkNameID, 'landmark')
             iteminfo = self.map.GetItem(itemID)
-            tracker = self.AddTracker(lm.landmarkName, itemID, lm.x, lm.y, lm.z)
-            itemName = lm.landmarkName
+            tracker = self.AddTracker(landmarkName, itemID, lm.x, lm.y, lm.z)
+            itemName = landmarkName
             itemID = itemID
             typeID = const.typeMapLandmark
         if not itemName:
             return 
-        label = xtriui.MapLabel(parent=uicore.layer.map, name=itemName, align=uiconst.NOALIGN, state=uiconst.UI_PICKCHILDREN, dock=False, width=300, height=32)
+        label = xtriui.MapLabel(parent=uicore.layer.starmap, name=itemName, align=uiconst.NOALIGN, state=uiconst.UI_PICKCHILDREN, dock=False, width=300, height=32)
         label.Startup(itemName, itemID, typeID, tracker, None)
         self.labels[itemID] = label
 
@@ -2368,94 +2393,11 @@ class StarMapSvc(service.Service):
 
     def DecorateNeocom(self):
         self.LogInfo('DecorateNeocom ')
-        neoComText = ''
         destPathData = None
-        destID = self.destinationPath[-1]
-        (destSecurityTxt, destColor,) = util.FmtSystemSecStatus(self.map.GetSecurityStatus(destID), True)
-        destColorStr = self.GetSystemColorString(destID)
-        destItem = self.map.GetItem(destID)
-        nextID = self.destinationPath[0]
-        (nextSecurityTxt, nextColor,) = util.FmtSystemSecStatus(self.map.GetSecurityStatus(nextID), True)
-        nextColorStr = self.GetSystemColorString(nextID)
-        nextItem = self.map.GetItem(nextID)
-        numJumpsTxt = uix.Plural(len(self.destinationPath), 'UI_SHARED_NUM_JUMP') % {'num': len(self.destinationPath)}
-        showRoute = self.map.ViewingStarMap() or settings.user.ui.Get('neocomRouteVisible', 1)
-        if self.destinationPath != [None] and showRoute:
-            if nextItem is not None:
-                neoComText = ''
-                if sm.GetService('planetUI').IsOpen():
-                    if self.destinationPath[0] is not None:
-                        neoComText += '%s:<t>&gt;<t><color=%s>%s</color> %s (%s)<br>' % (mls.UI_SHARED_MAPCURRENTDESTINATION,
-                         destColorStr,
-                         destSecurityTxt,
-                         destItem.itemName,
-                         numJumpsTxt)
-                        neoComText += '%s:<t>&gt;<t><color=%s>%s</color> %s' % (mls.UI_SHARED_MAP_NEXTSYSINROUTE,
-                         nextColorStr,
-                         nextSecurityTxt,
-                         sm.GetService('map').GetItem(nextID).itemName)
-                else:
-                    constItem = self.map.GetItem(destItem.locationID)
-                    regionItem = self.map.GetItem(constItem.locationID)
-                    neoComText += '<b>%s:</b><br>%s<t>&gt;<t>%s' % (mls.UI_SHARED_MAPCURRENTDESTINATION, mls.UI_GENERIC_SOLARSYSTEM, destItem.itemName)
-                    if nextItem.locationID != session.constellationid:
-                        neoComText += '<br>%s<t>&gt;<t>%s' % (mls.UI_GENERIC_CONSTELLATION, constItem.itemName)
-                    if constItem.locationID != session.regionid:
-                        neoComText += '<br>%s<t>&gt;<t>%s' % (mls.UI_GENERIC_REGION, regionItem.itemName)
-                    neoComText += '<br>%s<t>&gt;<t><color=%s>%s</color>' % (mls.UI_INFOWND_SECURITYLEVEL, destColorStr, destSecurityTxt)
-                    if self.map.ViewingStarMap():
-                        if self.destinationPath[0] is not None:
-                            neoComText = neoComText + '<br><br><b>%s</b>: (%s)' % (mls.UI_GENERIC_ROUTE, numJumpsTxt)
-                            waypoints = self.GetWaypoints()
-                            if len(waypoints) > 1:
-                                neoComText = neoComText + '<br>' + str(len(waypoints)) + ' %s<br>' % mls.UI_SHARED_MAPWAYPOINTS
-                            wasRegion = self.map.GetItem(session.regionid)
-                            wasConstellation = self.map.GetItem(session.constellationid)
-                            for solarSystemID in self.destinationPath[:20]:
-                                solarSystemItem = self.map.GetItem(solarSystemID)
-                                newConstellation = self.map.GetItem(solarSystemItem.locationID)
-                                newRegion = self.map.GetItem(newConstellation.locationID)
-                                (sec, col,) = util.FmtSystemSecStatus(self.map.GetSecurityStatus(solarSystemID), True)
-                                colStr = self.GetSystemColorString(solarSystemID)
-                                if sec >= 0.0:
-                                    sec = ' ' + str(sec)
-                                neoComText += '<br><color=%s>%s</color> %s' % (colStr, sec, solarSystemItem.itemName)
-                                if newRegion.itemID != wasRegion.itemID:
-                                    neoComText += '<t>&gt;<t>%s ' % mls.UI_GENERIC_REGION + newRegion.itemName
-                                elif newConstellation.itemID != wasConstellation.itemID:
-                                    neoComText += '<t>&gt;<t>%s ' % mls.UI_GENERIC_CONSTELLATION + newConstellation.itemName
-                                wasRegion = newRegion
-                                wasConstellation = newConstellation
-
-                            if len(self.destinationPath) > 20:
-                                neoComText += '<br>&gt; ' + str(len(self.destinationPath) - 20) + ' %s...' % mls.UI_GENERIC_MORE
-                    else:
-                        constItem = self.map.GetItem(nextItem.locationID)
-                        regionItem = self.map.GetItem(constItem.locationID)
-                        neoComText += '<br><br><b>%s:</b>' % mls.UI_SHARED_MAP_NEXTSYSINROUTE
-                        neoComText += '<br>%s<t>&gt;<t>%s' % (mls.UI_GENERIC_SOLARSYSTEMSYSTEM, nextItem.itemName)
-                        if nextItem.locationID != session.constellationid:
-                            neoComText += '<br>%s<t>&gt;<t>' % mls.UI_GENERIC_CONSTELLATION + constItem.itemName
-                        if constItem.locationID != session.regionid:
-                            neoComText += '<br>%s<t>&gt;<t>' % mls.UI_GENERIC_REGION + regionItem.itemName
-                neoComText += '<br>%s<t>&gt;<t><color=%s>%.1f</color>' % (mls.UI_INFOWND_SECURITYLEVEL, nextColorStr, nextSecurityTxt)
-                neoComText += '<br><br><b>%s:</b> (%s)' % (mls.UI_GENERIC_ROUTE, numJumpsTxt)
-                destPathData = self.destinationPath[:]
-        self.neocom.SetXtraText(neoComText, destPathData)
-        self.neocom.UpdateNeocom(0)
-        self.LogInfo('DecorateNeocom Done')
-
-
-
-    def GetSystemColorString(self, solarSystemID):
-        col = self.GetSystemColor(solarSystemID)
-        return util.Color.RGBtoHex(col.r, col.g, col.b)
-
-
-
-    def GetSystemColor(self, solarSystemID):
-        (sec, col,) = util.FmtSystemSecStatus(self.map.GetSecurityStatus(solarSystemID), 1)
-        return col
+        if self.destinationPath != [None]:
+            self.neocom.LoadRouteData(self.destinationPath[:])
+        else:
+            self.neocom.LoadRouteData(None)
 
 
 
@@ -2499,7 +2441,7 @@ class StarMapSvc(service.Service):
              landmark.GetRadius())
             landmarkData.append(data)
 
-        landmarks = sm.RemoteSvc('config').SetMapLandmarks(landmarkData)
+        sm.RemoteSvc('config').SetMapLandmarks(landmarkData)
 
 
 

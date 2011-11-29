@@ -1,3 +1,4 @@
+import cef
 import service
 import trinity
 import util
@@ -22,7 +23,7 @@ class ParticleObjectClient(service.Service):
     __displayname__ = 'Particle Object Client Service'
     __dependencies__ = ['graphicClient']
     __notifyevents__ = ['OnGraphicSettingsChanged']
-    __componentTypes__ = ['particleObject']
+    __componentTypes__ = [cef.ParticleObjectComponentView.GetComponentCodeName()]
 
     def __init__(self):
         service.Service.__init__(self)
@@ -41,6 +42,7 @@ class ParticleObjectClient(service.Service):
             component.redFile = state['redFile']
         if 'positionOffset' in state:
             component.positionOffset = util.UnpackStringToTuple(state['positionOffset'])
+        component.depthOffset = float(state.get('depthOffset', 0))
         return component
 
 
@@ -51,6 +53,10 @@ class ParticleObjectClient(service.Service):
         if not sm.GetService('device').GetAppFeatureState('Interior.ParticlesEnabled', True):
             return 
         component.trinityObject = trinity.Load(component.redFile)
+        if hasattr(component.trinityObject, 'particleSystems'):
+            for system in component.trinityObject.particleSystems:
+                system.depthOffset = component.depthOffset
+
 
 
 
@@ -64,6 +70,10 @@ class ParticleObjectClient(service.Service):
     def AddToScene(self, entity, component):
         if component.trinityObject is None:
             component.trinityObject = trinity.Load(component.redFile)
+        if hasattr(component.trinityObject, 'particleSystems'):
+            for system in component.trinityObject.particleSystems:
+                system.depthOffset = component.depthOffset
+
         scene = self.graphicClient.GetScene(entity.scene.sceneID)
         if scene:
             scene.AddDynamic(component.trinityObject)

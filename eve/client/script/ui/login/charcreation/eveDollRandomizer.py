@@ -64,7 +64,7 @@ class EveDollRandomizer(paperDoll.DollRandomizer):
                 types = types[:1]
         availableTypeIDs = sm.GetService('cc').GetMyApparel()
         for each in types:
-            typeData = self.modifierLoader.GetItemType(each)
+            typeData = self.modifierLoader.GetItemType(each, gender=self.gender)
             if typeData is None:
                 continue
             if category in ccConst.randomizerBlacklist:
@@ -101,7 +101,7 @@ class EveDollRandomizer(paperDoll.DollRandomizer):
                 var = None
                 weight = self.weights.get(res, 1.0)
                 if resType == self.RESOURCE_TYPE:
-                    resPath = charSvc.factory.GetItemType(res)[0]
+                    resPath = charSvc.factory.GetItemType(res, gender=self.gender)[0]
                     (color1Value, color1Name, color2Name, variation,) = (None, None, None, None)
                     glossiness = None
                     colorizeData = None

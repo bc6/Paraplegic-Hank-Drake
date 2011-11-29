@@ -9,8 +9,8 @@ def InitWhitelist():
     for item in wl.split():
         item.strip()
         if item:
-            (mod, obj,) = item.split('.')
-            mod = __import__(mod, globals(), locals(), [])
+            (mod, obj,) = item.rsplit('.', 1)
+            mod = __import__(mod, globals(), locals(), [obj], -1)
             obj = getattr(mod, obj)
             res[obj] = None
 

@@ -12,6 +12,9 @@ import service
 import uicls
 import uiconst
 import ccUtil
+import localization
+import localizationUtil
+import fontConst
 
 class CharSelection(uicls.LayerCore):
     __guid__ = 'form.CharSelection'
@@ -20,7 +23,10 @@ class CharSelection(uicls.LayerCore):
      'freeslots',
      'wnd',
      'activeframe']
-    __notifyevents__ = ['OnSetDevice', 'OnJumpQueueMessage', 'OnCharacterHandler']
+    __notifyevents__ = ['OnSetDevice',
+     'OnJumpQueueMessage',
+     'OnCharacterHandler',
+     'OnUIRefresh']
 
     def OnSetDevice(self):
         if not self.isopen or self.wnd is None or self.wnd.destroyed:
@@ -45,10 +51,16 @@ class CharSelection(uicls.LayerCore):
         self.infoWidth = max(325, min(centerContWidth, 450, int(0.35 * uicore.desktop.width)))
         self.sr.infoParent.width = self.infoWidth
         self.sr.infoParent.height = charContHeight
-        self.fontSize = 9
+        self.fontSize = fontConst.EVE_SMALL_FONTSIZE
         if self.infoWidth > 400:
-            self.fontSize = 12
+            self.fontSize = fontConst.EVE_MEDIUM_FONTSIZE
         uthread.new(self.SetupSlots, True)
+
+
+
+    def OnUIRefresh(self):
+        self.CloseView(recreate=False)
+        self.OpenView()
 
 
 
@@ -112,7 +124,7 @@ class CharSelection(uicls.LayerCore):
             sm.StartService('jukebox').Play()
         if not sm.GetService('connection').IsConnected():
             return 
-        self.chars = self.GetChars()
+        self.chars = self.GetChars(reload=True)
         self.redeemTokens = sm.StartService('redeem').GetRedeemTokens()
         if len(self.chars) > 3:
             log.LogWarn('There are more than 3 characters')
@@ -121,10 +133,7 @@ class CharSelection(uicls.LayerCore):
         self.InitScene()
         self.InitUI()
         sm.StartService('lightFx')
-        sm.GetService('loading').FadeFromBlack()
         self.opened = 1
-        sm.ScatterEvent('OnClientReady', 'charsel')
-        sm.RegisterNotify(self)
 
 
 
@@ -145,7 +154,7 @@ class CharSelection(uicls.LayerCore):
         leftPush = 42
         self.sr.par = uicls.Container(name='underlayContainer', parent=self.wnd, align=uiconst.TOTOP, height=borderHeight)
         banner = uicls.Container(name='topCont', parent=self.sr.par, align=uiconst.TOALL, padTop=40)
-        caption = uicls.CaptionLabel(text='', parent=banner, align=uiconst.BOTTOMLEFT, top=8, left=40)
+        caption = uicls.EveCaptionLarge(text='', parent=banner, align=uiconst.BOTTOMLEFT, top=8, left=40)
         uicls.Sprite(parent=banner, align=uiconst.CENTER, width=168, height=64, state=uiconst.UI_DISABLED, texturePath='res:/UI/Texture/EVE_logo_cc.dds')
         uicls.Line(parent=banner, align=uiconst.TOTOP, weight=1)
         uicls.Line(parent=banner, align=uiconst.TOBOTTOM, weight=1)
@@ -175,17 +184,16 @@ class CharSelection(uicls.LayerCore):
         self.sr.infoButtonCont = uicls.Container(name='infoButtonCont', parent=self.sr.infoParent, align=uiconst.TOBOTTOM, height=24)
         self.sr.editControl = uicls.Edit(parent=self.sr.infoParent, readonly=1, hideBackground=1, showattributepanel=0)
         self.sr.editControl.scrollEnabled = 0
-        self.fontSize = 9
-        self.letterspace = 1
+        self.fontSize = fontConst.EVE_SMALL_FONTSIZE
+        self.letterspace = 0
         if self.infoWidth > 400:
-            self.fontSize = 12
-            self.letterspace = 0
+            self.fontSize = fontConst.EVE_MEDIUM_FONTSIZE
         if len(self.chars) == 3:
-            caption.text = mls.UI_CHARSEL_SELECTCHARACTER
+            caption.text = localization.GetByLabel('UI/CharacterSelection/SelectCharacter')
         elif 0 < len(self.chars) < 3:
-            caption.text = mls.UI_CHARSEL_SELECTORCREATECHARACTER
-        elif not len(self.chars):
-            caption.text = mls.UI_CHARSEL_CREATECHARACTER
+            caption.text = localization.GetByLabel('UI/CharacterSelection/SelectOrCreateCharacter')
+        else:
+            caption.text = ''
         uthread.new(self.SetupSlots)
 
 
@@ -229,7 +237,7 @@ class CharSelection(uicls.LayerCore):
             setattr(self.sr, 'slot%s' % i, btn)
             delete = uix.GetBigButton(32, btn, btn.width - 32 - 6, btn.height - 32 - 6)
             delete.OnClick = self.Terminate
-            delete.sr.hint = mls.UI_CHARSEL_TERMINATE
+            delete.sr.hint = localization.GetByLabel('UI/CharacterSelection/Terminate')
             delete.sr.icon.LoadIcon('4_16')
             uiutil.SetOrder(delete, 0)
             btn.sr.delete = delete
@@ -266,111 +274,102 @@ class CharSelection(uicls.LayerCore):
             allFound = False
             i = 1
             while not allFound:
-                if mls.HasLabel('TOTD_COMMON_MESSAGE%s' % i):
-                    self.totds.append(getattr(mls, 'TOTD_COMMON_MESSAGE%s' % i, None))
+                labelPath = 'UI/CharacterSelection/TipOfTheDay/Tip%s' % i
+                if localization.IsValidLabel(labelPath):
+                    self.totds.append(localization.GetByLabel(labelPath))
                     i += 1
                 else:
                     allFound = True
 
         if len(self.totds):
+            self.sr.totdCont.Show()
             if currentLabel in self.totds:
                 currentIndex = self.totds.index(currentLabel)
             if direction == 0:
                 currentIndex = random.randint(0, len(self.totds) - 1)
-                label += self.totds[currentIndex]
+                label = self.totds[currentIndex]
             elif direction == -1:
                 currentIndex = max(0, currentIndex - 1)
             elif direction == 1:
                 currentIndex = min(len(self.totds) - 1, currentIndex + 1)
-            label += self.totds[currentIndex]
+            label = self.totds[currentIndex]
             if currentIndex == len(self.totds) - 1:
                 self.sr.nextTOTDBtn.state = uiconst.UI_DISABLED
                 self.sr.nextTOTDBtn.hint = ''
             else:
                 self.sr.nextTOTDBtn.state = uiconst.UI_NORMAL
-                self.sr.nextTOTDBtn.hint = mls.UI_CHARSEL_NEXTTIP
+                self.sr.nextTOTDBtn.hint = localization.GetByLabel('UI/CharacterSelection/NextTip')
             if currentIndex == 0:
                 self.sr.prevTOTDBtn.state = uiconst.UI_DISABLED
                 self.sr.prevTOTDBtn.hint = ''
             else:
                 self.sr.prevTOTDBtn.state = uiconst.UI_NORMAL
-                self.sr.prevTOTDBtn.hint = mls.UI_CHARSEL_PREVIOUSTIP
+                self.sr.prevTOTDBtn.hint = localization.GetByLabel('UI/CharacterSelection/PreviousTip')
             self.sr.nextTOTDBtn.color.a = 0.3 if currentIndex == len(self.totds) - 1 else 1.0
             self.sr.prevTOTDBtn.color.a = 0.3 if currentIndex == 0 else 1.0
         else:
-            label += mls.UI_GENERIC_NORECORDSFOUND
+            self.sr.totdCont.Hide()
         self.sr.tipofthedayText.text = label
 
 
 
     def SetupButtons(self):
-        btns = [(mls.UI_CHARSEL_ENTERGAME,
+        btns = [(localization.GetByLabel('UI/CharacterSelection/EnterGame'),
           'ui_23_64_2',
           'enter',
           self.Confirm,
-          0), (mls.UI_CHARSEL_REDEEM,
+          0), (localization.GetByLabel('UI/CharacterSelection/RedeemItems'),
           'ui_76_64_3',
           'redeem',
           self.Redeem,
           80)]
-        totdbtns = [(mls.UI_CHARSEL_PREVIOUSTIP,
+        totdbtns = [(localization.GetByLabel('UI/CharacterSelection/PreviousTip'),
           'ui_23_64_1',
           'prevTOTD',
           self.LoadTOTD,
           -1,
-          0), (mls.UI_CHARSEL_RANDOMTIP,
+          0), (localization.GetByLabel('UI/CharacterSelection/RandomTip'),
           'ui_23_64_3',
           'randomTOTD',
           self.LoadTOTD,
           0,
-          1), (mls.UI_CHARSEL_NEXTTIP,
+          1), (localization.GetByLabel('UI/CharacterSelection/NextTip'),
           'ui_23_64_2',
           'nextTOTD',
           self.LoadTOTD,
           1,
           0)]
         top = 40
-        if getattr(self.sr, 'tipofthedayCaption', None) is None:
-            self.sr.tipofthedayCaption = uicls.Label(text='<b>%s</b>' % mls.UI_CHARSEL_TIPOFTHEDAY, parent=self.sr.totdCont, fontsize=self.fontSize + 3, top=top, left=20, color=None, state=uiconst.UI_NORMAL, idx=0)
-            self.sr.tipofthedayText = uicls.Label(text='', parent=self.sr.totdCont, align=uiconst.TOALL, fontsize=self.fontSize + 3, top=self.sr.tipofthedayCaption.top + self.sr.tipofthedayCaption.textheight, left=20, color=None, state=uiconst.UI_NORMAL, idx=0, autowidth=False, autoheight=False)
-        else:
-            self.sr.tipofthedayCaption.fontsize = self.fontSize + 3
-            self.sr.tipofthedayText.fontsize = self.fontSize + 3
-            self.sr.tipofthedayText.top = self.sr.tipofthedayCaption.top + self.sr.tipofthedayCaption.textheight
+        self.sr.tipofthedayCaption = uicls.Label(text=localization.GetByLabel('UI/CharacterSelection/TipOfTheDay'), parent=self.sr.totdCont, fontsize=self.fontSize + 3, top=top, left=20, color=None, state=uiconst.UI_NORMAL, idx=0)
+        self.sr.tipofthedayText = uicls.Label(text='', parent=self.sr.totdCont, align=uiconst.TOALL, fontsize=self.fontSize + 3, top=self.sr.tipofthedayCaption.top + self.sr.tipofthedayCaption.textheight, left=20, color=None, state=uiconst.UI_NORMAL, idx=0)
         for (caption, icon, button, func, offset,) in btns:
             btn = getattr(self.sr, '%sBtn' % button, None)
-            if btn is None:
-                btn = uix.GetBigButton(64, self.sr.bottomBtnCont)
-                btn.SetSmallCaption('<center>%s' % caption, maxWidth=64)
-                btn.SetAlign(align=uiconst.TOPRIGHT)
-                btn.left = offset
-                btn.hint = caption
-                btn.Click = func
-                btn.sr.icon.LoadIcon(icon)
-                btn.name = '%sBtn' % button
-                uiutil.SetOrder(btn, 0)
-                setattr(self.sr, '%sBtn' % button, btn)
-                btn.state = uiconst.UI_HIDDEN
-                if button == 'enter':
-                    btn.btn_default = 1
-            else:
-                btn.left = offset
-                btn.hint = caption
+            if btn:
+                btn.Close()
+            btn = uix.GetBigButton(64, self.sr.bottomBtnCont)
+            btn.SetSmallCaption(caption, maxWidth=64)
+            btn.SetAlign(align=uiconst.TOPRIGHT)
+            btn.left = offset
+            btn.hint = caption
+            btn.Click = func
+            btn.sr.icon.LoadIcon(icon)
+            btn.name = '%sBtn' % button
+            uiutil.SetOrder(btn, 0)
+            setattr(self.sr, '%sBtn' % button, btn)
+            btn.state = uiconst.UI_HIDDEN
+            if button == 'enter':
+                btn.btn_default = 1
 
         for (caption, icon, button, func, direction, y,) in totdbtns:
             btn = getattr(self.sr, '%sBtn' % button, None)
-            if btn is None:
-                btn = uicls.Icon(icon='ui_73_16_%s' % (direction + 3), pos=(0,
-                 top + y * 16 - 2,
-                 0,
-                 0), hint=caption, name='%sBtn' % button, parent=self.sr.totdCont, align=uiconst.RELATIVE, state=uiconst.UI_HIDDEN, idx=0)
-                setattr(self.sr, '%sBtn' % button, btn)
-                btn.OnClick = (func, direction)
-            else:
-                btn.pos = (0,
-                 top + y * 16 - 2,
-                 0,
-                 0)
+            if btn:
+                btn.Close()
+            btn = uicls.Icon(icon='ui_73_16_%s' % (direction + 3), pos=(0,
+             top + y * 16 - 2,
+             0,
+             0), hint=caption, name='%sBtn' % button, parent=self.sr.totdCont, align=uiconst.RELATIVE, state=uiconst.UI_HIDDEN, idx=0)
+            setattr(self.sr, '%sBtn' % button, btn)
+            btn.OnClick = (func, direction)
 
         self.sr.nextTOTDBtn.left = self.sr.tipofthedayCaption.textwidth + self.sr.tipofthedayCaption.left + 2
 
@@ -393,7 +392,7 @@ class CharSelection(uicls.LayerCore):
 
     def ClearSlots(self):
         for slot in self.sr.slots:
-            slot.SetCaption(mls.UI_GENERIC_EMPTY)
+            slot.SetCaption(localization.GetByLabel('UI/CharacterSelection/EmptySlot'))
             slot.sr.charid = None
             slot.sr.time = None
             slot.sr.rec = None
@@ -413,15 +412,15 @@ class CharSelection(uicls.LayerCore):
         log.LogInfo('Character selection: Loading the characters')
         if reloadCharacter:
             self.chars = self.GetChars(1)
-            blue.pyos.synchro.Sleep(1000)
+            blue.pyos.synchro.SleepWallclock(1000)
         self.ClearSlots()
         self.ready = 0
         self.sr.enterBtn.state = uiconst.UI_HIDDEN
         self.sr.prevTOTDBtn.state = self.sr.randomTOTDBtn.state = self.sr.nextTOTDBtn.state = uiconst.UI_HIDDEN
         if not self.chars:
-            uthread.new(sm.GetService('gameui').GoCharacterCreation, 0)
+            uthread.new(sm.GetService('gameui').GoCharacterCreation)
         else:
-            sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_LOADING, mls.UI_LOAD_GETTINGCHARACTERS, 1, 6)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/Loading'), localization.GetByLabel('UI/CharacterSelection/GettingCharacters'), 1, 6)
             locations = []
             owners = []
             charsByID = {}
@@ -449,7 +448,7 @@ class CharSelection(uicls.LayerCore):
                     self.AddCharacter(char, i)
                     i += 1
 
-            sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_LOADING, mls.UI_LOAD_DONEETTINGCHARACTERS, 6, 6)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Common/Loading'), localization.GetByLabel('UI/CharacterSelection/DoneGettingChars'), 6, 6)
             self.ready = 1
             log.LogInfo('Character selection: Loaded the characters')
 
@@ -480,15 +479,15 @@ class CharSelection(uicls.LayerCore):
         slot.sr.rec = char
         if slotidx == 0:
             uix.Flush(self.sr.infoButtonCont)
-            btns = [(mls.UI_CHARSEL_TERMINATE,
+            btns = [(localization.GetByLabel('UI/CharacterSelection/Terminate'),
               'ui_4_64_7',
               'terminate',
               self.Terminate,
-              10), (mls.UI_CHARSEL_ABORTTERMINATION,
+              10), (localization.GetByLabel('UI/CharacterSelection/AbortTermination'),
               'ui_6_64_9',
               'abortTermination',
               self.UndoTermination,
-              10), (mls.UI_CHARSEL_COMPLETETERMINATION,
+              10), (localization.GetByLabel('UI/CharacterSelection/CompleteTermination'),
               'ui_6_64_10',
               'completeTermination',
               self.Terminate,
@@ -507,7 +506,7 @@ class CharSelection(uicls.LayerCore):
                     self.terminateBtn = btn
 
             slot.sr.textcont = uicls.Container(parent=self.sr.infoButtonCont, name='textCont', align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, pos=(43, 5, 70, 50))
-            slot.sr.countdownText = uicls.Label(text='', parent=slot.sr.textcont, color=None, idx=0, state=uiconst.UI_HIDDEN)
+            slot.sr.countdownText = uicls.EveLabelMedium(text='', parent=slot.sr.textcont, color=None, idx=0, state=uiconst.UI_HIDDEN)
             detailsChar = self.GetDetails(char.characterID)
             char.mailCount = detailsChar.unreadMailCount
             char.eventCount = detailsChar.upcomingEventCount
@@ -515,15 +514,14 @@ class CharSelection(uicls.LayerCore):
             slot.loadPetitions = detailsChar.petitionMessage
             slot.detailsChar = detailsChar
             slot.sr.gender = detailsChar.gender
-            slot.SetSmallCaption('<center>%s' % char.characterName)
-            bloodline = sm.GetService('cc').GetData('bloodlines', ['bloodlineID', detailsChar.bloodlineID])
-            race = sm.GetService('cc').GetData('races', ['raceID', bloodline.raceID])
-            dateDiff = (blue.os.GetTime() - detailsChar.createDateTime) / DAY
+            slot.SetSmallCaption(char.characterName)
+            bloodline = cfg.bloodlines.Get(detailsChar.bloodlineID)
+            race = cfg.races.Get(bloodline.raceID)
+            dateDiff = (blue.os.GetWallclockTime() - detailsChar.createDateTime) / DAY
             settings.user.ui.Set('bornDaysAgo%s' % char.characterID, dateDiff)
-            corpAge = blue.os.GetTime() - detailsChar.startDateTime
+            corpAge = blue.os.GetWallclockTime() - detailsChar.startDateTime
             allAge = None
             corpTicker = cfg.corptickernames.Get(detailsChar.corporationID).tickerName
-            corpmemberinfo = ' \n                                <b>%s [%s]</b>\n                                <br>\n                                %s\n                            ' % (cfg.eveowners.Get(detailsChar.corporationID).name, corpTicker, mls.UI_CHARSEL_MEMBERFOR % {'age': util.FmtTimeInterval(corpAge, 'day')})
             (worldSpaceID, stationID, solsysID, constellID, regionID,) = (detailsChar.worldSpaceID,
              detailsChar.stationID,
              detailsChar.solarSystemID,
@@ -552,7 +550,7 @@ class CharSelection(uicls.LayerCore):
              constellation,
              region)
             if stationID:
-                locationTxt += '<br>%s' % (mls.UI_CHARSEL_DOCKEDIN % {'stationName': cfg.evelocations.Get(stationID).name})
+                locationTxt += '<br>%s' % localization.GetByLabel('UI/CharacterSelection/DockedInStation', station=stationID)
             if worldSpaceID:
                 locationTxt += '<br>%s' % ('Walking around in %s' % cfg.evelocations.Get(worldSpaceID).name)
             (allMemberInfo, allianceID, allianceTicker,) = ('', detailsChar.allianceID, detailsChar.shortName)
@@ -564,38 +562,39 @@ class CharSelection(uicls.LayerCore):
             allWidth = 10
             if allianceID:
                 allName = cfg.eveowners.Get(allianceID).name
-                allAge = blue.os.GetTime() - detailsChar.allianceMemberStartDate
+                allAge = blue.os.GetWallclockTime() - detailsChar.allianceMemberStartDate
                 allWidth = 80
                 allLogo = '\n                                <td width=64>\n                                    <img width=64 height=64 src=alliancelogo:%s alt="%s"><br> \n                                </td>\n                            ' % (allianceID, allName)
-                allMemberInfo = '\n                                    <b>%s [%s]</b>\n                                    <br>\n                                    %s\n                                ' % (allName, allianceTicker, mls.UI_CHARSEL_MEMBERFOR % {'age': util.FmtTimeInterval(allAge, 'day')})
+                allMemberInfo = '\n                                    <b>%s [%s]</b>\n                                    <br>\n                                    %s\n                                ' % (allName, allianceTicker, localization.GetByLabel('UI/CharacterSelection/MemberFor', memberTime=util.FmtTimeInterval(allAge, 'day')))
             bounty = ''
             if detailsChar.bounty:
                 bounty = '\n                <tr>\n                    <td width=80><div style="font:%(fontSize)s; letter-spacing:%(letterspace)s; font-weight: bold;">%(bountyText)s</div></td>\n                    <td colspan=%(colspan)s><div style="font:%(fontSize)s; letter-spacing:%(letterspace)s";>%(bounty)s</div></td>\n                </tr>\n                ' % {'fontSize': self.fontSize,
-                 'bountyText': uiutil.UpperCase(mls.UI_CHARSEL_BOUNTY),
+                 'bountyText': uiutil.UpperCase(localization.GetByLabel('UI/CharacterSelection/Bounty')),
                  'bounty': util.FmtISK(detailsChar.bounty),
                  'colspan': [1, 2][bool(allianceID)],
                  'letterspace': self.letterspace}
-            sp = util.FmtAmt(detailsChar.skillPoints)
-            now = blue.os.GetTime()
+            now = blue.os.GetWallclockTime()
             if detailsChar.skillQueueEndTime and now < detailsChar.skillQueueEndTime:
                 time = detailsChar.skillQueueEndTime - now
                 timeString = util.FmtDate(time, 'ls')
-                sp = '%s<br>%s' % (sp, mls.UI_SHARED_SQ_FINISHESIN % {'time': timeString})
+                sp = localization.GetByLabel('UI/CharacterSelection/TrainingQueueFinishesIn', numSkillpoints=detailsChar.skillPoints, finishTime=timeString)
             else:
-                sp = '%s<br>%s' % (sp, mls.UI_SHARED_SQ_INACTIVE)
+                sp = localization.GetByLabel('UI/CharacterSelection/TrainingQueueInactive', numSkillpoints=detailsChar.skillPoints)
             shipName = ''
             if detailsChar.shipTypeID:
                 shipName = cfg.invtypes.Get(detailsChar.shipTypeID).name
             if detailsChar.shipName:
                 shipNameStripped = detailsChar.shipName.replace('&', '&amp;')
                 shipName = '%s<br>[%s]' % (shipName, shipNameStripped)
-            txt = '\n            <table width=%(width)s cellpadding=1 cellspacing=6>\n                <tr>\n                    <td width=64>\n                        <img width=64 height=64 src=racelogo:%(raceid)s alt="%(racename)s"><br>\n                    </td>\n                    <td valign="middle">\n                        <font size=24>%(charname)s<br></font>\n                        <font size=12>%(title)s</font>\n                        <font size=:%(fontSize)s>\n                   </td>\n                </tr>\n                <tr>\n                    <td colspan=3>\n                    <hr>\n                    <font size=1>\n                    <br>\n                    </td>\n                </tr>\n                <tr>\n                    <td width=64>\n                        <img width=64 height=64 src=corplogo:%(corpid)s alt="%(corpname)s"><br>\n                    </td>\n                    <td valign="middle">\n                        <div style="font:%(fontSize)s; letter-spacing:%(letterspace)s;">                    \n                        %(corpmemberinfo)s \n                        <br>\n                        <br>\n                        %(allmemberinfo)s\n                    </div>\n                    </td>\n                    \n                    %(alllogo)s\n                    \n                </tr>\n                <tr>\n                    <td colspan=3>\n                    <font size=1>\n                    <br>\n                    <hr>\n                    <br>\n                    </td>\n                </tr>\n                <tr>\n                    <td><div style="font:%(fontSize)s; letter-spacing:1;font-weight: bold;">%(loc)s</div></td>\n                    <td colspan=%(colspan)s><div style="font:%(fontSize)s; letter-spacing:%(letterspace)s;">%(location)s</div></td>\n                </tr>\n                <tr>\n                    <td><div style="font:%(fontSize)s; letter-spacing:1; font-weight: bold;">%(acitveShip)s</div></td>\n                    <td colspan=%(colspan)s><div style="font:%(fontSize)s; letter-spacing:%(letterspace)s;">%(ship)s</div></td>\n                </tr>\n                <tr>\n                    <td><div style="font:%(fontSize)s; letter-spacing:1; font-weight: bold;">%(skillpoints)s</div></td>\n                    <td colspan=%(colspan)s><div style="font:%(fontSize)s; letter-spacing:%(letterspace)s;">%(sp)s</div></td>\n                </tr>\n                <tr>\n                    <td><div style="font:%(fontSize)s; letter-spacing:1; font-weight: bold;">%(weal)s</div></td>\n                    <td colspan=%(colspan)s>\n                    <div style="font:%(fontSize)s; letter-spacing:%(letterspace)s;">%(wealth)s</div>><br/>\n                    <div style="font:%(fontSize)s; letter-spacing:%(letterspace)s;">%(aurWealth)s</div>\n                    </td>\n                </tr>\n                <tr>\n                    <td width=80><div style="font:%(fontSize)s; letter-spacing:1; font-weight: bold;">%(secstat)s</div></td>\n                    <td colspan=%(colspan)s><div style="font:%(fontSize)s; letter-spacing:%(letterspace)s;">%(security)2.1f</div></td>\n                </tr>\n                %(bounty)s\n                <tr>\n                    <td colspan=3>\n                    <hr>\n                    </td>\n                </tr>\n            ' % {'corpmemberinfo': corpmemberinfo,
+            txt = '\n            <table width=%(width)s cellpadding=1 cellspacing=6>\n                <tr>\n                    <td width=64>\n                        <img width=64 height=64 src=racelogo:%(raceid)s alt="%(racename)s"><br>\n                    </td>\n                    <td valign="middle">\n                        <font size=24>%(charname)s<br></font>\n                        <font size=12>%(title)s</font>\n                        <font size=:%(fontSize)s>\n                   </td>\n                </tr>\n                <tr>\n                    <td colspan=3>\n                    <hr>\n                    <font size=1>\n                    <br>\n                    </td>\n                </tr>\n                <tr>\n                    <td width=64>\n                        <img width=64 height=64 src=corplogo:%(corpid)s alt="%(corpname)s"><br>\n                    </td>\n                    <td valign="middle">\n                        <div style="font:%(fontSize)s; letter-spacing:%(letterspace)s;">                    \n                        <b>%(corpName)s [%(corpTicker)s]</b>\n                        <br>\n                        %(memberFor)s\n                        <br>\n                        <br>\n                        %(allmemberinfo)s\n                    </div>\n                    </td>\n                    \n                    %(alllogo)s\n                    \n                </tr>\n                <tr>\n                    <td colspan=3>\n                    <font size=1>\n                    <br>\n                    <hr>\n                    <br>\n                    </td>\n                </tr>\n                <tr>\n                    <td><div style="font:%(fontSize)s; letter-spacing:1;">%(loc)s</div></td>\n                    <td colspan=%(colspan)s><div style="font:%(fontSize)s; letter-spacing:%(letterspace)s;">%(location)s</div></td>\n                </tr>\n                <tr>\n                    <td><div style="font:%(fontSize)s; letter-spacing:1;">%(acitveShip)s</div></td>\n                    <td colspan=%(colspan)s><div style="font:%(fontSize)s; letter-spacing:%(letterspace)s;">%(ship)s</div></td>\n                </tr>\n                <tr>\n                    <td><div style="font:%(fontSize)s; letter-spacing:1;">%(skillpoints)s</div></td>\n                    <td colspan=%(colspan)s><div style="font:%(fontSize)s; letter-spacing:%(letterspace)s;">%(sp)s</div></td>\n                </tr>\n                <tr>\n                    <td><div style="font:%(fontSize)s; letter-spacing:1;">%(weal)s</div></td>\n                    <td colspan=%(colspan)s>\n                    <div style="font:%(fontSize)s; letter-spacing:%(letterspace)s;">%(wealth)s</div>><br/>\n                    <div style="font:%(fontSize)s; letter-spacing:%(letterspace)s;">%(aurWealth)s</div>\n                    </td>\n                </tr>\n                <tr>\n                    <td width=80><div style="font:%(fontSize)s; letter-spacing:1;">%(secstat)s</div></td>\n                    <td colspan=%(colspan)s><div style="font:%(fontSize)s; letter-spacing:%(letterspace)s;">%(security)2.1f</div></td>\n                </tr>\n                %(bounty)s\n                <tr>\n                    <td colspan=3>\n                    <hr>\n                    </td>\n                </tr>\n            ' % {'corpName': cfg.eveowners.Get(detailsChar.corporationID).name,
+             'corpTicker': corpTicker,
+             'memberFor': localization.GetByLabel('UI/CharacterSelection/MemberFor', memberTime=util.FmtTimeInterval(corpAge, 'day')),
              'allmemberinfo': allMemberInfo,
              'security': detailsChar.securityRating,
-             'secstat': uiutil.UpperCase(mls.UI_GENERIC_SECURITYSTATUS),
+             'secstat': localization.GetByLabel('UI/CharacterSelection/InfoSecurityStatus'),
              'location': locationTxt,
-             'loc': uiutil.UpperCase(mls.UI_GENERIC_LOCATION),
-             'weal': uiutil.UpperCase(mls.UI_GENERIC_WEALTH),
+             'loc': localization.GetByLabel('UI/CharacterSelection/InfoLocation'),
+             'weal': localization.GetByLabel('UI/CharacterSelection/InfoWealth'),
              'charname': char.characterName,
              'corpid': detailsChar.corporationID,
              'raceid': race.raceID,
@@ -603,9 +602,9 @@ class CharSelection(uicls.LayerCore):
              'title': detailsChar.title,
              'width': self.infoWidth,
              'bounty': bounty,
-             'skillpoints': uiutil.UpperCase(mls.UI_GENERIC_SKILLS),
+             'skillpoints': localization.GetByLabel('UI/CharacterSelection/InfoSkills'),
              'sp': sp,
-             'acitveShip': uiutil.UpperCase(mls.UI_CHARSEL_ACTIVESHIP),
+             'acitveShip': localization.GetByLabel('UI/CharacterSelection/ActiveShip'),
              'ship': shipName,
              'sp': sp,
              'wealth': util.FmtISK(detailsChar.balance),
@@ -619,14 +618,14 @@ class CharSelection(uicls.LayerCore):
             warningTitle = None
             if detailsChar.daysLeft is not None:
                 if detailsChar.userType == 23 and detailsChar.daysLeft <= 3:
-                    warningText = mls.UI_CHARSEL_SUBSCRWARNTRIAL
-                    warningTitle = mls.UI_CHARSEL_SUBSCRWARNTITLETRIAL
+                    warningText = localization.GetByLabel('UI/CharacterSelection/SubscriptionWarningTrial', daysLeft=detailsChar.daysLeft)
+                    warningTitle = localization.GetByLabel('UI/CharacterSelection/SubscriptionWarningTrialHeader')
                 elif detailsChar.daysLeft <= 10:
-                    warningText = mls.UI_CHARSEL_SUBSCRWARN
-                    warningTitle = mls.UI_CHARSEL_SUBSCRWARNTITLE
+                    warningText = localization.GetByLabel('UI/CharacterSelection/SubscriptionWarning', daysLeft=detailsChar.daysLeft)
+                    warningTitle = localization.GetByLabel('UI/CharacterSelection/SubscriptionWarningHeader')
             if warningText is not None:
                 txt += '\n                    <tr>\n                        <td colspan=3><div><font size=15 color=0xeeca00>%(subscrWarnTitle)s<br></font>\n                        <font size=12>%(subscrWarn)s<br></font>\n                    </div></td></tr>\n                    <tr><td colspan=3>\n                        <hr>\n                    </td></tr>\n                    </table></font>\n                    ' % {'subscrWarnTitle': warningTitle,
-                 'subscrWarn': warningText % {'daysLeft': detailsChar.daysLeft}}
+                 'subscrWarn': warningText}
             else:
                 txt += '</table></font>'
             self.sr.editControl.xmargin = 0
@@ -638,7 +637,7 @@ class CharSelection(uicls.LayerCore):
             self.countDownTimer = None
             if slot.sr.time:
                 slot.sr.abortTerminationBtn.state = uiconst.UI_NORMAL
-                if slot.sr.time > blue.os.GetTime():
+                if slot.sr.time > blue.os.GetWallclockTime():
                     self.countDownTimer = None
                     self.UpdateCountDown(slot.sr.time)
                     self.countDownTimer = base.AutoTimer(1000, self.UpdateCountDown, slot.sr.time)
@@ -653,18 +652,18 @@ class CharSelection(uicls.LayerCore):
                 self.countDownTimer = None
                 if len(self.redeemTokens) > 0:
                     self.sr.redeemBtn.state = uiconst.UI_NORMAL
-                    self.sr.redeemBtn.hint = mls.UI_CHARSEL_YOUHAVENUMTOKENS % {'num': len(self.redeemTokens)}
+                    self.sr.redeemBtn.hint = localization.GetByLabel('UI/CharacterSelection/CanRedeemItems', num=len(self.redeemTokens))
             self.sr.prevTOTDBtn.state = self.sr.randomTOTDBtn.state = self.sr.nextTOTDBtn.state = uiconst.UI_NORMAL
             self.sr.tipofthedayText.state = uiconst.UI_NORMAL
             slot.sr.activity.state = uiconst.UI_HIDDEN
             minWidth = 0
             if char.mailCount > 0:
                 slot.sr.mail.state = uiconst.UI_DISABLED
-                slot.sr.mailText.text = char.mailCount
+                slot.sr.mailText.text = localizationUtil.FormatNumeric(char.mailCount, decimalPlaces=0)
                 minWidth = slot.sr.mailText.left + slot.sr.mailText.textwidth + 4
             if char.eventCount > 0:
                 slot.sr.calendar.state = uiconst.UI_DISABLED
-                slot.sr.calendarText.text = char.eventCount
+                slot.sr.calendarText.text = localizationUtil.FormatNumeric(char.eventCount, decimalPlaces=0)
                 minWidth = max(slot.sr.calendarText.left + slot.sr.calendarText.textwidth + 4, minWidth)
             if minWidth > 0:
                 uiutil.SetOrder(slot.sr.activity, 0)
@@ -672,7 +671,7 @@ class CharSelection(uicls.LayerCore):
                 slot.sr.activity.width = minWidth
         else:
             small = int((self.size - 36) / 2)
-            slot.SetSmallCaption('<center>%s' % char.characterName, maxWidth=small)
+            slot.SetSmallCaption(char.characterName, maxWidth=small)
         sm.GetService('photo').GetPortrait(char['characterID'], 512, slot.sr.icon)
         if slot.sr.time:
             slot.sr.icon.color.SetRGB(1.0, 1.0, 1.0, 0.25)
@@ -682,29 +681,8 @@ class CharSelection(uicls.LayerCore):
 
 
 
-    def GetMemberInfoText(self, ownerID, ownerType, ticker, age):
-        if not ownerID or not ticker or not age:
-            return ''
-        txt = ''
-        if ownerType == mls.UI_GENERIC_CORPORATION:
-            txt = mls.UI_CHARSEL_MEMBERINFO_CORP % {'name': cfg.eveowners.Get(ownerID).name,
-             'ticker': ticker,
-             'age': util.FmtTimeInterval(age, 'day')}
-        elif ownerType == mls.UI_GENERIC_ALLIANCE:
-            txt = mls.UI_CHARSEL_MEMBERINFO_ALLIANCE % {'name': cfg.eveowners.Get(ownerID).name,
-             'ticker': ticker,
-             'age': util.FmtTimeInterval(age, 'day')}
-        else:
-            txt = mls.UI_CHARSEL_MEMBERINFO2 % {'name': cfg.eveowners.Get(ownerID).name,
-             'type': ownerType,
-             'ticker': ticker,
-             'age': util.FmtTimeInterval(age, 'day')}
-        return txt
-
-
-
     def UpdateCountDown(self, timer):
-        timeDiff = timer - blue.os.GetTime()
+        timeDiff = timer - blue.os.GetWallclockTime()
         slot = self.sr.slot0
         if timeDiff > 0:
             slot.sr.countdownText.state = uiconst.UI_NORMAL
@@ -721,7 +699,7 @@ class CharSelection(uicls.LayerCore):
 
 
     def InitScene(self):
-        sm.StartService('sceneManager').LoadScene('res:/dx9/Scene/CharselectScene2.red', 'charsel', leaveUntouched=0)
+        sm.StartService('sceneManager').LoadScene('res:/dx9/Scene/CharselectScene2.red', 'charsel', leaveUntouched=0, setupCamera=False)
 
 
 
@@ -730,16 +708,16 @@ class CharSelection(uicls.LayerCore):
         if btn.sr.idx == 0:
             if btn.sr.charid:
                 if btn.sr.time:
-                    if btn.sr.time > blue.os.GetTime():
-                        m += [(mls.UI_CMD_REMOVEFROMBIOMASSQUEUE, self.UndoTermination)]
+                    if btn.sr.time > blue.os.GetWallclockTime():
+                        m += [(localization.GetByLabel('UI/CharacterSelection/RemoveFromBiomass'), self.UndoTermination)]
                     else:
-                        m += [(mls.UI_CMD_COMPLETETERMINATION, self.Terminate, (btn,))]
+                        m += [(localization.GetByLabel('UI/CharacterSelection/CompleteTermination'), self.Terminate, (btn,))]
                 else:
-                    m += [(mls.UI_CMD_TERMINATE, self.Terminate, (btn,))]
+                    m += [(localization.GetByLabel('UI/CharacterSelection/Terminate'), self.Terminate, (btn,))]
             else:
-                m += [(mls.UI_CMD_CREATENEW, self.CreateNewCharacter)]
+                m += [(localization.GetByLabel('UI/CharacterSelection/CreateNew'), self.CreateNewCharacter)]
         else:
-            m += [(mls.UI_CMD_SETACTIVE, self.ChangeSlotOrder, (btn,))]
+            m += [(localization.GetByLabel('UI/CharacterSelection/SetActive'), self.ChangeSlotOrder, (btn,))]
         return m
 
 
@@ -777,9 +755,10 @@ class CharSelection(uicls.LayerCore):
             self.ChangeSlotOrder(slot)
             return 
         if slot.sr.time:
-            if eve.Message('ActivateInBiomassQueue', {'charname': cfg.eveowners.Get(slot.sr.charid).name,
-             'heshe': [mls.UI_GENERIC_SHE, mls.UI_GENERIC_HE][slot.sr.rec.gender],
-             'himher': [mls.UI_GENERIC_HER, mls.UI_GENERIC_HIM][slot.sr.rec.gender]}, uiconst.YESNO) == uiconst.ID_YES:
+            questionHeader = localization.GetByLabel('UI/CharacterSelection/UndoRecycleRequest')
+            questionText = localization.GetByLabel('UI/CharacterSelection/UndoRecycleRequestText', charID=slot.sr.charid)
+            if eve.Message('CustomQuestion', {'header': questionHeader,
+             'question': questionText}, uiconst.YESNO) == uiconst.ID_YES:
                 self.UndoTermination()
             return 
         self.Confirm()
@@ -825,7 +804,7 @@ class CharSelection(uicls.LayerCore):
 
     def CreateNewAvatar(self, charID, gender, bloodlineID, dollState, *args):
         self.ClearDetails(charID)
-        uthread.new(sm.GetService('gameui').GoCharacterCreation, 1, charID, gender, bloodlineID, dollState=dollState)
+        uthread.new(sm.GetService('gameui').GoCharacterCreation, charID, gender, bloodlineID, dollState=dollState)
 
 
 
@@ -852,20 +831,21 @@ class CharSelection(uicls.LayerCore):
         mainSlot = self.sr.slot0
         try:
             self.ready = 0
-            charname = cfg.eveowners.Get(mainSlot.sr.charid).name
+            charID = mainSlot.sr.charid
             if mainSlot.sr.time:
-                if mainSlot.sr.time < blue.os.GetTime():
+                if mainSlot.sr.time < blue.os.GetWallclockTime():
                     eve.Message('CCTerminate')
-                    if eve.Message('AskDeleteCharacter', {'name': charname}, uiconst.YESNO) == uiconst.ID_YES:
+                    if eve.Message('AskDeleteCharacter', {'charID': charID}, uiconst.YESNO) == uiconst.ID_YES:
                         sm.StartService('redeem').CloseRedeemWindow()
-                        sm.GetService('loading').ProgressWnd('%s %s' % (mls.UI_GENERIC_RECYCLING, charname), '', 1, 2)
+                        progressHeader = localization.GetByLabel('UI/CharacterSelection/RecyclingCharacter', charID=mainSlot.sr.charid)
+                        sm.GetService('loading').ProgressWnd(progressHeader, '', 1, 2)
                         try:
                             eve.Message(('CCTerminateForGoodFemaleBegin', 'CCTerminateForGoodMaleBegin')[mainSlot.sr.gender])
                             error = sm.RemoteSvc('charUnboundMgr').DeleteCharacter(mainSlot.sr.charid)
                             eve.Message(('CCTerminateForGoodFemale', 'CCTerminateForGoodMale')[mainSlot.sr.gender])
 
                         finally:
-                            sm.GetService('loading').ProgressWnd('%s %s' % (mls.UI_GENERIC_RECYCLING, charname), '', 2, 2)
+                            sm.GetService('loading').ProgressWnd(progressHeader, '', 2, 2)
                             self.ready = 1
 
                         if error:
@@ -873,14 +853,13 @@ class CharSelection(uicls.LayerCore):
                             return 
                         self.LoadCharacters(1)
                 else:
-                    eve.Message('AlreadyInBiomassQueue', {'charname': charname,
-                     'heshe': [mls.UI_GENERIC_SHE, mls.UI_GENERIC_HE][mainSlot.sr.gender],
-                     'time': util.FmtDate(mainSlot.sr.time - blue.os.GetTime())})
-            elif eve.Message('AskSubmitToBiomassQueue', {'charname': charname}, uiconst.YESNO) == uiconst.ID_YES:
+                    infoMsg = localization.GetByLabel('UI/CharacterSelection/AlreadyInBiomassQueue', charID=charID, timeLeft=mainSlot.sr.time - blue.os.GetWallclockTime())
+                    eve.Message('CustomInfo', {'info': infoMsg})
+            elif eve.Message('AskSubmitToBiomassQueue', {'charID': charID}, uiconst.YESNO) == uiconst.ID_YES:
                 ret = sm.RemoteSvc('charUnboundMgr').PrepareCharacterForDelete(mainSlot.sr.charid)
                 if ret:
-                    eve.Message('SubmitToBiomassQueueConfirm', {'charname': charname,
-                     'time': util.FmtDate(ret - blue.os.GetTime())})
+                    eve.Message('SubmitToBiomassQueueConfirm', {'charID': charID,
+                     'when': ret - blue.os.GetWallclockTime()})
                     self.LoadCharacters(1)
 
         finally:
@@ -903,7 +882,7 @@ class CharSelection(uicls.LayerCore):
                 break
             if x > 30:
                 log.general.Log('Clock synchronization still in progress after %d seconds' % x, log.LGINFO)
-            blue.pyos.synchro.Sleep(1000)
+            blue.pyos.synchro.SleepWallclock(1000)
 
         if eve.IsClockSynchronizing():
             eve.Message('CustomInfo', {'info': 'Clock synchronization in progress.  Please wait.'})
@@ -928,8 +907,7 @@ class CharSelection(uicls.LayerCore):
             self.CreateNewAvatar(charID, dc.gender, dc.bloodlineID, dollState=dollState)
             return 
         self.ready = 0
-        sm.GetService('loading').ProgressWnd(mls.UI_CHARSEL_CHARACTERSELECTION, mls.UI_CHARSEL_ENTERGAMEAS % {'name': cfg.eveowners.Get(charID).name}, 1, 2)
-        sm.GetService('loading').FadeToBlack(4000)
+        sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/CharacterSelection/CharacterSelection'), localization.GetByLabel('UI/CharacterSelection/EnterGameAs', char=charID), 1, 2)
         try:
             eve.Message('OnCharSel')
             sm.GetService('jumpQueue').PrepareQueueForCharID(charID)
@@ -954,7 +932,7 @@ class CharSelection(uicls.LayerCore):
                 self.terminateBtn.state = uiconst.UI_NORMAL
                 raise 
         except:
-            sm.GetService('loading').ProgressWnd(mls.UI_CHARSEL_CHARACTERSELECTION, mls.UI_CHARSEL_FAILED, 2, 2)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/CharacterSelection/CharacterSelection'), localization.GetByLabel('UI/CharacterSelection/Failed'), 2, 2)
             sm.GetService('loading').FadeFromBlack()
             self.ready = 1
             self.terminateBtn.state = uiconst.UI_NORMAL
@@ -973,9 +951,9 @@ class CharSelection(uicls.LayerCore):
         map = sm.StartServiceAndWaitForRunningState('map')
         neighbors = map.GetNeighbors(solarSystemID)
         if secondChoiceID is None:
-            selectText = mls.UI_LOGIN_SELECTALTERNATIVESYSTEM
+            selectText = localization.GetByLabel('UI/CharacterSelection/SelectAlternativeSystem')
         else:
-            selectText = mls.UI_LOGIN_SELECTMOREALTERNATIVESYSTEM
+            selectText = localization.GetByLabel('UI/CharacterSelection/SelectAnotherAlternativeSystem')
             neighbors.extend(map.GetNeighbors(secondChoiceID))
         systemSecClass = map.GetSecurityClass(solarSystemID)
         validNeighbors = []
@@ -997,12 +975,13 @@ class CharSelection(uicls.LayerCore):
                   factionName), ssid, None))
 
         loadingSvc = sm.StartService('loading')
-        loadingSvc.ProgressWnd(mls.UI_CHARSEL_CHARACTERSELECTION, mls.UI_CHARSEL_FAILED, 2, 2)
+        loadingSvc.ProgressWnd(localization.GetByLabel('UI/CharacterSelection/CharacterSelection'), localization.GetByLabel('UI/CharacterSelection/Failed'), 2, 2)
         loadingSvc.FadeFromBlack()
-        ret = uix.ListWnd(validNeighbors, None, mls.UI_LOGIN_SYSTEMCONGESTED, selectText, 1, scrollHeaders=[mls.UI_GENERIC_SOLARSYSTEM,
-         mls.UI_GENERIC_REGION,
-         mls.UI_GENERIC_SECURITY,
-         mls.UI_SHARED_MAPSOVEREIGNTY])
+        scrollHeaders = [localization.GetByLabel('UI/Common/LocationTypes/SolarSystem'),
+         localization.GetByLabel('UI/Common/LocationTypes/Region'),
+         localization.GetByLabel('UI/Common/Security'),
+         localization.GetByLabel('UI/Sovereignty/Sovereignty')]
+        ret = uix.ListWnd(validNeighbors, None, localization.GetByLabel('UI/CharacterSelection/SystemCongested'), selectText, 1, scrollHeaders=scrollHeaders)
         if ret:
             self._CharSelection__Confirm(charID, ret[1])
         else:

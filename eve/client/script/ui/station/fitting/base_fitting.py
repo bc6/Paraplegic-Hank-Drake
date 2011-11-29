@@ -9,13 +9,15 @@ import util
 import lg
 import log
 import form
-import listentry
 import base
 import math
 import trinity
 import uiconst
 import uicls
 import turret
+import localization
+import localizationUtil
+from collections import defaultdict
 CONSTMAXSHIELDFRI = 350
 CONSTMAXSHIELDCRU = 1500
 CONSTMAXSHIELDBAT = 5000
@@ -31,6 +33,8 @@ ARMORREPAIRRATEACTIVE = 2
 HULLREPAIRRATEACTIVE = 3
 FONTCOLOR_HILITE = '<color=0xffffff00>'
 FONTCOLOR_DEFAULT = '<color=0xc0ffffff>'
+FONTCOLOR_HILITE2 = 4294967040L
+FONTCOLOR_DEFAULT2 = 3238002687L
 CALIBRATION_GAUGE_ZERO = 223.0
 CALIBRATION_GAUGE_RANGE = 30.0
 CALIBRATION_GAUGE_COLOR = (0.29296875,
@@ -51,133 +55,16 @@ POWERGRID_GAUGE_COLOR = (0.40625,
  1)
 GAUGE_THICKNESS = 11
 
-class SaveFittingSettings(uicls.Window):
-    __guid__ = 'form.SaveFittingSettings'
-
-    def ApplyAttributes(self, attributes):
-        uicls.Window.ApplyAttributes(self, attributes)
-        self.SetCaption(mls.UI_GENERIC_FITTING)
-        self.SetWndIcon('ui_17_128_4')
-        self.SetTopparentHeight(0)
-        self.SetMinSize([256, 160])
-        self.MakeUnMinimizable()
-        self.sr.main.padTop = const.defaultPadding
-        self.sr.main.padBottom = const.defaultPadding
-        fittings = sm.GetService('fittingSvc').GetFittings(eve.session.charid)
-        options = []
-        for (fittingID, data,) in fittings.iteritems():
-            options.append((data.name.lower(), (data.name, fittingID)))
-
-        options = uiutil.SortListOfTuples(options)
-        options.insert(0, (mls.UI_GENERIC_NEW_SETTING, -1))
-        self.sr.savedFittingsCombo = c = uicls.Combo(label=None, parent=self.sr.main, options=options, name='savedFittingsCombo', select=None, callback=self.ComboSavedFittingChange, align=uiconst.TOTOP)
-        self.sr.savedFittingsCombo.padTop = 4
-        self.sr.savedFittingsCombo.padRight = 6
-        self.sr.savedFittingsCombo.padLeft = 100
-        uicls.Label(text=mls.UI_CMD_SAVEAS, left=-90, top=2, parent=self.sr.savedFittingsCombo, fontsize=12, state=uiconst.UI_NORMAL)
-        self.sr.nameInput = uicls.SinglelineEdit(name='nameInput', parent=self.sr.main, maxLength=32, align=uiconst.TOTOP)
-        self.sr.nameInput.padTop = 4
-        self.sr.nameInput.padRight = 6
-        self.sr.nameInput.padLeft = 100
-        uicls.Label(text=mls.UI_GENERIC_NAME, left=-90, top=2, parent=self.sr.nameInput, fontsize=12, state=uiconst.UI_NORMAL)
-        self.sr.descriptionEdit = uicls.EditPlainText(setvalue='', parent=self.sr.main, align=uiconst.TOALL)
-        self.sr.descriptionEdit.padTop = 4
-        self.sr.descriptionEdit.padBottom = 4
-        self.sr.descriptionEdit.padRight = 5
-        self.sr.descriptionEdit.padLeft = 99
-        uicls.Label(text=mls.UI_GENERIC_DESCRIPTION, left=-90, top=2, parent=self.sr.descriptionEdit, fontsize=12, state=uiconst.UI_NORMAL)
-        self.DefineButtons(uiconst.OKCANCEL)
-
-
-
-    def ComboSavedFittingChange(self, combo, label, id, *args):
-        if id != -1:
-            fitting = sm.GetService('fittingSvc').GetFitting(eve.session.charid, id)
-            self.sr.nameInput.SetValue(fitting.name)
-            self.sr.descriptionEdit.SetValue(fitting.description)
-        else:
-            self.sr.nameInput.SetValue('')
-            self.sr.descriptionEdit.SetValue('')
-
-
-
-    def Confirm(self, sender = None, *args):
-        name = self.sr.nameInput.GetValue()
-        if not name:
-            eve.Message('MissingRequiredField', {'fieldname': mls.UI_GENERIC_NAME})
-            return 
-        description = self.sr.descriptionEdit.GetValue()
-        fittingID = self.sr.savedFittingsCombo.GetValue()
-        if fittingID == -1:
-            fittingID = None
-        sm.GetService('fittingSvc').PersistFitting(eve.session.charid, name, description, fittingID)
-        self.SetModalResult(uiconst.ID_OK)
-
-
-
-
-class LoadFittingSettings(uicls.Window):
-    __guid__ = 'form.LoadFittingSettings'
-
-    def ApplyAttributes(self, attributes):
-        uicls.Window.ApplyAttributes(self, attributes)
-        self.SetCaption(mls.UI_GENERIC_FITTING)
-        self.SetWndIcon('ui_17_128_4')
-        self.SetTopparentHeight(0)
-        self.SetMinSize([256, 160])
-        self.MakeUnMinimizable()
-        self.sr.main.padTop = const.defaultPadding
-        self.sr.main.padBottom = const.defaultPadding
-        fittings = sm.GetService('fittingSvc').GetFittings(eve.session.charid)
-        options = []
-        for (fittingID, data,) in fittings.iteritems():
-            options.append((data.name.lower(), (data.name, fittingID)))
-
-        options = uiutil.SortListOfTuples(options)
-        options.insert(0, (mls.UI_CMD_PICK_SETTING, -1))
-        self.sr.savedFittingsCombo = c = uicls.Combo(label=None, parent=self.sr.main, options=options, name='savedFittingsCombo', select=None, callback=self.ComboSavedFittingChange, align=uiconst.TOTOP)
-        self.sr.savedFittingsCombo.padTop = 4
-        self.sr.savedFittingsCombo.padRight = 6
-        self.sr.savedFittingsCombo.padLeft = 100
-        uicls.Label(text=mls.UI_GENERIC_SETTINGS, left=-90, top=2, parent=self.sr.savedFittingsCombo, fontsize=12, state=uiconst.UI_NORMAL)
-        self.sr.descriptionText = uicls.Label(text='', parent=self.sr.main, fontsize=12, autowidth=False, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
-        self.sr.descriptionText.padTop = 4
-        self.sr.descriptionText.padBottom = 4
-        self.sr.descriptionText.padRight = 5
-        self.sr.descriptionText.padLeft = 99
-        self.DefineButtons(uiconst.OKCANCEL)
-
-
-
-    def ComboSavedFittingChange(self, combo, label, id, *args):
-        if id != -1:
-            fitting = sm.GetService('fittingSvc').GetFitting(eve.session.charid, id)
-            self.sr.descriptionText.text = fitting.description
-        else:
-            self.sr.descriptionText.text = ''
-
-
-
-    def Confirm(self, sender = None, *args):
-        fittingID = self.sr.savedFittingsCombo.GetValue()
-        if fittingID == -1:
-            eve.Message('MissingRequiredField', {'fieldname': 'Settings'})
-            return 
-        uthread.new(sm.GetService('fittingSvc').LoadFitting, eve.session.charid, fittingID)
-        self.SetModalResult(uiconst.ID_OK)
-
-
-
-
 class FittingWindow(uicls.Window):
     __guid__ = 'form.FittingWindow'
     __notifyevents__ = ['OnSetDevice']
     default_width = 920
     default_height = 560
+    default_windowID = 'fitting'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
-        self.SetCaption(mls.UI_GENERIC_FITTING)
+        self.SetCaption(localization.GetByLabel('UI/Fitting/FittingWindow/Fitting'))
         self.SetWndIcon('ui_17_128_4', hidden=True)
         self.SetTopparentHeight(0)
         self.MakeUnResizeable()
@@ -213,8 +100,8 @@ class FittingWindow(uicls.Window):
 
 
     def InitializeStatesAndPosition(self, *args, **kw):
-        current = sm.GetService('window').GetWndPositionAndSize('fitting')
-        default = sm.GetService('window').GetDefaults('fitting')
+        current = self.GetRegisteredPositionAndSize()
+        default = self.GetDefaultSizeAndPosition()
         (fixedWidth, fixedHeight,) = (self._fixedWidth, self._fixedHeight)
         uicls.Window.InitializeStatesAndPosition(self, *args, **kw)
         if fixedWidth is not None:
@@ -223,7 +110,7 @@ class FittingWindow(uicls.Window):
         if fixedHeight is not None:
             self.height = fixedHeight
             self._fixedHeight = fixedHeight
-        if list(default)[:4] == list(current)[:4]:
+        if list(default) == list(current)[:4]:
             settings.user.ui.Set('defaultFittingPosition', 1)
             dw = uicore.desktop.width
             dh = uicore.desktop.height
@@ -237,7 +124,7 @@ class FittingWindow(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         settings.user.ui.Set('defaultFittingPosition', 0)
 
 
@@ -282,108 +169,16 @@ class FittingWindow(uicls.Window):
             if x > 0:
                 status = self.sr.fitting.GetStatusCpuPowerCalibr()
                 if degrees > 0 and degrees < 45:
-                    self.hint = '%s - %s %%' % (mls.UI_GENERIC_POWERGRID, status[1])
+                    self.hint = localization.GetByLabel('UI/Fitting/FittingWindow/PowerGridState', state=status[1])
                 elif degrees > 45 and degrees < 90:
-                    self.hint = '%s - %s %%' % (mls.UI_GENERIC_CPU, status[0])
+                    self.hint = localization.GetByLabel('UI/Fitting/FittingWindow/CpuState', state=status[0])
                 self.hint = ''
             elif degrees > 47 and degrees < 77:
                 status = self.sr.fitting.GetStatusCpuPowerCalibr()
-                self.hint = '%s - %s %%' % (mls.UI_GENERIC_CALIBRATION, status[2])
+                self.hint = localization.GetByLabel('UI/Fitting/FittingWindow/CalibrationState', state=status[2])
             self.hint = ''
         else:
             self.hint = ''
-
-
-
-
-class FittingInventory(uicls.Scroll):
-    __guid__ = 'xtriui.FittingInventory'
-    __notifyevents__ = ['OnItemChange']
-
-    def SetData(self, initialLoad = True):
-        uix.Flush(self.sr.activeframe)
-        forceLoad = bool(initialLoad or getattr(self, '_pendingInventroyLoad', False))
-        if forceLoad:
-            self.LoadInventory(forceLoad)
-        sm.RegisterNotify(self)
-
-
-
-    def _OnClose(self):
-        uicls.Scroll._OnClose(self)
-        sm.UnregisterNotify(self)
-        self.FilterFunction = None
-
-
-
-    def OnItemChange(self, item, change):
-        if item.locationID == eve.session.shipid or util.IsStation(item.locationID) or const.ixLocationID in change and util.IsStation(change[const.ixLocationID]):
-            self.LoadInventory()
-
-
-
-    def LoadInventory(self, force = False):
-        if not force and (getattr(self, '_loadingInventory', False) or not uiutil.IsVisible(self)):
-            self._pendingInventroyLoad = True
-            return 
-        self._loadingInventory = True
-        self.sr.loadInvTimer = base.AutoTimer(50, self._LoadInventory)
-
-
-
-    def _LoadInventory(self):
-        self._loadingInventory = True
-        self.sr.loadInvTimer = None
-        (assets, sortby,) = self.GetAssets(self)
-        self.Load(contentList=assets, sortby=sortby, scrollTo=self.GetScrollProportion())
-        expandableMenu = self.parent.parent
-        if expandableMenu._expanded:
-            while expandableMenu._changing:
-                blue.pyos.synchro.Sleep(10)
-
-            expandableMenu.Expand(time=-1)
-        self._loadingInventory = False
-        if getattr(self, '_pendingInventroyLoad', False):
-            self._pendingInventroyLoad = False
-            self.LoadInventory()
-
-
-
-    def GetTotalHeight(self):
-        return self.GetContentHeight()
-
-
-
-    def OnDropData(self, dragObj, nodes):
-        itemlist = [ item for item in nodes if getattr(item, '__guid__', None) in ('xtriui.InvItem', 'listentry.InvItem', 'listentry.InvFittingItem') if not (self.flag == const.flagDroneBay and item.rec.categoryID != const.categoryDrone) ]
-        if len(itemlist) == 0:
-            return 
-        fromLocation = itemlist[0].item.locationID
-        if self.flag == const.flagHangar:
-            toContainer = const.containerHangar
-        elif self.flag in (const.flagCargo, const.flagDroneBay):
-            toContainer = eve.session.shipid
-        else:
-            return 
-        if len(itemlist) == 1:
-            qty = getattr(itemlist[0].rec, 'quantity', 1)
-            if uicore.uilib.Key(uiconst.VK_SHIFT) and qty > 1:
-                ret = uix.QtyPopup(qty, 1, 1, None)
-                if ret is None:
-                    return 
-                qty = ret['qty']
-            stateMgr = sm.StartService('godma').GetStateManager()
-            item = itemlist[0].item
-            if item.categoryID == const.categoryCharge:
-                return self.dogmaLocation.UnloadChargeToContainer(item.locationID, item.itemID, (toContainer,), self.flag)
-            if item.categoryID == const.categoryModule:
-                return self.dogmaLocation.UnloadModuleToContainer(item.locationID, item.itemID, (toContainer,), self.flag)
-            if toContainer == eve.session.shipid:
-                return eve.GetInventoryFromId(eve.session.shipid).Add(itemlist[0].itemID, fromLocation, qty=qty, flag=self.flag)
-            return eve.GetInventory(toContainer).Add(itemlist[0].itemID, fromLocation, qty=qty)
-        if toContainer == eve.session.shipid:
-            return eve.GetInventoryFromId(toContainer).MultiAdd([ item.itemID for item in itemlist ], fromLocation, flag=self.flag)
-        return eve.GetInventory(toContainer).MultiAdd([ item.itemID for item in itemlist ], fromLocation, flag=self.flag)
 
 
 
@@ -397,7 +192,8 @@ class Fitting(uicls.FittingLayout):
      'OnStartSlotLinkingMode',
      'OnResetSlotLinkingMode',
      'OnAttributes',
-     'OnAttribute']
+     'OnAttribute',
+     'OnUIScalingChange']
     __guid__ = 'form.Fitting'
 
     def init(self):
@@ -444,6 +240,7 @@ class Fitting(uicls.FittingLayout):
         self.isDelayedAnim = False
         self.menuSlots = {}
         self.statusCpuPowerCalibr = [None, None, None]
+        self.lastAddition = (0.0, 0.0, 0.0)
         self.initialized = False
 
 
@@ -467,6 +264,8 @@ class Fitting(uicls.FittingLayout):
         self.LoadCapacitorStats()
         if item.groupID in const.turretModuleGroups:
             self.UpdateHardpoints()
+        if const.ixLocationID in change and item.locationID == self.shipID and item.categoryID == const.categorySubSystem:
+            self.ReloadShipModel()
         self.ReloadFitting(self.shipID)
 
 
@@ -494,24 +293,24 @@ class Fitting(uicls.FittingLayout):
     def _Anim(self):
         (color, bgColor, comp, compsub,) = sm.GetService('window').GetWindowColors()
         self.sr.baseColor.SetRGB(*color)
+        toAnimate = []
         newslotParent = self.sr.slotParent
         uix.Flush(newslotParent)
         dw = uicore.desktop.width
         minWidth = 1400
         scaleFactor = min(1.0, max(0.75, dw / float(minWidth)))
         totalSidePanelsWidth = min(1200, max(960, dw - 120))
-        self.sr.wnd.height = int(max(490, 560 * scaleFactor))
+        self.sr.wnd.height = int(max(505, 560 * scaleFactor))
         self._scaleFactor = scaleFactor
-        self._fullWidth = totalSidePanelsWidth
         self._baseShapeSize = int(640 * scaleFactor)
-        self._fullPanelWidth = (totalSidePanelsWidth - self._baseShapeSize) / 2
-        self._centerOnlyWidth = totalSidePanelsWidth - self._fullPanelWidth * 2
+        self._fullPanelWidth = 280
+        self._centerOnlyWidth = self._baseShapeSize
         self._leftPanelWidth = 0
         self._rightPanelWidth = 0
         self.width = self._baseShapeSize
         self.height = self._baseShapeSize
         cX = cY = self._baseShapeSize / 2
-        width = self._centerOnlyWidth
+        width = self._baseShapeSize
         settings.user.ui.Set('fittingPanelLeft', 0)
         if settings.user.ui.Get('fittingPanelRight', 1):
             width += self._fullPanelWidth
@@ -536,7 +335,7 @@ class Fitting(uicls.FittingLayout):
         sc.PrepareSpaceScene()
         sc.SetStencilMap()
         self.sr.sceneContainer = sc
-        nav = form.SceneContainerBaseNavigation(parent=sceneContainerParent, align=uiconst.TOALL, pos=(0, 0, 0, 0), idx=0, state=uiconst.UI_NORMAL, pickRadius=-1)
+        nav = form.SceneContainerBaseNavigation(parent=sceneContainerParent, align=uiconst.TOALL, pos=(0, 0, 0, 0), idx=0, state=uiconst.UI_NORMAL, pickRadius=225 * scaleFactor)
         nav.Startup(sc)
         nav.OnDropData = self.OnDropData
         nav.GetMenu = self.GetShipMenu
@@ -571,7 +370,7 @@ class Fitting(uicls.FittingLayout):
                 nSlot = xtriui.FittingSlot(name='slot_%s_%s' % (gidx, sidx), parent=newslotParent, pos=(left,
                  top,
                  width,
-                 height), rotation=-mathUtil.DegToRad(angle))
+                 height), rotation=-mathUtil.DegToRad(angle), opacity=0.0)
                 nSlot.scaleFactor = scaleFactor
                 nSlot.radCosSin = (rad,
                  cos,
@@ -584,9 +383,8 @@ class Fitting(uicls.FittingLayout):
                 powerType = [const.effectHiPower, const.effectMedPower, const.effectLoPower][gidx]
                 nSlot.gidx = gidx
                 nSlot.Startup(flag, powerType, self.dogmaLocation, scaleFactor)
+                toAnimate.append(nSlot)
                 self.slots[flag] = nSlot
-                eve.Message('fittingSlot%s' % key[gidx])
-                blue.pyos.synchro.Sleep(5)
                 i += 1
 
 
@@ -611,7 +409,7 @@ class Fitting(uicls.FittingLayout):
             nSlot = xtriui.FittingSlot(name='subsystemSlot_%s' % i, parent=newslotParent, pos=(left,
              top,
              width,
-             height), rotation=-mathUtil.DegToRad(angle))
+             height), rotation=-mathUtil.DegToRad(angle), opacity=0.0)
             nSlot.scaleFactor = scaleFactor
             nSlot.radCosSin = (rad,
              cos,
@@ -619,10 +417,10 @@ class Fitting(uicls.FittingLayout):
              cX,
              cY)
             nSlot.gidx = 3
+            toAnimate.append(nSlot)
             nSlot.Startup(subsystemFlag, const.effectSubSystem, self.dogmaLocation, scaleFactor)
             angle += step
             self.slots[subsystemFlag] = nSlot
-            blue.pyos.synchro.Sleep(5)
 
         angle += step * gapsize
         for i in xrange(3):
@@ -638,7 +436,7 @@ class Fitting(uicls.FittingLayout):
             nSlot = xtriui.FittingSlot(name='slot_%s_%s' % (gidx, sidx), parent=newslotParent, pos=(left,
              top,
              width,
-             height), rotation=-mathUtil.DegToRad(angle))
+             height), rotation=-mathUtil.DegToRad(angle), opacity=0.0)
             nSlot.scaleFactor = scaleFactor
             nSlot.radCosSin = (rad,
              cos,
@@ -647,75 +445,100 @@ class Fitting(uicls.FittingLayout):
              cY)
             nSlot.gidx = 4
             nSlot.Startup(rigFlag, const.effectRigSlot, self.dogmaLocation, scaleFactor)
+            toAnimate.append(nSlot)
             angle += step
             self.slots[rigFlag] = nSlot
-            blue.pyos.synchro.Sleep(5)
 
-        blue.pyos.synchro.Yield()
-        self.sr.cpu_power_statustext = uicls.Label(text='', parent=newslotParent, name='cpu_power_statustext', left=8, top=0, width=200, autowidth=False, idx=0, state=uiconst.UI_DISABLED, align=uiconst.BOTTOMRIGHT)
+        self.sr.cpu_power_statustext = uicls.EveLabelMedium(text='', parent=newslotParent, name='cpu_power_statustext', left=8, top=0, width=200, idx=0, state=uiconst.UI_DISABLED, align=uiconst.BOTTOMRIGHT)
         self.sr.cpu_power_statustext.top = (self.height - self.sr.wnd.height) / 2 + 10
-        self.sr.calibrationstatustext = uicls.Label(text='', parent=newslotParent, name='calibrationstatustext', left=8, top=int(100 * scaleFactor), idx=0, state=uiconst.UI_DISABLED)
+        self.sr.calibrationstatustext = uicls.EveLabelMedium(text='', parent=newslotParent, name='calibrationstatustext', left=8, top=int(100 * scaleFactor), idx=0, state=uiconst.UI_DISABLED)
         self.sr.calibrationstatustext.top = (self.height - self.sr.wnd.height) / 2 + 50
-        self.sr.shipnamecont = uicls.Container(name='shipname', parent=rightside, align=uiconst.TOTOP, height=42, width=271)
+        self.sr.shipnamecont = uicls.Container(name='shipname', parent=rightside, align=uiconst.TOTOP, height=12)
         self.sr.shipnamecont.padBottom = 6
-        self.sr.shipnametext = uicls.Label(text='', parent=self.sr.shipnamecont, letterspace=1, fontsize=12, width=200, state=uiconst.UI_DISABLED, uppercase=True)
+        self.sr.shipnametext = uicls.EveHeaderMedium(text='', parent=self.sr.shipnamecont, width=250, state=uiconst.UI_DISABLED)
         self.sr.dragIcon = xtriui.FittingDraggableText(name='theicon', idx=0, align=uiconst.TOPLEFT, parent=self.sr.shipnamecont, width=100, height=20)
         self.sr.dragIcon.state = uiconst.UI_NORMAL
         shipTypeID = self.GetShipDogmaItem().typeID
         self.sr.infolink = uicls.InfoIcon(typeID=shipTypeID, itemID=self.shipID, size=16, left=0, top=0, parent=self.sr.shipnamecont, idx=0)
-        self.sr.fittingSvcCont = uicls.Container(name='fittingSvcCont', parent=self.sr.shipnamecont, align=uiconst.BOTTOMLEFT, height=22, width=200)
-        loadFittingBtn = uicls.Button(parent=self.sr.fittingSvcCont, label=mls.UI_FITTING_BROWSE, func=self.LoadFittingSetup, pos=(-2, 6, 0, 0), alwaysLite=True)
-        loadFittingBtn.hint = mls.UI_GENERIC_FITTING_BROWSETOOLTIP
-        saveFittingBtn = uicls.Button(parent=self.sr.fittingSvcCont, label=mls.UI_CMD_SAVE, func=self.SaveFittingSetup, pos=(loadFittingBtn.left + loadFittingBtn.width,
-         loadFittingBtn.top,
-         0,
-         0), alwaysLite=True)
-        saveFittingBtn.hint = mls.UI_GENERIC_FITTING_SAVETOOLTIP
-        self.sr.stripBtn = uicls.Button(parent=self.sr.fittingSvcCont, label=mls.UI_FITTING_STRIP, func=self.StripFitting, pos=(saveFittingBtn.left + saveFittingBtn.width,
-         loadFittingBtn.top,
-         0,
-         0), alwaysLite=True)
-        self.sr.stripBtn.hint = mls.UI_GENERIC_FITTING_STRIPTOOLTIP
-        self.sr.fittingSvcCont.width = self.sr.stripBtn.left + self.sr.stripBtn.width
-        self.sr.capacitorStatsParent = uicls.Container(name='capacitorStatsParent', parent=None, align=uiconst.TOALL, pos=(0, 0, 0, 0), state=uiconst.UI_PICKCHILDREN)
-        self.sr.capacitorHeaderStatsParent = uicls.Container(name='capacitorHeaderStatsParent', parent=None, align=uiconst.TOPRIGHT, state=uiconst.UI_PICKCHILDREN, width=200, height=20)
-        label = uicls.Label(text='', parent=self.sr.capacitorHeaderStatsParent, left=8, idx=0, state=uiconst.UI_DISABLED, align=uiconst.CENTERRIGHT)
+        btns = ((localization.GetByLabel('UI/Fitting/FittingWindow/Browse'), self.LoadFittingSetup, []), (localization.GetByLabel('UI/Fitting/FittingWindow/Save'), self.SaveFittingSetup, []), (localization.GetByLabel('UI/Fitting/FittingWindow/StripFitting'), self.StripFitting, []))
+        self.fittingSvcBtnGroup = uicls.ButtonGroup(name='fittingSvcBtnGroup', parent=rightside, btns=btns, line=False)
+        loadFittingBtn = self.fittingSvcBtnGroup.GetBtnByIdx(0)
+        loadFittingBtn.hint = localization.GetByLabel('UI/Fitting/FittingWindow/BrowseTooltip')
+        saveFittingBtn = self.fittingSvcBtnGroup.GetBtnByIdx(1)
+        saveFittingBtn.hint = localization.GetByLabel('UI/Fitting/FittingWindow/SaveTooltip')
+        self.sr.stripBtn = self.fittingSvcBtnGroup.GetBtnByIdx(2)
+        self.sr.stripBtn.hint = localization.GetByLabel('UI/Fitting/FittingWindow/StripFittingTooltip')
+        if not settings.user.ui.Get('fittingPanelRight', 1):
+            self.fittingSvcBtnGroup.Hide()
+        self.sr.capacitorStatsParent = uicls.Container(name='capacitorStatsParent')
+        uicls.BumpedUnderlay(bgParent=self.sr.capacitorStatsParent)
+        self.sr.capacitorHeaderStatsParent = uicls.Container(name='capacitorHeaderStatsParent', parent=None, align=uiconst.TORIGHT, state=uiconst.UI_PICKCHILDREN, width=200)
+        label = uicls.EveLabelMedium(text='', parent=self.sr.capacitorHeaderStatsParent, left=8, top=1, idx=0, state=uiconst.UI_NORMAL, align=uiconst.CENTERRIGHT)
         self.sr.capacitorHeaderStatsParent.sr.statusText = label
-        self.sr.defenceStatsParent = uicls.Container(name='defenceStatsParent', parent=None, align=uiconst.TOALL, pos=(0, 0, 0, 0), state=uiconst.UI_PICKCHILDREN)
-        self.sr.defenceHeaderStatsParent = uicls.Container(name='defenceHeaderStatsParent', parent=None, align=uiconst.CENTERRIGHT, state=uiconst.UI_PICKCHILDREN, width=200, height=20)
-        label = uicls.Label(text='', parent=self.sr.defenceHeaderStatsParent, left=8, idx=0, state=uiconst.UI_DISABLED, align=uiconst.CENTERRIGHT)
+        self.sr.offenseStatsParent = uicls.Container(name='offenseStatsParent')
+        self.sr.offenseStatsParent.fixedHeight = 56
+        uicls.BumpedUnderlay(bgParent=self.sr.offenseStatsParent)
+        self.sr.offenseHeaderStatsParent = uicls.Container(name='offenseHeaderStatsParent', parent=None, align=uiconst.TORIGHT, state=uiconst.UI_PICKCHILDREN, width=200)
+        label = uicls.EveLabelMedium(text='', parent=self.sr.offenseHeaderStatsParent, left=8, top=1, aidx=0, state=uiconst.UI_NORMAL, align=uiconst.CENTERRIGHT)
+        label.hint = localization.GetByLabel('UI/Fitting/FittingWindow/ShipDpsTooltip')
+        self.sr.offenseHeaderStatsParent.sr.statusText = label
+        self.sr.defenceStatsParent = uicls.Container(name='defenceStatsParent')
+        self.sr.defenceStatsParent.fixedHeight = 150
+        uicls.BumpedUnderlay(bgParent=self.sr.defenceStatsParent)
+        self.sr.defenceHeaderStatsParent = uicls.Container(name='defenceHeaderStatsParent', parent=None, align=uiconst.TORIGHT, state=uiconst.UI_PICKCHILDREN, width=200)
+        label = uicls.EveLabelMedium(text='', parent=self.sr.defenceHeaderStatsParent, left=8, top=1, idx=0, state=uiconst.UI_NORMAL, align=uiconst.CENTERRIGHT)
+        label.hint = localization.GetByLabel('UI/Fitting/FittingWindow/EffectiveHitpoints')
         self.sr.defenceHeaderStatsParent.sr.statusText = label
-        self.sr.targetingStatsParent = uicls.Container(name='targetingStatsParent', parent=None, align=uiconst.TOALL, pos=(0, 0, 0, 0), state=uiconst.UI_PICKCHILDREN)
-        self.sr.targetingStatsParent.sumContent = True
-        self.sr.targetingHeaderStatsParent = uicls.Container(name='targetingHeaderStatsParent', parent=None, align=uiconst.CENTERRIGHT, state=uiconst.UI_PICKCHILDREN, width=200, height=20)
-        label = uicls.Label(text='', parent=self.sr.targetingHeaderStatsParent, left=8, aidx=0, state=uiconst.UI_DISABLED, align=uiconst.CENTERRIGHT)
+        self.sr.targetingStatsParent = uicls.Container(name='targetingStatsParent')
+        self.sr.targetingStatsParent.fixedHeight = 84
+        uicls.BumpedUnderlay(bgParent=self.sr.targetingStatsParent)
+        self.sr.targetingHeaderStatsParent = uicls.Container(name='targetingHeaderStatsParent', parent=None, align=uiconst.TORIGHT, state=uiconst.UI_PICKCHILDREN, width=200)
+        label = uicls.EveLabelMedium(text='', parent=self.sr.targetingHeaderStatsParent, left=8, top=1, aidx=0, state=uiconst.UI_NORMAL, align=uiconst.CENTERRIGHT)
         self.sr.targetingHeaderStatsParent.sr.statusText = label
-        self.sr.navigationStatsParent = uicls.Container(name='navigationStatsParent', parent=None, align=uiconst.TOALL, pos=(0, 0, 0, 0), state=uiconst.UI_PICKCHILDREN)
-        self.sr.navigationStatsParent.sumContent = True
+        self.sr.navigationStatsParent = uicls.Container(name='navigationStatsParent')
+        self.sr.navigationStatsParent.fixedHeight = 56
+        uicls.BumpedUnderlay(bgParent=self.sr.navigationStatsParent)
+        self.sr.navigationHeaderStatsParent = uicls.Container(name='navigationHeaderStatsParent', parent=None, align=uiconst.TORIGHT, state=uiconst.UI_PICKCHILDREN, width=200)
+        label = uicls.EveLabelMedium(text='', parent=self.sr.navigationHeaderStatsParent, left=8, top=1, aidx=0, state=uiconst.UI_NORMAL, align=uiconst.CENTERRIGHT)
+        label.hint = localization.GetByLabel('UI/Fitting/FittingWindow/MaxVelocityHint')
+        self.sr.navigationHeaderStatsParent.sr.statusText = label
         em = xtriui.ExpandableMenuContainer(parent=rightside, pos=(0, 0, 0, 0))
         em.multipleExpanded = True
-        em.Load([(mls.UI_GENERIC_CAPACITOR,
+        em.Load([(localization.GetByLabel('UI/Fitting/FittingWindow/Capacitor'),
           self.sr.capacitorStatsParent,
           self.LoadCapacitorStats,
           None,
-          76,
-          self.sr.capacitorHeaderStatsParent),
-         (mls.UI_GENERIC_DEFENCE,
+          60,
+          self.sr.capacitorHeaderStatsParent,
+          False),
+         (localization.GetByLabel('UI/Fitting/FittingWindow/Offense'),
+          self.sr.offenseStatsParent,
+          self.LoadOffenseStats,
+          None,
+          60,
+          self.sr.offenseHeaderStatsParent,
+          False),
+         (localization.GetByLabel('UI/Fitting/FittingWindow/Defense'),
           self.sr.defenceStatsParent,
           self.LoadDefenceStats,
           None,
-          183,
-          self.sr.defenceHeaderStatsParent),
-         (mls.UI_GENERIC_TARGETING,
+          160,
+          self.sr.defenceHeaderStatsParent,
+          False),
+         (localization.GetByLabel('UI/Fitting/FittingWindow/Targeting'),
           self.sr.targetingStatsParent,
           self.LoadTargetingStats,
           None,
-          None),
-         (mls.UI_GENERIC_NAVIGATION,
+          None,
+          self.sr.targetingHeaderStatsParent,
+          False),
+         (localization.GetByLabel('UI/Fitting/FittingWindow/Navigation'),
           self.sr.navigationStatsParent,
           self.LoadNavigationStats,
           None,
-          None)], 'fittingRightside')
+          None,
+          self.sr.navigationHeaderStatsParent,
+          False)], 'fittingRightside')
         angle = 306.0
         rad = int(310 * scaleFactor)
         attribute = cfg.dgmattribs.Get(const.attributeTurretSlotsLeft)
@@ -767,16 +590,29 @@ class Fitting(uicls.FittingLayout):
         cargoDroneCont = uicls.Container(name='rightside', parent=newslotParent, align=uiconst.BOTTOMLEFT, width=110, height=64, left=const.defaultPadding)
         cargoDroneCont.top = (self.height - self.sr.wnd.height) / 2 + 6
         self.sr.cargoSlot = xtriui.CargoCargoSlots(name='cargoSlot', parent=cargoDroneCont, align=uiconst.TOTOP, height=32, idx=-1)
-        self.sr.cargoSlot.Startup(mls.UI_GENERIC_CARGOHOLD, 'ui_3_64_13', const.flagCargo, self.dogmaLocation)
+        self.sr.cargoSlot.Startup(localization.GetByLabel('UI/Common/CargoHold'), 'ui_3_64_13', const.flagCargo, self.dogmaLocation)
         self.sr.cargoSlot.OnClick = self.OpenCargoHoldOfActiveShip
         self.sr.cargoSlot.state = uiconst.UI_NORMAL
         self.sr.droneSlot = xtriui.CargoDroneSlots(name='cargoSlot', parent=cargoDroneCont, align=uiconst.TOALL, pos=(0, 0, 0, 0), idx=-1)
-        self.sr.droneSlot.Startup(mls.UI_GENERIC_DRONEBAY, 'ui_11_64_16', const.flagDroneBay, self.dogmaLocation)
+        self.sr.droneSlot.Startup(localization.GetByLabel('UI/Common/DroneBay'), 'ui_11_64_16', const.flagDroneBay, self.dogmaLocation)
         self.sr.droneSlot.OnClick = self.OpenDroneBayOfActiveShip
         self.sr.droneSlot.state = uiconst.UI_NORMAL
         self.initialized = True
-        uthread.new(self.ReloadFitting, eve.session.shipid)
+        uthread.new(self.ReloadFitting, session.shipid)
         uthread.new(self.ReloadShipModel)
+        uthread.new(self.EntryAnimation, toAnimate)
+
+
+
+    def EntryAnimation(self, toAnimate):
+        for obj in toAnimate:
+            obj.opacity = 0.0
+
+        for obj in toAnimate:
+            sm.GetService('audio').SendUIEvent('wise:/msg_fittingSlotHi_play')
+            uicore.animations.FadeTo(obj, 0.0, 1.0, duration=0.3)
+            blue.synchro.SleepWallclock(5)
+
 
 
 
@@ -784,7 +620,7 @@ class Fitting(uicls.FittingLayout):
         if self.shipID is None:
             return []
         if session.stationid:
-            hangarInv = eve.GetInventory(const.containerHangar)
+            hangarInv = sm.GetService('invCache').GetInventory(const.containerHangar)
             hangarItems = hangarInv.List()
             for each in hangarItems:
                 if each.itemID == self.shipID:
@@ -803,17 +639,15 @@ class Fitting(uicls.FittingLayout):
         fitting.description = ''
         fitting.name = cfg.evelocations.Get(util.GetActiveShip()).locationName
         fitting.ownerID = 0
-        wnd = sm.StartService('window').GetWindow('viewFitting' + fitting.name, create=1, decoClass=form.ViewFitting, fitting=fitting, truncated=None)
-        if wnd is not None and not wnd.destroyed:
-            wnd.Maximize()
+        form.ViewFitting.Open(windowID='viewFitting' + fitting.name, fitting=fitting, truncated=None)
 
 
 
     def LoadFittingSetup(self, *args):
         if sm.GetService('fittingSvc').HasLegacyClientFittings():
-            wnd = sm.StartService('window').GetWindow('ImportLegacyFittingsWindow', create=1)
+            wnd = form.ImportLegacyFittingsWindow.Open()
         else:
-            wnd = sm.StartService('window').GetWindow('FittingMgmt', create=1, decoClass=form.FittingMgmt)
+            wnd = form.FittingMgmt.Open()
         if wnd is not None and not wnd.destroyed:
             wnd.Maximize()
 
@@ -823,36 +657,27 @@ class Fitting(uicls.FittingLayout):
         np = self.sr.navigationStatsParent
         uix.Flush(np)
         self.sr.navigationStatsParent.state = uiconst.UI_PICKCHILDREN
-        lineColor = (1.0, 1.0, 1.0, 0.125)
-        toShow = [(const.attributeMaxVelocity, const.attributeMass, const.attributeAgility), (const.attributeBaseWarpSpeed,)]
+        toShow = ((const.attributeMass, const.attributeAgility, const.attributeBaseWarpSpeed),)
         (l, t, w, h,) = np.GetAbsolute()
         step = w / 3
-        if step < 90:
-            iconSize = 24
-        else:
-            iconSize = 32
+        iconSize = 32
         i = 0
         for attrGroup in toShow:
-            row = uicls.Container(name='topRow', parent=np, align=uiconst.TOTOP, height=iconSize)
-            if i:
-                uicls.Line(parent=row, align=uiconst.TOTOP, color=lineColor)
-            left = 0
+            row = uicls.Container(name='topRow', parent=np, align=uiconst.TOTOP, height=iconSize, padTop=3)
+            left = 3
             for each in attrGroup:
                 attribute = cfg.dgmattribs.Get(each)
-                if left:
-                    uicls.Line(parent=row, align=uiconst.RELATIVE, color=lineColor, left=left, height=iconSize - 1, width=1, top=1)
                 icon = uicls.Icon(graphicID=attribute.iconID, parent=row, pos=(left,
                  0,
                  iconSize,
                  iconSize), hint=attribute.displayName, name=attribute.displayName, ignoreSize=True)
-                label = uicls.Label(text='', parent=row, left=icon.left + icon.width, state=uiconst.UI_NORMAL, align=uiconst.CENTERLEFT)
+                label = uicls.EveLabelMedium(text='', parent=row, left=icon.left + icon.width, state=uiconst.UI_NORMAL, align=uiconst.CENTERLEFT)
                 label.hint = attribute.displayName
                 left += step
                 self.sr.Set(('StatsLabel', attribute.attributeID), label)
                 self.sr.Set(('StatsIcon', attribute.attributeID), icon)
 
             i += 1
-            row.sr.backgroundFrame = uicls.BumpedUnderlay(parent=row, padding=(-1, -1, -1, -1))
 
         if not initialLoad:
             self.UpdateStats()
@@ -863,50 +688,80 @@ class Fitting(uicls.FittingLayout):
         tp = self.sr.targetingStatsParent
         uix.Flush(tp)
         self.sr.targetingStatsParent.state = uiconst.UI_PICKCHILDREN
-        lineColor = (1.0, 1.0, 1.0, 0.125)
         (sensorStrengthAttributeID, val,) = self.GetSensorStrengthAttribute()
-        toShow = [('sensorStrength', const.attributeScanResolution, const.attributeMaxTargetRange), (const.attributeSignatureRadius, const.attributeMaxLockedTargets)]
+        toShow = [('sensorStrength', const.attributeScanResolution), (const.attributeSignatureRadius, const.attributeMaxLockedTargets)]
         (l, t, w, h,) = tp.GetAbsolute()
-        step = w / 3
-        if step < 90:
-            iconSize = 24
-        else:
-            iconSize = 32
+        step = w / 2
+        iconSize = 32
         i = 0
         for attrGroup in toShow:
-            row = uicls.Container(name='topRow', parent=tp, align=uiconst.TOTOP, height=iconSize)
-            if i:
-                uicls.Line(parent=row, align=uiconst.TOTOP, color=lineColor)
-            left = 0
+            row = uicls.Container(name='topRow', parent=tp, align=uiconst.TOTOP, height=26, padTop=3)
+            left = 3
             for attributeID in attrGroup:
                 if attributeID == 'sensorStrength':
                     each = sensorStrengthAttributeID
                 else:
                     each = attributeID
                 attribute = cfg.dgmattribs.Get(each)
-                if left:
-                    uicls.Line(parent=row, align=uiconst.RELATIVE, color=lineColor, left=left, height=iconSize - 1, width=1, top=1)
                 icon = uicls.Icon(graphicID=attribute.iconID, parent=row, pos=(left,
                  0,
                  iconSize,
                  iconSize), hint=attribute.displayName, name=attribute.displayName, ignoreSize=True)
-                label = uicls.Label(text='', parent=row, left=icon.left + icon.width, state=uiconst.UI_NORMAL, align=uiconst.CENTERLEFT)
+                labelLeft = icon.left + icon.width + 4
+                label = uicls.EveLabelMedium(text='', parent=row, left=labelLeft, state=uiconst.UI_NORMAL, align=uiconst.CENTERLEFT, top=4)
                 label.hint = attribute.displayName
                 left += step
                 tp.sr.Set(('StatsLabel', attributeID), label)
                 tp.sr.Set(('StatsIcon', attributeID), icon)
 
             i += 1
-            row.sr.backgroundFrame = uicls.BumpedUnderlay(parent=row, padding=(-1, -1, -1, -1))
 
         if not initialLoad:
             self.UpdateStats()
 
 
 
+    def LoadOffenseStats(self, initialLoad = False):
+        op = self.sr.offenseStatsParent
+        op.Flush()
+        attributes = (('turretDps', 'res:/UI/Texture/Icons/26_64_1.png', localization.GetByLabel('UI/Fitting/FittingWindow/TurretDpsTooltip')), ('droneDps', 'res:/UI/Texture/Icons/drones.png', localization.GetByLabel('UI/Fitting/FittingWindow/DroneDpsTooltip')), ('missileDps', 'res:/UI/Texture/Icons/81_64_16.png', localization.GetByLabel('UI/Fitting/FittingWindow/MissileDpsTooltip')))
+        iconSize = 32
+        for (i, (dps, texturePath, hint,),) in enumerate(attributes):
+            c = uicls.Container(parent=op, align=uiconst.TOLEFT_PROP, width=1.0 / len(attributes), height=20)
+            icon = uicls.Sprite(texturePath=texturePath, parent=c, align=uiconst.CENTERLEFT, pos=(5,
+             0,
+             iconSize,
+             iconSize), hint=hint)
+            labelLeft = iconSize + 6
+            label = uicls.EveLabelMedium(text='', parent=c, left=labelLeft, state=uiconst.UI_NORMAL, align=uiconst.CENTERLEFT, hint=hint)
+            op.sr.Set(('StatsLabel', dps), label)
+            op.sr.Set(('StatsIcon', dps), icon)
+
+        if not initialLoad:
+            self.UpdateStats()
+        self.UpdateOffenseStats()
+
+
+
+    def UpdateOffenseStats(self):
+        (turretDps, missileDps,) = self.dogmaLocation.GetTurretAndMissileDps(self.shipID)
+        label = self.sr.offenseStatsParent.sr.Get(('StatsLabel', 'turretDps'), None)
+        if label:
+            label.text = localization.GetByLabel('UI/Fitting/FittingWindow/DpsLabel', dps=turretDps)
+        label = self.sr.offenseStatsParent.sr.Get(('StatsLabel', 'missileDps'), None)
+        if label:
+            label.text = localization.GetByLabel('UI/Fitting/FittingWindow/DpsLabel', dps=missileDps)
+        (droneDps, drones,) = self.dogmaLocation.GetOptimalDroneDamage(self.shipID)
+        label = self.sr.offenseStatsParent.sr.Get(('StatsLabel', 'droneDps'), None)
+        if label:
+            label.text = localization.GetByLabel('UI/Fitting/FittingWindow/DpsLabel', dps=droneDps)
+        totalDps = turretDps + missileDps + droneDps
+        self.sr.offenseHeaderStatsParent.sr.statusText.text = localization.GetByLabel('UI/Fitting/FittingWindow/DpsLabel', dps=totalDps)
+
+
+
     def LoadDefenceStats(self, initialLoad = False):
         col1Width = 90
-        lineColor = (1.0, 1.0, 1.0, 0.125)
         barColors = [(0.1, 0.37, 0.55, 1.0),
          (0.55, 0.1, 0.1, 1.0),
          (0.45, 0.45, 0.45, 1.0),
@@ -919,18 +774,16 @@ class Fitting(uicls.FittingLayout):
         uix.Flush(dsp)
         dsp.state = uiconst.UI_PICKCHILDREN
         tRow = uicls.Container(name='topRow', parent=dsp, align=uiconst.TOTOP, height=32)
-        uicls.Line(parent=tRow, align=uiconst.RELATIVE, color=lineColor, left=col1Width, height=31, width=1, top=1)
-        tRow.sr.backgroundFrame = uicls.BumpedUnderlay(parent=tRow, padding=(-1, -1, -1, -1))
         self.sr.bestRepairPickerPanel = None
         bestPar = uicls.Container(name='bestPar', parent=tRow, align=uiconst.TOPLEFT, height=32, width=col1Width, state=uiconst.UI_NORMAL, idx=0)
         bestPar.OnClick = self.ExpandBestRepair
         expandIcon = uicls.Icon(name='expandIcon', icon='ui_38_16_229', parent=bestPar, state=uiconst.UI_DISABLED, align=uiconst.BOTTOMRIGHT)
         numPar = uicls.Container(name='numPar', parent=bestPar, width=11, height=11, top=17, left=4, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED)
-        numLabel = uicls.Label(text='', parent=numPar, atop=-1, state=uiconst.UI_DISABLED, align=uiconst.CENTER, shadow=None)
+        numLabel = uicls.EveLabelMedium(text='', parent=numPar, atop=-1, state=uiconst.UI_DISABLED, align=uiconst.CENTER, shadowOffset=(0, 0))
         uicls.Fill(parent=numPar, color=barColors[1])
         dsp.sr.Set('activeBestRepairNumLabel', numLabel)
         icon = uicls.Icon(parent=bestPar, state=uiconst.UI_DISABLED, width=32, height=32)
-        statusLabel = uicls.Label(text='', parent=bestPar, left=icon.left + icon.width, linespace=10, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT)
+        statusLabel = uicls.Label(text='', parent=bestPar, left=icon.left + icon.width, lineSpacing=-0.2, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT)
         dsp.sr.Set('activeBestRepairLabel', statusLabel)
         dsp.sr.Set('activeBestRepairParent', bestPar)
         dsp.sr.Set('activeBestRepairIcon', icon)
@@ -944,35 +797,26 @@ class Fitting(uicls.FittingLayout):
              0), idx=0, hint=attribute.displayName)
             left += step
 
-        for (label, what, iconNo, labelhint, iconhint,) in ((mls.UI_GENERIC_SHIELD,
+        for (label, what, iconNo, labelhint, iconhint,) in ((localization.GetByLabel('UI/Common/Shield'),
           'shield',
           'ui_1_64_13',
-          mls.UI_FITTING_SHIELDHP_CHARGERATE,
-          ''),
-         (mls.UI_GENERIC_ARMOR,
+          localization.GetByLabel('UI/Fitting/FittingWindow/ShieldHPAndRecharge'),
+          ''), (localization.GetByLabel('UI/Common/Armor'),
           'armor',
           'ui_1_64_9',
           '',
-          ''),
-         (mls.UI_GENERIC_STRUCTURE,
+          ''), (localization.GetByLabel('UI/Fitting/Structure'),
           'structure',
           'ui_2_64_12',
           '',
-          ''),
-         (mls.UI_GENERIC_EFFECTIVE_HP,
-          'effectiveHp',
-          'ui_26_64_2',
-          mls.UI_FITTING_EFFECTIVE_HP,
-          mls.UI_FITTING_EFFECTIVE_HP)):
+          '')):
             row = uicls.Container(name='row_%s' % what, parent=dsp, align=uiconst.TOTOP, height=32)
-            uicls.Line(parent=row, align=uiconst.TOTOP, color=lineColor)
             mainIcon = uicls.Icon(icon=iconNo, parent=row, pos=(0, 0, 32, 32), ignoreSize=True)
             mainIcon.hint = [label, iconhint][(len(iconhint) > 0)]
-            statusLabel = uicls.Label(text='', parent=row, left=mainIcon.left + mainIcon.width, linespace=10, state=uiconst.UI_NORMAL, align=uiconst.CENTERLEFT)
+            statusLabel = uicls.Label(text='', parent=row, left=mainIcon.left + mainIcon.width, lineSpacing=-0.2, state=uiconst.UI_NORMAL, align=uiconst.CENTERLEFT, width=62)
             statusLabel.hint = [label, labelhint][(len(labelhint) > 0)]
             dsp.sr.Set('%sStatusText' % what, statusLabel)
             if what != 'effectiveHp':
-                uicls.Line(parent=row, align=uiconst.RELATIVE, color=lineColor, left=col1Width, height=31, width=1, top=1)
                 left = col1Width
                 for (i, attribute,) in enumerate(resAttrs):
                     gaugePar = uicls.Container(parent=row, align=uiconst.CENTERLEFT, width=step - 6, height=12, left=left + 3)
@@ -985,13 +829,13 @@ class Fitting(uicls.FittingLayout):
                      0.2)
                     uicls.Fill(parent=gaugePar, color=fillColor)
                     dsp.sr.Set(('%sGauge' % what, attribute.attributeID), gauge)
-                    statusLabel = uicls.Label(text='0%', parent=gaugePar, left=6, fontsize=10, state=uiconst.UI_DISABLED, idx=0, align=uiconst.CENTERLEFT)
+                    statusLabel = uicls.EveLabelSmall(text='0%', parent=gaugePar, left=6, state=uiconst.UI_DISABLED, idx=0, align=uiconst.CENTERLEFT)
                     dsp.sr.Set(('%sGaugeLabel' % what, attribute.attributeID), statusLabel)
                     gaugePar.height = max(12, statusLabel.textheight + 2)
                     left += step
 
-            row.sr.backgroundFrame = uicls.BumpedUnderlay(parent=row, padding=(-1, -1, -1, -1))
 
+        dsp.children[0].padTop = 5
         if not initialLoad:
             self.UpdateStats()
 
@@ -999,119 +843,18 @@ class Fitting(uicls.FittingLayout):
 
     def LoadCapacitorStats(self, initialLoad = False):
         uix.Flush(self.sr.capacitorStatsParent)
-        lineColor = (1.0, 1.0, 1.0, 0.125)
         left = 0
-        self.sr.capacitorStatsParent.sr.powerCore = uicls.Container(parent=self.sr.capacitorStatsParent, name='powercore', pos=(4, 6, 45, 45), align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED)
+        self.sr.capacitorStatsParent.sr.powerCore = uicls.Container(parent=self.sr.capacitorStatsParent, name='powercore', pos=(5, 5, 30, 30), align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED)
         csp = self.sr.capacitorStatsParent
-        label = uicls.Label(text='', parent=csp, idx=0, state=uiconst.UI_NORMAL, top=-16, left=56, align=uiconst.CENTERLEFT)
-        label.hint = mls.UI_FITTING_CAPACITOR_CHARGERATE
+        label = uicls.EveLabelMedium(text='', parent=csp, idx=0, state=uiconst.UI_NORMAL, top=5, left=45, align=uiconst.TOPLEFT)
+        label.hint = localization.GetByLabel('UI/Fitting/FittingWindow/CapacityAndRechargeRate')
         self.sr.capacitorStatsParent.sr.statusText = label
-        label = uicls.Label(text='', parent=csp, idx=0, state=uiconst.UI_NORMAL, top=0, left=56, align=uiconst.CENTERLEFT)
-        label.hint = mls.UI_FITTING_EXCESSCAPACITORRECHARGERATE
+        label = uicls.EveLabelMedium(text='', parent=csp, idx=0, state=uiconst.UI_NORMAL, top=22, left=45, align=uiconst.TOPLEFT)
+        label.hint = localization.GetByLabel('UI/Fitting/FittingWindow/ExcessCapacitor')
         self.sr.capacitorStatsParent.sr.delta = label
-        label = uicls.Label(text='', parent=csp, idx=0, state=uiconst.UI_NORMAL, top=16, left=56, align=uiconst.CENTERLEFT)
-        self.sr.capacitorStatsParent.sr.sustainable = label
-        self.sr.capacitorStatsParent.sr.backgroundFrame = uicls.BumpedUnderlay(parent=self.sr.capacitorStatsParent, padding=(-1, 2, -1, -1))
         self.UpdateCapacitor(reload=1)
         if not initialLoad:
             self.UpdateStats()
-
-
-
-    def GetModules(self, parentContainer):
-        hangarInv = eve.GetInventory(const.containerHangar)
-        items = hangarInv.List()
-
-        def Filter(item):
-            if item.categoryID not in (const.categoryModule, const.categorySubSystem):
-                return True
-            return not sm.StartService('godma').CheckSkillRequirementsForType(item.typeID)
-
-
-        assets = []
-        for each in items:
-            if Filter(each):
-                continue
-            assets.append(listentry.Get('InvFittingItem', data=uix.GetItemData(each, 'details', container=parentContainer)))
-
-        if not len(assets):
-            assets.append(listentry.Get('Generic', {'label': mls.UI_GENERIC_NOTHINGTOFIT,
-             'hint': '',
-             'OnDropData': parentContainer.OnDropData,
-             'hideLines': 1}))
-        return (assets, 'label')
-
-
-
-    def GetCharges(self, parentContainer):
-        hangarInv = eve.GetInventory(const.containerHangar)
-        items = hangarInv.List()
-
-        def Filter(item):
-            if item.categoryID != const.categoryCharge:
-                return True
-            return False
-
-
-        assets = []
-        for each in items:
-            if Filter(each):
-                continue
-            assets.append(listentry.Get('InvFittingItem', data=uix.GetItemData(each, 'details', container=parentContainer)))
-
-        if not len(assets):
-            assets.append(listentry.Get('Generic', {'label': mls.UI_GENERIC_NOCHARGESTOFIT,
-             'hint': '',
-             'OnDropData': parentContainer.OnDropData,
-             'hideLines': 1}))
-        return (assets, 'label')
-
-
-
-    def GetDrones(self, parentContainer):
-        shipInv = self.GetShipInventory()
-        drones = shipInv.ListDroneBay()
-
-        def Filter(item):
-            if item.categoryID != const.categoryDrone:
-                return True
-            return False
-
-
-        assets = []
-        for each in drones:
-            if Filter(each):
-                continue
-            data = uix.GetItemData(each, 'details', container=parentContainer)
-            data.showFitIcon = False
-            assets.append(listentry.Get('InvFittingItem', data=data))
-
-        if not len(assets):
-            assets.append(listentry.Get('Generic', {'label': mls.UI_GENERIC_NODRONESINSHIP,
-             'OnDropData': parentContainer.OnDropData,
-             'hideLines': 1}))
-        return (assets, 'label')
-
-
-
-    def GetCargo(self, parentContainer):
-        shipInv = self.GetShipInventory()
-        drones = shipInv.ListCargo()
-        assets = []
-        for each in drones:
-            data = uix.GetItemData(each, 'details', container=parentContainer)
-            assets.append(listentry.Get('InvFittingItem', data=data))
-
-        if not len(assets):
-            assets.append(listentry.Get('Generic', {'label': mls.UI_GENERIC_NOTHINGINCARGOHOLD,
-             'OnDropData': parentContainer.OnDropData,
-             'hideLines': 1}))
-        return (assets, 'label')
-
-
-
-    def GetShipInventory(self):
-        return sm.GetService('invCache').GetInventoryFromId(self.shipID, locationID=session.stationid2)
 
 
 
@@ -1129,7 +872,7 @@ class Fitting(uicls.FittingLayout):
 
     def _UpdateStats(self):
         try:
-            blue.pyos.synchro.Sleep(100)
+            blue.pyos.synchro.SleepWallclock(100)
 
         finally:
             self.updateStatsThread = None
@@ -1139,9 +882,9 @@ class Fitting(uicls.FittingLayout):
             return 
         if session.stationid2:
             if util.GetAttrs(self, 'sr', 'stripBtn'):
-                self.sr.stripBtn.state = uiconst.UI_NORMAL
+                self.sr.stripBtn.Enable()
         else:
-            self.sr.stripBtn.state = uiconst.UI_HIDDEN
+            self.sr.stripBtn.Disable()
         xtraArmor = 0.0
         multiplyArmor = 1.0
         multiplyPower = 1.0
@@ -1293,43 +1036,41 @@ class Fitting(uicls.FittingLayout):
          const.attributeKineticDamageResonance,
          const.attributeThermalDamageResonance]
         effectiveHp = 0.0
-        effectiveHpColor = FONTCOLOR_DEFAULT
+        effectiveHpColor = FONTCOLOR_DEFAULT2
         dsp = util.GetAttrs(self, 'sr', 'defenceStatsParent')
         if not dsp or dsp.destroyed:
             return 
         resMap = {'structure': 'h',
          'armor': 'a',
          'shield': 's'}
-        for (what, suffix, attrname, idx, alt, altm,) in (('structure',
-          mls.UI_GENERIC_FITTING_HP,
-          'hp',
-          0,
+        for (what, label, attributeID, rechargeAttributeID, hpAddition, hpMultiplier,) in (('structure',
+          dsp.sr.Get('structureStatusText', None),
+          const.attributeHp,
+          None,
           xtraStructure,
           multiplyStructure), ('armor',
-          mls.UI_GENERIC_FITTING_HP,
-          'armorHP',
-          0,
+          dsp.sr.Get('armorStatusText', None),
+          const.attributeArmorHP,
+          None,
           xtraArmor,
           multiplyArmor), ('shield',
-          mls.UI_GENERIC_FITTING_HP,
-          'shieldCapacity',
+          dsp.sr.Get('shieldStatusText', None),
+          const.attributeShieldCapacity,
           1,
           xtraShield,
           multiplyShieldCapacity)):
-            attrID = self.dogmaLocation.dogmaStaticMgr.attributesByName[attrname].attributeID
-            status = self.GetShipAttribute(attrID)
+            status = self.GetShipAttribute(attributeID)
             if not status:
                 continue
-            label = dsp.sr.Get('%sStatusText' % what, None)
+            status = (status + hpAddition) * hpMultiplier
             if label:
-                if what in ('armor', 'structure') and altm > 1.0:
-                    status = status * altm
-                    label.text = '%s%i %s' % (self.GetMultiplyColor(altm / 100), status, suffix)
+                color = self.GetColor(hpAddition, hpMultiplier)
+                label.text = color + localization.GetByLabel('UI/Fitting/FittingWindow/ColoredHp', hp=int(status)) + '</color>'
+                if rechargeAttributeID is not None:
+                    label.text = localization.GetByLabel('UI/Fitting/FittingWindow/ColoredHitpointsAndRechargeTime', hp=int(status), rechargeTime=int(self.GetShipAttribute(const.attributeShieldRechargeRate) * multiplyShieldRecharge * 0.001), startColorTag1='<color=%s>' % hex(self.GetColor2(hpAddition, hpMultiplier)), startColorTag2='<color=%s>' % hex(self.GetMultiplyColor2(multiplyShieldRecharge)), endColorTag='</color>')
+                    label.top = 2
                 else:
-                    status = (alt + status) * altm
-                    label.text = '%s%i %s' % (self.GetColor(alt, altm), status, suffix)
-                if what == 'shield':
-                    label.text += '<br>%s%i %s' % (self.GetMultiplyColor(multiplyShieldRecharge), self.GetShipAttribute(const.attributeShieldRechargeRate) * multiplyShieldRecharge * 0.001, mls.UI_GENERIC_SECONDVERYSHORT.lower())
+                    label.text = color + localization.GetByLabel('UI/Fitting/FittingWindow/ColoredHp', hp=int(status)) + '</color>'
             minResistance = 0.0
             for (i, res,) in enumerate(['EmDamageResonance',
              'ExplosiveDamageResonance',
@@ -1344,7 +1085,7 @@ class Fitting(uicls.FittingLayout):
                 attributeID = self.dogmaLocation.dogmaStaticMgr.attributesByName[attribute].attributeID
                 value = self.GetShipAttribute(attributeID)
                 if multiplierMod != 0.0:
-                    effectiveHpColor = FONTCOLOR_HILITE
+                    effectiveHpColor = FONTCOLOR_HILITE2
                 if value is not None:
                     value = value + value * multiplierMod / 100
                     if dsp.state != uiconst.UI_HIDDEN:
@@ -1353,18 +1094,21 @@ class Fitting(uicls.FittingLayout):
                         if gauge:
                             self.UpdateGauge(gauge, 1.0 - value)
                         if gaugeLabel:
-                            gaugeLabel.text = '%s<b>%s%%</b>' % (self.GetColor(multiplierMod), util.FmtAmt(100 - int(value * 100)))
+                            gaugeText = '<color=%s>' % hex(self.GetColor2(multiplierMod))
+                            gaugeText += localization.GetByLabel('UI/Fitting/FittingWindow/ColoredResistanceLabel', number=100 - int(value * 100))
+                            gaugeText += '</color>'
+                            gaugeLabel.text = gaugeText
                     minResistance = max(minResistance, value)
 
             if minResistance:
                 effectiveHp += status / minResistance
-            if multiplyStructure != 1.0:
-                effectiveHpColor = FONTCOLOR_HILITE
+            if hpMultiplier != 1.0 or hpAddition != 0.0:
+                effectiveHpColor = FONTCOLOR_HILITE2
 
-        self.sr.defenceHeaderStatsParent.sr.statusText.text = '%s%d %s' % (effectiveHpColor, effectiveHp, mls.UI_GENERIC_FITTING_HPEFFECTIVE)
-        effectiveHpLabel = dsp.sr.Get('effectiveHpStatusText', None)
-        if label:
-            effectiveHpLabel.text = self.sr.defenceHeaderStatsParent.sr.statusText.text
+        coloredEffeciveHpLabel = '<color=%s>' % hex(effectiveHpColor)
+        coloredEffeciveHpLabel += localization.GetByLabel('UI/Fitting/FittingWindow/ColoredEffectiveHp', color=hex(effectiveHpColor), effectiveHp=int(effectiveHp))
+        coloredEffeciveHpLabel += '</color>'
+        self.sr.defenceHeaderStatsParent.sr.statusText.text = coloredEffeciveHpLabel
         activeRepairLabel = dsp.sr.Get('activeBestRepairLabel', None)
         activeBestRepairParent = dsp.sr.Get('activeBestRepairParent', None)
         activeBestRepairNumLabel = dsp.sr.Get('activeBestRepairNumLabel', None)
@@ -1374,20 +1118,23 @@ class Fitting(uicls.FittingLayout):
             if activeBestRepair == PASSIVESHIELDRECHARGE:
                 shieldCapacity = self.GetShipAttribute(const.attributeShieldCapacity)
                 shieldRR = self.GetShipAttribute(const.attributeShieldRechargeRate)
-                activeRepairLabel.text = '%s%s %s' % (self.GetMultiplyColor(multiplyShieldRecharge), util.FmtAmt(shieldCapacity * multiplyShieldCapacity / (shieldRR * multiplyShieldRecharge / 1000.0) * 2.5), mls.UI_GENERIC_FITTING_HPPERSEC)
-                activeBestRepairParent.hint = mls.UI_FITTING_PASSIVE_SHIELD_RECHARGE
+                activeRepairText = '<color=%s>' % hex(self.GetMultiplyColor2(multiplyShieldRecharge))
+                activeRepairText += localization.GetByLabel('UI/Fitting/FittingWindow/ColoredPassiveRepairRate', hpPerSec=int(2.5 * (shieldCapacity * multiplyShieldCapacity) / (shieldRR * multiplyShieldRecharge / 1000.0)))
+                activeRepairText += '</color>'
+                activeRepairLabel.text = activeRepairText
+                activeBestRepairParent.hint = localization.GetByLabel('UI/Fitting/FittingWindow/PassiveShieldRecharge')
                 activeBestRepairNumLabel.parent.state = uiconst.UI_HIDDEN
                 activeBestRepairIcon.LoadIcon(cfg.dgmattribs.Get(const.attributeShieldCapacity).iconID, ignoreSize=True)
             else:
-                dataSet = {ARMORREPAIRRATEACTIVE: (mls.UI_FITTING_ARMOR_REPAIR_RATE_ACTIVE,
+                dataSet = {ARMORREPAIRRATEACTIVE: (localization.GetByLabel('UI/Fitting/FittingWindow/ArmorRepairRate'),
                                          const.groupArmorRepairUnit,
                                          const.attributeArmorDamageAmount,
                                          'ui_1_64_11'),
-                 HULLREPAIRRATEACTIVE: (mls.UI_FITTING_HULL_REPAIR_RATE_ACTIVE,
+                 HULLREPAIRRATEACTIVE: (localization.GetByLabel('UI/Fitting/FittingWindow/HullRepairRate'),
                                         const.groupHullRepairUnit,
                                         const.attributeStructureDamageAmount,
                                         'ui_1_64_11'),
-                 SHIELDBOOSTRATEACTIVE: (mls.UI_FITTING_SHIELD_BOOST_RATE_ACTIVE,
+                 SHIELDBOOSTRATEACTIVE: (localization.GetByLabel('UI/Fitting/FittingWindow/ShieldBoostRate'),
                                          const.groupShieldBooster,
                                          const.attributeShieldBonus,
                                          'ui_2_64_3')}
@@ -1395,13 +1142,13 @@ class Fitting(uicls.FittingLayout):
                 dgmAttrib = cfg.dgmattribs.Get(attributeID)
                 activeBestRepairParent.hint = hint
                 modules = modulesByGroupInShip.get(groupID, None)
-                color = FONTCOLOR_DEFAULT
+                color = FONTCOLOR_DEFAULT2
                 if item and item.groupID == groupID:
                     if modules:
                         modules += [item]
                     else:
                         modules = [item]
-                    color = FONTCOLOR_HILITE
+                    color = FONTCOLOR_HILITE2
                 if modules:
                     data = self.CollectDogmaAttributes(modules, (const.attributeHp,
                      const.attributeShieldBonus,
@@ -1420,24 +1167,25 @@ class Fitting(uicls.FittingLayout):
 
                         if commonCycleTime:
                             duration = commonCycleTime
-                            activeRepairLabel.text = '%s%0.2f %s<br>%s %s' % (color,
-                             sum(hps),
-                             mls.UI_GENERIC_FITTING_HP,
-                             duration / 1000.0,
-                             mls.UI_GENERIC_SECONDVERYSHORT.lower())
+                            activeRepairLabel.text = localization.GetByLabel('UI/Fitting/FittingWindow/ColoredHitpointsAndDuration', startColorTag='<color=%s>' % hex(color), endColorTag='</color>', hp=sum(hps), duration=duration / 1000.0)
                         else:
                             total = 0
-                            for (i, ct,) in enumerate(durations):
-                                if i >= len(hps):
-                                    return 
-                                total += hps[i] / (ct / 1000.0)
+                            for (hp, ct,) in zip(hps, durations):
+                                total += hp / (ct / 1000.0)
 
-                        activeRepairLabel.text = '%s%d %s' % (color, total, mls.UI_GENERIC_FITTING_HPPERSEC)
-                    activeBestRepairNumLabel.text = '%s<b>%s</b>' % (color, len(modules))
+                        activeRepairText = '<color=%s>' % color
+                        activeRepairText += localization.GetByLabel('UI/Fitting/FittingWindow/ColoredPassiveRepairRate', hpPerSec=total)
+                        activeRepairText += '</color>'
+                        activeRepairLabel.text = activeRepairText
+                    activeBestRepairNumText = '<color=%s>' % color
+                    activeBestRepairNumText += localization.GetByLabel('UI/Fitting/FittingWindow/ColoredBestRepairNumber', numberOfModules=len(modules))
+                    activeBestRepairNumText += '</color>'
+                    activeBestRepairNumLabel.bold = True
+                    activeBestRepairNumLabel.text = activeBestRepairNumText
                     activeBestRepairNumLabel.parent.state = uiconst.UI_DISABLED
                 else:
-                    activeRepairLabel.text = mls.UI_GENERIC_FITTING_NOMODULE
-                    activeBestRepairNumLabel.text = '<b>0</b>'
+                    activeRepairLabel.text = localization.GetByLabel('UI/Fitting/FittingWindow/NoModule')
+                    activeBestRepairNumLabel.text = localization.GetByLabel('UI/Fitting/FittingWindow/NoModuleNumber')
                     activeBestRepairNumLabel.parent.state = uiconst.UI_DISABLED
                 activeBestRepairIcon.LoadIcon(iconNum, ignoreSize=True)
         turretAddition = 0
@@ -1502,13 +1250,14 @@ class Fitting(uicls.FittingLayout):
         if massLabel:
             massAddition = typeAttributesByID.get(const.attributeMassAddition, 0.0)
             mass = self.GetShipAttribute(const.attributeMass)
-            value = mass + massAddition
-            suffix = 'kg'
+            value = int(mass + massAddition)
+            color = self.GetXtraColor(massAddition)
             if value > 10000.0:
                 value = value / 1000.0
-                suffix = 't'
-            massLabel.text = '%s%s %s' % (self.GetXtraColor(massAddition), util.FmtAmt(value), suffix)
-        maxVelocityLabel = self.sr.Get(('StatsLabel', const.attributeMaxVelocity), None)
+                massLabel.text = color + localization.GetByLabel('UI/Fitting/FittingWindow/MassTonnes', mass=value)
+            else:
+                massLabel.text = color + localization.GetByLabel('UI/Fitting/FittingWindow/MassKg', mass=value)
+        maxVelocityLabel = self.sr.navigationHeaderStatsParent.sr.statusText
         if maxVelocityLabel:
             xtraSpeed = typeAttributesByID.get(const.attributeSpeedBonus, 0.0) + typeAttributesByID.get(const.attributeMaxVelocity, 0.0)
             multiplyVelocity = typeAttributesByID.get(const.attributeVelocityModifier, None)
@@ -1517,33 +1266,35 @@ class Fitting(uicls.FittingLayout):
             else:
                 multiplyVelocity = 1.0 * multiplySpeed
             maxVelocity = self.GetShipAttribute(const.attributeMaxVelocity)
-            maxVelocityLabel.text = '%s%d %s' % (self.GetColor(xtraSpeed, multiplyVelocity), (maxVelocity + xtraSpeed) * multiplyVelocity, mls.UI_GENERIC_MPERS)
+            maxVelocityText = '<color=%s>' % hex(self.GetColor2(xtraSpeed, multiplyVelocity))
+            maxVelocityText += localization.GetByLabel('UI/Fitting/FittingWindow/ColoredMaxVelocity', maxVelocity=(maxVelocity + xtraSpeed) * multiplyVelocity)
+            maxVelocityText += '</color>'
+            maxVelocityLabel.text = maxVelocityText
         agilityLabel = self.sr.Get(('StatsLabel', const.attributeAgility), None)
         if agilityLabel:
             agility = self.GetShipAttribute(const.attributeAgility)
-            agilityLabel.text = '%.4fx' % agility
+            agilityLabel.text = localization.GetByLabel('UI/Fitting/FittingWindow/InertiaModifier', value=agility)
         baseWarpSpeedLabel = self.sr.Get(('StatsLabel', const.attributeBaseWarpSpeed), None)
         if baseWarpSpeedLabel:
             baseWarpSpeed = self.GetShipAttribute(const.attributeBaseWarpSpeed)
             warpSpeedMultiplier = self.GetShipAttribute(const.attributeWarpSpeedMultiplier)
-            baseWarpSpeedLabel.text = '%s/%s' % (util.FmtDist(baseWarpSpeed * warpSpeedMultiplier * 3 * const.AU, 2), cfg.dgmunits.Get(const.unitMilliseconds).displayName)
-        xtraLockedTargets = typeAttributesByID.get(const.attributeMaxLockedTargetsBonus, 0.0)
-        maxLockedTargets = self.GetShipAttribute(const.attributeMaxLockedTargets)
-        self.sr.targetingStatsParent.parent.parent.SetHeader(' %s(%ix)' % (self.GetXtraColor(xtraLockedTargets), maxLockedTargets + xtraLockedTargets), addon=1, hint=mls.UI_FITTING_MAXLOCKEDTARGETS + ': %d' % (maxLockedTargets + xtraLockedTargets))
+            baseWarpSpeedLabel.text = localization.GetByLabel('UI/Fitting/FittingWindow/WarpSpeed', distText=util.FmtDist(baseWarpSpeed * warpSpeedMultiplier * 3 * const.AU, 1))
+        xtraTargetRange = typeAttributesByID.get(const.attributeMaxTargetRange, 0.0)
+        maxTargetRange = self.GetShipAttribute(const.attributeMaxTargetRange)
+        maxRange = (maxTargetRange + xtraTargetRange) / 1000.0
+        headerText = localization.GetByLabel('UI/Fitting/FittingWindow/TargetingHeader', startColorTag='', endColorTag='', maxRange=maxRange)
+        headerHint = localization.GetByLabel('UI/Fitting/FittingWindow/TargetingHeaderHint')
+        self.sr.targetingHeaderStatsParent.sr.statusText.text = headerText
+        self.sr.targetingHeaderStatsParent.sr.statusText.hint = headerHint
         multiplyScanResolution = typeAttributesByID.get(const.attributeScanResolutionMultiplier, 1.0)
         if const.attributeScanResolutionBonus in typeAttributesByID:
             multiplyScanResolution *= 1 + typeAttributesByID[const.attributeScanResolutionBonus] / 100
         scanResolution = self.GetShipAttribute(const.attributeScanResolution)
-        srt = '%s%i mm' % (self.GetMultiplyColor(multiplyScanResolution), scanResolution * multiplyScanResolution)
+        srt = self.GetMultiplyColor(multiplyScanResolution)
+        srt += localization.GetByLabel('UI/Fitting/FittingWindow/ScanResolution', resolution=int(scanResolution * multiplyScanResolution))
         statsLabel = self.sr.targetingStatsParent.sr.Get(('StatsLabel', const.attributeScanResolution), None)
         if statsLabel:
             statsLabel.text = srt
-        maxTargetRange = self.GetShipAttribute(const.attributeMaxTargetRange)
-        mtrt = '%s%i %s' % (self.GetMultiplyColor(multiplyMaxTargetRange), maxTargetRange * multiplyMaxTargetRange, mls.UI_GENERIC_METERSSHORT)
-        statsLabel = self.sr.targetingStatsParent.sr.Get(('StatsLabel', const.attributeMaxTargetRange), None)
-        if statsLabel:
-            statsLabel.text = mtrt
-        self.sr.targetingHeaderStatsParent.sr.statusText.text = srt + ' |' + mtrt
         (sensorStrengthAttributeID, maxSensorStrength,) = self.GetSensorStrengthAttribute()
         maxSensor = cfg.dgmattribs.Get(sensorStrengthAttributeID)
         attrIdx = sensorStrengthAttrs.index(maxSensor.attributeID)
@@ -1559,7 +1310,9 @@ class Fitting(uicls.FittingLayout):
             ssPValue = 1.0 + ssP.value / 100.0
         statsLabel = self.sr.targetingStatsParent.sr.Get(('StatsLabel', 'sensorStrength'), None)
         if statsLabel:
-            statsLabel.text = '%s%s' % (self.GetColor(multi=(ssBValue + ssPValue) / 2.0), sm.GetService('info').GetFormatAndValue(maxSensor, maxSensorStrength * ssBValue * ssPValue))
+            statsText = self.GetColor(multi=(ssBValue + ssPValue) / 2.0)
+            statsText += localization.GetByLabel('UI/Fitting/FittingWindow/SensorStrength', points=int(maxSensorStrength * ssBValue * ssPValue))
+            statsLabel.text = statsText
             statsLabel.hint = maxSensor.displayName
         statsIcon = self.sr.targetingStatsParent.sr.Get(('StatsIcon', 'sensorStrength'), None)
         if statsIcon:
@@ -1569,20 +1322,28 @@ class Fitting(uicls.FittingLayout):
         if signatureRadiusLabel:
             signatureRadius = self.GetShipAttribute(const.attributeSignatureRadius)
             signatureRadiusAdd = typeAttributesByID.get(const.attributeSignatureRadiusAdd, 0.0)
-            signatureRadiusLabel.text = '%s%i %s' % (self.GetXtraColor(signatureRadiusAdd), signatureRadius + signatureRadiusAdd, mls.UI_GENERIC_METERSSHORT)
+            signatureRadiusText = self.GetXtraColor(signatureRadiusAdd)
+            signatureRadiusText += localization.GetByLabel('UI/Fitting/FittingWindow/TargetingRange', range=signatureRadius + signatureRadiusAdd)
+            signatureRadiusLabel.text = signatureRadiusText
         maxLockedTargetsLabel = self.sr.targetingStatsParent.sr.Get(('StatsLabel', const.attributeMaxLockedTargets), None)
         if maxLockedTargetsLabel:
             maxLockedTargets = self.GetShipAttribute(const.attributeMaxLockedTargets)
-            maxLockedTargetsAdd = xtraLockedTargets
-            maxLockedTargetsLabel.text = '%s%i' % (self.GetXtraColor(xtraLockedTargets), maxLockedTargets + maxLockedTargetsAdd)
+            maxLockedTargetsAdd = typeAttributesByID.get(const.attributeMaxLockedTargets, 0.0)
+            maxLockedTargetsText = self.GetXtraColor(maxLockedTargetsAdd)
+            maxLockedTargetsText += localization.GetByLabel('UI/Fitting/FittingWindow/MaxLockedTargets', maxTargets=int(maxLockedTargets + maxLockedTargetsAdd))
+            maxLockedTargetsLabel.text = maxLockedTargetsText
         self.UpdateCapacitor(xtraCapacitor, multiplyRecharge, multiplyCapacitor, reload=1)
         self.UpdateCPUandPowerload(multiplyCpu, xtraCpuLoad, xtraCpu, xtraPower, multiplyPower, xtraPowerload)
         self.UpdateCalibration(multiplyCalibration, xtraCalibrationLoad, xtraCalibrationOutput)
+        self.UpdateOffenseStats()
         self.UpdateCargoDroneInfo(xtraCargoSpace, xtraDroneSpace)
 
 
 
     def ShowAddition(self, h, m, l):
+        if (h, m, l) == self.lastAddition:
+            return 
+        self.lastAddition = (h, m, l)
         key = ['Hi', 'Med', 'Lo']
         for (gidx, attributeID,) in enumerate((const.attributeHiSlots, const.attributeMedSlots, const.attributeLowSlots)):
             totalslots = self.GetShipAttribute(attributeID)
@@ -1618,22 +1379,16 @@ class Fitting(uicls.FittingLayout):
 
 
     def CollectDogmaAttributes(self, modules, attributes):
-        ret = {}
+        ret = defaultdict(list)
         for module in modules:
-            info = sm.GetService('godma').GetItem(module.itemID)
-            if info:
-                for dgmAttribute in info.displayAttributes:
-                    if dgmAttribute.attributeID in attributes:
-                        if dgmAttribute.attributeID not in ret:
-                            ret[dgmAttribute.attributeID] = []
-                        ret[dgmAttribute.attributeID].append(dgmAttribute.value)
+            dogmaItem = self.dogmaLocation.dogmaItems.get(module.itemID, None)
+            if dogmaItem and dogmaItem.locationID == self.shipID:
+                for attributeID in attributes:
+                    ret[attributeID].append(self.dogmaLocation.GetAttributeValue(dogmaItem.itemID, attributeID))
 
             else:
-                for dgmAttribute in cfg.dgmtypeattribs.get(module.typeID, []):
-                    if dgmAttribute.attributeID in attributes:
-                        if dgmAttribute.attributeID not in ret:
-                            ret[dgmAttribute.attributeID] = []
-                        ret[dgmAttribute.attributeID].append(dgmAttribute.value)
+                for attributeID in attributes:
+                    ret[attributeID].append(self.dogmaLocation.dogmaStaticMgr.GetTypeAttribute2(module.typeID, attributeID))
 
 
         return ret
@@ -1643,7 +1398,7 @@ class Fitting(uicls.FittingLayout):
     def UpdateCenterShapePosition(self):
         (l, t, w, h,) = self.sr.wnd.GetAbsolute()
         lastLeft = getattr(self, '_lastLeftPanelWidth', None)
-        self.sr.wnd.width = self._leftPanelWidth + self._centerOnlyWidth + self._rightPanelWidth
+        self.sr.wnd.width = self._leftPanelWidth + self._baseShapeSize + self._rightPanelWidth
         if lastLeft is not None and lastLeft != self._leftPanelWidth:
             self.sr.wnd.left += lastLeft - self._leftPanelWidth
         self.left = self._leftPanelWidth
@@ -1696,11 +1451,12 @@ class Fitting(uicls.FittingLayout):
             if endOpacity == 0.0:
                 uicore.effect.MorphUI(panel, 'opacity', endOpacity, time=250.0, float=1, newthread=0)
                 panel.state = uiconst.UI_DISABLED
+                self.fittingSvcBtnGroup.Hide()
             time = 250.0
-            start = blue.os.GetTime()
+            start = blue.os.GetWallclockTime()
             ndt = 0.0
             while ndt != 1.0:
-                ndt = max(0.0, min(blue.os.TimeDiffInMs(start) / time, 1.0))
+                ndt = max(0.0, min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / time, 1.0))
                 if side == 'left':
                     self._leftPanelWidth = int(mathUtil.Lerp(begWidth, endWidth, ndt))
                 else:
@@ -1711,6 +1467,7 @@ class Fitting(uicls.FittingLayout):
             if endOpacity == 1.0:
                 uicore.effect.MorphUI(panel, 'opacity', endOpacity, time=250.0, float=1)
                 panel.state = uiconst.UI_PICKCHILDREN
+                self.fittingSvcBtnGroup.Show()
         btn.state = uiconst.UI_NORMAL
 
 
@@ -1784,6 +1541,27 @@ class Fitting(uicls.FittingLayout):
 
 
 
+    def GetXtraColor2(self, xtra):
+        if xtra != 0.0:
+            return FONTCOLOR_HILITE2
+        return FONTCOLOR_DEFAULT2
+
+
+
+    def GetMultiplyColor2(self, multiply):
+        if multiply != 1.0:
+            return FONTCOLOR_HILITE2
+        return FONTCOLOR_DEFAULT2
+
+
+
+    def GetColor2(self, xtra = 0.0, multi = 1.0):
+        if multi != 1.0 or xtra != 0.0:
+            return FONTCOLOR_HILITE2
+        return FONTCOLOR_DEFAULT2
+
+
+
     def UpdateCalibration(self, caliMultiply = 1.0, caliXtraLoad = 0.0, caliXtraCapacity = 0.0):
         if self.shipID is None:
             lg.Error('fitting', 'UpdateCalibration with no ship')
@@ -1793,12 +1571,7 @@ class Fitting(uicls.FittingLayout):
         portion = 0.0
         if calibrationLoad and calibrationOutput > 0:
             portion = max(0, min(1, calibrationLoad / calibrationOutput))
-        self.sr.calibrationstatustext.text = '<b>%s</b><br>%s%.2f%s / %s%.2f' % (mls.UI_GENERIC_CALIBRATION,
-         self.GetXtraColor(caliXtraLoad),
-         calibrationLoad,
-         FONTCOLOR_DEFAULT,
-         self.GetMultiplyColor(caliMultiply + caliXtraCapacity),
-         calibrationOutput)
+        self.sr.calibrationstatustext.text = localization.GetByLabel('UI/Fitting/FittingWindow/CalibrationStatusText', calibrationLoad=calibrationLoad, calibrationOutput=calibrationOutput, startColorTag1='<color=%s>' % hex(self.GetXtraColor2(caliXtraLoad)), startColorTag2='<color=%s>' % hex(self.GetMultiplyColor2(caliMultiply + caliXtraCapacity)), endColorTag='</color>')
         GAUGE_OUTERRAD = self.width * 0.89 / 2
         self.updateCalibrationStatusTimer = base.AutoTimer(10, self.UpdateStatusBar, 'calibration', self.sr.calibrationStatusPoly, radius=GAUGE_OUTERRAD - GAUGE_THICKNESS * self._scaleFactor, outerRadius=GAUGE_OUTERRAD, fromDeg=CALIBRATION_GAUGE_ZERO - CALIBRATION_GAUGE_RANGE * portion, toDeg=CALIBRATION_GAUGE_ZERO, innerColor=CALIBRATION_GAUGE_COLOR, outerColor=CALIBRATION_GAUGE_COLOR)
         if calibrationOutput > 0:
@@ -1819,23 +1592,17 @@ class Fitting(uicls.FittingLayout):
             if skill is not None:
                 xtraCpu *= 1.0 + 0.05 * skill.skillLevel
         cpuLoad = self.GetShipAttribute(const.attributeCpuLoad) + xtraLoad
-        output = (self.GetShipAttribute(const.attributeCpuOutput) + xtraCpu) * cpuMultiply
-        cputext = '<right><b>%s</b><br> %s%.2f%s / %s%.2f' % (mls.UI_GENERIC_CPU,
-         self.GetXtraColor(xtraLoad),
-         cpuLoad,
-         FONTCOLOR_DEFAULT,
-         self.GetMultiplyColor(cpuMultiply + xtraCpu),
-         output)
+        cpuOutput = (self.GetShipAttribute(const.attributeCpuOutput) + xtraCpu) * cpuMultiply
         portion = 0.0
         if cpuLoad:
-            if output == 0:
+            if cpuOutput == 0:
                 portion = 1
             else:
-                portion = max(0, min(1, cpuLoad / output))
+                portion = max(0, min(1, cpuLoad / cpuOutput))
         GAUGE_OUTERRAD = self.width * 0.89 / 2
         self.updateCpuStatusTimer = base.AutoTimer(10, self.UpdateStatusBar, 'cpu', self.sr.cpuStatusPoly, radius=GAUGE_OUTERRAD - GAUGE_THICKNESS * self._scaleFactor, outerRadius=GAUGE_OUTERRAD, fromDeg=CPU_GAUGE_ZERO + CPU_GAUGE_RANGE * portion, toDeg=CPU_GAUGE_ZERO, innerColor=CPU_GAUGE_COLOR, outerColor=CPU_GAUGE_COLOR)
-        if output > 0:
-            status = 100.0 * float(cpuLoad) / float(output)
+        if cpuOutput > 0:
+            status = 100.0 * float(cpuLoad) / float(cpuOutput)
             status = '%0.1f' % status
         else:
             status = ''
@@ -1846,13 +1613,7 @@ class Fitting(uicls.FittingLayout):
                 xtraPower *= 1.0 + 0.05 * skill.skillLevel
         powerLoad = self.GetShipAttribute(const.attributePowerLoad) + xtraPowerload
         output = (self.GetShipAttribute(const.attributePowerOutput) + xtraPower) * powerMultiply
-        powergridtext = '%s<b>%s</b><br>%s%.2f%s / %s%.2f' % (FONTCOLOR_DEFAULT,
-         mls.UI_GENERIC_POWERGRID,
-         self.GetXtraColor(xtraPowerload),
-         powerLoad,
-         FONTCOLOR_DEFAULT,
-         self.GetColor(xtraPower, powerMultiply),
-         output)
+        powerAndCpuText = localization.GetByLabel('UI/Fitting/FittingWindow/PowerAndCpuStatusText', cpuLoad=cpuOutput - cpuLoad, cpuOutput=cpuOutput, powerLoad=output - powerLoad, powerOutput=output, startColorTag1='<color=%s>' % hex(self.GetXtraColor2(xtraLoad)), startColorTag2='<color=%s>' % hex(self.GetMultiplyColor2(cpuMultiply + xtraCpu)), startColorTag3='<color=%s>' % hex(self.GetXtraColor2(xtraPowerload)), startColorTag4='<color=%s>' % hex(self.GetColor2(xtraPower, powerMultiply)), endColorTag='</color>')
         portion = 0.0
         if powerLoad:
             if output == 0.0:
@@ -1866,7 +1627,7 @@ class Fitting(uicls.FittingLayout):
         else:
             status = ''
         self.statusCpuPowerCalibr[1] = status
-        self.sr.cpu_power_statustext.text = '%s<br>%s' % (cputext, powergridtext)
+        self.sr.cpu_power_statustext.text = powerAndCpuText
 
 
 
@@ -1884,7 +1645,7 @@ class Fitting(uicls.FittingLayout):
                 currentRotation += step
             else:
                 currentRotation -= step
-        polyObject.MakeArc(radius=radius, outerRadius=outerRadius, fromDeg=currentRotation, toDeg=toDeg, innerColor=innerColor, outerColor=outerColor)
+        polyObject.MakeArc(radius=radius * uicore.desktop.dpiScaling, outerRadius=outerRadius * uicore.desktop.dpiScaling, fromDeg=currentRotation, toDeg=toDeg, innerColor=innerColor, outerColor=outerColor)
         polyObject.currentFromDeg = currentRotation
 
 
@@ -1919,52 +1680,43 @@ class Fitting(uicls.FittingLayout):
         info = sm.GetService('info')
         rechargeRate = self.GetShipAttribute(const.attributeRechargeRate) * rechargeMultiply
         (peakRechargeRate, totalCapNeed, loadBalance, TTL,) = self.dogmaLocation.CapacitorSimulator(self.shipID)
-        colorGreen = '<color=0xff00ff00>'
-        colorRed = '<color=0xffff0000>'
         if loadBalance > 0:
-            sustainableText = colorGreen + mls.UI_FITTING_STABLE
+            sustainableText = '<color=0xff00ff00>'
+            sustainableText += localization.GetByLabel('UI/Fitting/FittingWindow/Stable')
         else:
-            time = colorRed + util.FmtDate(TTL, 'ss') + FONTCOLOR_DEFAULT
-            sustainableText = mls.UI_FITTING_CAPDEPLETES % {'time': time}
+            sustainableText = '<color=0xffff0000>'
+            sustainableText += localization.GetByLabel('UI/Fitting/FittingWindow/CapacitorNotStable', time=TTL)
+        sustainableText += '</color>'
         self.sr.capacitorHeaderStatsParent.sr.statusText.text = sustainableText.replace('<br>', '')
         if self.sr.capacitorStatsParent.sr.Get('powerCore', None):
             if not reload and maxcap == getattr(self.sr.capacitorStatsParent, 'maxcap', None):
                 return 
-            capText = '%s%s / %s%s' % (self.GetColor(xtraCapacitor, multiplyCapacitor),
-             info.GetFormatAndValue(ccAttribute, int(maxcap)),
-             self.GetMultiplyColor(rechargeMultiply),
-             info.GetFormatAndValue(rrAttribute, rechargeRate))
+            capText = localization.GetByLabel('UI/Fitting/FittingWindow/CapacitorCapAndRechargeTime', capacitorCapacity=info.GetFormatAndValue(ccAttribute, int(maxcap)), capacitorRechargeTime=info.GetFormatAndValue(rrAttribute, rechargeRate), startColorTag1='<color=%s>' % hex(self.GetColor2(xtraCapacitor, multiplyCapacitor)), startColorTag2='<color=%s>' % hex(self.GetMultiplyColor2(rechargeMultiply)), endColorTag='</color>')
             powerCore = self.sr.capacitorStatsParent.sr.powerCore
             powerCore.Flush()
             sustainabilityModified = False
             if xtraCapacitor > 0 or multiplyCapacitor != 1.0 or rechargeMultiply != 1.0:
                 sustainabilityModified = True
-            self.sr.capacitorStatsParent.sr.sustainable.text = sustainableText
             if loadBalance > 0:
-                self.sr.capacitorStatsParent.sr.sustainable.hint = mls.UI_FITTING_MODULESSUSTAINABLE
+                self.sr.capacitorHeaderStatsParent.sr.statusText.hint = localization.GetByLabel('UI/Fitting/FittingWindow/ModulesSustainable')
             else:
-                self.sr.capacitorStatsParent.sr.sustainable.hint = mls.UI_FITTING_MODULESNOTSUSTAINABLE
-            delta = ''
-            delta += u'\u0394 '
+                self.sr.capacitorHeaderStatsParent.sr.statusText.hint = localization.GetByLabel('UI/Fitting/FittingWindow/ModulesNotSustainable')
             color = FONTCOLOR_DEFAULT
             if sustainabilityModified:
                 color = FONTCOLOR_HILITE
-            unit = cfg.dgmunits.Get(ccAttribute.unitID).displayName + '/' + cfg.dgmunits.Get(rrAttribute.unitID).displayName + ' '
-            delta += color + str(round((peakRechargeRate - totalCapNeed) * 1000, 2)) + ' ' + unit
-            delta += '('
-            delta += str(round((peakRechargeRate - totalCapNeed) / peakRechargeRate * 100, 1)) + '%'
-            delta += ')'
+            delta = color + localization.GetByLabel('UI/Fitting/FittingWindow/CapacitorDelta', delta=round((peakRechargeRate - totalCapNeed) * 1000, 2), percentage=round((peakRechargeRate - totalCapNeed) / peakRechargeRate * 100, 1))
             self.sr.capacitorStatsParent.sr.statusText.text = capText
             self.sr.capacitorStatsParent.sr.delta.text = delta
-            numcol = min(18, int(maxcap / 50))
+            numcol = min(10, int(maxcap / 50))
             rotstep = 360.0 / max(1, numcol)
             colWidth = max(12, min(16, numcol and int(192 / numcol)))
+            colHeight = self.sr.capacitorStatsParent.sr.powerCore.height
             powerunits = []
             for i in range(numcol):
                 powerColumn = uicls.Transform(parent=powerCore, name='powerColumn', pos=(0,
                  0,
                  colWidth,
-                 45), align=uiconst.CENTER, state=uiconst.UI_DISABLED, rotation=mathUtil.DegToRad(i * -rotstep), idx=0)
+                 colHeight), align=uiconst.CENTER, state=uiconst.UI_DISABLED, rotation=mathUtil.DegToRad(i * -rotstep), idx=0)
                 for ci in xrange(3):
                     newcell = uicls.Sprite(parent=powerColumn, name='pmark', pos=(0,
                      ci * 4,
@@ -1988,9 +1740,9 @@ class Fitting(uicls.FittingLayout):
                     each.SetRGB(bad.r + good.r, bad.g + good.g, bad.b + good.b, 1.0)
 
             if loadBalance == 0:
-                self.sr.capacitorStatsParent.hint = mls.UI_FITTING_CAPNOTSUSTAINABLE % {'TTL': util.FmtDate(TTL, 'ss')}
+                self.sr.capacitorStatsParent.hint = localization.GetByLabel('UI/Fitting/FittingWindow/CapRunsOutBy', ttl=TTL)
             else:
-                self.sr.capacitorStatsParent.hint = mls.UI_FITTING_CAPSUSTAINABLE % {'balance': str(round(loadBalance * 100, 1)) + '%'}
+                self.sr.capacitorStatsParent.hint = localization.GetByLabel('UI/Fitting/FittingWindow/CapSustainableBy', balance=loadBalance * 100)
 
 
 
@@ -2003,14 +1755,14 @@ class Fitting(uicls.FittingLayout):
 
     def StripFitting(self, *args):
         if eve.Message('AskStripShip', None, uiconst.YESNO, suppress=uiconst.ID_YES) == uiconst.ID_YES:
-            eve.GetInventoryFromId(self.shipID).StripFitting()
+            sm.GetService('invCache').GetInventoryFromId(self.shipID).StripFitting()
             uthread.new(self.ReloadFitting, self.shipID)
 
 
 
     def OnDropData(self, dragObj, nodes):
         for node in nodes:
-            if node.Get('__guid__', None) in ('xtriui.InvItem', 'listentry.InvItem', 'listentry.InvFittingItem'):
+            if node.Get('__guid__', None) in ('xtriui.InvItem', 'listentry.InvItem'):
                 requiredSkills = sm.GetService('info').GetRequiredSkills(node.rec.typeID)
                 for (skillID, level,) in requiredSkills:
                     if getattr(sm.GetService('skills').HasSkill(skillID), 'skillLevel', 0) < level:
@@ -2052,7 +1804,7 @@ class Fitting(uicls.FittingLayout):
     def ReloadShipModel(self, newModel = None):
         newModel = newModel or self.CreateActiveShipModel()
         if newModel:
-            if newModel.__bluetype__ == 'trinity.EveShip2' and self.sr.sceneContainer:
+            if newModel.__bluetype__ == 'trinity.EveShip2' and not self.sr.sceneContainer.destroyed:
                 self.sr.sceneContainer.AddToScene(newModel)
                 self.sr.sceneContainer.camera.OrbitParent(8.0, 4.0)
                 camera = self.sr.sceneContainer.camera
@@ -2077,7 +1829,7 @@ class Fitting(uicls.FittingLayout):
             techLevel = self.GetShipAttribute(const.attributeTechLevel)
             if techLevel == 3.0:
                 try:
-                    newModel = sm.GetService('station').MakeModularShipFromShipItem(self.GetShipDogmaItem())
+                    newModel = sm.GetService('t3ShipSvc').MakeModularShipFromShipItem(self.GetShipDogmaItem())
                 except:
                     log.LogException('failed bulding modular ship')
                     sys.exc_clear()
@@ -2135,6 +1887,10 @@ class Fitting(uicls.FittingLayout):
         typeName = cfg.invtypes.Get(ship.typeID).typeName
         label = shipName
         self.sr.shipnametext.text = label
+        oneLineHeight = self.sr.shipnamecont.height
+        lines = max(1, self.sr.shipnametext.height / max(1, self.sr.shipnamecont.height))
+        margin = 3
+        self.sr.shipnamecont.height = lines * oneLineHeight + margin * (lines - 1)
         self.sr.dragIcon.width = self.sr.shipnametext.width
         self.sr.shipnametext.hint = typeName
         self.sr.infolink.left = self.sr.shipnametext.textwidth + 6
@@ -2302,7 +2058,7 @@ class Fitting(uicls.FittingLayout):
             return 
         self.isDelayedAnim = True
         try:
-            blue.pyos.synchro.Sleep(500)
+            blue.pyos.synchro.SleepWallclock(500)
             uthread.new(self.GetFitting)
 
         finally:
@@ -2317,6 +2073,13 @@ class Fitting(uicls.FittingLayout):
         self.ReloadShipModel()
         self.UpdateStats()
         self.LoadCapacitorStats()
+
+
+
+    def OnUIScalingChange(self, *args):
+        if self.updateStatsThread is not None:
+            return 
+        self.updateStatsThread = uthread.pool('Fitting::UpdateStats', self._UpdateStats)
 
 
 
@@ -2353,13 +2116,13 @@ class Fitting(uicls.FittingLayout):
         active = settings.user.ui.Get('activeBestRepair', PASSIVESHIELDRECHARGE)
         top = 0
         mw = 32
-        for (flag, hint, iconNo,) in ((ARMORREPAIRRATEACTIVE, mls.UI_FITTING_ARMOR_REPAIR_RATE_ACTIVE, 'ui_1_64_11'),
-         (HULLREPAIRRATEACTIVE, mls.UI_FITTING_HULL_REPAIR_RATE_ACTIVE, 'ui_1_64_11'),
-         (PASSIVESHIELDRECHARGE, mls.UI_FITTING_PASSIVE_SHIELD_RECHARGE, 'ui_22_32_7'),
-         (SHIELDBOOSTRATEACTIVE, mls.UI_FITTING_SHIELD_BOOST_RATE_ACTIVE, 'ui_2_64_3')):
+        for (flag, hint, iconNo,) in ((ARMORREPAIRRATEACTIVE, localization.GetByLabel('UI/Fitting/FittingWindow/ArmorRepairRate'), 'ui_1_64_11'),
+         (HULLREPAIRRATEACTIVE, localization.GetByLabel('UI/Fitting/FittingWindow/HullRepairRate'), 'ui_1_64_11'),
+         (PASSIVESHIELDRECHARGE, localization.GetByLabel('UI/Fitting/FittingWindow/PassiveShieldRecharge'), 'ui_22_32_7'),
+         (SHIELDBOOSTRATEACTIVE, localization.GetByLabel('UI/Fitting/FittingWindow/ShieldBoostRate'), 'ui_2_64_3')):
             entry = uicls.Container(name='entry', parent=subpar, align=uiconst.TOTOP, height=32, state=uiconst.UI_NORMAL)
             icon = uicls.Icon(icon=iconNo, parent=entry, state=uiconst.UI_DISABLED, pos=(0, 0, 32, 32), ignoreSize=True)
-            label = uicls.Label(text=hint, parent=entry, left=icon.left + icon.width, linespace=10, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT)
+            label = uicls.Label(text=hint, parent=entry, left=icon.left + icon.width, lineSpacing=-0.3, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT)
             entry.OnClick = (self.PickBestRepair, entry)
             entry.OnMouseEnter = (self.OnMouseEnterBestRepair, entry)
             entry.bestRepairFlag = flag
@@ -2452,6 +2215,7 @@ class FittingDraggableText(uicls.Container):
         fitting.ownerID = 0
         entry = util.KeyVal()
         entry.fitting = fitting
+        entry.label = fitting.name
         entry.__guid__ = 'listentry.FittingEntry'
         return [entry]
 

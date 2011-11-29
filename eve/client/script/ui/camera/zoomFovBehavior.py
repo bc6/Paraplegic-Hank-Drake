@@ -1,6 +1,7 @@
 import cameras
-MAX_FOV = 0.8
+MAX_FOV = 1.0
 MIN_FOV = 0.7
+FOV_POWER = 0.2
 
 class ZoomFovBehavior(cameras.CameraBehavior):
     __guid__ = 'cameras.ZoomFovBehavior'
@@ -16,8 +17,8 @@ class ZoomFovBehavior(cameras.CameraBehavior):
             zoom = camera.minZoom
         range = camera.maxZoom - camera.minZoom
         curr = camera.maxZoom - zoom
-        perc = curr / range
-        camera.fieldOfView = MAX_FOV - (MAX_FOV - MIN_FOV) * perc
+        zoomPerc = curr / range
+        camera.SetFieldOfView(MIN_FOV + (MAX_FOV - zoomPerc) * FOV_POWER)
 
 
 

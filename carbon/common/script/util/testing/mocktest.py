@@ -123,27 +123,27 @@ class _TestBasicMockObjectFunctionality(unittest.TestCase):
 
 
     def testCallLogCounting(self):
-        now = blue.os.GetTime()
-        self.assertTrue(mock.CountMockCalls('blue.os.GetTime') == 1, 'First count of blue.os.GetTime calls is wrong')
-        now = blue.os.GetTime()
-        self.assertTrue(mock.CountMockCalls('blue.os.GetTime') == 2, 'Second count of blue.os.GetTime calls is wrong')
-        blue.pyos.synchro.Sleep(250)
-        self.assertTrue(mock.CountMockCalls('blue.os.GetTime') == 2, 'Third count of blue.os.GetTime calls is wrong')
+        now = blue.os.GetWallclockTime()
+        self.assertTrue(mock.CountMockCalls('blue.os.GetWallclockTime') == 1, 'First count of blue.os.GetWallclockTime calls is wrong')
+        now = blue.os.GetWallclockTime()
+        self.assertTrue(mock.CountMockCalls('blue.os.GetWallclockTime') == 2, 'Second count of blue.os.GetWallclockTime calls is wrong')
+        blue.pyos.synchro.SleepWallclock(250)
+        self.assertTrue(mock.CountMockCalls('blue.os.GetWallclockTime') == 2, 'Third count of blue.os.GetWallclockTime calls is wrong')
         self.assertTrue(mock.CountMockCalls('blue') == 3, 'Count of blue calls is wrong')
 
 
 
     def testCallLogFiltering(self):
-        blue.os.GetTime()
-        blue.pyos.synchro.Sleep(250)
+        blue.os.GetWallclockTime()
+        blue.pyos.synchro.SleepWallclock(250)
         blue.os.SomeOtherFunction()
-        blue.pyos.synchro.SleepUntil(500)
-        callLogForBlue = ['blue.os.GetTime()',
-         'blue.pyos.synchro.Sleep(250)',
+        blue.pyos.synchro.SleepUntilWallclock(500)
+        callLogForBlue = ['blue.os.GetWallclockTime()',
+         'blue.pyos.synchro.SleepWallclock(250)',
          'blue.os.SomeOtherFunction()',
-         'blue.pyos.synchro.SleepUntil(500)']
-        callLogForBlueOs = ['blue.os.GetTime()', 'blue.os.SomeOtherFunction()']
-        callLogForBluePyos = ['blue.pyos.synchro.Sleep(250)', 'blue.pyos.synchro.SleepUntil(500)']
+         'blue.pyos.synchro.SleepUntilWallclock(500)']
+        callLogForBlueOs = ['blue.os.GetWallclockTime()', 'blue.os.SomeOtherFunction()']
+        callLogForBluePyos = ['blue.pyos.synchro.SleepWallclock(250)', 'blue.pyos.synchro.SleepUntilWallclock(500)']
         self.assertTrue(mock.GetCallLogFor('blue') == callLogForBlue, 'Call log for blue was wrong')
         self.assertTrue(mock.GetCallLogFor('blue.os') == callLogForBlueOs, 'Call log for blue.os was wrong')
         self.assertTrue(mock.GetCallLogFor('blue.pyos') == callLogForBluePyos, 'Call log for blue.pyos was wrong')
@@ -151,10 +151,10 @@ class _TestBasicMockObjectFunctionality(unittest.TestCase):
 
 
     def testCallLogWithBlue(self):
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         callLog = mock.GetCallLog()
-        expectedLog = ['blue.os.GetTime()']
-        self.assertTrue(callLog == expectedLog, 'call to blue.os.GetTime was not logged')
+        expectedLog = ['blue.os.GetWallclockTime()']
+        self.assertTrue(callLog == expectedLog, 'call to blue.os.GetWallclockTime was not logged')
 
 
 
@@ -261,7 +261,7 @@ class _TestBasicMockObjectFunctionality(unittest.TestCase):
 
 
 def _bluetest():
-    return blue.os.GetTime()
+    return blue.os.GetWallclockTime()
 
 
 
@@ -279,28 +279,28 @@ class _TestBlueAndMethods(unittest.TestCase):
 
     def testExternalFunction(self):
         mock.SetTime(100)
-        self.assertTrue(_bluetest() == 100, 'blue.os.GetTime did not mock for the external function')
+        self.assertTrue(_bluetest() == 100, 'blue.os.GetWallclockTime did not mock for the external function')
 
 
 
     def testDirectCall(self):
         mock.SetTime(200)
-        self.assertTrue(blue.os.GetTime() == 200, 'blue.os.GetTime did not mock for the direct call')
+        self.assertTrue(blue.os.GetWallclockTime() == 200, 'blue.os.GetWallclockTime did not mock for the direct call')
 
 
 
     def testDefaultTimeValue(self):
-        self.assertTrue(blue.os.GetTime() == 0, 'blue.os.GetTime did not have the correct default value')
+        self.assertTrue(blue.os.GetWallclockTime() == 0, 'blue.os.GetWallclockTime did not have the correct default value')
 
 
 
     def testSleepAndYieldMethods(self):
         mock.SetTime(300)
         self.assertTrue(_bluetest() == 300, 'fail after mock.SetTime in sleep test')
-        blue.pyos.synchro.Sleep(50)
-        self.assertTrue(_bluetest() == 350, 'fail after blue.pyos.synchro.Sleep in sleep test')
-        blue.pyos.synchro.SleepUntil(475)
-        self.assertTrue(_bluetest() == 475, 'fail after blue.pyos.synchro.SleepUntil in sleep test')
+        blue.pyos.synchro.SleepWallclock(50)
+        self.assertTrue(_bluetest() == 350, 'fail after blue.pyos.synchro.SleepWallclock in sleep test')
+        blue.pyos.synchro.SleepUntilWallclock(475)
+        self.assertTrue(_bluetest() == 475, 'fail after blue.pyos.synchro.SleepUntilWallclock in sleep test')
         blue.pyos.synchro.Yield()
         self.assertTrue(_bluetest() == 476, 'blue.pyos.synchro.Yield did not increment by the default value')
         mock.SetYieldDuration(50)
@@ -324,7 +324,7 @@ class _TestBlueAndMethods(unittest.TestCase):
 
     def testByPass(self):
         try:
-            mock.ByPass('blue').pyos.synchro.Sleep(1)
+            mock.ByPass('blue').pyos.synchro.SleepWallclock(1)
             self.fail('real fn blocks, and should hit the unit testing block trap raising an error')
         except RuntimeError as e:
             self.assertTrue(e.args[0] == 'this tasklet does not like to be blocked.')
@@ -404,7 +404,7 @@ class _TestMockingDirectly(unittest.TestCase):
 
     def testBlueMocking(self):
         mock.SetTime(500)
-        self.assertTrue(blue.os.GetTime() == 500, 'mocking only blue did not work')
+        self.assertTrue(blue.os.GetWallclockTime() == 500, 'mocking only blue did not work')
 
 
 
@@ -836,7 +836,7 @@ class _TestTeardownOfReplacedMethod(unittest.TestCase):
 
 
 
-gettime = blue.os.GetTime
+gettime = blue.os.GetWallclockTime
 
 class _TestGlobalSearchAndReplace(unittest.TestCase):
 
@@ -852,14 +852,14 @@ class _TestGlobalSearchAndReplace(unittest.TestCase):
 
     def testGlobalSearchAndReplace(self):
         try:
-            blue.pyos.synchro.Sleep(1)
+            blue.pyos.synchro.SleepWallclock(1)
             self.fail('real fn blocks, and should hit the unit testing block trap raising an error')
         except RuntimeError as e:
             self.assertTrue(e.args[0] == 'this tasklet does not like to be blocked.')
         mock.SetUp(self, globals())
         mock.SetTime(675)
         self.assertTrue(isinstance(gettime, mock.Mock), 'global reference was not replaced')
-        self.assertTrue(blue.os.GetTime() == 675, 'blue.os.GetTime has the wrong value')
+        self.assertTrue(blue.os.GetWallclockTime() == 675, 'blue.os.GetWallclockTime has the wrong value')
         self.assertTrue(gettime() == 675, 'global reference gettime has the wrong value')
 
 

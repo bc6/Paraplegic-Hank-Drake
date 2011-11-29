@@ -17,10 +17,7 @@ def DebugPrint(self, *args):
 exports['miscUtil.DebugPrint'] = DebugPrint
 
 def GetCommonResourcePath(path):
-    if blue.os.IsUsingNewResolvePath() or blue.pyos.packaged:
-        return path
-    else:
-        return path.replace('res:/', 'bin:/../common/res/')
+    return path
 
 
 

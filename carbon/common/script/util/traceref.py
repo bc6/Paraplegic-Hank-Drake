@@ -155,13 +155,13 @@ def TestAnnotatedRefGraph(verbose = False):
     def f():
         b = o
         while not die:
-            blue.pyos.synchro.Sleep(0)
+            blue.pyos.synchro.SleepWallclock(0)
 
 
 
     import uthread
     uthread.new(f)
-    blue.pyos.synchro.Sleep(0)
+    blue.pyos.synchro.SleepWallclock(0)
     try:
         PrintRefPaths(o, verbose=verbose)
 

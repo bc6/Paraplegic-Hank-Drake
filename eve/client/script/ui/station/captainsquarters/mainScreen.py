@@ -8,6 +8,8 @@ import blue
 import bluepy
 import random
 import service
+import form
+import localization
 
 class MainScreen(uicls.Container):
     __guid__ = 'cqscreen.MainScreen'
@@ -26,7 +28,7 @@ class MainScreen(uicls.Container):
         self.newsTicker = ScreenNewsTicker(parent=self)
         self.bottomCont = uicls.Container(name='bottomCont', parent=self, align=uiconst.TOBOTTOM, height=60, state=uiconst.UI_DISABLED)
         wedgeBracket = uicls.ScreenWedgeBracketTop(parent=self.bottomCont, hasCorners=False, wedgePosRatio=0.806, wedgeWidth=30, wedgeTopStart=0, appear=True)
-        self.hoverLabel = uicls.Label(name='hoverLabel', parent=self.bottomCont, align=uiconst.CENTER, fontsize=35, color=util.Color.WHITE)
+        self.hoverLabel = uicls.Label(name='hoverLabel', parent=self.bottomCont, align=uiconst.CENTER, fontsize=35, color=util.Color.WHITE, uppercase=True, bold=True)
         self.hoverLabel.opacity = 0.0
         self.hoverFill = uicls.Fill(parent=self, color=(1.0, 1.0, 1.0, 0.0))
         self.mainCont = uicls.Container(name='mainCont', parent=self, state=uiconst.UI_DISABLED)
@@ -39,7 +41,7 @@ class MainScreen(uicls.Container):
         if data:
             self.clickFunc = data.get('clickFunc')
             self.clickArgs = data.get('clickArgs')
-            self.hoverLabel.text = '<b>%s' % uiutil.UpperCase(data.get('clickFuncLabel'))
+            self.hoverLabel.text = data.get('clickFuncLabel')
             if uicore.uilib.mouseOver == self.mainCont:
                 uicore.animations.BlinkIn(self.hoverLabel)
         self.mainCont.Flush()
@@ -115,7 +117,7 @@ class MainScreen(uicls.Container):
 
 
     def _OpenMainScreenTest(self, *args):
-        sm.GetService('window').GetWindow('MainScreenTest', create=1)
+        form.MainScreenTest.Open()
 
 
 
@@ -165,7 +167,7 @@ class MainScreenTestWindow(uicls.Window):
         self.combo = uicls.Combo(parent=self.bottomCont, options=options, pos=(10, 0, 150, 0), width=150, align=uiconst.TOPLEFT, callback=self.OnCombo)
         uicls.Button(parent=self.bottomCont, label='Reload', func=self.UpdateScreen, align=uiconst.TOPLEFT, pos=(165, 0, 100, 0))
         self.checkbox = uicls.Checkbox(parent=self.bottomCont, text='Render to screen', align=uiconst.TOPLEFT, pos=(230, 0, 250, 0), checked=False, callback=self.OnCheckboxChanged)
-        uicls.Label(parent=self.bottomCont, text='Press R to reload', align=uiconst.TOPRIGHT)
+        uicls.EveLabelMedium(parent=self.bottomCont, text='Press R to reload', align=uiconst.TOPRIGHT)
         self.checkbox.OnKeyDown = self.OnKeyDown
 
 
@@ -203,7 +205,7 @@ class MainScreenTestWindow(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         uthread.new(sm.GetService('holoscreen').Restart)
 
 
@@ -223,12 +225,12 @@ class CorpFinderScreen(uicls.Container):
         corpID = attributes.corpID
         self.entityID = attributes.entityID
         self.cursor = uiconst.UICURSOR_SELECT
-        self.hoverFill = uicls.Fill(parent=self, name='hoverFill', color=(1.0, 1.0, 1.0, 0.0))
-        self.bgSprite = uicls.Sprite(bgParent=self, texturePath='res:/UI/Texture/Classes/CQSideScreens/corpRecruitmentScreenBG.png')
+        self.hoverFill = uicls.Fill(parent=self, name='hoverFill', padding=-50, color=(1.0, 1.0, 1.0, 0.0))
         self.frame = uicls.ScreenFrame5(parent=self, align=uiconst.TOALL, padding=10)
         self.ConstructCorpLogo(corpID)
-        self.hoverLabel = uicls.Label(name='hoverLabel', parent=self, text=mls.GENERIC_CORPORATIONLOWER, align=uiconst.CENTERBOTTOM, top=60, uppercase=True, fontsize=35, state=uiconst.UI_DISABLED, color=util.Color.WHITE)
+        self.hoverLabel = uicls.Label(name='hoverLabel', parent=self, text=localization.GetByLabel('UI/Station/Holoscreen/Corporation'), align=uiconst.CENTERBOTTOM, top=60, uppercase=True, fontsize=35, state=uiconst.UI_DISABLED, color=util.Color.WHITE)
         self.hoverLabel.opacity = 0.0
+        self.bgSprite = uicls.Sprite(parent=self, texturePath='res:/UI/Texture/Classes/CQSideScreens/corpRecruitmentScreenBG.png', align=uiconst.TOALL, state=uiconst.UI_DISABLED, padding=-50)
         uthread.new(self.AnimBackground)
 
 
@@ -244,7 +246,7 @@ class CorpFinderScreen(uicls.Container):
         while not self.destroyed:
             loops = random.randint(1, 4)
             uicore.animations.SpGlowFadeOut(self.bgSprite, loops=loops, duration=0.4 / loops, sleep=True)
-            blue.synchro.Sleep(random.randint(1000, 5000))
+            blue.synchro.SleepWallclock(random.randint(1000, 5000))
 
 
 
@@ -310,8 +312,7 @@ class PIScreen(uicls.Container):
         uicls.Container.ApplyAttributes(self, attributes)
         self.entityID = attributes.entityID
         self.cursor = uiconst.UICURSOR_SELECT
-        self.hoverFill = uicls.Fill(parent=self, color=(1.0, 1.0, 1.0, 0.0))
-        self.bgSprite = uicls.Sprite(bgParent=self, texturePath='res:/UI/Texture/Classes/CQSideScreens/PIScreenBG.png')
+        self.hoverFill = uicls.Fill(parent=self, color=(1.0, 1.0, 1.0, 0.0), padding=-50)
         uicls.ScreenFrame1(parent=self, align=uiconst.TOALL, padding=10)
         self.circles = []
         for i in xrange(1, 5):
@@ -319,8 +320,9 @@ class PIScreen(uicls.Container):
             circle = uicls.Sprite(parent=transform, texturePath='res:/UI/Texture/Classes/CQSideScreens/circle%s.png' % i, align=uiconst.TOALL)
             self.circles.append(transform)
 
-        self.hoverLabel = uicls.Label(name='hoverLabel', parent=self, text=mls.GENERIC_PLANETS, align=uiconst.CENTERBOTTOM, top=60, uppercase=True, fontsize=35, state=uiconst.UI_DISABLED, color=util.Color.WHITE)
+        self.hoverLabel = uicls.Label(name='hoverLabel', parent=self, text=localization.GetByLabel('UI/Common/LocationTypes/Planets'), align=uiconst.CENTERBOTTOM, top=60, uppercase=True, fontsize=35, state=uiconst.UI_DISABLED, color=util.Color.WHITE)
         self.hoverLabel.opacity = 0.0
+        self.bgSprite = uicls.Sprite(parent=self, texturePath='res:/UI/Texture/Classes/CQSideScreens/PIScreenBG.png', align=uiconst.TOALL, state=uiconst.UI_DISABLED, padding=-50)
         uthread.new(self.AnimCircles)
 
 
@@ -384,7 +386,7 @@ class PIScreen(uicls.Container):
                 angleBase = speedConst * random.random() * random.choice([1, -1])
                 uicore.animations.Tr2DRotateTo(circle, startAngle=circle.rotation, endAngle=circle.rotation + angleBase * speedFactor[i] * math.pi, duration=duration)
 
-            blue.synchro.Sleep(duration * 1000)
+            blue.synchro.SleepWallclock(duration * 1000)
             uthread.new(self.AnimBackground)
 
 
@@ -393,7 +395,7 @@ class PIScreen(uicls.Container):
     def AnimBackground(self):
         loops = random.randint(1, 4)
         uicore.animations.SpGlowFadeOut(self.bgSprite, loops=loops, duration=0.4 / loops)
-        blue.synchro.Sleep(random.randint(1000, 5000))
+        blue.synchro.SleepWallclock(random.randint(1000, 5000))
 
 
 

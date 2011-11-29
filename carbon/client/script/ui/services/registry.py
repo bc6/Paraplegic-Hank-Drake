@@ -6,6 +6,7 @@ import uiconst
 import log
 import util
 import blue
+import localization
 
 class RegistryService(service.Service):
     __guid__ = 'svc.registry'
@@ -15,6 +16,7 @@ class RegistryService(service.Service):
     def Run(self, memStream = None):
         service.Service.Run(self, memStream)
         self._focus = None
+        self.toggleState = None
         self.Release()
 
 
@@ -30,6 +32,11 @@ class RegistryService(service.Service):
         self.windows = []
         self.stacks = []
         self._blockConfirm = 0
+
+
+
+    def ResetWindowSettings(self, *args):
+        settings.user.Remove('windows')
 
 
 
@@ -69,18 +76,7 @@ class RegistryService(service.Service):
 
 
 
-    def GetOrCreateWindow(self, *args, **kw):
-        windowClass = kw.get('decoClass', uicls.Window)
-        windowID = kw.get('windowID', None) or getattr(windowClass, 'default_windowID', None)
-        if windowID:
-            wnd = self.GetWindow(windowID)
-            if wnd:
-                return wnd
-        return windowClass(**kw)
-
-
-
-    def GetStack(self, stackID, stackClass = None):
+    def GetStack(self, stackID, stackClass = None, useDefaultPos = False):
         if stackID.startswith('windowStack_'):
             stackName = stackID
         else:
@@ -89,7 +85,7 @@ class RegistryService(service.Service):
         if stack is not None and not stack.destroyed:
             return stack
         stackClass = stackClass or uicls.WindowStack
-        return self.GetOrCreateWindow(decoClass=stackClass, name=stackName or 'somestack', uniqueID=stackID, parent=uicore.layer.main)
+        return stackClass.Open(windowID=stackID, parent=uicore.layer.main, useDefaultPos=useDefaultPos)
 
 
 
@@ -448,10 +444,10 @@ class RegistryService(service.Service):
 
 
     def AddListGroup(self, listID, listgroupName = None):
-        groupname = uiutil.AskName(mls.UI_SHARED_TYPENAME, mls.UI_SHARED_TYPENAMEFORFOLDER)
+        groupname = uiutil.AskName(localization.GetByLabel('/Carbon/UI/Common/TypeName'), localization.GetByLabel('/Carbon/UI/Common/TypeNameForFolder'))
         if not groupname:
             return 
-        id = (listID, listgroupName or str(blue.os.GetTime()))
+        id = (listID, listgroupName or str(blue.os.GetWallclockTime()))
         group = self.GetListGroup(id)
         group['label'] = groupname['name']
         group['id'] = id
@@ -551,6 +547,34 @@ class RegistryService(service.Service):
             groups[listID][groupID]['open'] = state
         if hasattr(settings, 'char'):
             settings.char.WriteToDisk()
+
+
+
+    def ToggleCollapseAllWindows(self):
+        if self.toggleState:
+            for windowID in self.toggleState:
+                wnd = self.GetWindow(windowID)
+                if wnd and wnd.IsCollapsed():
+                    wnd.Expand()
+
+            self.toggleState = None
+            return 
+        state = []
+        wnds = self.GetValidWindows(floatingOnly=True)
+        for wnd in wnds:
+            if not getattr(wnd, 'windowID', None):
+                continue
+            if not wnd.IsCollapsed():
+                windowID = wnd.windowID
+                wnd.Collapse()
+                state.append(windowID)
+
+        if not state:
+            for wnd in wnds:
+                if wnd.IsCollapsed():
+                    wnd.Expand()
+
+        self.toggleState = state
 
 
 

@@ -7,6 +7,7 @@ import os
 import taleCommon
 import trinity
 import audio2
+import localization
 INCURSION_CHAT_WARNING_DELAY = 20
 INCURSION_CHAT_CLOSE_DELAY = 120
 INCURSION_UPDATE_RATE = 60000
@@ -48,6 +49,8 @@ class IncursionSvc(Service):
         self.enablingGodRays = False
         self.stationAudioPlaying = False
         self.addStationSoundThreadRunning = False
+        self.isDisablingHud = False
+        self.isActivatingHud = False
         self.constellationForJoinedTaleID = {}
         self.waitingIncursionChannelTaleID = set()
         self.rewardsByID = {}
@@ -128,47 +131,73 @@ class IncursionSvc(Service):
 
 
 
-    def DisableHud(self, fadeEffect = False):
-        neocomLeftside = self.WaitOnNeocom()
-        if neocomLeftside:
-            for child in neocomLeftside.children[:]:
-                if child.name == 'IncursionInfoContainer':
-                    child.Close()
+    def DisableHud(self, fadeEffect = False, ignoreIsActivatingHud = False):
+        if self.isDisablingHud:
+            return 
+        try:
+            self.isDisablingHud = True
+            while self.isActivatingHud and not ignoreIsActivatingHud:
+                blue.pyos.synchro.Yield()
 
-        self.shouldInfluenceUpdateWorkerRun = False
-        if not fadeEffect:
-            self.SetVisualStyleIntensity(0.0)
-        self.SetTargetVisualStyleIntensity(0.0)
-        self.enableSoundOverrides = False
+            neocomLeftside = self.WaitOnNeocom()
+            if neocomLeftside:
+                for child in neocomLeftside.children[:]:
+                    if child.name == 'IncursionInfoContainer':
+                        child.Close()
+
+            else:
+                self.LogInfo('Could not locate neocomLeftside container to remove HUD from')
+            self.shouldInfluenceUpdateWorkerRun = False
+            if not fadeEffect:
+                self.SetVisualStyleIntensity(0.0)
+            self.SetTargetVisualStyleIntensity(0.0)
+            self.enableSoundOverrides = False
+
+        finally:
+            self.isDisablingHud = False
+
 
 
 
     def ActivateHud(self, severity, influence, hasBoss, fadeEffect):
-        self.currentSolarSystemID = session.solarsystemid2
-        self.DisableHud(fadeEffect=fadeEffect)
-        neocomLeftside = self.WaitOnNeocom()
-        if neocomLeftside:
-            uicls.IncursionInfoContainer(parent=neocomLeftside, severity=severity, influence=influence, hasBoss=hasBoss)
-            self.shouldInfluenceUpdateWorkerRun = True
-            if not self.isInfluenceUpdateWorkerRunning:
-                uthread.new(self.InfluencUpdateThread).context = 'incursionSvc::influenceWorkerThread'
-            self.EnableVisualStyle()
-            if not fadeEffect:
-                self.SetVisualStyleIntensity(1.0)
-            self.SetTargetVisualStyleIntensity(1.0)
-        self.enableSoundOverrides = True
+        if self.isActivatingHud:
+            return 
+        try:
+            self.isActivatingHud = True
+            self.currentSolarSystemID = session.solarsystemid2
+            self.DisableHud(fadeEffect=fadeEffect, ignoreIsActivatingHud=True)
+            while self.isDisablingHud:
+                blue.pyos.synchro.Yield()
+
+            neocomLeftside = self.WaitOnNeocom()
+            if neocomLeftside:
+                uicls.IncursionInfoContainer(parent=neocomLeftside, severity=severity, influence=influence, hasBoss=hasBoss)
+                self.shouldInfluenceUpdateWorkerRun = True
+                if not self.isInfluenceUpdateWorkerRunning:
+                    uthread.new(self.InfluencUpdateThread).context = 'incursionSvc::influenceWorkerThread'
+                self.EnableVisualStyle()
+                if not fadeEffect:
+                    self.SetVisualStyleIntensity(1.0)
+                self.SetTargetVisualStyleIntensity(1.0)
+            else:
+                self.LogInfo('Could not locate neocomLeftside when activating HUD')
+            self.enableSoundOverrides = True
+
+        finally:
+            self.isActivatingHud = False
+
 
 
 
     def FadeVisualStyle_Worker(self):
         self.LogInfo('Fade Visual Style Worker starting. Fading from', self.currentVisualStyleIntensity, 'to', self.targetVisualStyleIntensity)
-        lastIntensityUpdateTime = blue.os.GetTime()
+        lastIntensityUpdateTime = blue.os.GetWallclockTime()
         self.isFadingVisualStyle = True
         while self.isFadingVisualStyle:
             difference = self.targetVisualStyleIntensity - self.currentVisualStyleIntensity
             if abs(difference) < 0.01:
                 break
-            currentTime = blue.os.GetTime()
+            currentTime = blue.os.GetWallclockTime()
             adjustment = float(currentTime - lastIntensityUpdateTime) / VISUAL_STYLE_FADE_TIME
             lastIntensityUpdateTime = currentTime
             if difference > 0.0:
@@ -234,7 +263,7 @@ class IncursionSvc(Service):
                     break
             except:
                 pass
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
             count -= 1
 
         self.enablingGodRays = False
@@ -264,7 +293,7 @@ class IncursionSvc(Service):
                 if self.lastInfluence is None or self.lastInfluence != newInfluence:
                     incursionHud.SetInfluence(newInfluence, False, True)
                     self.lastInfluence = newInfluence
-            blue.pyos.synchro.Sleep(INCURSION_UPDATE_RATE)
+            blue.pyos.synchro.SleepWallclock(INCURSION_UPDATE_RATE)
 
         self.isInfluenceUpdateWorkerRunning = False
         self.LogInfo('Influenc update thread stopping')
@@ -275,7 +304,7 @@ class IncursionSvc(Service):
         neocomLeftside = uicore.layer.neocom.FindChild('neocomLeftside')
         count = 0
         while neocomLeftside is None and count < 60:
-            blue.synchro.Sleep(1000)
+            blue.synchro.SleepWallclock(1000)
             neocomLeftside = uicore.layer.neocom.FindChild('neocomLeftside')
             count += 1
 
@@ -306,14 +335,14 @@ class IncursionSvc(Service):
 
     def TimeoutOfIncursionChat_Thread(self, taleID):
         lsc = sm.GetService('LSC')
-        blue.pyos.synchro.Sleep(INCURSION_CHAT_WARNING_DELAY * 1000)
+        blue.pyos.synchro.SleepWallclock(INCURSION_CHAT_WARNING_DELAY * 1000)
         if self.IsTaleInTheCurrentSystem(taleID):
             self._EndTimeoutOfIncursionChat(taleID)
             return 
         window = lsc.GetChannelWindow(('incursion' + str(taleID), taleID))
         if window:
-            window.Speak(mls.UI_SHARED_CHAT_INCURSION_LEFT_WARNING % {'minutesLeft': INCURSION_CHAT_CLOSE_DELAY / 60}, const.ownerSystem)
-        blue.pyos.synchro.Sleep(INCURSION_CHAT_CLOSE_DELAY * 1000)
+            window.Speak(localization.GetByLabel('UI/Incursion/LeaveChat', minutesRemaining=INCURSION_CHAT_CLOSE_DELAY / 60), const.ownerSystem)
+        blue.pyos.synchro.SleepWallclock(INCURSION_CHAT_CLOSE_DELAY * 1000)
         if self.IsTaleInTheCurrentSystem(taleID):
             self._EndTimeoutOfIncursionChat(taleID)
             return 
@@ -340,7 +369,7 @@ class IncursionSvc(Service):
             window = lsc.GetChannelWindow(channelID)
             if window:
                 constellationName = cfg.evelocations.Get(session.constellationid).name
-                window.Speak(mls.UI_SHARED_CHAT_INCURSION_MOTD % {'constellationName': constellationName}, const.ownerSystem)
+                window.Speak(localization.GetByLabel('UI/Incursion/Announcement', constellationName=constellationName), const.ownerSystem)
 
 
 
@@ -473,25 +502,25 @@ class IncursionSvc(Service):
         chart.addLegend(LEGEND_OFFSET, LEGEND_OFFSET, 0, 'arial.ttf', 8).setBackground(Transparent)
         legend = chart.getLegend()
         legend.setFontColor(WHITE)
-        chart.addTitle(mls.UI_REWARD_RATIO_CHART_TITLE, 'arialbd.ttf', 12, WHITE).setBackground(Transparent)
+        chart.addTitle(localization.GetByLabel('UI/Incursion/Reward/Title'), 'arialbd.ttf', 12, WHITE).setBackground(Transparent)
         yAxis = chart.yAxis()
-        yAxis.setTitle(mls.UI_REWARD_PAYOUT_RATIO, 'arial.ttf', 10, WHITE)
+        yAxis.setTitle(localization.GetByLabel('UI/Incursion/Reward/PayoutMultiplier'), 'arial.ttf', 10, WHITE)
         yAxis.setColors(GRAY, WHITE)
         yAxis.setLinearScale(0, 1.02, 0.5, 0.25)
         xAxis = chart.xAxis()
         xAxis.setLabels(labels)
         xAxis.setLabelStep(majorTick)
         xAxis.setColors(GRAY, WHITE)
-        xAxis.setTitle(mls.UI_REWARD_PLAYER_COUNT, 'arial.ttf', 9, WHITE)
+        xAxis.setTitle(localization.GetByLabel('UI/Incursion/Reward/NumberPilots'), 'arial.ttf', 9, WHITE)
         layer = chart.addLineLayer2()
         layer.setLineWidth(1)
         if allSecurityBandTable is not None:
-            layer.addDataSet(data, COLOR_HIGH_SEC, mls.UI_GENERIC_RATIO)
+            layer.addDataSet(data, COLOR_HIGH_SEC, localization.GetByLabel('UI/Common/Ratio'))
         else:
             (dataHigh, dataLow,) = zip(*data)
-            layer.addDataSet(dataHigh, COLOR_HIGH_SEC, mls.UI_REWARD_CHART_LEGEND_HIGH_SEC)
-            layer.addDataSet(dataLow, COLOR_NULL_SEC, mls.UI_REWARD_CHART_LEGEND_LOW_NULL_SEC)
-        directory = os.path.normpath(os.path.join(blue.os.cachepath, 'Pictures', 'Rewards'))
+            layer.addDataSet(dataHigh, COLOR_HIGH_SEC, localization.GetByLabel('UI/Common/HighSec'))
+            layer.addDataSet(dataLow, COLOR_NULL_SEC, localization.GetByLabel('UI/Common/LowNullSec'))
+        directory = os.path.normpath(os.path.join(blue.os.ResolvePath(u'cache:/'), 'Pictures', 'Rewards'))
         if not os.path.exists(directory):
             os.makedirs(directory)
         path = os.path.join(directory, 'rewardchart_%s_%d_%d.png' % (session.languageID, size, rewardID))
@@ -529,7 +558,7 @@ class IncursionSvc(Service):
         count = 0
         success = False
         while success == False and count < 60:
-            blue.synchro.Sleep(1000)
+            blue.synchro.SleepWallclock(1000)
             count += 1
             if session.stationid is None:
                 success = True

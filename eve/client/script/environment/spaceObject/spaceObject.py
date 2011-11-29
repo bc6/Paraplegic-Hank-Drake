@@ -251,8 +251,6 @@ class SpaceObject(bluepy.WrapBlueClass('destiny.ClientBall')):
             return 
         if slimItem.groupID == const.groupMoonMining:
             direction = self.FindClosestMoonDir()
-        elif slimItem.groupID == const.groupPlanetaryCustomsOffices:
-            direction = self.FindClosestPlanetDir()
         else:
             direction = getattr(slimItem, 'dunDirection', None)
         return direction
@@ -477,7 +475,7 @@ class SpaceObject(bluepy.WrapBlueClass('destiny.ClientBall')):
         noiseDampCurve.ScaleValue(actualMagnitude)
         if camera.noiseScaleCurve != None and camera.noiseScaleCurve.value > noiseScaleCurve.keys[1].value:
             return 
-        now = blue.os.GetTime()
+        now = blue.os.GetSimTime()
         noiseScaleCurve.start = now
         noiseDampCurve.start = now
         camera.noise = 1
@@ -580,7 +578,7 @@ class SpaceObject(bluepy.WrapBlueClass('destiny.ClientBall')):
 
 
     def FindHierarchicalBoundingBox(self, transform, printout, parentMat = trinity.TriMatrix(), indent = '', minx = 1e+100, maxx = -1e+100, miny = 1e+100, maxy = -1e+100, minz = 1e+100, maxz = -1e+100, parentScale = trinity.TriVector(1.0, 1.0, 1.0)):
-        transform.Update(blue.os.GetTime())
+        transform.Update(blue.os.GetSimTime())
         if printout:
             print indent,
             print transform.name
@@ -647,7 +645,7 @@ class SpaceObject(bluepy.WrapBlueClass('destiny.ClientBall')):
 
 
 
-    def FitBoosters2(self, graphicID = None, alwaysOn = False):
+    def FitBoosters2(self, graphicID = None, alwaysOn = False, enableTrails = True):
         slimItem = sm.StartService('michelle').GetBallpark().GetInvItem(self.id)
         if slimItem is None:
             self.LogError('No invitem property for ship')
@@ -670,6 +668,8 @@ class SpaceObject(bluepy.WrapBlueClass('destiny.ClientBall')):
             sys.exc_clear()
             self.LogError('Type', slimItem.typeID, 'has no booster locators', 'Could not fit booster ID ' + strx(graphicID) + ' URL' + graphicURL + ' to ' + self.model.name)
             return 
+        if not enableTrails:
+            self.model.boosters.trails = None
         boosterAudioLocators = filter(lambda node: node.name.startswith('locator_audio_booster'), self.model.locators)
         import audio2
         tmpEntity = None
@@ -708,18 +708,7 @@ class SpaceObject(bluepy.WrapBlueClass('destiny.ClientBall')):
          boosterSize,
          'play'])
         if tmpEntity is not None:
-            audioModifier = trinity.TriCurveSet()
-            audioModifier.name = 'AudioModifier'
-            speedToVolumeCurve = trinity.TriScalarCurve()
-            speedToVolumeCurve.name = 'SpeedToVolumeCurve'
-            speedToVolumeCurve.extrapolation = trinity.TRIEXT_CONSTANT
-            speedToVolumeCurve.AddKey(0.0, 0.0, 1.0, 1.0, trinity.TRIINT_LINEAR)
-            speedToVolumeCurve.AddKey(0.1, 0.0, 1.0, 1.0, trinity.TRIINT_LINEAR)
-            speedToVolumeCurve.AddKey(1.0, 1.0, 1.0, 1.0, trinity.TRIINT_LINEAR)
-            speedToVolumeCurve.AddKey(1000000000.0, 10.0, 1.0, 1.0, trinity.TRIINT_LINEAR)
-            audioModifier.curves.append(speedToVolumeCurve)
-            binding = trinity.TriValueBinding()
-            binding.name = 'BindShipSpeedToAudioModifierCurve'
+            self.model.audioSpeedParameter = self.shipSpeedParameter
             baseVelocity = 1
             if util.IsNPC(self.id):
                 baseVelocity = sm.StartService('godma').GetTypeAttribte(slimItem.typeID, const.attributeEntityCruiseSpeed)
@@ -727,25 +716,7 @@ class SpaceObject(bluepy.WrapBlueClass('destiny.ClientBall')):
                 baseVelocity = sm.StartService('godma').GetTypeAttribute(slimItem.typeID, const.attributeMaxVelocity)
             if baseVelocity is None:
                 baseVelocity = 1.0
-            binding.scale = 1.0 / baseVelocity
-            binding.sourceObject = self.model.speed
-            binding.destinationObject = audioModifier
-            binding.sourceAttribute = 'value'
-            binding.destinationAttribute = 'scaledTime'
-            binding2 = trinity.TriValueBinding()
-            binding2.name = 'BindAudioVolumeToRTPC'
-            binding2.sourceObject = speedToVolumeCurve
-            binding2.destinationObject = tmpParameter
-            binding2.sourceAttribute = 'value'
-            binding2.destinationAttribute = 'value'
-            audioBinder = trinity.TriCurveSet()
-            audioBinder.name = 'AudioSpeedBinding'
-            audioBinder.bindings.append(binding)
-            audioModifier.bindings.append(binding2)
-            self.model.curveSets.append(audioBinder)
-            self.model.curveSets.append(audioModifier)
-            audioBinder.Play()
-            audioModifier.Play()
+            self.model.maxSpeed = baseVelocity
             tmpEntity.SendEvent(unicode(self.boosterAudioEvent))
 
 

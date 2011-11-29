@@ -6,6 +6,7 @@ import util
 import trinity
 import cameras
 import mathUtil
+import GameWorld
 import mathCommon
 
 class PolarCamera(cameras.BasicCamera):
@@ -13,6 +14,7 @@ class PolarCamera(cameras.BasicCamera):
 
     def __init__(self):
         cameras.BasicCamera.__init__(self)
+        self.gameWorldClient = sm.GetService('gameWorldClient')
         self.poi = (0, 0, 0)
         self.poiModifier = (0, 0, 0)
         self.rotationSpeed = 0.0
@@ -30,8 +32,17 @@ class PolarCamera(cameras.BasicCamera):
 
 
 
-    def GetYaw(self):
-        return self.yaw
+    def PerformPick(self, x, y, ignoreEntID = -1):
+        (startPoint, endPoint,) = self.GetRay(x, y)
+        if not session.worldspaceid:
+            return None
+        else:
+            gameWorld = self.gameWorldClient.GetGameWorld(session.worldspaceid)
+            if gameWorld:
+                collisionGroups = 1 << GameWorld.GROUP_AVATAR | 1 << GameWorld.GROUP_COLLIDABLE_NON_PUSHABLE
+                p = gameWorld.LineTestEntId(startPoint, endPoint, ignoreEntID, collisionGroups)
+                return p
+            return None
 
 
 
@@ -159,6 +170,11 @@ class PolarCamera(cameras.BasicCamera):
 
 
 
+    def GetYaw(self):
+        return self.yaw
+
+
+
     def AdjustYaw(self, delta, maxRotate = None, ignoreUpdate = True):
         if maxRotate:
             if delta > maxRotate:
@@ -192,20 +208,20 @@ class PolarCamera(cameras.BasicCamera):
 
     def SmoothMove(self, targetPosition, targetRotation, targetTilt, targetDist, durationMS, callbackOnEnd = None):
         (sPos, sRot, sTilt, sDist,) = (self.GetPointOfInterest(),
-         self.GetYaw(),
-         self.GetPitch(),
+         self.yaw,
+         self.pitch,
          self.zoom)
         (ePos, eRot, eTilt, eDist,) = (targetPosition,
          targetRotation,
          targetTilt,
          targetDist)
         eRot = sRot + mathCommon.GetLesserAngleBetweenYaws(sRot, eRot)
-        self._smoothMoveTimer = base.AutoTimer(50, self.UpdateSmoothMove, sPos, sRot, sTilt, sDist, ePos, eRot, eTilt, eDist, blue.os.GetTime(), float(durationMS), callbackOnEnd)
+        self._smoothMoveTimer = base.AutoTimer(50, self.UpdateSmoothMove, sPos, sRot, sTilt, sDist, ePos, eRot, eTilt, eDist, blue.os.GetWallclockTime(), float(durationMS), callbackOnEnd)
 
 
 
     def UpdateSmoothMove(self, sPos, sRot, sTilt, sDist, ePos, eRot, eTilt, eDist, startTime, durationMS, callbackOnEnd):
-        ndt = blue.os.TimeDiffInMs(startTime) / durationMS
+        ndt = blue.os.TimeDiffInMs(startTime, blue.os.GetWallclockTime()) / durationMS
         ndt = max(0.0, min(1.0, ndt))
         self.AssembleViewMatrix((mathUtil.Lerp(sPos[0], ePos[0], ndt), mathUtil.Lerp(sPos[1], ePos[1], ndt), mathUtil.Lerp(sPos[2], ePos[2], ndt)), mathUtil.Lerp(sRot, eRot, ndt), mathUtil.Lerp(sTilt, eTilt, ndt), mathUtil.Lerp(sDist, eDist, ndt), True)
         if ndt >= 1.0:
@@ -217,7 +233,7 @@ class PolarCamera(cameras.BasicCamera):
 
 
     def Update(self):
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         frameTime = float(now - self.lastUpdateTime) / const.SEC
         self.poiModifier = (0, 0, 0)
         for (priority, behavior,) in self.cameraBehaviors:
@@ -228,6 +244,11 @@ class PolarCamera(cameras.BasicCamera):
             self.AdjustYaw(self.rotationSpeed * frameTime)
         self.AssembleViewMatrix(self.GetPointOfInterest(), self.yaw, self.pitch, self.distance)
         self.AssembleBaseViewMatrix(self.GetBasePointOfInterest(), self.yaw, self.pitch, self.distance)
+
+
+
+    def SetRotationSpeed(self, rotationSpeed):
+        self.rotationSpeed = rotationSpeed
 
 
 

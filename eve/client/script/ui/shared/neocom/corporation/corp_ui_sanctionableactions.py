@@ -1,14 +1,12 @@
 import sys
 import blue
-import uthread
 import util
-import xtriui
 import uix
-import form
 import listentry
 import log
 import uicls
 import uiconst
+import localization
 
 class CorpSanctionableActions(uicls.Container):
     __guid__ = 'form.CorpSanctionableActions'
@@ -20,24 +18,24 @@ class CorpSanctionableActions(uicls.Container):
 
 
     def Load(self, args):
-        self.voteTypes = {const.voteCEO: mls.UI_CORP_NEWCEO,
-         const.voteWar: mls.UI_CORP_DECLARATIONOFWAR,
-         const.voteShares: mls.UI_CORP_CREATIONOFSHARES,
-         const.voteKickMember: mls.UI_CORP_EXPULSION,
-         const.voteGeneral: mls.UI_CORP_GENERALVOTE,
-         const.voteItemUnlock: mls.UI_CORP_UNLOCKBLUEPRINT,
-         const.voteItemLockdown: mls.UI_CORP_LOCKBLUEPRINT}
-        self.headers = [mls.UI_GENERIC_TYPE,
-         mls.UI_GENERIC_TITLE,
-         mls.UI_GENERIC_DESCRIPTION,
-         mls.UI_GENERIC_EXPIRES,
-         mls.UI_GENERIC_ACTEDUPON,
-         mls.UI_CORP_INEFFECT,
-         mls.UI_CORP_RESCINDED]
+        self.voteTypes = {const.voteCEO: localization.GetByLabel('UI/Corporations/CorpSanctionableActions/NewCEO'),
+         const.voteWar: localization.GetByLabel('UI/Corporations/CorpSanctionableActions/DeclarationOfWar'),
+         const.voteShares: localization.GetByLabel('UI/Corporations/CorpSanctionableActions/CreationOfShares'),
+         const.voteKickMember: localization.GetByLabel('UI/Corporations/CorpSanctionableActions/Expulsion'),
+         const.voteGeneral: localization.GetByLabel('UI/Corporations/CorpSanctionableActions/GeneralVote'),
+         const.voteItemUnlock: localization.GetByLabel('UI/Corporations/CorpSanctionableActions/UnlockBlueprint'),
+         const.voteItemLockdown: localization.GetByLabel('UI/Corporations/CorpSanctionableActions/LockBlueprint')}
+        self.headers = [localization.GetByLabel('UI/Corporations/CorpSanctionableActions/Type'),
+         localization.GetByLabel('UI/Corporations/CorpSanctionableActions/Title'),
+         localization.GetByLabel('UI/Corporations/CorpSanctionableActions/Description'),
+         localization.GetByLabel('UI/Corporations/CorpSanctionableActions/Expires'),
+         localization.GetByLabel('UI/Corporations/CorpSanctionableActions/ActedUpon'),
+         localization.GetByLabel('UI/Corporations/CorpSanctionableActions/InEffect'),
+         localization.GetByLabel('UI/Corporations/CorpSanctionableActions/Rescinded')]
         if not self.sr.Get('inited', 0):
             self.sr.inited = 1
             self.toolbarContainer = uicls.Container(name='toolbarContainer', align=uiconst.TOBOTTOM, parent=self)
-            buttonOptions = [[mls.UI_CORP_CLOSEDVOTES_SHOWALL,
+            buttonOptions = [[localization.GetByLabel('UI/Corporations/CorpSanctionableActions/ShowAll'),
               self.ShowSanctionableActionsNotInEffect,
               True,
               81]]
@@ -49,14 +47,14 @@ class CorpSanctionableActions(uicls.Container):
              const.defaultPadding,
              const.defaultPadding))
             self.sr.tabs = uicls.TabGroup(name='tabparent', parent=self, idx=0)
-            self.sr.tabs.Startup([[mls.UI_CORP_INEFFECT,
+            self.sr.tabs.Startup([[localization.GetByLabel('UI/Corporations/CorpSanctionableActions/InEffect'),
               self,
               self,
-              'ineffect'], [mls.UI_CORP_NOTINEFFECT,
+              'ineffect'], [localization.GetByLabel('UI/Corporations/CorpSanctionableActions/NotInEffect'),
               self,
               self,
               'notineffect']], 'corpsanctionableact')
-        sm.GetService('corpui').LoadTop('ui_7_64_5', mls.UI_CORP_SANCTIONABLEACTIONS)
+        sm.GetService('corpui').LoadTop('ui_7_64_5', localization.GetByLabel('UI/Corporations/CorpSanctionableActions/SanctionableActions'))
         if args == 'ineffect':
             self.ShowSanctionableActionsInEffect()
         elif args == 'notineffect':
@@ -84,11 +82,11 @@ class CorpSanctionableActions(uicls.Container):
         try:
             try:
                 sm.GetService('corpui').ShowLoad()
-                uix.HideButtonFromGroup(self.sr.mainBtns, mls.UI_CORP_CLOSEDVOTES_SHOWALL)
+                uix.HideButtonFromGroup(self.sr.mainBtns, localization.GetByLabel('UI/Corporations/CorpSanctionableActions/ShowAll'))
                 scrolllist = []
                 self.sr.scroll.Clear()
                 if not sm.GetService('corp').CanViewVotes(eve.session.corpid):
-                    self.SetHint(mls.UI_CORP_ACCESSDENIED9)
+                    self.SetHint(localization.GetByLabel('UI/Corporations/AccessRestrictions/MustBeCEODirectorOrShareholder'))
                     return 
                 voteCases = {}
                 voteCasesByCorp = sm.GetService('corp').GetVoteCasesByCorporation(eve.session.corpid)
@@ -122,20 +120,20 @@ class CorpSanctionableActions(uicls.Container):
                         title = voteCases[row.voteCaseID].voteCaseText
                         description = voteCases[row.voteCaseID].description
                         expires = util.FmtDate(row.expires)
-                        actedUpon = [mls.UI_GENERIC_NO, mls.UI_GENERIC_YES][row.actedUpon]
-                        inEffect = [mls.UI_GENERIC_NO, mls.UI_GENERIC_YES][row.inEffect]
-                        rescended = mls.UI_GENERIC_NO
+                        actedUpon = [localization.GetByLabel('UI/Generic/No'), localization.GetByLabel('UI/Generic/Yes')][row.actedUpon]
+                        inEffect = [localization.GetByLabel('UI/Generic/No'), localization.GetByLabel('UI/Generic/Yes')][row.inEffect]
+                        rescended = localization.GetByLabel('UI/Generic/No')
                         if row.timeRescended:
-                            rescended += ' (%s)' % util.FmtDate(row.timeRescended)
+                            rescended = localization.GetByLabel('UI/Corporations/CorpSanctionableActions/AnswerWithTimestamp', answer=rescended, timestamp=util.FmtDate(row.timeRescended))
                         if row.timeActedUpon:
-                            actedUpon += ' (%s)' % util.FmtDate(row.timeActedUpon)
-                        label = '%s<t>%s<t>%s<t>%s<t>%s<t>%s<t>%s' % (voteType,
+                            actedUpon = localization.GetByLabel('UI/Corporations/CorpSanctionableActions/AnswerWithTimestamp', answer=actedUpon, timestamp=util.FmtDate(row.timeActedUpon))
+                        label = '<t>'.join((voteType,
                          title,
                          description,
                          expires,
                          actedUpon,
                          inEffect,
-                         rescended)
+                         rescended))
                         data = {'GetSubContent': self.GetInEffectSanctionedActionSubContent,
                          'label': label,
                          'groupItems': None,
@@ -149,7 +147,7 @@ class CorpSanctionableActions(uicls.Container):
                         scrolllist.append(listentry.Get('Group', data))
                         uicore.registry.SetListGroupOpenState(('corpsaie', row.voteCaseID), 0)
 
-                self.sr.scroll.Load(fixedEntryHeight=19, contentList=scrolllist, headers=self.headers, noContentHint=mls.UI_CORP_NOSANCTIONABLEACTIONSINEFFECT)
+                self.sr.scroll.Load(fixedEntryHeight=19, contentList=scrolllist, headers=self.headers, noContentHint=localization.GetByLabel('UI/Corporations/CorpSanctionableActions/NoSanctionableActionsInEffect'))
 
             finally:
                 sm.GetService('corpui').HideLoad()
@@ -177,13 +175,12 @@ class CorpSanctionableActions(uicls.Container):
                 dict = {'line': 1}
                 if row.voteType in [const.voteWar, const.voteKickMember, const.voteCEO]:
                     owner = cfg.eveowners.Get(row.parameter)
-                    dict['text'] = '  %s<t>' % mls.UI_GENERIC_MOREINFO + owner.ownerName
+                    dict['text'] = localization.GetByLabel('UI/Corporations/CorpSanctionableActions/MoreInfoEntry', ownerName=owner.ownerName)
                     dict['itemID'] = row.parameter
                     dict['typeID'] = owner.typeID
                     scrolllist.append(listentry.Get('Text', dict))
                 elif row.voteType in [const.voteItemLockdown, const.voteItemUnlock]:
-                    locationText = mls.UI_SHARED_LOCATEDATSOMEWHERE % {'location': cfg.evelocations.Get(row.parameter2).locationName}
-                    dict['text'] = '  %s<t>%s<t>%s' % (mls.UI_GENERIC_MOREINFO, cfg.invtypes.Get(row.parameter1).typeName, locationText)
+                    dict['text'] = localization.GetByLabel('UI/Corporations/CorpSanctionableActions/MoreInfoTypeNameAndLocation', typeID=row.parameter1, location=row.parameter2)
                     dict['itemID'] = row.parameter
                     dict['typeID'] = row.parameter1
                     scrolllist.append(listentry.Get('Text', dict))
@@ -199,15 +196,15 @@ class CorpSanctionableActions(uicls.Container):
             try:
                 sm.GetService('corpui').ShowLoad()
                 if not sm.GetService('corp').CanViewVotes(eve.session.corpid):
-                    self.SetHint(mls.UI_CORP_ACCESSDENIED9)
+                    self.SetHint(localization.GetByLabel('UI/Corporations/AccessRestrictions/MustBeCEODirectorOrShareholder'))
                     return 
                 if showExpired:
                     if not eve.Message('ConfirmShowAllSanctionableActions', {}, uiconst.YESNO, suppress=uiconst.ID_YES) == uiconst.ID_YES:
                         return 
-                    uix.HideButtonFromGroup(self.sr.mainBtns, mls.UI_CORP_CLOSEDVOTES_SHOWALL)
+                    uix.HideButtonFromGroup(self.sr.mainBtns, localization.GetByLabel('UI/Corporations/AccessRestrictions/ShowAll'))
                     state = 0
                 else:
-                    uix.ShowButtonFromGroup(self.sr.mainBtns, mls.UI_CORP_CLOSEDVOTES_SHOWALL)
+                    uix.ShowButtonFromGroup(self.sr.mainBtns, localization.GetByLabel('UI/Corporations/AccessRestrictions/ShowAll'))
                     state = 2
                 scrolllist = []
                 self.sr.scroll.Clear()
@@ -236,20 +233,20 @@ class CorpSanctionableActions(uicls.Container):
                     title = voteCases[row.voteCaseID].voteCaseText
                     description = voteCases[row.voteCaseID].description
                     expires = util.FmtDate(row.expires)
-                    actedUpon = [mls.UI_GENERIC_NO, mls.UI_GENERIC_YES][row.actedUpon]
-                    inEffect = [mls.UI_GENERIC_NO, mls.UI_GENERIC_YES][row.inEffect]
-                    rescended = mls.UI_GENERIC_NO
+                    actedUpon = [localization.GetByLabel('UI/Generic/No'), localization.GetByLabel('UI/Generic/Yes')][row.actedUpon]
+                    inEffect = [localization.GetByLabel('UI/Generic/No'), localization.GetByLabel('UI/Generic/Yes')][row.inEffect]
+                    rescended = localization.GetByLabel('UI/Generic/No')
                     if row.timeRescended:
-                        rescended += ' (%s)' % util.FmtDate(row.timeRescended)
+                        rescended = localization.GetByLabel('UI/Corporations/CorpSanctionableActions/AnswerWithTimestamp', answer=rescended, timestamp=util.FmtDate(row.timeRescended))
                     if row.timeActedUpon:
-                        actedUpon += ' (%s)' % util.FmtDate(row.timeActedUpon)
-                    label = '%s<t>%s<t>%s<t>%s<t>%s<t>%s<t>%s' % (voteType,
+                        actedUpon = localization.GetByLabel('UI/Corporations/CorpSanctionableActions/AnswerWithTimestamp', answer=actedUpon, timestamp=util.FmtDate(row.timeActedUpon))
+                    label = '<t>'.join((voteType,
                      title,
                      description,
                      expires,
                      actedUpon,
                      inEffect,
-                     rescended)
+                     rescended))
                     data = {'GetSubContent': self.GetNotInEffectSanctionedActionSubContent,
                      'label': label,
                      'groupItems': None,
@@ -263,7 +260,7 @@ class CorpSanctionableActions(uicls.Container):
                     scrolllist.append(listentry.Get('Group', data))
                     uicore.registry.SetListGroupOpenState(('corpsanie', row.voteCaseID), 0)
 
-                self.sr.scroll.Load(fixedEntryHeight=19, contentList=scrolllist, headers=self.headers, noContentHint=mls.UI_CORP_NOSANCTIONABLEACTIONSNOTINEFFECT)
+                self.sr.scroll.Load(fixedEntryHeight=19, contentList=scrolllist, headers=self.headers, noContentHint=localization.GetByLabel('UI/Corporations/CorpSanctionableActions/NoNotInEffect'))
 
             finally:
                 sm.GetService('corpui').HideLoad()
@@ -286,23 +283,25 @@ class CorpSanctionableActions(uicls.Container):
             else:
                 scrolllist = []
                 if const.voteCEO != row.voteType and sm.GetService('corp').UserIsActiveCEO():
-                    if row.expires > blue.os.GetTime():
+                    if row.expires > blue.os.GetWallclockTime():
                         if not row.actedUpon:
-                            action = [mls.UI_CORP_IMPLEMENTACTION, (self.ImplementSanctionedAction, row.voteCaseID)]
-                            scrolllist.append(listentry.Get('Button', {'label': '%s' % action[0],
-                             'caption': mls.UI_CMD_APPLY,
+                            action = [localization.GetByLabel('UI/Corporations/CorpSanctionableActions/ImplementAction'), (self.ImplementSanctionedAction, row.voteCaseID)]
+                            scrolllist.append(listentry.Get('Button', {'label': action[0],
+                             'caption': localization.GetByLabel('UI/Commands/Apply'),
                              'OnClick': action[1][0],
                              'args': (action[1][1],)}))
                 dict = {'line': 1}
                 if row.voteType in [const.voteWar, const.voteKickMember, const.voteCEO]:
                     owner = cfg.eveowners.Get(row.parameter)
-                    dict['text'] = '  %s<t>' % mls.UI_GENERIC_MOREINFO + owner.ownerName
+                    label = localization.GetByLabel('UI/Corporations/CorpSanctionableActions/MoreInfo')
+                    dict['text'] = label + '<t>' + owner.ownerName
                     dict['itemID'] = row.parameter
                     dict['typeID'] = owner.typeID
                     scrolllist.append(listentry.Get('Text', dict))
                 elif row.voteType in [const.voteItemLockdown, const.voteItemUnlock]:
-                    locationText = mls.UI_SHARED_LOCATEDATSOMEWHERE % {'location': cfg.evelocations.Get(row.parameter2).locationName}
-                    dict['text'] = '  %s<t>%s<t>%s' % (mls.UI_GENERIC_MOREINFO, cfg.invtypes.Get(row.parameter1).typeName, locationText)
+                    locationText = localization.GetByLabel('UI/Corporations/CorpSanctionableActions/LocatedAt', location=row.parameter2)
+                    moreInfo = localization.GetByLabel('UI/Corporations/CorpSanctionableActions/MoreInfo')
+                    dict['text'] = moreInfo + '<t>' + cfg.invtypes.Get(row.parameter1).typeName + '<t>' + locationText
                     dict['itemID'] = row.parameter
                     dict['typeID'] = row.parameter1
                     scrolllist.append(listentry.Get('Text', dict))
@@ -321,7 +320,8 @@ class CorpSanctionableActions(uicls.Container):
 
     def ImplementSanctionedAction(self, voteCaseID, wnd, *args):
         if not sm.GetService('corp').UserIsActiveCEO():
-            eve.Message('CustomError', {'error': mls.UI_CORP_HINT52})
+            label = localization.GetByLabel('UI/Corporations/CorpSanctionableActions/MustBeCEOToSanction')
+            eve.Message('CustomError', {'error': label})
             return 
         try:
             sm.GetService('corpui').ShowLoad()
@@ -339,12 +339,12 @@ class CorpSanctionableActions(uicls.Container):
         action = _entry[1]
         scrolllist = []
         extraText = ''
-        theFields = {'Decision': mls.UI_GENERIC_DECISION,
-         'expires': mls.UI_GENERIC_EXPIRES,
-         'actedUpon': mls.UI_GENERIC_ACTEDUPON,
-         'In Effect': mls.UI_CORP_INEFFECT,
-         'timeActedUpon': mls.UI_CORP_TIMEACTEDUPON,
-         'timeRescended': mls.UI_CORP_TIMERESCINDED}
+        theFields = {'Decision': localization.GetByLabel('UI/Corporations/CorpSanctionableActions/Decision'),
+         'expires': localization.GetByLabel('UI/Corporations/CorpSanctionableActions/Expires'),
+         'actedUpon': localization.GetByLabel('UI/Corporations/CorpSanctionableActions/ActedUpon'),
+         'In Effect': localization.GetByLabel('UI/Corporations/CorpSanctionableActions/InEffect'),
+         'timeActedUpon': localization.GetByLabel('UI/Corporations/CorpSanctionableActions/TimeActedUpon'),
+         'timeRescended': localization.GetByLabel('UI/Corporations/CorpSanctionableActions/TimeRescinded')}
         if len(fields) and fields.has_key('Description'):
             scrolllist.append(listentry.Get('Text', {'text': fields['Description']}))
         for key in fields.iterkeys():
@@ -356,8 +356,9 @@ class CorpSanctionableActions(uicls.Container):
              'text': field}))
 
         if action is not None:
-            scrolllist.append(listentry.Get('Button', {'label': '%s' % action[0],
-             'caption': mls.UI_CMD_APPLY,
+            caption = localization.GetByLabel('UI/Commands/Apply')
+            scrolllist.append(listentry.Get('Button', {'label': action[0],
+             'caption': caption,
              'OnClick': action[1][0],
              'args': (action[1][1],)}))
         scrolllist.append(listentry.Get('Divider'))

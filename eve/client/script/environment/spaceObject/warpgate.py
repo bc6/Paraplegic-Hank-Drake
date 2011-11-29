@@ -33,7 +33,7 @@ class WarpGate(spaceObject.SpaceObject):
         if dunOpenUntil is not None:
             onCurve.start = slimItem.dunOpenUntil
         else:
-            onCurve.start = blue.os.GetTime() + YEAR
+            onCurve.start = blue.os.GetSimTime() + YEAR
 
 
 

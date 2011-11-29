@@ -35,7 +35,7 @@ class FittingSlotLayout(uicls.Transform):
     def ApplyAttributes(self, attributes):
         uicls.Transform.ApplyAttributes(self, attributes)
         groupParent = uicls.Transform(parent=self, name='groupParent', pos=(-10, 14, 16, 16), align=uiconst.CENTER, state=uiconst.UI_PICKCHILDREN)
-        groupMark = uicls.Icon(parent=groupParent, name='groupMark', pos=(0, 0, 20, 20), align=uiconst.TOPLEFT, texturePath='ui_73_16_177')
+        groupMark = uicls.Icon(parent=groupParent, name='groupMark', pos=(0, 0, 20, 20), align=uiconst.TOPLEFT)
         iconParent = uicls.Transform(parent=self, name='iconParent', align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, pos=(0,
          0,
          self.width,

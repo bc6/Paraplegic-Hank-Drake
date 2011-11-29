@@ -8,6 +8,7 @@ import codecs
 import sys
 import uicls
 import uiconst
+import localization
 from xml.dom.minidom import getDOMImplementation, parse
 
 class ImportBaseWindow(uicls.Window):
@@ -34,26 +35,26 @@ class ImportBaseWindow(uicls.Window):
         self.sr.profilesContainer = uicls.Container(name='profilesContainer', align=uiconst.TOALL, parent=self.sr.main, pos=(0, 0, 0, 0))
         fileTopCont = uicls.Container(name='fileTopCont', parent=self.sr.fileContainer, align=uiconst.TOTOP, height=40)
         fileScrollCont = uicls.Container(name='fileScrollCont', parent=self.sr.fileContainer, align=uiconst.TOALL)
-        self.sr.fileHeader = uicls.CaptionLabel(text=mls.UI_GENERIC_FILENAME, parent=fileTopCont, left=const.defaultPadding, top=const.defaultPadding)
+        self.sr.fileHeader = uicls.CaptionLabel(text=localization.GetByLabel('UI/Common/Files/FileName'), parent=fileTopCont, left=const.defaultPadding, top=const.defaultPadding)
         self.sr.fileHeader.fontsize = 14
         self.sr.fileScroll = uicls.Scroll(name='fileScroll', parent=fileScrollCont, padding=(const.defaultPadding,
          0,
          const.defaultPadding,
          const.defaultPadding))
-        self.sr.refreshFileListBtn = uicls.ButtonGroup(btns=[[mls.UI_CMD_REFRESH,
+        self.sr.refreshFileListBtn = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Commands/Refresh'),
           self.RefreshFileList,
           (),
           None]], parent=self.sr.fileContainer, idx=0)
         profilesTopCont = uicls.Container(name='fileTopCont', parent=self.sr.profilesContainer, align=uiconst.TOTOP, height=40)
         profilesScrollCont = uicls.Container(name='fileScrollCont', parent=self.sr.profilesContainer, align=uiconst.TOALL)
-        self.sr.profilesHeader = uicls.CaptionLabel(text=mls.PLEASE_SELECT, parent=profilesTopCont, left=const.defaultPadding, top=const.defaultPadding)
+        self.sr.profilesHeader = uicls.CaptionLabel(text=localization.GetByLabel('UI/Common/PleaseSelect'), parent=profilesTopCont, left=const.defaultPadding, top=const.defaultPadding)
         self.sr.profilesHeader.fontsize = 14
-        self.checkAllCB = uicls.Checkbox(text=mls.UI_SHARED_CHECKALL_ON, parent=profilesTopCont, align=uiconst.TOBOTTOM, height=16, padLeft=const.defaultPadding, callback=self.CheckAll, checked=True)
+        self.checkAllCB = uicls.Checkbox(text=localization.GetByLabel('UI/Shared/CheckAllOn'), parent=profilesTopCont, align=uiconst.TOBOTTOM, height=16, padLeft=const.defaultPadding, callback=self.CheckAll, checked=True)
         self.sr.profilesScroll = uicls.Scroll(name='profilesScroll', parent=profilesScrollCont, padding=(const.defaultPadding,
          0,
          const.defaultPadding,
          const.defaultPadding))
-        self.sr.importProfilesBtn = uicls.ButtonGroup(btns=[[mls.UI_CMD_IMPORT,
+        self.sr.importProfilesBtn = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Commands/Import'),
           self.Import,
           (),
           None]], parent=self.sr.profilesContainer, idx=0)
@@ -124,9 +125,9 @@ class ExportBaseWindow(uicls.Window):
         topCont = uicls.Container(name='topCont', align=uiconst.TOTOP, height=14, parent=self.sr.main)
         left = const.defaultPadding
         self.sr.buttonContainer = uicls.Container(name='buttonContainer', align=uiconst.TOBOTTOM, parent=self.sr.main)
-        self.checkAllCB = uicls.Checkbox(text=mls.UI_SHARED_CHECKALL_ON, parent=topCont, align=uiconst.TOTOP, height=16, padLeft=left, callback=self.CheckAll, checked=True)
+        self.checkAllCB = uicls.Checkbox(text=localization.GetByLabel('UI/Shared/CheckAllOn'), parent=topCont, align=uiconst.TOTOP, height=16, padLeft=left, callback=self.CheckAll, checked=True)
         left = const.defaultPadding
-        self.sr.filenameLabel = uicls.Label(text=mls.UI_GENERIC_FILENAME, parent=self.sr.buttonContainer, top=const.defaultPadding, left=left, state=uiconst.UI_NORMAL)
+        self.sr.filenameLabel = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Common/Files/FileName'), parent=self.sr.buttonContainer, top=const.defaultPadding, left=left, state=uiconst.UI_NORMAL)
         left += self.sr.filenameLabel.width + const.defaultPadding
         self.sr.filename = uicls.SinglelineEdit(name='filename', parent=self.sr.buttonContainer, pos=(left,
          const.defaultPadding,
@@ -134,7 +135,7 @@ class ExportBaseWindow(uicls.Window):
          0), align=uiconst.TOPLEFT)
         self.sr.filename.SetMaxLength(32)
         left += self.sr.filename.width + const.defaultPadding
-        self.sr.exportBtn = uicls.Button(parent=self.sr.buttonContainer, label=mls.UI_GENERIC_EXPORT, func=self.Export, btn_default=1, idx=0, pos=(left,
+        self.sr.exportBtn = uicls.Button(parent=self.sr.buttonContainer, label=localization.GetByLabel('UI/Commands/Export'), func=self.Export, btn_default=1, idx=0, pos=(left,
          const.defaultPadding,
          0,
          0))
@@ -169,6 +170,7 @@ class ExportBaseWindow(uicls.Window):
 
 class ExportFittingsWindow(ExportBaseWindow):
     __guid__ = 'form.ExportFittingsWindow'
+    default_windowID = 'ExportFittingsWindow'
 
     def ApplyAttributes(self, attributes):
         self.isCorp = attributes.isCorp
@@ -177,7 +179,7 @@ class ExportFittingsWindow(ExportBaseWindow):
         attributes.dirpath = dirpath
         form.ExportBaseWindow.ApplyAttributes(self, attributes)
         self.SetWndIcon('ui_17_128_4')
-        self.SetCaption(mls.UI_CMD_EXPORTFITTINGS)
+        self.SetCaption(localization.GetByLabel('UI/Fitting/ExportFittings'))
 
 
 
@@ -264,7 +266,7 @@ class ExportFittingsWindow(ExportBaseWindow):
                     return 
             outfile = codecs.open(filepath, 'w', 'utf-8')
             newdoc.writexml(outfile, indent='\t', addindent='\t', newl='\n')
-            self.CloseX()
+            self.CloseByUser()
             eve.Message('FittingExportDone', {'filename': filepath})
 
         finally:
@@ -292,13 +294,14 @@ class ExportFittingsWindow(ExportBaseWindow):
 
 class ExportOverviewWindow(ExportBaseWindow):
     __guid__ = 'form.ExportOverviewWindow'
+    default_windowID = 'ExportOverviewWindow'
 
     def ApplyAttributes(self, attributes):
         dirpath = os.path.join(blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL), 'EVE', 'Overview')
         attributes.dirpath = dirpath
         form.ExportBaseWindow.ApplyAttributes(self, attributes)
         self.fittingSvc = sm.StartService('fittingSvc')
-        self.SetCaption(mls.UI_CMD_EXPORTOVERVIEWSETTINGS)
+        self.SetCaption(localization.GetByLabel('UI/Commands/ExportOverviewSettings'))
 
 
 
@@ -440,7 +443,7 @@ class ExportOverviewWindow(ExportBaseWindow):
                     return 
             outfile = codecs.open(filepath, 'w', 'utf-8')
             newdoc.writexml(outfile, indent='\t', addindent='\t', newl='\n')
-            self.CloseX()
+            self.CloseByUser()
             eve.Message('OverviewExportDone', {'filename': filepath})
 
         finally:
@@ -452,15 +455,16 @@ class ExportOverviewWindow(ExportBaseWindow):
 
 class ImportFittingsWindow(ImportBaseWindow):
     __guid__ = 'form.ImportFittingsWindow'
+    default_windowID = 'ImportFittingsWindow'
 
     def ApplyAttributes(self, attributes):
         dirpath = os.path.join(blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL), 'EVE', 'Fittings')
         attributes.dirpath = dirpath
         form.ImportBaseWindow.ApplyAttributes(self, attributes)
-        self.SetCaption(mls.UI_CMD_IMPORTFITTINGS)
+        self.SetCaption(localization.GetByLabel('UI/Fitting/ImportFittings'))
         self.SetWndIcon('ui_17_128_4')
         self.fittingSvc = sm.StartService('fittingSvc')
-        uicls.WndCaptionLabel(text=mls.UI_CMD_IMPORTFITTINGS, parent=self.sr.topParent)
+        uicls.WndCaptionLabel(text=localization.GetByLabel('UI/Fitting/ImportFittings'), parent=self.sr.topParent)
 
 
 
@@ -488,7 +492,7 @@ class ImportFittingsWindow(ImportBaseWindow):
 
         except Exception as e:
             raise 
-            profileCheckboxes = [listentry.Get('Generic', {'label': mls.UI_FILE_NOT_VALID})]
+            profileCheckboxes = [listentry.Get('Generic', {'label': localization.GetByLabel('UI/Common/Files/FileNotValid')})]
             self.sr.importProfilesBtn.state = uiconst.UI_HIDDEN
         self.sr.profilesScroll.Load(contentList=profileCheckboxes)
         self.OnChange()
@@ -560,7 +564,7 @@ class ImportFittingsWindow(ImportBaseWindow):
 
             text = ''
             if len(borkedTypeNames) > 0:
-                text += mls.UI_FITTING_MALFORMEDXML
+                text += localization.GetByLabel('UI/Fitting/MalformedXML')
                 text += '<br><br>'
                 for typeName in borkedTypeNames:
                     text += typeName + '<br>'
@@ -568,7 +572,7 @@ class ImportFittingsWindow(ImportBaseWindow):
             if len(borkedFlags) > 0:
                 if len(text) > 0:
                     text += '<br><br>'
-                text += mls.UI_FITTING_MALFORMEDFLAGINFORMATION
+                text += localization.GetByLabel('UI/Fitting/MalformedFlagInformation')
                 text += '<br><br>'
                 for typeName in borkedTypeNames:
                     text += typeName + '<br>'
@@ -576,7 +580,7 @@ class ImportFittingsWindow(ImportBaseWindow):
             if len(text) > 0:
                 eve.Message('CustomInfo', {'info': text})
             self.fittingSvc.PersistManyFittings(session.charid, fittingsDict.values())
-            self.CloseX()
+            self.CloseByUser()
 
         finally:
             doc.unlink()
@@ -608,13 +612,14 @@ class ImportFittingsWindow(ImportBaseWindow):
 
 class ImportOverviewWindow(ImportBaseWindow):
     __guid__ = 'form.ImportOverviewWindow'
+    default_windowID = 'ImportOverviewWindow'
 
     def ApplyAttributes(self, attributes):
         dirpath = os.path.join(blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL), 'EVE', 'Overview')
         attributesdirpath = dirpath
         form.ImportBaseWindow.ApplyAttributes(self, attributes)
-        self.SetCaption(mls.UI_CMD_IMPORTOVERVIEWSETTINGS)
-        uicls.WndCaptionLabel(text=mls.UI_CMD_IMPORTOVERVIEWSETTINGS, parent=self.sr.topParent)
+        self.SetCaption(localization.GetByLabel('UI/Overview/ImportOverviewSettings'))
+        uicls.WndCaptionLabel(text=localization.GetByLabel('UI/Overview/ImportOverviewSettings'), parent=self.sr.topParent)
         self.sr.fileScroll.multiSelect = False
 
 
@@ -650,7 +655,7 @@ class ImportOverviewWindow(ImportBaseWindow):
                 doc.unlink()
 
         except Exception as e:
-            profileCheckboxes = [listentry.Get('Generic', {'label': mls.UI_FILE_NOT_VALID})]
+            profileCheckboxes = [listentry.Get('Generic', {'label': localization.GetByLabel('UI/Common/Files/FileNotValid')})]
             self.sr.importProfilesBtn.state = uiconst.UI_HIDDEN
         self.sr.profilesScroll.Load(contentList=profileCheckboxes)
         self.OnChange()
@@ -764,13 +769,13 @@ class ImportOverviewWindow(ImportBaseWindow):
                 settings.user.overview.Set(k, v)
 
             sm.StartService('tactical').PrimePreset()
-            overviewWindow = sm.StartService('window').GetWindow('overview')
+            overviewWindow = form.OverView.GetIfOpen()
             if overviewWindow:
                 overviewWindow.UpdateAll()
                 if tabsChanged:
                     overviewWindow.OnOverviewTabChanged(tabsData, oldTabSettings)
             if closeWindow:
-                self.CloseX()
+                self.CloseByUser()
 
         finally:
             doc.unlink()
@@ -781,6 +786,7 @@ class ImportOverviewWindow(ImportBaseWindow):
 
 class ImportLegacyFittingsWindow(ExportBaseWindow):
     __guid__ = 'form.ImportLegacyFittingsWindow'
+    default_windowID = 'ImportLegacyFittingsWindow'
 
     def OnSelectionChanged(self, c):
         checkedCount = 0
@@ -788,10 +794,9 @@ class ImportLegacyFittingsWindow(ExportBaseWindow):
             if entry.checked:
                 checkedCount += 1
 
-        text = mls.UI_FITTING_MOVINGCOUNT % {'count': checkedCount,
-         'total': self.totalLocalFittings}
+        text = localization.GetByLabel('UI/Fitting/MovingCount', count=checkedCount, total=self.totalLocalFittings)
         if self.fittingCount > 0:
-            text += ' (' + mls.UI_FITTING_CURRENTLYSAVED % {'count': self.fittingCount} + ')'
+            text += ' (' + localization.GetByLabel('UI/Common/Files/CurrentlySaved', count=self.fittingCount) + ')'
         self.sr.countSelectedTextLabel.text = text
         if not self.okBtn.disabled and self.fittingCount + checkedCount > const.maxCharFittings:
             self.okBtn.Disable()
@@ -808,28 +813,22 @@ class ImportLegacyFittingsWindow(ExportBaseWindow):
         self.SetWndIcon(None)
         self.SetMinSize([370, 270])
         self.SetWndIcon('ui_17_128_04')
-        self.SetCaption(mls.UI_FITTING_MOVETOSERVER)
+        self.SetCaption(localization.GetByLabel('UI/Fitting/MoveToServer'))
         self.ConstructLayout()
 
 
 
     def ConstructLayout(self, *args):
         self.countSelectedText = ''
-        self.sr.textContainer = uicls.Container(name='textContainer', align=uiconst.TOTOP, parent=self.sr.main, autoheight=True, height=60, padding=(const.defaultPadding,
-         const.defaultPadding,
-         const.defaultPadding,
-         const.defaultPadding))
-        self.sr.textLabel = uicls.Label(text=mls.UI_FITTING_LEGACYIMPORT % {'maxFittings': const.maxCharFittings}, align=uiconst.TOALL, autowidth=False, autoheight=False, parent=self.sr.textContainer)
-        self.sr.textContainer2 = uicls.Container(name='textContainer', align=uiconst.TOTOP, parent=self.sr.main, autoheight=True, height=15, padding=(const.defaultPadding,
-         const.defaultPadding,
-         const.defaultPadding,
-         const.defaultPadding))
-        self.sr.countSelectedTextLabel = uicls.Label(text=self.countSelectedText, align=uiconst.TOALL, autowidth=False, autoheight=False, parent=self.sr.textContainer2)
+        self.sr.textContainer = uicls.Container(name='textContainer', align=uiconst.TOTOP, parent=self.sr.main, height=60, padding=const.defaultPadding)
+        self.sr.textLabel = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Fitting/LegacyImport', maxFittings=const.maxCharFittings), align=uiconst.TOALL, parent=self.sr.textContainer)
+        self.sr.textContainer2 = uicls.Container(name='textContainer', align=uiconst.TOTOP, parent=self.sr.main, height=15, padding=const.defaultPadding)
+        self.sr.countSelectedTextLabel = uicls.EveLabelMedium(text=self.countSelectedText, align=uiconst.TOALL, parent=self.sr.textContainer2)
         self.sr.buttonContainer = uicls.Container(name='buttonContainer', align=uiconst.TOBOTTOM, parent=self.sr.main)
-        btns = [[mls.CANCEL,
-          self.CloseX,
+        btns = [[localization.GetByLabel('UI/Generic/Cancel'),
+          self.CloseByUser,
           None,
-          81], [mls.OK,
+          81], [localization.GetByLabel('UI/Generic/OK'),
           self.Import,
           None,
           81]]
@@ -961,7 +960,7 @@ class ImportLegacyFittingsWindow(ExportBaseWindow):
                 newdoc.writexml(outfile, indent='\t', addindent='\t', newl='\n')
                 eve.Message('LegacyFittingExportDone', {'filename': filename})
             self.fittingSvc.DeleteLegacyClientFittings()
-            self.CloseX()
+            self.CloseByUser()
 
         finally:
             newdoc.unlink()

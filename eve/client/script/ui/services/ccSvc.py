@@ -11,7 +11,7 @@ class CCSvc(service.Service):
     __update_on_reload__ = 1
     __guid__ = 'svc.cc'
     __exportedcalls__ = {}
-    __dependencies__ = []
+    __dependencies__ = ['invCache']
 
     def __init__(self):
         service.Service.__init__(self)
@@ -24,7 +24,6 @@ class CCSvc(service.Service):
         self.chars = None
         self.charCreationInfo = None
         (self.raceData, self.raceDataByID,) = (None, None)
-        self.currentCharsPaperDollData = {}
         (self.bloodlineDataByRaceID, self.bloodlineDataByID,) = (None, None)
         self.dollState = None
         self.availableTypeIDs = None
@@ -60,7 +59,7 @@ class CCSvc(service.Service):
     @bluepy.CCP_STATS_ZONE_METHOD
     def GetData(self, attribute, keyVal = None, shuffle = 0):
         ccinfo = self.GetCharCreationInfo()
-        if attribute in ('races', 'bloodlines', 'ancestries', 'schools') and hasattr(ccinfo, attribute):
+        if attribute in ('bloodlines', 'ancestries', 'schools') and hasattr(ccinfo, attribute):
             retval = getattr(ccinfo, attribute)
             if keyVal:
                 try:
@@ -82,29 +81,7 @@ class CCSvc(service.Service):
 
 
     def GoBack(self, *args):
-        gameui = sm.StartService('gameui')
-        gameui.GoCharacterSelection()
-
-
-
-    def ClearCurrentPaperDollData(self):
-        self.currentCharsPaperDollData = {}
-
-
-
-    def GetPaperDollData(self, charID):
-        currentCharsPaperDollData = self.currentCharsPaperDollData.get(charID, None)
-        if currentCharsPaperDollData is not None:
-            return currentCharsPaperDollData
-        uthread.Lock(self)
-        try:
-            if self.currentCharsPaperDollData.get(charID, None) is None:
-                self.currentCharsPaperDollData[charID] = sm.RemoteSvc('paperDollServer').GetPaperDollData(charID)
-            return self.currentCharsPaperDollData.get(charID, None)
-
-        finally:
-            uthread.UnLock(self)
-
+        sm.GetService('viewState').ActivateView('charsel')
 
 
 
@@ -127,26 +104,22 @@ class CCSvc(service.Service):
 
 
     def UpdateExistingCharacterFull(self, charID, dollInfo, portraitInfo, dollExists):
-        sm.RemoteSvc('paperDollServer').UpdateExistingCharacterFull(charID, 0, dollInfo, portraitInfo, dollExists)
-        self.ClearCurrentPaperDollData()
+        sm.RemoteSvc('paperDollServer').UpdateExistingCharacterFull(charID, dollInfo, portraitInfo, dollExists)
+        sm.GetService('paperdoll').ClearCurrentPaperDollData()
 
 
 
     def UpdateExistingCharacterLimited(self, charID, dollInfo, portraitInfo, dollExists):
         dollData = dollInfo.copy()
         dollData.sculpts = []
-        appearanceID = dollData.appearance.appearanceID
-        self.LogInfo('UpdateExistingCharacterLimited', charID, appearanceID)
-        if appearanceID == 0:
-            appearanceID = None
-        sm.RemoteSvc('paperDollServer').UpdateExistingCharacterLimited(charID, appearanceID, dollData, portraitInfo, dollExists)
-        self.ClearCurrentPaperDollData()
+        self.LogInfo('UpdateExistingCharacterLimited', charID)
+        sm.RemoteSvc('paperDollServer').UpdateExistingCharacterLimited(charID, dollData, portraitInfo, dollExists)
+        sm.GetService('paperdoll').ClearCurrentPaperDollData()
 
 
 
     def UpdateExistingCharacterBloodline(self, charID, dollInfo, portraitInfo, dollExists, bloodlineID):
-        print 'trying to UpdateExistingCharacterBloodline'
-        self.ClearCurrentPaperDollData()
+        sm.GetService('paperdoll').ClearCurrentPaperDollData()
 
 
 
@@ -159,18 +132,24 @@ class CCSvc(service.Service):
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def GetRaceData(self, *args):
+    def GetRaceData(self, shuffle = 0):
         if self.raceData is None:
             self.PrepareRaceData()
-        return self.raceData
+        if shuffle == 0:
+            return self.raceData
+        retval = copy.deepcopy(self.raceData)
+        random.shuffle(retval)
+        return retval
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def GetRaceDataByID(self, *args):
+    def GetRaceDataByID(self, raceID = None):
         if self.raceDataByID is None:
             self.PrepareRaceData()
-        return self.raceDataByID
+        if raceID is None:
+            return self.raceDataByID
+        return self.raceDataByID[raceID]
 
 
 
@@ -194,7 +173,7 @@ class CCSvc(service.Service):
     def PrepareRaceData(self, *args):
         raceDict = {}
         raceList = []
-        for each in self.GetData('races', shuffle=1):
+        for each in cfg.races:
             if each.raceID in [const.raceCaldari,
              const.raceMinmatar,
              const.raceGallente,
@@ -245,11 +224,11 @@ class CCSvc(service.Service):
         if getattr(self, 'availableTypeIDs', None) is not None:
             return self.availableTypeIDs
         availableTypeIDs = set()
-        if session.stationid:
+        if session.stationid2:
             try:
-                inv = eve.GetInventory(const.containerHangar)
+                inv = self.invCache.GetInventory(const.containerHangar)
                 availableTypeIDs.update({i.typeID for i in inv.List() if i.categoryID == const.categoryApparel})
-                inv = eve.GetInventoryFromId(session.charid)
+                inv = self.invCache.GetInventoryFromId(session.charid)
                 availableTypeIDs.update({i.typeID for i in inv.List() if i.flagID == const.flagWardrobe})
             except Exception as e:
                 log.LogException()

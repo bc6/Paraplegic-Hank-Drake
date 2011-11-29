@@ -7,6 +7,7 @@ import log
 import types
 import marshal
 import const
+import localization
 Enter = blue.pyos.taskletTimer.EnterTasklet
 Leave = blue.pyos.taskletTimer.ReturnFromTasklet
 exports = {}
@@ -165,7 +166,7 @@ class GPSTransport(GPSAddressable):
     @staticmethod
     def TimeoutWorker(transport, secs, rts, message = None):
         try:
-            blue.pyos.synchro.Sleep(1000 * secs)
+            blue.pyos.synchro.SleepWallclock(1000 * secs)
             if not rts[0]:
                 transport.Close(*message)
         except TaskletExit:
@@ -189,7 +190,8 @@ class GPSTransport(GPSAddressable):
              str(boot.codename) + '@' + str(boot.region),
              updateInfo)
             self.UnEncryptedWrite(macho.Dumps(response))
-            response = macho.Loads(self.ApplyWithTimeout(self.UnEncryptedRead, (), message=(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_TIMEOUT_CLIENTCOMPATIBILITYHANDSHAKE, 'HANDSHAKE_TIMEOUT_CLIENTCOMPATIBILITYHANDSHAKE'), timeout=3600))
+            message = (localization.GetByLabel('/Carbon/GPS/ConnectionTimeoutClientNotCompatible'), 'HANDSHAKE_TIMEOUT_CLIENTCOMPATIBILITYHANDSHAKE')
+            response = macho.Loads(self.ApplyWithTimeout(self.UnEncryptedRead, (), message=message, timeout=3600))
             if '@' in response[5]:
                 (codename, region,) = response[5].split('@')
             else:
@@ -197,38 +199,40 @@ class GPSTransport(GPSAddressable):
             if str(boot.region) != region:
                 if boot.role == 'client':
                     log.general.Log('Handshake Failed - Insecure Region Code Mismatch (common.ini:region) - Server: %s  - Client: %s' % (region, str(boot.region)), log.LGERR)
-                self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEREGION, 'HANDSHAKE_INCOMPATIBLEREGION')
+                self.Close(localization.GetByLabel('/Carbon/GPS/IncompatibleRegion'), 'HANDSHAKE_INCOMPATIBLEREGION')
                 return 'ERR'
             else:
                 if str(boot.codename) != codename:
                     log.general.Log('Handshake Failed - Insecure Boot Code Name Mismatch (common.ini:codename) - Server: %s - Client: %s' % (codename, str(boot.codename)), log.LGERR)
-                    self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLERELEASE, 'HANDSHAKE_INCOMPATIBLERELEASE')
+                    self.Close(localization.GetByLabel('/Carbon/GPS/IncompatibleRelease'), 'HANDSHAKE_INCOMPATIBLERELEASE')
                     return 'ERR'
                 if boot.version != response[3]:
                     log.general.Log('Handshake Failed - Insecure Boot Version Mismatch (common.ini:version) - Server: %s - Client: %s' % (response[3], boot.version), log.LGERR)
-                    self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEVERSION, 'HANDSHAKE_INCOMPATIBLEVERSION')
+                    self.Close(localization.GetByLabel('/Carbon/GPS/IncompatibleVersion'), 'HANDSHAKE_INCOMPATIBLEVERSION')
                     return 'ERR'
                 if macho.version != response[1]:
                     log.general.Log('Handshake Failed - Insecure Macho Version Mismatch - Server: %s - Client: %s' % (response[1], macho.version), log.LGERR)
-                    self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEPROTOCOL, 'HANDSHAKE_INCOMPATIBLEPROTOCOL')
+                    self.Close(localization.GetByLabel('/Carbon/GPS/IncompatibleProtocol'), 'HANDSHAKE_INCOMPATIBLEPROTOCOL')
                     return 'ERR'
                 if boot.build > response[4]:
                     log.general.Log('Handshake Failed - Insecure Boot Build Mismatch (common.ini:build) - Server: %s - Client: %s' % (response[4], boot.build), log.LGERR)
-                    self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEBUILD, 'HANDSHAKE_INCOMPATIBLEBUILD')
+                    self.Close(localization.GetByLabel('/Carbon/GPS/IncompatibleBuild'), 'HANDSHAKE_INCOMPATIBLEBUILD')
                     return 'ERR'
                 log.general.Log('LLV Reading Client Crypto Context OR VIP Key OR Queue Check', log.LGINFO)
                 vipKey = None
-                clientCryptoContextPacket = macho.Loads(self.ApplyWithTimeout(self.UnEncryptedRead, (), message=(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_TIMEOUT_FAILEDSERVERINITIATECOMPATIBILITYHANDSHAKE, 'HANDSHAKE_TIMEOUT_CLIENTSECUREHANDSHAKE')))
+                message = (localization.GetByLabel('/Carbon/GPS/ConnectionTimeoutNoCompatibilityHandshake'), 'HANDSHAKE_TIMEOUT_CLIENTSECUREHANDSHAKE')
+                clientCryptoContextPacket = macho.Loads(self.ApplyWithTimeout(self.UnEncryptedRead, (), message=message))
                 if clientCryptoContextPacket[0] is None and clientCryptoContextPacket[1] == 'VK':
                     vipKey = clientCryptoContextPacket[2]
                 if not sm.GetService('machoNet').IsThisDudeCoolForLogin(vipKey):
                     if not sm.GetService('machoNet').IsClusterShuttingDown():
                         log.general.Log("Handshake Failed - VIP Check - The cluster is running in VIP mode, and you're not kewl", log.LGWARN)
-                    self.Close(mls.MACHONET_GETSERVERSTATUS_NOTACCEPTING, 'ACL_NOTACCEPTING')
+                    self.Close(localization.GetByLabel('/Carbon/GPS/NotAcceptingConnections'), 'ACL_NOTACCEPTING')
                     return 'OK'
                 if clientCryptoContextPacket[0] is None and clientCryptoContextPacket[1] == 'VK':
                     log.general.Log('LLV Reading Client Crypto Context OR Queue Check', log.LGINFO)
-                    clientCryptoContextPacket = macho.Loads(self.ApplyWithTimeout(self.UnEncryptedRead, (), message=(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_TIMEOUT_FAILEDSERVERINITIATECOMPATIBILITYHANDSHAKE, 'HANDSHAKE_TIMEOUT_CLIENTSECUREHANDSHAKE')))
+                    message = (localization.GetByLabel('/Carbon/GPS/ConnectionTimeoutNoCompatibilityHandshake'), 'HANDSHAKE_TIMEOUT_CLIENTSECUREHANDSHAKE')
+                    clientCryptoContextPacket = macho.Loads(self.ApplyWithTimeout(self.UnEncryptedRead, (), message=message))
                 logonQueuePosition = sm.GetService('machoNet').GetLogonQueuePosition(transportID, vipKey)
                 if clientCryptoContextPacket[0] is None and clientCryptoContextPacket[1] == 'QC':
                     log.general.Log('Logon Queue Position Query - Complete', log.LGINFO)
@@ -238,7 +242,7 @@ class GPSTransport(GPSAddressable):
                 (keyVersion, request,) = clientCryptoContextPacket
                 if keyVersion != getattr(macho, 'publicKeyVersion', 'placebo'):
                     log.general.Log('Handshake Failed - Public Key Mismatch - Public Key Version is %s but should be %s' % (keyVersion, getattr(macho, 'publicKeyVersion', 'placebo')), log.LGERR)
-                    self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEPUBLICKEY, 'HANDSHAKE_INCOMPATIBLEPUBLICKEY')
+                    self.Close(localization.GetByLabel('/Carbon/GPS/IncompatiblePublicKey'), 'HANDSHAKE_INCOMPATIBLEPUBLICKEY')
                     return 'ERR'
                 log.general.Log('LLV Initializing Crypto Context', log.LGINFO)
                 request = self.cryptoContext.Initialize(request)
@@ -256,7 +260,8 @@ class GPSTransport(GPSAddressable):
                         return 'ERR'
                     passwordVersionAttempteRemaining -= 1
                     log.general.Log('LLV Reading Secure Client Handshake', log.LGINFO)
-                    (clientChallenge, request2,) = macho.Loads(self.ApplyWithTimeout(self.EncryptedRead, (), message=(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_TIMEOUT_FAILEDSERVERINITIATECOMPATIBILITYHANDSHAKE, 'HANDSHAKE_TIMEOUT_CLIENTSECUREHANDSHAKE')))
+                    message = (localization.GetByLabel('/Carbon/GPS/ConnectionTimeoutNoCompatibilityHandshake'), 'HANDSHAKE_TIMEOUT_CLIENTSECUREHANDSHAKE')
+                    (clientChallenge, request2,) = macho.Loads(self.ApplyWithTimeout(self.EncryptedRead, (), message=message))
                     request.update(request2)
                     log.general.Log('LLV Verifying Secure Client Handshake', log.LGINFO)
                     for k in self.__mandatory_fields__:
@@ -279,27 +284,26 @@ class GPSTransport(GPSAddressable):
                 log.general.Log('LLV Performing Version Check', log.LGINFO)
                 if str(boot.region) != request['boot_region']:
                     log.general.Log('Handshake Failed - Boot Region Mismatch - Boot Region is %s but should be %s' % (request['boot.region'], str(boot.region)), log.LGERR)
-                    self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEREGION, 'HANDSHAKE_INCOMPATIBLEREGION')
+                    self.Close(localization.GetByLabel('/Carbon/GPS/IncompatibleRegion'), 'HANDSHAKE_INCOMPATIBLEREGION')
                     return 'ERR'
                 if str(boot.codename) != request['boot_codename']:
                     log.general.Log('Handshake Failed - Boot Code Name Mismatch - Boot Code Name is %s but should be %s' % (request['boot.codeName'], str(boot.codename)), log.LGERR)
-                    self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLERELEASE, 'HANDSHAKE_INCOMPATIBLERELEASE')
+                    self.Close(localization.GetByLabel('/Carbon/GPS/IncompatibleRelease'), 'HANDSHAKE_INCOMPATIBLERELEASE')
                     return 'ERR'
                 if boot.version != request['boot_version']:
                     log.general.Log('Handshake Failed - Boot Version Mismatch - Boot Version is %s but should be %s' % (request['boot.version'], boot.version), log.LGERR)
-                    self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEVERSION, 'HANDSHAKE_INCOMPATIBLEVERSION')
+                    self.Close(localization.GetByLabel('/Carbon/GPS/IncompatibleVersion'), 'HANDSHAKE_INCOMPATIBLEVERSION')
                     return 'ERR'
                 if macho.version != request['macho_version']:
                     log.general.Log('Handshake Failed - Macho Version Mismatch - Macho Version is %s but should be %s' % (request['macho.version'], macho.version), log.LGERR)
-                    self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEPROTOCOL, 'HANDSHAKE_INCOMPATIBLEPROTOCOL')
+                    self.Close(localization.GetByLabel('/Carbon/GPS/IncompatibleProtocol'), 'HANDSHAKE_INCOMPATIBLEPROTOCOL')
                     return 'ERR'
                 if boot.build > request['boot_build']:
                     log.general.Log('Handshake Failed - Boot Build Mismatch - Boot Build is %s but should be at least %s' % (request['boot.build'], boot.build), log.LGERR)
-                    self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEBUILD, 'HANDSHAKE_INCOMPATIBLEBUILD')
+                    self.Close(localization.GetByLabel('/Carbon/GPS/IncompatibleBuild'), 'HANDSHAKE_INCOMPATIBLEBUILD')
                     return 'ERR'
                 if len(clientChallenge) != self.handShakePaddingLength:
-                    self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCORRECTPADDING % {'current:': len(clientChallenge),
-                     'expected': self.handShakePaddingLength})
+                    self.Close(localization.GetByLabel('/Carbon/GPS/IncorrentHandshakePadding', current=len(clientChallenge), expected=self.handShakePaddingLength))
                     return 'ERR'
                 handShakeHash = macho.CryptoHash(clientChallenge)
                 try:
@@ -331,16 +335,17 @@ class GPSTransport(GPSAddressable):
                 if not request['user_name'] or not (request['user_password'] or request['user_password_hash']) or logonQueuePosition > 1:
                     return 'OK'
                 if vipKey and vipKey != macho.CryptoHash(util.CaseFold(request['user_name'] or '')):
-                    self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_FAILEDVIPKEY)
+                    self.Close(localization.GetByLabel('/Carbon/GPS/HandshakeFailedVIPKey'))
                     return 'ERR'
                 log.general.Log('LLV Reading Client Challenge-Response', log.LGINFO)
-                (challengeResponse, funcOutput, funcResult,) = macho.Loads(self.ApplyWithTimeout(self.EncryptedRead, (), message=(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_TIMEOUT_CLIENTRESPONSETOSERVERCHALLENGE, 'HANDSHAKE_TIMEOUT_CLIENTRESPONSETOSERVERCHALLENGE')))
+                message = (localization.GetByLabel('/Carbon/GPS/ConnectionTimeoutClientTimeout'), 'HANDSHAKE_TIMEOUT_CLIENTRESPONSETOSERVERCHALLENGE')
+                (challengeResponse, funcOutput, funcResult,) = macho.Loads(self.ApplyWithTimeout(self.EncryptedRead, (), message=message))
                 if challengeResponse != macho.CryptoHash(serverChallenge):
-                    self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_FAILEDHASHMISMATCH)
+                    self.Close(localization.GetByLabel('/Carbon/GPS/HandshakeFailedHashMismatch'))
                     return 'ERR'
                 verification = handshake.Verify(funcOutput, funcResult, request)
                 if verification is not None:
-                    self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_VERIFICATIONFAILURE % {'verification': verification}, 'HANDSHAKE_FAILEDVERIFICATION')
+                    self.Close(localization.GetByLabel('/Carbon/GPS/HandshakeFailedVerificationFailure', verification=verification), 'HANDSHAKE_FAILEDVERIFICATION')
                     return 'ERR'
                 request['handshakefunc_output'] = funcOutput
                 request['handshakefunc_result'] = funcResult
@@ -355,7 +360,7 @@ class GPSTransport(GPSAddressable):
                     return 'ERR'
                 except Exception:
                     log.LogException('Handshake Failed - Server Failure')
-                    self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_SERVERFAILURE)
+                    self.Close(localization.GetByLabel('/Carbon/GPS/HandshakeFailedServerFailure'))
                     return 'ERR'
                 authenticationResult['live_updates'] = sm.GetService('liveUpdateMgr').GetLiveUpdates(request)
                 authenticationResult['client_hash'] = sm.GetService('machoNet').GetValidClientCodeHash()
@@ -374,7 +379,8 @@ class GPSTransport(GPSAddressable):
     def Authenticate(self, username, password):
         timer = Enter('machoNet::GPS::Authenticate')
         try:
-            response = macho.Loads(self.ApplyWithTimeout(self.UnEncryptedRead, (), message=(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_TIMEOUT_FAILEDSERVERINITIATECOMPATIBILITYHANDSHAKE, 'HANDSHAKE_TIMEOUT_FAILEDSERVERINITIATECOMPATIBILITYHANDSHAKE')))
+            message = (localization.GetByLabel('/Carbon/GPS/ConnectionTimeoutNoCompatibilityHandshake'), 'HANDSHAKE_TIMEOUT_FAILEDSERVERINITIATECOMPATIBILITYHANDSHAKE')
+            response = macho.Loads(self.ApplyWithTimeout(self.UnEncryptedRead, (), message=message))
             insecresp = {'macho_version': response[1],
              'cluster_usercount': response[2],
              'boot_version': response[3],
@@ -386,24 +392,24 @@ class GPSTransport(GPSAddressable):
                 (insecresp['boot_codename'], insecresp['boot_region'],) = (response[5], '')
             if str(boot.region) != insecresp['boot_region']:
                 log.general.Log('Handshake Failed - Insecure Boot Region Mismatch (common.ini:region) - Server: %s  - Client: %s' % (insecresp['boot_region'], str(boot.region)), log.LGERR)
-                self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEREGION, 'HANDSHAKE_INCOMPATIBLEREGION')
-                raise GPSTransportClosed(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEREGION, 'HANDSHAKE_INCOMPATIBLEREGION', machoVersion=response[1], version=response[3], build=response[4], codename=insecresp['boot_codename'], region=insecresp['boot_region'], loggedOnUserCount=response[2])
+                self.Close(localization.GetByLabel('/Carbon/GPS/IncompatibleRegion'), 'HANDSHAKE_INCOMPATIBLEREGION')
+                raise GPSTransportClosed(localization.GetByLabel('/Carbon/GPS/IncompatibleRegion'), 'HANDSHAKE_INCOMPATIBLEREGION', machoVersion=response[1], version=response[3], build=response[4], codename=insecresp['boot_codename'], region=insecresp['boot_region'], loggedOnUserCount=response[2])
             if str(boot.codename) != insecresp['boot_codename']:
                 log.general.Log('Handshake Failed - Insecure Boot Code Name Mismatch  (common.ini:codename) - Server: %s - Client: %s' % (insecresp['boot_codename'], str(boot.codename)), log.LGERR)
-                self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLERELEASE, 'HANDSHAKE_INCOMPATIBLERELEASE')
-                raise GPSTransportClosed(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLERELEASE, 'HANDSHAKE_INCOMPATIBLERELEASE', machoVersion=response[1], version=response[3], build=response[4], codename=insecresp['boot_codename'], region=insecresp['boot_region'], loggedOnUserCount=response[2])
+                self.Close(localization.GetByLabel('/Carbon/GPS/IncompatibleRelease'), 'HANDSHAKE_INCOMPATIBLERELEASE')
+                raise GPSTransportClosed(localization.GetByLabel('/Carbon/GPS/IncompatibleRelease'), 'HANDSHAKE_INCOMPATIBLERELEASE', machoVersion=response[1], version=response[3], build=response[4], codename=insecresp['boot_codename'], region=insecresp['boot_region'], loggedOnUserCount=response[2])
             if boot.version != response[3]:
                 log.general.Log('Handshake Failed - Insecure Boot Version Mismatch (common.ini:version) - Server: %s - Client: %s' % (response[3], boot.version), log.LGERR)
-                self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEVERSION, 'HANDSHAKE_INCOMPATIBLEVERSION')
-                raise GPSTransportClosed(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEVERSION, 'HANDSHAKE_INCOMPATIBLEVERSION', machoVersion=response[1], version=response[3], build=response[4], codename=insecresp['boot_codename'], region=insecresp['boot_region'], loggedOnUserCount=response[2])
+                self.Close(localization.GetByLabel('/Carbon/GPS/IncompatibleVersion'), 'HANDSHAKE_INCOMPATIBLEVERSION')
+                raise GPSTransportClosed(localization.GetByLabel('/Carbon/GPS/IncompatibleVersion'), 'HANDSHAKE_INCOMPATIBLEVERSION', machoVersion=response[1], version=response[3], build=response[4], codename=insecresp['boot_codename'], region=insecresp['boot_region'], loggedOnUserCount=response[2])
             if macho.version != response[1]:
                 log.general.Log('Handshake Failed - Insecure Macho Version Mismatch - Server: %s - Client: %s' % (response[1], macho.version), log.LGERR)
-                self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEPROTOCOL, 'HANDSHAKE_INCOMPATIBLEPROTOCOL')
-                raise GPSTransportClosed(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEPROTOCOL, 'HANDSHAKE_INCOMPATIBLEPROTOCOL', machoVersion=response[1], version=response[3], build=response[4], codename=insecresp['boot_codename'], region=insecresp['boot_region'], loggedOnUserCount=response[2])
+                self.Close(localization.GetByLabel('/Carbon/GPS/IncompatibleProtocol'), 'HANDSHAKE_INCOMPATIBLEPROTOCOL')
+                raise GPSTransportClosed(localization.GetByLabel('/Carbon/GPS/IncompatibleProtocol'), 'HANDSHAKE_INCOMPATIBLEPROTOCOL', machoVersion=response[1], version=response[3], build=response[4], codename=insecresp['boot_codename'], region=insecresp['boot_region'], loggedOnUserCount=response[2])
             if boot.build < response[4]:
                 log.general.Log('Handshake Failed - Insecure Boot Build Mismatch (common.ini:build) - Server: %s - Client: %s' % (response[4], boot.build), log.LGERR)
-                self.Close(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEBUILD, 'HANDSHAKE_INCOMPATIBLEBUILD')
-                raise GPSTransportClosed(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEBUILD, 'HANDSHAKE_INCOMPATIBLEBUILD', machoVersion=response[1], version=response[3], build=response[4], codename=insecresp['boot_codename'], region=insecresp['boot_region'], loggedOnUserCount=response[2])
+                self.Close(localization.GetByLabel('/Carbon/GPS/IncompatibleBuild'), 'HANDSHAKE_INCOMPATIBLEBUILD')
+                raise GPSTransportClosed(localization.GetByLabel('/Carbon/GPS/IncompatibleBuild'), 'HANDSHAKE_INCOMPATIBLEBUILD', machoVersion=response[1], version=response[3], build=response[4], codename=insecresp['boot_codename'], region=insecresp['boot_region'], loggedOnUserCount=response[2])
             request = (170472,
              macho.version,
              0,
@@ -415,7 +421,8 @@ class GPSTransport(GPSAddressable):
                 self.UnEncryptedWrite(macho.Dumps((None, 'VK', macho.CryptoHash(util.CaseFold(username)))))
             if username is None:
                 self.UnEncryptedWrite(macho.Dumps((None, 'QC')))
-                logonQueuePosition = macho.Loads(self.ApplyWithTimeout(self.UnEncryptedRead, (), message=(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_TIMEOUT_FAILEDSERVERINITIATECOMPATIBILITYHANDSHAKE, 'HANDSHAKE_TIMEOUT_FAILEDSERVERINITIATECOMPATIBILITYHANDSHAKE')))
+                message = (localization.GetByLabel('/Carbon/GPS/ConnectionTimeoutNoCompatibilityHandshake'), 'HANDSHAKE_TIMEOUT_FAILEDSERVERINITIATECOMPATIBILITYHANDSHAKE')
+                logonQueuePosition = macho.Loads(self.ApplyWithTimeout(self.UnEncryptedRead, (), message=message))
                 sm.GetService('machoNet').SetLogonQueuePosition(logonQueuePosition)
                 return insecresp
             else:
@@ -424,10 +431,11 @@ class GPSTransport(GPSAddressable):
                 if type(request) != types.DictType:
                     log.general.Log('LLV Crypto Init Context failure: ' + request, log.LGERR)
                     self.Close('Crypto Initialization Failure')
-                    raise GPSTransportClosed(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_INCOMPATIBLEBUILD, 'HANDSHAKE_INCOMPATIBLEBUILD', loggedOnUserCount=response[2])
+                    raise GPSTransportClosed(localization.GetByLabel('/Carbon/GPS/IncompatibleBuild'), 'HANDSHAKE_INCOMPATIBLEBUILD', loggedOnUserCount=response[2])
                 log.general.Log('LLV Sending Encrypted Session Key', log.LGINFO)
                 self.UnEncryptedWrite(macho.Dumps((getattr(macho, 'publicKeyVersion', 'placebo'), request)))
-                ack = macho.Loads(self.ApplyWithTimeout(self.UnEncryptedRead, (), message=(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_TIMEOUT_CLIENTCOMPATIBILITYHANDSHAKE, 'HANDSHAKE_TIMEOUT_CLIENTCOMPATIBILITYHANDSHAKE')))
+                message = (localization.GetByLabel('/Carbon/GPS/ConnectionTimeoutClientNotCompatible'), 'HANDSHAKE_TIMEOUT_CLIENTCOMPATIBILITYHANDSHAKE')
+                macho.Loads(self.ApplyWithTimeout(self.UnEncryptedRead, (), message=message))
                 log.general.Log('LLV Generating Secure Client Handshake', log.LGINFO)
                 affiliateID = 0
                 try:
@@ -453,14 +461,16 @@ class GPSTransport(GPSAddressable):
                 log.general.Log('LLV Writing Secure Client Handshake', log.LGINFO)
                 self.EncryptedWrite(macho.Dumps((clientChallenge, dict)))
                 log.general.Log('LLV Reading password version', log.LGINFO)
-                passwordVersion = macho.Loads(self.ApplyWithTimeout(self.EncryptedRead, (), message=(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_TIMEOUT_SERVERSECUREHANDSHAKE, 'HANDSHAKE_TIMEOUT_SERVERSECUREHANDSHAKE')))
+                message = (localization.GetByLabel('/Carbon/GPS/ConnectionTimeoutServerTimeout'), 'HANDSHAKE_TIMEOUT_SERVERSECUREHANDSHAKE')
+                passwordVersion = macho.Loads(self.ApplyWithTimeout(self.EncryptedRead, (), message=message))
                 if passwordVersion == 1:
                     dict['user_password'] = password
                     dict['user_password_hash'] = None
                     log.general.Log('LLV Writing Secure Client Handshake (Attempt 2)', log.LGINFO)
                     self.EncryptedWrite(macho.Dumps((clientChallenge, dict)))
                 log.general.Log('LLV Reading Crypted Server Handshake', log.LGINFO)
-                (serverChallenge, signedFunc, context, response,) = macho.Loads(self.ApplyWithTimeout(self.EncryptedRead, (), message=(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_TIMEOUT_SERVERSECUREHANDSHAKE, 'HANDSHAKE_TIMEOUT_SERVERSECUREHANDSHAKE')))
+                message = (localization.GetByLabel('/Carbon/GPS/ConnectionTimeoutServerTimeout'), 'HANDSHAKE_TIMEOUT_SERVERSECUREHANDSHAKE')
+                (serverChallenge, signedFunc, context, response,) = macho.Loads(self.ApplyWithTimeout(self.EncryptedRead, (), message=message))
                 log.general.Log('LLV Verifying Response Hash', log.LGINFO)
                 if response['challenge_responsehash'] != macho.CryptoHash(clientChallenge):
                     self.Close("Server response signature incorrect, the server's crypto hash wasn't correct")
@@ -476,10 +486,11 @@ class GPSTransport(GPSAddressable):
                 log.general.Log('LLV Writing Secure Challenge-Response', log.LGINFO)
                 self.EncryptedWrite(macho.Dumps((macho.CryptoHash(serverChallenge), outputBuffer, funcResult)))
                 log.general.Log('LLV Reading Ack to Challenge-Response', log.LGINFO)
-                crAck = macho.Loads(self.ApplyWithTimeout(self.EncryptedRead, (), message=(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_TIMEOUT_SERVERRESPONSETOCLIENTCHALLENGE, 'HANDSHAKE_TIMEOUT_SERVERRESPONSETOCLIENTCHALLENGE')))
+                message = (localization.GetByLabel('/Carbon/GPS/ConnectionTimeoutChallengeFailure'), 'HANDSHAKE_TIMEOUT_SERVERRESPONSETOCLIENTCHALLENGE')
+                crAck = macho.Loads(self.ApplyWithTimeout(self.EncryptedRead, (), message=message))
                 if not crAck:
                     self.Close("Server didn't ACK our Challenge-Response")
-                    raise GPSTransportClosed(mls.MACHONET_TRANSPORTCLOSED_HANDSHAKE_TIMEOUT_SERVERDIDNOTACKNOWLEDGECHALLENGERESPONSE, loggedOnUserCount=response[2])
+                    raise GPSTransportClosed(localization.GetByLabel('/Carbon/GPS/ChallengeResponseNotAcknowledged'), loggedOnUserCount=response[2])
                 response.update(crAck)
                 if 'live_updates' in response:
                     live_updates = response['live_updates']
@@ -601,7 +612,7 @@ class GPSTransportClosed(GPSException):
         self.region = str(region or boot.region)
         self.loggedOnUserCount = loggedOnUserCount or 'machoNet' in sm.services and sm.services['machoNet'].loggedOnUserCount
         self.origin = origin or macho.mode
-        self.clock = blue.os.GetTime(1)
+        self.clock = blue.os.GetWallclockTimeNow()
         self.reasonCode = reasonCode
         self.reasonArgs = reasonArgs
 

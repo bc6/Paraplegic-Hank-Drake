@@ -13,6 +13,8 @@ import math
 import service
 from service import *
 import base
+import logConst
+import localization
 
 class Session(base.CoreSession):
     __guid__ = 'base.Session'
@@ -42,7 +44,8 @@ class Session(base.CoreSession):
      'bloodlineID',
      'raceID',
      'corpAccountKey',
-     'inDetention']
+     'inDetention',
+     'battleID']
     __nonpersistvars__ = base.CoreSession.__nonpersistvars__ + ['locationid', 'corprole']
     __attributesWithDefaultValueOfZero__ = base.CoreSession.__attributesWithDefaultValueOfZero__ + ['corprole',
      'rolesAtAll',
@@ -95,8 +98,8 @@ class Session(base.CoreSession):
             __dependant_attributes__[key] = val
 
 
-    def __init__(self, sid, role):
-        base.CoreSession.__init__(self, sid, role, ['locationid', 'corprole'])
+    def __init__(self, sid, localSID, role):
+        base.CoreSession.__init__(self, sid, localSID, role, ['locationid', 'corprole'])
         self.additionalNoSetAttributes = ['locationid', 'corprole']
         self.additionalDistributedProps = ['locationid', 'corprole']
         self.additionalNonIntegralAttributes = ['fleetid',
@@ -225,7 +228,7 @@ def IsLocationNode(session):
         return False
     machoNet = sm.GetService('machoNet')
     currentNodeID = machoNet.GetNodeID()
-    return any((session.solarsystemid and currentNodeID == machoNet.GetNodeFromAddress(const.cluster.SERVICE_BEYONCE, session.solarsystemid), session.stationid and currentNodeID == machoNet.GetNodeFromAddress('station', session.stationid)))
+    return any((session.solarsystemid and currentNodeID == machoNet.GetNodeFromAddress(const.cluster.SERVICE_BEYONCE, session.solarsystemid), session.stationid and currentNodeID == machoNet.GetNodeFromAddress('station', session.stationid), session.worldspaceid and currentNodeID == machoNet.GetNodeFromAddress(const.cluster.SERVICE_WORLDSPACE, session.worldspaceid)))
 
 
 
@@ -243,7 +246,7 @@ def GetCharLocationEx(charID):
             return (s.worldspaceid, const.groupWorldSpace, s.worldspaceid)
     else:
         while sm.services['DB2'].state != SERVICE_RUNNING:
-            blue.pyos.synchro.Sleep(100)
+            blue.pyos.synchro.SleepWallclock(100)
 
         rs = sm.services['DB2'].character.Characters_LocationInfo(charID)
         locationInfo = rs[0]
@@ -279,7 +282,9 @@ class SessionMgr(base.SessionMgr):
      'PerformHorridSessionAttributeUpdate': [ROLE_SERVICE],
      'BatchedRemoteCall': [ROLE_SERVICE],
      'GetSessionDetails': [ROLE_SERVICE],
-     'TerminateClientConnections': [ROLE_SERVICE | ROLE_ADMIN]}
+     'TerminateClientConnections': [ROLE_SERVICE | ROLE_ADMIN],
+     'GetOrCreateSession': [ROLE_SERVICE],
+     'GetInitialValuesFromCharID': [ROLE_SERVICE]}
     __dependencies__ = []
     __notifyevents__ = ['ProcessInventoryChange'] + base.SessionMgr.__notifyevents__
 
@@ -329,110 +334,110 @@ class SessionMgr(base.SessionMgr):
     def GetReason(self, oldReason, newReason, timeLeft):
         if timeLeft:
             seconds = int(math.ceil(max(1, timeLeft) / float(const.SEC)))
-        reason = mls.COMMON_SESSIONS_RAISEPSCIP_BASEREASON
+        reason = localization.GetByLabel('Sessions/BaseReason')
         if oldReason == newReason or oldReason.startswith('fleet.') and newReason.startswith('fleet.') or oldReason.startswith('corp.') and newReason.startswith('corp.'):
             if oldReason.startswith('fleet.'):
-                reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON1
+                reason = localization.GetByLabel('Sessions/FleetOperation')
                 if timeLeft:
-                    reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON11 % {'seconds': seconds}
+                    reason = localization.GetByLabel('Sessions/EstimatedTimeLeft', reason=reason, seconds=seconds)
             elif oldReason.startswith('corp.'):
-                reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON2
+                reason = localization.GetByLabel('Sessions/CorpOperation')
                 if timeLeft:
-                    reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON11 % {'seconds': seconds}
+                    reason = localization.GetByLabel('Sessions/EstimatedTimeLeft', reason=reason, seconds=seconds)
             elif oldReason == 'undock':
-                reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON3
+                reason = localization.GetByLabel('Sessions/Undocking')
                 if timeLeft:
-                    reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON11 % {'seconds': seconds}
+                    reason = localization.GetByLabel('Sessions/EstimatedTimeLeft', reason=reason, seconds=seconds)
             elif oldReason == 'dock':
-                reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON4
+                reason = localization.GetByLabel('Sessions/Docking')
                 if timeLeft:
-                    reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON11 % {'seconds': seconds}
+                    reason = localization.GetByLabel('Sessions/EstimatedTimeLeft', reason=reason, seconds=seconds)
             elif oldReason == 'jump' and newReason == 'jump':
-                reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON5
+                reason = localization.GetByLabel('Sessions/Jump')
                 if timeLeft:
-                    reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON11 % {'seconds': seconds}
+                    reason = localization.GetByLabel('Sessions/EstimatedTimeLeft', reason=reason, seconds=seconds)
             elif oldReason == 'jump':
-                reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON6
+                reason = localization.GetByLabel('Sessions/StartgateJump')
                 if timeLeft:
-                    reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON22 % {'seconds': seconds}
+                    reason = localization.GetByLabel('Sessions/StartgateJumpEstimatedTime', reason=reason, seconds=seconds)
             elif oldReason == 'eject':
-                reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON7
+                reason = localization.GetByLabel('Sessions/Ejecting')
                 if timeLeft:
-                    reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON33 % {'seconds': seconds}
+                    reason = localization.GetByLabel('Sessions/EjectingEstimatedTime', reason=reason, seconds=seconds)
             elif oldReason == 'evacuate':
-                reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON8
+                reason = localization.GetByLabel('Sessions/Evacuation')
                 if timeLeft:
-                    reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON44 % {'seconds': seconds}
+                    reason = localization.GetByLabel('Sessions/EvacuationsEstimatedTime', reason=reason, seconds=seconds)
             elif oldReason == 'board':
-                reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON9
+                reason = localization.GetByLabel('Sessions/Boarding')
                 if timeLeft:
-                    reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON55 % {'seconds': seconds}
+                    reason = localization.GetByLabel('Sessions/BoardingEstimatedTime', reason=reason, seconds=seconds)
             elif oldReason == 'selfdestruct':
-                reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON10
+                reason = localization.GetByLabel('Sessions/SelfDestruct')
                 if timeLeft:
-                    reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON66 % {'seconds': seconds}
+                    reason = localization.GetByLabel('Sessions/SelfDestructEstimatedTime', reason=reason, seconds=seconds)
             elif oldReason == 'charsel':
-                reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON101
+                reason = localization.GetByLabel('Sessions/CharacterSelection')
                 if timeLeft:
-                    reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON77 % {'seconds': seconds}
+                    reason = localization.GetByLabel('Sessions/CharacterSelectionEstimatedTime', reason=reason, seconds=seconds)
             elif oldReason == 'storeVessel':
-                reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON102
+                reason = localization.GetByLabel('Sessions/Embarkation')
                 if timeLeft:
-                    reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON88 % {'seconds': seconds}
+                    reason = localization.GetByLabel('Sessions/EmbarkationEstimatedTime', reason=reason, seconds=seconds)
         elif oldReason == 'autopilot':
-            reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON103
+            reason = localization.GetByLabel('Sessions/Autopilot')
             if timeLeft:
-                reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON99 % {'seconds': seconds}
+                reason = localization.GetByLabel('Sessions/AutopilotEstimatedTime', reason=reason, seconds=seconds)
         elif oldReason == 'undock':
-            reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON_UNDOCK1
+            reason = localization.GetByLabel('Sessions/AreUndocking')
             if timeLeft:
-                reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON_UNDOCK2 % {'seconds': seconds}
+                reason = localization.GetByLabel('Sessions/AreUndockingEstimatedTime', reason=reason, seconds=seconds)
         elif oldReason == 'dock':
-            reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON_DOCK1
+            reason = localization.GetByLabel('Sessions/AreDocking')
             if timeLeft:
-                reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON_DOCK2 % {'seconds': seconds}
+                reason = localization.GetByLabel('Sessions/AreDockingEstimmatedTime', reason=reason, seconds=seconds)
         elif oldReason == 'jump':
-            reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON_JUMP1
+            reason = localization.GetByLabel('Sessions/AreJumping')
             if timeLeft:
-                reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON_JUMP2 % {'seconds': seconds}
+                reason = localization.GetByLabel('Sessions/AreJumpingEstimatedTime', reason=reason, seconds=seconds)
         elif oldReason == 'eject':
-            reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON_EJECT1
+            reason = localization.GetByLabel('Sessions/AreEjecting')
             if timeLeft:
-                reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON_EJECT2 % {'seconds': seconds}
+                reason = localization.GetByLabel('Sessions/AreEjectingEstimatedTime', reason=reason, seconds=seconds)
         elif oldReason == 'evacuate':
-            reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON_EVACUATE1
+            reason = localization.GetByLabel('Sessions/AreEvacuating')
             if timeLeft:
-                reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON_EVACUATE2 % {'seconds': seconds}
+                reason = localization.GetByLabel('Sessions/AreEvacuatingEstimatedTime', reason=reason, seconds=seconds)
         elif oldReason == 'board':
-            reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON_BOARD1
+            reason = localization.GetByLabel('Sessions/AreBoarding')
             if timeLeft:
-                reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON_BOARD2 % {'seconds': seconds}
+                reason = localization.GetByLabel('Sessions/AreBoardingEstimatedTime', reason=reason, seconds=seconds)
         elif oldReason == 'selfdestruct':
-            reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON_SELFDESTRUCT1
+            reason = localization.GetByLabel('Sessions/AreSelfDestructing')
             if timeLeft:
-                reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON_SELFDESTRUCT2 % {'seconds': seconds}
+                reason = localization.GetByLabel('Sessions/AreSelfDestructiongEstimateTime', reason=reason, seconds=seconds)
         elif oldReason == 'charsel':
-            reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON_CHARSEL1
+            reason = localization.GetByLabel('Sessions/AreSelectingCharacter')
             if timeLeft:
-                reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON_CHARSEL2 % {'seconds': seconds}
+                reason = localization.GetByLabel('Sessions/AreSelectingCharacterEstimatedTime', reason=reason, seconds=seconds)
         elif oldReason == 'accelerationgate':
-            reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON_ACCE1
+            reason = localization.GetByLabel('Sessions/AreUsingAccelerationGate')
             if timeLeft:
-                reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON_ACCE2 % {'seconds': seconds}
+                reason = localization.GetByLabel('Sessions/AreUsingAccelerationGateEstimatedTime', reason=reason, seconds=seconds)
         elif oldReason.startswith('corp.'):
-            reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON_CORP1
+            reason = localization.GetByLabel('Sessions/CorpActivity')
             if timeLeft:
-                reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON_CORP2 % {'seconds': seconds}
+                reason = localization.GetByLabel('Sessions/CorpActivityEstimatedTime', reason=reason, seconds=seconds)
         elif oldReason.startswith('fleet.'):
-            reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON_FLEET1
+            reason = localization.GetByLabel('Sessions/FleetOperations')
             if timeLeft:
-                reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON_FLEET2 % {'seconds': seconds}
+                reason = localization.GetByLabel('Sessions/FleetOperationsEstimatedTime', reason=reason, seconds=seconds)
         elif oldReason == 'storeVessel':
-            reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON_STOREVESSEL1
+            reason = localization.GetByLabel('Sessions/AreBoardingVessel')
             if timeLeft:
-                reason += mls.COMMON_SESSIONS_RAISEPSCIP_REASON_STOREVESSEL2 % {'seconds': seconds}
+                reason = localization.GetByLabel('Sessions/AreBoardingVesselEstimatedTime', reason=reason, seconds=seconds)
         elif oldReason == 'bookmarking':
-            reason = mls.COMMON_SESSIONS_RAISEPSCIP_REASON_BOOKMARKING
+            reason = localization.GetByLabel('Sessions/Bookmarking')
         return reason
 
 
@@ -470,7 +475,7 @@ class SessionMgr(base.SessionMgr):
                         chars[i.itemID] = self.GetSessionValuesFromItemID(item.itemID, inventory2, item)
 
             elif item.groupID == const.groupCharacter:
-                if const.ixLocationID in change and item.customInfo == const.eventUndock:
+                if const.ixLocationID in change and item.customInfo == logConst.eventUndock:
                     continue
                 chars[item.itemID] = self.GetSessionValuesFromItemID(item.itemID, inventory2, item)
 
@@ -555,7 +560,6 @@ class SessionMgr(base.SessionMgr):
 
 
     def GetSessionValuesFromRowset(self, si):
-        raceID = self.cache.Index(const.cacheChrBloodlines, si.bloodlineID).raceID
         sessValues = {'allianceid': si.allianceID,
          'warfactionid': si.warFactionID,
          'corpid': si.corporationID,
@@ -577,7 +581,7 @@ class SessionMgr(base.SessionMgr):
          'constellationid': None,
          'genderID': si.genderID,
          'bloodlineID': si.bloodlineID,
-         'raceID': raceID,
+         'raceID': cfg.bloodlines.Get(si.bloodlineID).raceID,
          'corpAccountKey': si.corpAccountKey}
         if si.zoneid:
             sessValues['worldspaceid'] = si.zoneid
@@ -614,6 +618,49 @@ class SessionMgr(base.SessionMgr):
 
     def IsPlayerCharacter(self, charID):
         return util.IsCharacter(charID) and not util.IsNPC(charID)
+
+
+
+    def GetSession(self, charID):
+        s = base.FindSessions('charid', [charID])
+        if not s:
+            return None
+        return s[0]
+
+
+
+    def GetUserSession(self, userid):
+        s = base.FindSessions('userid', [userid])
+        if not s:
+            return None
+        return s[0]
+
+
+
+    def GetOrCreateSession(self, userID, charID, details):
+        sessionInit = {'userid': userID,
+         'userType': 13,
+         'role': service.ROLE_PLAYER,
+         'languageID': 'EN',
+         'maxSessionTime': None,
+         'inDetention': None}
+        if charID:
+            sess = self.GetSession(charID)
+            sessionInit.update({'charid': charID})
+        elif userID:
+            sess = self.GetUserSession(userID)
+        else:
+            raise RuntimeError("Can't find or create session without identifiers")
+        if not sess:
+            s = base.CreateUserSession(role=details.pop('role'))
+            changes = {k:v for (k, v,) in details.iteritems()}
+            sessionInit['role'] |= s.role
+            s.LogSessionHistory('Character/User authenticated implicitely via direct call to sessionMgr')
+            s.SetAttributes(sessionInit)
+            s.LogSessionHistory('Applying initial session attribute directly via direct call to sessionMgr')
+            s.SetAttributes(changes)
+            sess = base.FindSessions('userid', [userID])
+        return sess[0]
 
 
 

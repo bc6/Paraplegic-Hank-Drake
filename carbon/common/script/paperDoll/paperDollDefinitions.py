@@ -7,7 +7,6 @@ import util
 import bluepy
 import log
 import collections
-LOD_TEXTURE_SIZES = [(2048, 1024), (512, 256), (256, 128)]
 MODULAR_TEST_CASES_FOLDER = 'ModularTestCases'
 DUMP_MODULAR_TEST_CASES_TO_OPTIONS = False
 MODIFIERNAMEFILE = 'modifiernames.yaml'
@@ -25,11 +24,20 @@ if hasattr(const, 'BASE_GRAPHICS_FOLDER'):
     BASE_GRAPHICS_FOLDER = const.BASE_GRAPHICS_FOLDER
 elif hasattr(const, 'paperdoll') and hasattr(const.paperdoll, 'BASE_GRAPHICS_FOLDER'):
     BASE_GRAPHICS_FOLDER = const.paperdoll.BASE_GRAPHICS_FOLDER
+BASE_GRAPHICS_TEST_FOLDER = 'graphics_test'
 FEMALE_PATH_SUFFIX = 'Female/Paperdoll' if GENDER_ROOT else 'Modular/Female'
 MALE_PATH_SUFFIX = 'Male/Paperdoll' if GENDER_ROOT else 'Modular/Male'
+FEMALE_LOD_PATH_SUFFIX = 'Female/Paperdoll_LOD' if GENDER_ROOT else 'ModularLOD/Female'
+MALE_LOD_PATH_SUFFIX = 'Male/Paperdoll_LOD' if GENDER_ROOT else 'ModularLOD/Male'
 FEMALE_BASE_PATH = 'res:/{0}/Character/{1}'.format(BASE_GRAPHICS_FOLDER, FEMALE_PATH_SUFFIX)
+FEMALE_BASE_LOD_PATH = 'res:/{0}/Character/{1}'.format(BASE_GRAPHICS_FOLDER, FEMALE_LOD_PATH_SUFFIX)
+FEMALE_BASE_GRAPHICS_TEST_PATH = 'res:/{0}/Character/{1}'.format(BASE_GRAPHICS_TEST_FOLDER, FEMALE_PATH_SUFFIX)
+FEMALE_BASE_GRAPHICS_TEST_LOD_PATH = 'res:/{0}/Character/{1}'.format(BASE_GRAPHICS_TEST_FOLDER, FEMALE_LOD_PATH_SUFFIX)
 FEMALE_OPTION_FILE_PATH = 'res:/{0}/Character/{1}'.format(BASE_GRAPHICS_FOLDER, FEMALE_PATH_SUFFIX) + '/FemaleOptions.yaml' if GENDER_ROOT else 'res:/{0}/Character/Modular'.format(BASE_GRAPHICS_FOLDER) + '/FemaleOptions.yaml'
 MALE_BASE_PATH = 'res:/{0}/Character/{1}'.format(BASE_GRAPHICS_FOLDER, MALE_PATH_SUFFIX)
+MALE_BASE_LOD_PATH = 'res:/{0}/Character/{1}'.format(BASE_GRAPHICS_FOLDER, MALE_LOD_PATH_SUFFIX)
+MALE_BASE_GRAPHICS_TEST_PATH = 'res:/{0}/Character/{1}'.format(BASE_GRAPHICS_TEST_FOLDER, MALE_PATH_SUFFIX)
+MALE_BASE_GRAPHICS_TEST_LOD_PATH = 'res:/{0}/Character/{1}'.format(BASE_GRAPHICS_TEST_FOLDER, MALE_LOD_PATH_SUFFIX)
 MALE_OPTION_FILE_PATH = 'res:/{0}/Character/{1}'.format(BASE_GRAPHICS_FOLDER, MALE_PATH_SUFFIX) + '/MaleOptions.yaml' if GENDER_ROOT else 'res:/{0}/Character/Modular'.format(BASE_GRAPHICS_FOLDER) + '/MaleOptions.yaml'
 DNA_STRINGS = cdsuc.EnumList('path', 'weight', 'decalWeight', 'colors', 'specularColors', 'pattern', 'tuck', 'decalData', 'category', 'part', 'colorVariation', 'variation')
 EXTERIOR_AVATAR_EFFECT_FILE_PATH = 'res:/Graphics/Effect/Managed/Exterior/Avatar/skinnedavatar.fx'
@@ -123,23 +131,37 @@ COMPOSITE_PRELOAD_PATHS = ['BlitIntoAlpha1.fx',
  'PatternBlit.fx',
  'SimpleBlit.fx',
  'SphericalCircleBlit.fx',
- 'TwistNormalBlit.fx']
+ 'TwistNormalBlit.fx',
+ 'BlitIntoAlphaWithZones_Z8.fx',
+ 'ColorizedBlit_AlphaTest_Z8.fx',
+ 'ColorizedBlit_Z8.fx',
+ 'ColorizedCopyBlit_Z8.fx',
+ 'CopyBlit_N16.fx',
+ 'PatternBlit_Z8.fx',
+ 'SimpleBlit_N16.fx',
+ 'TwistNormalBlit_N16.fx']
 TEXTURE_PRELOAD_PATHS = ['res:/Texture/Global/flatnormal.dds', 'res:/Texture/Global/50gray.dds', 'res:/Texture/Global/brdfLibrary.dds']
 FEMALE_WRINKLE_FACEZONE_PREFIX = 'res://Graphics/Character/Global/FaceSetup/FaceZones.'
 EYE_SHADER_REFLECTION_CUBE_PATH = 'res:/Texture/Global/EyeReflection_cube.dds'
 GLASS_SHADER_REFLECTION_CUBE_PATH = 'res:/Texture/Global/GlassReflection_cube.dds'
-LOD_HERO = -1
+LOD_3 = 3
+LOD_2 = 2
+LOD_1 = 1
+LOD_0 = 0
+LOD_A = -1
 LOD_SKIN = -2
 LOD_SCATTER_SKIN = -3
 LOD_RAYTRACE = -4
+LOD_99 = 99
 (DIFFUSE_MAP, SPECULAR_MAP, NORMAL_MAP, MASK_MAP,) = range(4)
 MAPS = (DIFFUSE_MAP,
  SPECULAR_MAP,
  NORMAL_MAP,
  MASK_MAP)
 MAPNAMES = ('DiffuseMap', 'SpecularMap', 'NormalMap', 'CutMaskMap')
+RESIZABLE_MAPS = (DIFFUSE_MAP, SPECULAR_MAP, NORMAL_MAP)
+FIXED_SIZE_MAPS = MASK_MAP
 MAPMARKERS = ('_d', '_s', '_n', '_m')
-MAPSIZERATIOS = (1.0, 1.0, 1.0, 0.25)
 MID_GRAY = (0.5, 0.5, 0.5, 1.0)
 LIGHT_GRAY = (0.6, 0.6, 0.6, 1.0)
 DARK_GRAY = (0.2, 0.2, 0.2, 1.0)
@@ -148,48 +170,46 @@ PROJECTED_TATTOO = 'projected tattoo'
 AVATAR_TYPES = cdsuc.EnumList('WodExtSkinnedObject', 'Tr2IntSkinnedObject')
 DOLL_PARTS = cdsuc.EnumList('hair', 'head', 'body', 'accessories')
 DOLL_EXTRA_PARTS = cdsuc.EnumList('bodyshapes', 'utilityshapes', 'dependants', 'undefined')
-BODY_CATEGORIES = cdsuc.EnumList('bottominner', 'bottommiddle', 'bottomouter', 'bottomtight', 'bottomunderwear', 'feet', 'hands', 'handsinner', 'outer', 'scars', 'skin', 'skintone', 'socks', 'tattoo', 'topinner', 'topmiddle', 'topouter', 'topunderwear')
+BODY_CATEGORIES = cdsuc.EnumList('bottominner', 'bottommiddle', 'bottomouter', 'bottomoutertucked', 'bottomtight', 'bottomunderwear', 'bottomunderweartucked', 'feet', 'feettucked', 'hands', 'handsinner', 'outer', 'scars', 'skin', 'skintone', 'skintype', 'socks', 'sockstucked', 'tattoo', 'topinner', 'topmiddle', 'toptight', 'topouter', 'topunderwear', 'topunderweartucked')
 HEAD_CATEGORIES = cdsuc.EnumList('head', 'archetypes', 'makeup', 'facemodifiers')
 HAIR_CATEGORIES = cdsuc.EnumList('hair', 'beard')
 ACCESSORIES_CATEGORIES = cdsuc.EnumList('accessories')
 BLENDSHAPE_CATEGORIES = cdsuc.EnumList(DOLL_EXTRA_PARTS.BODYSHAPES, DOLL_EXTRA_PARTS.UTILITYSHAPES, HEAD_CATEGORIES.ARCHETYPES, HEAD_CATEGORIES.FACEMODIFIERS)
-MASKING_CATEGORIES = cdsuc.EnumList(BODY_CATEGORIES.TOPINNER, BODY_CATEGORIES.TOPMIDDLE, BODY_CATEGORIES.TOPOUTER, BODY_CATEGORIES.HANDS, BODY_CATEGORIES.BOTTOMINNER, BODY_CATEGORIES.BOTTOMOUTER, DOLL_EXTRA_PARTS.DEPENDANTS)
+MASKING_CATEGORIES = cdsuc.EnumList(BODY_CATEGORIES.FEET, BODY_CATEGORIES.OUTER, BODY_CATEGORIES.TOPINNER, BODY_CATEGORIES.TOPMIDDLE, BODY_CATEGORIES.TOPTIGHT, BODY_CATEGORIES.TOPOUTER, BODY_CATEGORIES.HANDS, BODY_CATEGORIES.BOTTOMINNER, BODY_CATEGORIES.BOTTOMOUTER, DOLL_EXTRA_PARTS.DEPENDANTS)
 CATEGORIES_CONTAINING_GROUPS = cdsuc.EnumList(DOLL_PARTS.ACCESSORIES, BODY_CATEGORIES.TATTOO, HEAD_CATEGORIES.MAKEUP, DOLL_EXTRA_PARTS.DEPENDANTS)
 DESIRED_ORDER = [BODY_CATEGORIES.SKIN,
  DOLL_PARTS.HEAD,
  DOLL_EXTRA_PARTS.DEPENDANTS,
  HEAD_CATEGORIES.ARCHETYPES,
  BLENDSHAPE_CATEGORIES.BODYSHAPES,
+ BODY_CATEGORIES.SKINTYPE,
  BODY_CATEGORIES.SKINTONE,
  BODY_CATEGORIES.TATTOO,
- HAIR_CATEGORIES.BEARD,
  HEAD_CATEGORIES.MAKEUP,
  BODY_CATEGORIES.SCARS,
+ HAIR_CATEGORIES.BEARD,
  BODY_CATEGORIES.BOTTOMINNER,
+ BODY_CATEGORIES.TOPINNER,
  BODY_CATEGORIES.BOTTOMUNDERWEAR,
  BODY_CATEGORIES.BOTTOMTIGHT,
- BODY_CATEGORIES.SOCKS,
+ BODY_CATEGORIES.TOPUNDERWEARTUCKED,
+ BODY_CATEGORIES.SOCKSTUCKED,
  BODY_CATEGORIES.BOTTOMMIDDLE,
- BODY_CATEGORIES.TOPINNER,
- BODY_CATEGORIES.HANDSINNER,
  BODY_CATEGORIES.TOPUNDERWEAR,
- BODY_CATEGORIES.BOTTOMOUTER,
+ BODY_CATEGORIES.SOCKS,
+ BODY_CATEGORIES.HANDSINNER,
+ BODY_CATEGORIES.FEETTUCKED,
+ BODY_CATEGORIES.BOTTOMOUTERTUCKED,
+ BODY_CATEGORIES.TOPTIGHT,
  BODY_CATEGORIES.TOPMIDDLE,
- BODY_CATEGORIES.TOPOUTER,
- ACCESSORIES_CATEGORIES.ACCESSORIES,
+ BODY_CATEGORIES.BOTTOMOUTER,
  BODY_CATEGORIES.FEET,
+ ACCESSORIES_CATEGORIES.ACCESSORIES,
  BODY_CATEGORIES.HANDS,
+ BODY_CATEGORIES.TOPOUTER,
  HAIR_CATEGORIES.HAIR,
  BODY_CATEGORIES.OUTER]
-MAKEUP_GROUPS = ['implants',
- 'eyes',
- 'eyeshadow',
- 'eyebrowbase',
- 'eyebrows',
- 'scarring',
- 'freckles',
- 'blush',
- 'eyelashes']
+MAKEUP_GROUPS = cdsuc.EnumList('implants', 'eyes', 'eyeshadow', 'eyebrowbase', 'eyebrows', 'scarring', 'freckles', 'blush', 'eyelashes')
 GROUPS = {HEAD_CATEGORIES.MAKEUP: list(MAKEUP_GROUPS)}
 MAKEUP_EYEBROWS = SEPERATOR_CHAR.join([HEAD_CATEGORIES.MAKEUP, 'eyebrows'])
 MAKEUP_EYELASHES = SEPERATOR_CHAR.join([HEAD_CATEGORIES.MAKEUP, 'eyelashes'])
@@ -240,6 +260,48 @@ DEFAULT_UVS = [0.0,
  0.0,
  1.0,
  1.0]
+RED_FILE = 0
+STUBBLE_PATH = 1
+SHADER_PATH = 2
+CLOTH_OVERRIDE = 3
+CLOTH_PATH = 4
+TEXTURE_STUB = 'res:/texture/global/stub.dds'
+SKIN_GENERIC_PATH = '/skin/generic/'
+MAP_FORMAT_DDS = 'dds'
+MAP_FORMAT_TGA = 'tga'
+MAP_FORMAT_PNG = 'png'
+MAP_FORMATS = cdsuc.EnumList(MAP_FORMAT_DDS, MAP_FORMAT_TGA, MAP_FORMAT_PNG)
+MAP_PREFIX_COLORIZE = 'colorize_'
+MAP_SUFFIX_4K = '_4k'
+MAP_SUFFIX_512 = '_512'
+MAP_SUFFIX_256 = '_256'
+MAP_SIZE_SUFFIXES = cdsuc.EnumList(MAP_SUFFIX_4K, MAP_SUFFIX_512, MAP_SUFFIX_256)
+MAP_SUFFIX_D = '_d'
+MAP_SUFFIX_L = '_l'
+MAP_SUFFIX_M = '_m'
+MAP_SUFFIX_N = '_n'
+MAP_SUFFIX_O = '_o'
+MAP_SUFFIX_S = '_s'
+MAP_SUFFIX_Z = '_z'
+MAP_SUFFIX_AO = '_ao'
+MAP_SUFFIX_DA = '_da'
+MAP_SUFFIX_LA = '_la'
+MAP_SUFFIX_MN = '_mn'
+MAP_SUFFIX_MM = '_mm'
+MAP_SUFFIX_TN = '_tn'
+MAP_SUFFIX_DRGB = '_drgb'
+MAP_SUFFIX_LRGB = '_lrgb'
+MAP_SUFFIX_MASK = '_mask'
+MAP_TYPE_SUFFIXES = cdsuc.EnumList(MAP_SUFFIX_D, MAP_SUFFIX_L, MAP_SUFFIX_M, MAP_SUFFIX_N, MAP_SUFFIX_O, MAP_SUFFIX_S, MAP_SUFFIX_Z, MAP_SUFFIX_AO, MAP_SUFFIX_MN, MAP_SUFFIX_MM, MAP_SUFFIX_TN, MAP_SUFFIX_MASK)
+GEO_FORMAT_RED = 'red'
+GEO_FORMAT_GR2 = 'gr2'
+GEO_FORMATS = cdsuc.EnumList(GEO_FORMAT_RED, GEO_FORMAT_GR2)
+GEO_SUFFIX_LODA = '_loda'
+GEO_SUFFIX_LOD0 = '_lod0'
+GEO_SUFFIX_LOD1 = '_lod1'
+GEO_SUFFIX_LOD2 = '_lod2'
+GEO_SUFFIX_LOD3 = '_lod3'
+GEO_LOD_SUFFIXES = cdsuc.EnumList(GEO_SUFFIX_LODA, GEO_SUFFIX_LOD0, GEO_SUFFIX_LOD1, GEO_SUFFIX_LOD2, GEO_SUFFIX_LOD3)
 FEMALE_DECAL_BINDPOSE = 'res:/Graphics/Character/Global/Poses/FemaleTattooPose.gr2'
 MALE_DECAL_BINDPOSE = 'res:/Graphics/Character/Global/Poses/MaleTattooPose.gr2'
 AXIS_DIRECTIONS = {'up': util.KeyVal(id='up', field='weightUpDown', positive=True),
@@ -250,14 +312,11 @@ AXIS_DIRECTIONS = {'up': util.KeyVal(id='up', field='weightUpDown', positive=Tru
  'back': util.KeyVal(id='back', field='weightForwardBack', positive=False)}
 SPECIAL_HANDLE_SHAPES = {'thin': util.KeyVal(field='weightUpDown', positive=True),
  'fat': util.KeyVal(field='weightLeftRight', positive=True),
- 'muscular': util.KeyVal(field='weightForwardBack', positive=True),
- 'pinchtuck': util.KeyVal(field='weightForwardBack', positive=True),
- 'pinchbootankle': util.KeyVal(field='weightForwardBack', positive=True),
- 'pantstuckmedium': util.KeyVal(field='weightForwardBack', positive=True)}
+ 'muscular': util.KeyVal(field='weightForwardBack', positive=True)}
 SculptingRow = collections.namedtuple('SculptingRow', 'sculptLocationID weightUpDown weightLeftRight weightForwardBack')
 ModifierRow = collections.namedtuple('ModifierRow', 'modifierLocationID paperdollResourceID paperdollResourceVaraition')
 ColorSelectionRow = collections.namedtuple('ColorSelectionRow', 'colorID colorNameA colorNameBC weight gloss')
-AppearanceRow = collections.namedtuple('AppearanceRow', 'appearanceID hairDarkness')
+AppearanceRow = collections.namedtuple('AppearanceRow', 'hairDarkness')
 __dnaConverter__ = None
 
 def GetDNAConverter():
@@ -402,26 +461,6 @@ def AddBlendshapeEntries(path, entries, category):
 
 
 
-@bluepy.CCP_STATS_ZONE_FUNCTION
-def NastyYamlLoad(yamlStr):
-    import paperDoll as PD
-    sys.modules[PD.__name__] = PD
-    instance = None
-    try:
-        try:
-            blue.statistics.EnterZone('yaml.load')
-            instance = yaml.load(yamlStr, Loader=yaml.CLoader)
-        except Exception:
-            log.LogError('PaperDoll: Yaml parsing failed for data', yamlStr)
-
-    finally:
-        blue.statistics.LeaveZone()
-        del sys.modules[PD.__name__]
-
-    return instance
-
-
-
 def DumpBlendshapes(malePath, femalePath, mode = 'w'):
 
     def DumpGender(path):
@@ -532,7 +571,6 @@ def ConvertDNAForDB(dollDNA, characterMetadata):
     charInfo.typeWeights = characterMetadata.typeWeights
     charInfo.typeSpecularity = characterMetadata.typeSpecularity
     charInfo.hairDarkness = characterMetadata.hairDarkness
-    charInfo.appearanceID = characterMetadata.appearanceID
     charInfo.faceModifiers = {}
     charInfo.bodyShapes = {}
     charInfo.utilityShapes = {}
@@ -582,17 +620,14 @@ class DNAConverter(log.LogMixin):
 
 
     def ExtractAppearanceRowFromDollInfo(self, dollInfo):
-        return AppearanceRow(dollInfo.get('appearanceID', 0), dollInfo.get('hairDarkness', 0.0))
+        return AppearanceRow(dollInfo.get('hairDarkness', 0.0))
 
 
 
     def ExtractSculptRowsFromDollInfo(self, dollInfo):
         sculptingShapes = self.GetSculptingShapes()
         sculptModifiers = {}
-        for categoryName in ['faceModifiers',
-         'bodyShapes',
-         'utilityShapes',
-         'archetypes']:
+        for categoryName in ['faceModifiers', 'bodyShapes', 'archetypes']:
             for (sculptKey, weight,) in dollInfo.get(categoryName, {}).iteritems():
                 sculptInfo = sculptingShapes[categoryName].get(sculptKey, None)
                 if sculptInfo is None:

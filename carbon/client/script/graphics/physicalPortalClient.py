@@ -1,3 +1,4 @@
+import cef
 import service
 import graphicWrappers
 import collections
@@ -10,7 +11,7 @@ class PhysicalPortalClientComponent:
 
 class PhysicalPortalClient(service.Service):
     __guid__ = 'svc.physicalPortalClient'
-    __componentTypes__ = ['physicalPortal']
+    __componentTypes__ = [cef.PhysicalPortalComponentView.GetComponentCodeName()]
     __dependencies__ = ['graphicClient']
 
     def __init__(self):
@@ -66,9 +67,10 @@ class PhysicalPortalClient(service.Service):
                 component.renderObject.SetRotationYawPitchRoll(geo2.QuaternionRotationGetYawPitchRoll(positionComponent.rotation))
         scene = self.graphicClient.GetScene(entity.scene.sceneID)
         cells = scene.cells
-        cellAObj = scene._GetCell(component.cellA)
-        cellBObj = scene._GetCell(component.cellB)
-        component.renderObject.ConnectCells(cellAObj, cellBObj)
+        if component.cellA and component.cellB:
+            cellAObj = scene._GetCell(component.cellA)
+            cellBObj = scene._GetCell(component.cellB)
+            component.renderObject.ConnectCells(cellAObj, cellBObj)
 
 
 

@@ -62,7 +62,7 @@ class MenuDemo(uicls.Container):
         maintext = uicls.Sprite(parent=mainParent, texturePath='res:/ui/sprite/carbontest/text.dds', left=96.0, width=200, height=64, effect=trinity.S2D_RFX_BLUR)
         caption = uicls.Sprite(parent=mainParent, texturePath='res:/ui/sprite/carbontest/caption.dds', left=50, top=56, width=160, height=32, effect=trinity.S2D_RFX_BLUR)
         bracket = uicls.Sprite(parent=mainParent, texturePath='res:/ui/sprite/carbontest/brackettext.dds', left=200, top=56, width=100, height=32, effect=trinity.S2D_RFX_BLUR)
-        scrolltext = uicls.Label(parent=mainParent, text='0123456789', align=uiconst.TOPLEFT, left=237, top=7, font='res:/UI/Fonts/HelveticaNeueLTStd-Bd.otf', fontsize=9, color=(1.0, 1.0, 1.0, 0.5))
+        scrolltext = uicls.Label(parent=mainParent, text='0123456789', align=uiconst.TOPLEFT, left=237, top=7, fontsize=9, color=(1.0, 1.0, 1.0, 0.5))
         (curve, binding,) = self.CreateColorCurve(bracket, curveSet, length=0.5, startValue=(1, 1, 1, 1), endValue=(1, 1, 1, 0), cycle=True)
         curve.AddKey(0.0, (1, 1, 1, 0.0))
         curve.AddKey(0.1, (1, 1, 1, 1))

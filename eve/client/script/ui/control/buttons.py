@@ -1,3 +1,4 @@
+import localization
 import uix
 import uiutil
 import base
@@ -63,9 +64,10 @@ class PushButtonGroup(uicls.Container):
             par.sr.panel = panel
             par.sr.panelName = label
             par.selected = 0
+            par.localizedLabel = label
             if hint:
                 par.hint = hint
-            t = uicls.Label(text=label, parent=par, left=1, top=1, fontsize=10, letterspace=1, uppercase=1, state=uiconst.UI_DISABLED, align=uiconst.CENTER)
+            t = uicls.EveLabelSmall(text=label, parent=par, left=1, top=1, state=uiconst.UI_DISABLED, align=uiconst.CENTER)
             par.sr.label = t
             par.width = t.textwidth + 12
             maxTextHeight = max(maxTextHeight, t.textheight + 9)
@@ -294,7 +296,7 @@ class Button(uicls.ButtonCore):
 
 
     def Prepare_(self):
-        self.sr.label = uicls.Label(text='', parent=self, idx=0, top=20, left=1, align=uiconst.CENTER, state=uiconst.UI_DISABLED, fontsize=10, letterspace=1, uppercase=1, color=self.color)
+        self.sr.label = uicls.EveLabelSmall(text='', parent=self, idx=0, top=1, align=uiconst.CENTER, state=uiconst.UI_DISABLED, color=self.color)
         if self.iconPath is not None:
             if self.iconSize:
                 width = self.iconSize
@@ -327,8 +329,6 @@ class Button(uicls.ButtonCore):
     def Update_Size_(self):
         if self.iconPath is None:
             self.width = min(256, self.fixedwidth or max(40, self.sr.label.width + 20))
-            lt = max(3, self.sr.label.textheight / 12) - 2
-            self.sr.label.top = lt
             self.height = max(18, min(32, self.sr.label.textheight + 4))
 
 
@@ -337,7 +337,6 @@ class Button(uicls.ButtonCore):
         if not self or self.destroyed:
             return 
         text = self.text = label
-        text = text.replace('<center>', '').replace('</center>', '')
         self.sr.label.text = text
         self.Update_Size_()
 
@@ -384,12 +383,12 @@ class BrowseButton(uicls.Container):
         if prev:
             icon = '38_227'
             align = uiconst.CENTERLEFT
-            text = mls.UI_CAL_PREV
+            text = localization.GetByLabel('UI/Common/Prev')
             self.backforth = -1
         else:
             icon = '38_228'
             align = uiconst.CENTERRIGHT
-            text = mls.UI_CAL_NEXT
+            text = localization.GetByLabel('UI/Common/Next')
             self.backforth = 1
         self.func = attributes.func
         self.args = attributes.args or ()
@@ -403,7 +402,7 @@ class BrowseButton(uicls.Container):
         iconCont = uicls.Container(parent=self, align=align, width=16, height=16)
         textCont = uicls.Container(parent=self, align=uiconst.TOALL)
         self.sr.icon = uicls.Icon(icon=icon, parent=iconCont, pos=(0, 0, 16, 16), align=align, idx=0, state=uiconst.UI_DISABLED)
-        self.sr.label = uicls.Label(text=text, parent=textCont, align=align, state=uiconst.UI_DISABLED, left=16)
+        self.sr.label = uicls.EveLabelMedium(text=text, parent=textCont, align=align, state=uiconst.UI_DISABLED, left=16)
         self.SetOpacity(self.alphaNormal)
 
 
@@ -470,12 +469,25 @@ class IconButton(uicls.Container):
         self.state = attributes.state or uiconst.UI_NORMAL
         self.sr.icon = uicls.Icon(icon=icon, parent=self, pos=iconPos, align=iconAlign, idx=0, state=uiconst.UI_DISABLED, ignoreSize=ignoreSize)
         self.SetOpacity(self.default_alphaNormal)
+        self.keepHighlight = False
 
 
 
     def OnClick(self, *args):
         if self.func:
             self.func(*self.args)
+
+
+
+    def KeepHighlight(self, *args):
+        self.keepHighlight = True
+        self.SetOpacity(self.alphaOver)
+
+
+
+    def RemoveHighlight(self, *args):
+        self.keepHighlight = False
+        self.SetOpacity(self.default_alphaNormal)
 
 
 
@@ -486,7 +498,7 @@ class IconButton(uicls.Container):
 
 
     def OnMouseExit(self, *args):
-        if not self.dead and getattr(self, 'default_alphaNormal', None):
+        if not self.dead and getattr(self, 'default_alphaNormal', None) and not self.keepHighlight:
             self.SetOpacity(self.default_alphaNormal)
 
 
@@ -679,7 +691,7 @@ class BigButton(BaseButton):
             self.sr.caption.Close()
         if '&' in capstr and ';' in capstr:
             capstr = self.ParseHTML(capstr)
-        caption = uicls.Label(text=capstr, parent=self, fontsize=14, idx=0, align=uiconst.CENTER, uppercase=True)
+        caption = uicls.EveLabelLargeUpper(text=capstr, parent=self, idx=0, align=uiconst.CENTER)
         caption.state = uiconst.UI_DISABLED
         self.sr.caption = caption
 
@@ -692,16 +704,16 @@ class BigButton(BaseButton):
 
     def SetSmallCaption(self, capstr, inside = 0, maxWidth = None):
         if not self.sr.smallcaption:
-            self.sr.smallcaption = uicls.Label(text='', parent=self, state=uiconst.UI_DISABLED, idx=0, width=self.width)
+            self.sr.smallcaption = uicls.EveLabelSmall(text='', parent=self, state=uiconst.UI_DISABLED, idx=0, width=self.width, lineSpacing=-0.2)
         self.sr.smallcaption.busy = 1
         if inside:
             self.sr.smallcaption.SetAlign(uiconst.CENTER)
         else:
             self.sr.smallcaption.SetAlign(uiconst.CENTERTOP)
-            self.sr.smallcaption.top = self.height + 6
+            self.sr.smallcaption.top = self.height + 2
         self.sr.smallcaption.width = maxWidth or self.width
         self.sr.smallcaption.busy = 0
-        self.sr.smallcaption.text = '<center>' + capstr
+        self.sr.smallcaption.text = ['<center>', capstr]
 
 
 

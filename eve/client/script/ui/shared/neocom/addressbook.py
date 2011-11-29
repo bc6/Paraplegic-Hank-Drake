@@ -8,27 +8,22 @@ import xtriui
 import form
 import util
 import listentry
-import types
 import uiconst
 import math
 import uicls
-import state
 import log
+import localization
 
 class AddressBookSvc(service.Service):
-    __exportedcalls__ = {'Show': [],
-     'AddToPersonal': [],
+    __exportedcalls__ = {'AddToPersonal': [],
      'AddToPersonalMulti': [],
      'DeleteEntryMulti': [],
-     'GetMapBookmarks': [],
      'GetBookmarks': [],
      'GetSolConReg': [],
-     'CreateBookmarkItem': [],
      'BookmarkCurrentLocation': [],
      'BookmarkLocationPopup': [],
      'ZipMemo': [],
      'UnzipMemo': [],
-     'OnBookmarkAdd': [],
      'DeleteBookmarks': [],
      'RefreshWindow': [],
      'IsInAddressBook': [],
@@ -46,17 +41,15 @@ class AddressBookSvc(service.Service):
      'OnContactNoLongerContact',
      'OnOrganizationContactsUpdated',
      'OnContactSlashCommand',
-     'OnBookmarkAdded',
-     'OnBookmarkDeleted',
+     'OnRefreshBookmarks',
      'OnAgentAdded']
     __servicename__ = 'addressbook'
     __displayname__ = 'AddressBook Client Service'
-    __dependencies__ = []
+    __dependencies__ = ['bookmarkSvc']
     __startupdependencies__ = ['settings']
 
     def __init__(self):
         service.Service.__init__(self)
-        self.semaphore = uthread.Semaphore(('addressbook', 0))
         self.agents = None
         self.blocked = None
         self.labels = None
@@ -78,9 +71,7 @@ class AddressBookSvc(service.Service):
 
 
     def CloseWindow(self):
-        wnd = self.GetWnd()
-        if wnd is not None and not wnd.destroyed:
-            wnd.SelfDestruct()
+        form.AddressBook.CloseIfOpen()
 
 
 
@@ -88,6 +79,14 @@ class AddressBookSvc(service.Service):
         if 'charid' in change and session.charid:
             self.GetContacts()
             self.RefreshWindow()
+
+
+
+    def OnDropData(self, dragObj, nodes):
+        wnd = self.GetWnd()
+        if wnd is None or wnd.destroyed or not wnd.inited:
+            return 
+        wnd.OnDropData(dragObj, nodes)
 
 
 
@@ -158,17 +157,16 @@ class AddressBookSvc(service.Service):
     def GetContacts(self):
         uthread.Lock(self, 'contacts')
         try:
-            if self.contacts is not None and self.blocked is not None and self.corporateContacts is not None and self.allianceContacts is not None and self.agents is not None and self.bms is not None:
+            bms = self.bookmarkSvc.GetBookmarks()
+            if self.contacts is not None and self.blocked is not None and self.corporateContacts is not None and self.allianceContacts is not None and self.agents is not None and bms is not None:
                 return util.KeyVal(contacts=self.contacts, blocked=self.blocked, corpContacts=self.corporateContacts, allianceContacts=self.allianceContacts)
             else:
                 self.contacts = {}
                 self.blocked = {}
                 self.corporateContacts = {}
                 self.allianceContacts = {}
-                self.bms = {}
                 self.agents = []
                 tmpBlocked = []
-                bookmarks = sm.RemoteSvc('bookmark').GetBookmarks()
                 if session.allianceid:
                     (addressbook, self.corporateContacts, self.allianceContacts, statuses,) = uthread.parallel([(sm.RemoteSvc('charMgr').GetContactList, ()),
                      (sm.GetService('corp').GetContactList, ()),
@@ -177,8 +175,9 @@ class AddressBookSvc(service.Service):
                 else:
                     (addressbook, self.corporateContacts, statuses,) = uthread.parallel([(sm.RemoteSvc('charMgr').GetContactList, ()), (sm.GetService('corp').GetContactList, ()), (sm.GetService('onlineStatus').Prime, ())])
                 for each in addressbook.addresses:
-                    if util.IsNPC(each.contactID) and sm.GetService('agents').IsAgent(each.contactID):
-                        self.agents.append(each.contactID)
+                    if util.IsNPC(each.contactID) and util.IsCharacter(each.contactID):
+                        if sm.GetService('agents').IsAgent(each.contactID):
+                            self.agents.append(each.contactID)
                     else:
                         contact = util.KeyVal()
                         contact.contactID = each.contactID
@@ -191,11 +190,6 @@ class AddressBookSvc(service.Service):
                     blocked = util.KeyVal()
                     blocked.contactID = each.senderID
                     self.blocked[each.senderID] = blocked
-
-                for each in bookmarks:
-                    if each.bookmarkID in self.deleted:
-                        continue
-                    self.bms[each.bookmarkID] = each
 
                 cfg.eveowners.Prime(self.blocked.keys())
                 cfg.eveowners.Prime(self.contacts.keys())
@@ -281,80 +275,60 @@ class AddressBookSvc(service.Service):
 
 
 
-    def OnBookmarkAdded(self, bookmark):
-        if bookmark.bookmarkID in self.bms:
-            return 
-        self.bms[bookmark.bookmarkID] = bookmark
-        sm.GetService('neocom').Blink('addressbook')
+    def OnRefreshBookmarks(self):
         self.RefreshWindow()
 
 
 
-    def OnBookmarkDeleted(self, bookmarkID):
-        try:
-            del self.bms[bookmarkID]
-            sm.GetService('neocom').Blink('addressbook')
-            self.RefreshWindow()
-        except KeyError:
-            pass
-
-
-
-    def OnBookmarkAdd(self, bookmark, refresh = 1):
-        if bookmark.bookmarkID in self.bms:
-            return 
-        self.bms[bookmark.bookmarkID] = bookmark
-        if refresh:
-            self.RefreshWindow()
-
-
-
-    def GetMapBookmarks(self, suppressAgentBookmarks = 0):
-        valid = [const.categoryCelestial,
-         const.categoryAsteroid,
-         const.categoryStation,
-         const.categoryShip,
-         const.categorySovereigntyStructure,
-         const.categoryPlanetaryInteraction]
-        ret = [ each for each in self.bms.itervalues() if cfg.invtypes.Get(each.typeID).Group().Category().id in valid ]
-        if not suppressAgentBookmarks:
-            agentMenu = sm.GetService('journal').GetMyAgentJournalBookmarks()
-            if agentMenu:
-                for (missionName, bms, agentID,) in agentMenu:
-                    missionName = missionName + '%s' % agentID
-                    for bm in bms:
-                        c = util.KeyVal()
-                        for each in bm.__dict__.iterkeys():
-                            if each not in c.__dict__:
-                                c.__dict__[each] = bm.__dict__[each]
-
-                        c.missionName = missionName
-                        c.hint = bm.hint
-                        c.memo = c.hint + '\t'
-                        c.bookmarkID = ('agentmissions',
-                         c.agentID,
-                         c.locationType,
-                         c.locationNumber)
-                        ret.append(c)
-
-
-        return ret
-
-
-
-    def __CelestialMenu(self, *args):
-        return sm.GetService('menu').CelestialMenu(*args)
-
-
-
     def GetBookmarks(self, *args):
-        return self.bms
+        log.LogTraceback('We should call the bookmarkSvc directly')
+        return self.bookmarkSvc.GetBookmarks()
+
+
+
+    def GetAgents(self, *args):
+        return self.agents
+
+
+
+    def GetSolConReg(self, bookmark):
+        solname = '-'
+        conname = '-'
+        regname = '-'
+        mapSvc = sm.GetService('map')
+        sol = None
+        con = None
+        reg = None
+        try:
+            if util.IsSolarSystem(bookmark.locationID):
+                sol = mapSvc.GetItem(bookmark.locationID)
+                con = mapSvc.GetItem(sol.locationID)
+                reg = mapSvc.GetItem(con.locationID)
+            elif util.IsConstellation(bookmark.locationID):
+                sol = mapSvc.GetItem(bookmark.itemID)
+                con = mapSvc.GetItem(sol.locationID)
+                reg = mapSvc.GetItem(con.locationID)
+            elif util.IsRegion(bookmark.locationID):
+                con = mapSvc.GetItem(bookmark.itemID)
+                reg = mapSvc.GetItem(con.locationID)
+            elif bookmark.typeID == const.typeRegion:
+                reg = mapSvc.GetItem(bookmark.itemID)
+            if sol is not None:
+                solname = sol.itemName
+            if con is not None:
+                conname = con.itemName
+            if reg is not None:
+                regname = reg.itemName
+
+        finally:
+            return (solname, conname, regname)
+
 
 
 
     def BookmarkCurrentLocation(self, *args):
         wnd = self.GetWnd()
-        text = mls.UI_CMD_ADDBOOKMARK
+        text = localization.GetByLabel('UI/PeopleAndPlaces/AddBookmark')
         btn = wnd.sr.bookmarkbtns.GetBtnByLabel(text)
         btn.Disable()
         try:
@@ -375,265 +349,111 @@ class AddressBookSvc(service.Service):
 
         finally:
             if wnd:
-                text = mls.UI_CMD_ADDBOOKMARK
+                text = localization.GetByLabel('UI/PeopleAndPlaces/AddBookmark')
                 btn = wnd.sr.bookmarkbtns.GetBtnByLabel(text)
                 btn.Enable()
 
 
 
 
-    def CheckLocationID(self, locationid):
-        bms = self.GetMapBookmarks()
-        for bookmark in bms:
-            if bookmark.itemID == locationid:
+    def CheckLocationID(self, locationID):
+        bms = sm.GetService('bookmarkSvc').GetMyBookmarks()
+        for bookmark in bms.itervalues():
+            if bookmark.itemID == locationID:
                 return self.UnzipMemo(bookmark.memo)[0]
 
 
 
 
-    def CreateBookmarkItem(self, bookmarkID):
-        if bookmarkID in self.bms:
-            bookmark = self.bms[bookmarkID]
-            shift = uicore.uilib.Key(uiconst.VK_SHIFT)
-            bookmarkitem = sm.GetService('sessionMgr').PerformSessionLockedOperation('bookmarking', sm.RemoteSvc('bookmark').CreateBookmarkVoucher, bookmarkID, bookmark.memo[:100], violateSafetyTimer=True)
-            if not shift and bookmarkitem is not None:
-                self.DeleteBookmarks([bookmarkID])
-            return bookmarkitem
-
-
-
-    def CreateBookmarkItems(self, bookmarkIDs):
-        bookmarkIDs = bookmarkIDs[:5]
-        params = []
-        for bookmarkID in bookmarkIDs:
-            if bookmarkID in self.bms:
-                params.append((bookmarkID, self.bms[bookmarkID].memo[:100]))
-            else:
-                params.append((bookmarkID,))
-
-        shift = uicore.uilib.Key(uiconst.VK_SHIFT)
-        ret = sm.GetService('sessionMgr').PerformSessionLockedOperation('bookmarking', sm.RemoteSvc('bookmark').CreateBookmarkVouchers, params, violateSafetyTimer=True)
-        if not shift and ret:
-            self.DeleteBookmarks(bookmarkIDs)
-        return ret
-
-
-
-    def BookmarkLocationPopup(self, locationid, typeID, parentID, note = None, *args):
-        cord = None
-        scanResultID = None
-        if locationid in (session.solarsystemid, session.shipid):
-            if len(args) == 1 and isinstance(args[0], util.KeyVal):
-                info = args[0]
-                cord = info.position
-                locationname = info.name
-                scanResultID = info.id
-            else:
-                bp = sm.GetService('michelle').GetBallpark()
-                if bp:
-                    ownBall = bp.GetBall(session.shipid)
-                    cord = (ownBall.x, ownBall.y, ownBall.z)
-                locationname = mls.UI_SHARED_SPOTINSOLARSYSTEM % {'name': cfg.evelocations.Get(session.solarsystemid2).name}
-        else:
-            mapSvc = sm.GetService('map')
-            locationname = cfg.evelocations.Get(locationid).name
-            locationObj = mapSvc.GetItem(locationid)
-            if locationObj:
-                locationname = '%s ( %s )' % (locationname, cfg.invgroups.Get(locationObj.typeID).name)
-            bp = sm.GetService('michelle').GetBallpark()
-            if bp:
-                slimItem = uix.GetBallparkRecord(locationid)
-                if slimItem is not None:
-                    if locationname is None or len(locationname) == 1:
-                        locationname = cfg.invtypes.Get(slimItem.typeID).Group().name
-                    else:
-                        locationname = '%s ( %s )' % (locationname, cfg.invtypes.Get(slimItem.typeID).Group().name)
+    def BookmarkLocationPopup(self, locationid, typeID, parentID, note = None, scannerInfo = None):
         checkavail = self.CheckLocationID(locationid)
-        if checkavail and cord is None:
-            if eve.Message('AskProceedBookmarking', {'locationname': locationname,
+        locationName = self.GetDefaultLocationName(locationid, scannerInfo)
+        if checkavail and locationid not in (session.shipid, session.solarsystemid):
+            if eve.Message('AskProceedBookmarking', {'locationname': cfg.invtypes.Get(typeID).typeName,
              'caption': checkavail}, uiconst.YESNO) != uiconst.ID_YES:
                 return 
-        format = [{'type': 'btline'},
-         {'type': 'push',
-          'frame': 1},
-         {'type': 'edit',
-          'setvalue': locationname,
-          'label': mls.UI_GENERIC_LABEL,
-          'key': 'caption',
-          'required': 1,
-          'frame': 1,
-          'maxlength': 99},
-         {'type': 'textedit',
-          'label': mls.UI_GENERIC_NOTES,
-          'setvalue': note,
-          'key': 'note',
-          'required': 0,
-          'frame': 1,
-          'maxlength': 6000}]
-        if cord is not None:
-            format.append({'type': 'push',
-             'frame': 1})
-            format.append({'type': 'labeltext',
-             'frame': 1,
-             'label': mls.UI_GENERIC_POSITION,
-             'text': 'X: %s' % cord[0]})
-            format.append({'type': 'labeltext',
-             'frame': 1,
-             'label': '',
-             'text': 'Y: %s' % cord[1]})
-            format.append({'type': 'labeltext',
-             'frame': 1,
-             'label': '',
-             'text': 'Z: %s' % cord[2]})
-        format.append({'type': 'push',
-         'frame': 1})
-        format.append({'type': 'bbline'})
-        format.append({'type': 'push'})
-        retval = uix.HybridWnd(format, mls.UI_SHARED_NEWBOOKMARK, 1, buttons=uiconst.OKCANCEL, minW=340, minH=256, icon='ui_9_64_1')
-        if retval:
-            if scanResultID:
-                self.BookmarkScanResult(locationid, retval['caption'][:100], retval['note'][:6000], scanResultID)
+        wnd = form.BookmarkLocationWindow.Open(locationID=locationid, typeID=typeID, parentID=parentID, scannerInfo=scannerInfo, locationName=locationName, note=note)
+        wnd.Maximize()
+
+
+
+    def GetDefaultLocationName(self, locationID, scannerInfo):
+        if locationID in (session.solarsystemid, session.shipid):
+            if scannerInfo is not None:
+                locationName = scannerInfo.name
             else:
-                self.BookmarkLocation(locationid, retval['caption'][:100], retval['note'][:6000], typeID, parentID)
+                locationName = localization.GetByLabel('UI/PeopleAndPlaces/SpotInSolarSystem', solarSystemName=cfg.evelocations.Get(session.solarsystemid2).name)
+        else:
+            mapSvc = sm.GetService('map')
+            locationName = cfg.evelocations.Get(locationID).name
+            locationObj = mapSvc.GetItem(locationID)
+            if locationObj:
+                locationName = localization.GetByLabel('UI/PeopleAndPlaces/NewBookmarkLocationLabel', loc=locationID, group=cfg.invtypes.Get(locationObj.typeID).name)
+            bp = sm.GetService('michelle').GetBallpark()
+            if bp:
+                slimItem = uix.GetBallparkRecord(locationID)
+                if slimItem is not None:
+                    if locationName is None or len(locationName) == 1:
+                        locationName = cfg.invtypes.Get(slimItem.typeID).Group().name
+                    else:
+                        locationName = localization.GetByLabel('UI/PeopleAndPlaces/NewBookmarkLocationLabel', loc=locationID, group=cfg.invtypes.Get(slimItem.typeID).Group().name)
+        return locationName
 
 
 
-    def UpdateBookmark(self, bookmarkID, header = None, note = None):
-        if bookmarkID not in self.bms:
-            return 
-        bm = self.bms[bookmarkID]
+    def UpdateBookmark(self, bookmarkID, header = None, note = None, folderID = -1):
+        bm = self.GetBookmark(bookmarkID)
         (oldheader, oldnote,) = self.UnzipMemo(bm.memo)
         oldnote = bm.note
+        oldFolderID = bm.folderID
         if header is None:
             header = oldheader
         if note is None:
             note = oldnote
-        if note == oldnote and header == oldheader:
+        if folderID is -1:
+            folderID = oldFolderID
+        if note == oldnote and header == oldheader and folderID == oldFolderID:
             return 
         memo = self.ZipMemo(header[:100], '')
-        if bm.memo != memo or note != oldnote:
-            uthread.pool('AddressBook::CallingRemote on UpdateBookmark', sm.RemoteSvc('bookmark').UpdateBookmark, bookmarkID, memo, note)
+        if bm.memo != memo or note != oldnote or folderID != oldFolderID:
+            uthread.pool('AddressBook::CorpBookmarkMgr.UpdateBookmark', sm.GetService('bookmarkSvc').UpdateBookmark, bookmarkID, memo, note, folderID)
+
+
+
+    def BookmarkLocation(self, itemID, name, comment, typeID, locationID = None, folderID = None):
+        self.bookmarkSvc.BookmarkLocation(itemID, name, comment, typeID, locationID=locationID, folderID=folderID)
+
+
+
+    def GetBookmark(self, bookmarkID):
+        return sm.GetService('bookmarkSvc').GetBookmark(bookmarkID)
+
+
+
+    def DeleteBookmarks(self, ids, refreshWindow = True, alreadyDeleted = 0):
+        if eve.Message('RemoveLocation', {}, uiconst.YESNO, suppress=uiconst.ID_YES) != uiconst.ID_YES:
+            return 
         wnd = self.GetWnd()
         if wnd is not None and not wnd.destroyed:
             wnd.ShowLoad()
         try:
-            self.bms[bookmarkID].memo = memo
-            self.bms[bookmarkID].note = note
-            listGroupID = uicore.registry.GetGroupIDFromItemID('places2_%s' % session.charid, bookmarkID)
-            if listGroupID:
-                wnd = sm.GetService('window').GetWindow(str(listGroupID))
-                if wnd:
-                    wnd.LoadContent()
-            self.RefreshWindow()
+            self.bookmarkSvc.DeleteBookmarks(ids)
 
         finally:
             if wnd is not None and not wnd.destroyed:
                 wnd.HideLoad()
 
-
-
-
-    def BookmarkLocation(self, itemID, name, comment, typeID, locationID = None):
-        memo = self.ZipMemo(name[:100], '')
-        (bookmarkID, itemID, typeID, x, y, z, locationID,) = sm.RemoteSvc('bookmark').BookmarkLocation(itemID, memo, comment)
-        if bookmarkID:
-            bm = util.KeyVal()
-            bm.bookmarkID = bookmarkID
-            bm.ownerID = session.charid
-            bm.itemID = itemID
-            bm.typeID = typeID
-            bm.flag = None
-            bm.memo = memo
-            bm.created = blue.os.GetTime(1)
-            bm.x = x
-            bm.y = y
-            bm.z = z
-            bm.locationID = locationID
-            bm.note = comment
-            self.bms[bookmarkID] = bm
+        if refreshWindow:
             self.RefreshWindow()
-            sm.ScatterEvent('OnBookmarkCreated', bookmarkID, comment)
-
-
-
-    def BookmarkScanResult(self, locationID, name, comment, resultID):
-        memo = self.ZipMemo(name[:100], '')
-        (bookmarkID, itemID, typeID, x, y, z, locationID,) = sm.RemoteSvc('bookmark').BookmarkScanResult(locationID, memo, comment, resultID)
-        if bookmarkID:
-            bm = util.KeyVal()
-            bm.bookmarkID = bookmarkID
-            bm.ownerID = session.charid
-            bm.itemID = None
-            bm.typeID = typeID
-            bm.flag = None
-            bm.memo = memo
-            bm.created = blue.os.GetTime(1)
-            bm.x = x
-            bm.y = y
-            bm.z = z
-            bm.locationID = locationID
-            bm.note = comment
-            self.bms[bookmarkID] = bm
-            self.RefreshWindow()
-            sm.ScatterEvent('OnBookmarkCreated', bookmarkID, comment)
-
-
-
-    def DeleteBookmarks(self, ids, refreshWindow = 1, alreadyDeleted = 0):
-        wnd = self.GetWnd()
-        if wnd is not None and not wnd.destroyed:
-            wnd.ShowLoad()
-        try:
-            filteredIDs = []
-            for id in ids:
-                if id not in filteredIDs and id not in self.deleted:
-                    filteredIDs.append(id)
-                if self.bms is not None and id in self.bms:
-                    del self.bms[id]
-
-            self.deleted += filteredIDs
-            if not alreadyDeleted:
-                sm.RemoteSvc('bookmark').DeleteBookmarks(filteredIDs)
-            sm.ScatterEvent('OnBookmarksDeleted', filteredIDs)
-            if refreshWindow:
-                self.RefreshWindow()
-
-        finally:
-            if wnd is not None and not wnd.destroyed:
-                wnd.HideLoad()
-
 
 
 
     def EditBookmark(self, bm):
-        (oldlabel, oldnotes,) = self.UnzipMemo(bm.memo)
         if not hasattr(bm, 'note'):
             return 
-        oldnotes = bm.note
-        format = [{'type': 'btline'},
-         {'type': 'push',
-          'frame': 1},
-         {'type': 'edit',
-          'setvalue': oldlabel,
-          'label': mls.UI_GENERIC_LABEL,
-          'key': 'label',
-          'frame': 1,
-          'required': 1,
-          'maxlength': 99},
-         {'type': 'textedit',
-          'setvalue': oldnotes,
-          'label': '_hide',
-          'key': 'notes',
-          'frame': 1,
-          'height': 80,
-          'maxlength': 6000},
-         {'type': 'push',
-          'frame': 1},
-         {'type': 'btline'}]
-        retval = uix.HybridWnd(format, mls.UI_SHARED_EDITLOCATION, 1, buttons=uiconst.OKCANCEL, minW=340, minH=256, icon='ui_9_64_1')
-        if retval:
-            (label, notes,) = (retval['label'], retval['notes'])
-            self.UpdateBookmark(bm.bookmarkID, label, notes)
+        (oldlabel, oldnote,) = self.UnzipMemo(bm.memo)
+        oldnote = bm.note
+        return form.BookmarkLocationWindow(bookmark=bm, locationName=oldlabel, note=oldnote)
 
 
 
@@ -643,35 +463,11 @@ class AddressBookSvc(service.Service):
 
 
 
-    def Show(self):
-        wnd = self.GetWnd(1)
-        if wnd is not None and not wnd.destroyed:
-            wnd.Maximize()
-
-
-
     def RefreshWindow(self):
-        wnd = self.GetWnd()
+        wnd = form.AddressBook.GetIfOpen()
         if wnd is not None and not wnd.destroyed and wnd.inited:
             if getattr(wnd.sr, 'maintabs', None) is not None:
                 wnd.sr.maintabs.ReloadVisible()
-
-
-
-    def OnDropData(self, dragObj, nodes):
-        wnd = self.GetWnd()
-        if wnd is None or wnd.destroyed or not wnd.inited:
-            return 
-        wnd.ShowLoad()
-        try:
-            visibletab = wnd.sr.maintabs.GetVisible(1)
-            if visibletab and hasattr(visibletab, 'OnTabDropData'):
-                visibletab.OnTabDropData(dragObj, nodes)
-
-        finally:
-            if wnd is not None and not wnd.destroyed and wnd.inited:
-                wnd.HideLoad()
-
 
 
 
@@ -713,149 +509,29 @@ class AddressBookSvc(service.Service):
 
 
 
-    def DropInPlaces(self, dragObj, nodes):
-        for what in nodes:
-            if getattr(what, '__guid__', None) in ('xtriui.InvItem', 'listentry.InvItem') and what.rec.typeID == const.typeBookmark and what.rec.ownerID == session.charid:
-                wnd = self.GetWnd()
-                if wnd is not None and not wnd.destroyed and wnd.inited:
-                    wnd.ShowLoad()
-                try:
-                    bookmark = sm.GetService('sessionMgr').PerformSessionLockedOperation('bookmarking', sm.RemoteSvc('bookmark').AddBookmarkFromVoucher, what.rec.itemID, violateSafetyTimer=True)
-                    if bookmark:
-                        self.OnBookmarkAdd(bookmark, True)
+    def DropInBuddyGroup(self, listID_groupID, nodes, *args):
+        ids = []
+        for node in nodes:
+            if node.Get('__guid__', None) in ('listentry.User', 'listentry.Sender') and node.itemID != session.charid:
+                self.AddToPersonal(node.itemID, None, refresh=node == nodes[-1])
+            currentListGroupID = node.Get('listGroupID', None)
+            ids.append((node.itemID, currentListGroupID, listID_groupID))
 
-                finally:
-                    if wnd is not None and not wnd.destroyed and wnd.inited:
-                        wnd.HideLoad()
+        for (itemID, currentListGroupID, listID_groupID,) in ids:
+            if currentListGroupID and itemID:
+                uicore.registry.RemoveFromListGroup(currentListGroupID, itemID)
+            uicore.registry.AddToListGroup(listID_groupID, itemID)
 
-            elif getattr(what, '__guid__', None) == 'listentry.PlaceEntry':
-                listgroupID = what.listGroupID
-                whatID = what.bm.bookmarkID
-                if whatID and listgroupID:
-                    uicore.registry.RemoveFromListGroup(listgroupID, whatID)
-                    uicore.registry.ReloadGroupWindow(listgroupID)
-
-        self.RefreshWindow()
-
-
-
-    def Load(self, args):
-        uthread.Lock(self, 'load')
-        try:
-            wnd = self.GetWnd()
-            if not wnd or wnd.destroyed:
-                return 
-            wnd.sr.bookmarkbtns.state = uiconst.UI_HIDDEN
-            wnd.sr.agentbtns.state = uiconst.UI_HIDDEN
-            wnd.sr.scroll.sr.iconMargin = 0
-            wnd.sr.scroll.sr.id = '%sAddressBookScroll' % args
-            wnd.sr.scroll.sr.fixedColumns = [{'name': 64}, {}][(args == 'places')]
-            wnd.sr.scroll.sr.ignoreTabTrimming = not args == 'places'
-            if args == 'agents':
-                self.ShowAgents()
-            elif args == 'places':
-                self.ShowPlaces()
-            elif args == 'contact':
-                self.ShowContacts('contact')
-            elif args == 'corpcontact':
-                self.ShowContacts('corpcontact')
-            elif args == 'alliancecontact':
-                self.ShowContacts('alliancecontact')
-            self.lastTab = args
-
-        finally:
-            uthread.UnLock(self, 'load')
-
-
-
-
-    def AddGroup(self, listID, *args):
-        uicore.registry.AddListGroup(listID)
+        uicore.registry.ReloadGroupWindow(listID_groupID)
         self.RefreshWindow()
 
 
 
     def GetWnd(self, new = 0):
-        wnd = sm.GetService('window').GetWindow('addressbook')
-        if not wnd and new:
-            uicore.registry.GetLockedGroup('agentgroups', 'all', mls.UI_SHARED_ALLAGENTS)
-            wnd = sm.GetService('window').GetWindow('addressbook', create=1, decoClass=form.AddressBook)
-            wnd.inited = 0
-            wnd.SetCaption(mls.UI_SHARED_PEOPLEANDPLACES)
-            wnd.SetTopparentHeight(52)
-            wnd.OnClose_ = self.OnCloseWnd
-            wnd.OnDropData = self.OnDropData
-            wnd.SetWndIcon('ui_12_64_2', mainTop=-12)
-            wnd.SetScope('station_inflight')
-            wnd.sr.main = uiutil.GetChild(wnd, 'main')
-            wnd.sr.scroll = uicls.Scroll(parent=wnd.sr.main, padding=(const.defaultPadding,
-             const.defaultPadding,
-             const.defaultPadding,
-             const.defaultPadding))
-            wnd.sr.contacts = form.ContactsForm(name='contactsform', parent=wnd.sr.main, pos=(0, 0, 0, 0))
-            wnd.sr.bookmarkbtns = uicls.ButtonGroup(btns=[[mls.UI_CMD_ADDBOOKMARK,
-              self.BookmarkCurrentLocation,
-              (),
-              81], [mls.UI_CMD_CREATEFOLDER,
-              self.AddGroup,
-              'places2_%s' % session.charid,
-              81]], parent=wnd.sr.main, idx=0)
-            wnd.sr.agentbtns = uicls.ButtonGroup(btns=[[mls.UI_CMD_CREATEFOLDER,
-              self.AddGroup,
-              'agentgroups',
-              81], [mls.UI_SHARED_AGENTFINDER,
-              uicore.cmd.OpenAgentFinder,
-              'agentgroups',
-              81]], parent=wnd.sr.main, idx=0)
-            wnd.sr.hint = None
-            grplst = [[mls.UI_GENERIC_CHARACTER, (const.groupCharacter, 0)],
-             [mls.UI_GENERIC_CHARACTEREXACT, (const.groupCharacter, 1)],
-             [mls.UI_GENERIC_ALLIANCE, (const.groupAlliance, 0)],
-             [mls.UI_CORP_ALLIANCESHORTNAME, (const.groupAlliance, -1)],
-             [mls.UI_GENERIC_CORPORATION, (const.groupCorporation, 0)],
-             [mls.UI_CORP_CORPTICKER, (const.groupCorporation, -1)],
-             [mls.UI_GENERIC_FACTION, (const.groupFaction, 0)],
-             [mls.UI_GENERIC_STATION, (const.groupStation, 0)],
-             [mls.UI_GENERIC_ASTEROIDBELT, (const.groupAsteroidBelt, 0)],
-             [mls.UI_GENERIC_SOLARSYSTEM, (const.groupSolarSystem, 0)],
-             [mls.UI_GENERIC_CONSTELLATION, (const.groupConstellation, 0)],
-             [mls.UI_GENERIC_REGION, (const.groupRegion, 0)]]
-            grplst.sort(lambda x, y: cmp(x[0], y[0]))
-            wnd.sr.sgroup = group = uicls.Combo(label=mls.UI_SHARED_SEARCHTYPE, parent=wnd.sr.topParent, options=grplst, name='addressBookComboSearchType', select=settings.user.ui.Get('searchgroup', const.groupCharacter), width=86, left=74, top=20, callback=self.ChangeSearchGroup)
-            wnd.sr.inpt = inpt = uicls.SinglelineEdit(name='search', parent=wnd.sr.topParent, maxLength=37, left=group.left + group.width + 6, top=group.top, width=86, label=mls.UI_SHARED_SEARCHSTRING)
-            btn = uicls.Button(parent=wnd.sr.topParent, label=mls.UI_CMD_SEARCH, pos=(inpt.left + inpt.width + 2,
-             inpt.top,
-             0,
-             0), func=self.Search, btn_default=1)
-            wnd.sr.scroll.sr.content.OnDropData = self.OnDropData
-            idx = settings.user.tabgroups.Get('addressbookpanel', None)
-            if idx is None:
-                settings.user.tabgroups.Set('addressbookpanel', 4)
-            tabs = [[mls.UI_CONTACTS_CONTACTS,
-              wnd.sr.contacts,
-              self,
-              'contact',
-              None], [mls.UI_GENERIC_AGENTS,
-              wnd.sr.scroll,
-              self,
-              'agents',
-              None], [mls.UI_GENERIC_PLACES,
-              wnd.sr.scroll,
-              self,
-              'places',
-              None]]
-            maintabs = uicls.TabGroup(name='tabparent', align=uiconst.TOTOP, height=18, parent=wnd.sr.main, idx=0, tabs=tabs, groupID='addressbookpanel', autoselecttab=True)
-            maintabs.sr.Get('%s_tab' % mls.UI_GENERIC_AGENTS, None).OnTabDropData = self.DropInAgents
-            maintabs.sr.Get('%s_tab' % mls.UI_GENERIC_PLACES, None).OnTabDropData = self.DropInPlaces
-            maintabs.sr.Get('%s_tab' % mls.UI_CONTACTS_CONTACTS, None).OnTabDropData = self.DropInPersonalContact
-            wnd.sr.maintabs = maintabs
-            wnd.inited = 1
-        return wnd
-
-
-
-    def ChangeSearchGroup(self, entry, header, value, *args):
-        settings.user.ui.Set('searchgroup', value)
+        if new:
+            return form.AddressBook.ToggleOpenClose()
+        else:
+            return form.AddressBook.GetIfOpen()
 
 
 
@@ -867,19 +543,6 @@ class AddressBookSvc(service.Service):
             else:
                 settings.user.ui.Set(config, checkbox.checked)
         self.RefreshWindow()
-
-
-
-    def OnCloseWnd(self, wnd, *args):
-        uicore.registry.GetLockedGroup('agentgroups', 'all', mls.UI_SHARED_ALLAGENTS)
-
-
-
-    def Search(self, *args):
-        wnd = self.GetWnd()
-        if wnd and not wnd.destroyed:
-            (groupID, flag,) = wnd.sr.sgroup.GetValue()
-            ret = uix.Search(wnd.sr.inpt.GetValue().strip(), groupID, modal=0, exact=flag, searchWndName='addressBookSearch')
 
 
 
@@ -921,16 +584,16 @@ class AddressBookSvc(service.Service):
 
     def BlockOwner(self, ownerID):
         if ownerID == session.charid:
-            eve.Message('CustomInfo', {'info': mls.UI_SHARED_CHANNELHINT6})
+            eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/PeopleAndPlaces/CannotBlockSelf')})
             return 
         if util.IsNPC(ownerID):
             if util.IsCharacter(ownerID):
-                eve.Message('CustomInfo', {'info': mls.UI_SHARED_CHANNELHINT7})
+                eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/PeopleAndPlaces/CannotBlockAgents')})
             elif util.IsCorporation(ownerID) or util.IsAlliance(ownerID):
-                eve.Message('CustomInfo', {'info': mls.UI_SHARED_CHANNELHINT20})
+                eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/PeopleAndPlaces/CannotBlockNPCCorps')})
             return 
         if ownerID in self.blocked:
-            eve.Message('CustomInfo', {'info': mls.UI_SHARED_CHANNELHINT8 % {'name': cfg.eveowners.Get(ownerID).name}})
+            eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/PeopleAndPlaces/AlreadyHaveBlocked', userName=cfg.eveowners.Get(ownerID).name)})
             return 
         sm.RemoteSvc('charMgr').BlockOwners([ownerID])
         blocked = util.KeyVal()
@@ -952,7 +615,6 @@ class AddressBookSvc(service.Service):
             sm.RemoteSvc('charMgr').UnblockOwners(blocked)
             sm.ScatterEvent('OnUnblockContacts', blocked)
         self.RefreshWindow()
-        wnd = self.GetWnd()
 
 
 
@@ -962,7 +624,7 @@ class AddressBookSvc(service.Service):
 
 
     def EditContacts(self, contactIDs, contactType):
-        wnd = sm.GetService('window').GetWindow('contactmanagement', decoClass=form.ContactManagementMultiEditWnd, create=1, entityIDs=contactIDs, contactType=contactType)
+        wnd = form.ContactManagementMultiEditWnd.Open(windowID='contactmanagement', entityIDs=contactIDs, contactType=contactType)
         if wnd.ShowModal() == 1:
             results = wnd.result
             relationshipID = results
@@ -987,29 +649,25 @@ class AddressBookSvc(service.Service):
 
     def AddToAddressBook(self, contactID, contactType, edit = 0):
         if contactID == session.charid and contactType == 'contact':
-            eve.Message('CustomInfo', {'info': mls.UI_SHARED_CHANNELHINT9})
+            eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/PeopleAndPlaces/CannotAddSelf')})
             return 
         if util.IsNPC(contactID) and not sm.GetService('agents').IsAgent(contactID) and util.IsCharacter(contactID):
-            eve.Message('CustomInfo', {'info': mls.UI_SHARED_CHANNELHINT21 % {'name': cfg.eveowners.Get(contactID).name}})
+            eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/PeopleAndPlaces/IsNotAnAgent', agentName=cfg.eveowners.Get(contactID).name)})
             return 
         if contactType is None and contactID in self.agents:
-            eve.Message('CustomInfo', {'info': mls.UI_SHARED_CHANNELHINT10 % {'name': cfg.eveowners.Get(contactID).name,
-                      'contactType': mls.UI_CONTACTS_CONTACT}})
+            eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/PeopleAndPlaces/AlreadyAContact', contactName=cfg.eveowners.Get(contactID).name)})
             return 
         if contactType == 'contact':
             if contactID in self.contacts and not edit:
-                eve.Message('CustomInfo', {'info': mls.UI_SHARED_CHANNELHINT10 % {'name': cfg.eveowners.Get(contactID).name,
-                          'contactType': mls.UI_CONTACTS_CONTACT}})
+                eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/PeopleAndPlaces/AlreadyAContact', contactName=cfg.eveowners.Get(contactID).name)})
                 return 
         if contactType == 'corpcontact':
             if contactID in self.corporateContacts and not edit:
-                eve.Message('CustomInfo', {'info': mls.UI_SHARED_CHANNELHINT10 % {'name': cfg.eveowners.Get(contactID).name,
-                          'contactType': mls.UI_CONTACTS_CORPCONTACT}})
+                eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/PeopleAndPlaces/AlreadyACorpContact', contactName=cfg.eveowners.Get(contactID).name)})
                 return 
         if contactType == 'alliancecontact':
             if contactID in self.allianceContacts and not edit:
-                eve.Message('CustomInfo', {'info': mls.UI_SHARED_CHANNELHINT10 % {'name': cfg.eveowners.Get(contactID).name,
-                          'contactType': mls.UI_CONTACTS_ALLIANCECONTACT}})
+                eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/PeopleAndPlaces/AlreadyAnAllianceContact', contactName=cfg.eveowners.Get(contactID).name)})
                 return 
         inWatchlist = False
         relationshipID = None
@@ -1053,7 +711,7 @@ class AddressBookSvc(service.Service):
                     relationshipID = contact.relationshipID
                     labelMask = contact.labelMask
                     startupParams = (contactID, relationshipID, isContact)
-            wnd = sm.GetService('window').GetWindow('contactmanagement', decoClass=windowType, create=1, entityID=entityID, level=relationshipID, watchlist=watchlist, isContact=isContact)
+            wnd = windowType.Open(windowID='contactmanagement', entityID=entityID, level=relationshipID, watchlist=watchlist, isContact=isContact)
             if wnd.ShowModal() == 1:
                 results = wnd.result
                 if contactType == 'contact':
@@ -1174,391 +832,9 @@ class AddressBookSvc(service.Service):
 
 
 
-    def ShowContacts(self, contactType, contactsForm = None):
-        if contactsForm is None:
-            wnd = self.GetWnd()
-            if wnd is None or wnd.destroyed:
-                return 
-            if getattr(wnd, 'contactsIniting', 0):
-                return 
-            if not getattr(wnd, 'contactsInited', 0):
-                wnd.contactsIniting = 1
-                wnd.sr.contacts.Setup('contact')
-                wnd.contactsInited = 1
-                wnd.contactsIniting = 0
-            contactsForm = wnd.sr.contacts
-        contactsForm.LoadContactsForm(contactType)
-
-
-
-    def ShowAgents(self):
-        wnd = self.GetWnd()
-        if wnd is None or wnd.destroyed:
-            return 
-        wnd.sr.agentbtns.state = uiconst.UI_PICKCHILDREN
-        scrollData = self._GetAgentScrollData()
-        scrolllist = []
-        for s in scrollData:
-            data = {'GetSubContent': self.GetAgentsSubContent,
-             'DropData': self.DropInBuddyGroup,
-             'RefreshScroll': self.RefreshWindow,
-             'label': s.label,
-             'id': s.id,
-             'groupItems': s.groupItems,
-             'headers': [mls.UI_GENERIC_NAME],
-             'iconMargin': 18,
-             'showlen': 0,
-             'state': s.state,
-             'npc': True,
-             'allowCopy': 1,
-             'showicon': s.logo,
-             'posttext': ' [%s]' % len(s.groupItems),
-             'allowGuids': ['listentry.User', 'listentry.Sender']}
-            sortBy = s.sortBy
-            scrolllist.append((sortBy.lower(), listentry.Get('Group', data)))
-
-        wnd.sr.scroll.sr.iconMargin = 18
-        scrolllist = uiutil.SortListOfTuples(scrolllist)
-        wnd.sr.scroll.Load(contentList=scrolllist, fixedEntryHeight=None, headers=[mls.UI_GENERIC_NAME], scrolltotop=not getattr(wnd, 'personalshown', 0), noContentHint=mls.UI_SHARED_YOUDONTKNOWANYAGENTS)
-        setattr(wnd, 'personalshown', 1)
-        if wnd is not None and not wnd.destroyed:
-            wnd.HideLoad()
-
-
-
-    def _GetAgentScrollData(self):
-        scrollData = []
-        groups = uicore.registry.GetListGroups('agentgroups')
-        for g in groups.iteritems():
-            key = g[0]
-            data = util.KeyVal(g[1])
-            if key == 'all':
-                data.logo = '_22_41'
-                data.sortBy = ['  1', '  2'][(key == 'allcorps')]
-                data.groupItems = self.agents
-            else:
-                data.logo = 'ui_22_32_32'
-                data.sortBy = data.label
-                data.state = None
-                data.groupItems = filter(lambda charID: charID in self.agents, data.groupItems)
-            scrollData.append(data)
-
-        return scrollData
-
-
-
-    def DropInBuddyGroup(self, listID_groupID, nodes, *args):
-        ids = []
-        for node in nodes:
-            if node.Get('__guid__', None) in ('listentry.User', 'listentry.Sender') and node.itemID != session.charid:
-                self.AddToPersonal(node.itemID, None, refresh=node == nodes[-1])
-            currentListGroupID = node.Get('listGroupID', None)
-            ids.append((node.itemID, currentListGroupID, listID_groupID))
-
-        for (itemID, currentListGroupID, listID_groupID,) in ids:
-            if currentListGroupID and itemID:
-                uicore.registry.RemoveFromListGroup(currentListGroupID, itemID)
-            uicore.registry.AddToListGroup(listID_groupID, itemID)
-
-        uicore.registry.ReloadGroupWindow(listID_groupID)
-        self.RefreshWindow()
-
-
-
-    def GetAgentsSubContent(self, nodedata, newitems = 0):
-        if not len(nodedata.groupItems):
-            return []
-        charsToPrime = []
-        for charID in nodedata.groupItems:
-            charsToPrime.append(charID)
-
-        cfg.eveowners.Prime(charsToPrime)
-        scrolllist = []
-        for charID in nodedata.groupItems:
-            if charID in self.agents:
-                scrolllist.append(listentry.Get('User', {'listGroupID': nodedata.id,
-                 'charID': charID,
-                 'info': cfg.eveowners.Get(charID)}))
-
-        return scrolllist
-
-
-
-    def ShowPlaces(self):
-        self.semaphore.acquire()
-        wnd = self.GetWnd()
-        try:
-            if wnd is not None and not wnd.destroyed:
-                wnd.ShowLoad()
-            else:
-                return 
-            try:
-                wnd.sr.bookmarkbtns.state = uiconst.UI_PICKCHILDREN
-                places = self.GetMapBookmarks()
-                bookmarkIDs = []
-                locations = []
-                for each in places:
-                    locations.append(each.itemID)
-                    bookmarkIDs.append(each.bookmarkID)
-
-                if len(locations):
-                    cfg.evelocations.Prime(locations, 0)
-                scrolllist = []
-                idsInGroups = []
-                headers = [mls.UI_GENERIC_LABEL,
-                 mls.UI_GENERIC_TYPE,
-                 mls.UI_GENERIC_JUMPS,
-                 mls.UI_GENERIC_SOLARSYSTEMSHORT,
-                 mls.UI_GENERIC_CONSTELLATIONSHORT,
-                 mls.UI_GENERIC_REGIONSHORT,
-                 mls.UI_GENERIC_DATE]
-                missiongroupState = uicore.registry.GetListGroupOpenState(('missiongroups', 'agentmissions'))
-                agentGroup = uicore.registry.GetLockedGroup('missiongroups', 'agentmissions', mls.UI_SHARED_AGENTMISSIONS, openState=missiongroupState)
-                (ok, _idsInGroups,) = self.GetAgentMissionItems(places)
-                idsInGroups += _idsInGroups
-                data = {'GetSubContent': self.GetPlacesSubContent_AgentMissions,
-                 'DropData': self.DropInPlacesGroup_Agent,
-                 'RefreshScroll': self.RefreshWindow,
-                 'label': agentGroup['label'],
-                 'id': agentGroup['id'],
-                 'groupItems': ok,
-                 'headers': headers,
-                 'iconMargin': 18,
-                 'showlen': 0,
-                 'state': 'locked',
-                 'BlockOpenWindow': 1,
-                 'allowGuids': ['listentry.PlaceEntry', 'xtriui.InvItem', 'listentry.InvItem']}
-                scrolllist.append(('   ', listentry.Get('Group', data)))
-                for group in uicore.registry.GetListGroups('places2_%s' % session.charid).itervalues():
-                    if not group:
-                        continue
-                    all = group['groupItems'][:]
-                    ok = filter(lambda bookmarkID: bookmarkID in bookmarkIDs and not (type(bookmarkID) == types.TupleType and bookmarkID[0] == 'agentmissions'), group['groupItems'])
-                    for each in ok:
-                        idsInGroups.append(each)
-
-                    data = {'GetSubContent': self.GetPlacesSubContent,
-                     'DropData': self.DropInPlacesGroup,
-                     'DeleteCallback': self.OnGroupDeleted,
-                     'RefreshScroll': self.RefreshWindow,
-                     'label': group['label'],
-                     'id': group['id'],
-                     'groupItems': ok,
-                     'headers': headers,
-                     'iconMargin': 18,
-                     'showlen': 0,
-                     'posttext': ' [%s]' % len(ok),
-                     'allowGuids': ['listentry.PlaceEntry', 'xtriui.InvItem', 'listentry.InvItem']}
-                    scrolllist.append((group['label'].lower(), listentry.Get('Group', data)))
-
-                scrolllist = uiutil.SortListOfTuples(scrolllist)
-                scrolllist += self.GetPlacesScrollList([ place for place in places if place.bookmarkID not in idsInGroups ], None)
-                wnd.sr.scroll.sr.iconMargin = 18
-                scrollToProportion = 0
-                if getattr(self, 'lastTab', '') == 'places':
-                    scrollToProportion = wnd.sr.scroll.GetScrollProportion()
-                wnd.sr.scroll.Load(contentList=scrolllist, fixedEntryHeight=None, headers=headers, scrollTo=scrollToProportion, noContentHint=mls.UI_SHARED_NOKNOWNPLACES)
-
-            finally:
-                if wnd is not None and not wnd.destroyed:
-                    wnd.HideLoad()
-
-
-        finally:
-            self.semaphore.release()
-
-
-
-
-    def GetAgentMissionItems(self, places = None):
-        ok = []
-        idsInGroups = []
-        places = places or self.GetMapBookmarks()
-        for place in places:
-            if type(place.bookmarkID) == types.TupleType and place.bookmarkID[0] == 'agentmissions':
-                ok.append(place)
-                idsInGroups.append(place.bookmarkID)
-
-        return (ok, idsInGroups)
-
-
-
     def OnGroupDeleted(self, ids):
         if len(ids):
             self.DeleteBookmarks(ids, 0)
-
-
-
-    def DropInPlacesGroup_Agent(self, listID_groupID, nodes, *args):
-        pass
-
-
-
-    def DropInPlacesGroup(self, listID_groupID, nodes, *args):
-        wnd = self.GetWnd()
-        if wnd is not None and not wnd.destroyed:
-            wnd.ShowLoad()
-        try:
-            refresh = 0
-            for node in nodes:
-                if node.Get('__guid__', None) in ('xtriui.InvItem', 'listentry.InvItem') and node.rec.typeID == const.typeBookmark and node.rec.ownerID == session.charid:
-                    bookmark = sm.GetService('sessionMgr').PerformSessionLockedOperation('bookmarking', sm.RemoteSvc('bookmark').AddBookmarkFromVoucher, node.rec.itemID, violateSafetyTimer=True)
-                    if bookmark:
-                        self.OnBookmarkAdd(bookmark)
-                        uicore.registry.AddToListGroup(listID_groupID, bookmark.bookmarkID)
-                        uicore.registry.ReloadGroupWindow(listID_groupID)
-                        refresh = 1
-                elif node.Get('__guid__', None) == 'listentry.PlaceEntry':
-                    listgroupID = node.listGroupID
-                    whatID = node.bm.bookmarkID
-                    if whatID and listgroupID:
-                        uicore.registry.RemoveFromListGroup(listgroupID, whatID)
-                        uicore.registry.ReloadGroupWindow(listgroupID)
-                    uicore.registry.AddToListGroup(listID_groupID, whatID)
-                    uicore.registry.ReloadGroupWindow(listID_groupID)
-                    refresh = 1
-
-            if refresh:
-                self.RefreshWindow()
-
-        finally:
-            if wnd is not None and not wnd.destroyed:
-                wnd.HideLoad()
-
-
-
-
-    def GetPlacesSubContent_AgentMissions(self, nodedata, newitems = 0):
-        if newitems:
-            nodedata.groupItems = self.GetAgentMissionItems()
-        agentMenu = sm.GetService('journal').GetMyAgentJournalBookmarks()
-        scrolllist = []
-        headers = [mls.UI_GENERIC_LABEL,
-         mls.UI_GENERIC_TYPE,
-         mls.UI_GENERIC_DATE,
-         mls.UI_GENERIC_SOLARSYSTEMSHORT,
-         mls.UI_GENERIC_CONSTELLATIONSHORT,
-         mls.UI_GENERIC_REGIONSHORT]
-        if agentMenu:
-            for (missionName, bms, agentID,) in agentMenu:
-                if bms:
-                    data = {'GetSubContent': self.GetPlacesSubContent_AgentMissions2,
-                     'DropData ': self.DropInPlacesGroup_Agent,
-                     'RefreshScroll': self.RefreshWindow,
-                     'label': missionName,
-                     'id': (missionName + '%s' % agentID, missionName),
-                     'groupItems': nodedata.groupItems,
-                     'headers': headers,
-                     'iconMargin': 18,
-                     'showlen': 0,
-                     'state': 'locked',
-                     'sublevel': 1,
-                     'BlockOpenWindow': 1,
-                     'allowGuids': ['listentry.PlaceEntry', 'xtriui.InvItem', 'listentry.InvItem']}
-                    scrolllist.append(listentry.Get('Group', data))
-
-        return scrolllist
-
-
-
-    def GetPlacesSubContent_AgentMissions2(self, nodedata, newitems = 0):
-        if newitems:
-            nodedata.groupItems = self.GetAgentMissionItems()
-        places = self.GetMapBookmarks()
-        groupID = nodedata.id
-        places = [ bookmark for bookmark in nodedata.groupItems if type(bookmark.bookmarkID) == types.TupleType if bookmark.bookmarkID[0] == 'agentmissions' if bookmark.missionName == groupID[0] ]
-        return self.GetPlacesScrollList(places, groupID, agents=1)
-
-
-
-    def GetPlacesSubContent(self, nodedata, newitems = 0):
-        if newitems:
-            groups = uicore.registry.GetListGroups('places2_%s' % session.charid)
-            group = groups[str(nodedata.id[1])]
-            nodedata.groupItems = group['groupItems'][:]
-        if not len(nodedata.groupItems):
-            return []
-        places = self.GetMapBookmarks()
-        groupID = nodedata.id
-        places = [ bookmark for bookmark in places if bookmark.bookmarkID in nodedata.groupItems if not (type(bookmark.bookmarkID) == types.TupleType and bookmark.bookmarkID[0] == 'agentmissions') ]
-        locations = []
-        for each in places:
-            locations.append(each.itemID)
-
-        if len(locations):
-            cfg.evelocations.Prime(locations)
-        return self.GetPlacesScrollList(places, groupID)
-
-
-
-    def GetPlacesScrollList(self, places, groupID, agents = 0):
-        scrolllist = []
-        for bookmark in places:
-            (hint, comment,) = self.UnzipMemo(bookmark.memo)
-            (sol, con, reg,) = self.GetSolConReg(bookmark)
-            typename = cfg.invgroups.Get(cfg.invtypes.Get(bookmark.typeID).groupID).name
-            date = util.FmtDate(bookmark.created, 'ls')
-            if bookmark and (bookmark.itemID == bookmark.locationID or bookmark.typeID == const.typeSolarSystem) and bookmark.x:
-                typename = mls.UI_GENERIC_COORDINATE
-            jumps = 0.0
-            if 40000000 > bookmark.itemID > 30000000:
-                jumps = sm.GetService('pathfinder').GetJumpCountFromCurrent(bookmark.itemID)
-            elif 40000000 > bookmark.locationID > 30000000:
-                jumps = sm.GetService('pathfinder').GetJumpCountFromCurrent(bookmark.locationID)
-            text = '%s<t>%s<t>%d<t>%s<t>%s<t>%s<t>%s' % (hint,
-             typename,
-             jumps,
-             sol,
-             con,
-             reg,
-             date)
-            sublevel = 2 if agents == 1 else [1, 0][(groupID is None)]
-            data = {'bm': bookmark,
-             'itemID': bookmark.bookmarkID,
-             'tabs': [],
-             'hint': hint,
-             'comment': comment,
-             'label': text,
-             'sublevel': sublevel,
-             'listGroupID': groupID}
-            scrolllist.append(listentry.Get('PlaceEntry', data))
-
-        return scrolllist
-
-
-
-    def GetSolConReg(self, bookmark):
-        solname = '-'
-        conname = '-'
-        regname = '-'
-        mapSvc = sm.GetService('map')
-        sol = None
-        con = None
-        reg = None
-        try:
-            if const.minSolarSystem < bookmark.locationID <= const.maxSolarSystem:
-                sol = mapSvc.GetItem(bookmark.locationID)
-                con = mapSvc.GetItem(sol.locationID)
-                reg = mapSvc.GetItem(con.locationID)
-            elif const.minConstellation < bookmark.locationID <= const.maxConstellation:
-                sol = mapSvc.GetItem(bookmark.itemID)
-                con = mapSvc.GetItem(sol.locationID)
-                reg = mapSvc.GetItem(con.locationID)
-            elif const.minRegion < bookmark.locationID <= const.maxRegion:
-                con = mapSvc.GetItem(bookmark.itemID)
-                reg = mapSvc.GetItem(con.locationID)
-            elif bookmark.typeID == const.typeRegion:
-                reg = mapSvc.GetItem(bookmark.itemID)
-            if sol is not None:
-                solname = sol.itemName
-            if con is not None:
-                conname = con.itemName
-            if reg is not None:
-                regname = reg.itemName
-
-        finally:
-            return (solname, conname, regname)
-
 
 
 
@@ -1679,7 +955,7 @@ class AddressBookSvc(service.Service):
 
 
     def RenameContactLabelFromUI(self, labelID):
-        ret = uix.NamePopup(mls.UI_EVEMAIL_LABELNAME, mls.UI_EVEMAIL_LABELNAME2, maxLength=const.mailMaxLabelSize, validator=self.CheckLabelName)
+        ret = uix.NamePopup(localization.GetByLabel('UI/PeopleAndPlaces/LabelsLabelName'), localization.GetByLabel('UI/PeopleAndPlaces/LabelsTypeNewLabelName'), maxLength=const.mailMaxLabelSize, validator=self.CheckLabelName)
         if ret is None:
             return 
         name = ret.get('name', '')
@@ -1753,7 +1029,7 @@ class AddressBookSvc(service.Service):
         name = dict.get('name', '').strip().lower()
         myLabelNames = [ label.name.lower() for label in self.GetContactLabels(self.contactType).values() ]
         if name in myLabelNames:
-            return mls.UI_EVEMAIL_LABELNAMETAKEN
+            return localization.GetByLabel('UI/PeopleAndPlaces/LabelsLabelNameTaken')
 
 
 
@@ -1812,16 +1088,14 @@ class AddressBookSvc(service.Service):
                     return 
 
         if len(selIDs) and displayNotify:
-            text = mls.UI_CONTACTS_LABELASSIGNED % {'labelName': labelName,
-             'numMails': len(selIDs)}
+            text = localization.GetByLabel('UI/PeopleAndPlaces/LabelsLabelAssigned', labelName=labelName, contacts=len(selIDs))
             eve.Message('CustomNotify', {'notify': text})
 
 
 
     def RemoveLabelFromMenu(self, selIDs, labelID, labelName):
         self.RemoveLabelFromWnd(selIDs, labelID)
-        text = mls.UI_CONTACTS_LABELREMOVED % {'labelName': labelName,
-         'numMails': len(selIDs)}
+        text = localization.GetByLabel('UI/PeopleAndPlaces/LabelRemoved', labelName=labelName, numContacts=len(selIDs))
         eve.Message('CustomNotify', {'notify': text})
 
 
@@ -1858,7 +1132,7 @@ class AddressBookSvc(service.Service):
             if labelMask & labelID == labelID:
                 continue
             label = each.name
-            m.append((label, (each.name.lower(), self.AssignLabelFromMenu, (selIDs, each.labelID, each.name))))
+            m.append((label, (each.name, self.AssignLabelFromMenu, (selIDs, each.labelID, each.name))))
 
         m = uiutil.SortListOfTuples(m)
         return m
@@ -1942,163 +1216,6 @@ class AddressBookSvc(service.Service):
 
 
 
-class PlaceEntry(uicls.Container):
-    __guid__ = 'listentry.PlaceEntry'
-    __nonpersistvars__ = []
-
-    def Startup(self, *etc):
-        uicls.Line(parent=self, align=uiconst.TOBOTTOM)
-        self.sr.label = uicls.Label(text='', parent=self, left=6, align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED, idx=0, singleline=1)
-        self.sr.icon = uicls.Icon(icon='ui_9_64_1', parent=self, pos=(4, 1, 16, 16), align=uiconst.RELATIVE, ignoreSize=True)
-        self.sr.selection = uicls.Fill(parent=self, padTop=1, padBottom=1, color=(1.0, 1.0, 1.0, 0.125))
-
-
-
-    def Load(self, node):
-        self.sr.node = node
-        data = node
-        self.sr.label.left = 24 + data.Get('sublevel', 0) * 16
-        self.sr.icon.left = 4 + data.Get('sublevel', 0) * 16
-        self.sr.bm = data.bm
-        self.sr.label.text = data.label
-        self.id = self.sr.bm.bookmarkID
-        self.groupID = self.sr.node.listGroupID
-        self.sr.selection.state = (uiconst.UI_HIDDEN, uiconst.UI_DISABLED)[self.sr.node.Get('selected', 0)]
-        if self.sr.bm.itemID and self.sr.bm.itemID == sm.GetService('starmap').GetDestination():
-            self.sr.label.color.SetRGB(1.0, 1.0, 0.0, 1.0)
-        elif self.sr.bm.locationID == session.solarsystemid2:
-            self.sr.label.color.SetRGB(0.5, 1.0, 0.5, 1.0)
-        else:
-            self.sr.label.color.SetRGB(1.0, 1.0, 1.0, 1.0)
-        self.Draggable_blockDrag = 0
-
-
-
-    def GetHeight(_self, *args):
-        (node, width,) = args
-        node.height = uix.GetTextHeight(node.label, autoWidth=1, singleLine=1) + 4
-        return node.height
-
-
-
-    def OnMouseHover(self, *args):
-        uthread.new(self.SetHint)
-
-
-
-    def SetHint(self, *args):
-        if not (self.sr and self.sr.node):
-            return 
-        bookmark = self.sr.node.bm
-        hint = self.sr.node.hint
-        destination = sm.GetService('starmap').GetDestination()
-        if destination is not None and destination == bookmark.itemID:
-            hint += ' (%s)' % mls.UI_SHARED_MAPCURRENTDESTINATION
-        self.sr.hint = hint
-
-
-
-    def OnDblClick(self, *args):
-        sm.GetService('addressbook').EditBookmark(self.sr.bm)
-
-
-
-    def OnClick(self, *args):
-        self.sr.node.scroll.SelectNode(self.sr.node)
-        eve.Message('ListEntryClick')
-        if self.sr.node.Get('OnClick', None):
-            self.sr.node.OnClick(self)
-
-
-
-    def OnMouseExit(self, *args):
-        self.sr.selection.state = (uiconst.UI_HIDDEN, uiconst.UI_DISABLED)[self.sr.node.Get('selected', 0)]
-
-
-
-    def ShowInfo(self, *args):
-        sm.GetService('info').ShowInfo(const.typeBookmark, self.sr.bm.bookmarkID)
-
-
-
-    def GetDragData(self, *args):
-        ret = []
-        for each in self.sr.node.scroll.GetSelectedNodes(self.sr.node):
-            if not hasattr(each, 'itemID'):
-                continue
-            if type(each.itemID) == types.TupleType:
-                self.Draggable_blockDrag = 1
-                eve.Message('CantTradeMissionBookmarks')
-                return []
-            ret.append(each)
-
-        return ret
-
-
-
-    def GetMenu(self):
-        selected = self.sr.node.scroll.GetSelectedNodes(self.sr.node)
-        multi = len(selected) > 1
-        m = []
-        bmIDs = [ entry.bm.bookmarkID for entry in selected if entry.bm ]
-        if session.role & (service.ROLE_GML | service.ROLE_WORLDMOD):
-            bmids = []
-            if len(bmIDs) > 10:
-                text = '%s: [...]' % mls.UI_SHARED_BOOKMARKID
-            else:
-                text = '%s: ' % mls.UI_SHARED_BOOKMARKID + str(bmIDs)
-            m += [(text, self.CopyItemIDToClipboard, (bmIDs,)), None]
-            m.append(None)
-        eve.Message('ListEntryClick')
-        readonly = 0
-        for bmID in bmIDs:
-            if type(bmID) == types.TupleType:
-                readonly = 1
-
-        if not multi:
-            m += sm.GetService('menu').CelestialMenu(selected[0].bm.itemID, bookmark=selected[0].bm)
-            if not readonly:
-                m.append((mls.UI_CMD_EDITVIEWLOCATION, sm.GetService('addressbook').EditBookmark, (selected[0].bm,)))
-        elif not readonly:
-            m.append((mls.UI_CMD_REMOVELOCATION, self.Delete, (bmIDs,)))
-        if self.sr.node.Get('GetMenu', None) is not None:
-            m += self.sr.node.GetMenu(self.sr.node)
-        return m
-
-
-
-    def CopyItemIDToClipboard(self, itemID):
-        blue.pyos.SetClipboardData(str(itemID))
-
-
-
-    def Approach(self, *args):
-        bp = sm.GetService('michelle').GetRemotePark()
-        if bp:
-            bp.GotoBookmark(self.sr.bm.bookmarkID)
-
-
-
-    def WarpTo(self, *args):
-        bp = sm.GetService('michelle').GetRemotePark()
-        if bp:
-            bp.WarpToStuff('bookmark', self.sr.bm.bookmarkID)
-
-
-
-    def Delete(self, bmIDs = None):
-        ids = bmIDs or [ entry.bm.bookmarkID for entry in self.sr.node.scroll.GetSelected() ]
-        if ids:
-            sm.GetService('addressbook').DeleteBookmarks(ids)
-
-
-
-    def OnDropData(self, dragObj, nodes):
-        sm.GetService('addressbook').OnDropData(self, nodes)
-
-
-
-
 class ContactsForm(uicls.Container):
     __guid__ = 'form.ContactsForm'
     __notifyevents__ = ['OnContactChange',
@@ -2115,6 +1232,7 @@ class ContactsForm(uicls.Container):
         self.group = None
         self.contactType = 'contact'
         self.formType = formType
+        self.expandedHeight = False
         self.DrawStuff()
 
 
@@ -2133,7 +1251,7 @@ class ContactsForm(uicls.Container):
          0))
         self.sr.topRight = uicls.Container(name='topCont', parent=self.sr.topCont, align=uiconst.TORIGHT, pos=(0, 0, 50, 0))
         self.sr.quickFilterClear = uicls.Icon(icon='ui_73_16_210', parent=self.sr.topLeft, pos=(82, 9, 16, 16), align=uiconst.TOPLEFT, state=uiconst.UI_HIDDEN)
-        self.sr.quickFilterClear.hint = mls.UI_CMD_CLEAR
+        self.sr.quickFilterClear.hint = localization.GetByLabel('UI/Calendar/Hints/Clear')
         self.sr.quickFilterClear.OnClick = self.ClearQuickFilterInput
         self.sr.quickFilterClear.OnMouseEnter = self.Nothing
         self.sr.quickFilterClear.OnMouseDown = self.Nothing
@@ -2141,26 +1259,26 @@ class ContactsForm(uicls.Container):
         self.sr.quickFilterClear.OnMouseExit = self.Nothing
         self.sr.quickFilterClear.keepselection = False
         self.sr.filter = uicls.SinglelineEdit(name='filter', parent=self.sr.topLeft, maxLength=37, width=100, align=uiconst.TOPLEFT, left=const.defaultPadding, top=8, OnChange=self.SetQuickFilterInput)
-        self.sr.onlinecheck = uicls.Checkbox(text=mls.UI_GENERIC_ONLINEONLY, parent=self.sr.topLeft, configName='onlinebuddyonly', retval=1, checked=settings.user.ui.Get('onlinebuddyonly', 0), groupname=None, callback=self.CheckBoxChange, align=uiconst.TOPLEFT, pos=(0, 30, 100, 0))
+        self.sr.onlinecheck = uicls.Checkbox(text=localization.GetByLabel('UI/PeopleAndPlaces/OnlineOnly'), parent=self.sr.topLeft, configName='onlinebuddyonly', retval=1, checked=settings.user.ui.Get('onlinebuddyonly', 0), groupname=None, callback=self.CheckBoxChange, align=uiconst.TOPLEFT, pos=(0, 30, 100, 0))
         if sm.GetService('addressbook').ShowLabelMenuAndManageBtn(self.formType):
-            labelBtn = uix.GetBigButton(size=32, where=self.sr.topLeft, left=115, top=8, hint=mls.UI_EVEMAIL_LABELMGMT, align=uiconst.RELATIVE)
+            labelBtn = uix.GetBigButton(size=32, where=self.sr.topLeft, left=115, top=8, hint=localization.GetByLabel('UI/PeopleAndPlaces/LabelsManageLabels'), align=uiconst.RELATIVE)
             uiutil.MapIcon(labelBtn.sr.icon, 'ui_94_64_7', ignoreSize=True)
             labelBtn.OnClick = self.ManageLabels
         btn = uix.GetBigButton(24, self.sr.topRight, 32, const.defaultPadding)
         btn.OnClick = (self.BrowseContacts, -1)
-        btn.hint = mls.UI_GENERIC_PREVIOUS
+        btn.hint = localization.GetByLabel('UI/Common/Previous')
         btn.state = uiconst.UI_HIDDEN
         btn.SetAlign(align=uiconst.TOPRIGHT)
         btn.sr.icon.LoadIcon('ui_23_64_1')
         self.sr.contactBackBtn = btn
         btn = uix.GetBigButton(24, self.sr.topRight, const.defaultPadding, const.defaultPadding)
         btn.OnClick = (self.BrowseContacts, 1)
-        btn.hint = mls.UI_CMD_NEXT
+        btn.hint = localization.GetByLabel('UI/Common/Next')
         btn.state = uiconst.UI_HIDDEN
         btn.SetAlign(uiconst.TOPRIGHT)
         btn.sr.icon.LoadIcon('ui_23_64_2')
         self.sr.contactFwdBtn = btn
-        self.sr.pageCount = uicls.Label(text='', parent=self.sr.topRight, left=10, top=30, state=uiconst.UI_DISABLED, align=uiconst.CENTERTOP)
+        self.sr.pageCount = uicls.EveLabelMedium(text='', parent=self.sr.topRight, left=10, top=30, state=uiconst.UI_DISABLED, align=uiconst.CENTERTOP)
         leftContWidth = settings.user.ui.Get('contacts_leftContWidth', 110)
         self.sr.leftCont = uicls.Container(name='leftCont', parent=self.sr.mainCont, align=uiconst.TOLEFT, pos=(const.defaultPadding,
          0,
@@ -2195,9 +1313,9 @@ class ContactsForm(uicls.Container):
         scrolllist.append(listentry.Get('Space', {'height': 16}))
         data = {'GetSubContent': self.GetLabelsSubContent,
          'MenuFunction': self.LabelGroupMenu,
-         'label': mls.UI_EVEMAIL_LABELS,
-         'cleanLabel': mls.UI_EVEMAIL_LABELS,
-         'id': ('contacts', 'Labels', mls.UI_EVEMAIL_LABELS),
+         'label': localization.GetByLabel('UI/PeopleAndPlaces/Labels'),
+         'cleanLabel': localization.GetByLabel('UI/PeopleAndPlaces/Labels'),
+         'id': ('contacts', 'Labels', localization.GetByLabel('UI/PeopleAndPlaces/Labels')),
          'state': 'locked',
          'BlockOpenWindow': 1,
          'showicon': 'ui_73_16_9',
@@ -2228,6 +1346,20 @@ class ContactsForm(uicls.Container):
             panel = entry.panel
             if panel is not None:
                 panel.OnClick()
+
+
+
+    def GetStandingNameShort(self, standing):
+        if standing == const.contactHighStanding:
+            return localization.GetByLabel('UI/PeopleAndPlaces/StandingExcellent')
+        if standing == const.contactGoodStanding:
+            return localization.GetByLabel('UI/PeopleAndPlaces/StandingGood')
+        if standing == const.contactNeutralStanding:
+            return localization.GetByLabel('UI/PeopleAndPlaces/StandingNeutral')
+        if standing == const.contactBadStanding:
+            return localization.GetByLabel('UI/PeopleAndPlaces/StandingBad')
+        if standing == const.contactHorribleStanding:
+            return localization.GetByLabel('UI/PeopleAndPlaces/StandingTerrible')
 
 
 
@@ -2265,33 +1397,31 @@ class ContactsForm(uicls.Container):
         labelID = entry.sr.node.currentView
         m = []
         if sm.GetService('addressbook').ShowLabelMenuAndManageBtn(self.formType):
-            m.append((mls.UI_EVEMAIL_RENAMELABEL, sm.GetService('addressbook').RenameContactLabelFromUI, (labelID,)))
+            m.append((localization.GetByLabel('UI/PeopleAndPlaces/LabelsRename'), sm.GetService('addressbook').RenameContactLabelFromUI, (labelID,)))
             m.append(None)
-            m.append((mls.UI_CMD_DELETE, sm.GetService('addressbook').DeleteContactLabelFromUI, (labelID, entry.sr.node.label)))
+            m.append((localization.GetByLabel('UI/PeopleAndPlaces/LabelsDelete'), sm.GetService('addressbook').DeleteContactLabelFromUI, (labelID, entry.sr.node.label)))
         return m
 
 
 
     def ManageLabels(self, *args):
         configName = '%s%s' % ('ManageLabels', self.formType)
-        wnd = sm.GetService('window').GetWindow(configName, 1, decoClass=form.ManageLabels, labelType=self.formType)
-        if wnd is not None:
-            wnd.Maximize()
+        form.ManageLabels.Open(windowID=configName, labelType=self.formType)
 
 
 
     def GetStaticLabelsGroups(self):
         scrolllist = []
-        labelList = [(mls.UI_CONTACTS_ALL, const.contactAll),
-         (mls.UI_CONTACTS_HIGHSTANDING, const.contactHighStanding),
-         (mls.UI_CONTACTS_GOODSTANDING, const.contactGoodStanding),
-         (mls.UI_CONTACTS_NEUTRALSTANDING, const.contactNeutralStanding),
-         (mls.UI_CONTACTS_BADSTANDING, const.contactBadStanding),
-         (mls.UI_CONTACTS_HORRIBLESTANDING, const.contactHorribleStanding)]
+        labelList = [(localization.GetByLabel('UI/PeopleAndPlaces/AllContacts'), const.contactAll),
+         (localization.GetByLabel('UI/PeopleAndPlaces/ExcellentStanding'), const.contactHighStanding),
+         (localization.GetByLabel('UI/PeopleAndPlaces/GoodStanding'), const.contactGoodStanding),
+         (localization.GetByLabel('UI/PeopleAndPlaces/NeutralStanding'), const.contactNeutralStanding),
+         (localization.GetByLabel('UI/PeopleAndPlaces/BadStanding'), const.contactBadStanding),
+         (localization.GetByLabel('UI/PeopleAndPlaces/TerribleStanding'), const.contactHorribleStanding)]
         if self.contactType == 'contact':
-            labelList.append((mls.UI_CONTACTS_WATCHLIST, const.contactWatchlist))
-            labelList.append((mls.UI_CONTACTS_BLOCKED, const.contactBlocked))
-            labelList.insert(0, (mls.UI_EVEMAIL_NOTIFICATIONS, const.contactNotifications))
+            labelList.append((localization.GetByLabel('UI/PeopleAndPlaces/Watchlist'), const.contactWatchlist))
+            labelList.append((localization.GetByLabel('UI/PeopleAndPlaces/Blocked'), const.contactBlocked))
+            labelList.insert(0, (localization.GetByLabel('UI/PeopleAndPlaces/Notifications'), const.contactNotifications))
             lastViewedID = settings.char.ui.Get('contacts_lastselected', None)
         elif self.contactType == 'corpcontact':
             lastViewedID = settings.char.ui.Get('corpcontacts_lastselected', None)
@@ -2442,22 +1572,31 @@ class ContactsForm(uicls.Container):
 
 
 
+    def GetLabelName(self, labelID, *args):
+        labels = sm.GetService('addressbook').GetContactLabels(self.contactType).values()
+        for label in labels:
+            if labelID == label.labelID:
+                return label.name
+
+
+
+
     def GetScrolllist(self, data):
         scrolllist = []
-        noContentHint = mls.UI_CONTACTS_NOCONTACTS
+        noContentHint = localization.GetByLabel('UI/PeopleAndPlaces/NoContacts')
         onlineOnly = False
         headers = True
         reverse = False
         if self.contactType == 'contact':
             settings.char.ui.Set('contacts_lastselected', data.groupID)
             onlineOnly = settings.user.ui.Get('onlinebuddyonly', 0)
-            noContentHint = mls.UI_CONTACTS_NOCONTACTS
+            noContentHint = localization.GetByLabel('UI/PeopleAndPlaces/NoContacts')
         elif self.contactType == 'corpcontact':
             settings.char.ui.Set('corpcontacts_lastselected', data.groupID)
-            noContentHint = mls.UI_CONTACTS_CORPNOCONTACTS
+            noContentHint = localization.GetByLabel('UI/PeopleAndPlaces/NoCorpContacts')
         elif self.contactType == 'alliancecontact':
             settings.char.ui.Set('alliancecontacts_lastselected', data.groupID)
-            noContentHint = mls.UI_CONTACTS_ALLIANCENOCONTACTS
+            noContentHint = localization.GetByLabel('UI/PeopleAndPlaces/NoAllianceContacts')
         if data.groupID == const.contactWatchlist:
             self.sr.rightScroll.multiSelect = 1
             for contact in self.contacts:
@@ -2466,7 +1605,7 @@ class ContactsForm(uicls.Container):
                     if entryTuple is not None:
                         scrolllist.append(entryTuple)
 
-            noContentHint = mls.UI_SHARED_NONEONWATCHLIST
+            noContentHint = localization.GetByLabel('UI/PeopleAndPlaces/NoneOnWatchlist')
         elif data.groupID == const.contactBlocked:
             self.sr.rightScroll.multiSelect = 1
             for blocked in self.blocked:
@@ -2475,7 +1614,7 @@ class ContactsForm(uicls.Container):
                     if entryTuple is not None:
                         scrolllist.append(entryTuple)
 
-            noContentHint = mls.UI_SHARED_NONEBLOCKEDYET
+            noContentHint = localization.GetByLabel('UI/PeopleAndPlaces/NoneBlockedYet')
         elif data.groupID == const.contactAll:
             self.sr.rightScroll.multiSelect = 1
             for contact in self.contacts:
@@ -2491,7 +1630,7 @@ class ContactsForm(uicls.Container):
 
             headers = False
             reverse = True
-            noContentHint = mls.UI_CONTACTS_NONOTIFICATIONS
+            noContentHint = localization.GetByLabel('UI/PeopleAndPlaces/NoNotifications')
         elif data.groupID in (const.contactGoodStanding,
          const.contactHighStanding,
          const.contactNeutralStanding,
@@ -2505,12 +1644,13 @@ class ContactsForm(uicls.Container):
                         if entryTuple is not None:
                             scrolllist.append(entryTuple)
 
+            standingText = self.GetStandingNameShort(data.groupID)
             if self.contactType == 'contact':
-                noContentHint = mls.UI_CONTACTS_NOCONTACTSSTANDINGS % {'standing': data.cleanLabel}
+                noContentHint = localization.GetByLabel('UI/PeopleAndPlaces/NoContactsStanding', standingText=standingText)
             elif self.contactType == 'corpcontact':
-                noContentHint = mls.UI_CONTACTS_CORPNOCONTACTSSTANDING % {'standing': data.cleanLabel}
+                noContentHint = localization.GetByLabel('UI/PeopleAndPlaces/NoCorpContactsStanding', standingText=standingText)
             elif self.contactType == 'alliancecontact':
-                noContentHint = mls.UI_CONTACTS_ALLIANCENOCONTACTSSTANDING % {'standing': data.cleanLabel}
+                noContentHint = localization.GetByLabel('UI/PeopleAndPlaces/NoAllianceContactsStanding', standingText=standingText)
         else:
             self.sr.rightScroll.multiSelect = 1
             for contact in self.contacts:
@@ -2520,11 +1660,11 @@ class ContactsForm(uicls.Container):
                         if entryTuple is not None:
                             scrolllist.append(entryTuple)
 
-            noContentHint = mls.UI_CONTACTS_NOCONTACTSSTANDINGS % {'standing': data.cleanLabel}
+            noContentHint = localization.GetByLabel('UI/PeopleAndPlaces/NoContactsLabel', standingText=self.GetLabelName(data.groupID))
         if onlineOnly:
-            noContentHint = mls.UI_CONTACTS_NOONLINECONTACT
+            noContentHint = localization.GetByLabel('UI/PeopleAndPlaces/NoOnlineContact')
         if len(self.sr.filter.GetValue()):
-            noContentHint = mls.UI_GENERIC_NOTHINGFOUND
+            noContentHint = localization.GetByLabel('UI/Common/NothingFound')
         totalNum = len(scrolllist)
         scrolllist = uiutil.SortListOfTuples(scrolllist, reverse)
         scrolllist = scrolllist[self.startPos:(self.startPos + self.numContacts)]
@@ -2537,11 +1677,11 @@ class ContactsForm(uicls.Container):
 
     def LoadGroupFromNode(self, data, *args):
         if self.formType == 'alliancecontact' and session.allianceid is None:
-            self.sr.rightScroll.Load(fixedEntryHeight=19, contentList=[], noContentHint=mls.UI_CORP_OWNERNOTINANYALLIANCE % {'owner': cfg.eveowners.Get(eve.session.corpid).ownerName})
+            self.sr.rightScroll.Load(fixedEntryHeight=19, contentList=[], noContentHint=localization.GetByLabel('UI/PeopleAndPlaces/OwnerNotInAnyAlliance', corpName=cfg.eveowners.Get(session.corpid).ownerName))
             return 
         (scrolllist, noContentHint, totalNum, displayHeaders,) = self.GetScrolllist(data)
         if displayHeaders:
-            headers = [mls.UI_GENERIC_NAME]
+            headers = [localization.GetByLabel('UI/Common/Name')]
         else:
             headers = []
         self.sr.rightScroll.Load(contentList=scrolllist, headers=headers, noContentHint=noContentHint)
@@ -2569,7 +1709,7 @@ class ContactsForm(uicls.Container):
 
     def LabelGroupMenu(self, node, *args):
         m = []
-        m.append((mls.UI_EVEMAIL_LABELMGMT, self.ManageLabels))
+        m.append((localization.GetByLabel('UI/PeopleAndPlaces/ManageLabels'), self.ManageLabels))
         return m
 
 
@@ -2580,7 +1720,7 @@ class ContactsForm(uicls.Container):
 
 
     def _SetQuickFilterInput(self):
-        blue.synchro.Sleep(400)
+        blue.synchro.SleepWallclock(400)
         filter = self.sr.filter.GetValue()
         if len(filter) > 0:
             self.quickFilterInput = filter.lower()
@@ -2655,8 +1795,9 @@ class ContactsForm(uicls.Container):
             self.sr.contactFwdBtn.state = uiconst.UI_NORMAL
             btnDisplayed = 1
         if btnDisplayed:
-            if self.sr.onlinecheck.state == uiconst.UI_HIDDEN:
+            if self.sr.onlinecheck.state == uiconst.UI_HIDDEN and not self.expandedHeight:
                 self.sr.topCont.height += 10
+                self.expandedHeight = True
             numPages = int(math.ceil(totalNum / float(self.numContacts)))
             currentPage = self.startPos / self.numContacts + 1
             self.sr.pageCount.text = '%s/%s' % (currentPage, numPages)
@@ -2740,7 +1881,7 @@ class ContactManagementWnd(uicls.Window):
         watchlist = attributes.watchlist
         isContact = attributes.isContact
         self.result = None
-        self.SetCaption(mls.UI_CONTACTS_CONTACTMANAGEMENT)
+        self.SetCaption(localization.GetByLabel('UI/PeopleAndPlaces/ContactManagement'))
         self.minHeight = 105
         self.SetMinSize([250, self.minHeight])
         self.MakeUnResizeable()
@@ -2772,31 +1913,20 @@ class ContactManagementWnd(uicls.Window):
         splitter = uicls.Container(name='splitter', parent=topRightCont, align=uiconst.TOTOP, pos=(0, 0, 0, 1), padding=(0, 0, 0, 0))
         uicls.Line(parent=splitter, align=uiconst.TOBOTTOM)
         levelCont = uicls.Container(name='levelCont', parent=topRightCont, align=uiconst.TOTOP, pos=(0, 0, 0, 55), padding=(0, 0, 0, 0))
-        self.standingList = {const.contactHighStanding: mls.UI_CONTACTS_HIGHSTANDING,
-         const.contactGoodStanding: mls.UI_CONTACTS_GOODSTANDING,
-         const.contactNeutralStanding: mls.UI_CONTACTS_NEUTRALSTANDING,
-         const.contactBadStanding: mls.UI_CONTACTS_BADSTANDING,
-         const.contactHorribleStanding: mls.UI_CONTACTS_HORRIBLESTANDING}
+        self.standingList = {const.contactHighStanding: localization.GetByLabel('UI/PeopleAndPlaces/ExcellentStanding'),
+         const.contactGoodStanding: localization.GetByLabel('UI/PeopleAndPlaces/GoodStanding'),
+         const.contactNeutralStanding: localization.GetByLabel('UI/PeopleAndPlaces/NeutralStanding'),
+         const.contactBadStanding: localization.GetByLabel('UI/PeopleAndPlaces/BadStanding'),
+         const.contactHorribleStanding: localization.GetByLabel('UI/PeopleAndPlaces/TerribleStanding')}
         levelList = self.standingList.keys()
         levelList.sort()
         levelText = self.standingList.get(self.level)
-        self.levelText = uicls.Label(text=levelText, parent=levelCont, left=0, top=2, align=uiconst.TOPLEFT, width=170, autowidth=0, state=uiconst.UI_DISABLED, idx=0, letterspace=2, uppercase=1)
-        for (i, relationshipLevel,) in enumerate(levelList):
-            leftPos = i * 26
-            contName = 'level%d' % i
-            level = uicls.StandingsContainer(name=contName, parent=levelCont, align=uiconst.TOPLEFT, pos=(leftPos,
-             20,
-             20,
-             20), level=relationshipLevel, text=self.standingList.get(relationshipLevel), windowName='contactmanagement')
-            setattr(self.sr, contName, level)
-            level.OnClick = (self.LevelOnClick, relationshipLevel, level)
-            if self.level == relationshipLevel:
-                level.sr.selected.state = uiconst.UI_DISABLED
-                uicore.registry.SetFocus(level)
-
+        self.levelText = uicls.EveLabelMedium(text=levelText, parent=levelCont, height=14, align=uiconst.TOTOP, state=uiconst.UI_DISABLED, idx=0)
+        self.levelSelector = uicls.StandingLevelSelector(name='levelCont', parent=levelCont, align=uiconst.TOTOP, height=55, padTop=4, level=self.level)
+        self.levelSelector.OnStandingLevelSelected = self.OnStandingLevelSelected
         charName = cfg.eveowners.Get(self.entityID).name
         uiutil.GetOwnerLogo(imgCont, self.entityID, size=64, noServerCall=True)
-        label = uicls.Label(text=charName, parent=nameCont, left=0, top=0, align=uiconst.TOPLEFT, width=170, autowidth=False, state=uiconst.UI_DISABLED, idx=0, letterspace=2, uppercase=1)
+        label = uicls.EveLabelMedium(text=charName, parent=nameCont, left=0, top=2, align=uiconst.TOPLEFT, width=170, state=uiconst.UI_DISABLED, idx=0)
         nameCont.state = uiconst.UI_DISABLED
         nameCont.height = label.height + 5
         self.minHeight += nameCont.height
@@ -2814,20 +1944,20 @@ class ContactManagementWnd(uicls.Window):
              const.defaultPadding), state=uiconst.UI_HIDDEN)
             notifyCont = uicls.Container(name='notifyCont', parent=bottomCont, align=uiconst.TOTOP, pos=(0, 0, 0, 95), padding=(0, 0, 0, 0))
             cbCont.state = uiconst.UI_NORMAL
-            self.inWatchlistCb = uicls.Checkbox(text=mls.UI_CONTACTS_ADDTOWATCHLIST, parent=cbCont, configName='inWatchlistCb', retval=0, checked=self.watchlist, align=uiconst.TOPLEFT, pos=(0, 0, 210, 0))
-            self.sendNotificationCb = uicls.Checkbox(text=mls.UI_CONTACTS_SENDNOTIFICATION % {'contactName': charName}, parent=notifyCont, configName='sendNotificationCb', retval=0, checked=0, align=uiconst.TOPLEFT, pos=(0, 0, 210, 0))
+            self.inWatchlistCb = uicls.Checkbox(text=localization.GetByLabel('UI/PeopleAndPlaces/AddContactToWatchlist'), parent=cbCont, configName='inWatchlistCb', retval=0, checked=self.watchlist, align=uiconst.TOPLEFT, pos=(0, 0, 210, 0))
+            self.sendNotificationCb = uicls.Checkbox(text=localization.GetByLabel('UI/PeopleAndPlaces/SendNotificationTo', contactName=charName), parent=notifyCont, configName='sendNotificationCb', retval=0, checked=0, align=uiconst.TOPLEFT, pos=(0, 0, 210, 0))
             self.message = uicls.EditPlainText(setvalue='', parent=notifyCont, align=uiconst.TOALL, maxLength=120, top=26)
             self.minHeight += 120
-        btnText = mls.UI_SHARED_ADDCONTACT
+        btnText = localization.GetByLabel('UI/PeopleAndPlaces/AddContact')
         if self.isContact:
-            btnText = mls.UI_CONTACTS_EDITCONTACT
+            btnText = localization.GetByLabel('UI/PeopleAndPlaces/EditContact')
         self.btnGroup = uicls.ButtonGroup(btns=[[btnText,
           self.Confirm,
           (),
           81,
           1,
           1,
-          0], [mls.UI_CMD_CANCEL,
+          0], [localization.GetByLabel('UI/Common/Buttons/Cancel'),
           self.Cancel,
           (),
           81,
@@ -2835,19 +1965,14 @@ class ContactManagementWnd(uicls.Window):
           0,
           0]], parent=self.sr.main, idx=0)
         if self.level is None:
-            self.levelText.text = mls.UI_CONTACTS_SELECTSTANDING
+            self.levelText.text = localization.GetByLabel('UI/PeopleAndPlaces/SelectStanding')
             btn = self.btnGroup.GetBtnByLabel(btnText)
             uicore.registry.SetFocus(btn)
         uthread.new(self.SetWindowSize)
 
 
 
-    def LevelOnClick(self, level, container, *args):
-        for i in xrange(0, 5):
-            cont = self.sr.Get('level%d' % i)
-            cont.sr.selected.state = uiconst.UI_HIDDEN
-
-        container.sr.selected.state = uiconst.UI_DISABLED
+    def OnStandingLevelSelected(self, level):
         self.level = level
         self.levelText.text = self.standingList.get(self.level)
 
@@ -2897,7 +2022,7 @@ class ContactManagementMultiEditWnd(uicls.Window):
         entityIDs = attributes.entityIDs
         contactType = attributes.contactType
         self.result = None
-        self.SetCaption(mls.UI_CONTACTS_CONTACTMANAGEMENT)
+        self.SetCaption(localization.GetByLabel('UI/PeopleAndPlaces/ContactManagement'))
         self.minHeight = 105
         self.SetMinSize([250, self.minHeight])
         self.MakeUnResizeable()
@@ -2918,48 +2043,45 @@ class ContactManagementMultiEditWnd(uicls.Window):
         nameCont = uicls.Container(name='nameCont', parent=topCont, align=uiconst.TOTOP, pos=(0, 0, 0, 20), padding=(0, 0, 0, 0))
         splitter = uicls.Container(name='splitter', parent=topCont, align=uiconst.TOTOP, pos=(0, 0, 0, 1), padding=(0, 0, 0, 0))
         uicls.Line(parent=splitter, align=uiconst.TOBOTTOM)
-        levelCont = uicls.Container(name='levelCont', parent=topCont, align=uiconst.TOTOP, pos=(0, 0, 0, 50), padding=(0, 0, 0, 0))
-        self.standingList = {const.contactHighStanding: mls.UI_CONTACTS_HIGHSTANDING,
-         const.contactGoodStanding: mls.UI_CONTACTS_GOODSTANDING,
-         const.contactNeutralStanding: mls.UI_CONTACTS_NEUTRALSTANDING,
-         const.contactBadStanding: mls.UI_CONTACTS_BADSTANDING,
-         const.contactHorribleStanding: mls.UI_CONTACTS_HORRIBLESTANDING}
+        levelCont = uicls.Container(name='levelCont', parent=topCont, align=uiconst.TOTOP, pos=(0, 2, 0, 55), padding=(0, 0, 0, 0))
+        self.standingList = {const.contactHighStanding: localization.GetByLabel('UI/PeopleAndPlaces/ExcellentStanding'),
+         const.contactGoodStanding: localization.GetByLabel('UI/PeopleAndPlaces/GoodStanding'),
+         const.contactNeutralStanding: localization.GetByLabel('UI/PeopleAndPlaces/NeutralStanding'),
+         const.contactBadStanding: localization.GetByLabel('UI/PeopleAndPlaces/BadStanding'),
+         const.contactHorribleStanding: localization.GetByLabel('UI/PeopleAndPlaces/TerribleStanding')}
         levelList = self.standingList.keys()
         levelList.sort()
         levelText = self.standingList.get(self.level)
-        self.levelText = uicls.Label(text=levelText, parent=levelCont, left=0, top=2, align=uiconst.TOPLEFT, width=170, autowidth=False, state=uiconst.UI_DISABLED, idx=0, letterspace=2, uppercase=1)
+        self.levelText = uicls.EveLabelMedium(text=levelText, parent=levelCont, left=0, top=0, align=uiconst.TOPLEFT, width=170, state=uiconst.UI_DISABLED, idx=0)
         if self.contactType != 'contact':
             splitter = uicls.Container(name='splitter', parent=self.sr.main, align=uiconst.TOTOP, pos=(0, 0, 0, 1), padding=(0, 0, 0, 0))
             uicls.Line(parent=splitter, align=uiconst.TOBOTTOM)
-            bottomCont = uicls.Container(name='bottomCont', parent=self.sr.main, align=uiconst.TOALL, pos=(15, 0, 0, 0), padding=(const.defaultPadding,
+            bottomCont = uicls.Container(name='bottomCont', parent=self.sr.main, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(const.defaultPadding,
              const.defaultPadding,
              const.defaultPadding,
              const.defaultPadding))
-            contWidth = 48
             startVal = 0.5
-            self.sr.slider = self.AddSlider(bottomCont, 'standing', -10.0, 10.0, '', startVal=startVal)
+            sliderContainer = uicls.Container(parent=bottomCont, name='sliderContainer', align=uiconst.CENTERTOP, height=20, width=210)
+            self.sr.slider = self.AddSlider(sliderContainer, 'standing', -10.0, 10.0, '', startVal=startVal)
             self.sr.slider.SetValue(startVal)
             self.minHeight += 30
             boxCont = bottomCont
             levelCont.height = 15
+            iconPadding = 28
+            levelAlign = uiconst.CENTERTOP
+            levelWidth = 210
+            self.levelText.top = 4
         else:
             topCont.height = 70
-            contWidth = 26
             boxCont = levelCont
-            levelCont.padLeft = 50
-        for (i, relationshipLevel,) in enumerate(levelList):
-            leftPos = i * contWidth
-            contName = 'level%d' % i
-            level = uicls.StandingsContainer(name=contName, parent=boxCont, align=uiconst.TOPLEFT, pos=(leftPos,
-             20,
-             20,
-             20), level=relationshipLevel, text=self.standingList.get(relationshipLevel), windowName='contactmanagement')
-            setattr(self.sr, contName, level)
-            level.OnClick = (self.LevelOnClick, relationshipLevel, level)
-            if self.level == relationshipLevel:
-                level.sr.selected.state = uiconst.UI_DISABLED
-                uicore.registry.SetFocus(level)
-
+            boxCont.padLeft = 50
+            iconPadding = 6
+            levelAlign = uiconst.TOTOP
+            levelWidth = 210
+            self.levelText.top = -2
+        levelSelectorContainer = uicls.Container(parent=boxCont, align=uiconst.TOTOP, pos=(0, 0, 0, 55), padding=(0, 0, 0, 0))
+        self.levelSelector = uicls.StandingLevelSelector(name='levelCont', parent=levelSelectorContainer, align=levelAlign, pos=(0, 14, 210, 55), padding=(0, 0, 0, 0), iconPadding=iconPadding)
+        self.levelSelector.OnStandingLevelSelected = self.OnStandingLevelSelected
         charnameList = ''
         for entityID in self.entityIDs:
             charName = cfg.eveowners.Get(entityID).name
@@ -2968,19 +2090,19 @@ class ContactManagementMultiEditWnd(uicls.Window):
             else:
                 charnameList = '%s, %s' % (charnameList, charName)
 
-        label = uicls.Label(text=charnameList, parent=nameCont, left=0, top=0, align=uiconst.TOPLEFT, width=self.width, autowidth=False, state=uiconst.UI_DISABLED, idx=0, letterspace=2, uppercase=1)
+        label = uicls.EveLabelMedium(text=charnameList, parent=nameCont, left=0, top=0, align=uiconst.TOPLEFT, width=self.width, state=uiconst.UI_DISABLED, idx=0)
         nameCont.state = uiconst.UI_DISABLED
         nameCont.height = label.height + 5
         self.minHeight += nameCont.height
         topCont.height = max(topCont.height, nameCont.height + levelCont.height + splitter.height)
-        btnText = mls.UI_CONTACTS_EDITCONTACT
+        btnText = localization.GetByLabel('UI/PeopleAndPlaces/EditContact')
         self.btnGroup = uicls.ButtonGroup(btns=[[btnText,
           self.Confirm,
           (),
           81,
           1,
           1,
-          0], [mls.UI_CMD_CANCEL,
+          0], [localization.GetByLabel('UI/Common/Buttons/Cancel'),
           self.Cancel,
           (),
           81,
@@ -2988,7 +2110,7 @@ class ContactManagementMultiEditWnd(uicls.Window):
           0,
           0]], parent=self.sr.main, idx=0)
         if self.level is None:
-            self.levelText.text = mls.UI_CONTACTS_SELECTSTANDING
+            self.levelText.text = localization.GetByLabel('UI/PeopleAndPlaces/SelectStanding')
             btn = self.btnGroup.GetBtnByLabel(btnText)
             uicore.registry.SetFocus(btn)
         uthread.new(self.SetWindowSize)
@@ -3000,7 +2122,7 @@ class ContactManagementMultiEditWnd(uicls.Window):
         _par = uicls.Container(name=config + '_slider', parent=where, align=uiconst.TOTOP, pos=(0, 0, 210, 10), padding=(0, 0, 0, 0))
         par = uicls.Container(name=config + '_slider_sub', parent=_par, align=uiconst.TOPLEFT, pos=(0, 0, 210, 10), padding=(0, 0, 0, 0))
         slider = xtriui.Slider(parent=par)
-        lbl = uicls.Label(text='bla', parent=par, align=uiconst.TOPLEFT, width=200, autowidth=False, left=-34, top=0, fontsize=9, letterspace=2)
+        lbl = uicls.EveLabelSmall(text='bla', parent=par, align=uiconst.TOPLEFT, width=200, left=0, top=0)
         setattr(self.sr, '%sLabel' % config, lbl)
         lbl.name = 'label'
         slider.SetSliderLabel = self.SetSliderLabel
@@ -3017,7 +2139,7 @@ class ContactManagementMultiEditWnd(uicls.Window):
 
 
     def SetSliderLabel(self, label, idname, dname, value):
-        self.sr.standingLabel.text = '%.1f (%s)' % (round(value, 1), uix.GetStanding(round(value, 1)))
+        self.sr.standingLabel.text = localization.GetByLabel('UI/AddressBook/SliderLabel', value=round(value, 1), standingText=uix.GetStanding(round(value, 1)))
 
 
 
@@ -3026,12 +2148,7 @@ class ContactManagementMultiEditWnd(uicls.Window):
 
 
 
-    def LevelOnClick(self, level, container, *args):
-        for i in xrange(0, 5):
-            cont = self.sr.Get('level%d' % i)
-            cont.sr.selected.state = uiconst.UI_HIDDEN
-
-        container.sr.selected.state = uiconst.UI_DISABLED
+    def OnStandingLevelSelected(self, level):
         if self.contactType != 'contact':
             level = level / 20.0 + 0.5
             self.sr.slider.SlideTo(level)
@@ -3051,7 +2168,7 @@ class ContactManagementMultiEditWnd(uicls.Window):
 
     def Confirm(self):
         if self.contactType != 'contact':
-            if self.levelText.text == mls.UI_CONTACTS_SELECTSTANDING:
+            if self.levelText.text == localization.GetByLabel('UI/PeopleAndPlaces/SelectStanding'):
                 eve.Message('NoStandingsSelected')
                 return 
             relationshipID = round(self.sr.slider.value, 1)
@@ -3082,7 +2199,7 @@ class CorpAllianceContactManagementWnd(uicls.Window):
         level = attributes.level
         isContact = attributes.isContact
         self.result = None
-        self.SetCaption(mls.UI_CONTACTS_CONTACTMANAGEMENT)
+        self.SetCaption(localization.GetByLabel('UI/PeopleAndPlaces/ContactManagement'))
         self.minHeight = 150
         self.SetMinSize([250, self.minHeight])
         self.MakeUnResizeable()
@@ -3115,54 +2232,45 @@ class CorpAllianceContactManagementWnd(uicls.Window):
         levelCont = uicls.Container(name='levelCont', parent=topRightCont, align=uiconst.TOTOP, pos=(0, 0, 0, 25), padding=(0, 0, 0, 0))
         splitter = uicls.Container(name='splitter', parent=self.sr.main, align=uiconst.TOTOP, pos=(0, 0, 0, 1), padding=(0, 0, 0, 0))
         uicls.Line(parent=splitter, align=uiconst.TOBOTTOM)
-        bottomCont = uicls.Container(name='bottomCont', parent=self.sr.main, align=uiconst.TOALL, pos=(15, 0, 0, 0), padding=(const.defaultPadding,
+        bottomCont = uicls.Container(name='bottomCont', parent=self.sr.main, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding))
-        self.standingList = {const.contactHighStanding: mls.UI_CONTACTS_HIGHSTANDING,
-         const.contactGoodStanding: mls.UI_CONTACTS_GOODSTANDING,
-         const.contactNeutralStanding: mls.UI_CONTACTS_NEUTRALSTANDING,
-         const.contactBadStanding: mls.UI_CONTACTS_BADSTANDING,
-         const.contactHorribleStanding: mls.UI_CONTACTS_HORRIBLESTANDING}
+        self.standingList = {const.contactHighStanding: localization.GetByLabel('UI/PeopleAndPlaces/ExcellentStanding'),
+         const.contactGoodStanding: localization.GetByLabel('UI/PeopleAndPlaces/GoodStanding'),
+         const.contactNeutralStanding: localization.GetByLabel('UI/PeopleAndPlaces/NeutralStanding'),
+         const.contactBadStanding: localization.GetByLabel('UI/PeopleAndPlaces/BadStanding'),
+         const.contactHorribleStanding: localization.GetByLabel('UI/PeopleAndPlaces/TerribleStanding')}
         levelList = self.standingList.keys()
         levelList.sort()
         levelText = ''
-        self.levelText = uicls.Label(text=levelText, parent=levelCont, left=0, top=15, align=uiconst.TOPLEFT, width=170, autowidth=False, state=uiconst.UI_DISABLED, idx=0, letterspace=2, uppercase=1)
+        self.levelText = uicls.EveLabelMedium(text=levelText, parent=levelCont, left=0, top=15, align=uiconst.TOPLEFT, width=170, state=uiconst.UI_DISABLED, idx=0)
         startVal = 0.5
         if self.isContact:
             startVal = self.level / 20.0 + 0.5
-        self.sr.slider = self.AddSlider(bottomCont, 'standing', -10.0, 10.0, '', startVal=startVal)
+        sliderContainer = uicls.Container(parent=bottomCont, name='sliderContainer', align=uiconst.CENTERTOP, height=20, width=210)
+        self.sr.slider = self.AddSlider(sliderContainer, 'standing', -10.0, 10.0, '', startVal=startVal)
         self.sr.slider.SetValue(startVal)
-        for (i, relationshipLevel,) in enumerate(levelList):
-            leftPos = i * 48
-            contName = 'level%d' % i
-            level = uicls.StandingsContainer(name=contName, parent=bottomCont, align=uiconst.TOPLEFT, pos=(leftPos,
-             20,
-             20,
-             20), level=relationshipLevel, text=self.standingList.get(relationshipLevel), windowName='contactmanagement')
-            setattr(self.sr, contName, level)
-            level.OnClick = (self.LevelOnClick, relationshipLevel, level)
-            if self.level == relationshipLevel:
-                level.sr.selected.state = uiconst.UI_DISABLED
-                uicore.registry.SetFocus(level)
-
+        levelSelectorContainer = uicls.Container(parent=bottomCont, align=uiconst.TOTOP, pos=(0, 0, 0, 55), padding=(0, 0, 0, 0))
+        self.levelSelector = uicls.StandingLevelSelector(name='levelCont', parent=levelSelectorContainer, align=uiconst.CENTERTOP, pos=(0, 14, 210, 55), padding=(0, 0, 0, 0), iconPadding=28, level=self.level)
+        self.levelSelector.OnStandingLevelSelected = self.OnStandingLevelSelected
         charName = cfg.eveowners.Get(self.entityID).name
         uiutil.GetOwnerLogo(imgCont, self.entityID, size=64, noServerCall=True)
-        label = uicls.Label(text=charName, parent=nameCont, left=0, top=0, align=uiconst.TOPLEFT, width=170, autowidth=False, state=uiconst.UI_DISABLED, idx=0, letterspace=2, uppercase=1)
+        label = uicls.EveLabelMedium(text=charName, parent=nameCont, left=0, top=2, align=uiconst.TOPLEFT, width=170, state=uiconst.UI_DISABLED, idx=0)
         nameCont.state = uiconst.UI_DISABLED
         nameCont.height = label.height + 5
         self.minHeight += nameCont.height
         topCont.height = max(topCont.height, nameCont.height + levelCont.height + splitter.height)
-        btnText = mls.UI_SHARED_ADDCONTACT
+        btnText = localization.GetByLabel('UI/PeopleAndPlaces/AddContact')
         if self.isContact:
-            btnText = mls.UI_CONTACTS_EDITCONTACT
+            btnText = localization.GetByLabel('UI/PeopleAndPlaces/EditContact')
         self.btnGroup = uicls.ButtonGroup(btns=[[btnText,
           self.Confirm,
           (),
           81,
           1,
           1,
-          0], [mls.UI_CMD_CANCEL,
+          0], [localization.GetByLabel('UI/Common/Buttons/Cancel'),
           self.Cancel,
           (),
           81,
@@ -3170,7 +2278,7 @@ class CorpAllianceContactManagementWnd(uicls.Window):
           0,
           0]], parent=self.sr.main, idx=0)
         if self.level is None:
-            self.levelText.text = mls.UI_CONTACTS_SELECTSTANDING
+            self.levelText.text = localization.GetByLabel('UI/PeopleAndPlaces/SelectStanding')
         btn = self.btnGroup.GetBtnByLabel(btnText)
         uicore.registry.SetFocus(btn)
         uthread.new(self.SetWindowSize)
@@ -3182,7 +2290,7 @@ class CorpAllianceContactManagementWnd(uicls.Window):
         _par = uicls.Container(name=config + '_slider', parent=where, align=uiconst.TOTOP, pos=(0, 0, 210, 10), padding=(0, 0, 0, 0))
         par = uicls.Container(name=config + '_slider_sub', parent=_par, align=uiconst.TOPLEFT, pos=(0, 0, 210, 10), padding=(0, 0, 0, 0))
         slider = xtriui.Slider(parent=par)
-        lbl = uicls.Label(text='bla', parent=par, align=uiconst.TOPLEFT, width=200, autowidth=False, left=-34, top=0, fontsize=9, letterspace=2)
+        lbl = uicls.EveLabelSmall(text='bla', parent=par, align=uiconst.TOPLEFT, width=200, left=-34, top=0)
         setattr(self.sr, '%sLabel' % config, lbl)
         lbl.name = 'label'
         slider.SetSliderLabel = self.SetSliderLabel
@@ -3199,7 +2307,7 @@ class CorpAllianceContactManagementWnd(uicls.Window):
 
 
     def SetSliderLabel(self, label, idname, dname, value):
-        self.sr.standingLabel.text = '%.1f (%s)' % (round(value, 1), uix.GetStanding(round(value, 1)))
+        self.sr.standingLabel.text = localization.GetByLabel('UI/AddressBook/SliderLabel', value=round(value, 1), standingText=uix.GetStanding(round(value, 1)))
 
 
 
@@ -3208,12 +2316,7 @@ class CorpAllianceContactManagementWnd(uicls.Window):
 
 
 
-    def LevelOnClick(self, level, container, *args):
-        for i in xrange(0, 5):
-            cont = self.sr.Get('level%d' % i)
-            cont.sr.selected.state = uiconst.UI_HIDDEN
-
-        container.sr.selected.state = uiconst.UI_DISABLED
+    def OnStandingLevelSelected(self, level):
         level = level / 20.0 + 0.5
         self.sr.slider.SlideTo(level)
         self.sr.slider.SetValue(level)
@@ -3228,7 +2331,7 @@ class CorpAllianceContactManagementWnd(uicls.Window):
 
 
     def Confirm(self):
-        if self.levelText.text == mls.UI_CONTACTS_SELECTSTANDING:
+        if self.levelText.text == localization.GetByLabel('UI/PeopleAndPlaces/SelectStanding'):
             eve.Message('NoStandingsSelected')
             return 
         relationshipID = round(self.sr.slider.value, 1)
@@ -3246,93 +2349,13 @@ class CorpAllianceContactManagementWnd(uicls.Window):
 
 
 
-class StandingsContainer(uicls.Container):
-    __guid__ = 'uicls.StandingsContainer'
-
-    def ApplyAttributes(self, attributes):
-        uicls.Container.ApplyAttributes(self, attributes)
-        text = attributes.get('text', '')
-        self.text = text
-        level = attributes.get('level', None)
-        self.level = level
-        windowName = attributes.get('windowName', '')
-        self.windowName = windowName
-        self.Prepare_(text, level)
-        self.cursor = 1
-
-
-
-    def Prepare_(self, text = '', contactLevel = None, *args):
-        self.isTabStop = 1
-        self.state = uiconst.UI_NORMAL
-        flag = None
-        iconNum = 0
-        if contactLevel == const.contactHighStanding:
-            flag = state.flagStandingHigh
-            iconNum = 3
-        elif contactLevel == const.contactGoodStanding:
-            flag = state.flagStandingGood
-            iconNum = 3
-        elif contactLevel == const.contactNeutralStanding:
-            flag = state.flagStandingNeutral
-            iconNum = 5
-        elif contactLevel == const.contactBadStanding:
-            flag = state.flagStandingBad
-            iconNum = 4
-        elif contactLevel == const.contactHorribleStanding:
-            flag = state.flagStandingHorrible
-            iconNum = 4
-        if flag:
-            col = sm.GetService('state').GetStateColor(flag)
-            flag = uicls.Container(parent=self, pos=(0, 0, 20, 20), name='flag', state=uiconst.UI_DISABLED, align=uiconst.RELATIVE)
-            selected = uicls.Frame(parent=flag, color=(1.0, 1.0, 1.0, 0.75), state=uiconst.UI_HIDDEN)
-            hilite = uicls.Frame(parent=flag, color=(1.0, 1.0, 1.0, 0.75), state=uiconst.UI_HIDDEN)
-            icon = uicls.Sprite(parent=flag, pos=(3, 3, 15, 15), name='icon', state=uiconst.UI_DISABLED, rectLeft=iconNum * 10, rectWidth=10, rectHeight=10, texturePath='res:/UI/Texture/classes/Bracket/flagIcons.png', align=uiconst.RELATIVE)
-            fill = uicls.Fill(parent=flag, color=col)
-            uicls.Frame(parent=self, color=(1.0, 1.0, 1.0, 0.2))
-            fill.color.a = 0.6
-            self.sr.hilite = hilite
-            self.sr.selected = selected
-            self.hint = text
-
-
-
-    def OnMouseEnter(self, *args):
-        self.sr.hilite.state = uiconst.UI_DISABLED
-
-
-
-    def OnMouseExit(self, *args):
-        self.sr.hilite.state = uiconst.UI_HIDDEN
-
-
-
-    def OnSetFocus(self, *args):
-        self.sr.hilite.state = uiconst.UI_DISABLED
-
-
-
-    def OnKillFocus(self, *args):
-        self.sr.hilite.state = uiconst.UI_HIDDEN
-
-
-
-    def OnChar(self, char, *args):
-        if char in (uiconst.VK_SPACE, uiconst.VK_RETURN):
-            wnd = sm.GetService('window').GetWindow(self.windowName)
-            if wnd:
-                wnd.LevelOnClick(self.level, self)
-
-
-
-
 class ContactNotificationEntry(listentry.Generic):
     __guid__ = 'listentry.ContactNotificationEntry'
 
     def Startup(self, *args):
         listentry.Generic.Startup(self, args)
         self.sr.picture = uicls.Container(name='picture', parent=self, align=uiconst.TOPLEFT, pos=(0, 0, 32, 32), idx=0)
-        self.sr.label = uicls.Label(text='', parent=self, align=uiconst.TOALL, top=0, left=0, state=uiconst.UI_DISABLED, linespace=10, idx=0, autowidth=False, autoheight=False)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=self, align=uiconst.TOALL, top=0, left=0, state=uiconst.UI_DISABLED, idx=0)
 
 
 
@@ -3375,17 +2398,17 @@ class ContactNotificationEntry(listentry.Generic):
         isContact = addressBookSvc.IsInAddressBook(self.senderID, 'contact')
         isBlocked = addressBookSvc.IsBlocked(self.senderID)
         m = []
-        m.append((mls.UI_CMD_SHOWINFO, self.ShowInfo))
+        m.append((localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo))
         if isContact:
-            m.append((mls.UI_CONTACTS_EDITCONTACT, addressBookSvc.AddToPersonalMulti, (self.senderID, 'contact', True)))
-            m.append((mls.UI_CONTACTS_REMOVEFROMCONTACTS, addressBookSvc.DeleteEntryMulti, ([self.senderID], 'contact')))
+            m.append((localization.GetByLabel('UI/PeopleAndPlaces/EditContact'), addressBookSvc.AddToPersonalMulti, (self.senderID, 'contact', True)))
+            m.append((localization.GetByLabel('UI/PeopleAndPlaces/RemoveContact'), addressBookSvc.DeleteEntryMulti, ([self.senderID], 'contact')))
         else:
-            m.append((mls.UI_CONTACTS_ADDTOCONTACTS, addressBookSvc.AddToPersonalMulti, (self.senderID, 'contact')))
+            m.append((localization.GetByLabel('UI/PeopleAndPlaces/AddContact'), addressBookSvc.AddToPersonalMulti, (self.senderID, 'contact')))
         if isBlocked:
-            m.append((mls.UI_CMD_UNBLOCK, addressBookSvc.UnblockOwner, ([self.senderID],)))
+            m.append((localization.GetByLabel('UI/PeopleAndPlaces/UnblockContact'), addressBookSvc.UnblockOwner, ([self.senderID],)))
         else:
-            m.append((mls.UI_CMD_BLOCK, addressBookSvc.BlockOwner, (self.senderID,)))
-        m.append((mls.UI_CONTACTS_DELETENOTIFICATION, self.DeleteNotifications))
+            m.append((localization.GetByLabel('UI/PeopleAndPlaces/BlockContact'), addressBookSvc.BlockOwner, (self.senderID,)))
+        m.append((localization.GetByLabel('UI/PeopleAndPlaces/DeleteNotification'), self.DeleteNotifications))
         return m
 
 
@@ -3413,18 +2436,18 @@ class ManageLabels(form.ManageLabelsBase):
         labelType = attributes.labelType
         self.storedSelection = []
         if labelType == 'contact':
-            labelText = mls.UI_CONTACTS_LABELTEXT % {'contactType': mls.UI_CONTACTS_CONTACTS}
+            labelText = localization.GetByLabel('UI/PeopleAndPlaces/LabelsTextContacts')
         elif labelType == 'corpcontact':
-            labelText = mls.UI_CONTACTS_LABELTEXT % {'contactType': mls.UI_CONTACTS_CORPCONTACTS}
+            labelText = localization.GetByLabel('UI/PeopleAndPlaces/LabelsTextCorpContacts')
         else:
-            labelText = mls.UI_CONTACTS_LABELTEXT % {'contactType': mls.UI_CONTACTS_ALLIANCECONTACTS}
+            labelText = localization.GetByLabel('UI/PeopleAndPlaces/LabelsTextAllianceContacts')
         self.labelType = labelType
         self.sr.textCont.state = uiconst.UI_DISABLED
-        text = uicls.Label(text=labelText, parent=self.sr.textCont, left=10, top=0, autowidth=0, autoheight=0, state=uiconst.UI_DISABLED, align=uiconst.TOALL)
-        btns = uicls.ButtonGroup(btns=[[mls.UI_EVEMAIL_ASSIGNLABEL,
+        text = uicls.EveLabelMedium(text=labelText, parent=self.sr.textCont, left=10, top=0, state=uiconst.UI_DISABLED, align=uiconst.TOALL)
+        btns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Mail/AssignLabel'),
           self.AssignLabelFromBtn,
           None,
-          81], [mls.UI_EVEMAIL_REMOVELABEL,
+          81], [localization.GetByLabel('UI/Mail/LabelRemove'),
           self.RemoveLabelFromBtn,
           None,
           81]], parent=self.sr.bottom, idx=0, line=1)
@@ -3447,7 +2470,7 @@ class ManageLabels(form.ManageLabelsBase):
         numLabels = len(labelsChecked)
         scroll = None
         if numLabels < 1:
-            raise UserError('CustomNotify', {'notify': mls.UI_EVEMAIL_NOLABELSSELECTED})
+            raise UserError('CustomNotify', {'notify': localization.GetByLabel('UI/PeopleAndPlaces/NoLabelsSelected')})
         if self.labelType == 'contact':
             wnd = sm.GetService('addressbook').GetWnd()
             if wnd:
@@ -3460,7 +2483,7 @@ class ManageLabels(form.ManageLabelsBase):
                 elif self.labelType == 'alliancecontact':
                     scroll = uiutil.FindChild(wnd, 'alliancecontactsform', 'rightScroll')
         if not wnd:
-            raise UserError('CustomNotify', {'notify': mls.UI_CONTACTS_NOCONTACTSSELECTED})
+            raise UserError('CustomNotify', {'notify': localization.GetByLabel('UI/PeopleAndPlaces/NoContactsSelected')})
         if scroll is None:
             selectedContacts = []
         else:
@@ -3468,7 +2491,7 @@ class ManageLabels(form.ManageLabelsBase):
         try:
             contactIDs = [ selIDs.charID for selIDs in selectedContacts ]
         except:
-            raise UserError('CustomNotify', {'notify': mls.UI_CONTACTS_NOCONTACTSSELECTED})
+            raise UserError('CustomNotify', {'notify': localization.GetByLabel('UI/PeopleAndPlaces/NoContactsSelected')})
         sum = 0
         for labelID in labelsChecked:
             sum = sum + labelID
@@ -3477,26 +2500,17 @@ class ManageLabels(form.ManageLabelsBase):
         numContacts = len(contactIDs)
         if numContacts > 0:
             if assign:
-                text = mls.UI_CONTACTS_LABELSASSIGNED % {'numLabels': numLabels,
-                 'numContacts': numContacts}
+                text = localization.GetByLabel('UI/PeopleAndPlaces/LabelsAssigned', numLabels=numLabels, numContacts=numContacts)
             else:
-                text = mls.UI_CONTACTS_LABELSREMOVED % {'numLabels': numLabels,
-                 'numContacts': numContacts}
+                text = localization.GetByLabel('UI/PeopleAndPlaces/LabelsRemoved', numLabels=numLabels, numContacts=numContacts)
             eve.Message('CustomNotify', {'notify': text})
         else:
-            raise UserError('CustomNotify', {'notify': mls.UI_CONTACTS_NOCONTACTSSELECTED})
+            raise UserError('CustomNotify', {'notify': localization.GetByLabel('UI/PeopleAndPlaces/NoContactsSelected')})
         if assign == 1:
             sm.StartService('addressbook').AssignLabelFromWnd(contactIDs, sum, displayNotify=0)
         else:
             sm.StartService('addressbook').RemoveLabelFromWnd(contactIDs, sum)
 
 
-
-
-class AddressBookWindow(uicls.Window):
-    __guid__ = 'form.AddressBook'
-    default_width = 500
-    default_height = 400
-    default_minSize = (320, 307)
 
 

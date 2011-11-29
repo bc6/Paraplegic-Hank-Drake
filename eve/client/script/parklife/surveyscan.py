@@ -26,8 +26,8 @@ class SurveyScanSvc(service.Service):
 
 
     def SetEntriesDelayed(self):
-        blue.pyos.synchro.Sleep(2000)
-        wnd = self.GetWnd()
+        blue.pyos.synchro.SleepSim(2000)
+        wnd = form.SurveyScanView.GetIfOpen()
         if wnd:
             wnd.SetEntries(self.scans)
         self.isSettingEntries = False
@@ -39,7 +39,7 @@ class SurveyScanSvc(service.Service):
             for (ballID, typeID, quantity,) in l:
                 self.scans[ballID] = (typeID, quantity)
 
-            wnd = self.GetWnd(1)
+            wnd = form.SurveyScanView.Open()
             if wnd:
                 wnd.SetEntries(self.scans)
         except:
@@ -50,15 +50,15 @@ class SurveyScanSvc(service.Service):
 
 
     def GetWnd(self, create = 0):
-        return sm.GetService('window').GetWindow('SurveyScanView', create=create)
+        if create:
+            return form.SurveyScanView.Open()
+        return form.SurveyScanView.GetIfOpen()
 
 
 
     def Clear(self):
         self.scans = {}
-        wnd = self.GetWnd()
-        if wnd:
-            wnd.Clear()
+        form.SurveyScanView.CloseIfOpen()
 
 
 

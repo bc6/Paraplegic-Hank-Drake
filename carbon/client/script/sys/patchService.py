@@ -13,6 +13,8 @@ from nasty import nasty
 import log
 import urllib2
 import appUtils
+import localization
+import bluepy
 WIN_VERSIONS = {(2, 4, 0): 'Windows NT 4',
  (2, 5, 0): 'Windows 2000',
  (2, 5, 1): 'Windows XP',
@@ -22,10 +24,10 @@ WIN_VERSIONS = {(2, 4, 0): 'Windows NT 4',
  (2, 6, 2): 'Windows 8'}
 DEBUG_LEVEL = 2
 FILE_CHUNK_SIZE = 131072
-AFFILIATE_FILE_PATH = os.path.join(blue.os.rootpath, u'affiliate.txt')
+AFFILIATE_FILE_PATH = blue.os.ResolvePathForWriting(u'root:/affiliate.txt')
 
 def SetDownloadProgress(progress, msg = None, callback = None):
-    hdr = mls.UI_LOAD_DOWNLOADINGPATCH
+    hdr = localization.GetByLabel('/Carbon/UI/Patch/Downloading')
     m = msg
     if m == None:
         m = hdr
@@ -91,7 +93,7 @@ class HttpFileGrabber():
 
     def __init__(self, url, filename, statusCallback = None):
         self.url = 'http://' + url.encode('ascii')
-        self.localFile = os.path.join(blue.os.cachepath, filename.split('/')[-1])
+        self.localFile = os.path.join(blue.os.ResolvePath(u'cache:/'), filename.split('/')[-1])
         self.filename = filename
         self.statusCallback = statusCallback
         self.headers = None
@@ -271,7 +273,7 @@ class PatchService(service.Service):
         readBytes = 8192
         totalBytes = 0
         if showProgress:
-            SetProgress(0, mls.UI_LOGIN_CHECKPATCHSTATUS, '', None)
+            SetProgress(0, localization.GetByLabel('/Carbon/UI/Patch/Checking'), '', None)
         loopIndex = 0
         while readBytes:
             readString = f.read(readBytes)
@@ -281,13 +283,13 @@ class PatchService(service.Service):
             loopIndex += 1
             if showProgress and loopIndex % 5000 == 0:
                 progress = float(min(1000, int(float(totalBytes) / float(size) * 1000)))
-                txt = '%.1f%s read of %d KB' % (progress / 10.0, '%', size / 1024)
-                SetProgress(progress, mls.UI_LOGIN_CHECKPATCHSTATUS, txt, None)
+                txt = localization.GetByLabel('/Carbon/UI/Patch/DownloadProgress', progress=progress / 10.0, total=size / 1024)
+                SetProgress(progress, localization.GetByLabel('/Carbon/UI/Patch/Checking'), txt, None)
             blue.pyos.BeNice()
 
         f.close()
         if showProgress:
-            SetProgress(1000, mls.UI_LOGIN_CHECKPATCHSTATUS, '', None)
+            SetProgress(1000, localization.GetByLabel('/Carbon/UI/Patch/Checking'), '', None)
         checksum = s.hexdigest()
         self.fileHashCache[fileCacheKey] = checksum
         return checksum
@@ -298,7 +300,7 @@ class PatchService(service.Service):
         if uicore.Message(msg, {'text': param}, uiconst.YESNO, suppress=uiconst.ID_YES) == uiconst.ID_YES:
             msg = '%spatches.asp%s&e=%s' % (self.patchInfoUrl, self.queryString, param)
             blue.os.ShellExecute(msg)
-            blue.pyos.Quit('Manual patch close.')
+            bluepy.Terminate('Manual patch close')
 
 
 
@@ -308,6 +310,7 @@ class PatchService(service.Service):
             details['n'] = boot.build
             details['s'] = util.GetServerName()
             details['u'] = settings.public.ui.Get('username', '')
+            details['language_id'] = prefs.GetValue('languageID', 'EN')
             details['edition'] = getattr(boot, 'edition', 'classic')
             details['protocol'] = 2
             details['intended_platform'] = 'win'
@@ -427,13 +430,13 @@ class PatchService(service.Service):
                 self.LogError('Server Error occured looking for patch files: %s' % buf)
                 s = ''
                 if len(buf) > 8:
-                    s = ' Details:<br>' + buf[5:]
+                    err = buf[5:]
                 if isForce:
-                    self.DoManualPatch('PatchStatusCheckFailed', 'There was an error on the server.%s' % s)
+                    self.DoManualPatch('PatchStatusCheckFailed', localization.GetByLabel('/Carbon/UI/Patch/ServerError', error=err))
                     return 
             elif buf.find('NOT_FOUND') >= 0:
                 self.LogError('No patch file for this build found on server.')
-                self.DoManualPatch('PatchStatusCheckFailed', '%s' % mls.UI_SHARED_PATCHSERVICEFAILUER_MSG1)
+                self.DoManualPatch('PatchStatusCheckFailed', localization.GetByLabel('/Carbon/UI/Patch/NoUpdate'))
                 return 
             if buf.find('TOO_NEW') >= 0:
                 self.LogError('The current build number (%s) is newer than the one returned by the web server.' % self.clientVersion)
@@ -448,7 +451,7 @@ class PatchService(service.Service):
                 return 
         if buf.find('#END') < 0:
             if isForce:
-                self.DoManualPatch('PatchStatusCheckFailed', 'Unexpected response from server.')
+                self.DoManualPatch('PatchStatusCheckFailed', localization.GetByLabel('/Carbon/UI/Patch/UnexpectedResponse'))
             self.LogError('Unexpected response from server: %s' % buf)
             return 
         lst = buf.replace('#END', '').replace('\r\n', '').split(',')
@@ -481,9 +484,9 @@ class PatchService(service.Service):
 
 
     def PatchStatusCallback(self, totalBytes, currentBytes):
-        p = float(min(1000, int(float(currentBytes) / float(totalBytes) * 1000)))
-        txt = '%.1f%s read of %d KB' % (p / 10.0, '%', totalBytes / 1024)
-        SetDownloadProgress(p, txt, self.CancelPatchDownload)
+        progress = float(min(1000, int(float(currentBytes) / float(totalBytes) * 1000)))
+        txt = localization.GetByLabel('/Carbon/UI/Patch/DownloadProgress', progress=progress / 10.0, total=totalBytes / 1024)
+        SetDownloadProgress(progress, txt, self.CancelPatchDownload)
 
 
 
@@ -524,7 +527,7 @@ class PatchService(service.Service):
                 self.ApplyPatch(self.patchFileName)
         except Exception as e:
             SetDownloadProgress(1000)
-            self.DoManualPatch('PatchStatusCheckFailed', 'Unable to download file %s from the server.<br>Error: %s' % (fileName, e))
+            self.DoManualPatch('PatchStatusCheckFailed', localization.GetByLabel('/Carbon/UI/Patch/DownloadError', fileName=fileName, error=e))
             self.patchGrabber = None
             self.downloading = 0
             log.LogException(toConsole=3)
@@ -535,7 +538,7 @@ class PatchService(service.Service):
         try:
             ok = self.IsExistingPatchFileCorrect(self.patchFileName, self.patchChecksum)
             if not ok:
-                fullFileName = os.path.join(blue.os.cachepath, self.patchFileName)
+                fullFileName = os.path.join(blue.os.ResolvePath(u'cache:/'), self.patchFileName)
                 self.LogWarn('Invalid checksum, deleting file %s' % fullFileName)
                 try:
                     os.remove(fullFileName)
@@ -553,7 +556,7 @@ class PatchService(service.Service):
 
 
     def IsExistingPatchFileCorrect(self, patchFileName, patchChecksum):
-        fullFileName = os.path.join(blue.os.cachepath, patchFileName)
+        fullFileName = os.path.join(blue.os.ResolvePath(u'cache:/'), patchFileName)
         checksum = self.GetFileHash(fullFileName)
         self.LogInfo('file: %s checksums: should be %s, is %s' % (patchFileName, patchChecksum, checksum))
         return patchChecksum.strip() == checksum.strip()
@@ -571,8 +574,8 @@ class PatchService(service.Service):
 
 
     def ApplyPatch(self, patchFileName):
-        fullFileName = os.path.join(blue.os.cachepath, patchFileName)
-        parameter = '%s /path="%s"' % (fullFileName, blue.os.rootpath)
+        fullFileName = os.path.join(blue.os.ResolvePath(u'cache:/'), patchFileName)
+        parameter = '%s /path="%s"' % (fullFileName, blue.os.ResolvePath(u'root:/'))
         self.LogInfo('applying patchfile: "%s" with parameter "%s". Client will shut down' % (fullFileName, parameter))
         blue.os.ApplyPatch(fullFileName, parameter)
 
@@ -655,8 +658,9 @@ class PatchService(service.Service):
 
 
     def PromptForOptionalUpgrade(self, description, url):
+        urlTag = '<a href=%s>' % url
         install = uicore.Message('ClientUpdateAvailable', {'description': description,
-         'url': url}) == uiconst.ID_OK
+         'urlTag': urlTag}) == uiconst.ID_OK
         self.LogInfo('Client update - Prompt', install)
         if install:
             self.LogInfo('Downloading client update', self.upgradeInfo)
@@ -717,7 +721,7 @@ class PatchService(service.Service):
             if not os.path.exists(downloadDirectory):
                 os.makedirs(downloadDirectory)
             self.LogInfo('Starting download of new compiled.code file')
-            SetDownloadProgress(0, mls.UI_LOAD_DOWNLOADINGPATCH)
+            SetDownloadProgress(0, localization.GetByLabel('/Carbon/UI/Patch/Downloading'))
             try:
                 urllib.urlretrieve(upgradeInfo.fileurl, tempfile, CodeDownLookHook)
                 self.LogInfo('Completed downloading compiled.code file to: ' + tempfile)
@@ -740,7 +744,7 @@ class PatchService(service.Service):
                     uicore.Message('CompiledCodeDownloadFailed')
 
             finally:
-                SetDownloadProgress(1000, mls.UI_LOAD_DOWNLOADINGPATCH)
+                SetDownloadProgress(1000, localization.GetByLabel('/Carbon/UI/Patch/Downloading'))
 
         except Exception as e:
             self.LogError('Error getting new .code file: ', e)
@@ -753,9 +757,9 @@ class PatchService(service.Service):
 
 def CodeDownLookHook(transfered, blockSize, totalBytes):
     currentBytes = transfered * blockSize
-    p = float(min(1000, int(float(currentBytes) / float(totalBytes) * 1000)))
-    txt = '%.1f%s read of %d KB' % (p / 10.0, '%', totalBytes / 1024)
-    SetDownloadProgress(p, txt)
+    progress = float(min(1000, int(float(currentBytes) / float(totalBytes) * 1000)))
+    txt = localization.GetByLabel('/Carbon/UI/Patch/DownloadProgress', progress=progress / 10.0, total=totalBytes / 1024)
+    SetDownloadProgress(progress, txt)
 
 
 

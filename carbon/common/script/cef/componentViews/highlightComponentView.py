@@ -11,8 +11,8 @@ class HighlightComponentView(cef.BaseComponentView):
     @classmethod
     def SetupInputs(cls):
         cls.RegisterComponent(cls)
-        cls._AddInput(cls.CURVE_RES_PATH, '', cls.MANDATORY, const.cef.COMPONENTDATA_STRING_TYPE)
-        cls._AddInput(cls.HIGHLIGHT_AREAS, '', cls.OPTIONAL, const.cef.COMPONENTDATA_STRING_TYPE)
+        cls._AddInput(cls.CURVE_RES_PATH, '', cls.RECIPE, const.cef.COMPONENTDATA_STRING_TYPE, displayName='Curve Res Path')
+        cls._AddInput(cls.HIGHLIGHT_AREAS, '', cls.RECIPE, const.cef.COMPONENTDATA_STRING_TYPE, displayName='Highlight Areas')
 
 
 

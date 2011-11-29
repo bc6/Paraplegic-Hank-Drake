@@ -9,9 +9,10 @@ import bluepy
 import log
 import sys
 
-class YamlPreloader():
+class YamlPreloader(object):
     __guid__ = 'paperDoll.YamlPreloader'
-    instance = None
+    __metaclass__ = bluepy.CCP_STATS_ZONE_PER_METHOD
+    _YamlPreloader__shared_state = {}
 
     @staticmethod
     def YamlPreloaderPDFilter(yamlStr):
@@ -22,32 +23,85 @@ class YamlPreloader():
 
 
 
-    def __init__(self, verbose = False):
-        self.cache = {}
-        self.verbose = verbose
+    def __init__(self):
+        self.__dict__ = self._YamlPreloader__shared_state
+        if not hasattr(self, 'cache'):
+            self.cache = {}
+            self.verbose = False
+            self.tasklets = []
+            self.resData = None
+            self.preloadedRootFolders = []
 
 
 
-    def Preload(self, rootFolder, extensions = None, yamlFilter = None):
+    def IsLoading(self):
+        return any(map(lambda x: x.alive, self.tasklets))
+
+
+
+    def SetVerbosity(self, value):
+        self.verbose = value
+
+
+
+    def SetResData(self, resData):
+        self.resData = resData
+
+
+
+    @staticmethod
+    def Clear():
+        YamlPreloader._YamlPreloader__shared_state.clear()
+
+
+
+    def Preload(self, rootFolder = None, extensions = None, yamlFilter = None):
         extensions = extensions or ['.yaml']
+
+        def doPreload():
+            t = uthread.new(self.Preload_t, *(rootFolder, extensions, yamlFilter))
+            self.tasklets.append(t)
+            uthread.schedule(t)
+
+
+        if rootFolder:
+            rootFolder = rootFolder.lower()
+            if rootFolder not in self.preloadedRootFolders:
+                doPreload()
+                self.preloadedRootFolders.append(rootFolder)
+        if self.resData:
+            doPreload()
+
+
+
+    def Preload_t(self, rootFolder, extensions = None, yamlFilter = None):
         yamlFiles = []
-        blue.statistics.EnterZone('YamlPreloader.FolderScan')
-        for (root, dirs, files,) in bluepy.walk(rootFolder):
-            for f in files:
-                ext = f[f.rfind('.'):].lower()
-                if ext in extensions:
-                    yamlFiles.append(root + '/' + f)
+        extensions = extensions or ['.yaml']
+        if self.resData:
+            for ext in extensions:
+                extFiles = self.resData.GetFilesByExtension(ext.replace('.', ''))
+                for path in extFiles:
+                    if path not in self.cache:
+                        yamlFiles.append(path)
 
-            blue.synchro.Yield()
 
-        blue.statistics.LeaveZone('YamlPreloader.FolderScan')
-        sys.modules[PD.__name__] = PD
-        blue.statistics.EnterZone('YamlPreloader.YamlLoad')
+        else:
+            for (root, dirs, files,) in bluepy.walk(rootFolder):
+                for fileName in files:
+                    ext = fileName[fileName.rfind('.'):].lower()
+                    if ext in extensions:
+                        path = '{0}/{1}'.format(root.lower(), fileName.lower())
+                        if path not in self.cache:
+                            yamlFiles.append(path)
+
+                PD.BeFrameNice()
+
         r = blue.ResFile()
-        for (i, path,) in enumerate(yamlFiles):
-            if i % 10 == 0:
-                blue.synchro.Yield()
+        for i in xrange(len(yamlFiles)):
+            PD.BeFrameNice(150)
+            if PD.__name__ not in sys.modules:
                 sys.modules[PD.__name__] = PD
+            path = yamlFiles[i]
             r.Open(path)
             try:
                 yamlStr = r.Read()
@@ -58,36 +112,46 @@ class YamlPreloader():
             if yamlFilter is not None:
                 yamlStr = yamlFilter(yamlStr)
             try:
-                instance = yaml.load(yamlStr, Loader=yaml.CLoader)
-                if instance is not None:
-                    self.cache[str(path).lower()] = instance
+                yamlInstance = yaml.load(yamlStr, Loader=yaml.CLoader)
+                self.AddToCache(path, yamlInstance)
             except:
                 log.LogError('paperDoll::YamlPreloader::Preload - Failed loading yaml for path: {0}'.format(path))
 
         if PD.__name__ in sys.modules:
             del sys.modules[PD.__name__]
-        blue.statistics.LeaveZone('YamlPreloader.YamlLoad')
-        log.LogInfo('YamlPreloader:', len(yamlFiles), 'yaml files preloaded from', rootFolder)
+        if rootFolder:
+            log.LogInfo('YamlPreloader:', len(yamlFiles), 'yaml files preloaded from', rootFolder)
+        if self.resData:
+            log.LogInfo('YamlPreloader:', len(yamlFiles), 'yaml files preloaded using ResData')
+
+
+
+    def AddToCache(self, path, instance):
+        if path and instance:
+            if type(instance) == PD.AvatarPartMetaData:
+                PD.AvatarPartMetaData.FillInDefaults(instance)
+            self.cache[path] = instance
 
 
 
     def LoadYaml(self, yamlPath):
-        yamlData = self.cache.get(yamlPath.lower(), None)
+        yamlData = self.cache.get(yamlPath, None)
         if yamlData is None:
             if self.verbose:
                 log.LogInfo('Yaml cache miss for', yamlPath)
-            return PD.LoadYamlFileNicely(yamlPath, enableCache=False)
-        if self.verbose:
-            log.LogInfo('Yaml cache hit for', yamlPath)
-        return copy.deepcopy(yamlData)
+            yamlData = PD.LoadYamlFileNicely(yamlPath, enableCache=False)
+            self.AddToCache(yamlPath, yamlData)
+        if yamlData:
+            return copy.deepcopy(yamlData)
 
 
 
 
 def LoadYamlFileNicely(pathToFile, enableCache = True):
-    if enableCache and YamlPreloader.instance is not None:
-        return YamlPreloader.instance.LoadYaml(pathToFile)
-    blue.pyos.BeNice()
+    if enableCache:
+        yamlPreloader = YamlPreloader()
+        return yamlPreloader.LoadYaml(pathToFile)
+    PD.BeFrameNice()
     r = blue.ResFile()
     if r.FileExists(pathToFile):
         try:
@@ -114,8 +178,13 @@ class AvatarPartMetaData(object):
         self.numColorAreas = 3
         self.forcesLooseTop = False
         self.hidesBootShin = False
+        self.swapTops = False
+        self.swapBottom = False
+        self.swapSocks = False
         self.alternativeTextureSourcePath = ''
-        self.soundTag = ''
+        self.soundTag = 0
+        self.lod1Replacement = ''
+        self.lod2Replacement = ''
         self.defaultMetaData = True
 
 
@@ -158,7 +227,12 @@ class AvatarPartMetaData(object):
         for i in xrange(dmLen):
             instance.dependantModifiers[i] = instance.dependantModifiers[i].lower()
 
-        instance.alternativeTextureSourcePath = instance.alternativeTextureSourcePath.lower()
+        if instance.lod1Replacement:
+            instance.lod1Replacement = instance.lod1Replacement.lower()
+        if instance.lod2Replacement:
+            instance.lod2Replacement = instance.lod2Replacement.lower()
+        if instance.alternativeTextureSourcePath:
+            instance.alternativeTextureSourcePath = instance.alternativeTextureSourcePath.lower()
         return instance
 
 
@@ -167,8 +241,8 @@ class AvatarPartMetaData(object):
 class ModifierLoader():
     __guid__ = 'paperDoll.ModifierLoader'
     _ModifierLoader__sharedLoadSource = False
-    _ModifierLoader__sharedMaleOptions = None
-    _ModifierLoader__sharedFemaleOptions = None
+    _ModifierLoader__sharedResData = None
+    _ModifierLoader__isLoaded = False
 
     def setclothSimulationActive(self, value):
         self._clothSimulationActive = value
@@ -177,14 +251,12 @@ class ModifierLoader():
     clothSimulationActive = property(fget=lambda self: self._clothSimulationActive, fset=lambda self, value: self.setclothSimulationActive(value))
 
     def __init__(self):
-        self.yamlCache = {}
+        self.yamlPreloader = YamlPreloader()
+        self.resData = None
         self.patterns = []
-        self.maleOptions = {}
-        self.femaleOptions = {}
         self.IsLoaded = False
         self.forceRunTimeOptionGeneration = False
         self._clothSimulationActive = False
-        self.preloadToYamlCache = False
         uthread.new(self.LoadData_t)
 
 
@@ -192,8 +264,9 @@ class ModifierLoader():
     def DebugReload(self, forceRunTime = False):
         self.forceRunTimeOptionGeneration = forceRunTime
         ModifierLoader._ModifierLoader__sharedLoadSource = False
-        ModifierLoader._ModifierLoader__sharedMaleOptions = None
-        ModifierLoader._ModifierLoader__sharedFemaleOptions = None
+        ModifierLoader._ModifierLoader__sharedResData = None
+        ModifierLoader._ModifierLoader__isLoaded = False
+        YamlPreloader.Clear()
         uthread.new(self.LoadData_t)
 
 
@@ -225,18 +298,68 @@ class ModifierLoader():
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def LoadData_t(self):
-        self._LoadOptions()
-        if self.preloadToYamlCache:
-            self._PreloadToYamlCache()
-        self._LoadPatterns()
-        self.IsLoaded = True
+        try:
+            if ModifierLoader._ModifierLoader__sharedLoadSource == blue.rot.loadFromContent and ModifierLoader._ModifierLoader__sharedResData:
+                self.resData = ModifierLoader._ModifierLoader__sharedResData
+                while not ModifierLoader._ModifierLoader__isLoaded:
+                    PD.Yield()
+
+                self.IsLoaded = True
+                return 
+            self.resData = PD.resData.ResData()
+            femPath = PD.FEMALE_BASE_PATH
+            femPathLOD = PD.FEMALE_BASE_LOD_PATH
+            femPathGT = PD.FEMALE_BASE_GRAPHICS_TEST_PATH
+            femPathGTLOD = PD.FEMALE_BASE_GRAPHICS_TEST_LOD_PATH
+            malePath = PD.MALE_BASE_PATH
+            malePathLOD = PD.MALE_BASE_LOD_PATH
+            malePathGT = PD.MALE_BASE_GRAPHICS_TEST_PATH
+            malePathGTLOD = PD.MALE_BASE_GRAPHICS_TEST_LOD_PATH
+            if blue.rot.loadFromContent:
+                femPath = femPath.replace('res:', 'resPreview:')
+                femPathLOD = femPathLOD.replace('res:', 'resPreview:')
+                femPathGT = femPathGT.replace('res:', 'resPreview:')
+                femPathGTLOD = femPathGTLOD.replace('res:', 'resPreview:')
+                malePath = malePath.replace('res:', 'resPreview:')
+                malePathLOD = malePathLOD.replace('res:', 'resPreview:')
+                malePathGT = malePathGT.replace('res:', 'resPreview:')
+                malePathGTLOD = malePathGTLOD.replace('res:', 'resPreview:')
+            self.resData.Populate(PD.GENDER.FEMALE, femPath)
+            self.resData.Populate(PD.GENDER.FEMALE, femPathLOD, key=PD.resData.GenderData.LOD_KEY)
+            self.resData.Populate(PD.GENDER.FEMALE, femPathGT, key=PD.resData.GenderData.TEST_KEY)
+            self.resData.Populate(PD.GENDER.FEMALE, femPathGTLOD, key=PD.resData.GenderData.TEST_LOD_KEY)
+            self.resData.Populate(PD.GENDER.MALE, malePath)
+            self.resData.Populate(PD.GENDER.MALE, malePathLOD, key=PD.resData.GenderData.LOD_KEY)
+            self.resData.Populate(PD.GENDER.MALE, malePathGT, key=PD.resData.GenderData.TEST_KEY)
+            self.resData.Populate(PD.GENDER.MALE, malePathGTLOD, key=PD.resData.GenderData.TEST_LOD_KEY)
+            while self.resData.IsLoading():
+                PD.Yield()
+
+            PD.PerformanceOptions.SetEnableYamlCache(True, self.resData)
+            while self.yamlPreloader.IsLoading():
+                PD.Yield()
+
+            for gender in PD.GENDER:
+                self.resData.PopulateVirtualModifierFolders(gender)
+
+            self.resData.LinkSiblings(None, PD.resData.GenderData.LOD_KEY)
+            self.resData.LinkSiblings(PD.resData.GenderData.TEST_KEY, PD.resData.GenderData.TEST_LOD_KEY)
+            self.resData.PropogateLODRules()
+            self._LoadPatterns()
+            self.IsLoaded = True
+
+        finally:
+            ModifierLoader._ModifierLoader__sharedLoadSource = blue.rot.loadFromContent
+            ModifierLoader._ModifierLoader__sharedResData = self.resData
+            ModifierLoader._ModifierLoader__isLoaded = self.IsLoaded
+
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def WaitUntilLoaded(self):
         while not self.IsLoaded:
-            blue.synchro.Yield()
+            PD.Yield()
 
 
 
@@ -253,122 +376,45 @@ class ModifierLoader():
 
 
 
-    @bluepy.CCP_STATS_ZONE_METHOD
-    def _PreloadToYamlCache(self):
-
-        def PreloadFromOptions(options):
-            for key in options:
-                for each in options[key]:
-                    blue.pyos.BeNice()
-                    if each.endswith('.color'):
-                        entry = LoadYamlFileNicely(each)
-                        self._ModifierLoader__AddToYamlCache(each, entry)
-                    elif each.endswith('.pose'):
-                        entry = LoadYamlFileNicely(each)
-                        self._ModifierLoader__AddToYamlCache(each, entry)
-                    elif each.endswith('.proj'):
-                        entry = PD.ProjectedDecals.Load(each)
-                        self._ModifierLoader__AddToYamlCache(each, entry)
-                    elif each.endswith('.yaml'):
-                        entry = LoadYamlFileNicely(each)
-                        entry = PD.AvatarPartMetaData.FillInDefaults(entry)
-                        entry.defaultMetaData = False
-                        self._ModifierLoader__AddToYamlCache(each, entry)
-
-
-
-
-        PreloadFromOptions(self.maleOptions)
-        PreloadFromOptions(self.femaleOptions)
-
-
-
-    @bluepy.CCP_STATS_ZONE_METHOD
-    def _LoadOptions(self):
-        if ModifierLoader._ModifierLoader__sharedLoadSource == blue.rot.loadFromContent and ModifierLoader._ModifierLoader__sharedMaleOptions and ModifierLoader._ModifierLoader__sharedFemaleOptions:
-            self.maleOptions = ModifierLoader._ModifierLoader__sharedMaleOptions
-            self.femaleOptions = ModifierLoader._ModifierLoader__sharedFemaleOptions
-            return 
-
-        def LoadOptionYamlFiles():
-            self.maleOptions = LoadYamlFileNicely(PD.MALE_OPTION_FILE_PATH)
-            self.femaleOptions = LoadYamlFileNicely(PD.FEMALE_OPTION_FILE_PATH)
-
-
-
-        def RunTimeOptionGeneration():
-            import os
-            if os.path.exists(PD.OUTSOURCING_JESSICA_PATH):
-                LoadOptionYamlFiles()
-            else:
-                self.femaleOptions = {}
-                self.maleOptions = {}
-
-            def LoadPathToOptions(path, options):
-                entries = PD.CreateEntries(path)
-                for entry in entries.iteritems():
-                    options[entry[0]] = entry[1]
-
-                PD.AddBlendshapeEntries(path + '/head', options, PD.BLENDSHAPE_CATEGORIES.FACEMODIFIERS)
-                PD.AddBlendshapeEntries(path + '/bottomOuter', options, PD.BLENDSHAPE_CATEGORIES.BODYSHAPES)
-
-
-            LoadPathToOptions(PD.FEMALE_BASE_PATH, self.femaleOptions)
-            LoadPathToOptions(PD.MALE_BASE_PATH, self.maleOptions)
-            LoadPathToOptions(PD.FEMALE_BASE_PATH.replace('Modular', PD.MODULAR_TEST_CASES_FOLDER), self.femaleOptions)
-            LoadPathToOptions(PD.MALE_BASE_PATH.replace('Modular', PD.MODULAR_TEST_CASES_FOLDER), self.maleOptions)
-
-
-        if blue.rot.loadFromContent or self.forceRunTimeOptionGeneration:
-            RunTimeOptionGeneration()
-        else:
-            LoadOptionYamlFiles()
-        ModifierLoader._ModifierLoader__sharedLoadSource = blue.rot.loadFromContent
-        ModifierLoader._ModifierLoader__sharedMaleOptions = self.maleOptions
-        ModifierLoader._ModifierLoader__sharedFemaleOptions = self.femaleOptions
-
-
-
-    @bluepy.CCP_STATS_ZONE_METHOD
-    def GetOptionsByGender(self, gender):
-        options = dict()
-        if gender == PD.GENDER.FEMALE:
-            options = self.femaleOptions
-        elif gender == PD.GENDER.MALE:
-            options = self.maleOptions
-        return options
-
-
-
     def GetPatternDir(self):
         return 'res:/{0}/Character/Patterns'.format(PD.BASE_GRAPHICS_FOLDER)
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def GetItemType(self, itemTypePath):
+    def GetItemType(self, itemTypePath, gender = None):
+        if gender and 'res:' not in itemTypePath:
+            basePath = ''
+            if gender == PD.GENDER.MALE:
+                basePath = PD.MALE_BASE_PATH
+            elif gender == PD.GENDER.FEMALE:
+                basePath = PD.FEMALE_BASE_PATH
+            if itemTypePath.startswith('/'):
+                fmt = '{0}{1}'
+            else:
+                fmt = '{0}/{1}'
+            itemTypePath = fmt.format(basePath, itemTypePath)
         itemType = self._ModifierLoader__GetFromYamlCache(itemTypePath)
-        if itemType is None:
-            itemType = LoadYamlFileNicely(itemTypePath)
-            self._ModifierLoader__AddToYamlCache(itemTypePath, itemType)
         return itemType
 
 
 
-    def ListTypes(self, gender, cat = '', modifier = None):
-        options = self.GetOptionsByGender(gender)
-        data = self.ListOptions(gender, cat, showVariations=False)
+    def ListTypes(self, gender, cat = None, modifier = None):
         availableTypes = []
-        for optionName in data:
-            elems = options.get(cat + PD.SEPERATOR_CHAR + optionName + PD.SEPERATOR_CHAR + 'types')
-            if elems:
-                if modifier:
-                    for elem in iter(elems):
-                        if modifier.name.lower() in elem.lower():
-                            availableTypes.append(elem)
+        if modifier:
+            parentEntry = self.resData.GetEntryByPath(gender, modifier.respath)
+            entries = self.resData.GetChildEntries(parentEntry)
+        elif cat:
+            parentEntry = self.resData.GetEntryByPath(gender, cat)
+            entries = self.resData.Traverse(parentEntry, visitFunc=lambda x: not x.dirs)
+        else:
+            entries = [ entry for entry in self.resData.GetEntriesByGender(gender) if not entry.dirs ]
+        for entry in entries:
+            fileNames = entry.GetFilesByExt('type')
+            for fn in fileNames:
+                fullResPath = entry.GetFullResPath(fn)
+                availableTypes.append(fullResPath)
 
-                else:
-                    availableTypes.extend(elems)
 
         return availableTypes
 
@@ -376,98 +422,94 @@ class ModifierLoader():
 
     def CategoryHasTypes(self, category):
 
+        def Visit(gender, resDataEntry):
+            if not resDataEntry:
+                return False
+            found = False
+            if 'types' in resDataEntry.dirs:
+                found = True
+            if not found:
+                for childResDataEntry in self.resData.GetChildEntries(resDataEntry):
+                    found = Visit(gender, childResDataEntry)
+                    if found:
+                        break
+
+            return found
+
+
+
         def CheckTypes(gender):
-            options = self.GetOptionsByGender(gender)
-            data = self.ListOptions(gender, category, showVariations=False)
-            for optionName in data:
-                elems = options.get(category + PD.SEPERATOR_CHAR + optionName + PD.SEPERATOR_CHAR + 'types')
-                if elems:
-                    return True
-
-            return False
+            entry = self.resData.GetEntryByPath(gender, category)
+            return Visit(gender, entry)
 
 
-        return CheckTypes('female') or CheckTypes('male')
+        return any(map(lambda x: CheckTypes(x), PD.GENDER))
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def ListOptions(self, gender, cat = '', showVariations = False):
-        ret = {}
-        variations = [ 'v%s' % x for x in xrange(99) ]
+    def ListOptions(self, gender, cat = None, showVariations = False):
+        results = []
+        entries = []
+        if cat:
+            pathEntry = self.resData.GetEntryByPath(gender, cat)
+            if pathEntry:
+                entries.extend(self.resData.GetChildEntries(pathEntry))
+            pathEntry = self.resData.GetEntryByPath(gender, cat, key=PD.resData.GenderData.TEST_KEY)
+            if pathEntry:
+                entries.extend(self.resData.GetChildEntries(pathEntry, key=PD.resData.GenderData.TEST_KEY))
+            if showVariations:
+                for entry in entries:
+                    variations = []
+                    for childEntry in self.resData.GetChildEntries(entry):
+                        if childEntry.isVariationFolder:
+                            variations.append(childEntry.leafFolderName)
 
-        def funC(each):
-            if each.startswith(cat.lower() + PD.SEPERATOR_CHAR):
-                allitems = each[(len(cat) + 1):].split(PD.SEPERATOR_CHAR)
-                label = allitems[0]
-                if label:
-                    ret[label] = ret.get(label, [])
-                    if showVariations:
-                        if len(allitems) > 1:
-                            if allitems[1] in variations:
-                                ret[label].append(allitems[1])
+                    result = (entry.leafFolderName, tuple(variations))
+                    results.append(result)
 
+            else:
+                for entry in entries:
+                    results.append(entry.leafFolderName)
 
-
-        def fun(each):
-            entries = each.split(PD.SEPERATOR_CHAR)
-            label = entries[0] + PD.SEPERATOR_CHAR + entries[1]
-            if len(entries) > 2 and entries[2] not in variations:
-                label += PD.SEPERATOR_CHAR + entries[2]
-            ret[label] = ''
-
-
-        options = self.GetOptionsByGender(gender)
-        if not options:
-            log.LogError('PaperDoll - No options for gender: {0} available in ModifierLoader::ListOptions'.format(gender))
         else:
-            f = funC if cat else fun
-            for each in options.iterkeys():
-                f(each)
-
-        if cat and showVariations:
-            ret = [ (key, tuple(ret[key])) for key in ret ]
-        else:
-            ret = ret.keys()
-        ret.sort()
-        return ret
+            results.extend(self.resData.GetPathToEntryByGender(gender).keys())
+            results.extend(self.resData.GetPathToEntryByGender(gender, key=PD.resData.GenderData.TEST_KEY).keys())
+        results.sort()
+        return results
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def CollectBuildData(self, path, options, weight = 1.0):
+    def CollectBuildData(self, gender, path, weight = 1.0, forceLoaded = False):
         currentBuildData = PD.BuildData(path)
         currentBuildData.weight = weight
-        self.LoadResource(path, options, currentBuildData)
+        self.LoadResource(gender, path, currentBuildData, forceLoaded=forceLoaded)
         return currentBuildData
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def LoadResource(self, path, options, modifier):
-        if options is None:
-            log.LogError('PaperDoll - NoneType passed as options to ModifierLoader::LoadResource!')
+    def LoadResource(self, gender, path, modifier, forceLoaded = False):
+        if not self.resData.QueryPathByGender(gender, path):
+            log.LogWarn('PaperDoll - Path {0} for gender {1} does not exist that is passed to ModifierLoader::LoadResource!'.format(path, gender))
             return 
-        if not options:
-            log.LogWarn('PaperDoll - Empty options passed to ModifierLoader::LoadResource!')
-            return 
-        if path not in options:
-            log.LogWarn('PaperDoll - Path {0} does not exist in the options passed to ModifierLoader::LoadResource!'.format(path))
-            return 
-        while not self.IsLoaded:
-            blue.pyos.BeNice()
+        if not forceLoaded:
+            while not self.IsLoaded:
+                PD.BeFrameNice()
 
-        self._ModifierLoader__GetFilesForEntry(options, modifier, path)
-        modName = path.split('/')[-1]
-        colorsPath = path.replace(modName, 'colors')
-        if colorsPath in options.keys():
-            self._ModifierLoader__GetFilesForEntry(options, modifier, colorsPath)
-        path = path + '/v'
-        matchingVariationPaths = [ key for key in options.keys() if key.startswith(path) ]
-        for variationPath in iter(matchingVariationPaths):
-            variationBd = PD.BuildData()
-            self._ModifierLoader__GetFilesForEntry(options, variationBd, variationPath)
-            modifier.variations[variationPath.split('/')[-1]] = variationBd
+        resDataEntry = self.resData.GetEntryByPath(gender, path)
+        modifier.lodCutoff = resDataEntry.lodCutoff
+        self._GetFilesForEntry(resDataEntry, modifier)
+        parentEntry = self.resData.GetParentEntry(resDataEntry)
+        if 'colors' in parentEntry.dirs:
+            colorEntry = self.resData.GetEntryByPath(gender, parentEntry.GetResPath('colors'))
+            self._PopulateMetaData(modifier, colorEntry)
+        matchingVariationEntries = (entry for entry in self.resData.GetChildEntries(resDataEntry) if entry.isVariationFolder)
+        for variationResDataEntry in iter(matchingVariationEntries):
+            variationModifier = PD.BuildData()
+            self._GetFilesForEntry(variationResDataEntry, variationModifier)
+            modifier.variations[variationResDataEntry.leafFolderName] = variationModifier
 
         if len(modifier.variations):
             original = copy.deepcopy(modifier)
@@ -476,135 +518,205 @@ class ModifierLoader():
         if 'default' in modifier.colorVariations:
             modifier.SetColorVariation('default')
         if modifier.metaData.alternativeTextureSourcePath:
-            self._ModifierLoader__GetFilesForEntry(options, modifier, modifier.metaData.alternativeTextureSourcePath.lower(), sourceMapsOnly=True)
+            path = modifier.metaData.alternativeTextureSourcePath.lower()
+            altEntry = self.resData.GetEntryByPath(gender, path)
+            self._GetFilesForEntry(altEntry, modifier, sourceMapsOnly=True)
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def __GetFromYamlCache(self, key):
-        inst = self.yamlCache.get(key)
-        if inst is not None:
-            return copy.deepcopy(inst)
-
-
-
-    def __AddToYamlCache(self, key, value):
-        self.yamlCache[key] = value
+        inst = self.yamlPreloader.LoadYaml(key)
+        return inst
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def __PartFromPath(self, path, reverseLookupData = None, rvPart = None):
-        pathLower = path.lower()
+    def _PartFromPath(self, path, reverseLookupData = None, rvPart = None):
         for part in PD.DOLL_PARTS:
-            if part.lower() in pathLower:
-                return str(part)
+            if part in path:
+                return part
 
-        if '_acc_' in pathLower:
-            return str(PD.DOLL_PARTS.ACCESSORIES)
+        if '_acc_' in path:
+            return PD.DOLL_PARTS.ACCESSORIES
         if reverseLookupData:
             for part in iter(reverseLookupData):
-                if part.lower() in pathLower:
-                    return str(rvPart)
+                if part in path:
+                    return rvPart
 
         return ''
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def __GetFilesForEntry(self, options, buildData, path, sourceMapsOnly = False):
-        items = options.get(path, [])
-        for each in iter(items):
-            blue.pyos.BeNice()
-            resPath = str(each).lower()
-            each = resPath.split('/')[-1]
-            each_endswith = each.endswith
-            if each_endswith('.dds') and not PD.USE_PNG or each_endswith('.tga') or each_endswith('.png') and PD.USE_PNG:
-                base = each.split('.')[-2]
-                base_endswith = base.endswith
-                partType = self._ModifierLoader__PartFromPath(base) or self._ModifierLoader__PartFromPath(resPath, PD.BODY_CATEGORIES, PD.DOLL_PARTS.BODY)
-                if 'colorize_' in base:
-                    buildData.colorize = True
-                if base_endswith('_l'):
-                    buildData.mapL[partType] = resPath
-                elif base_endswith('_z'):
-                    buildData.mapZ[partType] = resPath
-                if base_endswith('_o'):
-                    buildData.mapO[partType] = resPath
-                elif base_endswith('_d'):
-                    buildData.mapD[partType] = resPath
-                elif base_endswith('_n'):
-                    buildData.mapN[partType] = resPath
-                if base_endswith('_mn'):
-                    buildData.mapMN[partType] = resPath
-                elif base_endswith('_tn'):
-                    buildData.mapTN[partType] = resPath
-                elif base_endswith('_s'):
-                    buildData.mapSRG[partType] = resPath
-                if base_endswith('_ao'):
-                    buildData.mapAO[partType] = resPath
-                elif base_endswith('_mask') or base_endswith('_m'):
-                    buildData.mapMask[partType] = resPath
-                    buildData.mapAO[partType] = resPath
-                elif base_endswith('_mm'):
-                    buildData.mapMaterial[partType] = resPath
-            if not sourceMapsOnly and each_endswith('.red') and '_hood' not in each and '_hat' not in each:
-                if each_endswith('_physx.red'):
-                    buildData.clothPath = resPath
-                    continue
-                if each_endswith('_nosim.red'):
-                    buildData.clothOverride = resPath
-                    continue
-                if each_endswith('stubble.red'):
-                    buildData.stubblePath = resPath
-                    buildData.colorize = True
-                    continue
-                if '_physx_lod' in each:
-                    continue
-                if each_endswith('_shader.red'):
-                    buildData.shaderPath = resPath
-                    continue
-                buildData.redfile = resPath
-            if not sourceMapsOnly and each_endswith('.yaml'):
-                inst = self._ModifierLoader__GetFromYamlCache(resPath)
-                if inst is None:
-                    inst = LoadYamlFileNicely(resPath)
-                    if inst is not None:
-                        PD.AvatarPartMetaData.FillInDefaults(inst)
-                        inst.defaultMetaData = False
-                        self._ModifierLoader__AddToYamlCache(resPath, inst)
-                if inst:
-                    buildData.metaData = inst
-            if not sourceMapsOnly and each_endswith('.pose'):
-                inst = self._ModifierLoader__GetFromYamlCache(resPath)
-                if inst is None:
-                    inst = LoadYamlFileNicely(resPath)
-                    if inst is not None:
-                        self._ModifierLoader__AddToYamlCache(resPath, inst)
-                buildData.poseData = inst
-            if not sourceMapsOnly and each_endswith('.color'):
-                inst = self._ModifierLoader__GetFromYamlCache(resPath)
-                if inst is None:
-                    inst = LoadYamlFileNicely(resPath)
-                    if inst is not None:
-                        self._ModifierLoader__AddToYamlCache(resPath, inst)
-                varName = each.split('/')[-1].split('.')[0]
-                buildData.colorVariations[varName] = inst
-            if not sourceMapsOnly and each_endswith('.proj'):
-                inst = self._ModifierLoader__GetFromYamlCache(resPath)
-                if inst is None:
-                    inst = PD.ProjectedDecal.Load(resPath)
-                    if inst is not None:
-                        self._ModifierLoader__AddToYamlCache(resPath, inst)
+    def _PopulateSourceMaps(self, modifier, resDataEntry):
+        files = resDataEntry.sourceMaps.keys()
+        for f in files:
+            partType = self._PartFromPath(f) or self._PartFromPath(resDataEntry.respath, PD.BODY_CATEGORIES, PD.DOLL_PARTS.BODY)
+            if PD.MAP_PREFIX_COLORIZE in f:
+                modifier.colorize = True
+            if PD.MAP_SUFFIX_DRGB in f:
+                modifier.mapDRGB[partType] = resDataEntry.GetFullResPath(f)
+            elif PD.MAP_SUFFIX_LRGB in f:
+                modifier.mapLRGB[partType] = resDataEntry.GetFullResPath(f)
+            elif PD.MAP_SUFFIX_LA in f:
+                modifier.mapLA[partType] = resDataEntry.GetFullResPath(f)
+            elif PD.MAP_SUFFIX_DA in f:
+                modifier.mapDA[partType] = resDataEntry.GetFullResPath(f)
+            elif PD.MAP_SUFFIX_L in f:
+                modifier.mapL[partType] = resDataEntry.GetFullResPath(f)
+            elif PD.MAP_SUFFIX_Z in f:
+                modifier.mapZ[partType] = resDataEntry.GetFullResPath(f)
+            elif PD.MAP_SUFFIX_O in f:
+                modifier.mapO[partType] = resDataEntry.GetFullResPath(f)
+            elif PD.MAP_SUFFIX_D in f:
+                modifier.mapD[partType] = resDataEntry.GetFullResPath(f)
+            elif PD.MAP_SUFFIX_N in f:
+                modifier.mapN[partType] = resDataEntry.GetFullResPath(f)
+            elif PD.MAP_SUFFIX_MN in f:
+                modifier.mapMN[partType] = resDataEntry.GetFullResPath(f)
+            elif PD.MAP_SUFFIX_TN in f:
+                modifier.mapTN[partType] = resDataEntry.GetFullResPath(f)
+            elif PD.MAP_SUFFIX_S in f:
+                modifier.mapSRG[partType] = resDataEntry.GetFullResPath(f)
+            elif PD.MAP_SUFFIX_AO in f:
+                modifier.mapAO[partType] = resDataEntry.GetFullResPath(f)
+            elif PD.MAP_SUFFIX_MM in f:
+                modifier.mapMaterial[partType] = resDataEntry.GetFullResPath(f)
+            elif PD.MAP_SUFFIX_MASK in f or PD.MAP_SUFFIX_M in f:
+                modifier.mapMask[partType] = resDataEntry.GetFullResPath(f)
+                modifier.mapAO[partType] = resDataEntry.GetFullResPath(f)
+
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def _PopulateGeometry(self, modifier, resDataEntry):
+        modifier.clothPath = resDataEntry.redFiles.get(PD.CLOTH_PATH, '')
+        modifier.clothOverride = resDataEntry.redFiles.get(PD.CLOTH_OVERRIDE, '')
+        modifier.stubblePath = resDataEntry.redFiles.get(PD.STUBBLE_PATH, '')
+        if modifier.stubblePath:
+            modifier.colorize = True
+        modifier.shaderPath = resDataEntry.redFiles.get(PD.SHADER_PATH, '')
+        modifier.redfile = resDataEntry.redFiles.get(PD.RED_FILE, '')
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def _PopulateMetaData(self, modifier, resDataEntry):
+        metaDataFn = 'metadata.yaml'
+        if metaDataFn in resDataEntry.files:
+            resPath = resDataEntry.GetFullResPath(metaDataFn)
+            inst = self._ModifierLoader__GetFromYamlCache(resPath)
+            if inst:
+                inst.defaultMetaData = False
+                modifier.metaData = inst
+        files = resDataEntry.GetFilesByExt('pose')
+        if files:
+            resPath = resDataEntry.GetFullResPath(files[0])
+            inst = self._ModifierLoader__GetFromYamlCache(resPath)
+            modifier.poseData = inst
+        files = resDataEntry.GetFilesByExt('color')
+        for f in files:
+            resPath = resDataEntry.GetFullResPath(f)
+            inst = self._ModifierLoader__GetFromYamlCache(resPath)
+            varName = f.split('.')[0]
+            modifier.colorVariations[varName] = inst
+
+        files = resDataEntry.GetFilesByExt('proj')
+        if files:
+            resPath = resDataEntry.GetFullResPath(files[0])
+            inst = self._ModifierLoader__GetFromYamlCache(resPath)
+            if inst:
                 inst.SetTexturePath(inst.texturePath)
                 inst.SetMaskPath(inst.maskPath)
-                buildData.decalData = inst
+                modifier.decalData = inst
+
+
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def _GetFilesForEntry(self, resDataEntry, modifier, sourceMapsOnly = False):
+        if resDataEntry:
+            self._PopulateSourceMaps(modifier, resDataEntry)
+            dimExt = [ ext for ext in resDataEntry.extToFiles.keys() if ext.isdigit() ]
+            if dimExt:
+                dimFn = resDataEntry.extToFiles[dimExt[0]][0]
+                modifier.accessoryMapSize = [ int(x) for x in dimFn.split('.')[-2:] ]
+            if not sourceMapsOnly:
+                self._PopulateGeometry(modifier, resDataEntry)
+                self._PopulateMetaData(modifier, resDataEntry)
+        return modifier
 
 
 
 
+class BuildDataMaps(object):
 
-class BuildData(object):
+    def __init__(self):
+        self._isTextureContainingModifier = None
+        self._contributesToMapTypes = None
+        self._affectedTextureParts = None
+        self.mapN = {}
+        self.mapMN = {}
+        self.mapTN = {}
+        self.mapSRG = {}
+        self.mapAO = {}
+        self.mapMaterial = {}
+        self.mapMask = {}
+        self.mapD = {}
+        self.mapDRGB = {}
+        self.mapDA = {}
+        self.mapLRGB = {}
+        self.mapLA = {}
+        self.mapL = {}
+        self.mapZ = {}
+        self.mapO = {}
+
+
+
+    def IsTextureContainingModifier(self):
+        if self._isTextureContainingModifier is None:
+            self._isTextureContainingModifier = False
+            for each in self.__dict__.iterkeys():
+                if each.startswith('map'):
+                    if self.__dict__[each]:
+                        self._isTextureContainingModifier = True
+                        break
+
+        return self._isTextureContainingModifier
+
+
+
+    def ContributesToMapTypes(self):
+        if self._contributesToMapTypes is None:
+            mapTypes = list()
+            if len(self.mapD.keys()) > 0 or len(self.mapL.keys()) > 0 or len(self.mapZ.keys()) > 0 or len(self.mapO.keys()) > 0:
+                mapTypes.append(PD.DIFFUSE_MAP)
+            if len(self.mapSRG.keys()) > 0 or len(self.mapAO.keys()) > 0 or len(self.mapMaterial.keys()) > 0:
+                mapTypes.append(PD.SPECULAR_MAP)
+            if len(self.mapN.keys()) > 0 or len(self.mapMN.keys()) > 0 or len(self.mapTN.keys()) > 0:
+                mapTypes.append(PD.NORMAL_MAP)
+            if len(self.mapMask.keys()) > 0:
+                mapTypes.append(PD.MASK_MAP)
+            self._contributesToMapTypes = mapTypes
+        return self._contributesToMapTypes
+
+
+
+    def GetAffectedTextureParts(self):
+        if self._affectedTextureParts is None:
+            parts = set()
+            for each in self.__dict__.iterkeys():
+                if each.startswith('map'):
+                    parts.update(self.__dict__[each].keys())
+
+            self._affectedTextureParts = parts
+        return self._affectedTextureParts
+
+
+
+
+class BuildData(BuildDataMaps):
     __metaclass__ = bluepy.CCP_STATS_ZONE_PER_METHOD
     __guid__ = 'paperDoll.BuildData'
     DEFAULT_COLORIZEDATA = [PD.MID_GRAY] * 3
@@ -623,7 +735,7 @@ class BuildData(object):
 
 
     def __init__(self, pathName = None, name = None, categorie = None):
-        object.__init__(self)
+        BuildDataMaps.__init__(self)
         self.name = ''
         self.categorie = categorie.lower() if categorie else ''
         extPath = None
@@ -633,17 +745,17 @@ class BuildData(object):
             splits = pathName.split(PD.SEPERATOR_CHAR)
             extPath = str(PD.SEPERATOR_CHAR.join(splits[1:]))
             self.categorie = str(splits[0])
+        self.lodCutoff = PD.LOD_99
+        self.lodCutin = -PD.LOD_99
         self.name = name.lower() if name else extPath
         if self.categorie and self.name:
-            self.respath = self.categorie + PD.SEPERATOR_CHAR + self.name
+            self.respath = '{0}/{1}'.format(self.categorie, self.name)
         else:
             self.respath = ''
         if splits and len(splits) > 2:
             self.group = splits[1]
         else:
             self.group = ''
-        self._BuildData__blendData = {}
-        self.blendRes = None
         self.usingMaskedShader = False
         self.redfile = ''
         self.clothPath = ''
@@ -656,18 +768,8 @@ class BuildData(object):
         self.stubblePath = ''
         self.shaderPath = ''
         self.drapePath = ''
+        self.accessoryMapSize = None
         self.decalData = None
-        self.mapN = {}
-        self.mapMN = {}
-        self.mapTN = {}
-        self.mapSRG = {}
-        self.mapAO = {}
-        self.mapMaterial = {}
-        self.mapMask = {}
-        self.mapD = {}
-        self.mapL = {}
-        self.mapZ = {}
-        self.mapO = {}
         self.colorize = False
         self._colorizeData = list(BuildData.DEFAULT_COLORIZEDATA)
         self._BuildData__cmpColorizeData = []
@@ -683,6 +785,7 @@ class BuildData(object):
         self.currentVariation = ''
         self.lastVariation = ''
         self._BuildData__weight = 1.0
+        self.hasWeightPulse = False
         self._BuildData__useSkin = False
         self.metaData = AvatarPartMetaData()
         self.poseData = None
@@ -693,9 +796,16 @@ class BuildData(object):
         self.WasHidden = False
         self._BuildData__IsDirty = True
         self._BuildData__hashValue = None
-        self._isTextureContainingModifier = None
-        self._contributesToMapTypes = None
-        self._affectedTextureParts = None
+
+
+
+    def HasWeightPulse(self):
+        return self.hasWeightPulse
+
+
+
+    def IsVisibleAtLOD(self, lod):
+        return self.lodCutin <= lod <= self.lodCutoff
 
 
 
@@ -713,19 +823,6 @@ class BuildData(object):
             height = accUVs[3] - accUVs[1]
             UVs = list((accUVs[0] + self.ulUVs[0] * width, accUVs[1] + self.ulUVs[1] * height) + (accUVs[0] + self.lrUVs[0] * width, accUVs[1] + self.lrUVs[1] * height))
         return UVs
-
-
-
-    def IsSimilarTo(self, modifier):
-        return self.name == modifier.name and self.categorie == modifier.categorie and self.respath == modifier.respath
-
-
-
-    def MorphTo(self, modifier):
-        self.SetVariation(modifier.currentVariation)
-        self.SetColorVariation(modifier.currentColorVariation)
-        self.colorizeData = list(modifier.colorizeData)
-        self._BuildData__dirty = True
 
 
 
@@ -845,10 +942,11 @@ class BuildData(object):
                         if var.metaData and not var.metaData.defaultMetaData:
                             self.metaData = var.metaData
 
-            if oldRedFile != self.redfile or oldClothPath != self.clothPath:
+            if oldRedFile != self.redfile:
                 del self.meshes[:]
-                self.clothData = None
                 self.meshGeometryResPaths = {}
+            if oldClothPath != self.clothPath:
+                self.clothData = None
             self.lastVariation = self.currentVariation
             self.currentVariation = str(variationName)
 
@@ -864,58 +962,18 @@ class BuildData(object):
 
 
 
-    def IsTextureContainingModifier(self):
-        if self._isTextureContainingModifier is None:
-            self._isTextureContainingModifier = False
-            for each in self.__dict__.iterkeys():
-                if each.startswith('map'):
-                    if self.__dict__[each]:
-                        self._isTextureContainingModifier = True
-                        break
-
-        return self._isTextureContainingModifier
-
-
-
-    def ContributesToMapTypes(self):
-        if self._contributesToMapTypes is None:
-            mapTypes = list()
-            if len(self.mapD.keys()) > 0 or len(self.mapL.keys()) > 0 or len(self.mapZ.keys()) > 0 or len(self.mapO.keys()) > 0:
-                mapTypes.append(PD.DIFFUSE_MAP)
-            if len(self.mapSRG.keys()) > 0 or len(self.mapAO.keys()) > 0 or len(self.mapMaterial.keys()) > 0:
-                mapTypes.append(PD.SPECULAR_MAP)
-            if len(self.mapN.keys()) > 0 or len(self.mapMN.keys()) > 0 or len(self.mapTN.keys()) > 0:
-                mapTypes.append(PD.NORMAL_MAP)
-            if len(self.mapMask.keys()) > 0:
-                mapTypes.append(PD.MASK_MAP)
-            self._contributesToMapTypes = mapTypes
-        return self._contributesToMapTypes
-
-
-
-    def GetAffectedTextureParts(self):
-        if self._affectedTextureParts is None:
-            parts = set()
-            for each in self.__dict__.iterkeys():
-                if each.startswith('map'):
-                    parts.update(self.__dict__[each].keys())
-
-            self._affectedTextureParts = parts
-        return self._affectedTextureParts
-
-
-
-    def GetDependantModifiersFullData(self):
-        if self.metaData.dependantModifiers:
+    def GetDependantModifiersFullData(self, metaDataOverride = None):
+        metaData = metaDataOverride or self.metaData
+        if metaData.dependantModifiers:
             parsedValues = []
-            for each in self.metaData.dependantModifiers:
+            for each in metaData.dependantModifiers:
                 if '#' in each:
                     tmpList = []
                     for elem in each.split('#'):
                         tmpList.append(elem)
 
                     while len(tmpList) < 3:
-                        tmpList.append(None)
+                        tmpList.append('')
 
                     if len(tmpList) < 4:
                         tmpList.append(1.0)
@@ -924,8 +982,8 @@ class BuildData(object):
                     parsedValues.append(tuple(tmpList))
                 else:
                     parsedValues.append((each,
-                     None,
-                     None,
+                     '',
+                     '',
                      1.0))
 
             return parsedValues
@@ -962,9 +1020,10 @@ class BuildData(object):
                         tmpList.append(1.0)
                     else:
                         tmpList[1] = float(tmpList[1])
+                    tmpList[0] = tmpList[0].lower()
                     parsedValues.append(tuple(tmpList))
                 else:
-                    parsedValues.append((each, 1.0))
+                    parsedValues.append((each.lower(), 1.0))
 
             return parsedValues
 
@@ -990,6 +1049,11 @@ class BuildData(object):
 
     def GetMeshSourcePaths(self):
         return [self.clothPath, self.redfile]
+
+
+
+    def IsMeshDirty(self):
+        return self._BuildData__cmpMeshes != self.meshes or self.clothPath and not self.clothData
 
 
 
@@ -1051,6 +1115,7 @@ class BuildData(object):
             self.lastVariation = self.currentVariation
             self.WasHidden = False
             self.WasShown = False
+            self.previousWeight = None
         else:
             self._BuildData__hashValue = None
             self._isTextureContainingModifier = None
@@ -1083,13 +1148,6 @@ class BuildData(object):
     IsHidden = property(fget=lambda self: self._BuildData__IsHidden, fset=setisHidden)
 
     @dirtDeco
-    def setblendData(self, value):
-        self._BuildData__blendData = value
-
-
-    blendData = property(fget=lambda self: self._BuildData__blendData, fset=setblendData)
-
-    @dirtDeco
     def settuck(self, value):
         self._BuildData__tuck = value
 
@@ -1105,6 +1163,10 @@ class BuildData(object):
 
     @dirtDeco
     def setweight(self, value):
+        if value > 0 and self._BuildData__weight <= 0:
+            self.hasWeightPulse = True
+        elif self._BuildData__weight > 0 and value <= 0:
+            self.hasWeightPulse = True
         self._BuildData__weight = value
 
 
@@ -1241,11 +1303,33 @@ class BuildDataManager(object):
         self.occludeRules = {}
         self._BuildDataManager__dirtyModifiersAdded = []
         self._BuildDataManager__dirtyModifiersRemoved = []
+        self.currentLOD = PD.LOD_0
         self._BuildDataManager__locked = False
         self._BuildDataManager__pendingModifiersToAdd = []
         self._BuildDataManager__pendingModifiersToRemove = []
         self._BuildDataManager__filterHidden = True
         self._parentModifiers = {}
+
+
+
+    def GetMorphTargets(self):
+        modifierList = self.GetModifiersAsList()
+        removedModifiers = list(self._BuildDataManager__dirtyModifiersRemoved)
+        morphTargets = {}
+
+        def Qualifier(modifier):
+            return modifier.IsBlendshapeModifier() and modifier.weight > 0.0
+
+
+        for modifier in iter(removedModifiers):
+            if Qualifier(modifier):
+                morphTargets[modifier.name] = 0
+
+        for modifier in iter(modifierList):
+            if Qualifier(modifier):
+                morphTargets[modifier.name] = modifier.weight if modifier.weight < 1.0 else 1.0
+
+        return morphTargets
 
 
 
@@ -1313,14 +1397,14 @@ class BuildDataManager(object):
         for (part, modifiers,) in self.modifiersdata.iteritems():
             hasher.update(part)
             for modifier in iter(modifiers):
-                if not (modifier.IsTextureContainingModifier() or modifier.metaData.hidesBootShin or modifier.metaData.forcesLooseTop):
+                if not (modifier.IsTextureContainingModifier() or modifier.metaData.hidesBootShin or modifier.metaData.forcesLooseTop or modifier.metaData.swapTops or modifier.metaData.swapBottom or modifier.metaData.swapSocks):
                     continue
                 modString = '{0}{1}{2}{3}{4}{5}{6}{7}{8}{9}'.format(modifier.name, modifier.categorie, modifier.weight, modifier.colorizeData, modifier.specularColorData, modifier.pattern, modifier.patternData, modifier.decalData, modifier.useSkin, modifier.variationTextureHash)
-                if modifier.metaData.hidesBootShin or modifier.metaData.forcesLooseTop:
-                    modString = '{0}{1}{2}'.format(modString, modifier.metaData.hidesBootShin, modifier.metaData.forcesLooseTop)
+                if modifier.metaData.hidesBootShin or modifier.metaData.forcesLooseTop or modifier.metaData.swapTops or modifier.metaData.swapBottom or modifier.metaData.swapSocks:
+                    modString = '{0}{1}{2}'.format(modString, modifier.metaData.hidesBootShin, modifier.metaData.forcesLooseTop, modifier.metaData.swapTops, modifier.metaData.swapBottom, modifier.metaData.swapSocks)
                 hasher.update(modString)
 
-            blue.pyos.BeNice()
+            PD.BeFrameNice()
 
         return hasher.hexdigest()
 
@@ -1358,16 +1442,15 @@ class BuildDataManager(object):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def NotifyUpdate(self):
         del self._BuildDataManager__dirtyModifiersAdded[:]
         for modifier in iter(self._BuildDataManager__dirtyModifiersRemoved):
             modifier.ClearCachedData()
 
         del self._BuildDataManager__dirtyModifiersRemoved[:]
-        for modifiers in self.modifiersdata.itervalues():
-            for modifier in modifiers:
-                modifier.IsDirty = False
-
+        for modifier in iter(self.GetModifiersAsList(showHidden=True)):
+            modifier.IsDirty = False
 
         self.desiredOrderChanged = False
         self._BuildDataManager__dirty = False
@@ -1386,6 +1469,18 @@ class BuildDataManager(object):
 
 
 
+    def SetLOD(self, newLod):
+        self.currentLOD = newLod
+        modifiers = self.GetModifiersAsList(showHidden=True)
+        for modifier in modifiers:
+            if not modifier.IsVisibleAtLOD(self.currentLOD):
+                self.HideModifier(modifier)
+            elif modifier.IsHidden:
+                self.ShowModifier(modifier)
+
+
+
+
     def RemoveMeshContainingModifiers(self, category, privilegedCaller = False):
         for modifier in self.GetModifiersByCategory(category):
             if modifier.IsMeshContainingModifier() and not self.GetParentModifiers(modifier):
@@ -1401,13 +1496,18 @@ class BuildDataManager(object):
             part = self.CategoryToPart(modifier.categorie)
             for existingModifier in iter(self._BuildDataManager__modifiers[part]):
                 if existingModifier.respath == modifier.respath:
-                    if existingModifier.IsHidden:
-                        self.ShowModifier(existingModifier)
+                    if existingModifier.IsVisibleAtLOD(self.currentLOD):
+                        if existingModifier.IsHidden:
+                            self.ShowModifier(existingModifier)
+                    else:
+                        self.HideModifier(existingModifier)
                     if modifier.weight > existingModifier.weight:
                         existingModifier.weight = modifier.weight
                         self.ApplyOccludeRules(existingModifier)
                     return 
 
+            if not modifier.IsVisibleAtLOD(self.currentLOD):
+                self.HideModifier(modifier)
             self.ApplyOccludeRules(modifier)
             if modifier.weight > 0:
                 if modifier.categorie == PD.BODY_CATEGORIES.TOPOUTER:
@@ -1550,6 +1650,13 @@ class BuildDataManager(object):
         if modifier in self._BuildDataManager__dirtyModifiersAdded:
             self._BuildDataManager__dirtyModifiersAdded.remove(modifier)
         self._BuildDataManager__dirtyModifiersRemoved.append(modifier)
+        replacementPaths = (modifier.metaData.lod1Replacement, modifier.metaData.lod2Replacement)
+        for replacementPath in replacementPaths:
+            if replacementPath:
+                lodReplacementModifier = self.GetModifierByResPath(replacementPath)
+                if lodReplacementModifier:
+                    self.RemoveModifier(lodReplacementModifier)
+
         self.ReverseOccludeModifiersByModifier(modifier)
         self.RemoveParentModifier(modifier)
         for dependantModifier in iter(modifier.GetDependantModifiers()):
@@ -1611,8 +1718,8 @@ class BuildDataManager(object):
 
 
 
-    def GetModifierByResPath(self, resPath, includeFuture = False):
-        for modifier in self.GetSortedModifiers(includeFuture=includeFuture):
+    def GetModifierByResPath(self, resPath, includeFuture = False, showHidden = False):
+        for modifier in self.GetModifiersAsList(includeFuture=includeFuture, showHidden=showHidden):
             if modifier.respath == resPath:
                 return modifier
 
@@ -1763,13 +1870,17 @@ class BuildDataManager(object):
 
 
 
-    def GetModifiersAsList(self, includeFuture = False):
+    def GetModifiersAsList(self, includeFuture = False, showHidden = False):
+        filterHiddenState = self._BuildDataManager__filterHidden
+        if showHidden:
+            self._BuildDataManager__filterHidden = False
         ret = []
         if includeFuture:
             ret = list(self._BuildDataManager__pendingModifiersToAdd)
         for each in self.modifiersdata.itervalues():
             ret.extend(each)
 
+        self._BuildDataManager__filterHidden = filterHiddenState
         return ret
 
 
@@ -1777,10 +1888,7 @@ class BuildDataManager(object):
     @bluepy.CCP_STATS_ZONE_METHOD
     def GetSortedModifiers(self, showHidden = False, includeFuture = False):
         if showHidden:
-            filterHiddenState = self._BuildDataManager__filterHidden
-            self._BuildDataManager__filterHidden = False
-            modifiers = self.SortParts(self.GetModifiersAsList())
-            self._BuildDataManager__filterHidden = filterHiddenState
+            modifiers = self.SortParts(self.GetModifiersAsList(includeFuture=includeFuture, showHidden=True))
             return modifiers
         if self._BuildDataManager__dirty or not self._BuildDataManager__sortedList:
             self._BuildDataManager__sortedList = self.SortParts(self.GetModifiersAsList())

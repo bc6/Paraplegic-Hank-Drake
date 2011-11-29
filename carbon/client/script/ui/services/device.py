@@ -5,6 +5,8 @@ import uthread
 import trinity
 import util
 import log
+import localization
+import bluepy
 
 class Const(object):
 
@@ -234,11 +236,15 @@ class DeviceMgr(service.Service):
             bits[key] = bit
 
         totalbits = bits['r'] + bits['g'] + bits['b'] + bits['a'] + bits['x']
-        fancy = mls.UI_GENERIC_DEVICEMGR7 % {'bit': bits['r'] + bits['g'] + bits['b']}
-        if bits['a']:
-            fancy += ' ' + mls.UI_GENERIC_DEVICEMGR8 % {'bit': bits['a']}
         if settings.public.device.Get('advancedDevice', 0):
-            fancy += ' (%s)' % format.replace('d3dfmt_', '').upper()
+            if bits['a']:
+                fancy = localization.GetByLabel('/Carbon/UI/Service/Device/RedGreenBlueAlphaBitsAdvanced', rgbBits=bits['r'] + bits['g'] + bits['b'], alphaBits=bits['a'], format=format.replace('d3dfmt_', '').upper())
+            else:
+                fancy = localization.GetByLabel('/Carbon/UI/Service/Device/RedGreenBlueBitsAdvanced', rgbBits=bits['r'] + bits['g'] + bits['b'], format=format.replace('d3dfmt_', '').upper())
+        elif bits['a']:
+            fancy = localization.GetByLabel('/Carbon/UI/Service/Device/RedGreenBlueAlphaBits', rgbBits=bits['r'] + bits['g'] + bits['b'], alphaBits=bits['a'])
+        else:
+            fancy = localization.GetByLabel('/Carbon/UI/Service/Device/RedGreenBlueBits', rgbBits=bits['r'] + bits['g'] + bits['b'])
         return fancy
 
 
@@ -246,7 +252,7 @@ class DeviceMgr(service.Service):
     def GetFancyStencilName(self, format):
         format = format.lower().replace('d3dfmt_', '')
         if format.find('vertexdata') != -1:
-            return mls.UI_GENERIC_DEVICEMGR3
+            return localization.GetByLabel('/Carbon/UI/Service/Device/VertexBufferSurface')
         idx = format.find('index')
         if idx != -1:
             bit = 0
@@ -258,7 +264,7 @@ class DeviceMgr(service.Service):
                 except:
                     pass
                 sys.exc_clear()
-            return mls.UI_GENERIC_DEVICEMGR4 % {'bit': bit}
+            return localization.GetByLabel('/Carbon/UI/Service/Device/IndexBufferWithBits', indexBufferBits=bit)
         bits = {}
         for key in 'dsx':
             idx = format.find(key)
@@ -275,31 +281,32 @@ class DeviceMgr(service.Service):
             bits[key] = bit
 
         totalbits = bits['d'] + bits['s']
-        fancy = mls.UI_GENERIC_DEVICEMGR5 % {'totalbits': totalbits}
         if bits['s']:
-            fancy += ' ' + mls.UI_GENERIC_DEVICEMGR6 % {'bit': bits['s']}
+            fancy = localization.GetByLabel('/Carbon/UI/Service/Device/ZBufferStencilBufferBitInformation', zBit=totalbits, stencilBit=bits['s'])
+        else:
+            fancy = localization.GetByLabel('/Carbon/UI/Service/Device/ZBufferBitInformation', bit=totalbits)
         return fancy
 
 
 
     def GetFancySampleTypeName(self, sampletype):
-        return {'D3DMULTISAMPLE_NONE': mls.UI_GENERIC_DISABLED,
-         'D3DMULTISAMPLE_NONMASKABLE': mls.UI_GENERIC_DEVICEMGR2,
-         'D3DMULTISAMPLE_2_SAMPLES': mls.UI_GENERIC_DEVICEMGR1,
-         'D3DMULTISAMPLE_3_SAMPLES': mls.UI_GENERIC_DEVICEMGR1,
-         'D3DMULTISAMPLE_4_SAMPLES': mls.UI_GENERIC_DEVICEMGR1,
-         'D3DMULTISAMPLE_5_SAMPLES': mls.UI_GENERIC_DEVICEMGR1,
-         'D3DMULTISAMPLE_6_SAMPLES': mls.UI_GENERIC_DEVICEMGR1,
-         'D3DMULTISAMPLE_7_SAMPLES': mls.UI_GENERIC_DEVICEMGR1,
-         'D3DMULTISAMPLE_8_SAMPLES': mls.UI_GENERIC_DEVICEMGR1,
-         'D3DMULTISAMPLE_9_SAMPLES': mls.UI_GENERIC_DEVICEMGR1,
-         'D3DMULTISAMPLE_10_SAMPLES': mls.UI_GENERIC_DEVICEMGR1,
-         'D3DMULTISAMPLE_11_SAMPLES': mls.UI_GENERIC_DEVICEMGR1,
-         'D3DMULTISAMPLE_12_SAMPLES': mls.UI_GENERIC_DEVICEMGR1,
-         'D3DMULTISAMPLE_13_SAMPLES': mls.UI_GENERIC_DEVICEMGR1,
-         'D3DMULTISAMPLE_14_SAMPLES': mls.UI_GENERIC_DEVICEMGR1,
-         'D3DMULTISAMPLE_15_SAMPLES': mls.UI_GENERIC_DEVICEMGR1,
-         'D3DMULTISAMPLE_16_SAMPLES': mls.UI_GENERIC_DEVICEMGR1}.get(sampletype.upper(), sampletype)
+        return {'D3DMULTISAMPLE_NONE': localization.GetByLabel('/Carbon/UI/Common/Disabled'),
+         'D3DMULTISAMPLE_NONMASKABLE': localization.GetByLabel('/Carbon/UI/Service/Device/EnableMultisampleQuality'),
+         'D3DMULTISAMPLE_2_SAMPLES': localization.GetByLabel('/Carbon/UI/Service/Device/MultiSamplingAvailable'),
+         'D3DMULTISAMPLE_3_SAMPLES': localization.GetByLabel('/Carbon/UI/Service/Device/MultiSamplingAvailable'),
+         'D3DMULTISAMPLE_4_SAMPLES': localization.GetByLabel('/Carbon/UI/Service/Device/MultiSamplingAvailable'),
+         'D3DMULTISAMPLE_5_SAMPLES': localization.GetByLabel('/Carbon/UI/Service/Device/MultiSamplingAvailable'),
+         'D3DMULTISAMPLE_6_SAMPLES': localization.GetByLabel('/Carbon/UI/Service/Device/MultiSamplingAvailable'),
+         'D3DMULTISAMPLE_7_SAMPLES': localization.GetByLabel('/Carbon/UI/Service/Device/MultiSamplingAvailable'),
+         'D3DMULTISAMPLE_8_SAMPLES': localization.GetByLabel('/Carbon/UI/Service/Device/MultiSamplingAvailable'),
+         'D3DMULTISAMPLE_9_SAMPLES': localization.GetByLabel('/Carbon/UI/Service/Device/MultiSamplingAvailable'),
+         'D3DMULTISAMPLE_10_SAMPLES': localization.GetByLabel('/Carbon/UI/Service/Device/MultiSamplingAvailable'),
+         'D3DMULTISAMPLE_11_SAMPLES': localization.GetByLabel('/Carbon/UI/Service/Device/MultiSamplingAvailable'),
+         'D3DMULTISAMPLE_12_SAMPLES': localization.GetByLabel('/Carbon/UI/Service/Device/MultiSamplingAvailable'),
+         'D3DMULTISAMPLE_13_SAMPLES': localization.GetByLabel('/Carbon/UI/Service/Device/MultiSamplingAvailable'),
+         'D3DMULTISAMPLE_14_SAMPLES': localization.GetByLabel('/Carbon/UI/Service/Device/MultiSamplingAvailable'),
+         'D3DMULTISAMPLE_15_SAMPLES': localization.GetByLabel('/Carbon/UI/Service/Device/MultiSamplingAvailable'),
+         'D3DMULTISAMPLE_16_SAMPLES': localization.GetByLabel('/Carbon/UI/Service/Device/MultiSamplingAvailable')}.get(sampletype.upper(), sampletype)
 
 
 
@@ -316,6 +323,10 @@ class DeviceMgr(service.Service):
         clientRect = triapp.GetClientRect(triapp.hwnd)
         width = clientRect.right - clientRect.left
         height = clientRect.bottom - clientRect.top
+        self.LogInfo('HandleResizeEvent ' + str(width) + ',' + str(height))
+        if width < 1 or height < 1:
+            self.LogWarn('HandleResizeEvent called with invalid width or height')
+            return 
         deviceSettings = self.GetSettings()
         deviceSettings.BackBufferWidth = width
         deviceSettings.BackBufferHeight = height
@@ -365,8 +376,16 @@ class DeviceMgr(service.Service):
                 blue.os.sleeptime = 0
                 blue.rot.cacheTimeout = 60 * settings.public.generic.Get('userotcache', 1)
                 dev.mipLevelSkipCount = prefs.GetValue('textureQuality', self.GetDefaultTextureQuality())
-                self.PrepareMain(True)
                 trinity.SetShaderModel(self.GetAppShaderModel())
+                self.PrepareMain(True)
+                if trinity.GetDirect3D().CheckDeviceFormat(0, trinity.TRIDEVTYPE_HAL, trinity.GetDirect3D().GetAdapterDisplayMode()['Format'], trinity.TRIUSAGE_DEPTHSTENCIL, trinity.TRIRTYPE_SURFACE, trinity.TRIFMT_INTZ):
+                    trinity.AddGlobalSituationFlags(['OPT_INTZ'])
+                else:
+                    trinity.RemoveGlobalSituationFlags(['OPT_INTZ'])
+                try:
+                    trinity.RebindAllShaderMaterials()
+                except:
+                    pass
             except trinity.D3DERR_NOTAVAILABLE as e:
                 sys.exc_clear()
                 self.d3d.Initialize()
@@ -796,7 +815,7 @@ class DeviceMgr(service.Service):
                     triapp.ChangeDevice(device.Adapter, behaviorFlags, self.devtype, device.__dict__)
                     break
                 except trinity.D3DERR_DEVICELOST:
-                    blue.pyos.synchro.Sleep(1000)
+                    blue.pyos.synchro.SleepWallclock(1000)
 
         except Exception as e:
             self.LogInfo(repr(device.__dict__))
@@ -846,8 +865,8 @@ class DeviceMgr(service.Service):
         unsupportedModels = ['SM_1_1', 'SM_2_0_LO', 'SM_2_0_HI']
         maxCardModel = trinity.GetMaxShaderModelSupported()
         if maxCardModel in unsupportedModels:
-            ret = blue.win32.MessageBox(mls.UI_SHADER_MODEL_ERROR, 'Outdated graphics card detected', 48)
-            blue.pyos.Quit('Shader Model version check failed.')
+            ret = blue.win32.MessageBox(localization.GetByLabel('/Carbon/UI/Service/Device/ShaderModelNotSupportedMessage'), localization.GetByLabel('/Carbon/UI/Service/Device/ShaderModelNotSupportedTitle'), 48)
+            bluepy.Terminate('Shader Model version check failed')
 
 
 
@@ -872,7 +891,7 @@ class DeviceMgr(service.Service):
     def AskForConfirmation(self):
         loadingSvc = sm.GetService('loading')
         if hasattr(loadingSvc, 'CountDownWindow'):
-            sm.GetService('loading').CountDownWindow(mls.UI_SHARED_KEEPCHANGES, 15000, self.KeepChanges, self.DiscardChanges, inModalLayer=1)
+            sm.GetService('loading').CountDownWindow(localization.GetByLabel('/Carbon/UI/Service/Device/KeepDisplayChanges'), 15000, self.KeepChanges, self.DiscardChanges, inModalLayer=1)
 
 
 
@@ -940,8 +959,7 @@ class DeviceMgr(service.Service):
 
 
     def GetD3D(self):
-        rot = blue.os.CreateInstance('blue.Rot')
-        D3D = rot.GetInstance('tri:/Direct3D', 'trinity.TriDirect3D')
+        D3D = blue.rot.GetInstance('tri:/Direct3D', 'trinity.TriDirect3D')
         return D3D
 
 
@@ -984,10 +1002,12 @@ class DeviceMgr(service.Service):
     def GetWindowModes(self):
         self.LogInfo('GetWindowModes')
         adapter = self.CurrentAdapter()
+        fullscreenModeLabel = localization.GetByLabel('/Carbon/UI/Service/Device/FullScreen')
+        windowModeLabel = localization.GetByLabel('/Carbon/UI/Service/Device/WindowMode')
         if blue.win32.IsTransgaming() or self.GetFormatNameByConst(adapter['Format']) not in self.formatTable:
-            return [(mls.UI_SHARED_FULLSCREEN, 0)]
+            return [(fullscreenModeLabel, 0)]
         else:
-            return [(mls.UI_SHARED_WINDOWMODE, 1), (mls.UI_SHARED_FULLSCREEN, 0)]
+            return [(windowModeLabel, 1), (fullscreenModeLabel, 0)]
 
 
 
@@ -1053,7 +1073,7 @@ class DeviceMgr(service.Service):
                 continue
             if set.Windowed and ops['RefreshRate'] - trinity.device.adapterRefreshRate > 1:
                 continue
-            option = ('%sx%s' % (ops['Width'], ops['Height']), (ops['Width'], ops['Height']))
+            option = (localization.GetByLabel('/Carbon/UI/Service/Device/ScreenSize', width=ops['Width'], height=ops['Height']), (ops['Width'], ops['Height']))
             if option not in options:
                 options.append(option)
             if (ops['Width'], ops['Height']) not in refresh:
@@ -1061,14 +1081,14 @@ class DeviceMgr(service.Service):
             if not set.Windowed and ops['RefreshRate'] not in refresh[(ops['Width'], ops['Height'])]:
                 refresh[(ops['Width'], ops['Height'])].append(ops['RefreshRate'])
 
-        option = ('%sx%s' % (currentAdapter['Width'], currentAdapter['Height']), (currentAdapter['Width'], currentAdapter['Height']))
+        option = (localization.GetByLabel('/Carbon/UI/Service/Device/ScreenSize', width=currentAdapter['Width'], height=currentAdapter['Height']), (currentAdapter['Width'], currentAdapter['Height']))
         if option not in options:
             options.append(option)
         if (currentAdapter['Width'], currentAdapter['Height']) not in refresh:
             refresh[(currentAdapter['Width'], currentAdapter['Height'])] = [currentAdapter['RefreshRate']]
         resoptions = []
         if (set.BackBufferWidth, set.BackBufferHeight) in refresh:
-            resoptions = [ (str(rr) + ' ' + mls.UI_GENERIC_SHORTHERTZ, rr) for rr in refresh[(set.BackBufferWidth, set.BackBufferHeight)] ]
+            resoptions = [ (localization.GetByLabel('/Carbon/UI/Common/HertzShort', hertz=rr), rr) for rr in refresh[(set.BackBufferWidth, set.BackBufferHeight)] ]
         return (options, resoptions)
 
 
@@ -1109,7 +1129,7 @@ class DeviceMgr(service.Service):
         if formats is None:
             formats = [settings.BackBufferFormat, settings.AutoDepthStencilFormat]
         (vID, dID,) = self.GetVendorIDAndDeviceID()
-        options = [(mls.UI_GENERIC_DISABLED, (0, 0))]
+        options = [(localization.GetByLabel('/Carbon/UI/Common/Disabled'), (0, 0))]
         qualityLevelsSupported = {}
         for i in range(2, 9):
             supported = True
@@ -1138,7 +1158,7 @@ class DeviceMgr(service.Service):
     def GetMultiSampleOption(self, type, quality):
         (vID, dID,) = self.GetVendorIDAndDeviceID()
         if vID == 4318:
-            options = {(0, 0): mls.UI_GENERIC_DISABLED,
+            options = {(0, 0): localization.GetByLabel('/Carbon/UI/Common/Disabled'),
              (2, 0): '2x',
              (3, 0): '3x',
              (4, 0): '4x',
@@ -1150,7 +1170,7 @@ class DeviceMgr(service.Service):
              (4, 4): '16x',
              (8, 2): '16xQ'}
         else:
-            options = {(0, 0): mls.UI_GENERIC_DISABLED,
+            options = {(0, 0): localization.GetByLabel('/Carbon/UI/Common/Disabled'),
              (2, 0): '2x',
              (3, 0): '3x',
              (4, 0): '4x',
@@ -1166,13 +1186,13 @@ class DeviceMgr(service.Service):
         self.LogInfo('GetPresentationIntervalOptions')
         set = set or self.GetSettings()
         options = []
-        presentintvals = {'D3DPRESENT_INTERVAL_IMMEDIATE': mls.UI_SYSMENU_INTERVAL_IMMEDIATE,
-         'D3DPRESENT_INTERVAL_DEFAULT': mls.UI_SYSMENU_INTERVAL_DEFAULT,
-         'D3DPRESENT_INTERVAL_ONE': mls.UI_SYSMENU_INTERVAL_ONE}
+        presentintvals = {'D3DPRESENT_INTERVAL_IMMEDIATE': localization.GetByLabel('/Carbon/UI/Service/Device/PresentationIntervalImmediate'),
+         'D3DPRESENT_INTERVAL_DEFAULT': localization.GetByLabel('/Carbon/UI/Service/Device/PresentationIntervalDefault'),
+         'D3DPRESENT_INTERVAL_ONE': localization.GetByLabel('/Carbon/UI/Service/Device/PresentationIntervalOne')}
         if not set.Windowed:
-            presentintvals['D3DPRESENT_INTERVAL_TWO'] = mls.UI_SYSMENU_INTERVAL_TWO
-            presentintvals['D3DPRESENT_INTERVAL_THREE'] = mls.UI_SYSMENU_INTERVAL_THREE
-            presentintvals['D3DPRESENT_INTERVAL_FOUR'] = mls.UI_SYSMENU_INTERVAL_FOUR
+            presentintvals['D3DPRESENT_INTERVAL_TWO'] = localization.GetByLabel('/Carbon/UI/Service/Device/PresentationIntervalTwo')
+            presentintvals['D3DPRESENT_INTERVAL_THREE'] = localization.GetByLabel('/Carbon/UI/Service/Device/PresentationIntervalThree')
+            presentintvals['D3DPRESENT_INTERVAL_FOUR'] = localization.GetByLabel('/Carbon/UI/Service/Device/PresentationIntervalFour')
         for (key, value,) in presentintvals.iteritems():
             options.append((value, self.D3D().D3DCONST[key]))
 
@@ -1183,7 +1203,7 @@ class DeviceMgr(service.Service):
     def GetDepthBufferType(self, set = None):
         self.LogInfo('GetPresentationIntervalOptions')
         set = set or self.GetSettings()
-        options = [mls.UI_SHARED_ZBUFFER, mls.UI_SHARED_WBUFFER]
+        options = [localization.GetByLabel('/Carbon/UI/Service/Device/ZBuffer'), localization.GetByLabel('/Carbon/UI/Service/Device/WBuffer')]
         presentintvals = ['D3DZB_TRUE', 'D3DZB_USEW']
         options = zip(options, map(lambda intval: self.D3D().D3DCONST[intval], presentintvals))
         return options

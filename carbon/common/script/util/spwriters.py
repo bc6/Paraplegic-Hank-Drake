@@ -48,8 +48,6 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
         self.inserts['spcolor'] = color
         self.inserts['spcorner'] = '/img/%s' % header
         self.inserts['sphint'] = '%sServer Pages - %s' % (product, prefs.clusterName)
-        dGMH = not session.role & ROLE_GMH
-        dGML = not session.role & ROLE_GML
         dCONTENT = not session.role & ROLE_CONTENT
         dADMIN = not session.role & ROLE_ADMIN
         dVIEW = not session.role & ROLEMASK_VIEW
@@ -90,6 +88,8 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             self.AddTopMenuSub('MLS', 'Messages', '/mls/messages.py', disabled=dCONTENT and dADMIN)
             self.AddTopMenuSub('MLS', 'Translations', '/mls/mls.py', disabled=dCONTENT and dTRL and dTRE and dTRADMIN and dTRQA)
             self.AddTopMenuSub('MLS', 'Pickles', '/mls/pickles.py')
+            self.AddTopMenuSub('MLS', 'Localization', '/localization/localization.py')
+            self.AddTopMenuSub('MLS', 'Localization Management', '/localization/localizationbrowser.py')
             self.AddTopMenu('', '', '', '')
             self.AddTopMenu('INFO', 'INFO', '', '/info/machine.py')
             self.AddTopMenuSub('INFO', 'Machine', '/info/machine.py')
@@ -105,10 +105,8 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             self.AddTopMenuSub('INFO', 'ProcessHealth', '/info/processhealth.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'Python', '/info/python.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'Profiler', '/info/profiler.py', disabled=dPROG)
-            if iocp.UsingIOCP():
-                self.AddTopMenuSub('INFO', 'CarbonIO', '/info/carbonio.py', disabled=dPROG)
-            else:
-                self.AddTopMenuSub('INFO', 'StacklessIO', '/info/stacklessio.py', disabled=dPROG)
+            self.AddTopMenuSub('INFO', 'CarbonIO', '/info/CarbonIO.py', disabled=dPROG)
+            self.AddTopMenuSub('INFO', 'StacklessIO', '/info/stacklessio.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'LoadService', '/info/loadservice.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'Mass Testing', '/info/testing.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'MachoNet', '/info/machoNet.py', disabled=dPROG)
@@ -136,11 +134,10 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             self.AddTopMenuSub('INFO', 'ProcessHealth', '/info/processhealth.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'Python', '/info/python.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'Profiler', '/info/profiler.py', disabled=dPROG)
-            if iocp.UsingIOCP():
-                self.AddTopMenuSub('INFO', 'CarbonIO', '/info/carbonio.py', disabled=dPROG)
-            else:
-                self.AddTopMenuSub('INFO', 'StacklessIO', '/info/stacklessio.py', disabled=dPROG)
+            self.AddTopMenuSub('INFO', 'CarbonIO', '/info/CarbonIO.py', disabled=dPROG)
+            self.AddTopMenuSub('INFO', 'StacklessIO', '/info/stacklessio.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'MachoNet', '/info/machoNet.py', disabled=dPROG)
+            self.AddTopMenuSub('INFO', 'Cow', '/info/cow.py', disabled=dPROG)
             self.AddTopMenu('', '', '', '')
             self.AddTopMenu('ADMIN', 'ADMIN', '', '/admin/counters.py')
             self.AddTopMenuSub('ADMIN', 'Counters', '/admin/counters.py', disabled=dADMIN)
@@ -157,10 +154,8 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             self.AddTopMenuSub('INFO', 'ProcessHealth', '/info/processhealth.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'Python', '/info/python.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'Profiler', '/info/profiler.py', disabled=dPROG)
-            if iocp.UsingIOCP():
-                self.AddTopMenuSub('INFO', 'CarbonIO', '/info/carbonio.py', disabled=dPROG)
-            else:
-                self.AddTopMenuSub('INFO', 'StacklessIO', '/info/stacklessio.py', disabled=dPROG)
+            self.AddTopMenuSub('INFO', 'CarbonIO', '/info/CarbonIO.py', disabled=dPROG)
+            self.AddTopMenuSub('INFO', 'StacklessIO', '/info/stacklessio.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'MachoNet', '/info/machoNet.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'Zaction', '/info/zaction.py', disabled=dPROG)
             self.AddTopMenuSub('INFO', 'Catma', '/catma/catmaMK2.py', disabled=dPROG)
@@ -218,6 +213,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
                 self.AddMenu('Profiler', 'Profiler', '', '/info/profiler.py')
                 self.AddMenu('StacklessIO', 'StacklessIO', '', '/info/stacklessio.py')
                 self.AddMenu('MachoNet', 'MachoNet', '', '/info/machoNet.py')
+                self.AddMenu('Cow', 'Cow', '', '/info/cow.py')
             elif menu == 'ADMIN':
                 self.AddMenu('Counters', 'Counters', '', '/admin/counters.py')
                 self.AddMenu('Errors', 'Errors', '', '/admin/errors.py')
@@ -249,6 +245,54 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             for each in self.__dependencies__:
                 setattr(self, each, self.session.ConnectToAnyService(each))
 
+
+
+
+    def CheckAuthorized(self, request, response, session, neededRoles):
+        if boot.role == 'client':
+            return 
+        if not session.userid:
+            response.Redirect('/login.py')
+            return 
+        if session.role & neededRoles == 0:
+            page = request.FullPath()
+            page = self.Canonicalize(page.encode('UTF-8'))
+            response.Redirect('/unauthorized.py', {'roles': neededRoles,
+             'page': page})
+            raise RuntimeError('Role not assigned.')
+
+
+
+    def GetQueryString(self, skipkeys = []):
+        qs = '?'
+        q = self.request.QueryStrings()
+        for x in q:
+            skipIt = False
+            for s in skipkeys:
+                if s.lower() in x.lower():
+                    skipIt = True
+                    break
+
+            if skipIt:
+                continue
+            if x == '':
+                continue
+            qs += '%s=%s&' % (x, q[x])
+
+        return qs
+
+
+
+    def WritePolarisWarning(self):
+        if macho.mode == 'server':
+            if prefs.clusterMode in ('TEST', 'LIVE'):
+                self.machoNet = self.session.ConnectToService('machoNet')
+                polarisNodeID = self.machoNet.GetNodeFromAddress(const.cluster.SERVICE_POLARIS, 0)
+                if self.machoNet.GetNodeID() != polarisNodeID:
+                    polarisExternalAddress = self.machoNet.GetPolarisExternalTunnelingAddress()
+                    if polarisExternalAddress:
+                        txt = '<br><font color=white size=2>Not running on <a style="color:white;" href="http://%s">POLARIS</a>!</font></b>' % polarisExternalAddress
+                        self.inserts['heading'] += txt
 
 
 
@@ -356,21 +400,6 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
 
 
 
-    def WriteHGR(self, html):
-        self.Write('<br /><strong><span class="green font-large">%s</span></strong><br /><br />' % html)
-
-
-
-    def WriteHG(self, html):
-        self.Write('<br><b><font color=gray size=4>%s</font></b><br><br>' % html)
-
-
-
-    def WriteHGB(self, html):
-        self.Write('<br><table border=1><tr><td><strong><span class="gray font-large">%s</span></strong></td></tr></table><br /><br />' % html)
-
-
-
     def FontBold(self, html):
         return '<strong>%s</strong>' % html
 
@@ -471,6 +500,21 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
 
 
 
+    def WriteHGR(self, html):
+        self.Write('<br /><strong><span class="green font-large">%s</span></strong><br /><br />' % html)
+
+
+
+    def WriteHG(self, html):
+        self.Write('<br><b><font color=gray size=4>%s</font></b><br><br>' % html)
+
+
+
+    def WriteHGB(self, html):
+        self.Write('<br><table border=1><tr><td><strong><span class="gray font-large">%s</span></strong></td></tr></table><br /><br />' % html)
+
+
+
     def WriteHelp(self, stringList):
         self.WriteBreak(3)
         self.Write('<table border=1 width=100% style="border:1px;" bgcolor=#FFFFF0><tr><td><ul>')
@@ -511,7 +555,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             d = {'action': nextAction}
             d[nextID] = rs[(maxRows - 1)][nextID]
             if nextDate:
-                d[nextDate] = util.FmtDate(rs[(maxRows - 1)][nextDate], 'ln')
+                d[nextDate] = util.FmtDateEng(rs[(maxRows - 1)][nextDate], 'ln')
             if args:
                 d.update(args)
             return [self.Button('', 'NEXT', d, 'blue')]
@@ -552,6 +596,14 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
 
 
 
+    def NoneStr(self, str):
+        if str is None:
+            return ''
+        else:
+            return str
+
+
+
     def EmptyStrNone(self, s):
         if s is not None:
             s = unicode(s).strip()
@@ -563,7 +615,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
 
     def NoBreakDate(self, s, f = 'ls'):
         if s is not None:
-            return '<nobr>%s</nobr>' % util.FmtDate(s, f)
+            return '<nobr>%s</nobr>' % util.FmtDateEng(s, f)
         return ''
 
 
@@ -743,54 +795,6 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             return (700, 320)
 
 
-
-    def CheckAuthorized(self, request, response, session, neededRoles):
-        if boot.role == 'client':
-            return 
-        if not session.userid:
-            response.Redirect('/login.py')
-            return 
-        if session.role & neededRoles == 0:
-            page = request.FullPath()
-            page = self.Canonicalize(page.encode('UTF-8'))
-            response.Redirect('/unauthorized.py', {'roles': neededRoles,
-             'page': page})
-            raise RuntimeError('Role not assigned.')
-
-
-
-    def WritePolarisWarning(self):
-        if macho.mode == 'server':
-            if prefs.clusterMode in ('TEST', 'LIVE'):
-                self.machoNet = self.session.ConnectToService('machoNet')
-                polarisNodeID = self.machoNet.GetNodeFromAddress(const.cluster.SERVICE_POLARIS, 0)
-                if self.machoNet.GetNodeID() != polarisNodeID:
-                    polarisExternalAddress = self.machoNet.GetPolarisExternalTunnelingAddress()
-                    if polarisExternalAddress:
-                        txt = '<br><font color=white size=2>Not running on <a style="color:white;" href="http://%s">POLARIS</a>!</font></b>' % polarisExternalAddress
-                        self.inserts['heading'] += txt
-
-
-
-    def GetQueryString(self, skipkeys = []):
-        qs = '?'
-        q = self.request.QueryStrings()
-        for x in q:
-            skipIt = False
-            for s in skipkeys:
-                if s.lower() in x.lower():
-                    skipIt = True
-                    break
-
-            if skipIt:
-                continue
-            if x == '':
-                continue
-            qs += '%s=%s&' % (x, q[x])
-
-        return qs
-
-
     if macho.mode == 'server':
 
         def HandleAction(self, action, request, response):
@@ -918,7 +922,6 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             columns = []
             order = ''
             actions = 'ERA'
-            nobreak = 0
             back = None
             top = ''
             where = request.QueryString('where')
@@ -935,10 +938,6 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
                     order = ' ORDER BY ' + params['order']
                 if params.has_key('actions'):
                     actions = params['actions']
-                if params.has_key('nobreak'):
-                    nobreak = 1
-                if params.has_key('sql'):
-                    sql = params['sql']
                 if params.has_key('back'):
                     back = params['back']
                 if 'top' in params:
@@ -991,7 +990,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
                         if r[cr.COLUMN_NAME] is None:
                             line.append('')
                         elif cr.DATA_TYPE in (58, 61):
-                            line.append(util.FmtDate(r[cr.COLUMN_NAME], 'ls'))
+                            line.append(util.FmtDateEng(r[cr.COLUMN_NAME], 'ls'))
                         else:
                             line.append(bon + unicode(r[cr.COLUMN_NAME]) + boff)
 
@@ -1040,7 +1039,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             rs = self.DB2.SQL(sql)
             if len(rs) > 0:
                 r = rs[0]
-                form = htmlwriter.Form('', table, 'POST')
+                form = htmlwriter.Form('', table, 'POST', request=request)
                 form.AddHidden('act', 'DataEditSubmit')
                 form.AddHidden('table', table)
                 if where:
@@ -1072,7 +1071,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
                             if cv == '':
                                 form.AddInput(cr.COLUMN_NAME, cv, 20)
                             else:
-                                form.AddInput(cr.COLUMN_NAME, util.FmtDate(cv), 20)
+                                form.AddInput(cr.COLUMN_NAME, util.FmtDateEng(cv), 20)
                         else:
                             form.AddInput(cr.COLUMN_NAME, cv, 10)
 
@@ -1122,7 +1121,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             where = request.QueryString('where')
             back = request.QueryString('back')
             crs = self.DataColumns(table)
-            form = htmlwriter.Form('', table, 'POST')
+            form = htmlwriter.Form('', table, 'POST', request=request)
             form.AddHidden('act', 'DataAddSubmit')
             form.AddHidden('table', table)
             if where:
@@ -1205,7 +1204,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             rs = self.DB2.SQL(sql)
             if len(rs) > 0:
                 r = rs[0]
-                form = htmlwriter.Form('', table)
+                form = htmlwriter.Form('', table, request=request)
                 form.AddHidden('act', 'DataRemoveSubmit')
                 form.AddHidden('table', table)
                 if where:
@@ -1257,14 +1256,6 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
 
 
 
-        def NoneStr(self, str):
-            if str is None:
-                return ''
-            else:
-                return str
-
-
-
         def WriteRow(self, r, hidden = [], dates = [], shortTimes = [], longTimes = [], userIDs = [], itemIDs = [], typeIDs = [], showCount = False, backLink = True):
             lines = []
             for h in r.__header__:
@@ -1273,13 +1264,13 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
                 if v is None:
                     v = ''
                 elif h[1] == const.DBTYPE_FILETIME and c not in dates and c not in shortTimes and c not in longTimes:
-                    v = util.FmtDate(v, 'ls')
+                    v = util.FmtDateEng(v, 'ls')
                 elif c in dates:
-                    v = util.FmtDate(v, 'ln')
+                    v = util.FmtDateEng(v, 'ln')
                 elif c in shortTimes:
-                    v = util.FmtDate(v, 'ls')
+                    v = util.FmtDateEng(v, 'ls')
                 elif c in longTimes:
-                    v = util.FmtDate(v, 'll')
+                    v = util.FmtDateEng(v, 'll')
                 elif c in userIDs:
                     v = self.UserLink(v, v)
                 elif c in itemIDs:
@@ -1319,11 +1310,11 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
                         if v is None:
                             v = ''
                         elif h in dates:
-                            v = util.FmtDate(v, 'ln')
+                            v = util.FmtDateEng(v, 'ln')
                         elif h in shortTimes:
-                            v = util.FmtDate(v, 'ls')
+                            v = util.FmtDateEng(v, 'ls')
                         elif h in longTimes:
-                            v = util.FmtDate(v, 'll')
+                            v = util.FmtDateEng(v, 'll')
                         elif h in userIDs:
                             v = self.UserLink(v)
                         line.append(v)
@@ -1341,7 +1332,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             lines = []
             for r in rs:
                 self.BeNice()
-                s = '<font color=gray>%s - %s' % (util.FmtDate(r.noteDate, 'ss'), self.UserLink(r.userID))
+                s = '<font color=gray>%s - %s' % (util.FmtDateEng(r.noteDate, 'ss'), self.UserLink(r.userID))
                 if session.role & ROLE_GMH and (r.userID is None or r.userID == session.userid):
                     s += self.MidDot()
                     s += self.Link('/note.py', 'Edit', {'action': 'MultiNoteEditForm',
@@ -1426,7 +1417,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
 
 
 
-        def RevisionRowset(self, rs, schema, table, columns = [], role = 0, addLink = 1, maxRows = 2000):
+        def RevisionRowset(self, rs, schema, table, columns = [], addLink = 1, maxRows = 2000, role = ROLE_CONTENT):
             oer = self.request.path + '?' + self.request.args
             header = []
             for c in columns:
@@ -1453,7 +1444,9 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             customActions = []
             if addLink == 1:
                 if session.role & role:
-                    customActions.append(self.Link('/gd/bsd.py', 'Add', {'action': 'RevisionAdd',
+                    if table[-2:] == 'Ex':
+                        table = table[:-2]
+                    customActions.append(self.Button('/gd/bsd.py', 'ADD', {'action': 'RevisionAdd',
                      'schemaName': schema,
                      'tableName': table + 'Tx',
                      'oer': oer}))
@@ -1465,7 +1458,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
 
 
 
-        def RevisionTable(self, schema, table, columns = [], where = '', order = '', role = 0, addLink = 1, maxRows = 2000):
+        def RevisionTable(self, schema, table, columns = [], where = '', order = '', addLink = 1, maxRows = 2000, role = ROLE_CONTENT):
             columnString = ''
             for c in columns:
                 columnString += '%s, ' % c
@@ -1481,7 +1474,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
              table,
              where,
              order))
-            self.RevisionRowset(rs, schema, table, columns, role, addLink, maxRows)
+            self.RevisionRowset(rs, schema, table, columns, addLink, maxRows, role)
 
 
 
@@ -1489,10 +1482,10 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             if type(tableID) == types.ListType:
                 schema = tableID[0]
                 table = tableID[1] + 'Tx'
-                tableID = self.BSD.TableID(schema, table)
-            rs = self.DB2.SQLInt('*', 'zstatic.revisionsEx', 'submitDate IS NULL', 'changeID, revisionID', 'tableID', tableID)
+                tableID = self.cache.TableID(schema, table)
+            rs = self.DB2.SQLInt('*', 'zstatic.revisionsEx', 'branchID = 1 AND submitDate IS NULL', 'changeID, revisionID', 'tableID', tableID)
             if len(rs) > 0:
-                self.WriteH2(self.BSD.SchemaTableName(tableID))
+                self.WriteH2(self.cache.SchemaTableName(tableID))
                 lines = []
                 for r in rs:
                     self.BeNice()
@@ -1504,7 +1497,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
                         link = self.Link(linkPage, linkText, {'action': linkAction,
                          linkID: r.keyID})
                     lines.append([self.RevisionID(r.revisionID),
-                     util.FmtDate(r.revisionDate, 'ls'),
+                     util.FmtDateEng(r.revisionDate, 'ls'),
                      r.branchName,
                      keyID,
                      self.FontBold(r.revision),
@@ -1512,7 +1505,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
                      self.ChangeID(r.changeID),
                      r.changeText,
                      r.userName,
-                     util.FmtDate(r.changeDate, 'ls'),
+                     util.FmtDateEng(r.changeDate, 'ls'),
                      link])
 
                 self.WriteTable(['revisionID',
@@ -1526,19 +1519,24 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
                  'userName',
                  'changeDate',
                  'act'], lines, useFilter=True)
+            return len(rs)
 
 
 
         def WriteOpenRevisionSchema(self, schemaName, title = None):
-            schemaID = self.BSD.SchemaID(schemaName)
+            schemaID = self.cache.SchemaID(schemaName)
             if title is None:
                 title = schemaName
             self.Write('<br><font color=orange size=4><b>OPEN REVISIONS - %s</b></font>' % title)
+            wroteSomething = False
             for t in self.cache.Rowset(const.cacheSystemTables):
                 if t.schemaID == schemaID and t.tableName.endswith('Tx'):
                     self.BeNice()
-                    self.WriteOpenRevisionTable(t.tableID)
+                    if self.WriteOpenRevisionTable(t.tableID):
+                        wroteSomething = True
 
+            if not wroteSomething:
+                self.Write('<p>No open revisions to display.</p>')
 
 
 
@@ -1552,7 +1550,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             for r in self.BSD.Releases():
                 releases[r.releaseID] = r.releaseName
 
-            form = htmlwriter.Form('', page)
+            form = htmlwriter.Form('', page, request=self.request)
             form.AddSelect('releaseID', releases, None, releaseID)
             form.AddSelect('rows', self.ComboRows(), None, rows)
             form.AddHidden('submit', 1)
@@ -1564,7 +1562,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             else:
                 w = ' C.releaseID = %d' % releaseID
             tables = ''
-            schemaID = self.BSD.SchemaID(schemaName)
+            schemaID = self.cache.SchemaID(schemaName)
             for t in self.cache.Rowset(const.cacheSystemTables):
                 if t.schemaID == schemaID and t.tableName.endswith('Tx'):
                     tables = self.SplitAdd(tables, str(t.tableID), ', ')
@@ -1597,7 +1595,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
                 self.WriteDirect('rMenu', '<h2>Revision Info</h2>')
                 props = []
                 props.append([self.FontProperty('branchName'), self.BSD.BranchName(r.branchID)])
-                props.append([self.FontProperty('revisionDate'), util.FmtDate(r.revisionDate, 'ls')])
+                props.append([self.FontProperty('revisionDate'), util.FmtDateEng(r.revisionDate, 'ls')])
                 props.append([self.FontProperty('revisionID'), self.RevisionID(r.revisionID)])
                 props.append([self.FontProperty('dataID'), self.RevisionID(r.dataID)])
                 if r.integrateID:
@@ -1607,11 +1605,11 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
                 props.append([self.FontProperty('changeID'), self.ChangeID(r.changeID)])
                 props.append([self.FontProperty('changeText'), r.changeText.replace('\n', '<br>')])
                 props.append([self.FontProperty('userName'), self.BSD.UserName(r.userID)])
-                props.append([self.FontProperty('changeDate'), util.FmtDate(r.changeDate, 'ls')])
+                props.append([self.FontProperty('changeDate'), util.FmtDateEng(r.changeDate, 'ls')])
                 if r.submitDate is None:
                     props.append([self.FontProperty('submitDate'), self.FontBold(self.FontOrange('NOT SUBMITTED'))])
                 else:
-                    props.append([self.FontProperty('submitDate'), self.FontBold(util.FmtDate(r.submitDate, 'ls'))])
+                    props.append([self.FontProperty('submitDate'), self.FontBold(util.FmtDateEng(r.submitDate, 'ls'))])
                 self.WriteDirect('rMenu', self.GetTable([], props, showCount=False))
                 return r
 
@@ -1621,64 +1619,74 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             unchangedRevisions = []
             dependRevisions = []
             revisionCount = len(diffList)
-            if revisionCount > 5000:
-                self.Write(self.FontBoldRed('Change contains over 5,000 revisions, DIFF not shown, only NO CHANGE and BROKEN DEPENDENCY shown'))
-                self.WriteBreak(2)
-            for line in diffList:
-                self.BeNice()
-                revisionID = line[0]
-                branchName = line[1]
-                tableName = line[2]
-                key = line[3]
-                revisionText = line[4]
-                revision = line[5]
-                actionText = line[6]
-                differences = line[7]
-                brokenDependencies = line[8]
-                if revisionCount <= 5000 or len(differences) == 0 or len(brokenDependencies) > 0:
-                    s = '<br><font size=2>%s: %s, %s, %s, %s, %s, %s</font>' % (self.Link('/gd/bsd.py', revisionID, {'action': 'Revision',
-                      'revisionID': revisionID}),
-                     branchName,
-                     tableName,
-                     key,
-                     revisionText,
-                     self.FontBold(revision),
-                     self.FontBold(actionText))
-                    if len(differences) == 0:
-                        s += ' - ' + self.FontBoldRed('NO CHANGE IN REVISION')
-                        unchangedRevisions.append(revisionID)
-                    if len(brokenDependencies) > 0:
-                        s += ' - ' + self.FontBoldRed('BROKEN DEPENDENCY')
-                        s2 = ''
-                        for bd in brokenDependencies:
-                            bdTable = bd[0]
-                            bdKey = bd[1]
-                            bdColumn = bd[2]
-                            if s2 != '':
-                                s2 += ' : '
-                            s2 += '%s, %s, %s' % (bdColumn, bdKey, bdTable)
-                            dependRevisions.append(revisionID)
+            if revisionCount > 0:
+                showDiff = 2
+                if revisionCount > 5000:
+                    showDiff = 0
+                    self.Write(self.FontBoldRed('Change contains over 5,000 revisions, revision info and DIFF only shown for NO CHANGE and BROKEN DEPENDENCY revisions'))
+                    self.WriteBreak(2)
+                elif diffList[0][1] != 'DEV' and revisionCount > 100:
+                    showDiff = 1
+                    self.Write(self.FontBoldRed('Change not from DEV and contains over 100 revisions, revision info shown for all revisions, DIFF only shown for NO CHANGE and BROKEN DEPENDENCY revisions'))
+                    self.WriteBreak(2)
+                for line in diffList:
+                    self.BeNice()
+                    revisionID = line[0]
+                    branchName = line[1]
+                    tableName = line[2]
+                    key = line[3]
+                    revisionText = line[4]
+                    revision = line[5]
+                    actionText = line[6]
+                    differences = line[7]
+                    brokenDependencies = line[8]
+                    if showDiff or len(differences) == 0 or len(brokenDependencies) > 0:
+                        s = '<br><font size=2>%s: %s, %s, %s, %s, %s, %s</font>' % (self.Link('/gd/bsd.py', revisionID, {'action': 'Revision',
+                          'revisionID': revisionID}),
+                         branchName,
+                         tableName,
+                         key,
+                         revisionText,
+                         self.FontBold(revision),
+                         self.FontBold(actionText))
+                        if len(differences) == 0:
+                            s += ' - ' + self.FontBoldRed('NO CHANGE IN REVISION')
+                            unchangedRevisions.append(revisionID)
+                        if len(brokenDependencies) > 0:
+                            s += ' - ' + self.FontBoldRed('BROKEN DEPENDENCY')
+                            s2 = ''
+                            for bd in brokenDependencies:
+                                bdTable = bd[0]
+                                bdKey = bd[1]
+                                bdColumn = bd[2]
+                                if s2 != '':
+                                    s2 += ' : '
+                                s2 += '%s, %s, %s' % (bdColumn, bdKey, bdTable)
+                                dependRevisions.append(revisionID)
 
-                        s += ' (' + s2 + ')'
-                    self.Write(s)
-                    lines = []
-                    if actionText.endswith('Add'):
-                        for d in differences:
-                            dColumn = d[0]
-                            dNewValue = d[2]
-                            lines.append([self.FontProperty(dColumn), dNewValue])
+                            s += ' (' + s2 + ')'
+                        self.Write(s)
+                        if showDiff == 2 or len(differences) == 0 or len(brokenDependencies) > 0:
+                            lines = []
+                            if actionText.endswith('Add'):
+                                for d in differences:
+                                    dColumn = d[0]
+                                    dNewValue = d[2]
+                                    lines.append([self.FontProperty(dColumn), dNewValue])
 
-                    else:
-                        for d in differences:
-                            dColumn = d[0]
-                            dOldValue = d[1]
-                            dNewValue = d[2]
-                            lines.append([self.FontProperty(dColumn), dOldValue, dNewValue])
+                            else:
+                                for d in differences:
+                                    dColumn = d[0]
+                                    dOldValue = d[1]
+                                    dNewValue = d[2]
+                                    lines.append([self.FontProperty(dColumn), dOldValue, dNewValue])
 
-                    if len(lines) == 0:
-                        self.Write('<br><hr />')
-                    else:
-                        self.WriteTable([], lines, showCount=False)
+                            if len(lines) == 0:
+                                self.Write('<br><hr />')
+                            else:
+                                self.WriteTable([], lines, showCount=False)
+                        else:
+                            self.Write('<br><hr />')
 
             return (unchangedRevisions, dependRevisions)
 
@@ -1724,7 +1732,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
 
 
         def HeaderLinksAdd(self, links, caller, linkText, linkAction, linkAttribute, linkID):
-            links += '&nbsp;' * 6
+            links += '&nbsp;' * 8
             if caller == linkText:
                 links += '<b>'
             links += self.Link('', linkText, {'action': linkAction,
@@ -1806,7 +1814,17 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
 
 
 
+        def GetPickerUser(self, ctrlID, ctrlLabel = None, minLength = 3):
+            if ctrlLabel is not None:
+                ctrlLabel = self.HTMLEncode(ctrlLabel)
+            return self.GetAutoComplete(ctrlID, ctrlLabel, callbackPy='/ds/userds.py', minLength=minLength)
+
+
+
         def UserHeader(self, userID, small = 1, menuPlacement = 'rMenu'):
+            if userID < 1:
+                self.WriteError('INVALID USERID SPECIFIED')
+                return 
             (coreStatic, appStatic,) = self.cache.UserDataset(userID)
             if coreStatic is None:
                 self.WriteError('USER NOT FOUND')
@@ -1826,7 +1844,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             if coreStatic.gender is not None:
                 info = self.SplitAdd(info, ['Female', 'Male'][coreStatic.gender], ', ')
             if coreStatic.dob is not None:
-                info = self.SplitAdd(info, util.FmtDate(coreStatic.dob, 'ls'), ', ')
+                info = self.SplitAdd(info, util.FmtDateEng(coreStatic.dob, 'ls'), ', ')
             lines.append([1, 'Info', info])
             for i in self.AppHeaderLines(coreStatic, appStatic):
                 lines.append(i)
@@ -1897,6 +1915,8 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
                 if linkText is None:
                     return self.GetSpan(['Unknown'], className='red')
             href = '/gm/users.py?action=User&userID=%s' % userID
+            if linkText is not None:
+                linkText = htmlwriter.HTMLEncode(linkText)
             if noHover:
                 return self.GetA(innerText=linkText, href=href)
             return self.GetTooltip(href=href, ajax='/gm/worker_info.py?action=FetchInfo&id=%s&idType=2' % userID, title=linkText, caption=linkText)
@@ -2109,6 +2129,8 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
                     linkText = self.CharacterName(characterID)
                     if linkText is None:
                         return self.FontRed('???')
+                if linkText is not None:
+                    linkText = htmlwriter.HTMLEncode(linkText)
                 return self.Link('/gm/character.py', linkText, {'action': 'Character',
                  'characterID': characterID}, props)
 
@@ -2160,8 +2182,9 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             typeRow = self.SP.TypeRow(row.typeID)
             if typeRow:
                 typeName = typeRow.typeName
-                groupName = self.SP.GroupName(typeRow.groupID)
-                categoryName = self.SP.CategoryName(typeRow.categoryID)
+                groupRow = self.SP.GroupRow(typeRow.groupID)
+                groupName = groupRow.groupName
+                categoryName = self.SP.CategoryName(groupRow.categoryID)
             itemName = self.SP.ItemName(row.itemID)
             if itemName != '':
                 itemName = ': ' + self.FontBold(itemName)
@@ -2302,7 +2325,7 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
             if r.disabled == 2 and prefs.clusterMode == 'LIVE':
                 self.WriteError('Report is disabled on servers running LIVE')
                 return 
-            ds = self.dbzreport.Reports_Execute(session.userid, reportID)
+            ds = self.DB2.GetSchema('zreport').Reports_Execute(session.userid, reportID)
             if type(ds) == types.ListType:
                 for rs in ds:
                     self.WriteRowset(rs)
@@ -2342,9 +2365,11 @@ class SPHtmlWriter(htmlwriter.HtmlWriterEx):
 
 
         def GetParentText(self, parentID, parentType):
-            if parentType == const.cef.PARENT_TYPEID:
-                return self.SP.TypeName(parentID)
+            if parentType == const.cef.PARENT_SPAWNID:
+                return 'Unnamed Spawn'
             else:
+                if parentType == const.cef.PARENT_TYPEID:
+                    return self.SP.TypeName(parentID)
                 if parentType == const.cef.PARENT_GROUPID:
                     return self.SP.GroupName(parentID)
                 if parentType == const.cef.PARENT_CATEGORYID:

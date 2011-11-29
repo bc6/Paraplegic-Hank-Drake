@@ -3,16 +3,6 @@ import log
 import types
 import util
 
-def GetSpawnPatterns():
-    return const.cef.PATTERN_NAMES.keys()
-
-
-
-def GetSpawnPatternName(spawnPatternID):
-    return const.cef.PATTERN_NAMES.get(spawnPatternID, 'UNKNOWN')
-
-
-
 def GetComponentName(componentID):
     componentView = cef.BaseComponentView.GetComponentViewByID(componentID)
     if type(componentID) is str:

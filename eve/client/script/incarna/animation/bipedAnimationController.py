@@ -4,10 +4,13 @@ import mathCommon
 import random
 import blue
 import log
+import math
 WALK_GAIT = 0.0
 HISTORY_LENGTH = 10
 SLOPE_TOLERANCE = 0.15
 STEPS_TOLERANCE = 0.5
+IDLE_TIME_MIN = 5.0 * const.SEC
+IDLE_TIME_MAX = 10.0 * const.SEC
 
 class BipedAnimationController(animation.AnimationController):
     __guid__ = 'animation.BipedAnimationController'
@@ -19,12 +22,20 @@ class BipedAnimationController(animation.AnimationController):
         self.velocityHistory = []
         self.slopeType = const.INCARNA_FLAT
         self.updateTimeDelta = 0
-        self.lastUpdateTime = blue.os.GetTime()
+        self.lastUpdateTime = blue.os.GetWallclockTime()
+        self.random = random.Random()
+        self.random.seed()
+        self.timeForNextIdleTrigger = blue.os.GetWallclockTime() + self._GetNextIdleTriggerOffset()
+
+
+
+    def _GetNextIdleTriggerOffset(self):
+        return self.random.random() * (IDLE_TIME_MAX - IDLE_TIME_MIN) + IDLE_TIME_MIN
 
 
 
     def _UpdateHook(self):
-        updateTime = blue.os.GetTime()
+        updateTime = blue.os.GetWallclockTime()
         self.updateTimeDelta = updateTime - self.lastUpdateTime
         self._UpdateEntityInfo()
         self.SetCorrectLOD()
@@ -73,13 +84,17 @@ class BipedAnimationController(animation.AnimationController):
 
 
     def _UpdateEntityInfo(self):
+        positionComponent = self.entityRef.GetComponent('position')
+        self.entPos = positionComponent.position
+        self.entRot = positionComponent.rotation
         movementComponent = self.entityRef.GetComponent('movement')
-        self.entPos = movementComponent.pos
-        self.entRot = movementComponent.rot
-        self.entVel = movementComponent.avatar.vel
+        self.entVel = movementComponent.physics.velocity
         if len(self.positionHistory) > 0:
             displacement = (self.entPos[0] - self.positionHistory[0][0], self.entPos[1] - self.positionHistory[0][1], self.entPos[2] - self.positionHistory[0][2])
-            scaledDelta = const.SEC / self.updateTimeDelta
+            if self.updateTimeDelta == 0:
+                scaledDelta = 0
+            else:
+                scaledDelta = const.SEC / self.updateTimeDelta
             velocity = (displacement[0] * scaledDelta, displacement[1] * scaledDelta, displacement[2] * scaledDelta)
             self.velocityHistory.insert(0, velocity)
             if len(self.velocityHistory) > HISTORY_LENGTH:
@@ -92,26 +107,31 @@ class BipedAnimationController(animation.AnimationController):
 
 
     def UpdateIdlePose(self):
-        pass
+        updateTime = blue.os.GetWallclockTime()
+        if updateTime >= self.timeForNextIdleTrigger:
+            self.timeForNextIdleTrigger = updateTime + self._GetNextIdleTriggerOffset()
+            self.SetControlParameter('IdleIndex', self.random.random())
+            self.SetControlParameter('TriggerIdle', 1.0)
+        else:
+            self.SetControlParameter('TriggerIdle', 0.0)
 
 
 
     def UpdateMovement(self):
         debug = sm.GetService('debugRenderClient')
-        yaw = geo2.QuaternionRotationGetYawPitchRoll(self.entityRef.movement.rot)[0]
+        yaw = geo2.QuaternionRotationGetYawPitchRoll(self.entityRef.position.rotation)[0]
         velYaw = mathCommon.GetYawAngleFromDirectionVector(self.entVel)
         angle = mathCommon.GetLesserAngleBetweenYaws(yaw, velYaw)
-        newHeading = mathCommon.CreateDirectionVectorFromYawAngle(angle)
-        newHeading = (newHeading[0], newHeading[1], newHeading[2])
-        actualSpeed = geo2.Vec3Length(self.entVel)
-        localHeading = newHeading if actualSpeed > 0.01 else (0.0, 0.0, 0.0)
-        localHeading = (round(localHeading[0]), round(localHeading[1]), round(localHeading[2]))
-        moving = geo2.Vec3Length(localHeading)
-        debug.RenderText(self.entityRef.movement.pos, 'ActualSpeed: ' + str(actualSpeed) + '\n' + 'Moving: ' + str(moving), time=0, fade=False)
-        self.SetControlParameter('Speed', round(moving))
-        if moving:
+        headingToApply = self.entityRef.movement.physics.velocity
+        speed = geo2.Vec3Length((headingToApply[0], 0.0, headingToApply[2]))
+        self.SetControlParameter('Speed', speed)
+        moveState = self.entityRef.GetComponent('movement').moveState
+        self.SetControlParameter('Moving', int(moveState.GetStaticStateIndex() > 0))
+        immed = moveState.GetImmediateRotation()
+        if immed != 0.0:
+            self.SetControlParameter('TurnAngle', immed / math.pi)
+        else:
             self.SetControlParameter('TurnAngle', 0.0)
-        self.lastLocalHeading = localHeading
 
 
 

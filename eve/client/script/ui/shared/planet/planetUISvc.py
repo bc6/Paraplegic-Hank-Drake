@@ -1,8 +1,7 @@
 import service
-import uix
 import uiconst
+import form
 import trinity
-import util
 import spaceObject
 import planet
 import blue
@@ -10,31 +9,27 @@ import uthread
 import log
 import math
 import uicls
+import string
+import localization
 import geo2
 from planetCommon import PLANET_TEXTURE_SIZE, PLANET_ZOOM_MAX, PLANET_SCALE
-from planetCommon import PLANET_RESOURCE_TEX_WIDTH, PLANET_RESOURCE_TEX_HEIGHT
+from planetCommon import PLANET_RESOURCE_TEX_WIDTH, PLANET_RESOURCE_TEX_HEIGHT, AMBIENT_SOUNDS
 from PlanetResources import builder
 from pychartdir import XYChart, Transparent, NoValue
 from planetUtil import MATH_2PI
 SQRT_NUM_SAMPLES = 80
 LINER_BLENDING_RATIO = 0.8
 RESOURCE_BASE_COLOR = (1, 1, 1, 0.175)
-AMBIENT_SOUNDS = {const.typePlanetEarthlike: util.KeyVal(start='wise:/terrestrial_play', stop='wise:/terrestrial_stop'),
- const.typePlanetGas: util.KeyVal(start='wise:/gas_play', stop='wise:/gas_stop'),
- const.typePlanetIce: util.KeyVal(start='wise:/ice_play', stop='wise:/ice_stop'),
- const.typePlanetLava: util.KeyVal(start='wise:/lava_play', stop='wise:/lava_stop'),
- const.typePlanetOcean: util.KeyVal(start='wise:/oceanic_play', stop='wise:/oceanic_stop'),
- const.typePlanetSandstorm: util.KeyVal(start='wise:/barren_play', stop='wise:/barren_stop'),
- const.typePlanetThunderstorm: util.KeyVal(start='wise:/storm_play', stop='wise:/storm_stop'),
- const.typePlanetPlasma: util.KeyVal(start='wise:/plasma_play', stop='wise:/plasma_stop'),
- const.typePlanetShattered: util.KeyVal(start='wise:/plasma_play', stop='wise:/plasma_stop')}
 
 class ResourceRenderAbortedError(Exception):
     pass
 
 class PlanetUISvc(service.Service):
     __guid__ = 'svc.planetUI'
-    __notifyevents__ = ['OnGraphicSettingsChanged', 'OnSetDevice', 'OnSessionChanged']
+    __notifyevents__ = ['OnGraphicSettingsChanged',
+     'OnSetDevice',
+     'OnUIRefresh',
+     'ProcessUIRefresh']
     __exportedcalls__ = {}
     __servicename__ = 'planetUI'
     __displayname__ = 'Planet UI Client Service'
@@ -45,6 +40,7 @@ class PlanetUISvc(service.Service):
         self.LogInfo('Starting Planet UI Client Svc')
         uicore.layer.planet.Flush()
         self.planetID = None
+        self.oldPlanetID = None
         self.format = trinity.TRIFMT_A8R8G8B8
         self.renderTarget = None
         self.offscreenSurface = None
@@ -58,15 +54,16 @@ class PlanetUISvc(service.Service):
         self.spherePinLoadThread = None
         self.planet = None
         self.curveLineDrawer = planet.ui.CurveLineDrawer()
-        self.myPinManager = planet.ui.MyPinManager()
-        self.otherPinManager = planet.ui.OtherPinManager()
-        self.eventManager = planet.ui.EventManager()
+        self.myPinManager = None
+        self.otherPinManager = None
+        self.eventManager = None
         self.planetRoot = None
         self.trinityPlanet = None
         self.planetTransform = None
         self.resourceLayer = None
         self.pinTransform = None
         self.pinOthersTransform = None
+        self.orbitalObjectTransform = None
         self.modeController = None
         self.scanController = None
         self.currentContainer = None
@@ -123,39 +120,63 @@ class PlanetUISvc(service.Service):
 
 
 
+    def CleanView(self):
+        if self.planetTransform is not None:
+            self.planetTransform.children.remove(self.pinTransform)
+            self.planetTransform.children.remove(self.pinOthersTransform)
+        if self.eventManager:
+            self.eventManager.OnPlanetViewClosed()
+        if self.myPinManager:
+            self.myPinManager.OnPlanetViewClosed()
+        if self.otherPinManager:
+            self.otherPinManager.OnPlanetViewClosed()
+        self.CloseCurrentlyOpenContainer()
+        self.planetUIContainer.Flush()
+        self.ClosePlanetModeContainer()
+        self.busy = 0
+        self.StopSpherePinLoadThread()
+        del self.pinTransform
+        self.pinTransform = None
+        del self.pinOthersTransform
+        self.pinOthersTransform = None
+        if self.scanController is not None:
+            self.scanController.Close()
+            self.scanController = None
+        self.resourceLayer = None
+
+
+
+    def ProcessUIRefresh(self):
+        self.oldPlanetID = None
+        if sm.GetService('viewState').IsViewActive('planet'):
+            self.oldPlanetID = self.planetID
+            self.planetID = None
+        self.Reset()
+
+
+
+    def OnUIRefresh(self):
+        if self.oldPlanetID:
+            self.Open(self.oldPlanetID)
+            self.oldPlanetID = None
+
+
+
     def MinimizeWindows(self):
-        windowSvc = sm.GetService('window')
-        lobby = windowSvc.GetWindow('lobby')
+        lobby = form.Lobby.GetIfOpen()
         if lobby and not lobby.destroyed and lobby.state != uiconst.UI_HIDDEN and not lobby.IsMinimized() and not lobby.IsCollapsed():
-            windowSvc.MinimizeWindow(lobby, animate=False)
-            self.minimizedWindows.append('lobby')
+            lobby.Minimize()
+            self.minimizedWindows.append(form.Lobby.default_windowID)
 
 
 
     def Open(self, planetID):
-        if self.planetID == planetID and self.IsOpen():
-            return 
-        if self.IsOpen():
-            if not self.Close(False):
-                return 
-        if planetID is None:
-            raise RuntimeError('Must supply a valid planet ID.')
-        if getattr(self, 'busy', 0):
-            return 
-        self.busy = 1
-        if not self.IsOpen() or self.planetID != planetID:
-            try:
-                self._Open(planetID)
-            except UserError as e:
-                self.busy = 0
-                if session.solarsystemid is not None:
-                    sm.GetService('bracket').Show()
-                raise 
-        if session.stationid2:
-            uicore.layer.charcontrol.CloseView()
-        else:
-            uicore.layer.shipui.Hide()
-        self.busy = 0
+        sm.GetService('viewState').ActivateView('planet', planetID=planetID)
+
+
+
+    def ExitView(self):
+        sm.GetService('viewState').CloseSecondaryView('planet')
 
 
 
@@ -173,42 +194,20 @@ class PlanetUISvc(service.Service):
             self.Stop()
             self.Run()
             raise 
-        if session.solarsystemid is not None:
-            sm.GetService('bracket').Hide()
         sm.GetService('audio').SendUIEvent('wise:/msg_pi_general_opening_play')
         sm.ScatterEvent('OnPlanetViewChanged', planetID, oldPlanetID)
         try:
             self.planetNav.camera.Open()
         except AttributeError:
             pass
-        sm.GetService('starmap').DecorateNeocom()
         sm.StartService('audio').SendUIEvent(unicode(AMBIENT_SOUNDS[self.typeID].start))
         self.planetAccessRequired = session.solarsystemid2 == self.solarSystemID or sm.GetService('planetSvc').IsPlanetColonizedByMe(planetID)
-
-
-
-    def IsOpen(self):
-        sceneManager = sm.GetService('sceneManager')
-        planetScene = sceneManager.GetRegisteredScene2('planet')
-        activeScene2 = sceneManager.GetActiveScene2()
-        alternativeactiveScene2 = None
-        if sceneManager.secondarySceneContext is not None:
-            alternativeactiveScene2 = sceneManager.secondarySceneContext.scene2
-        if planetScene is not None and (planetScene == activeScene2 or planetScene == alternativeactiveScene2):
-            return True
-        else:
-            return False
 
 
 
     def Close(self, clearAll = True):
         if getattr(self, 'busy', 0):
             return True
-        currentPlanet = self.GetCurrentPlanet()
-        if currentPlanet and currentPlanet.IsInEditMode():
-            if eve.Message('ExitPlanetModeWhileInEditMode', {}, uiconst.YESNO) != uiconst.ID_YES:
-                return False
-            currentPlanet.RevertChanges()
         self.busy = 1
         try:
             self.planetNav.camera.Close()
@@ -216,44 +215,30 @@ class PlanetUISvc(service.Service):
             pass
         if hasattr(self, 'typeID'):
             sm.StartService('audio').SendUIEvent(unicode(AMBIENT_SOUNDS[self.typeID].stop))
-        if self.IsOpen():
-            if len(self.minimizedWindows) > 0:
-                windowSvc = sm.GetService('window')
-                for wndName in self.minimizedWindows:
-                    wnd = windowSvc.GetWindow(wndName)
-                    if wnd and wnd.IsMinimized():
-                        wnd.Maximize()
+        if len(self.minimizedWindows) > 0:
+            windowSvc = sm.GetService('window')
+            for windowID in self.minimizedWindows:
+                wnd = uicls.Window.GetIfOpen(windowID=windowID)
+                if wnd and wnd.IsMinimized():
+                    wnd.Maximize()
 
-                self.minimizedWindows = []
-            if getattr(self, 'planetNav', None):
-                settings.char.ui.Set('planet_camera_zoom', self.planetNav.zoom)
-            else:
-                settings.char.ui.Set('planet_camera_zoom', 1.0)
-            sm.GetService('sceneManager').SetRegisteredScenes('default')
-            if eve.session.stationid2:
-                if util.GetCurrentView() == 'station':
-                    sm.GetService('gameui').OpenExclusive('charcontrol', 1)
-                    uix.GetWorldspaceNav()
-                    uicore.registry.SetFocus(uicore.GetLayer('charcontrol'))
-                else:
-                    uix.GetStationNav()
-            else:
-                uix.GetInflightNav()
-            sm.GetService('bracket').Show()
-            uicore.layer.planet.state = uiconst.UI_HIDDEN
-        sm.GetService('starmap').DecorateNeocom()
+            self.minimizedWindows = []
+        if getattr(self, 'planetNav', None):
+            settings.char.ui.Set('planet_camera_zoom', self.planetNav.zoom)
+        else:
+            settings.char.ui.Set('planet_camera_zoom', 1.0)
+        sm.GetService('sceneManager').SetRegisteredScenes('default')
         self.busy = 0
         self.ClosePlanetModeContainer()
-        self.myPinManager.OnPlanetViewClosed()
-        self.otherPinManager.OnPlanetViewClosed()
-        self.eventManager.OnPlanetViewClosed()
+        if self.eventManager:
+            self.eventManager.OnPlanetViewClosed()
+        if self.myPinManager:
+            self.myPinManager.OnPlanetViewClosed()
+        if self.otherPinManager:
+            self.otherPinManager.OnPlanetViewClosed()
         self.CleanScene()
         self.StopSpherePinLoadThread()
         sm.ScatterEvent('OnPlanetViewChanged', None, self.planetID)
-        if session.stationid:
-            uicore.layer.charcontrol.Show()
-        else:
-            uicore.layer.shipui.Show()
         self.LogPlanetAccess()
         self.planetID = None
         self.planet = None
@@ -273,7 +258,7 @@ class PlanetUISvc(service.Service):
 
     def InitUI(self, planetChanged):
         self.LogInfo('Initializing UI')
-        self.StartLoadingBar('planet_ui_init', mls.UI_PI_PLANET_MODE, mls.UI_PI_LOADING_PLANET_RESOURCES, 5)
+        self.StartLoadingBar('planet_ui_init', localization.GetByLabel('UI/PI/Common/PlanetMode'), localization.GetByLabel('UI/PI/Common/LoadingPlanetResources'), 5)
         try:
             sm.GetService('planetSvc').GetPlanet(self.planetID)
         except UserError as e:
@@ -284,41 +269,48 @@ class PlanetUISvc(service.Service):
             self.StopLoadingBar('planet_ui_init')
             log.LogException()
             return 
-        mapSvc = sm.GetService('map')
-        if mapSvc.IsOpen():
-            mapSvc.Close()
-        if not self.IsOpen():
+        if not sm.GetService('viewState').IsViewActive('planet'):
             self.MinimizeWindows()
         newScene = False
         if self.planetRoot is None or planetChanged:
             self.CreateScene()
             newScene = True
-        self.UpdateLoadingBar('planet_ui_init', mls.UI_PI_PLANET_MODE, mls.UI_PI_LOADING_PLANET_RESOURCES, 1, 5)
+        self.UpdateLoadingBar('planet_ui_init', localization.GetByLabel('UI/PI/Common/PlanetMode'), localization.GetByLabel('UI/PI/Common/LoadingPlanetResources'), 1, 4)
         sm.GetService('sceneManager').SetRegisteredScenes('planet')
-        uicore.layer.map.state = uiconst.UI_HIDDEN
-        uicore.layer.systemmap.state = uiconst.UI_HIDDEN
-        uicore.layer.planet.state = uiconst.UI_PICKCHILDREN
-        self.UpdateLoadingBar('planet_ui_init', mls.UI_PI_PLANET_MODE, mls.UI_PI_LOADING_PLANET_RESOURCES, 2, 5)
+        self.UpdateLoadingBar('planet_ui_init', localization.GetByLabel('UI/PI/Common/PlanetMode'), localization.GetByLabel('UI/PI/Common/LoadingPlanetResources'), 2, 4)
+        self.SetPlanet()
+        self.UpdateLoadingBar('planet_ui_init', localization.GetByLabel('UI/PI/Common/PlanetMode'), localization.GetByLabel('UI/PI/Common/LoadingPlanetResources'), 3, 4)
+        self.LoadPI(newScene)
+        uthread.new(self.FocusCameraOnCommandCenter, 3.0)
+        self.UpdateLoadingBar('planet_ui_init', localization.GetByLabel('UI/PI/Common/PlanetMode'), localization.GetByLabel('UI/PI/Common/LoadingPlanetResources'), 4, 4)
+        self.StopLoadingBar('planet_ui_init')
+
+
+
+    def LoadPI(self, newScene = True):
         self.InitTrinityTransforms()
         self.InitUIContainers()
         self.InitLinesets()
-        self.UpdateLoadingBar('planet_ui_init', mls.UI_PI_PLANET_MODE, mls.UI_PI_LOADING_PLANET_RESOURCES, 3, 5)
+        if self.myPinManager:
+            self.myPinManager.Close()
+        self.myPinManager = planet.ui.MyPinManager()
+        if self.otherPinManager:
+            self.otherPinManager.Close()
+        self.otherPinManager = planet.ui.OtherPinManager()
+        if self.eventManager:
+            self.eventManager.Close()
+        self.eventManager = planet.ui.EventManager()
+        self.planetNav.Startup()
         if newScene:
             self.planetNav.zoom = 1.0
         else:
             self.planetNav.zoom = settings.char.ui.Get('planet_camera_zoom', 1.0)
-        self.SetPlanet()
         self.zoom = sm.GetService('planetUI').planetNav.camera.zoom
         self.eventManager.OnPlanetViewOpened()
         self.myPinManager.OnPlanetViewOpened()
         self.otherPinManager.OnPlanetViewOpened()
-        uthread.new(self.FocusCameraOnCommandCenter, 3.0)
-        self.UpdateLoadingBar('planet_ui_init', mls.UI_PI_PLANET_MODE, mls.UI_PI_LOADING_PLANET_RESOURCES, 4, 5)
         self.ClosePlanetModeContainer()
-        sm.GetService('neocom').SetXtraText()
         self.modeController = planet.ui.PlanetModeContainer(parent=uicore.layer.neocom.GetChild('neocomLeftside'), align=uiconst.TOTOP, pos=(0, 0, 0, 355))
-        self.UpdateLoadingBar('planet_ui_init', mls.UI_PI_PLANET_MODE, mls.UI_PI_LOADING_PLANET_RESOURCES, 5, 5)
-        self.StopLoadingBar('planet_ui_init')
 
 
 
@@ -330,7 +322,7 @@ class PlanetUISvc(service.Service):
 
     def InitUIContainers(self):
         self.pinInfoParent = uicls.Container(parent=self.planetUIContainer, name='pinInfoParent', align=uiconst.TOALL, state=uiconst.UI_PICKCHILDREN)
-        self.planetNav = uix.GetPlanetNav()
+        self.planetNav = sm.GetService('viewState').GetView('planet').layer
 
 
 
@@ -402,6 +394,7 @@ class PlanetUISvc(service.Service):
         camera.parent = cameraParent
         camera.translationFromParent.z = PLANET_ZOOM_MAX
         self.LoadPlanet()
+        self.LoadOrbitalObjects(self.planetScene)
         sm.GetService('sceneManager').RegisterCamera('planet', camera)
         sm.GetService('sceneManager').RegisterScenes('planet', None, self.planetScene)
 
@@ -417,26 +410,8 @@ class PlanetUISvc(service.Service):
     def GetPlanetScene(self):
         scenepath = self.GetScene()
         scene = trinity.Load(scenepath)
-        scene2 = trinity.EveSpaceScene()
-        textures = scene.nebula.children[0].object.areas[0].areaTextures
-        scene2.envMap1ResPath = textures[0].pixels.encode('ascii')
-        if len(textures) > 1:
-            scene2.envMap2ResPath = textures[1].pixels.encode('ascii')
-        rot1 = textures[0].rotation
-        scene2.envMapRotation = (rot1.x,
-         rot1.y,
-         rot1.z,
-         rot1.w)
-        scale1 = textures[0].scaling
-        scene2.envMapScaling = (scale1.x, scale1.y, scale1.z)
-        scene2.backgroundEffect = trinity.Load('res:/dx9/scene/starfield/starfieldNebula.red')
-        if scene2.backgroundEffect is not None:
-            for node in scene2.backgroundEffect.resources.Find('trinity.TriTexture2DParameter'):
-                if node.name == 'NebulaMap':
-                    node.resourcePath = scene2.envMap1ResPath
-
-        scene2.backgroundRenderingEnabled = True
-        return scene2
+        scene.backgroundRenderingEnabled = True
+        return scene
 
 
 
@@ -464,6 +439,118 @@ class PlanetUISvc(service.Service):
         scene.sunDiffuseColor = (1.0, 1.0, 1.0, 1.0)
         self.planetTransform = planetTransform
         self.planetRoot.children.append(self.planetTransform)
+
+
+
+    def LoadOrbitalObjects(self, scene2):
+        orbitalObjects = sm.GetService('planetInfo').GetOrbitalsForPlanet(self.planetID, const.groupPlanetaryCustomsOffices)
+        groupClasses = spaceObject.GetGroupDict()
+        categoryClasses = spaceObject.GetCategoryDict()
+        park = sm.GetService('michelle').GetBallpark()
+        addedObjects = []
+        for orbitalObjectID in orbitalObjects:
+            ball = park.GetBall(orbitalObjectID)
+            invItem = park.GetInvItem(orbitalObjectID)
+            fileName = None
+            if cfg.invtypes.Get(invItem.typeID).graphicID is not None:
+                if type(cfg.invtypes.Get(invItem.typeID).graphicID) != type(0):
+                    raise RuntimeError('NeedGraphicIDNotMoniker', invItem.itemID)
+                if cfg.invtypes.Get(invItem.typeID).Graphic():
+                    fileName = cfg.invtypes.Get(invItem.typeID).GraphicFile()
+                    if not (fileName.lower().endswith('.red') or fileName.lower().endswith('.blue')):
+                        filename_and_turret_type = string.split(fileName, ' ')
+                        fileName = filename_and_turret_type[0]
+            if fileName is None:
+                self.LogError('Error: Object type %s has invalid graphicFile, using graphicID: %s' % (invItem.typeID, cfg.invtypes.Get(invItem.typeID).graphicID))
+                continue
+            tryFileName = fileName.replace(':/Model', ':/dx9/Model').replace('.blue', '.red')
+            tryFileName = tryFileName.replace('.red', '_UI.red')
+            model = None
+            if tryFileName is not None:
+                try:
+                    model = blue.os.LoadObject(tryFileName)
+                except:
+                    model = None
+                    sys.exc_clear()
+                if model is None:
+                    self.LogError('Was looking for:', tryFileName, 'but it does not exist!')
+            if model is None:
+                try:
+                    model = blue.os.LoadObject(fileName)
+                except:
+                    model = None
+                    sys.exc_clear()
+            if not model:
+                log.LogError('Could not load model for orbital object. FileName:', fileName, ' id:', invItem.itemID, ' typeID:', getattr(invItem, 'typeID', '?unknown?'))
+                if invItem is not None and hasattr(invItem, 'typeID'):
+                    log.LogError('Type is:', cfg.invtypes.Get(invItem.typeID).typeName)
+                continue
+            model.name = '%s' % invItem.itemID
+            model.display = 0
+            model.scaling = (0.002, 0.002, 0.002)
+            addedObjects.append(model)
+            orbitRoot = trinity.EveTransform()
+            orbitRoot.children.append(model)
+            inclinationRoot = trinity.EveTransform()
+            inclinationRoot.children.append(orbitRoot)
+            orbitalInclination = orbitalObjectID / math.pi % (math.pi / 4.0) - math.pi / 8.0
+            if orbitalInclination <= 0.0:
+                orbitalInclination -= math.pi / 8.0
+            else:
+                orbitalInclination += math.pi / 8.0
+            inclinationRoot.rotation = geo2.QuaternionRotationSetYawPitchRoll(0.0, orbitalInclination, 0.0)
+            rotationCurveSet = trinity.TriCurveSet()
+            rotationCurveSet.playOnLoad = False
+            rotationCurveSet.Stop()
+            rotationCurveSet.scaledTime = 0.0
+            rotationCurveSet.scale = 0.25
+            orbitRoot.curveSets.append(rotationCurveSet)
+            ypr = trinity.TriYPRSequencer()
+            ypr.YawCurve = trinity.TriScalarCurve()
+            ypr.YawCurve.extrapolation = trinity.TRIEXT_CYCLE
+            ypr.YawCurve.AddKey(0.0, 0.0, 0.0, 0.0, trinity.TRIINT_LINEAR)
+            ypr.YawCurve.AddKey(200.0, 360.0, 0.0, 0.0, trinity.TRIINT_LINEAR)
+            ypr.YawCurve.Sort()
+            rotationCurveSet.curves.append(ypr)
+            binding = trinity.TriValueBinding()
+            binding.sourceObject = ypr
+            binding.sourceAttribute = 'value'
+            binding.destinationObject = orbitRoot
+            binding.destinationAttribute = 'rotation'
+            rotationCurveSet.bindings.append(binding)
+            rotationCurveSet.Play()
+            model.translation = (0.0, 0.0, 1500.0)
+            model.rotation = geo2.QuaternionRotationSetYawPitchRoll(math.pi, 0.0, 0.0)
+            scene2.objects.append(inclinationRoot)
+            ls = trinity.EveCurveLineSet()
+            ls.scaling = (1.0, 1.0, 1.0)
+            tex2D1 = trinity.TriTexture2DParameter()
+            tex2D1.name = 'TexMap'
+            tex2D1.resourcePath = 'res:/UI/Texture/Planet/link.dds'
+            ls.lineEffect.resources.append(tex2D1)
+            tex2D2 = trinity.TriTexture2DParameter()
+            tex2D2.name = 'OverlayTexMap'
+            tex2D2.resourcePath = 'res:/UI/Texture/Planet/link.dds'
+            ls.lineEffect.resources.append(tex2D2)
+            lineColor = (1.0, 1.0, 1.0, 0.05)
+            p1 = planet.SurfacePoint(0.0, 0.0, -1500.0, 1000.0)
+            p2 = planet.SurfacePoint(5.0, 0.0, 1498.0, 1000.0)
+            l1 = ls.AddSpheredLineCrt(p1.GetAsXYZTuple(), lineColor, p2.GetAsXYZTuple(), lineColor, (0.0, 0.0, 0.0), 3.0)
+            p1 = planet.SurfacePoint(0.0, 0.0, -1500.0, 1000.0)
+            p2 = planet.SurfacePoint(-5.0, 0.0, 1498.0, 1000.0)
+            l2 = ls.AddSpheredLineCrt(p1.GetAsXYZTuple(), lineColor, p2.GetAsXYZTuple(), lineColor, (0.0, 0.0, 0.0), 3.0)
+            animationColor = (0.3, 0.3, 0.3, 0.5)
+            ls.ChangeLineAnimation(l1, animationColor, 0.25, 1.0)
+            ls.ChangeLineAnimation(l2, animationColor, -0.25, 1.0)
+            ls.ChangeLineSegmentation(l1, 100)
+            ls.ChangeLineSegmentation(l2, 100)
+            ls.SubmitChanges()
+            orbitRoot.children.append(ls)
+
+        trinity.WaitForResourceLoads()
+        for model in addedObjects:
+            model.display = 1
+
 
 
 
@@ -504,13 +591,13 @@ class PlanetUISvc(service.Service):
 
 
     def OnSetDevice(self):
-        if self.IsOpen():
+        if sm.GetService('viewState').IsViewActive('planet'):
             self.planetNav.camera.ManualZoom(0.0)
 
 
 
     def OnGraphicSettingsChanged(self, changes):
-        if self.IsOpen() and self.trinityPlanet is not None and ('textureQuality' in changes or 'shaderQuality' in changes):
+        if sm.GetService('viewState').IsViewActive('planet') and self.trinityPlanet is not None and ('textureQuality' in changes or 'shaderQuality' in changes):
             self.PreProcessPlanet()
             if self.selectedResourceTypeID is not None:
                 self.ShowResource(self.selectedResourceTypeID)
@@ -535,7 +622,7 @@ class PlanetUISvc(service.Service):
             self.modeController.resourceControllerTab.ResourceSelected(resourceTypeID)
         elif oldResourceTypeID != resourceTypeID:
             while self.isLoadingResource:
-                blue.pyos.synchro.Sleep(50)
+                blue.pyos.synchro.SleepWallclock(50)
 
             if resourceTypeID == self.selectedResourceTypeID:
                 self.ShowResource(resourceTypeID)
@@ -620,7 +707,7 @@ class PlanetUISvc(service.Service):
         buf = chart.makeChart2(chart.PNG)
         if resourceTypeID != self.selectedResourceTypeID:
             raise ResourceRenderAbortedError
-        texture = trinity.device.CreateTexture(PLANET_RESOURCE_TEX_WIDTH, PLANET_RESOURCE_TEX_HEIGHT, 1, 0, trinity.TRIFMT_X8R8G8B8, trinity.TRIPOOL_MANAGED)
+        texture = trinity.device.CreateTexture(PLANET_RESOURCE_TEX_WIDTH, PLANET_RESOURCE_TEX_HEIGHT, 1, trinity.TRIUSAGE_DYNAMIC if trinity.device.UsingEXDevice() else 0, trinity.TRIFMT_X8R8G8B8, trinity.TRIPOOL_DEFAULT if trinity.device.UsingEXDevice() else trinity.TRIPOOL_MANAGED)
         if resourceTypeID != self.selectedResourceTypeID:
             raise ResourceRenderAbortedError
         texture.GetSurfaceLevel(0).LoadSurfaceFromFileInMemory(buf)
@@ -637,14 +724,8 @@ class PlanetUISvc(service.Service):
 
 
 
-    def OnSessionChanged(self, isRemote, sess, change):
-        if 'stationid' in change and change['stationid'][1] is None and self.IsOpen():
-            sm.GetService('bracket').Hide()
-
-
-
     def CreateChartFromSamples(self, width, height, dataX, dataY, dataZ, rangeXY = None):
-        startTime = blue.os.GetTime()
+        startTime = blue.os.GetWallclockTime()
         if rangeXY:
             (minX, minY, maxX, maxY,) = rangeXY
         else:
@@ -665,7 +746,7 @@ class PlanetUISvc(service.Service):
         colorAxis.setColorGradient(True, [long(max(0, minZ)) << 24, long(min(255, maxZ)) << 24])
         layer.setSmoothInterpolation(True)
         layer.setContourColor(Transparent)
-        self.LogInfo('CreateChartFromSamples width', width, 'height', height, 'render time', float(blue.os.GetTime() - startTime) / const.SEC, 'seconds')
+        self.LogInfo('CreateChartFromSamples width', width, 'height', height, 'render time', float(blue.os.GetWallclockTime() - startTime) / const.SEC, 'seconds')
         return chart
 
 
@@ -732,28 +813,40 @@ class PlanetUISvc(service.Service):
 
 
 
-    def OpenPlanetCargoLinkImportWindow(self, cargoLinkID, spaceportPinID = None, exportMode = False):
-        windowSvc = sm.GetService('window')
-        wnd = windowSvc.GetWindow('PlanetaryImportExportUI')
+    def OpenPlanetCustomsOfficeImportWindow(self, customsOfficeID, spaceportPinID = None):
+        wnd = form.PlanetaryImportExportUI.GetIfOpen()
         if wnd:
-            if wnd.cargoLinkID != cargoLinkID:
-                wnd.CloseX()
+            if wnd.customsOfficeID != customsOfficeID:
+                wnd.CloseByUser()
                 wnd = None
             else:
                 wnd.Maximize()
         if not wnd:
-            windowSvc.GetWindow('PlanetaryImportExportUI', create=1, maximize=1, cargoLinkID=cargoLinkID, spaceportPinID=spaceportPinID, exportMode=exportMode)
+            form.PlanetaryImportExportUI.Open(customsOfficeID=customsOfficeID, spaceportPinID=spaceportPinID)
+
+
+
+    def OpenUpgradeWindow(self, orbitalID):
+        wnd = form.OrbitalMaterialUI.GetIfOpen()
+        if wnd:
+            if wnd.orbitalID != orbitalID:
+                wnd.CloseByUser()
+                wnd = None
+            else:
+                wnd.Maximize()
+        if not wnd:
+            form.OrbitalMaterialUI.Open(orbitalID=orbitalID)
 
 
 
     def GetSurveyWindow(self, ecuPinID):
-        wnd = sm.GetService('window').GetWindow('PlanetSurvey', create=1, ecuPinID=ecuPinID)
+        wnd = form.PlanetSurvey.Open(ecuPinID=ecuPinID)
         if wnd.ecuPinID != ecuPinID:
             self.CloseSurveyWindow()
             self.myPinManager.EnterSurveyMode(ecuPinID)
         else:
             self.EnterSurveyMode(ecuPinID)
-        return sm.GetService('window').GetWindow('PlanetSurvey')
+        return form.PlanetSurvey.GetIfOpen()
 
 
 
@@ -771,9 +864,7 @@ class PlanetUISvc(service.Service):
 
 
     def CloseSurveyWindow(self):
-        wnd = sm.GetService('window').GetWindow('PlanetSurvey')
-        if wnd:
-            wnd.SelfDestruct()
+        form.PlanetSurvey.CloseIfOpen()
 
 
 
@@ -791,7 +882,7 @@ class PlanetUISvc(service.Service):
             builder.ScaleSH(sh, 1.0 / const.planetResourceMaxValue)
         chart = self.ChartResourceLayer(sh)
         buf = chart.makeChart2(chart.PNG)
-        texture = trinity.device.CreateTexture(PLANET_RESOURCE_TEX_WIDTH, PLANET_RESOURCE_TEX_HEIGHT, 1, 0, trinity.TRIFMT_X8R8G8B8, trinity.TRIPOOL_MANAGED)
+        texture = trinity.device.CreateTexture(PLANET_RESOURCE_TEX_WIDTH, PLANET_RESOURCE_TEX_HEIGHT, 1, trinity.TRIUSAGE_DYNAMIC if trinity.device.UsingEXDevice() else 0, trinity.TRIFMT_X8R8G8B8, trinity.TRIPOOL_DEFAULT if trinity.device.UsingEXDevice() else trinity.TRIPOOL_MANAGED)
         texture.GetSurfaceLevel(0).LoadSurfaceFromFileInMemory(buf)
         if self.planetTransform is not None:
             self.EnableResourceLayer()
@@ -875,16 +966,11 @@ class PlanetUISvc(service.Service):
 
     def GetLocalDistributionReport(self, surfacePoint):
         report = self.planet.GetLocalDistributionReport(surfacePoint)
-        txtMsg = 'latitude: %3.2f\xb0   longitude: %3.2f\xb0 <br><br>Name (typeID): base * quality - depletion = final (raw)<br><br>' % (math.degrees(surfacePoint.phi), math.degrees(surfacePoint.theta))
+        reportRows = []
         for k in report['base'].keys():
-            txtMsg += '%s (%d): %3.3f * %3.3f - %3.3f = %3.3f (%3.3f)<br>' % (cfg.invtypes.Get(k).name,
-             k,
-             report['base'][k],
-             report['quality'][k],
-             report['deplete'][k],
-             report['final'][k],
-             report['raw'][k])
+            reportRows.append(localization.GetByLabel('UI/PI/Planet/LocalDistributionReportRow', item=k, itemID=k, base=report['base'][k], quality=report['quality'][k], deplete=report['deplete'][k], final=report['final'][k], raw=report['raw'][k]))
 
+        txtMsg = localization.GetByLabel('UI/PI/Planet/LocalDistributionReport', latitude=math.degrees(surfacePoint.phi), longitude=math.degrees(surfacePoint.theta), reportRows='<br>'.join(reportRows))
         uthread.new(eve.Message, 'CustomInfo', {'info': txtMsg}).context = 'gameui.ServerMessage'
 
 
@@ -952,6 +1038,38 @@ class PlanetUISvc(service.Service):
     def ExitedEditMode(self, planetID):
         if self.planetID == planetID and self.myPinManager is not None:
             self.myPinManager.OnPlanetExitedEditMode()
+
+
+
+    def ChangeToPIView(self):
+        self.CleanView()
+        self.LoadPI()
+
+
+
+    def ChangeToDustView(self):
+        if sm.GetService('machoNet').GetClientConfigVals().get('enableDustLink'):
+            self.CleanView()
+            self.LoadDust()
+
+
+
+    def LoadDust(self):
+        if sm.GetService('machoNet').GetClientConfigVals().get('enableDustLink'):
+            self.InitTrinityTransforms()
+            self.InitUIContainers()
+            self.InitLinesets()
+            self.myPinManager = planet.ui.DustPinManager()
+            self.otherPinManager = None
+            self.eventManager = planet.ui.DustEventManager()
+            self.planetNav.Startup()
+            self.eventManager.OnPlanetViewOpened()
+            if self.myPinManager:
+                self.myPinManager.OnPlanetViewOpened()
+            if self.otherPinManager:
+                self.otherPinManager.OnPlanetViewOpened()
+            self.ClosePlanetModeContainer()
+            self.modeController = planet.ui.DustPlanetModeContainer(parent=uicore.layer.neocom.GetChild('neocomLeftside'), align=uiconst.TOTOP, pos=(0, 0, 0, 355))
 
 
 

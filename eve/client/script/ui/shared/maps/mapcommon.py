@@ -95,10 +95,12 @@ STARMODE_FILTER_EMPIRE = -3
 STARMAP_SCALE = 1e-13
 SYSTEMMAP_SCALE = 1e-10
 ZOOM_MAX_STARMAP = 200000.0
-ZOOM_MIN_STARMAP = 8000.0
-ZOOM_FAR_SYSTEMMAP = 20000.0
-ZOOM_NEAR_SYSTEMMAP = 20.0
+ZOOM_MIN_STARMAP = 4000.0
+ZOOM_FAR_SYSTEMMAP = 8000.0
+ZOOM_NEAR_SYSTEMMAP = 1.0
 LINESET_EFFECT = 'res:/Graphics/Effect/Managed/Space/SpecialFX/LinesAdditive.fx'
+LINESET_EFFECT_STARMAP = 'res:/Graphics/Effect/Managed/Space/SpecialFX/LinesAdditiveStarMap.fx'
+LINESET_3D_EFFECT_STARMAP = 'res:/Graphics/Effect/Managed/Space/SpecialFX/Lines3DStarMap.fx'
 COLORCURVE_SECURITY = [trinity.TriColor(1.0, 0.0, 0.0, 1.0),
  trinity.TriColor(0.9, 0.2, 0.0, 1.0),
  trinity.TriColor(1.0, 0.3, 0.0, 1.0),
@@ -136,27 +138,31 @@ SUN_SIZE_SMALL = 3
 SUN_SIZE_MEDIUM = 4
 SUN_SIZE_LARGE = 5
 SUN_SIZE_GIANT = 6
-SUN_DATA = {3801: util.KeyVal(__doc__='Sun A0 ( Blue Small )', color=SUN_BLUE, size=SUN_SIZE_SMALL),
+SUN_DATA = {3801: util.KeyVal(__doc__='Sun A0 (Blue Small)', color=SUN_BLUE, size=SUN_SIZE_SMALL),
  9: util.KeyVal(__doc__='Sun B0 (Blue)', color=SUN_BLUE, size=SUN_SIZE_MEDIUM),
- 3803: util.KeyVal(__doc__='Sun B5 ( White Dwarf )', color=SUN_WHITE, size=SUN_SIZE_DWARF),
- 10: util.KeyVal(__doc__='Sun F0 ( White )', color=SUN_WHITE, size=SUN_SIZE_SMALL),
+ 3803: util.KeyVal(__doc__='Sun B5 (White Dwarf)', color=SUN_WHITE, size=SUN_SIZE_DWARF),
+ 10: util.KeyVal(__doc__='Sun F0 (White)', color=SUN_WHITE, size=SUN_SIZE_SMALL),
  3799: util.KeyVal(__doc__='Sun G3 ( Pink Small ', color=SUN_PINK, size=SUN_SIZE_SMALL),
- 3797: util.KeyVal(__doc__='Sun G5 ( Pink )', color=SUN_PINK, size=SUN_SIZE_MEDIUM),
+ 3797: util.KeyVal(__doc__='Sun G5 (Pink)', color=SUN_PINK, size=SUN_SIZE_MEDIUM),
  6: util.KeyVal(__doc__='Sun G5 (Yellow)', color=SUN_YELLOW, size=SUN_SIZE_MEDIUM),
- 3802: util.KeyVal(__doc__='Sun K3 ( Yellow Small )', color=SUN_YELLOW, size=SUN_SIZE_SMALL),
- 3798: util.KeyVal(__doc__='Sun K5 ( Orange Bright )', color=SUN_ORANGE_BRIGHT, size=SUN_SIZE_MEDIUM),
+ 3802: util.KeyVal(__doc__='Sun K3 (Yellow Small)', color=SUN_YELLOW, size=SUN_SIZE_SMALL),
+ 3798: util.KeyVal(__doc__='Sun K5 (Orange Bright)', color=SUN_ORANGE_BRIGHT, size=SUN_SIZE_MEDIUM),
  8: util.KeyVal(__doc__='Sun K5 (Red Giant)', color=SUN_RED, size=SUN_SIZE_GIANT),
  7: util.KeyVal(__doc__='Sun K7 (Orange)', color=SUN_ORANGE, size=SUN_SIZE_MEDIUM),
- 3800: util.KeyVal(__doc__='Sun M0 ( Orange radiant )', color=SUN_ORANGE, size=SUN_SIZE_LARGE),
- 3796: util.KeyVal(__doc__='Sun O1 ( Blue Bright )', color=SUN_BLUE_BRIGHT, size=SUN_SIZE_MEDIUM)}
+ 3800: util.KeyVal(__doc__='Sun M0 (Orange radiant)', color=SUN_ORANGE, size=SUN_SIZE_LARGE),
+ 3796: util.KeyVal(__doc__='Sun O1 (Blue Bright)', color=SUN_BLUE_BRIGHT, size=SUN_SIZE_MEDIUM)}
 REGION_JUMP = 0
 CONSTELLATION_JUMP = 1
 SOLARSYSTEM_JUMP = 2
 JUMP_TYPES = (REGION_JUMP, CONSTELLATION_JUMP, SOLARSYSTEM_JUMP)
-COLOR_REGION = (1.0, 0.0, 1.0, 1.0)
-COLOR_CONSTELLATION = (1.0, 0.0, 0.0, 1.0)
+COLOR_REGION = (0.5, 0.0, 0.5, 1.0)
+COLOR_CONSTELLATION = (0.5, 0.0, 0.0, 1.0)
 COLOR_SOLARSYSTEM = (0.0, 0.0, 1.0, 1.0)
 JUMP_COLORS = (COLOR_REGION, COLOR_CONSTELLATION, COLOR_SOLARSYSTEM)
+JUMPBRIDGE_CURVE_SCALE = 0.75
+JUMPBRIDGE_COLOR = (0.0, 1.0, 0.0, 1.0)
+JUMPBRIDGE_COLOR_SCALE = 0.25
+JUMPBRIDGE_ANIMATION_SPEED = 1.0
 
 class LegendItem(object):
 

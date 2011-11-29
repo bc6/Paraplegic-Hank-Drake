@@ -1,4 +1,5 @@
 import math
+import geo2
 import util
 DEG_2_RAD = math.pi / 180.0
 RAD_2_DEG = 180.0 / math.pi
@@ -57,6 +58,18 @@ def DegToRad(degs):
 
 def RadToDeg(degs):
     return degs * RAD_2_DEG
+
+
+
+def RayToPlaneIntersection(P, d, Q, n):
+    denom = geo2.Vec3Dot(n, d)
+    if abs(denom) < 1e-05:
+        return P
+    else:
+        distance = -geo2.Vec3Dot(Q, n)
+        t = -(geo2.Vec3Dot(n, P) + distance) / denom
+        S = geo2.Add(geo2.Scale(d, t), P)
+        return S
 
 
 exports = util.AutoExports('mathUtil', locals())

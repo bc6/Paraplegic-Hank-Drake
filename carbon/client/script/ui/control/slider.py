@@ -22,9 +22,11 @@ class SliderCore(uicls.Container):
     default_endsliderfunc = None
     default_onsetvaluefunc = None
     default_startVal = None
-    default_font = fontConst.DEFAULT_FONT
-    default_fontsize = fontConst.DEFAULT_FONTSIZE
     default_labeltab = 4
+    default_fontsize = fontConst.DEFAULT_FONTSIZE
+    default_fontStyle = None
+    default_fontFamily = None
+    default_fontPath = None
 
     def ApplyAttributes(self, attributes):
         uicls.Container.ApplyAttributes(self, attributes)
@@ -40,7 +42,9 @@ class SliderCore(uicls.Container):
         self.maxValue = attributes.get('maxValue', self.default_maxValue)
         self.minValue = attributes.get('minValue', self.default_minValue)
         self.sliderID = attributes.get('sliderID', self.default_sliderID)
-        self.font = attributes.get('font', self.default_font)
+        self.fontStyle = attributes.get('fontStyle', self.default_fontStyle)
+        self.fontFamily = attributes.get('fontFamily', self.default_fontFamily)
+        self.fontPath = attributes.get('fontPath', self.default_fontPath)
         self.fontsize = attributes.get('fontsize', self.default_fontsize)
         self.labeltab = attributes.get('labeltab', self.default_labeltab)
         self.SetSliderLabel = attributes.get('setlabelfunc', self.default_setlabelfunc)
@@ -96,7 +100,7 @@ class SliderCore(uicls.Container):
 
 
     def Prepare_Label_(self):
-        self.label = uicls.Label(parent=self, font=self.font, fontsize=self.fontsize, pos=(self.labeltab,
+        self.label = uicls.Label(parent=self, fontFamily=self.fontFamily, fontPath=self.fontPath, fontStyle=self.fontStyle, fontsize=self.fontsize, pos=(self.labeltab,
          2,
          0,
          0))
@@ -154,9 +158,9 @@ class SliderCore(uicls.Container):
         self.morphTo = value
         startPos = self.value
         endPos = value
-        (start, ndt,) = (blue.os.GetTime(), 0.0)
+        (start, ndt,) = (blue.os.GetWallclockTime(), 0.0)
         while ndt != 1.0:
-            ndt = min(blue.os.TimeDiffInMs(start) / time, 1.0)
+            ndt = min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / time, 1.0)
             newVal = mathUtil.Lerp(startPos, endPos, ndt)
             self.SetValue(newVal, updateHandle=True)
             blue.pyos.synchro.Yield()

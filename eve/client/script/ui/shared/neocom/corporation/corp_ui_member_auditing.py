@@ -9,10 +9,13 @@ import listentry
 import time
 import uiconst
 import uicls
+import localization
+import localizationUtil
 
 class CorpAuditing(uicls.Container):
     __guid__ = 'form.CorpAuditing'
     __nonpersistvars__ = []
+    auditorMessageID = 60180
 
     def init(self):
         self.sr.notext = None
@@ -25,16 +28,16 @@ class CorpAuditing(uicls.Container):
 
 
     def Load(self, args):
-        sm.GetService('corpui').LoadTop('ui_7_64_8', mls.UI_CORP_AUDITING)
+        sm.GetService('corpui').LoadTop('ui_7_64_8', localization.GetByLabel('UI/Corporations/BaseCorporationUI/Auditing'))
         if not self.sr.Get('inited', 0):
             self.sr.inited = 1
             toppar = uicls.Container(name='options', parent=self, align=uiconst.TOTOP, height=20)
             icon = xtriui.BaseButton(parent=toppar, width=20, height=20, align=uiconst.BOTTOMRIGHT)
-            icon.hint = mls.UI_GENERIC_REFRESH
+            icon.hint = localization.GetByLabel('UI/Commands/Refresh')
             icon.Click = self.OnReturn
-            self.sr.fwdBtn = uicls.Button(parent=toppar, icon='ui_77_32_41', iconSize=20, align=uiconst.BOTTOMRIGHT, left=6, func=self.Browse, args=1, hint=mls.UI_GENERIC_FORWARD)
-            self.sr.backBtn = uicls.Button(parent=toppar, icon='ui_77_32_42', iconSize=20, align=uiconst.BOTTOMRIGHT, left=32, func=self.Browse, args=-1, hint=mls.UI_GENERIC_BACK)
-            nowSecs = blue.os.GetTime()
+            self.sr.fwdBtn = uicls.Button(parent=toppar, icon='ui_77_32_41', iconSize=20, align=uiconst.BOTTOMRIGHT, left=6, func=self.Browse, args=1, hint=localization.GetByLabel('UI/Browser/Forward'))
+            self.sr.backBtn = uicls.Button(parent=toppar, icon='ui_77_32_42', iconSize=20, align=uiconst.BOTTOMRIGHT, left=32, func=self.Browse, args=-1, hint=localization.GetByLabel('UI/Browser/Back'))
+            nowSecs = blue.os.GetWallclockTime()
             (year, month, wd, day, hour, min, sec, ms,) = util.GetTimeParts(nowSecs + DAY)
             now = [year, month, day]
             (year, month, wd, day, hour, min, sec, ms,) = util.GetTimeParts(nowSecs - WEEK + DAY)
@@ -51,13 +54,13 @@ class CorpAuditing(uicls.Container):
                 for charID in memberIDs:
                     memberlist.append([cfg.eveowners.Get(charID).name, charID])
 
-                combo = uicls.Combo(label=mls.UI_GENERIC_MEMBER, parent=toppar, options=memberlist, name='memberID', select=settings.user.ui.Get('memberID', None), callback=self.OnComboChange, width=100, pos=(toDate.left + toDate.width + 4,
+                combo = uicls.Combo(label=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/HaveToFindMember'), parent=toppar, options=memberlist, name='memberID', select=settings.user.ui.Get('memberID', None), callback=self.OnComboChange, width=100, pos=(toDate.left + toDate.width + 4,
                  toDate.top,
                  0,
                  0))
                 self.sr.Set('Member', combo)
             else:
-                searchMember = uicls.SinglelineEdit(name='searchMember', parent=toppar, align=uiconst.TOPLEFT, left=toDate.left + toDate.width + 6, top=toDate.top, width=92, maxLength=37, label=mls.UI_CORP_SEARCHMEMBER)
+                searchMember = uicls.SinglelineEdit(name='searchMember', parent=toppar, align=uiconst.TOPLEFT, left=toDate.left + toDate.width + 6, top=toDate.top, width=92, maxLength=37, label=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/SearcForMember'))
                 searchMember.OnReturn = self.SearchMember
                 self.sr.searchMember = searchMember
             self.sr.scroll = uicls.Scroll(name='auditing', parent=self, padding=(const.defaultPadding,
@@ -92,18 +95,18 @@ class CorpAuditing(uicls.Container):
         _CorpAuditing__dateseptbl = string.maketrans('/-. ', '----')
         date = string.translate(dateString, _CorpAuditing__dateseptbl)
         dp = date.split('-', 2)
-        month = {1: mls.UI_GENERIC_JANUARY,
-         2: mls.UI_GENERIC_FEBRUARY,
-         3: mls.UI_GENERIC_MARCH,
-         4: mls.UI_GENERIC_APRIL,
-         5: mls.UI_GENERIC_MAY,
-         6: mls.UI_GENERIC_JUNE,
-         7: mls.UI_GENERIC_JULY,
-         8: mls.UI_GENERIC_AUGUST,
-         9: mls.UI_GENERIC_SEPTEMBER,
-         10: mls.UI_GENERIC_OCTOBER,
-         11: mls.UI_GENERIC_NOVEMBER,
-         12: mls.UI_GENERIC_DECEMBER}
+        month = {1: localization.GetByLabel('UI/Common/Months/January'),
+         2: localization.GetByLabel('UI/Common/Months/February'),
+         3: localization.GetByLabel('UI/Common/Months/March'),
+         4: localization.GetByLabel('UI/Common/Months/April'),
+         5: localization.GetByLabel('UI/Common/Months/May'),
+         6: localization.GetByLabel('UI/Common/Months/June'),
+         7: localization.GetByLabel('UI/Common/Months/July'),
+         8: localization.GetByLabel('UI/Common/Months/August'),
+         9: localization.GetByLabel('UI/Common/Months/September'),
+         10: localization.GetByLabel('UI/Common/Months/October'),
+         11: localization.GetByLabel('UI/Common/Months/November'),
+         12: localization.GetByLabel('UI/Common/Months/December')}
         return '%s %s, %s' % (month[int(dp[1])], int(dp[2]), int(dp[0]))
 
 
@@ -128,7 +131,7 @@ class CorpAuditing(uicls.Container):
         if eve.session.corprole & const.corpRoleAuditor != const.corpRoleAuditor:
             self.sr.notext = 1
             self.sr.scroll.Load(contentList=[])
-            self.sr.scroll.ShowHint(mls.UI_CORP_HINT46)
+            self.sr.scroll.ShowHint(localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/AuditorRoleRequired', auditorMessageID=self.auditorMessageID))
             return 
         memberID = None
         memberIDs = sm.GetService('corp').GetMemberIDs()
@@ -137,14 +140,14 @@ class CorpAuditing(uicls.Container):
         else:
             string = self.sr.searchMember.GetValue()
             if not string:
-                eve.Message('CustomInfo', {'info': mls.UI_CORP_HINT47})
+                eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/HaveToFindMember')})
                 uicore.registry.SetFocus(self.sr.searchMember)
                 return 
             memberID = uix.Search(string.lower(), const.groupCharacter, filterCorpID=eve.session.corpid, searchWndName='corpMemberAuditingJournalSearch')
             if memberID:
                 self.sr.searchMember.SetValue(cfg.eveowners.Get(memberID).name)
         if memberID is None:
-            eve.Message('CustomInfo', {'info': mls.UI_CORP_HINT47})
+            eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/HaveToFindMember')})
             return 
         sm.GetService('loading').Cycle('Loading')
         fromDate = self.sr.fromDate.GetValue()
@@ -180,7 +183,6 @@ class CorpAuditing(uicls.Container):
 
         logItems.sort(lambda x, y: cmp(y.eventDateTime, x.eventDateTime))
         roleItems.sort(lambda x, y: cmp(y.changeTime, x.changeTime))
-        header = [mls.UI_GENERIC_TIME, mls.UI_GENERIC_ACTION]
         roleRows = sm.GetService('corp').GetRoles()
         roles = {}
         for role in roleRows:
@@ -222,19 +224,19 @@ class CorpAuditing(uicls.Container):
                     self.sr.mostRecentItem = logItem.eventDateTime
                 corpName = cfg.eveowners.Get(logItem.corporationID).name if logItem.corporationID else ''
                 if logItem.eventTypeID == 12:
-                    action = mls.UI_CORP_CREATEDCORPORATION2 % {'corpName': corpName}
+                    action = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/CreatedCorporation', corpName=corpName)
                 elif logItem.eventTypeID == 13:
-                    action = mls.UI_CORP_DELETEDCORPORATION2 % {'corpName': corpName}
+                    action = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/DeletedCorporation', corpName=corpName)
                 elif logItem.eventTypeID == 14:
-                    action = mls.UI_CORP_LEFTCORP2 % {'corpName': corpName}
+                    action = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/LeftCorporation', corpName=corpName)
                 elif logItem.eventTypeID == 15:
-                    action = mls.UI_CORP_APPLIEDFORMEMBERSHIPOF2 % {'corpName': corpName}
+                    action = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/AppliedForMembershipOfCorporation', corpName=corpName)
                 if logItem.eventTypeID == 16:
-                    action = mls.UI_CORP_BECAMECEOOF2 % {'corpName': corpName}
+                    action = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/BecameCEOOfCorporation', corpName=corpName)
                 elif logItem.eventTypeID == 17:
-                    action = mls.UI_CORP_LEFTCEOPOSOF2 % {'corpName': corpName}
+                    action = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/LeftCEOPositionOfCorporation', corpName=corpName)
                 elif logItem.eventTypeID == 44:
-                    action = mls.UI_CORP_JOINEDCORP2 % {'corpName': corpName}
+                    action = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/JoinedCorporation', corpName=corpName)
                 action = `logItem`
             if roleItem is not None:
                 del roleItems[0]
@@ -271,65 +273,44 @@ class CorpAuditing(uicls.Container):
                 if issuerID == -1:
                     issuerID = const.ownerCONCORD
                 actionOwner = cfg.eveowners.GetIfExists(issuerID)
-                action = ''
-                if actionOwner is not None:
-                    action = actionOwner.name
-                else:
-                    action = mls.UI_GENERIC_UNKNOWN
-                if roleItem.grantable:
-                    action += ' ' + mls.UI_CORP_EDITEDGRANTABLEROLES
-                else:
-                    action += ' ' + mls.UI_CORP_EDITEDTHEROLES
-                action += ' ' + mls.UI_CORP_OFCHARINCORP % {'char': cfg.eveowners.Get(roleItem.charID).name,
-                 'corp': cfg.eveowners.Get(roleItem.corporationID).name}
-                if len(added):
-                    action += '. %s: ' % mls.UI_CORP_ROLESADDED
-                    i = 0
-                    while len(added):
-                        roleID = added[0]
-                        if i > 0:
-                            action += ', %s' % roles[roleID]
-                        else:
-                            action += '%s' % roles[roleID]
-                        del added[0]
-                        i += 1
-
-                if len(removed):
-                    action += '. %s: ' % mls.UI_CORP_ROLESREMOVED
-                    i = 0
-                    while len(removed):
-                        roleID = removed[0]
-                        if i > 0:
-                            action += ', %s' % roles[roleID]
-                        else:
-                            action += '%s' % roles[roleID]
-                        del removed[0]
-                        i += 1
-
-                if len(kept):
-                    action += '. %s: ' % mls.UI_CORP_ROLESKEPT
-                    i = 0
-                    while len(kept):
-                        roleID = kept[0]
-                        if i > 0:
-                            action += ', %s' % roles[roleID]
-                        else:
-                            action += '%s' % roles[roleID]
-                        del kept[0]
-                        i += 1
-
+                addedRoleNames = [ roles[roleID] for roleID in added ]
+                removedRoleNames = [ roles[roleID] for roleID in removed ]
+                keptRoleNames = [ roles[roleID] for roleID in kept ]
+                cerberizedAddedRoleNames = localizationUtil.FormatGenericList(addedRoleNames)
+                cerberizedRemovedRoleNames = localizationUtil.FormatGenericList(removedRoleNames)
+                cerberizedKeptRoleNames = localizationUtil.FormatGenericList(keptRoleNames)
+                rolesAddedLabel = ''
+                rolesRemovedLabel = ''
+                rolesKeptLabel = ''
+                if len(addedRoleNames) > 0:
+                    rolesAddedLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/RolesAdded', listOfAddedRoles=cerberizedAddedRoleNames)
+                if len(removedRoleNames) > 0:
+                    rolesRemovedLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/RolesRemoved', listOfRemovedRoles=cerberizedRemovedRoleNames)
+                if len(keptRoleNames) > 0:
+                    rolesKeptLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/RolesKept', listOfKeptRoles=cerberizedKeptRoleNames)
+                summaryLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/SummaryOfChanges', firstListMessage=rolesAddedLabel, secondListMessage=rolesRemovedLabel, thirdListMessage=rolesKeptLabel)
+                unknownIssuer = localization.GetByLabel('UI/Common/Unknown')
+                corpName = cfg.eveowners.Get(roleItem.corporationID).name
+                if actionOwner is None:
+                    if roleItem.grantable:
+                        action = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/UnknownCharChangedGrantableRoles', charName=unknownIssuer, changedChar=roleItem.charID, corpName=corpName, whatChanged=summaryLabel)
+                    else:
+                        action = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/UnknownCharChangedRoles', charName=unknownIssuer, changedChar=roleItem.charID, corpName=corpName, whatChanged=summaryLabel)
+                elif roleItem.grantable:
+                    action = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/KnownCharChangedGrantableRoles', changingChar=issuerID, changedChar=roleItem.charID, corpName=corpName, whatChanged=summaryLabel)
+                action = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/KnownCharChangedRoles', changingChar=issuerID, changedChar=roleItem.charID, corpName=corpName, whatChanged=summaryLabel)
             text = '%s<t>%s' % (time, action)
             scrolllist.append(listentry.Get('Text', {'text': text,
              'line': 1,
              'canOpen': 'Action'}))
 
         if 0 == len(scrolllist):
-            scrolllist.append(listentry.Get('Text', {'text': mls.UI_GENERIC_NODATAAVAIL,
+            scrolllist.append(listentry.Get('Text', {'text': localization.GetByLabel('UI/Common/NoDataAvailable'),
              'line': 1}))
-        self.sr.scroll.Load(contentList=scrolllist, headers=[mls.UI_GENERIC_DATE, mls.UI_GENERIC_ACTION])
+        self.sr.scroll.Load(contentList=scrolllist, headers=[localization.GetByLabel('UI/Common/Date'), localization.GetByLabel('UI/Common/Action')])
         if not len(scrolllist):
             self.sr.notext = 1
-            self.sr.scroll.ShowHint(mls.UI_GENERIC_NORECORDSFOUND)
+            self.sr.scroll.ShowHint(localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Auditing/NoAuditingRecordsFound'))
         else:
             self.sr.notext = 0
         self.sr.fwdBtn.state = uiconst.UI_NORMAL

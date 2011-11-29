@@ -1,3 +1,4 @@
+import cef
 import service
 import trinity
 import util
@@ -22,7 +23,7 @@ class LensFlareClient(service.Service):
     __displayname__ = 'Lens Flare Client Service'
     __dependencies__ = ['graphicClient']
     __notifyevents__ = ['OnGraphicSettingsChanged']
-    __componentTypes__ = ['lensFlare']
+    __componentTypes__ = [cef.LensFlareComponentView.GetComponentCodeName()]
 
     def __init__(self):
         service.Service.__init__(self)

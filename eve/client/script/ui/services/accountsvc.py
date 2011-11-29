@@ -2,6 +2,7 @@ import uiconst
 import service
 import blue
 import util
+import localization
 SEC = 10000000L
 MIN = SEC * 60L
 HOUR = MIN * 60L
@@ -15,7 +16,7 @@ class Account(service.Service):
      'SetDefaultContactCost': [],
      'AskYesNoQuestion': [service.ROLE_SERVICE]}
     __guid__ = 'svc.account'
-    __notifyevents__ = ['ProcessSessionChange', 'OnAccountChange']
+    __notifyevents__ = ['ProcessSessionChange', 'OnAccountChange', 'ProcessUIRefresh']
     __servicename__ = 'account'
     __displayname__ = 'Accounting Service'
 
@@ -68,16 +69,19 @@ class Account(service.Service):
 
 
 
-    def GetStaticData(self, itemName, trCol = None, trTable = None, trID = None, *args):
+    def ProcessUIRefresh(self):
+        self.data = {}
+
+
+
+    def GetStaticData(self, itemName, trCol = None, trID = None, *args):
         if not self.data.has_key(itemName):
             account = self.GetAccountSvc()
             data = getattr(account, itemName)(*args)
-            if trCol and trID and trTable:
-                for rec in data:
-                    id = getattr(rec, trID, None)
-                    untranslated = getattr(rec, trCol, None)
-                    translated = Tr(untranslated, trTable, id)
-                    setattr(rec, trCol, translated)
+            for rec in data:
+                messageID = getattr(rec, trID, None)
+                translated = localization.GetByMessageID(messageID)
+                setattr(rec, trCol, translated)
 
             self.data[itemName] = data
         return self.data[itemName]
@@ -85,7 +89,7 @@ class Account(service.Service):
 
 
     def GetKeyMap(self):
-        return self.GetStaticData('GetKeyMap', 'keyName', 'zaccounting.keys.keyName', 'keyID')
+        return self.GetStaticData('GetKeyMap', 'keyName', 'keyNameID')
 
 
 
@@ -98,7 +102,7 @@ class Account(service.Service):
 
 
     def GetEntryTypes(self):
-        return self.GetStaticData('GetEntryTypes', 'entryTypeName', 'zaccounting.entryTypes.entryTypeName', 'entryTypeID')
+        return self.GetStaticData('GetEntryTypes', 'entryTypeName', 'entryTypeNameID')
 
 
 
@@ -143,7 +147,7 @@ class Account(service.Service):
 
 
     def GetWalletDivisionsInfo(self, force = False):
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         if self.walletDivisionsInfo is None or self.walletDivisionsInfo.expires < now or force:
             self.walletDivisionsInfo = util.KeyVal(info=self.GetAccountSvc().GetWalletDivisionsInfo(), expires=now + 5 * MIN)
         return self.walletDivisionsInfo.info

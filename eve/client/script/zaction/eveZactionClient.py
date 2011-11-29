@@ -2,6 +2,7 @@ import svc
 import miscUtil
 import yaml
 import const
+import blue
 
 class eveZactionClient(svc.zactionClient):
     __guid__ = 'svc.eveZactionClient'
@@ -28,13 +29,11 @@ class eveZactionClient(svc.zactionClient):
 
     def _LoadAnimationData(self):
         ANIMATION_METADATA_PATH = 'res:/Animation/animInfo.yaml'
-        if miscUtil.CommonResourceExists(ANIMATION_METADATA_PATH):
-            animTypeFile = miscUtil.GetCommonResource(ANIMATION_METADATA_PATH)
-            self._animTypeData = yaml.load(animTypeFile)
-            animTypeFile.close()
-            self.ProcessAnimationDictionary(self.GetAnimationData())
-        else:
-            raise IOError, 'MISSING FILE, animation data: ' + ANIMATION_METADATA_PATH
+        resourceFile = blue.ResFile()
+        openResults = resourceFile.Open(ANIMATION_METADATA_PATH)
+        self._animTypeData = yaml.load(resourceFile)
+        resourceFile.close()
+        self.ProcessAnimationDictionary(self.GetAnimationData())
 
 
 

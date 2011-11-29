@@ -94,7 +94,7 @@ class Semaphore:
         if self.count < 0:
             self.waiting.receive()
         else:
-            self.lockedWhen = blue.os.GetTime()
+            self.lockedWhen = blue.os.GetWallclockTime()
             self.thread = stackless.getcurrent()
 
 
@@ -108,7 +108,7 @@ class Semaphore:
         self.thread = None
         self.lockedWhen = None
         if self.count <= 0:
-            self.lockedWhen = blue.os.GetTime()
+            self.lockedWhen = blue.os.GetWallclockTime()
             self.thread = self.waiting.queue
             self.waiting.send(None)
 
@@ -151,7 +151,7 @@ class Semaphore:
 
     def LockedFor(self):
         if self.lockedWhen:
-            return (blue.os.GetTime() - self.lockedWhen) * 1e-07
+            return (blue.os.GetWallclockTime() - self.lockedWhen) * 1e-07
         else:
             return -1.0
 
@@ -291,7 +291,7 @@ class RWLock(object):
             tasklet = stackless.getcurrent()
         self.tasklets.append(tasklet)
         if not self.lockedWhen:
-            self.lockedWhen = blue.os.GetTime()
+            self.lockedWhen = blue.os.GetWallclockTime()
 
 
 
@@ -403,7 +403,7 @@ class RWLock(object):
 
     def LockedFor(self):
         if self.lockedWhen:
-            return (blue.os.GetTime() - self.lockedWhen) * 1e-07
+            return (blue.os.GetWallclockTime() - self.lockedWhen) * 1e-07
         else:
             return -1.0
 
@@ -523,8 +523,8 @@ class Queue(FIFO):
 def LockCheck():
     while 1:
         each = None
-        blue.pyos.synchro.Sleep(60660)
-        now = blue.os.GetTime()
+        blue.pyos.synchro.SleepWallclock(60660)
+        now = blue.os.GetWallclockTime()
         try:
             for each in locks.GetLocks():
                 if each.LockedAt() and each.WaitingTasklets():
@@ -811,20 +811,29 @@ class BlockTrapSection(object):
 
 def ChannelWait(chan, timeout = None):
     if timeout is None:
-        return chan.receive()
+        return (True, chan.receive())
     waiting_tasklet = stackless.getcurrent()
 
     def break_wait():
-        blue.pyos.synchro.Sleep(int(timeout * 1000))
+        try:
+            blue.pyos.synchro.SleepWallclock(int(timeout * 1000))
+        except _TimeoutError:
+            return 
         with atomic():
             if waiting_tasklet and waiting_tasklet.blocked:
-                waiting_tasklet.raise_exception(TimeoutError)
+                waiting_tasklet.raise_exception(_TimeoutError)
 
 
     with atomic():
-        new(break_wait)
+        breaker = new(break_wait)
         try:
-            return chan.receive()
+            try:
+                result = chan.receive()
+                if breaker.blocked:
+                    breaker.raise_exception(_TimeoutError)
+                return (True, result)
+            except _TimeoutError:
+                return (False, None)
 
         finally:
             waiting_tasklet = None
@@ -832,7 +841,7 @@ def ChannelWait(chan, timeout = None):
 
 
 
-class TimeoutError(Exception):
+class _TimeoutError(Exception):
     pass
 exports = {'uthread.parallel': Parallel,
  'uthread.worker': PoolWorker,
@@ -853,8 +862,7 @@ exports = {'uthread.parallel': Parallel,
  'uthread.CallOnThread': CallOnThread,
  'uthread.CheckLock': CheckLock,
  'uthread.BlockTrapSection': BlockTrapSection,
- 'uthread.ChannelWait': ChannelWait,
- 'uthread.TimeoutError': TimeoutError}
+ 'uthread.ChannelWait': ChannelWait}
 new(LockCheck).context = '^uthread::LockCheck'
 locks.Startup(new)
 

@@ -1,5 +1,7 @@
 import util
 import corpObject
+import localization
+import math
 
 class TitlesO(corpObject.base):
     __guid__ = 'corpObject.titles'
@@ -64,38 +66,8 @@ class TitlesO(corpObject.base):
             for title in titles.itervalues():
                 key = title.titleID
                 if not title.titleName:
-                    if title.titleID == 1:
-                        title.titleName = mls.UI_CORP_TITLES_UNTITLED1
-                    elif title.titleID == 2:
-                        title.titleName = mls.UI_CORP_TITLES_UNTITLED2
-                    elif title.titleID == 4:
-                        title.titleName = mls.UI_CORP_TITLES_UNTITLED3
-                    elif title.titleID == 8:
-                        title.titleName = mls.UI_CORP_TITLES_UNTITLED4
-                    elif title.titleID == 16:
-                        title.titleName = mls.UI_CORP_TITLES_UNTITLED5
-                    elif title.titleID == 32:
-                        title.titleName = mls.UI_CORP_TITLES_UNTITLED6
-                    elif title.titleID == 64:
-                        title.titleName = mls.UI_CORP_TITLES_UNTITLED7
-                    elif title.titleID == 128:
-                        title.titleName = mls.UI_CORP_TITLES_UNTITLED8
-                    elif title.titleID == 256:
-                        title.titleName = mls.UI_CORP_TITLES_UNTITLED9
-                    elif title.titleID == 512:
-                        title.titleName = mls.UI_CORP_TITLES_UNTITLED10
-                    elif title.titleID == 1024:
-                        title.titleName = mls.UI_CORP_TITLES_UNTITLED11
-                    elif title.titleID == 2048:
-                        title.titleName = mls.UI_CORP_TITLES_UNTITLED12
-                    elif title.titleID == 4096:
-                        title.titleName = mls.UI_CORP_TITLES_UNTITLED13
-                    elif title.titleID == 8192:
-                        title.titleName = mls.UI_CORP_TITLES_UNTITLED14
-                    elif title.titleID == 16384:
-                        title.titleName = mls.UI_CORP_TITLES_UNTITLED15
-                    elif title.titleID == 32768:
-                        title.titleName = mls.UI_CORP_TITLES_UNTITLED16
+                    num = int(math.log(title.titleID, 2) + 1)
+                    title.titleName = localization.GetByLabel('UI/Corporations/Common/TitleUntitled', index=num)
                 self.titles[key] = title
 
         if titleID is None:

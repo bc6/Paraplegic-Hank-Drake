@@ -2,11 +2,13 @@ import blue
 import trinity
 import svc
 from util import ReadYamlFile
+import localization
 NVIDIA_VENDORID = 4318
 
 class EveDeviceMgr(svc.device):
     __guid__ = 'svc.eveDevice'
     __replaceservice__ = 'device'
+    __notifyevents__ = ['OnSessionChanged']
 
     def AppRun(self):
         if not settings.public.generic.Get('resourceUnloading', 1):
@@ -46,6 +48,15 @@ class EveDeviceMgr(svc.device):
             elif msType >= 2:
                 antiAliasing = 1
             prefs.SetValue('antiAliasing', antiAliasing)
+        shaderQuality = prefs.GetValue('shaderQuality', self.GetDefaultShaderQuality())
+        if shaderQuality == 3 and not self.SupportsDepthEffects():
+            prefs.SetValue('shaderQuality', 2)
+        if not prefs.HasKey('interiorShaderQuality'):
+            prefs.SetValue('interiorShaderQuality', self.GetDefaultInteriorShaderQuality())
+        if prefs.GetValue('interiorShaderQuality', self.GetDefaultInteriorShaderQuality()) != 0:
+            trinity.AddGlobalSituationFlags(['OPT_INTERIOR_SM_HIGH'])
+        else:
+            trinity.RemoveGlobalSituationFlags(['OPT_INTERIOR_SM_HIGH'])
 
 
 
@@ -64,11 +75,12 @@ class EveDeviceMgr(svc.device):
 
     def GetShaderModel(self, val):
         if val == 3:
-            shaderModel = trinity.GetMaxShaderModelSupported()
-            if prefs.GetValue('depthEffectsEnabled', self.GetDefaultDepthEffectsEnabled()):
-                if shaderModel == 'SM_3_0_HI':
-                    shaderModel = 'SM_3_0_DEPTH'
-            return shaderModel
+            if not trinity.renderJobUtils.DeviceSupportsIntZ():
+                return 'SM_3_0_HI'
+            else:
+                return 'SM_3_0_DEPTH'
+        elif val == 2:
+            return 'SM_3_0_HI'
         return 'SM_3_0_LO'
 
 
@@ -77,17 +89,25 @@ class EveDeviceMgr(svc.device):
         self.LogInfo('GetWindowModes')
         adapter = self.CurrentAdapter()
         if self.GetFormatNameByConst(adapter['Format']) not in self.formatTable:
-            return [(mls.UI_SHARED_FULLSCREEN, 0)]
+            return [(localization.GetByLabel('/Carbon/UI/Service/Device/FullScreen'), 0)]
         else:
             if blue.win32.IsTransgaming():
-                return [(mls.UI_SHARED_WINDOWMODE, 1), (mls.UI_SHARED_FULLSCREEN, 0)]
-            return [(mls.UI_SHARED_WINDOWMODE, 1), (mls.UI_SHARED_FULLSCREEN, 0), (mls.UI_SHARED_FIXEDWINDOW, 2)]
+                return [(localization.GetByLabel('/Carbon/UI/Service/Device/WindowMode'), 1), (localization.GetByLabel('/Carbon/UI/Service/Device/FullScreen'), 0)]
+            return [(localization.GetByLabel('/Carbon/UI/Service/Device/WindowMode'), 1), (localization.GetByLabel('/Carbon/UI/Service/Device/FullScreen'), 0), (localization.GetByLabel('/Carbon/UI/Service/Device/FixedWindowMode'), 2)]
 
 
 
     def GetAppShaderModel(self):
         shaderQuality = prefs.GetValue('shaderQuality', self.GetDefaultShaderQuality())
         return self.GetShaderModel(shaderQuality)
+
+
+
+    def GetDefaultShaderQuality(self):
+        quality = svc.device.GetDefaultShaderQuality(self)
+        if quality == 3 and not self.SupportsDepthEffects():
+            quality = 2
+        return quality
 
 
 
@@ -139,8 +159,8 @@ class EveDeviceMgr(svc.device):
 
 
 
-    def SetDevice(self, device, tryAgain = 1, fallback = 0, keepSettings = 1, hideTitle = None, userModified = False, muteExceptions = False, updateWindowPosition = True):
-        svc.device.SetDevice(self, device, tryAgain, fallback, keepSettings, hideTitle, userModified, muteExceptions, updateWindowPosition)
+    def SetDevice(self, *args, **kwds):
+        svc.device.SetDevice(self, *args, **kwds)
         sm.GetService('cider').SetFullscreen(sm.GetService('cider').GetFullscreen())
 
 
@@ -161,7 +181,7 @@ class EveDeviceMgr(svc.device):
         if formats is None:
             formats = [settings.BackBufferFormat, settings.AutoDepthStencilFormat]
         (vID, dID,) = self.GetVendorIDAndDeviceID()
-        self.msaaOptions = [(mls.UI_GENERIC_DISABLED, 0)]
+        self.msaaOptions = [(localization.GetByLabel('/Carbon/UI/Common/Disabled'), 0)]
         self.msaaTypes = [0]
 
         def Supported(msType):
@@ -174,16 +194,16 @@ class EveDeviceMgr(svc.device):
 
 
         if Supported(2):
-            self.msaaOptions.append((mls.UI_GENERIC_LOW, 1))
+            self.msaaOptions.append((localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/LowQuality'), 1))
             self.msaaTypes.append(2)
         if Supported(4):
-            self.msaaOptions.append((mls.UI_GENERIC_MEDIUM, 2))
+            self.msaaOptions.append((localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/MediumQuality'), 2))
             self.msaaTypes.append(4)
         if Supported(8):
-            self.msaaOptions.append((mls.UI_GENERIC_HIGH, 3))
+            self.msaaOptions.append((localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/HighQuality'), 3))
             self.msaaTypes.append(8)
         elif Supported(6):
-            self.msaaOptions.append((mls.UI_GENERIC_HIGH, 3))
+            self.msaaOptions.append((localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/HighQuality'), 3))
             self.msaaTypes.append(6)
         return self.msaaOptions
 
@@ -210,6 +230,13 @@ class EveDeviceMgr(svc.device):
 
     def GetDefaultInteriorGraphicsQuality(self):
         return self.GetDeviceCategory()
+
+
+
+    def GetDefaultInteriorShaderQuality(self):
+        if self.GetDeviceCategory() > 1:
+            return 1
+        return 0
 
 
 
@@ -249,7 +276,8 @@ class EveDeviceMgr(svc.device):
         if set.Windowed:
             maxWidth = trinity.app.GetVirtualScreenWidth()
             maxHeight = trinity.app.GetVirtualScreenHeight()
-            maxOp = ('%sx%s' % (maxWidth, maxHeight), (maxWidth, maxHeight))
+            maxLabel = localization.GetByLabel('/Carbon/UI/Service/Device/ScreenSize', width=maxWidth, height=maxHeight)
+            maxOp = (maxLabel, (maxWidth, maxHeight))
             if maxOp not in options:
                 options.append(maxOp)
         return (options, resoptions)
@@ -303,6 +331,7 @@ class EveDeviceMgr(svc.device):
         postProcessingQuality = prefs.GetValue('postProcessingQuality', self.GetDefaultPostProcessingQuality())
         shaderQuality = prefs.GetValue('shaderQuality', self.GetDefaultShaderQuality())
         shadowQuality = prefs.GetValue('shadowQuality', self.GetDefaultShadowQuality())
+        interiorShaderQuality = prefs.GetValue('interiorShaderQuality', self.GetDefaultInteriorShaderQuality())
         if featureName == 'Interior.ParticlesEnabled':
             return interiorGraphicsQuality == 2
         else:
@@ -329,7 +358,93 @@ class EveDeviceMgr(svc.device):
                 return vendorID == NVIDIA_VENDORID and prefs.GetValue('charClothSimulation', featureDefaultState) and interiorGraphicsQuality == 2 and not blue.win32.IsTransgaming()
             if featureName == 'CharacterCreation.clothSimulation':
                 return prefs.GetValue('charClothSimulation', featureDefaultState)
+            if featureName == 'Interior.useSHLighting':
+                return interiorShaderQuality > 0
             return featureDefaultState
+
+
+
+    def GetUIScalingOptions(self, height = None):
+        if height:
+            desktopHeight = height
+        else:
+            desktopHeight = uicore.desktop.height
+        options = [(localization.GetByLabel('UI/Common/Formatting/Percentage', percentage=90), 0.9), (localization.GetByLabel('UI/Common/Formatting/Percentage', percentage=100), 1.0)]
+        if desktopHeight >= 900:
+            options.append((localization.GetByLabel('UI/Common/Formatting/Percentage', percentage=110), 1.1))
+        if desktopHeight >= 960:
+            options.append((localization.GetByLabel('UI/Common/Formatting/Percentage', percentage=125), 1.25))
+        if desktopHeight >= 1200:
+            options.append((localization.GetByLabel('UI/Common/Formatting/Percentage', percentage=150), 1.5))
+        return options
+
+
+
+    def GetChange(self, scaleValue):
+        oldHeight = int(trinity.device.height / uicore.desktop.dpiScaling)
+        oldWidth = int(trinity.device.width / uicore.desktop.dpiScaling)
+        newHeight = int(trinity.device.height / scaleValue)
+        newWidth = int(trinity.device.width / scaleValue)
+        changeDict = {}
+        changeDict['ScalingWidth'] = (oldWidth, newWidth)
+        changeDict['ScalingHeight'] = (oldHeight, newHeight)
+        return changeDict
+
+
+
+    def CapUIScaleValue(self, checkValue):
+        desktopHeight = trinity.device.height
+        minScale = 0.9
+        if desktopHeight < 900:
+            maxScale = 1.0
+        elif desktopHeight < 960:
+            maxScale = 1.1
+        elif desktopHeight < 1200:
+            maxScale = 1.25
+        else:
+            maxScale = 1.5
+        return max(minScale, min(maxScale, checkValue))
+
+
+
+    def SetupUIScaling(self):
+        if not uicore.desktop:
+            return 
+        windowed = self.IsWindowed()
+        self.SetUIScaleValue(self.GetUIScaleValue(windowed), windowed)
+
+
+
+    def SetUIScaleValue(self, scaleValue, windowed):
+        self.LogInfo('SetUIScaleValue', scaleValue, 'windowed', windowed)
+        capValue = self.CapUIScaleValue(scaleValue)
+        if windowed:
+            settings.public.device.Set('UIScaleWindowed', capValue)
+        else:
+            settings.public.device.Set('UIScaleFullscreen', capValue)
+        if capValue != uicore.desktop.dpiScaling:
+            oldValue = uicore.desktop.dpiScaling
+            uicore.desktop.dpiScaling = capValue
+            uicore.desktop.UpdateSize()
+            self.LogInfo('SetUIScaleValue capValue', capValue)
+            sm.ScatterEvent('OnUIScalingChange', (oldValue, capValue))
+        else:
+            self.LogInfo('SetUIScaleValue No Change')
+
+
+
+    def GetUIScaleValue(self, windowed):
+        if windowed:
+            scaleValue = settings.public.device.Get('UIScaleWindowed', 1.0)
+        else:
+            scaleValue = settings.public.device.Get('UIScaleFullscreen', 1.0)
+        return scaleValue
+
+
+
+    def OnSessionChanged(self, isRemote, session, change):
+        if 'userid' in change:
+            trinity.settings.SetValue('eveSpaceObjectTrailsEnabled', settings.user.ui.Get('trailsEnabled', settings.user.ui.Get('effectsEnabled', 1)))
 
 
 

@@ -1,5 +1,6 @@
 import uthread
 import blue
+import localization
 import log
 import types
 import uiutil
@@ -9,6 +10,7 @@ import uitest
 import trinity
 import sys
 import traceback
+import weakref
 from util import ResFile
 
 class UIDeviceResource():
@@ -58,6 +60,7 @@ class UICoreBase():
             __builtin__.uicore = self
         blue.pyos.exceptionHandler = self._ExceptionHandler
         log.SetUiMessageFunc(self.Message)
+        self.textObjects = weakref.WeakSet()
         self.deviceResource = UIDeviceResource()
 
 
@@ -84,6 +87,11 @@ class UICoreBase():
         trinity.device.RegisterResource(self)
         uicore.deviceCaps = trinity.d3d.GetDeviceCaps(trinity.device.adapter, 1)
         self.isRunning = True
+
+
+
+    def IsReady(self):
+        return getattr(self, 'isRunning', False)
 
 
 
@@ -117,8 +125,7 @@ class UICoreBase():
          ('l_abovemain', None, None),
          ('l_main', None, None),
          ('l_loading', None, None),
-         ('l_dragging', None, None),
-         ('l_tabs', None, None)]
+         ('l_dragging', None, None)]
         return layers
 
 
@@ -145,7 +152,10 @@ class UICoreBase():
     def UpdateHint(self, item, force = 0):
         if self.isRunning:
             if self._hint is None or self._hint.destroyed:
-                self.layer.hint.Flush()
+                for each in self.layer.hint.children[:]:
+                    if each.__class__ in (uicls.Hint, uicls.HintCore):
+                        each.Close()
+
                 self._hint = uicls.Hint(name='hint', parent=self.layer.hint, align=uiconst.RELATIVE)
             self._hint.LoadHintFromItem(item, force)
 
@@ -201,14 +211,14 @@ class UICoreBase():
 
 
     def _Message(self, msgkey, dict = None, buttons = None, suppress = None, prioritize = 0, ignoreNotFound = 0, default = None, modal = True):
-        if type(msgkey) not in types.StringTypes:
+        if not isinstance(msgkey, basestring):
             raise RuntimeError('Invalid argument, msgkey must be a string', msgkey)
         try:
             msg = cfg.GetMessage(msgkey, dict, onNotFound='raise')
         except RuntimeError as what:
             if what.args[0] == 'ErrMessageNotFound':
                 if ignoreNotFound:
-                    return 
+                    return suppress
                 log.LogTraceback()
                 msg = cfg.GetMessage(msgkey, dict, onNotFound='return')
             else:
@@ -243,9 +253,9 @@ class UICoreBase():
             supptext = None
             if msg.suppress:
                 if buttons in [None, uiconst.OK]:
-                    supptext = mls.UI_SHARED_SUPPRESS1
+                    supptext = localization.GetByLabel('/Carbon/UI/Common/DoNotShowAgain')
                 else:
-                    supptext = mls.UI_SHARED_SUPPRESS2
+                    supptext = localization.GetByLabel('/Carbon/UI/Common/DoNotAskAgain')
             if buttons is None:
                 buttons = uiconst.OK
             msg.icon = msg.icon or None
@@ -286,7 +296,7 @@ class UICoreBase():
             return 
         if buttons is None:
             buttons = uiconst.ID_OK
-        msgbox = self.registry.GetOrCreateWindow(decoClass=uicls.MessageBox, name='modal', parent=self.layer.abovemain)
+        msgbox = uicls.MessageBox.Open(parent=self.layer.abovemain)
         msgbox.blockconfirmonreturn = blockconfirmonreturn
         msgbox.Execute(text, title, buttons, icon, suppText, customicon, height, default=default)
         if modal:
@@ -338,11 +348,35 @@ class UICoreBase():
         timeWaited = 0
         while trinity.device.GetLastResourceLoadFenceReached() < fence:
             waitMs = 100
-            blue.pyos.synchro.Sleep(waitMs)
+            blue.pyos.synchro.SleepWallclock(waitMs)
             timeWaited += waitMs
             if timeWaited % 5000 == 0:
                 log.general.Log('WaitForResourceLoad has waited for %d seconds! (%d vs. %d)' % (timeWaited / 1000, trinity.device.GetLastResourceLoadFenceReached(), fence), log.LGERR)
 
+
+
+
+    def ScaleDpi(self, value):
+        if self.desktop:
+            return int(value * self.desktop.dpiScaling + 0.5)
+        else:
+            return int(value + 0.5)
+
+
+
+    def ScaleDpiF(self, value):
+        if self.desktop:
+            return value * self.desktop.dpiScaling
+        else:
+            return value
+
+
+
+    def ReverseScaleDpi(self, value):
+        if self.desktop:
+            return int(value / self.desktop.dpiScaling + 0.5)
+        else:
+            return value
 
 
 

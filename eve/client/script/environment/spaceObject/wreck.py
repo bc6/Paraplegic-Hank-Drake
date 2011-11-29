@@ -67,13 +67,13 @@ class Wreck(spaceObject.DeployableSpaceObject):
 
     def DisplayWreck(self, duration):
         if duration:
-            blue.pyos.synchro.Sleep(duration)
+            blue.pyos.synchro.SleepSim(duration)
         if self.model is not None and self.model.display == 0:
             if len(self.model.children) and getattr(self.model.children[0], 'rotationCurve', None) is not None:
                 rotationCurves = self.model.children[0].rotationCurve.Find('trinity.TriScalarCurve')
                 self.model.children[0].useCurves = True
                 for curve in rotationCurves:
-                    curve.start = blue.os.GetTime()
+                    curve.start = blue.os.GetSimTime()
 
             self.model.display = 1
         self.delayedDisplay = 0
@@ -104,7 +104,7 @@ class Wreck(spaceObject.DeployableSpaceObject):
         curves.extend(self.model.Find('audio.SoundNode'))
         timecurves.ResetTimeAndSoundCurves(curves)
         self.fadeCurve.Play()
-        blue.pyos.synchro.Sleep(10000)
+        blue.pyos.synchro.SleepSim(10000)
         return False
 
 

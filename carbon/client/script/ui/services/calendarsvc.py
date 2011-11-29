@@ -1,11 +1,8 @@
 import service
 import blue
-import sys
-import log
 import const
 import util
-import uiutil
-import uthread
+import localization
 const.calendarMonday = 0
 const.calendarTuesday = 1
 const.calendarWednesday = 2
@@ -37,6 +34,18 @@ const.eventResponseDeclined = 2
 const.eventResponseUndecided = 3
 const.eventResponseAccepted = 4
 const.eventResponseMaybe = 5
+MONTHANDYEAR_NAME_TEXT = ['/Carbon/UI/Common/MonthsWithYear/January',
+ '/Carbon/UI/Common/MonthsWithYear/February',
+ '/Carbon/UI/Common/MonthsWithYear/March',
+ '/Carbon/UI/Common/MonthsWithYear/April',
+ '/Carbon/UI/Common/MonthsWithYear/May',
+ '/Carbon/UI/Common/MonthsWithYear/June',
+ '/Carbon/UI/Common/MonthsWithYear/July',
+ '/Carbon/UI/Common/MonthsWithYear/August',
+ '/Carbon/UI/Common/MonthsWithYear/September',
+ '/Carbon/UI/Common/MonthsWithYear/October',
+ '/Carbon/UI/Common/MonthsWithYear/November',
+ '/Carbon/UI/Common/MonthsWithYear/December']
 
 class CalendarSvc(service.Service):
     __guid__ = 'svc.calendar'
@@ -77,7 +86,7 @@ class CalendarSvc(service.Service):
 
 
     def IsInPast(self, year, month, monthday, hour = 0, min = 0, allowToday = 0, *args):
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         if allowToday:
             (cyear, cmonth, cwd, cday, chour, cmin, csec, cms,) = util.GetTimeParts(now)
             now = blue.os.GetTimeFromParts(cyear, cmonth, cday, 0, 0, 0, 0)
@@ -88,14 +97,14 @@ class CalendarSvc(service.Service):
 
     def IsInPastFromBlueTime(self, then, now = None, *args):
         if now is None:
-            now = blue.os.GetTime()
+            now = blue.os.GetWallclockTime()
         inPast = now > then
         return inPast
 
 
 
     def IsTooFarInFuture(self, year, month):
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         (rlYear, rlMonth, wd, day, hour, min, sec, ms,) = util.GetTimeParts(now)
         nowNumMonths = rlYear * 12 + rlMonth
         thenNumMonths = year * 12 + month
@@ -123,10 +132,7 @@ class CalendarSvc(service.Service):
 
 
     def GetMonthText(self, year, month, *args):
-        monthText = getattr(mls, 'UI_CAL_MONTH_%s' % month, '')
-        text = mls.UI_CAL_MONTHANDYEAR % {'month': monthText,
-         'year': year}
-        return text
+        return localization.GetByLabel(MONTHANDYEAR_NAME_TEXT[(month - 1)], year=year)
 
 
 
@@ -204,7 +210,7 @@ class CalendarSvc(service.Service):
 
     def GetEventMenu(self, eventInfo, myResponse = None, getJumpOption = True, *args):
         m = []
-        m.append((mls.UI_CAL_VIEWEVENT, self.OpenEventWnd, (eventInfo,)))
+        m.append((localization.GetByLabel('/Carbon/UI/Calendar/ViewEvent'), self.OpenEventWnd, (eventInfo,)))
         if getattr(eventInfo, 'isDeleted', None):
             return m
         canDelete = 0
@@ -213,26 +219,26 @@ class CalendarSvc(service.Service):
                 if eventInfo.flag in [const.calendarTagCorp, const.calendarTagAlliance]:
                     if eventInfo.ownerID in [session.corpid, session.allianceid] and session.corprole & const.corpRoleChatManager == const.corpRoleChatManager:
                         canDelete = 1
-                        m.append((mls.UI_CAL_EDITEVENT, self.OpenEditEventWnd, (eventInfo,)))
+                        m.append((localization.GetByLabel('/Carbon/UI/Calendar/EditEvent'), self.OpenEditEventWnd, (eventInfo,)))
                 if myResponse is None:
                     (iconPath, myResponse,) = self.GetMyResponseIconFromID(eventInfo.eventID)
                 m.append(None)
                 if eventInfo.flag is not const.calendarTagCCP:
                     if myResponse != const.eventResponseAccepted:
-                        m.append((mls.UI_CMD_ACCEPT, self.RespondToEvent, (eventInfo.eventID, eventInfo, const.eventResponseAccepted)))
+                        m.append((localization.GetByLabel('/Carbon/UI/Calendar/Accept'), self.RespondToEvent, (eventInfo.eventID, eventInfo, const.eventResponseAccepted)))
                     if myResponse != const.eventResponseMaybe:
-                        m.append((mls.UI_CAL_MAYBEREPLY, self.RespondToEvent, (eventInfo.eventID, eventInfo, const.eventResponseMaybe)))
+                        m.append((localization.GetByLabel('/Carbon/UI/Calendar/MaybeReply'), self.RespondToEvent, (eventInfo.eventID, eventInfo, const.eventResponseMaybe)))
                     if myResponse != const.eventResponseDeclined:
-                        m.append((mls.UI_CMD_DECLINE, self.RespondToEvent, (eventInfo.eventID, eventInfo, const.eventResponseDeclined)))
+                        m.append((localization.GetByLabel('/Carbon/UI/Calendar/Decline'), self.RespondToEvent, (eventInfo.eventID, eventInfo, const.eventResponseDeclined)))
             elif eventInfo.flag == const.calendarTagPersonal:
                 canDelete = 1
-                m.append((mls.UI_CAL_EDITEVENT, self.OpenEditEventWnd, (eventInfo,)))
+                m.append((localization.GetByLabel('/Carbon/UI/Calendar/EditEvent'), self.OpenEditEventWnd, (eventInfo,)))
         if getJumpOption:
             m.append(None)
-            m.append((mls.UI_CAL_GOTODAY, self.JumpToDay, (eventInfo,)))
+            m.append((localization.GetByLabel('/Carbon/UI/Calendar/GotoDay'), self.JumpToDay, (eventInfo,)))
         if canDelete:
             m.append(None)
-            m.append((mls.UI_CMD_DELETE, self.DeleteEvent, (eventInfo.eventID, eventInfo.ownerID)))
+            m.append((localization.GetByLabel('/Carbon/UI/Calendar/DeleteEvent'), self.DeleteEvent, (eventInfo.eventID, eventInfo.ownerID)))
         return m
 
 

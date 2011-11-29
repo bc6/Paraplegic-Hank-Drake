@@ -41,7 +41,7 @@ class UIAnimations(object):
         else:
             curveSet.StopAfter(duration)
         if sleep:
-            blue.pyos.synchro.Sleep(duration * 1000)
+            blue.pyos.synchro.SleepSim(duration * 1000)
         return curveSet
 
 

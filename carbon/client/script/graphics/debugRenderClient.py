@@ -6,7 +6,7 @@ import safeThread
 import sys
 import log
 DEBUG_FILENAME = 'debugLog.yaml'
-FULL_DEBUG_PATH = blue.os.respath + DEBUG_FILENAME
+FULL_DEBUG_PATH = blue.os.ResolvePath(u'res:/') + DEBUG_FILENAME
 DEBUG_RES_PATH = 'res:/' + DEBUG_FILENAME
 
 class DebugRay:

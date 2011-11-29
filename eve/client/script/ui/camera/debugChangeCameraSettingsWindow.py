@@ -1,4 +1,3 @@
-import uix
 import util
 import uicls
 import uiutil
@@ -12,13 +11,14 @@ class DebugChangeCameraSettingsWindow(uicls.Window):
     default_width = 550
     default_height = 595
     default_minSize = (550, 595)
+    default_windowID = 'DebugChangeCameraSettingsWindow'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.sr.main = uiutil.GetChild(self, 'main')
         uicls.Line(align=uiconst.TOTOP, parent=self.sr.main)
         self.SetWndIcon('40_11')
-        self.heading = uicls.Label(text='Change Camera Settings', parent=self.sr.main, align=uiconst.TOPLEFT, left=65, top=-40, width=self.width - 10, height=self.height - 10, autoWidth=False, autoHeight=False, fontsize=25, singleline=True, uppercase=1)
+        self.heading = uicls.Label(text='Change Camera Settings', parent=self.sr.main, align=uiconst.TOPLEFT, left=65, top=-40, width=self.width - 10, height=self.height - 10, fontsize=25, singleline=True, uppercase=1)
         self.camClient = sm.GetService('cameraClient')
         camera = self.camClient.GetActiveCamera()
         rowPos = 15
@@ -36,28 +36,24 @@ class DebugChangeCameraSettingsWindow(uicls.Window):
         rowPos = self.AddEntry(rowPos, colPos, 'SPIN_FALLOFF_RATIO', 'Spin Falloff Ratio', cameras)
         rowPos = self.AddEntry(rowPos, colPos, 'AVATAR_SHOULDER_HEIGHT', 'Avatar Shoulder Height', cameras)
         rowPos = self.AddEntry(rowPos, colPos, 'CHARACTER_OFFSET_FACTOR', 'Avatar Offset', cameras)
+        rowPos = self.AddEntry(rowPos, colPos, 'ZOOM_TOGGLE_TRANSITION_SPEEDUP_FACTOR', 'Zoom toggle speedup factor', cameras)
+        rowPos = self.AddEntry(rowPos, colPos, 'ZOOM_TOGGLE_TRANSITION_SPEEDUP_TEMPERING', 'Zoom toggle tempering', cameras)
+        rowPos = self.AddEntry(rowPos, colPos, 'MAX_MOUSE_DELTA', 'Max mouse move speed', cameras)
+        rowPos = 15
+        colPos += 265
         rowPos = self.AddEntry(rowPos, colPos, 'OPTIMAL_SCREEN_ASPECT_RATIO', 'Optimal Screen Ratio', cameras)
         rowPos = self.AddEntry(rowPos, colPos, 'PITCH_OFFSET_LENGTH_MODIFIER', 'Pitch Offset Length Modifier', cameras)
         rowPos = self.AddEntry(rowPos, colPos, 'AVATAR_COLLISION_RESTRICTION_ANGLE', 'Avatar coll. restriction angle', animation)
-        rowPos = 15
-        colPos += 265
+        rowPos = self.AddEntry(rowPos, colPos, 'FLY_CAMERA_ACCELERATION', 'Fly camera speed', cameras)
         rowPos = self.AddEntry(rowPos, colPos, 'CLOSEST', 'Collision Closest Point', cameras)
         rowPos = self.AddEntry(rowPos, colPos, 'ZOOM_POWER_FAR', 'Zoom In Speed (Far)', cameras)
         rowPos = self.AddEntry(rowPos, colPos, 'ZOOM_POWER_CLOSE', 'Zoom In Speed (Close)', cameras)
-        rowPos = self.AddEntry(rowPos, colPos, 'MAX_MOUSE_MOVE_DELTA', 'Max Mouse Move Delta', cameras)
-        rowPos = self.AddEntry(rowPos, colPos, 'CORNER_DETECTION_SPHERE', 'Corner Detection Radius', cameras)
         rowPos = self.AddEntry(rowPos, colPos, 'NORMAL_COLLISION_SPHERE', 'Normal Collision Radius', cameras)
-        rowPos = self.AddEntry(rowPos, colPos, 'CRITICAL_COLLISION_SPHERE', 'Critical Collision Radius', cameras)
         rowPos = self.AddEntry(rowPos, colPos, 'CAMERA_BUFFER_SPHERE_RADIUS', 'Collision Buffer', cameras)
         rowPos = self.AddEntry(rowPos, colPos, 'AVATAR_MIN_DISPLAY_DISTANCE', 'Avatar Min Display Distance', cameras)
-        rowPos = self.AddEntry(rowPos, colPos, 'NORMAL_COLLISION_SMOOTHING_STEPS', 'Normal Collision Smoothing Steps', cameras)
         rowPos = self.AddEntry(rowPos, colPos, 'CRITICAL_COLLISION_SMOOTHING_STEPS', 'Critical Collision Smoothing Steps', cameras)
-        rowPos = self.AddEntry(rowPos, colPos, 'CRITICAL_COLLISION_POSITIONING_RADIUS', 'Critical Collision Pos Radius', cameras)
-        rowPos = self.AddEntry(rowPos, colPos, 'MAX_MOUSE_DELTA', 'Max mouse move speed', cameras)
-        rowPos = self.AddEntry(rowPos, colPos, 'ZOOM_TOGGLE_TRANSITION_SPEEDUP_FACTOR', 'Zoom toggle speedup factor', cameras)
-        rowPos = self.AddEntry(rowPos, colPos, 'ZOOM_TOGGLE_TRANSITION_SPEEDUP_TEMPERING', 'Zoom toggle tempering', cameras)
         player = sm.GetService('entityClient').GetPlayerEntity()
-        rowPos = self.AddEntry(rowPos, colPos, 'collisionDetectionFeelerLength', 'Animation collision look-ahead', player.movement.avatar)
+        rowPos = self.AddEntry(rowPos, colPos, 'collisionDetectionFeelerLength', 'Animation collision look-ahead', player.movement.characterController)
         sb = uicls.Button(parent=self.sr.main, label='Submit', func=self.Submit, pos=(212,
          rowPos + 5,
          90,
@@ -71,10 +67,10 @@ class DebugChangeCameraSettingsWindow(uicls.Window):
 
     def AddEntry(self, rowPos, colPos, variableName, humanName, associatedObject):
         if not hasattr(associatedObject, variableName):
-            uicls.Label(text=humanName + ': Not on current camera', parent=self.sr.main, align=uiconst.RELATIVE, left=colPos, top=rowPos, fontsize=11)
+            uicls.EveLabelMedium(text=humanName + ': Not on current camera', parent=self.sr.main, align=uiconst.RELATIVE, left=colPos, top=rowPos)
         elif variableName not in cameras.ORIGINAL_SETTINGS:
             cameras.ORIGINAL_SETTINGS[variableName] = getattr(associatedObject, variableName)
-        uicls.Label(text=humanName + ':', parent=self.sr.main, align=uiconst.RELATIVE, left=colPos, top=rowPos, fontsize=11)
+        uicls.EveLabelMedium(text=humanName + ':', parent=self.sr.main, align=uiconst.RELATIVE, left=colPos, top=rowPos)
         edit = uicls.SinglelineEdit(name=variableName, readonly=False, parent=self.sr.main, singleline=True, align=uiconst.RELATIVE, pos=(colPos + 145,
          rowPos - 5,
          100,

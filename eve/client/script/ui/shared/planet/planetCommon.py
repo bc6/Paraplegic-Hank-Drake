@@ -8,6 +8,7 @@ import uiutil
 import planetCommon
 import log
 import blue
+import localization
 PLANET_ZOOM_MAX = 4000.0
 PLANET_ZOOM_MIN = 1150.0
 PLANET_SCALE = 1000.0
@@ -24,6 +25,32 @@ PLANET_HEATMAP_COLORS = ((0, 0, 0.5, 0.5),
  (1, 1, 0, 1),
  (1, 0.5, 0, 1),
  (1, 0, 0, 1))
+PANEL_STATS = 1
+PANEL_LINKS = 2
+PANEL_DECOMMISSION = 3
+PANEL_STORAGE = 4
+PANEL_INCOMING = 5
+PANEL_OUTGOING = 6
+PANEL_LAUNCH = 7
+PANEL_PRODUCTS = 8
+PANEL_SURVEYFORDEPOSITS = 9
+PANEL_SCHEMATICS = 10
+PANEL_UPGRADELINK = 11
+PANEL_UPGRADE = 12
+PANEL_ROUTES = 13
+PANELDATA = {PANEL_STATS: ('ui_44_32_24', 'UI/PI/Common/Stats'),
+ PANEL_LINKS: ('ui_77_32_31', 'UI/PI/Common/Links'),
+ PANEL_DECOMMISSION: ('ui_77_32_22', 'UI/PI/Common/Decommission'),
+ PANEL_STORAGE: ('ui_77_32_18', 'UI/PI/Common/Storage'),
+ PANEL_INCOMING: ('ui_77_32_21', 'UI/PI/Common/Incoming'),
+ PANEL_OUTGOING: ('ui_77_32_20', 'UI/PI/Common/Outgoing'),
+ PANEL_LAUNCH: ('ui_77_32_19', 'UI/PI/Common/Launch'),
+ PANEL_PRODUCTS: ('ui_77_32_24', 'UI/PI/Common/Products'),
+ PANEL_SURVEYFORDEPOSITS: ('ui_77_32_23', 'UI/PI/Common/SurveyForDeposits'),
+ PANEL_SCHEMATICS: ('ui_77_32_17', 'UI/PI/Common/Schematics'),
+ PANEL_UPGRADELINK: ('ui_77_32_36', 'UI/PI/Common/UpgradeLink'),
+ PANEL_UPGRADE: ('ui_77_32_37', 'UI/PI/Common/Upgrade'),
+ PANEL_ROUTES: ('ui_77_32_32', 'UI/PI/Common/Routes')}
 PLANET_COLOR_POWER = (236 / 255.0, 28 / 255.0, 36 / 255.0)
 PLANET_COLOR_CPU = (0.0, 255 / 255.0, 212 / 255.0)
 PLANET_COLOR_CYCLE = (1.0, 1.0, 1.0)
@@ -67,9 +94,18 @@ PLANET_2PI = math.pi * 2
 PLANET_PI_DIV_2 = math.pi / 2
 PLANET_COMMANDCENTERMAXLEVEL = 5
 DARKPLANETS = (const.typePlanetPlasma, const.typePlanetLava, const.typePlanetSandstorm)
+AMBIENT_SOUNDS = {const.typePlanetEarthlike: util.KeyVal(start='wise:/terrestrial_play', stop='wise:/terrestrial_stop'),
+ const.typePlanetGas: util.KeyVal(start='wise:/gas_play', stop='wise:/gas_stop'),
+ const.typePlanetIce: util.KeyVal(start='wise:/ice_play', stop='wise:/ice_stop'),
+ const.typePlanetLava: util.KeyVal(start='wise:/lava_play', stop='wise:/lava_stop'),
+ const.typePlanetOcean: util.KeyVal(start='wise:/oceanic_play', stop='wise:/oceanic_stop'),
+ const.typePlanetSandstorm: util.KeyVal(start='wise:/barren_play', stop='wise:/barren_stop'),
+ const.typePlanetThunderstorm: util.KeyVal(start='wise:/storm_play', stop='wise:/storm_stop'),
+ const.typePlanetPlasma: util.KeyVal(start='wise:/plasma_play', stop='wise:/plasma_stop'),
+ const.typePlanetShattered: util.KeyVal(start='wise:/plasma_play', stop='wise:/plasma_stop')}
 
 def GetContrastColorForCurrPlanet():
-    if not sm.GetService('planetUI').IsOpen():
+    if not sm.GetService('viewState').IsViewActive('planet'):
         return None
     else:
         planetTypeID = sm.GetService('planetUI').planet.planetTypeID
@@ -81,7 +117,7 @@ def GetContrastColorForCurrPlanet():
 
 def GetPickIntersectionPoint(x = None, y = None):
     if None in (x, y):
-        (x, y,) = (uicore.uilib.x, uicore.uilib.y)
+        (x, y,) = (int(uicore.uilib.x * uicore.desktop.dpiScaling), int(uicore.uilib.y * uicore.desktop.dpiScaling))
     device = trinity.GetDevice()
     (proj, view, vp,) = uix.GetFullscreenProjectionViewAndViewport()
     (ray, start,) = device.GetPickRayFromViewport(x, y, vp, view.transform, proj.transform)
@@ -175,12 +211,12 @@ def GetPinCycleInfo(pin, cycleTime = None):
     if cycleTime is None:
         cycleTime = pin.GetCycleTime()
     if pin.IsActive() and not pin.IsInEditMode():
-        currCycle = min(blue.os.GetTime() - pin.lastRunTime, cycleTime)
+        currCycle = min(blue.os.GetWallclockTime() - pin.lastRunTime, cycleTime)
         currCycleProportion = currCycle / float(cycleTime)
     else:
         currCycle = currCycleProportion = 0
     if cycleTime is None:
-        cycleText = mls.UI_GENERIC_INACTIVE
+        cycleText = localization.GetByLabel('UI/PI/Common/InactivePin')
     else:
         cycleText = '%s / %s' % (util.FmtTime(currCycle), util.FmtTime(cycleTime))
     return (cycleText, currCycleProportion)

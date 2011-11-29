@@ -30,7 +30,7 @@ class ObjectCall():
 
     def __ReleaseObjectHelper(self):
         while not self.machoNet.stop:
-            blue.pyos.synchro.Sleep(30000)
+            blue.pyos.synchro.SleepWallclock(30000)
             if self.releasedObjects:
                 tmp = self.releasedObjects
                 self.releasedObjects = {}
@@ -306,14 +306,14 @@ class ObjectCall():
             if not getattr(object, '__passbyvalue__', 0):
                 objectID = base.GetObjectUUID(object)
                 if objectID in session.machoObjectsByID:
-                    session.machoObjectsByID[objectID][0] = blue.os.GetTime()
+                    session.machoObjectsByID[objectID][0] = blue.os.GetWallclockTime()
                 else:
                     (objectType, guts,) = self._ObjectCall__GetObjectTypeAndGuts(object)
                     session.LogSessionHistory('%s object %s added to session' % (objectType, objectID), strx(guts))
                     if objectType is None:
                         raise RuntimeError('NoneType object added by reference, undoubtedly ObjectConnection to None')
                 if objectID not in self.added_objects:
-                    refID = blue.os.GetTime()
+                    refID = blue.os.GetWallclockTime()
                     self.added_objects[objectID] = refID
                     session.RegisterMachoObject(objectID, object, refID)
                 else:

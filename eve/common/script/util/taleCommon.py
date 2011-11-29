@@ -2,7 +2,7 @@ import blue
 import util
 
 def CalculateDecayedInfluence(info):
-    currentTime = blue.os.GetTime()
+    currentTime = blue.os.GetWallclockTime()
     return CalculateDecayedInfluenceWithTime(info.influence, info.lastUpdated, currentTime, info.decayRate, info.graceTime)
 
 

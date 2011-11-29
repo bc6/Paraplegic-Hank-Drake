@@ -1,3 +1,4 @@
+import localization
 STATE_OFFLINING = -7
 STATE_ANCHORING = -6
 STATE_ONLINING = -5
@@ -48,24 +49,26 @@ ENTITY_STATE_NAMES = {STATE_OFFLINING: 'State_OFFLINING',
  STATE_WARPAWAYANDDIE: 'STATE_WARPAWAYANDDIE',
  STATE_WARPAWAYANDCOMEBACK: 'STATE_WARPAWAYANDCOMEBACK',
  STATE_WARPTOPOSITION: 'STATE_WARPTOPOSITION'}
-entityStateStrings = {STATE_ANCHORING: mls.UI_GENERIC_ANCHORING,
- STATE_ONLINING: mls.UI_GENERIC_ONLINING,
- STATE_ANCHORED: mls.UI_GENERIC_ANCHORED,
- STATE_UNANCHORING: mls.UI_GENERIC_UNANCHORING,
- STATE_UNANCHORED: mls.UI_GENERIC_UNANCHORED,
- STATE_INCAPACITATED: mls.UI_GENERIC_INCAPACITATED,
- STATE_IDLE: mls.UI_INFLIGHT_IDLE,
- STATE_COMBAT: mls.UI_INFLIGHT_FIGHTING,
- STATE_MINING: mls.UI_INFLIGHT_MINING,
- STATE_APPROACHING: mls.UI_INFLIGHT_APPROACHING,
- STATE_FLEEING: mls.UI_INFLIGHT_FLEEING,
- STATE_REINFORCED: mls.UI_GENERIC_REINFORCED,
- STATE_OPERATING: mls.UI_GENERIC_OPERATING,
- STATE_VULNERABLE: mls.UI_GENERIC_VULNERABLE,
- STATE_INVULNERABLE: mls.UI_GENERIC_INVULNERABLE}
+entityStateStrings = {STATE_ANCHORING: localization.GetByLabel('Entities/States/Anchoring'),
+ STATE_ONLINING: localization.GetByLabel('Entities/States/Onlining'),
+ STATE_ANCHORED: localization.GetByLabel('Entities/States/Anchored'),
+ STATE_UNANCHORING: localization.GetByLabel('Entities/States/Unanchoring'),
+ STATE_UNANCHORED: localization.GetByLabel('Entities/States/Unanchored'),
+ STATE_INCAPACITATED: localization.GetByLabel('Entities/States/Incapacitated'),
+ STATE_IDLE: localization.GetByLabel('Entities/States/Idle'),
+ STATE_COMBAT: localization.GetByLabel('Entities/States/Fighting'),
+ STATE_MINING: localization.GetByLabel('Entities/States/Mining'),
+ STATE_APPROACHING: localization.GetByLabel('Entities/States/Approaching'),
+ STATE_FLEEING: localization.GetByLabel('Entities/States/Fleeing'),
+ STATE_REINFORCED: localization.GetByLabel('Entities/States/Reinforced'),
+ STATE_OPERATING: localization.GetByLabel('Entities/States/Operating'),
+ STATE_VULNERABLE: localization.GetByLabel('Entities/States/Vulnerable'),
+ STATE_INVULNERABLE: localization.GetByLabel('Entities/States/Invulnerable'),
+ STATE_SHIELD_REINFORCE: localization.GetByLabel('Entities/States/ShieldReinforced'),
+ STATE_ARMOR_REINFORCE: localization.GetByLabel('Entities/States/ArmorReinforced')}
 
 def GetEntityStateString(entityState):
-    return entityStateStrings.get(entityState, '%s (%s)' % (mls.UI_GENERIC_UNKNOWN, entityState))
+    return entityStateStrings.get(entityState, localization.GetByLabel('Entities/States/Unknown', entityStateID=entityState))
 
 
 INCAPACITATION_DISTANCE = 250000

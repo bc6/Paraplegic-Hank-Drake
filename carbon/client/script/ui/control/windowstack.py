@@ -2,9 +2,17 @@ import uthread
 import uicls
 import uiutil
 import uiconst
+import localization
+import log
 
 class WindowStackCore(uicls.Window):
     __guid__ = 'uicls.WindowStackCore'
+
+    @classmethod
+    def Reload(cls, instance):
+        pass
+
+
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -58,12 +66,13 @@ class WindowStackCore(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def Close(self, *args, **kwds):
         for wnd in self.sr.content.children[:]:
             if wnd is not None and not wnd.destroyed:
                 wnd._SetOpen(False)
-                wnd.SelfDestruct(0)
+                wnd.Close(0)
 
+        uicls.Window.Close(self, *args, **kwds)
 
 
 
@@ -79,8 +88,9 @@ class WindowStackCore(uicls.Window):
         self._inserting = True
         (l, t, mywidth, myheight,) = self.GetAbsolute()
         if not len(self.sr.content.children) and adjustlocation:
-            self.width = max(mywidth, wnd.width)
-            self.height = max(myheight, wnd.height)
+            log.LogInfo('WindowStack initing, taking size from', wnd.windowID, wnd.left, 'l,t,w,h', wnd.top, wnd.width, wnd.height)
+            self.width = wnd.width
+            self.height = wnd.height
             self.left = wnd.left
             self.top = wnd.top
         if wnd.IsCollapsed():
@@ -182,7 +192,7 @@ class WindowStackCore(uicls.Window):
             (w.left, w.top,) = (x, y)
             return 
         if len(self.sr.content.children) == 0:
-            self.SelfDestruct()
+            self.Close()
 
 
 
@@ -190,7 +200,7 @@ class WindowStackCore(uicls.Window):
         if self is None or self.destroyed:
             return 
         if checknone and len(self.sr.content.children) == 0:
-            self.SelfDestruct()
+            self.Close()
             return 
         self.SetMinWH()
         tabs = []
@@ -242,12 +252,12 @@ class WindowStackCore(uicls.Window):
     def GetMenu(self):
         menu = []
         if self._killable:
-            menu.append((mls.UI_CMD_CLOSEWINDOWSTACK, self._CloseClick))
+            menu.append((localization.GetByLabel('/Carbon/UI/Controls/Window/CloseWindowStack'), self.CloseByUser))
         if not self.sr.stack and self.IsMinimizable():
             if self.state == uiconst.UI_NORMAL:
-                menu.append((mls.UI_CMD_MINIMIZEWINDOWSTACK, self.ToggleVis))
+                menu.append((localization.GetByLabel('/Carbon/UI/Controls/Window/MinimizeWindowStack'), self.ToggleVis))
             else:
-                menu.append((mls.UI_CMD_MAXIMIZEWINDOWSTACK, self.ToggleVis))
+                menu.append((localization.GetByLabel('/Carbon/UI/Controls/Window/MaximizeWindowStack'), self.ToggleVis))
         return menu
 
 
@@ -315,6 +325,18 @@ class WindowStackCore(uicls.Window):
         for wnd in self.sr.content.children:
             wnd.OnEndMinimize_(wnd)
 
+
+
+
+    def OnResize_(self, *args):
+        for wnd in self.sr.content.children:
+            wnd._OnResize()
+
+
+
+
+    def GetWindows(self):
+        return self.sr.content.children
 
 
 

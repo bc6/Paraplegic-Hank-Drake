@@ -74,7 +74,7 @@ class EventRecorder(service.Service):
         globalState['shipid'] = session.shipid
         globalState['solarsystemid'] = session.solarsystemid
         globalState['solarsystemid2'] = session.solarsystemid2
-        globalState['initialTime'] = blue.os.GetTime(0)
+        globalState['initialTime'] = blue.os.GetSimTime()
         globalState['regionid'] = session.regionid
         self.initialState = (globalState, itemState)
 
@@ -104,7 +104,7 @@ class EventRecorder(service.Service):
                 if funcName != 'AddBalls':
                     filteredStates.append((stamp, (funcName, args)))
 
-            self.capturedStateUpdates.append((blue.os.GetTime(0), filteredStates))
+            self.capturedStateUpdates.append((blue.os.GetSimTime(), filteredStates))
 
 
 
@@ -126,7 +126,7 @@ class EventRecorder(service.Service):
 
             stateUpdate.append((ball.id, ballState))
 
-        self.capturedStateUpdates.append((blue.os.GetTime(0), [(0, ('DoBallsAdded', stateUpdate))]))
+        self.capturedStateUpdates.append((blue.os.GetSimTime(), [(0, ('DoBallsAdded', stateUpdate))]))
 
 
 

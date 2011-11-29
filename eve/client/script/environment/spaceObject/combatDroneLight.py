@@ -46,7 +46,7 @@ class CombatDroneLight(spaceObject.SpaceObject):
     def Assemble(self):
         if not (settings.user.ui.Get('droneModelsEnabled', 1) or not self.npcDrone):
             return 
-        self.FitBoosters2(alwaysOn=True)
+        self.FitBoosters2(alwaysOn=True, enableTrails=False)
         self.SetupAmbientAudio()
         if hasattr(self.model, 'ChainAnimationEx'):
             self.model.ChainAnimationEx('NormalLoop', 0, 0, 1.0)

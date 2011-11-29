@@ -11,6 +11,7 @@ class GameWorldService(service.Service):
 
     def Run(self, *etc):
         service.Service.Run(self)
+        GameWorld.Manager.Init()
         self.gameWorldManager = GameWorld.Manager
         useRemoteDebugger = False
         GameWorld.InitKynapse(useRemoteDebugger)
@@ -23,7 +24,7 @@ class GameWorldService(service.Service):
         self.LogInfo('Registering a new gameworld scene for', sceneID)
         gw = self.GetGameWorldType()()
         gw.instanceID = long(sceneID)
-        gw.InitWorld('GameWorld_%s' % sceneID, const.GAMEWORLD_INIT_DATA, False, False)
+        gw.InitWorld('GameWorld_%s' % sceneID, const.GAMEWORLD_INIT_DATA, False)
         GameWorld.Manager.AddGameWorld(gw)
         self.gameworlds[sceneID] = gw
         if sceneID in self.waitingForGameWorlds:

@@ -587,7 +587,7 @@ class AssetRenderer(object):
                         rj.Clear(evalText, 1.0)
 
         SWEETSPOTY = 1.7
-        blue.pyos.synchro.Sleep(2000)
+        blue.pyos.synchro.SleepWallclock(2000)
         for cb in self.altCheckboxes:
             if not cb.GetValue():
                 continue
@@ -638,7 +638,7 @@ class AssetRenderer(object):
                         character.avatar.animationUpdater.network.SetControlParameter('ControlParameters|NetworkMode', 2)
                         for i in xrange(ccConst.POSERANGE):
                             characterSvc.ChangePose(i, charID)
-                            blue.pyos.synchro.Sleep(100)
+                            blue.pyos.synchro.SleepWallclock(100)
                             outputPath = 'C:/Temp/Thumbnails/%s_g%s_b%s.png' % ('pose_%s' % i, genderID, bloodlineID)
                             self.SaveScreenShot(outputPath)
 
@@ -652,7 +652,7 @@ class AssetRenderer(object):
                                 blue.resMan.Wait()
                                 trinity.WaitForResourceLoads()
                                 for i in xrange(10):
-                                    blue.pyos.synchro.Sleep(100)
+                                    blue.pyos.synchro.SleepWallclock(100)
 
                                 camera.Update()
                                 outputPath = 'C:/Temp/Thumbnails/%s_g%s_b%s.png' % ('light_%s_%s' % (each, color), genderID, bloodlineID)
@@ -662,7 +662,7 @@ class AssetRenderer(object):
 
 
 
-        for (gender, genderID, genderCB,) in [('male', 1, getattr(self, 'maleCB', None)), ('female', 0, getattr(self, 'femaleCB', None))]:
+        for (gender, genderID, genderCB,) in [('Male', 1, getattr(self, 'maleCB', None)), ('Female', 0, getattr(self, 'femaleCB', None))]:
             if not fromWebtools and genderCB and not genderCB.GetValue():
                 continue
             if fromWebtools or getattr(self, 'mannequinCB', None) and self.mannequinCB.GetValue():
@@ -690,10 +690,10 @@ class AssetRenderer(object):
                         network.SetAnimationSetIndex(0)
                     else:
                         network.SetAnimationSetIndex(1)
-                blue.pyos.synchro.Sleep(500)
+                blue.pyos.synchro.SleepWallclock(500)
                 avatar.animationUpdater.network.SetControlParameter('ControlParameters|isAlive', 0)
                 avatar.animationUpdater.network.update = False
-                blue.pyos.synchro.Sleep(500)
+                blue.pyos.synchro.SleepWallclock(500)
                 for checkBox in self.checkboxes:
                     if not fromWebtools and not checkBox.GetValue():
                         continue
@@ -711,7 +711,7 @@ class AssetRenderer(object):
                     cameraSetup = self.SetUpCamera(camera, category, mannequin, SETUP, scene, lightColorScene, lightIntensity)
                     for itemType in typeData:
                         typeID = itemType[2]
-                        if typeID is None:
+                        if typeID in (None, -1):
                             continue
                         asset = GetPaperDollResource(typeID, genderID)
                         path = asset.resPath
@@ -727,12 +727,12 @@ class AssetRenderer(object):
                         ss = paperDoll.SkinSpotLightShadows(scene, debugVisualize=False, size=2048)
                         ss.SetupSkinnedObject(avatar)
                         paperDoll.SkinSpotLightShadows.instance = ss
-                        blue.pyos.synchro.Sleep(500)
+                        blue.pyos.synchro.SleepWallclock(500)
                         if fromWebtools:
                             outputPath = '%s/EVE/capture/Screenshots/Renders/%s.png' % (blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL), typeID)
                         else:
-                            assetResPath = path.replace('res:/Graphics/Character/Modular/', '').replace('/', '_').replace('.type', '')
-                            outputPath = 'C:/Temp/Thumbnails/%s.png' % assetResPath
+                            assetResPath = path.replace('/', '_').replace('.type', '')
+                            outputPath = 'C:/Temp/Thumbnails/%s_%s.png' % (gender, assetResPath)
                         self.SaveScreenShot(outputPath)
                         doll.RemoveResource(modifier.GetResPath(), self.factory)
                         if tryout:
@@ -854,7 +854,7 @@ class AssetRenderer(object):
                         paperDoll.SkinSpotLightShadows.instance = ss
                         if tryout:
                             break
-                        blue.pyos.synchro.Sleep(500)
+                        blue.pyos.synchro.SleepWallclock(500)
                         outputPath = 'C:/Temp/Thumbnails/%s_g%s_b%s.png' % ('_'.join(list(itemType[1])).replace('/', '_'), genderID, bloodlineID)
                         self.SaveScreenShot(outputPath)
                         doll.RemoveResource(modifer.GetResPath(), characterSvc.factory)

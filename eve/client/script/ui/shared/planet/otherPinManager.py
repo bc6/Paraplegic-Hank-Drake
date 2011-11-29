@@ -1,15 +1,5 @@
-import uix
-import uiconst
-import util
-from planetCommon import *
-import math
-import uicls
 import planet
-import draw
-import log
 import uthread
-import planetCommon
-import functools
 
 class OtherPinManager:
     __guid__ = 'planet.ui.OtherPinManager'
@@ -21,6 +11,15 @@ class OtherPinManager:
         self.otherPlayerPinsByPinID = {}
         self.otherPlayerVisiblePins = []
         self.otherPlayerExtractors = []
+
+
+
+    def Close(self):
+        sm.UnregisterNotify(self)
+        self.currentOtherExpandedCommandPin = None
+        self.otherPlayerPinsByPinID = None
+        self.otherPlayerVisiblePins = None
+        self.otherPlayerExtractors = None
 
 
 

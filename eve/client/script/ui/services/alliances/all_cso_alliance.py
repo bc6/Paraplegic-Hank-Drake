@@ -19,10 +19,10 @@ class AllianceO(allianceObject.base):
 
     def GetRankedAlliances(self, maxLen = 100):
         if self.rankedAlliances.time is not None:
-            if self.rankedAlliances.maxLen != maxLen or blue.os.TimeDiffInMs(self.rankedAlliances.time) > 5000:
+            if self.rankedAlliances.maxLen != maxLen or blue.os.TimeDiffInMs(self.rankedAlliances.time, blue.os.GetWallclockTime()) > 5000:
                 self.rankedAlliances.time = None
         if self.rankedAlliances.time is None:
-            self.rankedAlliances.time = blue.os.GetTime()
+            self.rankedAlliances.time = blue.os.GetWallclockTime()
             self.rankedAlliances.maxLen = maxLen
             self.rankedAlliances.alliances = sm.RemoteSvc('allianceRegistry').GetRankedAlliances(maxLen)
             self.rankedAlliances.standings = {}

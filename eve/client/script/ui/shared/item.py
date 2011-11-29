@@ -6,6 +6,9 @@ import uiconst
 import uicls
 import log
 import trinity
+import form
+import localization
+import localizationUtil
 
 class InvItem(uicls.Container):
     __guid__ = 'xtriui.InvItem'
@@ -36,11 +39,11 @@ class InvItem(uicls.Container):
         underlay = uicls.Frame(parent=qtypar, name='underlay', align=uiconst.TOALL, texturePath='res:/UI/Texture/classes/InvItem/quantityUnderlay.png', cornerSize=2, offset=0, color=util.Color.BLACK)
         flags = uicls.Container(parent=align, name='flags', pos=(0, 0, 0, 16), align=uiconst.TOBOTTOM, state=uiconst.UI_PICKCHILDREN, padding=(0, 0, 0, 0))
         self.sr.flags = flags
-        slotSize = uicls.Icon(parent=flags, name='slotSize', pos=(0, 0, 16, 16), align=uiconst.TORIGHT, hint=mls.UI_SHARED_FITTINGCONSTRAINTS, state=uiconst.UI_HIDDEN)
+        slotSize = uicls.Icon(parent=flags, name='slotSize', pos=(0, 0, 16, 16), align=uiconst.TORIGHT, hint=localization.GetByLabel('UI/Inventory/FittingConstraint'), state=uiconst.UI_HIDDEN)
         self.sr.slotsize_icon = slotSize
-        ammoSize = uicls.Sprite(parent=flags, name='ammoSize', pos=(0, 0, 16, 16), align=uiconst.TORIGHT, texturePath='res:/UI/Texture/classes/InvItem/ammoSize.png', hint=mls.UI_SHARED_AMMOSIZECONSTRAINT, state=uiconst.UI_HIDDEN, rectWidth=16, rectHeight=16)
+        ammoSize = uicls.Sprite(parent=flags, name='ammoSize', pos=(0, 0, 16, 16), align=uiconst.TORIGHT, texturePath='res:/UI/Texture/classes/InvItem/ammoSize.png', hint=localization.GetByLabel('UI/Inventory/AmmoSizeConstraint'), state=uiconst.UI_HIDDEN, rectWidth=16, rectHeight=16)
         self.sr.ammosize_icon = ammoSize
-        contrabandIcon = uicls.Sprite(parent=flags, name='contrabandIcon', pos=(0, 0, 16, 16), align=uiconst.TORIGHT, texturePath='res:/UI/Texture/classes/InvItem/contrabandIcon.png', hint=mls.UI_SHARED_THISITEMISCONTRABAND, state=uiconst.UI_HIDDEN)
+        contrabandIcon = uicls.Sprite(parent=flags, name='contrabandIcon', pos=(0, 0, 16, 16), align=uiconst.TORIGHT, texturePath='res:/UI/Texture/classes/InvItem/contrabandIcon.png', hint=localization.GetByLabel('UI/Inventory/ItemIsContraband'), state=uiconst.UI_HIDDEN)
         self.sr.contraband_icon = contrabandIcon
         self.sr.icon = uicls.Icon(parent=self, name='pic', pos=(0, 0, 64, 64), state=uiconst.UI_DISABLED)
         shadow = uicls.Sprite(parent=self, name='shadow', pos=(-13, -6, 90, 90), state=uiconst.UI_DISABLED, texturePath='res:/UI/Texture/classes/InvItem/shapeShadow.png')
@@ -84,18 +87,18 @@ class InvItem(uicls.Container):
         self.subTypeID = None
         self.id = None
         self.powerType = None
-        self.sr.quantity_label = uicls.Label(text='', parent=uiutil.GetChild(self, 'qtypar'), left=4, top=1, letterspace=1, fontsize=9, state=uiconst.UI_DISABLED, idx=0, singleline=1)
-        self.sr.name_label = self.sr.label = uicls.Label(text='', parent=self, left=0, top=66, width=64, autowidth=False, state=uiconst.UI_DISABLED, idx=3, maxlines=2)
+        self.sr.quantity_label = uicls.Label(text='', parent=uiutil.GetChild(self, 'qtypar'), left=2, state=uiconst.UI_DISABLED, idx=0, singleline=1, fontsize=9)
+        self.sr.name_label = self.sr.label = uicls.EveLabelMedium(text='', parent=self, left=0, top=66, width=64, state=uiconst.UI_DISABLED, idx=3, maxlines=2)
         self.sr.icon = uiutil.GetChild(self, 'pic')
         self.sr.contraband_icon = uiutil.GetChild(self, 'contrabandIcon')
-        self.sr.contraband_icon.sr.hint = mls.UI_SHARED_THISITEMISCONTRABAND
+        self.sr.contraband_icon.sr.hint = localization.GetByLabel('UI/Inventory/ItemIsContraband')
         self.sr.contraband_icon.state = uiconst.UI_HIDDEN
         self.sr.slotsize_icon = uiutil.GetChild(self, 'slotSize')
-        self.sr.slotsize_icon.sr.hint = mls.UI_SHARED_FITTINGCONSTRAINTS
+        self.sr.slotsize_icon.sr.hint = localization.GetByLabel('UI/Inventory/FittingConstraint')
         self.sr.slotsize_icon.state = uiconst.UI_HIDDEN
         self.sr.temp = uiutil.GetChild(self, 'temp')
         self.sr.ammosize_icon = uiutil.GetChild(self, 'ammoSize')
-        self.sr.ammosize_icon.sr.hint = mls.UI_SHARED_AMMOSIZECONSTRAINT
+        self.sr.ammosize_icon.sr.hint = localization.GetByLabel('UI/Inventory/AmmoSizeConstraint')
         self.sr.ammosize_icon.state = uiconst.UI_HIDDEN
         self.sr.topoverlays = uiutil.GetChild(self, 'topoverlays')
         self.sr.flags = uiutil.GetChild(self, 'flags')
@@ -297,7 +300,7 @@ class InvItem(uicls.Container):
             if self.rec.singleton or self.rec.typeID in (const.typeBookmark,):
                 self.sr.quantity_label.parent.state = uiconst.UI_HIDDEN
             else:
-                self.sr.quantity_label.text = '%s' % uix.GetItemQty(self.sr.node, 'ss')
+                self.sr.quantity_label.text = uix.GetItemQty(self.sr.node, 'ss')
                 self.sr.quantity_label.parent.state = uiconst.UI_DISABLED
 
 
@@ -366,7 +369,7 @@ class InvItem(uicls.Container):
         if uicore.uilib.leftbtn:
             return 
         self.sr.hint = ''
-        wnd = sm.GetService('window').GetWindow('fitting')
+        wnd = form.FittingWindow.GetIfOpen()
         if wnd is not None:
             if getattr(self, 'rec', None):
                 wnd.HiliteFitting(self.rec)
@@ -406,7 +409,7 @@ class InvItem(uicls.Container):
         self.Lolite()
         if getattr(self, 'Draggable_dragging', 0):
             return 
-        wnd = sm.GetService('window').GetWindow('fitting')
+        wnd = form.FittingWindow.GetIfOpen()
         if wnd is not None:
             wnd.HiliteFitting(None)
 
@@ -425,7 +428,7 @@ class InvItem(uicls.Container):
 
     def OnMouseDown(self, *args):
         if getattr(self, 'powerType', None):
-            wnd = sm.GetService('window').GetWindow('fitting')
+            wnd = form.FittingWindow.GetIfOpen()
             if wnd is not None:
                 wnd.HiliteFitting(self.rec)
         uicls.Container.OnMouseDown(self, *args)
@@ -474,7 +477,7 @@ class InvItem(uicls.Container):
             if not session.stationid or util.IsStation(location) and location != session.stationid:
                 log.LogInfo('Trying to open a container in', location, 'while actor is in', session.stationid)
                 return 
-            inventory = eve.GetInventoryFromId(location)
+            inventory = sm.GetService('invCache').GetInventoryFromId(location)
             if not inventory:
                 return 
             item = inventory.GetItem()
@@ -501,7 +504,7 @@ class InvItem(uicls.Container):
         addToContainer = []
         sourceID = None
         for node in nodes:
-            if node.Get('__guid__', None) not in ('xtriui.ShipUIModule', 'xtriui.InvItem', 'listentry.InvItem', 'listentry.InvFittingItem'):
+            if node.Get('__guid__', None) not in ('xtriui.ShipUIModule', 'xtriui.InvItem', 'listentry.InvItem'):
                 notUsed.append(node)
                 continue
             if node.item.itemID == self.sr.node.item.itemID:
@@ -522,10 +525,14 @@ class InvItem(uicls.Container):
         if sourceID is None:
             log.LogInfo('OnDropData: Moot operation with ', nodes)
             return 
+        if mergeToMe:
+            containerItem = sm.GetService('invCache').GetInventoryFromId(self.rec.locationID).GetItem()
+            if session.solarsystemid and containerItem.itemID == mergeToMe[0].locationID and containerItem.ownerID not in (session.charid, session.corpid, session.allianceid):
+                return 
         if self.isShip and addToShip:
             if self.rec.ownerID != session.charid and eve.Message('ConfirmOneWayItemMove', {}, uiconst.OKCANCEL) != uiconst.ID_OK:
                 return 
-            ship = eve.GetInventoryFromId(self.rec.itemID)
+            ship = sm.GetService('invCache').GetInventoryFromId(self.rec.itemID)
             if ship:
                 ship.MultiAdd(addToShip, sourceID, flag=const.flagCargo)
         shift = uicore.uilib.Key(uiconst.VK_SHIFT)
@@ -583,7 +590,7 @@ class InvItem(uicls.Container):
 
         if singletons and util.GetAttrs(self, 'sr', 'node', 'rec', 'flagID'):
             flag = self.sr.node.rec.flagID
-            inv = eve.GetInventoryFromId(self.rec.locationID)
+            inv = sm.GetService('invCache').GetInventoryFromId(self.rec.locationID)
             if inv:
                 inv.MultiAdd(singletons, sourceID, flag=flag, fromManyFlags=True)
         if mergeData and util.GetAttrs(self, 'sr', 'node', 'container', 'MultiMerge'):
@@ -592,7 +599,7 @@ class InvItem(uicls.Container):
             flag = settings.user.ui.Get('defaultContainerLock_%s' % self.sr.node.item.itemID, None)
             if flag is None:
                 flag = const.flagLocked
-            eve.GetInventoryFromId(self.sr.node.item.itemID).MultiAdd(addToContainer, sourceID, flag=flag)
+            sm.GetService('invCache').GetInventoryFromId(self.sr.node.item.itemID).MultiAdd(addToContainer, sourceID, flag=flag)
         elif notUsed and util.GetAttrs(self, 'sr', 'node', 'container', 'OnDropData'):
             self.sr.node.container.OnDropData(dragObj, notUsed)
 
@@ -607,8 +614,8 @@ class Item(InvItem):
         topoverlays = uicls.Container(parent=self, padding=(1, 2, 1, 3), name='topoverlays', state=uiconst.UI_PICKCHILDREN, align=uiconst.TOALL)
         flags = uicls.Container(parent=topoverlays, pos=(0, 0, 100, 16), name='flags', state=uiconst.UI_PICKCHILDREN, align=uiconst.TOPRIGHT)
         slotSize = uicls.Icon(parent=flags, pos=(0, 0, 16, 16), name='slotSize', state=uiconst.UI_NORMAL, align=uiconst.TORIGHT)
-        ammoSize = uicls.Sprite(parent=flags, name='ammoSize', pos=(0, 0, 16, 16), align=uiconst.TORIGHT, texturePath='res:/UI/Texture/classes/InvItem/ammoSize.png', hint=mls.UI_SHARED_AMMOSIZECONSTRAINT, state=uiconst.UI_HIDDEN, rectWidth=16, rectHeight=16)
-        contrabandIcon = uicls.Sprite(parent=flags, name='contrabandIcon', pos=(0, 0, 16, 16), align=uiconst.TORIGHT, texturePath='res:/UI/Texture/classes/InvItem/contrabandIcon.png', hint=mls.UI_SHARED_THISITEMISCONTRABAND, state=uiconst.UI_HIDDEN)
+        ammoSize = uicls.Sprite(parent=flags, name='ammoSize', pos=(0, 0, 16, 16), align=uiconst.TORIGHT, texturePath='res:/UI/Texture/classes/InvItem/ammoSize.png', hint=localization.GetByLabel('UI/Inventory/AmmoSizeConstraint'), state=uiconst.UI_HIDDEN, rectWidth=16, rectHeight=16)
+        contrabandIcon = uicls.Sprite(parent=flags, name='contrabandIcon', pos=(0, 0, 16, 16), align=uiconst.TORIGHT, texturePath='res:/UI/Texture/classes/InvItem/contrabandIcon.png', hint=localization.GetByLabel('UI/Inventory/ItemIsContraband'), state=uiconst.UI_HIDDEN)
         container = uicls.Container(parent=self, pos=(21, 20, 16, 16), name='container', state=uiconst.UI_PICKCHILDREN, align=uiconst.RELATIVE)
         underlay = uicls.Container(parent=container, name='underlay', state=uiconst.UI_DISABLED, align=uiconst.TOALL)
         pic = uicls.Icon(parent=self, pos=(5, 4, 32, 32), name='pic', state=uiconst.UI_DISABLED, align=uiconst.RELATIVE)
@@ -626,24 +633,26 @@ class InvBlueprintItem(Item):
     def UpdateLabel(self, new = 0):
         xtriui.InvItem.UpdateLabel(self, new)
         blueprint = self.sr.node.blueprint
-        labeltext = self.sr.label.text
-        isCopy = [mls.UI_GENERIC_NO, mls.UI_GENERIC_YES][blueprint.copy]
+        if blueprint.copy:
+            isCopy = localization.GetByLabel('UI/Common/Yes')
+        else:
+            isCopy = localization.GetByLabel('UI/Common/No')
         ml = blueprint.materialLevel
         pl = blueprint.productivityLevel
         lprr = blueprint.licensedProductionRunsRemaining
         if lprr == -1:
             lprr = ''
-        label = '<t>%s<t>%s<t>%s<t>%s' % (isCopy,
-         ml,
-         pl,
-         lprr)
-        if self.sr.node.viewMode in ('list', 'details'):
-            self.sr.label.text += label
-            label = self.sr.label.text
         else:
-            self.sr.name_label.text += label
-            label = self.sr.name_label.text
-        self.sr.node.label = label
+            lprr = localizationUtil.FormatNumeric(lprr, decimalPlaces=0, useGrouping=True)
+        label = '<t>%s<t><right>%s<t><right>%s<t><right>%s' % (isCopy,
+         localizationUtil.FormatNumeric(ml, decimalPlaces=0, useGrouping=True),
+         localizationUtil.FormatNumeric(pl, decimalPlaces=0, useGrouping=True),
+         lprr)
+        self.sr.node.label += label
+        if self.sr.node.viewMode in ('list', 'details'):
+            self.sr.label.text = self.sr.node.label
+        else:
+            self.sr.name_label.text += self.sr.node.label
 
 
 
@@ -656,9 +665,9 @@ class ItemWithVolume(Item):
         if util.GetAttrs(self, 'sr', 'node', 'remote'):
             return 
         volume = cfg.GetItemVolume(self.rec)
-        self.sr.node.Set('sort_%s' % mls.UI_GENERIC_VOLUME, volume)
+        self.sr.node.Set('sort_%s' % localization.GetByLabel('UI/Inventory/ItemVolume'), volume)
         u = cfg.dgmunits.Get(const.unitVolume)
-        unit = Tr(u.displayName, 'dogma.units.displayName', u.dataID)
+        unit = u.displayName
         label = '<t>%s %s' % (util.FmtAmt(volume), unit)
         if self.sr.node.viewMode in ('list', 'details'):
             self.sr.label.text += label
@@ -740,120 +749,11 @@ class ItemCheckbox(Item):
 
 
 
-class InvBlueprintCheckbox(ItemCheckbox):
-    __guid__ = 'listentry.InvBlueprintCheckbox'
-
-    def UpdateLabel(self, new = 0):
-        xtriui.InvItem.UpdateLabel(self, new)
-        hideColumns = self.sr.node.Get('hideColumns', [])
-        blueprint = self.sr.node.blueprint
-        label = ''
-        if mls.UI_GENERIC_COPY not in hideColumns:
-            isCopy = [mls.UI_GENERIC_NO, mls.UI_GENERIC_YES][blueprint.copy]
-            self.sr.node.Set('sort_%s' % mls.UI_GENERIC_COPY, isCopy)
-            label += '<t>%s' % isCopy
-        if mls.UI_RMR_ML not in hideColumns:
-            ml = blueprint.materialLevel
-            self.sr.node.Set('sort_%s' % mls.UI_RMR_ML, ml)
-            label += '<t>%s' % ml
-        if mls.UI_RMR_PL not in hideColumns:
-            pl = blueprint.productivityLevel
-            self.sr.node.Set('sort_%s' % mls.UI_RMR_PL, pl)
-            label += '<t>%s' % pl
-        if mls.UI_GENERIC_RUNS not in hideColumns:
-            lprr = blueprint.licensedProductionRunsRemaining
-            if lprr == -1:
-                lprr = ''
-            self.sr.node.Set('sort_%s' % mls.UI_GENERIC_RUNS, lprr)
-            label += '<t>%s' % lprr
-        if self.sr.node.viewMode in ('list', 'details'):
-            if mls.UI_GENERIC_QTY in hideColumns:
-                self.sr.label.text = self.sr.label.text.replace('<right><t>', '')
-            self.sr.label.text += label
-            label = self.sr.label.text
-        elif mls.UI_GENERIC_QTY in hideColumns:
-            self.sr.name_label.text = self.sr.name_label.text.replace('<right><t>', '')
-        self.sr.name_label.text += label
-        label = self.sr.name_label.text
-        self.sr.node.label = label
-
-
-
-
 class InvAssetItem(Item):
     __guid__ = 'listentry.InvAssetItem'
 
     def OnDropData(self, dragObj, nodes):
         pass
-
-
-
-
-class InvFittingItem(InvItem):
-    __guid__ = 'listentry.InvFittingItem'
-
-    def ApplyAttributes(self, attributes):
-        InvItem.ApplyAttributes(self, attributes)
-        dot = uicls.Frame(parent=self, pos=(4, 3, 34, 34), name='dot', texturePath='res:/UI/Texture/Shared/windowButtonDOT.png', cornerSize=6, state=uiconst.UI_DISABLED, align=uiconst.RELATIVE, spriteEffect=trinity.TR2_SFX_DOT, blendMode=trinity.TR2_SBM_ADD)
-        topoverlays = uicls.Container(parent=self, pos=(1, 2, 1, 3), name='topoverlays', state=uiconst.UI_PICKCHILDREN, align=uiconst.TOALL)
-        flags = uicls.Container(parent=topoverlays, pos=(0, 0, 100, 16), name='flags', state=uiconst.UI_PICKCHILDREN, align=uiconst.TOPRIGHT)
-        slotSize = uicls.Sprite(parent=flags, pos=(0, 0, 16, 16), name='slotSize', state=uiconst.UI_NORMAL, align=uiconst.TORIGHT)
-        ammoSize = uicls.Sprite(parent=flags, pos=(0, 0, 16, 16), name='ammoSize', state=uiconst.UI_NORMAL, align=uiconst.TORIGHT)
-        contrabandIcon = uicls.Sprite(parent=flags, pos=(0, 0, 16, 16), name='contrabandIcon', state=uiconst.UI_NORMAL, align=uiconst.TORIGHT)
-        container = uicls.Container(parent=self, pos=(21, 20, 16, 16), name='container', state=uiconst.UI_PICKCHILDREN, align=uiconst.RELATIVE)
-        underlay = uicls.Container(parent=container, name='underlay', state=uiconst.UI_DISABLED, align=uiconst.TOALL)
-        pic = uicls.Sprite(parent=self, pos=(5, 4, 32, 32), name='pic', state=uiconst.UI_DISABLED, align=uiconst.RELATIVE)
-        qtypar = uicls.Container(parent=self, pos=(46, 24, 100, 10), name='qtypar', state=uiconst.UI_DISABLED, align=uiconst.RELATIVE)
-        shadow = uicls.Sprite(parent=self, pos=(-2, -1, 45, 45), name='shadow', state=uiconst.UI_DISABLED, rectWidth=64, rectHeight=64, texturePath='res:/UI/Texture/Shared/bigButtonShadow.png', align=uiconst.RELATIVE)
-        temp = uicls.Container(parent=self, name='temp', state=uiconst.UI_DISABLED, align=uiconst.TOALL)
-        uicls.Line(parent=self, align=uiconst.TOBOTTOM, idx=1)
-        self.sr.fitIcon = uicls.Icon(icon='ui_38_16_184', parent=self, size=16, idx=0, align=uiconst.BOTTOMRIGHT)
-        self.sr.fitIcon.OnClick = self.FitToActiveOrUnfit
-        self.sr.fitIcon.hint = mls.UI_CMD_FITTOACTIVESHIP
-        self.sr.fitIcon.OnMouseEnter = self.OnMouseEnter
-        self.sr.fitIcon.OnMouseExit = self.OnMouseExit
-        self.sr.fitIcon.top = 4
-
-
-
-    def UpdateLabel(self, new = 0):
-        name = uix.GetItemName(self.rec, self.sr.node)
-        self.sr.label.text = name + '<br>%s: %s' % (mls.UI_GENERIC_QTY, uix.GetItemQty(self.sr.node, 'ss') or 1)
-        self.sr.quantity_label.parent.state = uiconst.UI_HIDDEN
-        if self.sr.node.Get('showFitIcon', 1) and (self.isHardware or self.sr.node.invtype.Group().Category().id == const.categoryCharge):
-            if self.rec.flagID not in (const.flagHangar, const.flagCargo):
-                self.sr.fitIcon.LoadIcon('ui_38_16_184')
-                self.sr.fitIcon.hint = mls.UI_CMD_REMOVE
-                self.sr.fitIcon.state = uiconst.UI_NORMAL
-            elif self.rec.flagID in (const.flagDroneBay,):
-                self.sr.fitIcon.state = uiconst.UI_HIDDEN
-        else:
-            self.sr.fitIcon.state = uiconst.UI_HIDDEN
-
-
-
-    def FitToActiveOrUnfit(self, *args):
-        selected = self.sr.node.scroll.GetSelectedNodes(self.sr.node)
-        if selected:
-            args = []
-            for node in selected:
-                if node.item:
-                    args.append(node.item)
-
-            if self.sr.node.item not in args:
-                args.append(self.sr.node.item)
-        else:
-            args = [self.sr.node.item]
-        if len(args) == 0:
-            return 
-        sourceLocationID = args[0].locationID
-        if self.rec.flagID not in (const.flagHangar, const.flagCargo):
-            if eve.session.stationid is not None:
-                eve.GetInventory(const.containerHangar).MultiAdd([ rec.itemID for rec in args ], sourceLocationID, flag=const.flagHangar)
-            else:
-                eve.GetInventoryFromId(eve.session.shipid).MultiAdd([ rec.itemID for rec in args ], sourceLocationID, flag=const.flagCargo)
-        else:
-            sm.GetService('menu').TryFit(args)
 
 
 

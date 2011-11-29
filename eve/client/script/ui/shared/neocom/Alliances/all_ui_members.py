@@ -6,6 +6,7 @@ import uiconst
 import uicls
 import uiutil
 import log
+import localization
 
 class FormAlliancesMembers(uicls.SE_BaseClassCore):
     __guid__ = 'form.AlliancesMembers'
@@ -17,24 +18,30 @@ class FormAlliancesMembers(uicls.SE_BaseClassCore):
 
 
     def CreateWindow(self):
-        self.sr.headers = [mls.UI_CORP_LOGO, mls.UI_GENERIC_NAME, mls.UI_CORP_CHOSENEXECUTOR]
+        logoLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Members/Logo')
+        nameLabel = localization.GetByLabel('UI/Common/Name')
+        chosenExecLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Members/ChosenExecutor')
+        self.sr.headers = [logoLabel, nameLabel, chosenExecLabel]
         if eve.session.allianceid is not None:
             self.toolbarContainer = uicls.Container(name='toolbarContainer', align=uiconst.TOTOP, parent=self, left=const.defaultPadding, top=const.defaultPadding)
             if eve.session.corprole & const.corpRoleDirector == const.corpRoleDirector:
-                btns = [[mls.UI_CORP_DECLARESUPPORT,
+                declareSupportLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Members/DeclareSupport')
+                btns = [[declareSupportLabel,
                   self.DeclareSupportForm,
                   None,
                   None]]
                 t = uicls.ButtonGroup(btns=btns, parent=self.toolbarContainer, line=0)
             else:
-                t = uicls.Label(text=mls.UI_CORP_HINT13, parent=self.toolbarContainer, align=uiconst.TOTOP, autowidth=False, state=uiconst.UI_NORMAL)
+                hintLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Members/DirectorDeclareWarHint')
+                t = uicls.EveLabelMedium(text=hintLabel, parent=self.toolbarContainer, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
             self.toolbarContainer.height = t.height
         self.sr.scroll = uicls.Scroll(parent=self, padding=(const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding))
         if eve.session.allianceid is None:
-            self.sr.scroll.Load(fixedEntryHeight=19, contentList=[], noContentHint=mls.UI_CORP_OWNERNOTINANYALLIANCE % {'owner': cfg.eveowners.Get(eve.session.corpid).ownerName})
+            notInAllianceLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/CorpNotInAlliance', corpName=cfg.eveowners.Get(eve.session.corpid).ownerName)
+            self.sr.scroll.Load(fixedEntryHeight=19, contentList=[], noContentHint=notInAllianceLabel)
             return 
         self.ShowMembers()
 
@@ -52,12 +59,12 @@ class FormAlliancesMembers(uicls.SE_BaseClassCore):
             sm.GetService('corpui').ShowLoad()
             scrolllist = []
             headers = []
-            hint = mls.UI_CORP_NOMAMBERSFOUND
+            hint = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Members/NoMembersFound')
             if self is None or self.destroyed:
                 log.LogInfo('ShowAllianceApplications Destroyed or None')
                 hint = '\xfe\xfa s\xe1st mig ekki.'
             elif eve.session.allianceid is None:
-                hint = mls.UI_CORP_OWNERNOTINANYALLIANCEATM % {'owner': cfg.eveowners.Get(eve.session.corpid).ownerName}
+                hint = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Members/CorporationNotInAllianceATM', corpName=cfg.eveowners.Get(eve.session.corpid).ownerName)
             else:
                 members = sm.GetService('alliance').GetMembers()
                 log.LogInfo('ShowMembers len(members):', len(members))
@@ -94,10 +101,13 @@ class FormAlliancesMembers(uicls.SE_BaseClassCore):
         corpID = entry.sr.node.corporationID
         res = sm.GetService('menu').GetMenuFormItemIDTypeID(corpID, const.typeCorporation)
         if eve.session.corpid == corpID:
-            res.append([mls.UI_CMD_QUITALLIANCE, [[mls.UI_CMD_QUITALLIANCE, self.DeleteMember, [corpID]]]])
+            quitAllianceLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Members/QuitAlliance')
+            res.append([quitAllianceLabel, [[quitAllianceLabel, self.DeleteMember, [corpID]]]])
         else:
-            res.append([mls.UI_CMD_KICKMEMBER, [[mls.UI_CMD_KICKMEMBER, self.DeleteMember, [corpID]]]])
-        res.append([mls.UI_CORP_DECLARESUPPORT, [[mls.UI_CORP_DECLARESUPPORT, self.DeclareSupport, [corpID]]]])
+            kickMemberLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Members/KickMember')
+            res.append([kickMemberLabel, [[kickMemberLabel, self.DeleteMember, [corpID]]]])
+        declareSupportLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Members/DeclareSupport')
+        res.append([declareSupportLabel, [[declareSupportLabel, self.DeclareSupport, [corpID]]]])
         return res
 
 
@@ -107,7 +117,7 @@ class FormAlliancesMembers(uicls.SE_BaseClassCore):
         corpName = cfg.eveowners.Get(corporationID).ownerName
         chosenExecutor = member.chosenExecutorID
         if member.chosenExecutorID is None:
-            chosenExecutor = mls.UI_CORP_SECRET
+            chosenExecutor = localization.GetByLabel('UI/Common/Secret')
         else:
             chosenExecutor = cfg.eveowners.Get(member.chosenExecutorID).ownerName
         return '<t>%s<t>%s' % (corpName, chosenExecutor)
@@ -178,8 +188,9 @@ class FormAlliancesMembers(uicls.SE_BaseClassCore):
     def DeclareSupportForm(self, *args):
         format = []
         stati = {}
+        pledgeLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Members/PledgeSupportTo')
         format.append({'type': 'header',
-         'text': mls.UI_CORP_PLEDGESUPPORTTO,
+         'text': pledgeLabel,
          'frame': 1})
         format.append({'type': 'push'})
         format.append({'type': 'btline'})
@@ -197,7 +208,8 @@ class FormAlliancesMembers(uicls.SE_BaseClassCore):
         format.append({'type': 'btline'})
         left = uicore.desktop.width / 2 - 500 / 2
         top = uicore.desktop.height / 2 - 400 / 2
-        retval = uix.HybridWnd(format, mls.UI_CORP_DECLARATIONOFEXECUTORSUPPORT, 1, None, uiconst.OKCANCEL, [left, top], 500)
+        declareLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Members/DeclarationExecutorSupport')
+        retval = uix.HybridWnd(format, declareLabel, 1, None, uiconst.OKCANCEL, [left, top], 500)
         if retval is not None:
             corpID = retval['members']
             sm.GetService('alliance').DeclareExecutorSupport(corpID)
@@ -226,7 +238,7 @@ class Corporation(listentry.Generic):
     __params__ = ['corporationID', 'label']
 
     def Startup(self, *args):
-        self.sr.label = uicls.Label(text='', parent=self, left=5, state=uiconst.UI_DISABLED, color=None, singleline=1)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=self, left=5, state=uiconst.UI_DISABLED, color=None, singleline=1)
         self.sr.line = uicls.Line(parent=self, align=uiconst.TOBOTTOM)
         self.sr.selection = uicls.Fill(parent=self, padTop=1, padBottom=1, color=(1.0, 1.0, 1.0, 0.25))
         self.sr.selection.state = uiconst.UI_HIDDEN

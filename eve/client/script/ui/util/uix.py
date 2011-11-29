@@ -10,6 +10,8 @@ import uicls
 import form
 import uiconst
 import trinity
+import localization
+import fontConst
 advchannelsTutorial = 50
 cloningTutorial = 42
 cloningWhenPoddedTutorial = 27
@@ -63,18 +65,6 @@ TABMARGIN = 6
 escapes = {'amp': '&',
  'lt': '<',
  'gt': '>'}
-
-def Possessive(owner):
-    if eve.session.languageID == 'EN':
-        return owner + ("'s", "'")[owner.endswith('s')]
-    return owner
-
-
-
-def Plural(n, constant):
-    return getattr(mls, constant + ['', 'S'][(n != 1)])
-
-
 
 def TakeTime(label, func, *args, **kw):
     if eve.taketime:
@@ -155,20 +145,21 @@ def GetItemData(rec, viewMode, viewOnly = 0, container = None, scrollID = None, 
     data.categoryName = cfg.invcategories.Get(data.invtype.categoryID).categoryName
     data.sort_ammosizeconstraints = attribs.has_key(const.attributeChargeSize)
     data.sort_slotsize = sort_slotsize
-    data.Set('sort_%s' % mls.UI_GENERIC_NAME, GetItemName(rec, data).lower())
-    data.Set('sort_%s' % mls.UI_GENERIC_TYPE, GetCategoryGroupTypeStringForItem(rec).lower())
-    data.Set('sort_%s' % mls.UI_SHARED_METALVL, ml or 0.0)
-    data.Set('sort_%s' % mls.UI_GENERIC_GROUP, data.groupName.lower())
-    data.Set('sort_%s' % mls.UI_GENERIC_CATEGORY, data.categoryName.lower())
+    data.Set('sort_%s' % localization.GetByLabel('UI/Common/Name'), GetItemName(rec, data).lower())
+    data.Set('sort_%s' % localization.GetByLabel('UI/Common/Type'), GetCategoryGroupTypeStringForItem(rec).lower())
+    data.Set('sort_%s' % localization.GetByLabel('UI/Inventory/ItemMetaLevel'), ml or 0.0)
+    data.Set('sort_%s' % localization.GetByLabel('UI/Common/Group'), data.groupName.lower())
+    data.Set('sort_%s' % localization.GetByLabel('UI/Common/Category'), data.categoryName.lower())
     if data.rec.typeID == const.typePlasticWrap:
         data.volume = ''
-        data.Set('sort_%s' % mls.UI_GENERIC_VOLUME, 0)
+        data.Set('sort_%s' % localization.GetByLabel('UI/Common/Volume'), 0)
     else:
         volume = cfg.GetItemVolume(rec)
         u = cfg.dgmunits.Get(const.unitVolume)
-        unit = Tr(u.displayName, 'dogma.units.displayName', u.dataID)
-        data.volume = '%s %s' % (util.FmtAmt(volume), unit)
-        data.Set('sort_%s' % mls.UI_GENERIC_VOLUME, volume)
+        unit = u.displayName
+        decimalPlaces = 2 if abs(volume - int(volume)) > const.FLOAT_TOLERANCE else 0
+        data.volume = localization.GetByLabel('UI/InfoWindow/ValueAndUnit', value=util.FmtAmt(volume, showFraction=decimalPlaces), unit=unit)
+        data.Set('sort_%s' % localization.GetByLabel('UI/Common/Volume'), volume)
     data.scrollID = scrollID
     return data
 
@@ -179,8 +170,8 @@ def GetItemLabel(rec, data, new = 0):
         return data.label
     name = GetItemName(rec, data)
     if data.viewMode in ('list', 'details'):
-        pType = ' '
-        fType = ' '
+        pType = ''
+        fType = ''
         attribs = getattr(data, 'godmaattribs', {})
         if attribs.has_key(const.attributeImplantness):
             kv = util.KeyVal(unitID=int, attributeID=const.attributeImplantness)
@@ -202,29 +193,28 @@ def GetItemLabel(rec, data, new = 0):
              const.effectHiPower,
              const.effectMedPower,
              const.effectLoPower):
-                fType = {const.effectRigSlot: mls.UI_GENERIC_RIGS,
-                 const.effectHiPower: mls.UI_GENERIC_HIGH,
-                 const.effectMedPower: mls.UI_GENERIC_MEDIUM,
-                 const.effectLoPower: mls.UI_GENERIC_LOW}.get(effect.effectID)
+                fType = {const.effectRigSlot: localization.GetByLabel('UI/Inventory/SlotRigs'),
+                 const.effectHiPower: localization.GetByLabel('UI/Inventory/SlotHigh'),
+                 const.effectMedPower: localization.GetByLabel('UI/Inventory/SlotMedium'),
+                 const.effectLoPower: localization.GetByLabel('UI/Inventory/SlotLow')}.get(effect.effectID)
                 continue
 
-        stringDict = {mls.UI_GENERIC_NAME: name,
-         mls.UI_GENERIC_QTY: '<right>%s' % GetItemQty(data, 'ln'),
-         mls.UI_GENERIC_GROUP: data.groupName,
-         mls.UI_GENERIC_CATEGORY: data.categoryName,
-         mls.UI_GENERIC_SIZE: pType,
-         mls.UI_GENERIC_SLOT: fType,
-         mls.UI_GENERIC_VOLUME: '<right>%s' % data.volume,
-         mls.UI_SHARED_METALVL: '<right>%s' % data.metaLevel,
-         mls.UI_SHARED_TECHLVL: '<right>%s' % techLevel}
+        stringDict = {localization.GetByLabel('UI/Common/Name'): name,
+         localization.GetByLabel('UI/Inventory/ItemQuantity'): '<right>%s' % GetItemQty(data, 'ln'),
+         localization.GetByLabel('UI/Inventory/ItemGroup'): data.groupName,
+         localization.GetByLabel('UI/Inventory/ItemCategory'): data.categoryName,
+         localization.GetByLabel('UI/Inventory/ItemSize'): pType,
+         localization.GetByLabel('UI/Inventory/ItemSlot'): fType,
+         localization.GetByLabel('UI/Inventory/ItemVolume'): '<right>%s' % data.volume,
+         localization.GetByLabel('UI/Inventory/ItemMetaLevel'): '<right>%s' % data.metaLevel,
+         localization.GetByLabel('UI/Inventory/ItemTechLevel'): '<right>%s' % techLevel}
         headers = GetVisibleItemHeaders(data.scrollID)
-        label = ''
+        labelList = []
         for each in headers:
             string = stringDict.get(each, '')
-            label += '%s<t>' % string
+            labelList.append(string)
 
-        if label.endswith('<t>'):
-            label = label[:-3]
+        label = '<t>'.join(labelList)
         data.label = label
     else:
         data.label = '<center>%s' % name
@@ -251,21 +241,20 @@ def GetItemName(invItem, data = None):
     name = cfg.invtypes.Get(invItem.typeID).name
     if invItem.categoryID == const.categoryStation and invItem.groupID == const.groupStation:
         try:
-            name = mls.UI_STATION_STATIONINSOLARSYSTEM % {'stationname': cfg.evelocations.Get(invItem.itemID).name,
-             'solarsystemname': cfg.evelocations.Get(invItem.locationID).name}
+            name = localization.GetByLabel('UI/Station/StationInSolarSystem', station=invItem.itemID, solarsystem=invItem.locationID)
         except KeyError('RecordNotFound'):
             sys.exc_clear()
     elif invItem.groupID == const.groupVoucher:
         voucher = sm.GetService('voucherCache').GetVoucher(invItem.itemID)
         if voucher is None:
-            name = mls.UI_GENERIC_BOOKMARK
+            name = localization.GetByLabel('UI/Common/Bookmark')
         else:
             name = voucher.GetDescription()
             if invItem.typeID == const.typeBookmark:
                 try:
                     (name, _desc,) = sm.GetService('addressbook').UnzipMemo(voucher.GetDescription())
                 except:
-                    name = mls.UI_GENERIC_BOOKMARK
+                    name = localization.GetByLabel('UI/Common/Bookmark')
                     sys.exc_clear()
             if data:
                 data.voucher = voucher
@@ -374,21 +363,23 @@ def GetCategoryGroupTypeStringForItem(invItem):
 def GetSlimItemName(slimItem):
     import util
     if slimItem.groupID == const.groupHarvestableCloud:
-        return '%s (%s)' % (mls.UI_GENERIC_HARVESTABLE_CLOUD, cfg.invtypes.Get(slimItem.typeID).name)
+        return localization.GetByLabel('UI/Inventory/SlimItemNames/SlimHarvestableCloud', cloudType=cfg.invtypes.Get(slimItem.typeID).name)
     else:
         if slimItem.categoryID == const.categoryAsteroid:
-            return '%s (%s)' % (mls.UI_GENERIC_ASTEROID, cfg.invtypes.Get(slimItem.typeID).name)
+            return localization.GetByLabel('UI/Inventory/SlimItemNames/SlimAsteroid', asteroidType=cfg.invtypes.Get(slimItem.typeID).name)
         if slimItem.categoryID == const.categoryShip:
             if not slimItem.charID or slimItem.charID == eve.session.charid and slimItem.itemID != eve.session.shipid:
                 return cfg.invtypes.Get(slimItem.typeID).name
             if util.IsCharacter(slimItem.charID):
                 return cfg.eveowners.Get(slimItem.charID).name
+        elif slimItem.categoryID == const.categoryOrbital:
+            return localization.GetByLabel('UI/Inventory/SlimItemNames/SlimOrbital', typeID=slimItem.typeID, planetID=slimItem.planetID, corpName=cfg.eveowners.Get(slimItem.ownerID).name)
         locationname = cfg.evelocations.Get(slimItem.itemID).name
         if locationname and locationname[0] != '@':
             if slimItem.groupID == const.groupBeacon:
-                name = getattr(slimItem, 'dungeonDataID', None)
-                if name:
-                    translatedName = Tr(locationname, 'dungeon.dungeons.dungeonName', slimItem.dungeonDataID)
+                dungeonNameID = getattr(slimItem, 'dungeonNameID', None)
+                if dungeonNameID:
+                    translatedName = localization.GetByMessageID(dungeonNameID)
                     return translatedName
             return locationname
         return cfg.invtypes.Get(slimItem.typeID).name
@@ -418,12 +409,12 @@ def GetOrMakeChild(parent, name, make):
 
 
 
-def GetTextHeight(strng, width = 0, fontsize = 12, linespace = None, hspace = 0, autoWidth = 0, singleLine = 0, uppercase = 0, specialIndent = 0, getTextObj = 0, tabs = []):
-    return sm.GetService('font').GetTextHeight(strng, width=width, font=None, fontsize=fontsize, linespace=linespace, letterspace=hspace, autowidth=autoWidth, singleline=singleLine, uppercase=uppercase, specialIndent=specialIndent, getTextObj=getTextObj, tabs=tabs)
+def GetTextHeight(strng, width = 0, fontsize = fontConst.EVE_MEDIUM_FONTSIZE, linespace = None, hspace = 0, singleLine = 0, uppercase = 0, specialIndent = 0, getTextObj = 0, tabs = [], **kwds):
+    return sm.GetService('font').GetTextHeight(strng, width=width, font=None, fontsize=fontsize, linespace=linespace, letterspace=hspace, singleline=singleLine, uppercase=uppercase, specialIndent=specialIndent, getTextObj=getTextObj, tabs=tabs)
 
 
 
-def GetTextWidth(strng, fontsize = 12, hspace = 0, uppercase = 0):
+def GetTextWidth(strng, fontsize = fontConst.EVE_MEDIUM_FONTSIZE, hspace = 0, uppercase = 0):
     return sm.GetService('font').GetTextWidth(strng, fontsize, hspace, uppercase)
 
 
@@ -461,17 +452,17 @@ def RefreshHeight(w):
 
 def GetStanding(standing, type = 0):
     if standing > 5:
-        return mls.UI_GENERIC_STANDINGEXCELLENT
+        return localization.GetByLabel('UI/Standings/Excellent')
     else:
         if standing > 0:
-            return mls.UI_GENERIC_STANDINGGOOD
+            return localization.GetByLabel('UI/Standings/Good')
         if standing == 0:
-            return mls.UI_GENERIC_STANDINGNEUTRAL
+            return localization.GetByLabel('UI/Standings/Neutral')
         if standing < -5:
-            return mls.UI_GENERIC_STANDINGTERRIBLE
+            return localization.GetByLabel('UI/Standings/Terrible')
         if standing < 0:
-            return mls.UI_GENERIC_STANDINGBAD
-        return mls.UI_GENERIC_STANDINGUNKOWN
+            return localization.GetByLabel('UI/Standings/Bad')
+        return localization.GetByLabel('UI/Standings/Unknown')
 
 
 
@@ -532,8 +523,8 @@ def GetTechLevelIcon(tlicon = None, offset = 0, typeID = None):
             icon = groupDict.get(groupID)
             hint = cfg.invmetagroups.Get(groupID).name
         else:
-            (icon, hint,) = {2: ('ui_73_16_242', mls.UI_GENERIC_TECHLEVEL2),
-             3: ('ui_73_16_243', mls.UI_GENERIC_TECHLEVEL3)}.get(techLevel, None)
+            (icon, hint,) = {2: ('ui_73_16_242', localization.GetByLabel('UI/Inventory/TechLevel2')),
+             3: ('ui_73_16_243', localization.GetByLabel('UI/Inventory/TechLevel3'))}.get(techLevel, None)
         if tlicon is None:
             tlicon = uicls.Icon(icon=icon, parent=None, width=16, height=16, align=uiconst.TOPLEFT, idx=0, hint=hint)
         else:
@@ -615,85 +606,6 @@ def GetBallparkRecord(itemID):
 
 
 
-def _GetNavigation(what, create, new):
-    what = what.lower()
-    navName = what + 'nav'
-    navNames = ('systemmapnav', 'mapnav', 'stationnav', 'inflightnav', 'planetnav', 'charcontrolnav')
-    navLayers = (uicore.layer.systemmap,
-     uicore.layer.map,
-     uicore.layer.station,
-     uicore.layer.inflight,
-     uicore.layer.planet,
-     uicore.layer.charcontrol)
-    layerClassesByName = {'charcontrol': uicls.CharControl}
-    allNavs = []
-    for navLayer in navLayers:
-        for each in navLayer.children:
-            if each.name not in navNames:
-                continue
-            else:
-                allNavs.append(each)
-
-
-    if not new and create and len(allNavs) == 1 and allNavs[0].name == navName:
-        return allNavs[0]
-    new = new or bool(len(allNavs) > 1)
-    for each in allNavs:
-        if new:
-            each.Close()
-            continue
-        if not create and each.name == navName:
-            return each
-        if create and each.name != navName:
-            each.Close()
-
-    if not new and not create:
-        return 
-    par = uicore.layer.Get(what)
-    if what in layerClassesByName:
-        navCls = layerClassesByName[what]
-    else:
-        navCls = getattr(form, '%sNav' % what.capitalize(), None)
-    nav = navCls(parent=par, name=navName, state=uiconst.UI_NORMAL)
-    nav.Startup()
-    eve._navigation = nav
-    return nav
-
-
-
-def GetStationNav(create = 1, new = 0):
-    return _GetNavigation('station', create, new)
-
-
-
-def GetMapNav(create = 1, new = 0):
-    return _GetNavigation('map', create, new)
-
-
-
-def GetInflightNav(create = 1, new = 0):
-    return _GetNavigation('inflight', create, new)
-
-
-
-def GetSystemmapNav(create = 1, new = 0):
-    return _GetNavigation('systemmap', create, new)
-
-
-
-def GetPlanetNav(create = 1, new = 0):
-    return _GetNavigation('planet', create, new)
-
-
-
-def GetWorldspaceNav(create = 1, new = 0):
-    ret = _GetNavigation('charcontrol', 0, 0)
-    if ret is None:
-        ret = _GetNavigation('charcontrol', 1, 0)
-    return ret
-
-
-
 def Close(owner, wndNames):
     for each in wndNames:
         if getattr(owner, each, None):
@@ -727,27 +639,29 @@ def GetContainerHeader(caption, where, bothlines = 1, xmargin = 0):
     else:
         uicls.Container(name='push', align=uiconst.TOTOP, parent=par, height=1)
         container.padBottom -= 1
-    t = uicls.Label(text=caption, name='header1', parent=par, padding=(8, 2, 8, 2), align=uiconst.TOTOP, letterspace=1, fontsize=10, uppercase=1)
-    container.height = t.textheight + 5
+    t = uicls.EveLabelMedium(text=caption, name='header1', parent=par, padding=(8, 1, 8, 2), align=uiconst.TOTOP, bold=True)
+    container.height = t.textheight + 3
     return container
 
 
 
-def GetSlider(name = 'slider', where = None, config = '', minval = None, maxval = None, header = '', hint = '', align = None, width = 0, height = 18, left = 0, top = 0, setlabelfunc = None, getvaluefunc = None, endsliderfunc = None, increments = [], underlay = 1):
+def GetSlider(name = 'slider', where = None, config = '', minval = None, maxval = None, header = '', hint = '', align = None, width = 0, height = 18, left = 0, top = 0, setlabelfunc = None, getvaluefunc = None, endsliderfunc = None, gethintfunc = None, increments = [], underlay = 1):
     import xtriui
     if align is None:
-        align = uicons.TOTOP
+        align = uiconst.TOTOP
     mainpar = uicls.Container(name=config + '_slider', align=align, width=width, height=height, left=left, top=top, state=uiconst.UI_NORMAL, parent=where)
     slider = xtriui.Slider(parent=mainpar, align=uiconst.TOPLEFT, top=6, state=uiconst.UI_NORMAL)
-    lbl = uicls.Label(text='', parent=mainpar, left=7, top=-14, fontsize=10, letterspace=1, state=uiconst.UI_NORMAL)
+    lbl = uicls.EveLabelSmall(text='', parent=mainpar, left=7, top=-14, state=uiconst.UI_NORMAL)
     lbl.name = 'label'
     if getvaluefunc:
         slider.GetSliderValue = getvaluefunc
     if setlabelfunc:
         slider.SetSliderLabel = setlabelfunc
+    if gethintfunc:
+        slider.GetSliderHint = gethintfunc
     slider.Startup(config, minval, maxval, config, header, increments=increments)
     slider.name = name
-    slider.hint = mainpar.hint = hint
+    mainpar.hint = hint
     if endsliderfunc:
         slider.EndSetSliderValue = endsliderfunc
     return mainpar
@@ -758,7 +672,7 @@ SEL_FOLDERS = 1
 SEL_BOTH = 2
 
 def GetFileDialog(path = None, fileExtensions = None, multiSelect = False, selectionType = SEL_FILES):
-    wnd = sm.GetService('window').GetWindow('FileDialog', create=1, path=path, fileExtensions=fileExtensions, multiSelect=multiSelect, selectionType=selectionType)
+    wnd = form.FileDialog.Open(path=path, fileExtensions=fileExtensions, multiSelect=multiSelect, selectionType=selectionType)
     wnd.width = 400
     wnd.height = 400
     if wnd.ShowModal() == 1:
@@ -771,7 +685,7 @@ def GetFileDialog(path = None, fileExtensions = None, multiSelect = False, selec
 def __Search(searchStr, groupID, exact, filterCorpID, hideNPC = False):
     if groupID == const.groupCharacter:
         if hideNPC:
-            result = sm.RemoteSvc('lookupSvc').LookupPlayerCharacters(searchStr, exact)
+            result = sm.RemoteSvc('lookupSvc').LookupEvePlayerCharacters(searchStr, exact)
         else:
             result = sm.RemoteSvc('lookupSvc').LookupCharacters(searchStr, exact)
         if result:
@@ -821,14 +735,14 @@ def Search(searchStr, groupID, categoryID = None, modal = 1, exact = 0, getError
     if len(searchStr) < 1:
         sm.GetService('loading').StopCycle()
         if getError:
-            return mls.UI_SHARED_PLEASETYPESOMETHING
+            return localization.GetByLabel('UI/Common/PleaseTypeSomething')
         eve.Message('LookupStringMinimum', {'minimum': 1})
         return 
     if len(searchStr) >= 100 or exact == -1 and len(searchStr) > 5:
         sm.GetService('loading').StopCycle()
         if getError:
-            return mls.UI_SHARED_TOOLONGSEARCHSTRING
-        eve.Message('CustomInfo', {'info': mls.UI_SHARED_TOOLONGSEARCHSTRING})
+            return localization.GetByLabel('UI/Common/SearchStringTooLong')
+        eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Common/SearchStringTooLong')})
         return 
     import util
     attrGroupName = {const.groupCharacter: 'Character',
@@ -840,30 +754,37 @@ def Search(searchStr, groupID, categoryID = None, modal = 1, exact = 0, getError
      const.groupConstellation: 'Constellation',
      const.groupRegion: 'Region',
      const.groupAlliance: 'Alliance'}.get(groupID, '')
+    attrLocGroupNamePlural = {const.groupCharacter: 'UI/Common/Characters',
+     const.groupCorporation: 'UI/Common/Corporations',
+     const.groupFaction: 'UI/Common/Factions',
+     const.groupStation: 'UI/Common/Stations',
+     const.groupAsteroidBelt: 'UI/Common/AsteroidBelts',
+     const.groupSolarSystem: 'UI/Common/SolarSystems',
+     const.groupConstellation: 'UI/Common/Constellations',
+     const.groupRegion: 'UI/Common/Regions',
+     const.groupAlliance: 'UI/Common/Alliances'}.get(groupID, '')
     if categoryID is not None and categoryID == const.categoryOwner:
         result = FilterResult(sm.RemoteSvc('lookupSvc').LookupOwners(searchStr, exact), filterGroups, hideNPC, attrGroupName)
         owners = [ each.ownerID for each in result ]
         if owners:
             cfg.eveowners.Prime(owners)
-        displayGroupName = mls.UI_GENERIC_OWNER.lower()
-        displayGroupNamePlural = mls.UI_GENERIC_OWNERS
+        displayGroupName = localization.GetByLabel('UI/Common/Owner')
+        displayGroupNamePlural = localization.GetByLabel('UI/Common/Owners')
     else:
         displayGroupName = cfg.invgroups.Get(groupID).name
-        if attrGroupName:
-            displayGroupNamePlural = getattr(mls, 'UI_GENERIC_' + attrGroupName.upper().replace(' ', '') + 'S')
+        if attrGroupName and attrLocGroupNamePlural:
+            displayGroupNamePlural = localization.GetByLabel(attrLocGroupNamePlural)
         else:
             displayGroupNamePlural = displayGroupName
         result = FilterResult(__Search(searchStr, groupID, exact, filterCorpID, hideNPC), filterGroups, [0, hideNPC][(groupID in (const.groupCharacter, const.groupCorporation))], attrGroupName)
     if result is None or not len(result):
         sm.GetService('loading').StopCycle()
         if getError:
-            return mls.UI_SHARED_NOGROUPFOUNDWITH % {'group': displayGroupName,
-             'with': searchStr}
+            return localization.GetByLabel('UI/Search/NoGroupFoundWith', groupName=displayGroupName, searchTerm=searchStr)
         if exact and groupID == const.groupCharacter:
-            eve.Message('CustomInfo', {'info': mls.UI_SHARED_ONEGROUPFOUNDWITHEXACT % {'name': searchStr}})
+            eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Search/NoCharacterFoundWith', searchTerm=searchStr)})
         else:
-            eve.Message('CustomInfo', {'info': mls.UI_SHARED_NOGROUPFOUNDWITH % {'group': displayGroupName,
-                      'with': searchStr}})
+            eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Search/NoGroupFoundWith', groupName=displayGroupName, searchTerm=searchStr)})
         return 
     if len(result) >= 1:
         if len(result) == 1:
@@ -871,19 +792,16 @@ def Search(searchStr, groupID, categoryID = None, modal = 1, exact = 0, getError
                 if notifyOneMatch:
                     return (GetAttr(result[0], 'ID', attrGroupName), 1)
                 return GetAttr(result[0], 'ID', attrGroupName)
-            hint = mls.UI_SHARED_ONEGROUPFOUNDWITH % {'group': displayGroupName,
-             'with': searchStr}
+            hint = localization.GetByLabel('UI/Search/OneGroupFoundWith', groupName=displayGroupName, searchTerm=searchStr)
         else:
-            hint = mls.UI_SHARED_MANYGROUPSFOUNDWITH % {'num': len(result),
-             'group': displayGroupNamePlural,
-             'with': searchStr}
+            hint = localization.GetByLabel('UI/Search/ManyGroupsFoundWith', itemCount=len(result), groupNames=displayGroupNamePlural, searchTerm=searchStr)
         tmplist = []
         for each in result:
             id = GetAttr(each, 'ID', attrGroupName)
             if groupID == const.groupCorporation and exact == -1:
-                name = '[%s] %s' % (GetAttr(each, 'tickerName', attrGroupName), GetAttr(each, 'Name', attrGroupName))
+                name = '%s %s' % (GetAttr(each, 'tickerName', attrGroupName), GetAttr(each, 'Name', attrGroupName))
             elif groupID == const.groupAlliance and exact == -1:
-                name = '[%s] %s' % (GetAttr(each, 'shortName', attrGroupName), GetAttr(each, 'Name', attrGroupName))
+                name = '%s %s' % (GetAttr(each, 'shortName', attrGroupName), GetAttr(each, 'Name', attrGroupName))
             elif groupID == const.groupCharacter and util.IsNPC(id):
                 agentInfo = sm.GetService('agents').GetAgentByID(id)
                 if agentInfo is not None and agentInfo.agentTypeID == const.agentTypeAura:
@@ -896,7 +814,8 @@ def Search(searchStr, groupID, categoryID = None, modal = 1, exact = 0, getError
 
         sm.GetService('loading').StopCycle()
         if getWindow:
-            chosen = ListWnd(tmplist, attrGroupName.lower(), [displayGroupNamePlural, '%s %s' % (mls.UI_GENERIC_SELECT, displayGroupName)][modal], hint, 1, minChoices=modal, isModal=modal, windowName=searchWndName, unstackable=1)
+            selectionText = localization.GetByLabel('UI/Search/GenericSelection', groupName=displayGroupName)
+            chosen = ListWnd(tmplist, attrGroupName.lower(), [displayGroupNamePlural, selectionText][modal], hint, 1, minChoices=modal, isModal=modal, windowName=searchWndName, unstackable=1)
             if chosen:
                 return chosen[1]
         else:
@@ -929,22 +848,22 @@ def SearchOwners(searchStr, groupIDs = None, exact = False, notifyOneMatch = Fal
          const.groupCorporation,
          const.groupAlliance,
          const.groupFaction]
-    groupNames = {const.groupCharacter: [mls.UI_GENERIC_CHARACTER, mls.UI_GENERIC_CHARACTERS],
-     const.groupCorporation: [mls.UI_GENERIC_CORPORATION, mls.UI_GENERIC_CORPORATIONS],
-     const.groupAlliance: [mls.UI_GENERIC_ALLIANCE, mls.UI_GENERIC_ALLIANCES],
-     const.groupFaction: [mls.UI_GENERIC_FACTION, mls.UI_GENERIC_FACTIONS]}
+    groupNames = {const.groupCharacter: [localization.GetByLabel('UI/Common/Character'), localization.GetByLabel('UI/Common/Characters')],
+     const.groupCorporation: [localization.GetByLabel('UI/Common/Corporation'), localization.GetByLabel('UI/Common/Corporations')],
+     const.groupAlliance: [localization.GetByLabel('UI/Common/Alliance'), localization.GetByLabel('UI/Common/Alliances')],
+     const.groupFaction: [localization.GetByLabel('UI/Common/Faction'), localization.GetByLabel('UI/Common/Factions')]}
     searchStr = searchStr.replace('%', '').replace('?', '')
     if len(searchStr) < 1:
         sm.GetService('loading').StopCycle()
         if getError:
-            return mls.UI_SHARED_PLEASETYPESOMETHING
+            return localization.GetByLabel('UI/Common/PleaseTypeSomething')
         eve.Message('LookupStringMinimum', {'minimum': 1})
         return 
     if len(searchStr) >= 100 or exact == -1 and len(searchStr) > 5:
         sm.GetService('loading').StopCycle()
         if getError:
-            return mls.UI_SHARED_TOOLONGSEARCHSTRING
-        eve.Message('CustomInfo', {'info': mls.UI_SHARED_TOOLONGSEARCHSTRING})
+            return localization.GetByLabel('UI/Common/SearchStringTooLong')
+        eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Common/SearchStringTooLong')})
         return 
     displayGroupName = ''
     displayGroupNamePlural = ''
@@ -953,8 +872,8 @@ def SearchOwners(searchStr, groupIDs = None, exact = False, notifyOneMatch = Fal
             displayGroupName += groupNames[g][0] + '/'
             displayGroupNamePlural += groupNames[g][1] + '/'
 
-    displayGroupName = displayGroupName[:(len(displayGroupName) - 1)]
-    displayGroupNamePlural = displayGroupNamePlural[:(len(displayGroupNamePlural) - 1)]
+    displayGroupName = displayGroupName[:-1]
+    displayGroupNamePlural = displayGroupNamePlural[:-1]
     if hideNPC:
         owners = sm.RemoteSvc('lookupSvc').LookupPCOwners(searchStr, exact)
     else:
@@ -962,23 +881,18 @@ def SearchOwners(searchStr, groupIDs = None, exact = False, notifyOneMatch = Fal
     list = []
     for o in owners:
         if o.groupID in groupIDs:
-            list.append(('%s [%s]' % (o.ownerName, groupNames[o.groupID][0]), o.ownerID, o.typeID))
+            list.append(('%s %s' % (o.ownerName, groupNames[o.groupID][0]), o.ownerID, o.typeID))
 
     if not list:
         sm.GetService('loading').StopCycle()
         if getError:
-            return mls.UI_SHARED_NOGROUPFOUNDWITH % {'group': displayGroupName,
-             'with': searchStr}
-        eve.Message('CustomInfo', {'info': mls.UI_SHARED_NOGROUPFOUNDWITH % {'group': displayGroupName,
-                  'with': searchStr}})
+            return localization.GetByLabel('UI/Search/NoGroupFoundWith', groupName=displayGroupName, searchTerm=searchStr)
+        eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Search/NoGroupFoundWith', groupName=displayGroupName, searchTerm=searchStr)})
         return 
     if len(list) == 1 and not notifyOneMatch:
         return list[0][1]
-    caption = '%s %s' % (mls.UI_GENERIC_SELECT, displayGroupName)
-    hint = mls.UI_SHARED_MANYGROUPSFOUNDWITH % {'num': len(list),
-     'group': displayGroupNamePlural,
-     'with': searchStr}
-    chosen = ListWnd(lst=list, listtype='owner', caption='%s %s' % (mls.UI_GENERIC_SELECT, displayGroupName), hint=hint, ordered=1, minChoices=1, windowName=searchWndName)
+    hint = localization.GetByLabel('UI/Search/ManyGroupsFoundWith', itemCount=len(list), groupNames=displayGroupNamePlural, searchTerm=searchStr)
+    chosen = ListWnd(lst=list, listtype='owner', caption=localization.GetByLabel('UI/Search/GenericSelection', groupName=displayGroupName), hint=hint, ordered=1, minChoices=1, windowName=searchWndName)
     if chosen:
         return chosen[1]
 
@@ -1003,27 +917,24 @@ def GetStationByName(searchstr, flag = 0):
 def SearchStation(stationname, flag = 0):
     if len(stationname) < 1:
         sm.GetService('loading').StopCycle()
-        eve.Message('CustomInfo', {'info': mls.UI_SHARED_PLEASETYPESOMETHINGINFO})
+        eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Common/PleaseTypeSomething')})
         return 
     stationinfo = GetStationByName(stationname.lower(), flag)
     if stationinfo is None or not len(stationinfo):
         sm.GetService('loading').StopCycle()
-        eve.Message('CustomInfo', {'info': mls.UI_SHARED_NOSTATIONFOUNDWITH % {'with': stationname}})
+        eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Search/NoStationFoundWith', searchTerm=stationname)})
         return 
     if len(stationinfo) > 20:
         sm.GetService('loading').StopCycle()
-        eve.Message('CustomInfo', {'info': mls.UI_SHARED_MORETHEN10STATIONSFOUND % {'what': stationname}})
+        eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Search/MoreThanLimitStationsFound', limit=20, searchTerm=stationname)})
         return 
     if len(stationinfo) >= 1 and len(stationinfo) <= 20:
         if len(stationinfo) == 1:
             if stationinfo[0].stationName == stationname:
                 return 
-            hint = mls.UI_SHARED_ONESTATIONFOUNDWITH % {'what': stationname}
-        elif len(stationinfo) <= 25:
-            hint = mls.UI_SHARED_MANYSTAIONSFOUNDWITH % {'num': len(stationinfo),
-             'with': stationname}
-        if len(stationinfo) > 25:
-            hint = mls.UI_SHARED_MORETHEN25STATIONSFOUND % {'with': stationinfo}
+            hint = localization.GetByLabel('UI/Search/OneStationFoundWith', searchTerm=stationname)
+        elif len(stationinfo) <= 20:
+            hint = localization.GetByLabel('UI/Search/ManyStationsFoundWith', itemCount=len(stationinfo), searchTerm=stationname)
         if len(stationinfo) == 1:
             return stationinfo[0].stationID
         tmplist = []
@@ -1031,7 +942,7 @@ def SearchStation(stationname, flag = 0):
             tmplist.append((each.stationName, each.stationID, 0))
 
         sm.GetService('loading').StopCycle()
-        choosestation = ListWnd(tmplist, 'station', mls.UI_MARKET_SELECTSTATION, hint, 1)
+        choosestation = ListWnd(tmplist, 'station', localization.GetByLabel('UI/Search/SelectStation'), hint, 1)
         if choosestation:
             return choosestation[1]
 
@@ -1055,13 +966,11 @@ def FittingFlags():
 
 def ListWnd(lst, listtype = None, caption = None, hint = None, ordered = 0, minw = 200, minh = 256, minChoices = 1, maxChoices = 1, initChoices = [], validator = None, isModal = 1, scrollHeaders = [], iconMargin = 0, windowName = 'listwindow', lstDataIsGrouped = 0, unstackable = 0):
     if caption is None:
-        caption = mls.UI_MARKET_SELECTITEM
-    wnd = sm.GetService('window').GetWindow(windowName)
-    if wnd:
-        wnd.SelfDestruct()
-    wnd = sm.GetService('window').GetWindow(windowName, create=1, decoClass=form.ListWindow, lst=lst, listtype=listtype, ordered=ordered, minSize=(minw, minh), caption=caption, minChoices=minChoices, maxChoices=maxChoices, initChoices=initChoices, validator=validator, scrollHeaders=scrollHeaders, iconMargin=iconMargin, lstDataIsGrouped=lstDataIsGrouped)
+        caption = localization.GetByLabel('UI/Search/SelectItem')
+    form.ListWindow.CloseIfOpen(windowID=windowName)
+    wnd = form.ListWindow(windowID=windowName, lst=lst, listtype=listtype, ordered=ordered, minSize=(minw, minh), caption=caption, minChoices=minChoices, maxChoices=maxChoices, initChoices=initChoices, validator=validator, scrollHeaders=scrollHeaders, iconMargin=iconMargin, lstDataIsGrouped=lstDataIsGrouped)
     if hint:
-        wnd.SetHint('<center>' + hint)
+        wnd.SetHint(['<center>', hint])
     if unstackable:
         wnd.MakeUnstackable()
     if isModal:
@@ -1077,17 +986,15 @@ def ListWnd(lst, listtype = None, caption = None, hint = None, ordered = 0, minw
 
 
 
-def HybridWnd(format, caption, modal = 1, wndID = None, buttons = None, location = None, minW = 256, minH = 256, blockconfirm = 0, icon = None, unresizeAble = 0, ignoreCurrent = 1):
-    if wndID is not None:
-        for each in sm.GetService('window').GetWindows()[:]:
-            if hasattr(each, 'wndID') and each.wndID == wndID and not each.destroyed:
-                return 
-
+def HybridWnd(format, caption, modal = 1, windowID = None, buttons = None, location = None, minW = 256, minH = 256, blockconfirm = 0, icon = None, unresizeAble = 0, ignoreCurrent = 1):
+    if windowID is not None:
+        wnd = uicls.Window.GetIfOpen(windowID=windowID)
+        if wnd:
+            return 
+    windowID = windowID or caption
     if buttons is None:
         buttons = uiconst.OK
-    if modal == 1:
-        sm.GetService('window').ResetToDefaults(caption)
-    wnd = sm.GetService('window').GetWindow(caption, create=1, decoClass=form.HybridWindow, ignoreCurrent=ignoreCurrent, format=format, caption=caption, modal=modal, wndID=wndID, buttons=buttons, location=location, minW=minW, minH=minH, icon=icon, blockconfirm=blockconfirm)
+    wnd = form.HybridWindow.Open(ignoreCurrent=ignoreCurrent, format=format, caption=caption, modal=modal, windowID=windowID, buttons=buttons, location=location, minW=minW, minH=minH, icon=icon, blockconfirm=blockconfirm)
     wnd.MakeUnstackable()
     if unresizeAble:
         wnd.MakeUnResizeable()
@@ -1104,9 +1011,9 @@ def HybridWnd(format, caption, modal = 1, wndID = None, buttons = None, location
 
 def NamePopup(caption = None, label = None, setvalue = '', icon = -1, modal = 1, btns = None, maxLength = None, passwordChar = None, validator = None):
     if caption is None:
-        caption = mls.UI_SHARED_TYPEINNAME
+        caption = localization.GetByLabel('UI/Common/Name/TypeInName')
     if label is None:
-        label = mls.UI_SHARED_TYPEINNAME
+        label = localization.GetByLabel('UI/Common/Name/TypeInName')
     if icon == -1:
         icon = uiconst.QUESTION
     if validator:
@@ -1140,14 +1047,14 @@ def NamePopup(caption = None, label = None, setvalue = '', icon = -1, modal = 1,
 
 
 
-def TextBox(header, txt, modal = 0, wndID = 'generictextbox2', tabs = [], preformatted = 0, scrolltotop = 1):
-    wnd = sm.GetService('window').GetWindow(header)
+def TextBox(header, txt, modal = 0, windowID = 'generictextbox2', tabs = [], preformatted = 0, scrolltotop = 1):
+    wnd = uicls.Window.GetIfOpen(windowID=windowID)
     if wnd is None or wnd.destroyed or uicore.uilib.Key(uiconst.VK_SHIFT):
         format = [{'type': 'textedit',
           'readonly': 1,
           'label': '_hide',
           'key': 'text'}]
-        wnd = HybridWnd(format, header, modal, wndID, uiconst.CLOSE, None, minW=256, minH=128)
+        wnd = HybridWnd(format, header, modal, windowID, uiconst.CLOSE, None, minW=256, minH=128)
         if wnd:
             wnd.form.align = uiconst.TOALL
             wnd.form.left = wnd.form.width = 3
@@ -1173,17 +1080,16 @@ def TextBox(header, txt, modal = 0, wndID = 'generictextbox2', tabs = [], prefor
 
 def NamePopupErrorCheck(ret):
     if not len(ret['name']) or len(ret['name']) and len(ret['name'].strip()) < 1:
-        return mls.UI_SHARED_PLEASETYPESOMETHINGINFO
+        return localization.GetByLabel('UI/Common/PleaseTypeSomething')
     return ''
 
 
 
 def QtyPopup(maxvalue = None, minvalue = 0, setvalue = '', hint = None, caption = None, label = '', digits = 0):
     if caption is None:
-        caption = mls.UI_SHARED_SETQTY
+        caption = localization.GetByLabel('UI/Common/SetQuantity')
     if maxvalue is not None and hint is None:
-        hint = mls.UI_SHARED_SETQTYBETWEEN % {'from': util.FmtAmt(minvalue),
-         'to': util.FmtAmt(maxvalue)}
+        hint = localization.GetByLabel('UI/Common/SetQtyBetween', min=util.FmtAmt(minvalue), max=util.FmtAmt(maxvalue))
         if setvalue == 0:
             setvalue = maxvalue
     maxvalue = maxvalue or min(maxvalue, sys.maxint)
@@ -1223,20 +1129,20 @@ def QtyPopup(maxvalue = None, minvalue = 0, setvalue = '', hint = None, caption 
 
 
 def GetInvItemDefaultHiddenHeaders():
-    return [mls.UI_SHARED_METALVL, mls.UI_SHARED_TECHLVL, mls.UI_GENERIC_CATEGORY]
+    return [localization.GetByLabel('UI/Inventory/ItemMetaLevel'), localization.GetByLabel('UI/Inventory/ItemTechLevel'), localization.GetByLabel('UI/Inventory/ItemCategory')]
 
 
 
 def GetInvItemDefaultHeaders():
-    return [mls.UI_GENERIC_NAME,
-     mls.UI_GENERIC_QTY,
-     mls.UI_GENERIC_GROUP,
-     mls.UI_GENERIC_CATEGORY,
-     mls.UI_GENERIC_SIZE,
-     mls.UI_GENERIC_SLOT,
-     mls.UI_GENERIC_VOLUME,
-     mls.UI_SHARED_METALVL,
-     mls.UI_SHARED_TECHLVL]
+    return [localization.GetByLabel('UI/Common/Name'),
+     localization.GetByLabel('UI/Common/Quantity'),
+     localization.GetByLabel('UI/Inventory/ItemGroup'),
+     localization.GetByLabel('UI/Inventory/ItemCategory'),
+     localization.GetByLabel('UI/Inventory/ItemSize'),
+     localization.GetByLabel('UI/Inventory/ItemSlot'),
+     localization.GetByLabel('UI/Inventory/ItemVolume'),
+     localization.GetByLabel('UI/Inventory/ItemMetaLevel'),
+     localization.GetByLabel('UI/Inventory/ItemTechLevel')]
 
 
 
@@ -1278,35 +1184,6 @@ def GetLightYearDistance(fromSystem, toSystem, fraction = True):
 
 
 
-def GetRankLabel(factionID, rank):
-    rank = min(9, rank)
-    (rankLabel, rankDescription,) = ('', '')
-    if rank < 0:
-        rankLabel = mls.UI_FACWAR_NORANK
-        rankDescription = ''
-    else:
-        rankLabel = mls.GetLabelIfExists('UI_FACWAR_FACTION_%s_RANK_%s' % (factionID, rank)) or mls.UI_FACWAR_NORANK
-        rankDescription = mls.GetLabelIfExists('UI_FACWAR_FACTION_%s_RANKDESCRIPTION_%s' % (factionID, rank)) or rankLabel
-    return (rankLabel, rankDescription)
-
-
-
-def GetCertificateLabel(certificateID):
-    classes = sm.RemoteSvc('certificateMgr').GetCertificateClasses()
-    data = cfg.certificates.Get(certificateID)
-    label = cfg.invtypes.Get(const.typeCertificate).name
-    desc = cfg.invtypes.Get(const.typeCertificate).description
-    grade = mls.UI_SHARED_CERTGRADE1
-    if data:
-        classdata = classes[data.classID]
-        if classdata:
-            label = Tr(classdata.className, 'cert.classes.className', classdata.dataID)
-        grade = getattr(mls, 'UI_SHARED_CERTGRADE%d' % data.grade)
-        desc = data.description
-    return (label, grade, desc)
-
-
-
 def HideButtonFromGroup(btns, label, button = None):
     if label:
         btn = uiutil.FindChild(btns, '%s_Btn' % label)
@@ -1327,38 +1204,6 @@ def ShowButtonFromGroup(btns, label, button = None):
 
 
 
-def GetTimeText(secs, defaultText = None, short = 0):
-    if defaultText is None:
-        defaultText = mls.UI_SHARED_COMPLETIONIMMINENT
-    secs = max(0.0, secs)
-    seconds = int(secs % 60)
-    minutes = int(secs / 60 % 60)
-    hours = int(secs / 60 / 60 % 24)
-    days = int(secs / 60 / 60 / 24)
-    if not short:
-        s = ''
-        if days:
-            s = '%s %s' % (days, (mls.UI_GENERIC_DAYS, mls.UI_GENERIC_DAY)[(days == 1)])
-        if hours:
-            s = '%s%s %s' % (s and '%s, ' % s, hours, (mls.UI_GENERIC_HOURS, mls.UI_GENERIC_HOUR)[(hours == 1)])
-        if minutes:
-            s = '%s%s %s' % (s and '%s, ' % s, minutes, (mls.UI_GENERIC_MINUTES, mls.UI_GENERIC_MINUTE)[(minutes == 1)])
-        if seconds:
-            s = '%s%s %s' % (s and '%s, ' % s, seconds, (mls.UI_GENERIC_SECONDS, mls.UI_GENERIC_SECOND)[(seconds == 1)])
-    else:
-        s = ''
-        if days:
-            s = '%s%s' % (days, mls.UI_GENERIC_DAYVERYSHORT)
-        if hours:
-            s = '%s%s%s' % (s and '%s, ' % s, hours, mls.UI_GENERIC_HOURVERYSHORT)
-        if minutes:
-            s = '%s%s%s' % (s and '%s, ' % s, minutes, mls.UI_GENERIC_MINUTEVERYSHORT)
-        if seconds:
-            s = '%s%s%s' % (s and '%s, ' % s, seconds, mls.UI_GENERIC_SECONDVERYSHORT)
-    return s or defaultText
-
-
-
 def FadeCont(cont, fadeIn, after = 0, fadeTime = 500.0):
     if getattr(cont, 'fading', 0) == 1:
         return 
@@ -1369,12 +1214,12 @@ def FadeCont(cont, fadeIn, after = 0, fadeTime = 500.0):
         current = cont.opacity
         end = 0.0
     setattr(cont, 'fading', 1)
-    blue.pyos.synchro.Sleep(after)
-    (start, ndt,) = (blue.os.GetTime(), 0.0)
+    blue.pyos.synchro.SleepWallclock(after)
+    (start, ndt,) = (blue.os.GetWallclockTime(), 0.0)
     while ndt != 1.0:
         if not cont or cont.destroyed:
             break
-        ndt = min(blue.os.TimeDiffInMs(start) / fadeTime, 1.0)
+        ndt = min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / fadeTime, 1.0)
         cont.opacity = mathUtil.Lerp(current, end, ndt)
         blue.pyos.synchro.Yield()
 

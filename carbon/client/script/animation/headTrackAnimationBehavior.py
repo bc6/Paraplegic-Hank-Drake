@@ -27,11 +27,14 @@ class HeadTrackAnimationBehavior(animation.animationBehavior):
             if gazeAtEntityID:
                 gazeAtEntity = self.entityService.FindEntityByID(gazeAtEntityID)
                 if gazeAtEntity:
-                    sensorPos = geo2.Vector(*controller.entityRef.movement.pos)
+                    sensorPos = geo2.Vector(*controller.entityRef.position.position)
                     sensorPos = sensorPos + self.perceptionClient.GetSensorOffset(controller.entityRef)
                     focusPos = geo2.Vector(*gazeAtEntity.position.position)
                     focusPos = focusPos + self.perceptionClient.GetSensorOffset(gazeAtEntity)
-                    (headTranslation, headRotation,) = controller.entityRef.animation.updater.network.GetBoneTransform(debugBoneName)
+                    headTransform = controller.animationNetwork.GetBoneTransform(debugBoneName)
+                    if headTransform is None:
+                        return 
+                    (headTranslation, headRotation,) = headTransform
                     useBlendToHeadBone = False
                     if useBlendToHeadBone:
                         workPos = geo2.Vec3Subtract(focusPos, controller.entPos)
@@ -61,7 +64,7 @@ class HeadTrackAnimationBehavior(animation.animationBehavior):
                         relativeLookAtYaw = relativeLookAtYaw - 2 * math.pi
                     if relativeLookAtPitch > math.pi:
                         relativeLookAtPitch = relativeLookAtPitch - 2 * math.pi
-                    if geo2.Vec3LengthSq(controller.entityRef.movement.avatar.vel) > 0.0:
+                    if geo2.Vec3LengthSq(controller.entityRef.movement.physics.velocity) > 0.0:
                         maxYaw = MAXIMUM_HEAD_LOOK_ANGLE_YAW_MOVING
                         maxPitch = MAXIMUM_HEAD_LOOK_ANGLE_PITCH_MOVING
                     else:
@@ -72,12 +75,12 @@ class HeadTrackAnimationBehavior(animation.animationBehavior):
                         controller.SetControlParameter('Aim_Y', -relativeLookAtPitch)
                         controller.SetControlParameter('HeadLookWeight', 1)
                         aimingManager = self.aimingClient.GetAimingManager(controller.entityRef.scene.sceneID)
-                        if aimingManager.IsDebugRenderingEnabled():
+                        if aimingManager.IsDebugRendering():
                             self.aimingClient.GetAimingManager(controller.entityRef.scene.sceneID).SetDebugUsedParams(controller.entityRef.entityID, relativeLookAtYaw, -relativeLookAtPitch, maxYaw, maxPitch, headTranslation, headRotation)
                         return 
             controller.SetControlParameter('HeadLookWeight', 0)
             aimingManager = self.aimingClient.GetAimingManager(controller.entityRef.scene.sceneID)
-            if aimingManager.IsDebugRenderingEnabled():
+            if aimingManager.IsDebugRendering():
                 (translation, orientation,) = controller.entityRef.animation.updater.network.GetBoneTransform(debugBoneName)
                 self.aimingClient.GetAimingManager(controller.entityRef.scene.sceneID).SetDebugUsedParams(controller.entityRef.entityID, -99, -99, MAXIMUM_HEAD_LOOK_ANGLE_YAW, MAXIMUM_HEAD_LOOK_ANGLE_PITCH, translation, orientation)
 

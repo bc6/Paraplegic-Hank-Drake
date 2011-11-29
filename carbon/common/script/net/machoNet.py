@@ -19,6 +19,7 @@ import const
 import dbutil
 import bluepy
 import collections
+import gpcs
 from service import ROLE_SERVICE, ROLE_ADMIN, ROLE_ANY, ROLE_VIPLOGIN, SERVICE_RUNNING, SERVICE_START_PENDING
 globals().update(service.consts)
 Enter = blue.pyos.taskletTimer.EnterTasklet
@@ -43,9 +44,16 @@ MACHONETERR_UNMACHODESTINATION = 0
 MACHONETERR_UNMACHOCHANNEL = 1
 MACHONETERR_WRAPPEDEXCEPTION = 2
 OOB_SESSIONNOTIFICATION = 1
+CLUSTER_ID = 1
+NEW_CLUSTER_CONFIG = not getattr(boot, 'oldClusterConfig', False)
+DEFAULT_SUBNETWORK = getattr(boot, 'preferredSubnet', '10.')
+PREFERRED_SUBNETWORKS = {'server': getattr(boot, 'preferredServerSubnet', DEFAULT_SUBNETWORK),
+ 'proxy': getattr(boot, 'preferredProxySubnet', DEFAULT_SUBNETWORK)}
 offsetMap = {'tcp:packet:client': 0,
  'tcp:packet:machoNet': 1,
- 'tcp:raw:http': 2}
+ 'tcp:raw:http': 2,
+ 'tcp:raw:http2': 3,
+ 'tcp:http:cow': 4}
 offsetMap = {'client': offsetMap,
  'server': offsetMap,
  'proxy': offsetMap,
@@ -183,7 +191,7 @@ def ThrottledCall(key, boundMethod, *args):
     logger = sm.GetService('machoNet').LogNotice
     with MachoThrottle(key) as t:
         if hasattr(t, 'result'):
-            logger(key, 'found throttler result from', (blue.os.GetTime() - t.resultTime) / const.uSEC, " microseconds ago. It's got", len(t.owning), 'threads on it and', t.nWaiting, 'waiting for it')
+            logger(key, 'found throttler result from', (blue.os.GetWallclockTime() - t.resultTime) / const.uSEC, " microseconds ago. It's got", len(t.owning), 'threads on it and', t.nWaiting, 'waiting for it')
             ret = t.result
             logger('No need to cross the wire for', key, ' Got', ret)
             if t.nWaiting == 0:
@@ -193,7 +201,7 @@ def ThrottledCall(key, boundMethod, *args):
             ret = boundMethod(*args)
             if getattr(t, 'nWaiting', 0) > 0:
                 t.result = ret
-                t.resultTime = blue.os.GetTime()
+                t.resultTime = blue.os.GetWallclockTime()
                 logger('Sharing result for call', key, 'at', t.resultTime, 'for', t.nWaiting, 'waiting threads:', t.result)
     return ret
 
@@ -298,7 +306,8 @@ class MachoNetService(service.Service):
      'GetClientConfigVals': [ROLE_SERVICE],
      'UpdateClientConfigVals': [ROLE_SERVICE],
      'ForwardNotificationToNode': [ROLE_SERVICE],
-     'GetBaseTunnelPortOffset': [ROLE_SERVICE]}
+     'GetBaseTunnelPortOffset': [ROLE_SERVICE],
+     'RegisterSessionWithTransport': [ROLE_SERVICE]}
     __counters__ = {'dataSent': 'traffic',
      'dataReceived': 'traffic',
      'blockingCallTimes': 'traffic',
@@ -413,6 +422,8 @@ class MachoNetService(service.Service):
         self.basePortNumber = self.defaultProxyPortOffset
         self.baseTunnelPortOffset = self.defaultTunnelPortOffset
         self.nodeID = None
+        self.machineID = None
+        self.nodeIndex = None
         self.expectedLoadValue = {}
         self.clientIDOffset = 1
         self.stop = 1
@@ -444,7 +455,7 @@ class MachoNetService(service.Service):
         self.subscriptionsByClientID = {}
         self.subscriptionsByAddress = {}
         self.subscriptionCountsByAddress = {}
-        self.startedWhen = blue.os.GetTime()
+        self.startedWhen = blue.os.GetWallclockTime()
         self.paon = None
         self.paonLock = uthread.Semaphore('MachoNet:paonLock')
         self.vipLock = uthread.Semaphore('MachoNet:vipLock')
@@ -636,6 +647,7 @@ class MachoNetService(service.Service):
         self.stop = 0
         self.clusterStartupPhase = False
         self.availableLoginSlots = 0
+        machineName = blue.pyos.GetEnv().get('COMPUTERNAME', 'LOCALHOST').lower()
         if macho.mode == 'client' and not int(prefs.GetValue('http', 0)):
             try:
                 del offsetMap[macho.mode]['tcp:raw:http']
@@ -657,6 +669,11 @@ class MachoNetService(service.Service):
         self.LogInfo('Opening listen ports')
         self.resurrectedNode = False
         fixedhop = None
+        nodeIndex = 0
+        if NEW_CLUSTER_CONFIG:
+            self.LogInfo('MachoNet is starting up using the NEW cluster configuration tables')
+        else:
+            self.LogInfo('MachoNet is starting up using the OLD cluster configuration tables')
         for arg in blue.pyos.GetArg():
             if arg.lower().startswith('/machohop='):
                 fixedhop = int(arg[len('/machohop='):])
@@ -670,6 +687,7 @@ class MachoNetService(service.Service):
         if fixedhop is not None:
             self.basePortNumber += fixedhop * offsetStep[macho.mode]
             self.baseTunnelPortOffset += fixedhop * offsetStep[macho.mode]
+            nodeIndex = fixedhop
         while True:
             try:
                 for (each, offset,) in offsets:
@@ -686,12 +704,14 @@ class MachoNetService(service.Service):
                 transports.clear()
                 sys.exc_clear()
             else:
+                self.nodeIndex = nodeIndex
                 break
             if fixedhop is not None:
                 errreason = 'Failed to acquire the required port range running in fixed hop (=%d) mode.  Terminating process' % (fixedhop,)
                 self.LogError(errreason)
                 log.Quit(errreason)
             self.basePortNumber += offsetStep[macho.mode]
+            nodeIndex += 1
             self.baseTunnelPortOffset += offsetStep[macho.mode]
             if self.basePortNumber > self.defaultTunnelPortOffset:
                 raise RuntimeError("Something is seriously wrong.  I've tried plenty of port number ranges, and still no luck.")
@@ -712,7 +732,11 @@ class MachoNetService(service.Service):
                 self.dbzcluster.Nodes_TrashLimbos(self.cleanupInterval)
                 (host, port,) = self.GetTransport('tcp:packet:machoNet').GetExternalAddress().split(':')
                 internalAddress = self.GetTransport('tcp:packet:machoNet').GetInternalAddress().split(':')[0]
-                ret = self.dbzcluster.Nodes_Register(host, self.basePortNumber, self.connectToCluster, macho.version, boot.version, boot.build, blue.os.pid, self.resurrectedNode, internalAddress)
+                if NEW_CLUSTER_CONFIG:
+                    self.LogInfo('Registering to the cluster database. ClusterID:', CLUSTER_ID, 'machineID:', None, 'machineName:', machineName, 'nodeIndex:', nodeIndex)
+                    ret = self.dbzcluster.Nodes_Register2(CLUSTER_ID, None, machineName, self.nodeIndex, 'SOL', macho.version, boot.version, boot.build, blue.os.pid, self.resurrectedNode, internalAddress)
+                else:
+                    ret = self.dbzcluster.Nodes_Register(host, self.basePortNumber, self.connectToCluster, macho.version, boot.version, boot.build, blue.os.pid, self.resurrectedNode, internalAddress)
                 errreason = None
                 if ret == -1:
                     errreason = "zcluster.Nodes_Register refused to accept the registration.  The cluster has already passed it's connectivity tests."
@@ -720,9 +744,9 @@ class MachoNetService(service.Service):
                         lastHeartBeat = self.DB2.SQL('SELECT lastHeartBeat= MAX(heartbeat) FROM zcluster.nodes')[0].lastHeartBeat
                         countDateTime = self.DB2.SQL("SELECT countDateTime = CONVERT(datetime, [value], 121) FROM zsystem.settings WHERE [group] = 'zcluster' AND [key] = 'TrashLimboNodes-LastCall'")[0].countDateTime
                         if lastHeartBeat is not None:
-                            delay = 3000 + (self.cleanupInterval * const.SEC + lastHeartBeat - blue.os.GetTime()) / const.MSEC
+                            delay = 3000 + (self.cleanupInterval * const.SEC + lastHeartBeat - blue.os.GetWallclockTime()) / const.MSEC
                             if countDateTime is not None:
-                                delay = max(delay, 3000 + (countDateTime + self.cleanupInterval * const.SEC - blue.os.GetTime()) / const.MSEC)
+                                delay = max(delay, 3000 + (countDateTime + self.cleanupInterval * const.SEC - blue.os.GetWallclockTime()) / const.MSEC)
                             if delay > 0:
                                 print errreason
                                 self.LogWarn(errreason)
@@ -730,13 +754,21 @@ class MachoNetService(service.Service):
                                 print delay,
                                 print ' ms...'
                                 self.LogWarn('The previous run might however be dead, delaying and retrying after ', delay, ' ms...')
-                                blue.pyos.synchro.Sleep(delay)
+                                blue.pyos.synchro.SleepWallclock(delay)
                                 retry = True
                                 continue
                 elif ret == -2:
-                    errreason = 'An app lock timeout occurred in zcluster.Nodes_Register'
+                    errreason = 'An app lock timeout occurred in zcluster.Nodes_Register2'
                 elif ret == -3:
-                    errreason = 'The host is not a member of the specified cluster.  Configure zcluster.proxies and zcluster.servers correctly.'
+                    errreason = ('The machine ', machineName, ' is not a member of the specified cluster.                             Configure zcluster.proxies and zcluster.machines correctly.')
+                elif ret == -4:
+                    localip = GetPreferredHostByName(machineName)
+                    if machineName != localip:
+                        self.LogError('Did not find machine configured for', machineName, 'Retrying with the ip address:', localip)
+                        machineName = localip
+                        continue
+                    else:
+                        errreason = 'Could not find a machineName configured to match: %s. Configure zcluster.machines correctly.' % machineName
                 elif type(ret) == types.IntType:
                     errreason = 'An unspecified error occurred while registering the node: %d' % ret
                 if errreason:
@@ -746,6 +778,8 @@ class MachoNetService(service.Service):
 
             self.nodeID = ret[0][0].nodeID
             self.serviceMask = ret[0][0].serviceMask
+            if NEW_CLUSTER_CONFIG:
+                self.machineID = ret[0][0].machineID
             if self.serviceMask is None:
                 self.serviceMask = const.cluster.SERVICE_ALL
             self.premapped = prefs.clusterMode in ('TEST', 'LIVE')
@@ -755,17 +789,21 @@ class MachoNetService(service.Service):
                 self.serviceNameByServiceID[each.serviceID] = each.serviceName
 
             for each in ret[2]:
-                self.serverNames[each.nodeID] = getattr(each, 'hostName', None)
+                if NEW_CLUSTER_CONFIG:
+                    self.serverNames[each.nodeID] = getattr(each, 'machineName', None)
+                else:
+                    self.serverNames[each.nodeID] = getattr(each, 'hostName', None)
 
             if self.connectToCluster and not self.premapped:
                 polarisNodeID = self.GetNodeFromAddress(const.cluster.SERVICE_POLARIS, 0)
+            self.LogInfo('Server Registration Complete. NodeID:', self.nodeID, ' serviceMask:', self.serviceMask, ', machineID:', self.machineID, ' nodeIndex:', self.nodeIndex)
         elif macho.mode == 'orchestratorAgent':
             customIDData = (self.defaultOrchestratorAgentPortOffset, offsetMap[macho.mode]['tcp:packet:machoNet'], 2000000)
             self.nodeID = self.GetIDOfAddress(self.GetTransport('tcp:packet:machoNet').GetInternalAddress(), clientMode=False, customIDData=customIDData)
             print 'nodeID=',
             print self.nodeID
         elif macho.mode == 'orchestratorMaster':
-            address = socket.gethostbyname(socket.gethostname()) + ':%d' % self.CalculatePortNumber('tcp:packet:machoNet', 'orchestratorAgent')
+            address = GetPreferredHostByName(socket.gethostname()) + ':%d' % self.CalculatePortNumber('tcp:packet:machoNet', 'orchestratorAgent')
             customIDData = (self.defaultOrchestratorAgentPortOffset, offsetMap[macho.mode]['tcp:packet:machoNet'], 2000000)
             self.nodeID = self.GetIDOfAddress(address, clientMode=False, customIDData=customIDData)
             self.nodeID = self.GetIDOfAddress(address, clientMode=True)
@@ -862,10 +900,10 @@ class MachoNetService(service.Service):
             uthread.new(self._MachoNetService__ClientSessionMaxTimePoll).context = 'machoNet::ClientSessionMaxTimePoll'
         uthread.new(self._MachoNetService__TimeoutCallLoop).context = 'machoNet::TimeoutCallLoop'
         uthread.new(self._MachoNetService__KATLoop).context = 'machoNet::KATLoop'
-        self.acceptStart = blue.os.GetTime()
-        self.stats = macho.MachoRunTimeStats()
+        self.acceptStart = blue.os.GetWallclockTime()
+        self.stats = macho.MachoRunTimeStats(self.transportsByID)
         self.stats.Enable()
-        self.LogNotice('MachoNet started with acceptDelay of %d seconds. I will accept connections at %s' % (self.acceptDelay, util.FmtDate(self.acceptStart + self.acceptDelay * const.SEC)))
+        self.LogNotice('MachoNet started with acceptDelay of %d seconds. I will accept connections at %s' % (self.acceptDelay, util.FmtDateEng(self.acceptStart + self.acceptDelay * const.SEC)))
         self.state = SERVICE_RUNNING
         for each in self.__gpcsmethodnames__:
             current = self.GetGPCS()
@@ -893,8 +931,8 @@ class MachoNetService(service.Service):
             if macho.mode == 'server' and (self.GetNodeID() == self.GetNodeFromAddress(const.cluster.SERVICE_POLARIS, 0) or self.IsResurrectedNode()):
                 config = self.dbzcluster.Cluster_DowntimeInfo()
                 if len(config):
-                    when = config[0].shutdownWhen * const.MIN + blue.os.GetTime() / const.DAY * const.DAY
-                    if when < blue.os.GetTime():
+                    when = config[0].shutdownWhen * const.MIN + blue.os.GetWallclockTime() / const.DAY * const.DAY
+                    if when < blue.os.GetWallclockTime():
                         when += const.DAY
                     if self.IsResurrectedNode():
                         self.GracefulShutdown(config[0].shutdownUserID, when, 0, config[0].shutdownReason)
@@ -964,7 +1002,7 @@ class MachoNetService(service.Service):
     def ConnectivityTest(self, offset, proxyNodeCount, serverNodeCount):
         if offset is not None:
             if offset and not self.clockReset and macho.mode == 'proxy':
-                now = blue.os.GetTime(1)
+                now = blue.os.GetWallclockTimeNow()
                 newnow = now + offset
                 print 'Correcting clock... advancing ',
                 print float(offset) / float(const.SEC),
@@ -1024,6 +1062,7 @@ class MachoNetService(service.Service):
         self.transportIDbySolNodeID = {}
         self.transportIDbyAppNodeID = {}
         self.transportIDbyProxyNodeID = {}
+        blue.net.ClearProxyNodes()
         self.transportIDbyClientID = {}
         service.Service.Stop(self, memStream)
 
@@ -1218,6 +1257,23 @@ class MachoNetService(service.Service):
 
 
 
+    def RegisterSessionWithTransport(self, session, clientID):
+        transportID = self.transportID
+        self.transportID += 1
+        machoTransport = macho.StreamingHTTPMachoTransport(transportID, None, 'tcp:packet:client', self)
+        machoTransport.clientID = clientID
+        machoTransport.userID = session.userid
+        session.__dict__['clientID'] = machoTransport.clientID
+        self.transportsByID[transportID] = machoTransport
+        machoTransport.sessions[machoTransport.clientID] = [session,
+         {},
+         session.rwlock,
+         session.version]
+        self.transportIDbyClientID[machoTransport.clientID] = machoTransport.transportID
+        machoTransport.clientIDs[machoTransport.clientID] = 1
+
+
+
     def __str__(self):
         return '<MachoNet Service>'
 
@@ -1248,7 +1304,7 @@ class MachoNetService(service.Service):
 
 
     def GetServerStatus(self, address):
-        if self.authenticating or self.gettingServerStatus or address.upper() == self.clientLogonQueue.address and blue.os.GetTime() - (self.clientLogonQueue.timestamp or blue.os.GetTime()) < self.clientLogonQueuePollTime * const.SEC:
+        if self.authenticating or self.gettingServerStatus or address.upper() == self.clientLogonQueue.address and blue.os.GetWallclockTime() - (self.clientLogonQueue.timestamp or blue.os.GetWallclockTime()) < self.clientLogonQueuePollTime * const.SEC:
             raise UserError('AlreadyConnecting')
         self.gettingServerStatus = 1
         try:
@@ -1264,52 +1320,53 @@ class MachoNetService(service.Service):
                     transport = factory.Connect(address)
                 serverInfo = transport.Authenticate(None, None)
                 self.clientHalfBakedTransports[address] = transport
-                return (lambda since = blue.os.GetTime(): sm.GetService('machoNet').GetOKMessage(since), serverInfo)
+                return (lambda since = blue.os.GetWallclockTime(): sm.GetService('machoNet').GetOKMessage(since), serverInfo)
             except GPSBadAddress as e:
                 sys.exc_clear()
-                return (mls.MACHONET_GETSERVERSTATUS_BADADDRESS, {})
+                return (('/Carbon/MachoNet/ServerStatus/BadAddress', {}), {})
             except GPSTransportClosed as e:
                 sys.exc_clear()
                 if str(e.codename) != str(boot.codename) or e.reasonCode == 'HANDSHAKE_INCOMPATIBLERELEASE':
-                    reason = mls.MACHONET_GETSERVERSTATUS_INCOMPATIBLE_RELEASE
+                    reason = ('/Carbon/MachoNet/ServerStatus/IncompatibleRelease', {})
                 elif e.version != boot.version or e.reasonCode == 'HANDSHAKE_INCOMPATIBLEVERSION':
-                    reason = mls.MACHONET_GETSERVERSTATUS_INCOMPATIBLE_VERSION
+                    reason = ('/Carbon/MachoNet/ServerStatus/IncompatibleVersion', {})
                 elif e.machoVersion != macho.version or e.reasonCode == 'HANDSHAKE_INCOMPATIBLEPROTOCOL':
-                    reason = mls.MACHONET_GETSERVERSTATUS_INCOMPATIBLE_PROTOCOL
+                    reason = ('/Carbon/MachoNet/ServerStatus/IncompatibleProtocol', {})
                 elif e.build != boot.build or e.reasonCode == 'HANDSHAKE_INCOMPATIBLEBUILD':
-                    reason = mls.MACHONET_GETSERVERSTATUS_INCOMPATIBLE_BUILD
+                    reason = ('/Carbon/MachoNet/ServerStatus/IncompatibleBuild', {})
                 elif str(e.region) != str(boot.region) or e.reasonCode == 'HANDSHAKE_INCOMPATIBLEREGION':
-                    reason = mls.MACHONET_GETSERVERSTATUS_INCOMPATIBLE_REGION
+                    reason = ('/Carbon/MachoNet/ServerStatus/IncompatibleRegion', {})
                 elif e.reasonCode == 'ACL_SHUTTINGDOWN':
-                    reason = mls.MACHONET_GETSERVERSTATUS_SHUTTINGDOWN
-                    when = blue.os.GetTime() + random.randrange(15, 60) * const.SEC
-                    reason = lambda when = when, reason = reason: [None, reason][(blue.os.GetTime() < when)]
+                    reason = ('/Carbon/MachoNet/ServerStatus/ShuttingDown', {})
+                    when = blue.os.GetWallclockTime() + random.randrange(15, 60) * const.SEC
+                    reason = lambda when = when, reason = reason: (reason if blue.os.GetWallclockTime() < when else None)
                 elif e.reasonCode == 'ACL_NOTACCEPTING':
-                    reason = mls.MACHONET_GETSERVERSTATUS_NOTACCEPTING
-                    when = blue.os.GetTime() + random.randrange(60, 300) * const.SEC
-                    reason = lambda when = when, reason = reason: [None, reason][(blue.os.GetTime() < when)]
+                    reason = ('/Carbon/MachoNet/ServerStatus/NotAcceptingConnections', {})
+                    when = blue.os.GetWallclockTime() + random.randrange(60, 300) * const.SEC
+                    reason = lambda when = when, reason = reason: (reason if blue.os.GetWallclockTime() < when else None)
                 elif e.reasonCode == 'ACL_ACCEPTDELAY':
-                    when = blue.os.GetTime() + (5 + e.reasonArgs['seconds']) * const.SEC
-                    reason = lambda when = when: [None, mls.MACHONET_GETSERVERSTATUS_STARTINGUP % {'progress': util.FmtTimeInterval(when - blue.os.GetTime(), 'sec')}][(blue.os.GetTime() < when)]
+                    reasonMessage = '/Carbon/MachoNet/ServerStatus/StartingUp'
+                    when = blue.os.GetWallclockTime() + (5 + e.reasonArgs['seconds']) * const.SEC
+                    reason = lambda when = when: ((reasonMessage, {'progress': when - blue.os.GetWallclockTime()}) if blue.os.GetWallclockTime() < when else None)
                 elif e.reasonCode == 'ACL_PROXYFULL':
                     if e.reasonArgs:
-                        reason = mls.MACHONET_GETSERVERSTATUS_PROXYFULL + '(%d)' % e.reasonArgs['limit']
+                        reason = ('/Carbon/MachoNet/ServerStatus/ProxyFullWithLimit', {'limit': e.reasonArgs['limit']})
                     else:
-                        reason = mls.MACHONET_GETSERVERSTATUS_PROXYFULL
-                    when = blue.os.GetTime() + random.randrange(30, 120) * const.SEC
-                    reason = lambda when = when, reason = reason: [None, reason][(blue.os.GetTime() < when)]
+                        reason = ('/Carbon/MachoNet/ServerStatus/ProxyFull', {})
+                    when = blue.os.GetWallclockTime() + random.randrange(30, 120) * const.SEC
+                    reason = lambda when = when, reason = reason: (reason if blue.os.GetWallclockTime() < when else None)
                 elif e.reasonCode == 'ACL_PROXYNOTCONNECTED':
-                    reason = mls.MACHONET_GETSERVERSTATUS_PROXYNOTCONNECTED
-                    when = blue.os.GetTime() + random.randrange(30, 120) * const.SEC
-                    reason = lambda when = when, reason = reason: [None, reason][(blue.os.GetTime() < when)]
+                    reason = ('/Carbon/MachoNet/ServerStatus/ProxyNotConnected', {})
+                    when = blue.os.GetWallclockTime() + random.randrange(30, 120) * const.SEC
+                    reason = lambda when = when, reason = reason: (reason if blue.os.GetWallclockTime() < when else None)
                 elif e.reasonCode == 'ACL_IPADDRESSBAN':
-                    reason = mls.MACHONET_GETSERVERSTATUS_IPBANNED
+                    reason = ('/Carbon/MachoNet/ServerStatus/IPBanned', {})
                 elif e.origin == 'client':
-                    reason = mls.MACHONET_GETSERVERSTATUS_UNKNOWN
-                    when = blue.os.GetTime() + random.randrange(60, 300) * const.SEC
-                    reason = lambda when = when, reason = reason: [None, reason][(blue.os.GetTime() < when)]
+                    reason = ('/Carbon/MachoNet/ServerStatus/Unknown', {})
+                    when = blue.os.GetWallclockTime() + random.randrange(60, 300) * const.SEC
+                    reason = lambda when = when, reason = reason: (reason if blue.os.GetWallclockTime() < when else None)
                 else:
-                    reason = lambda since = blue.os.GetTime(): sm.GetService('machoNet').GetOKMessage(since)
+                    reason = lambda since = blue.os.GetWallclockTime(): sm.GetService('machoNet').GetOKMessage(since)
                 if e.origin == 'client':
                     return (reason, {})
                 else:
@@ -1353,27 +1410,27 @@ class MachoNetService(service.Service):
 
     def GetOKMessage(self, since):
         if self.clientLogonQueue.position == 1 and self.clientLogonQueue.reportedQueued:
-            return mls.MACHONET_GETSERVERSTATUS_HEADOFQUEUE
+            return ('/Carbon/MachoNet/ServerStatus/HeadOfQueue', {})
         else:
             if self.clientLogonQueue.position > 1:
-                if not self.gettingServerStatus and blue.os.GetTime() - max(self.clientLogonQueue.timestamp or since, since) > self.clientLogonQueuePollTime * const.SEC:
+                if not self.gettingServerStatus and blue.os.GetWallclockTime() - max(self.clientLogonQueue.timestamp or since, since) > self.clientLogonQueuePollTime * const.SEC:
                     return None
                 self.clientLogonQueue.reportedQueued = True
-                return mls.MACHONET_GETSERVERSTATUS_INQUEUE % {'position': self.clientLogonQueue.position}
-            return mls.MACHONET_GETSERVERSTATUS_OK
+                return ('/Carbon/MachoNet/ServerStatus/InQueue', {'position': self.clientLogonQueue.position})
+            return ('/Carbon/MachoNet/ServerStatus/OK', {})
 
 
 
     def SetLogonQueuePosition(self, position):
         self.clientLogonQueue.position = position
-        self.clientLogonQueue.timestamp = blue.os.GetTime()
+        self.clientLogonQueue.timestamp = blue.os.GetWallclockTime()
         if position is None:
             self.clientLogonQueue.history = None
         elif self.clientLogonQueue.history is None:
-            self.clientLogonQueue.history = util.KeyVal(initial=util.KeyVal(time=blue.os.GetTime(), pos=position), prev=util.KeyVal(time=blue.os.GetTime(), pos=position), last=util.KeyVal(time=blue.os.GetTime(), pos=position))
+            self.clientLogonQueue.history = util.KeyVal(initial=util.KeyVal(time=blue.os.GetWallclockTime(), pos=position), prev=util.KeyVal(time=blue.os.GetWallclockTime(), pos=position), last=util.KeyVal(time=blue.os.GetWallclockTime(), pos=position))
         else:
             self.clientLogonQueue.history.prev = self.clientLogonQueue.history.last
-            self.clientLogonQueue.history.last = util.KeyVal(time=blue.os.GetTime(), pos=position)
+            self.clientLogonQueue.history.last = util.KeyVal(time=blue.os.GetWallclockTime(), pos=position)
 
 
 
@@ -1392,6 +1449,7 @@ class MachoNetService(service.Service):
                 else:
                     self.clientConfigVals = {k:v for (k, v,) in self.DB2.GetSchema('zsystem').ClientConfig_Select()}
                 self.LogInfo('Got the following client config values:', self.clientConfigVals)
+                sm.ScatterEvent('OnClientConfigValsChanged', self.clientConfigVals)
         elif boot.role == 'client' and self.clientConfigVals is None:
             return {}
         return self.clientConfigVals
@@ -1454,6 +1512,7 @@ class MachoNetService(service.Service):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def ConnectToServer(self, address, userName, password, sockettype = 'tcp'):
         if macho.mode != 'client':
             raise AttributeError('The ConnectToServer method should only be called on the client')
@@ -1483,7 +1542,7 @@ class MachoNetService(service.Service):
                 transport = None
                 try:
                     mapname = '%s:packet:server' % sockettype
-                    sm.ChainEvent('ProcessLoginProgress', 'loginprogress::connecting', '', 1, loginProgressSteps)
+                    sm.ScatterEvent('OnProcessLoginProgress', 'loginprogress::connecting', '', 1, loginProgressSteps)
                     transport = None
                     if address in self.clientHalfBakedTransports:
                         transport = self.clientHalfBakedTransports[address]
@@ -1493,7 +1552,7 @@ class MachoNetService(service.Service):
                     if transport is None:
                         factory = self.GetFactory(gpsMap[macho.mode][('%s:packet:server' % sockettype)], (0, mapname))
                         transport = factory.Connect(address)
-                    sm.ChainEvent('ProcessLoginProgress', 'loginprogress::authenticating', '', 2, loginProgressSteps)
+                    sm.ScatterEvent('OnProcessLoginProgress', 'loginprogress::authenticating', '', 2, loginProgressSteps)
                     self.LogInfo('Authenticating user ', userName)
                     self.clientLogonQueue.address = address.upper()
                     self.clientLogonQueue.timestamp = None
@@ -1519,9 +1578,10 @@ class MachoNetService(service.Service):
                     self.myProxyNodeID = response['proxy_nodeid']
                     transport._AssociateWithSession()
                     self.LogInfo('ConnectToServer established transport ', transport)
-                    blue.net.EnumerateTransport(transport.transport.socket.getSocketDescriptor(), transport.transportID, transport.transportName, transport.userID, 0, 0)
+                    blue.net.EnumerateTransport(transport.transport.socket.getSocketDescriptor(), transport.transportID, transport.transportName, transport.userID, 0, self.myProxyNodeID)
+                    blue.net.AddProxyNode(transport.transportID, self.myProxyNodeID)
                 except UnMachoDestination as e:
-                    sm.ScatterEvent('OnConnectionRefused', e.payload)
+                    sm.ScatterEvent('OnConnectionRefused')
                     (exctype, exc, tb,) = sys.exc_info()
                     try:
                         raise UserError('OnConnectionRefused', {'what': e.payload}), None, tb
@@ -1536,12 +1596,12 @@ class MachoNetService(service.Service):
                         if not transport.IsClosed():
                             self.clientHalfBakedTransports[address] = transport
                         self.SetLogonQueuePosition(e.dict.get('position', None))
-                    sm.ScatterEvent('OnConnectionRefused', e.msg)
+                    sm.ScatterEvent('OnConnectionRefused')
                     if e.msg != 'AuthenticationFailure':
                         log.LogTraceback()
                     raise 
                 except GPSBadAddress as e:
-                    sm.ScatterEvent('OnConnectionRefused', e.reason)
+                    sm.ScatterEvent('OnConnectionRefused')
                     (exctype, exc, tb,) = sys.exc_info()
                     try:
                         raise UserError('OnConnectionBadAddress', {'what': e.reason}), None, tb
@@ -1554,32 +1614,25 @@ class MachoNetService(service.Service):
                 except GPSTransportClosed as e:
                     (exctype, exc, tb,) = sys.exc_info()
                     try:
+                        sm.ScatterEvent('OnConnectionRefused')
                         if e.reason == 'Connected transport closed':
-                            sm.ScatterEvent('OnConnectionRefused', '')
                             raise UserError('OnConnectionFailed', {'what': 'The server was either not running or inaccessible'}), None, tb
+                        elif e.reasonCode in gpcs.TRANSPORT_CLOSED_MESSAGES:
+                            reason = gpcs.TRANSPORT_CLOSED_MESSAGES[e.reasonCode]
+                            reasonParameters = {'what': (const.UE_LOC, reason, e.reasonArgs),
+                             'exception': e}
+                            err = UserError('OnConnectionFailed', reasonParameters)
+                        elif e.reasonCode not in cfg.messages:
+                            reasonParameters = {'what': e.reason,
+                             'exception': e}
+                            err = UserError('OnConnectionFailed', reasonParameters)
                         else:
-                            reason = e.reason
-                            if getattr(e, 'reasonCode', None) and mls.HasLabel('MACHONET_TRANSPORTCLOSED_' + e.reasonCode):
-                                reason = getattr(mls, 'MACHONET_TRANSPORTCLOSED_' + e.reasonCode) % e.reasonArgs
-                            err = UserError('OnConnectionFailed', {'what': reason,
-                             'exception': e})
-                            if reason == 'AutLogonFailureTotalUsers':
-                                if not transport.IsClosed():
-                                    self.clientHalfBakedTransports[address] = transport
-                                self.SetLogonQueuePosition(e.reasonArgs.get('position', None))
-                            msg = reason
-                            try:
-                                msg = cfg.GetMessage(reason, e.reasonArgs, onNotFound='raise')
-                                err = UserError(reason, e.reasonArgs)
-                            except RuntimeError as e:
-                                if not e.args or e.args[0] != 'ErrMessageNotFound':
-                                    log.LogException()
-                                sys.exc_clear()
-                            except:
-                                log.LogException()
-                                sys.exc_clear()
-                            sm.ScatterEvent('OnConnectionRefused', msg)
-                            raise err, None, tb
+                            err = UserError(e.reasonCode, e.reasonArgs)
+                        if e.reason == 'AutLogonFailureTotalUsers':
+                            if not transport.IsClosed():
+                                self.clientHalfBakedTransports[address] = transport
+                            self.SetLogonQueuePosition(e.reasonArgs.get('position', None))
+                        raise err, None, tb
 
                     finally:
                         exctype = None
@@ -1603,18 +1656,18 @@ class MachoNetService(service.Service):
                         level = log.LGERR if blue.pyos.packaged else log.LGINFO
                         log.general.Log('Needed to downloaded bulk data %s to %s' % (objectID, cachedObjects[objectID]), level)
                     i = i + 1
-                    sm.ChainEvent('ProcessLoginProgress', 'loginprogress::gettingbulkdata', '', i - 4, totalIntvals)
+                    sm.ScatterEvent('OnProcessLoginProgress', 'loginprogress::gettingbulkdata', '', i - 4, totalIntvals)
 
                 if self.getCachedObjectHelperException:
                     transport.Close('Failed to acquire initial cache data')
                     raise UserError('OnConnectionFailed', {'what': 'Failed to acquire initial cache data.'})
-                sm.ChainEvent('ProcessLoginProgress', 'loginprogress::done', '', i, loginProgressSteps + totalIntvals, response)
+                sm.ScatterEvent('OnProcessLoginProgress', 'loginprogress::done', '', i, loginProgressSteps + totalIntvals, response)
 
             finally:
                 self.authenticating = 1
 
             sm.ChainEvent('ProcessInitialData', initvals)
-            sm.ChainEvent('ProcessLoginProgress', 'loginprogress::processingInitialDataDone', '', i + 1, loginProgressSteps + totalIntvals)
+            sm.ScatterEvent('OnProcessLoginProgress', 'loginprogress::processingInitialDataDone', '', i + 1, loginProgressSteps + totalIntvals)
             return response
 
         finally:
@@ -1693,22 +1746,23 @@ class MachoNetService(service.Service):
             kernel = li[hd.index('kernel')]
             user = li[hd.index('user')]
             cputime = kernel + user
-            uptime = blue.os.GetTime() - created
-            retval['blue.os.started'] = util.FmtDate(created)
-            retval['blue.os.uptime'] = util.FmtTime(uptime)
+            uptime = blue.os.GetWallclockTime() - created
+            retval['blue.os.started'] = util.FmtDateEng(created)
+            retval['blue.os.uptime'] = util.FmtTimeEng(uptime)
             retval['blue.os.cpuload'] = self.GetCPULoad()
-            retval['blue.os.cputime'] = util.FmtTime(cputime)
-            retval['blue.os.kerneltime'] = util.FmtTime(kernel)
-            retval['blue.os.usertime'] = util.FmtTime(user)
+            retval['blue.os.cputime'] = util.FmtTimeEng(cputime)
+            retval['blue.os.kerneltime'] = util.FmtTimeEng(kernel)
+            retval['blue.os.usertime'] = util.FmtTimeEng(user)
             retval['blue.os.ramReal'] = blue.win32.GlobalMemoryStatus()['TotalPhys'] - blue.win32.GlobalMemoryStatus()['AvailPhys']
             import blue.win32 as w32
             retval['blue.w32.PagefileUsage'] = w32.GetProcessMemoryInfo()['PagefileUsage']
+            retval['blue.os.simDilation'] = blue.os.simDilation
         return retval
 
 
 
     def GetCPULoad(self):
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         then = now - const.MIN * 5
         total = 0L
         lastTime = now
@@ -1802,15 +1856,15 @@ class MachoNetService(service.Service):
 
     def CheckACL(self, address, espCheck = False):
         if not espCheck and self.shutdown is not None:
-            if self.shutdown.when < blue.os.GetTime():
+            if self.shutdown.when < blue.os.GetWallclockTime():
                 self.LogInfo('Rejecting connection from ', address, " because we're shutting down")
                 return ('The cluster is shutting down', 'ACL_SHUTTINGDOWN')
-            if self.shutdown.when - blue.os.GetTime() < 3 * const.MIN:
+            if self.shutdown.when - blue.os.GetWallclockTime() < 3 * const.MIN:
                 self.LogInfo('Rejecting connection from ', address, " because we're shutting down in less than 3 minutes")
                 return ('The cluster is shutting down in a few moments', 'ACL_SHUTTINGDOWN', {'when': (17, self.shutdown.when)})
-        if not espCheck and self.acceptDelay and blue.os.GetTime() - self.acceptStart < const.SEC * self.acceptDelay:
+        if not espCheck and self.acceptDelay and blue.os.GetWallclockTime() - self.acceptStart < const.SEC * self.acceptDelay:
             self.LogInfo('Rejecting connection from ', address, " because we're still starting and our accept delay hasn't passed")
-            return ('Starting up...(%d sec.)' % (self.acceptDelay - (blue.os.GetTime() - self.acceptStart) / const.SEC), 'ACL_ACCEPTDELAY', {'seconds': self.acceptDelay - (blue.os.GetTime() - self.acceptStart) / const.SEC})
+            return ('Starting up...(%d sec.)' % (self.acceptDelay - (blue.os.GetWallclockTime() - self.acceptStart) / const.SEC), 'ACL_ACCEPTDELAY', {'seconds': self.acceptDelay - (blue.os.GetWallclockTime() - self.acceptStart) / const.SEC})
         if not self.clusterStartupPhase:
             if prefs.clusterMode in ('LIVE', 'TEST'):
                 self.LogWarn('Accept Delay too low, the accept delay should represent the time from startup until the first user can connect')
@@ -1838,7 +1892,7 @@ class MachoNetService(service.Service):
             self.proxySessionStatistics_Return = self._GetEmptyProxySessionStatistics()
         self.proxySessionStatistics_Return = self._CalculateSessionStatistics(clusterSessionStatistics)
         self.loggedOnUserCount = userCount
-        self.loggedOnUserCountHistory.append((blue.os.GetTime(), userCount))
+        self.loggedOnUserCountHistory.append((blue.os.GetWallclockTime(), userCount))
         if not hasattr(self, 'sessionMgr'):
             self.sessionMgr = self.session.ConnectToService('sessionMgr')
         return self.sessionMgr.GetSessionStatistics()
@@ -1858,7 +1912,7 @@ class MachoNetService(service.Service):
     def __SessionStatWatcher(self):
         allProxies = None
         while not getattr(self, 'stop', True):
-            blue.pyos.synchro.Sleep(1000 * self.proxyStatPollInterval)
+            blue.pyos.synchro.SleepWallclock(1000 * self.proxyStatPollInterval)
             try:
                 if allProxies is None:
                     allProxies = self.session.ConnectToAllProxyServerServices('machoNet')
@@ -1910,7 +1964,7 @@ class MachoNetService(service.Service):
 
     def _GetLayTracksTo(self):
         with self.paonLock:
-            if self.paon is None or blue.os.GetTime() - self.paon[1] > 5 * const.SEC:
+            if self.paon is None or blue.os.GetWallclockTime() - self.paon[1] > 5 * const.SEC:
                 self.LogInfo('Connectivity[PAON]: Fetching node/proxy info')
                 rowDescriptor = blue.DBRowDescriptor((('nodeID', const.DBTYPE_I4), ('ipAddress', const.DBTYPE_STR), ('port', const.DBTYPE_I4)))
                 layTracksTo = dbutil.CRowset(rowDescriptor, [])
@@ -1925,19 +1979,28 @@ class MachoNetService(service.Service):
                 for proxy in proxies:
                     if proxy.enabled == 1:
                         for i in xrange(proxy.nodeCount):
+                            proxyIpAddress = GetPreferredHostByName(proxy.ipAddress)
                             clientport = self.defaultProxyPortOffset + offsetMap[macho.mode]['tcp:packet:client'] + 1000 * i
                             serverport = self.defaultProxyPortOffset + offsetMap[macho.mode]['tcp:packet:machoNet'] + 1000 * i
-                            proxyNodeID = self.GetIDOfAddress('%s:%d' % (proxy.ipAddress, clientport), clientMode=False)
+                            proxyNodeID = self.GetIDOfAddress('%s:%d' % (proxyIpAddress, clientport), clientMode=False)
                             if self.GetNodeID() != proxyNodeID:
                                 self.LogInfo('Connectivity[PAON]: Laying tracks to self=', self.GetNodeID(), ' proxy=', proxyNodeID)
-                                layTracksTo.InsertNew([proxyNodeID, proxy.ipAddress, serverport])
+                                layTracksTo.InsertNew([proxyNodeID, proxyIpAddress, serverport])
 
 
-                for sol in self.dbzcluster.Nodes_SelectOthers(self.nodeID):
-                    self.LogInfo('Connectivity[PAON]: Laying tracks to self=', self.GetNodeID(), ' sol=', sol.nodeID)
-                    layTracksTo.InsertNew([sol.nodeID, sol.ipAddress, sol.port + offsetMap[macho.mode]['tcp:packet:machoNet']])
+                if NEW_CLUSTER_CONFIG:
+                    for sol in self.dbzcluster.Nodes_SelectOthers2(self.nodeID):
+                        port = self.defaultServerPortOffset + offsetStep[macho.mode] * sol.nodeIndex
+                        port += offsetMap[macho.mode]['tcp:packet:machoNet']
+                        self.LogInfo('Connectivity[PAON]: Laying tracks to self=', self.GetNodeID(), ' sol=', sol.nodeID, ' at:', sol.machineName, ':', port)
+                        layTracksTo.InsertNew([sol.nodeID, sol.machineName, port])
 
-                self.paon = (layTracksTo, blue.os.GetTime())
+                else:
+                    for sol in self.dbzcluster.Nodes_SelectOthers(self.nodeID):
+                        self.LogInfo('Connectivity[PAON]: Laying tracks to self=', self.GetNodeID(), ' sol=', sol.nodeID)
+                        layTracksTo.InsertNew([sol.nodeID, sol.ipAddress, sol.port + offsetMap[macho.mode]['tcp:packet:machoNet']])
+
+                self.paon = (layTracksTo, blue.os.GetWallclockTime())
             else:
                 self.LogInfo('Connectivity[PAON]: Node/proxy info is up to date')
         self.LogInfo('Connectivity[PAON]: returning ', len(self.paon[0]), ' proxies and servers')
@@ -1979,9 +2042,9 @@ class MachoNetService(service.Service):
 
     def GracefulShutdown(self, userID, when, duration, explanation):
         if when:
-            self.LogNotice('Graceful Shutdown requested by ', userID, ' to occur at ', util.FmtDate(when), ', duration ', duration or 0, ' minutes, explanation: ', explanation)
-            if when < blue.os.GetTime() + const.HOUR:
-                notify = blue.os.GetTime()
+            self.LogNotice('Graceful Shutdown requested by ', userID, ' to occur at ', util.FmtDateEng(when), ', duration ', duration or 0, ' minutes, explanation: ', explanation)
+            if when < blue.os.GetWallclockTime() + const.HOUR:
+                notify = blue.os.GetWallclockTime()
             else:
                 notify = when - const.HOUR
             self.shutdown = util.KeyVal(notify=notify, userID=userID, when=when, duration=duration, explanation=explanation)
@@ -2001,14 +2064,14 @@ class MachoNetService(service.Service):
             try:
                 if self.shutdown is not None and self.GetNodeFromAddress(const.cluster.SERVICE_CLUSTERSESSIONINFO, 0) == self.GetNodeID():
                     self.LogInfo('GracefulShutdownWorker:  Probing')
-                    now = blue.os.GetTime()
+                    now = blue.os.GetWallclockTime()
                     if self.shutdown.notify is not None:
                         self.LogInfo('GracefulShutdownWorker:  Checking Notification, now=', now, ', notify=', self.shutdown.notify)
                         sortOfNow = now + pollingInterval * 2 * const.SEC
                         if sortOfNow > self.shutdown.notify:
                             self.LogInfo('GracefulShutdownWorker:  Sending Notification')
-                            msg = self.shutdown.explanation % {'when': util.FmtDate(self.shutdown.when, 'ns'),
-                             'delay': util.FmtTimeInterval(self.shutdown.when - now, 'min', rounding=True)}
+                            msg = self.shutdown.explanation % {'when': util.FmtDateEng(self.shutdown.when, 'ns'),
+                             'delay': util.FmtTimeIntervalEng(self.shutdown.when - now, 'min')}
                             if self.shutdown.when - sortOfNow > 15 * const.MIN:
                                 self.LogInfo('GracefulShutdownWorker:  Prepping 15 minute Notification')
                                 self.shutdown.notify = self.shutdown.when - 15 * const.MIN
@@ -2019,7 +2082,7 @@ class MachoNetService(service.Service):
                                 self.LogInfo('GracefulShutdownWorker:  Prepping actual shutdown')
                                 self.shutdown.notify = None
                                 if self.shutdown.duration:
-                                    msg += '  See you again in ' + util.FmtTimeInterval(self.shutdown.duration * const.MIN, 'min')
+                                    msg += '  See you again in ' + util.FmtTimeIntervalEng(self.shutdown.duration * const.MIN, 'min')
                             self.Broadcast('OnClusterShutdownInitiated', msg, self.shutdown.when)
                             sm.ScatterEvent('OnClusterShutdownInitiated', msg, self.shutdown.when)
                             self.dbzcluster.Broadcasts_Insert(self.shutdown.userID, msg)
@@ -2044,11 +2107,11 @@ class MachoNetService(service.Service):
                             sys.exc_clear()
                         if macho.mode == 'server':
                             self.dbzcluster.Nodes_Trash(self.nodeID, 'Graceful Cluster Shutdown - Master', 1)
-                        blue.pyos.Quit('Graceful Cluster Shutdown')
+                        bluepy.Terminate('Graceful Cluster Shutdown')
             except Exception:
                 log.LogException('Exception in shutdown worker')
                 sys.exc_clear()
-            blue.pyos.synchro.Sleep(pollingInterval * 1000)
+            blue.pyos.synchro.SleepWallclock(pollingInterval * 1000)
 
 
 
@@ -2075,7 +2138,7 @@ class MachoNetService(service.Service):
             return 
         if macho.mode == 'server':
             self.dbzcluster.Nodes_Trash(self.nodeID, 'Graceful Cluster Shutdown - Slave', 1)
-        uthread.worker('Shutdown thread', blue.pyos.Quit, 'Graceful Cluster Shutdown')
+        uthread.worker('Shutdown thread', bluepy.Terminate, 'Graceful Cluster Shutdown')
 
 
 
@@ -2083,7 +2146,7 @@ class MachoNetService(service.Service):
         self.LogError('Shutdown requested by ', who, '.  Shutting down.')
         if macho.mode == 'server':
             self.dbzcluster.Nodes_Trash(self.nodeID, 'Shutdown called by %s' % who, 1)
-        blue.pyos.Quit('Shutdown called by %s' % who)
+        bluepy.Terminate('Shutdown called by %s' % who)
 
 
 
@@ -2122,11 +2185,11 @@ class MachoNetService(service.Service):
                 if len(self.transportIDbyProxyNodeID) + len(self.transportIDbySolNodeID) != connectionCount or macho.mode == 'server' and not len(self.transportIDbyProxyNodeID) or macho.mode == 'proxy' and not len(self.transportIDbySolNodeID):
                     self.LogWarn("I think I've got a connectivity problem.  Attempting autorefresh.")
                     connectionCount = self.RefreshConnectivity()
-                self.LogInfo('NodeWatcher:  Sleeping for ', self.nodeRefreshInterval, ' seconds')
+                self.LogInfo('NodeWatcher: Sleeping for ', self.nodeRefreshInterval, ' seconds')
             except Exception:
                 log.LogException('Exception during NodeWatcher')
                 sys.exc_clear()
-            blue.pyos.synchro.Sleep(1000 * self.nodeRefreshInterval)
+            blue.pyos.synchro.SleepWallclock(1000 * self.nodeRefreshInterval)
 
 
 
@@ -2135,15 +2198,15 @@ class MachoNetService(service.Service):
         while not getattr(self, 'stop', True):
             self.availableLoginSlots = min(len(self.serverLogonQueue), self.availableLoginSlots) + self.maxLoginsPerMinute
             self.availableLoginSlots = min(self.availableLoginSlots, max(0, self.connectionLimit - len(self.transportIDbyClientID)))
-            blue.pyos.synchro.Sleep(const.MIN / const.MSEC)
+            blue.pyos.synchro.SleepWallclock(const.MIN / const.MSEC)
 
 
 
 
     def __ClientSessionMaxTimePoll(self):
         while not getattr(self, 'stop', True):
-            self.LogInfo('ClientSessionMaxTimePoll:  Sleeping for ', self.clientSessionTimeoutGranularity, ' seconds')
-            blue.pyos.synchro.Sleep(1000 * self.clientSessionTimeoutGranularity)
+            self.LogInfo('ClientSessionMaxTimePoll: Sleeping for ', self.clientSessionTimeoutGranularity, ' seconds')
+            blue.pyos.synchro.SleepWallclock(1000 * self.clientSessionTimeoutGranularity)
             try:
                 transport = None
                 s = None
@@ -2153,7 +2216,7 @@ class MachoNetService(service.Service):
                         clientID = transport.clientID
                         if clientID in transport.sessions:
                             s = transport.sessions[clientID][0]
-                            if s.maxSessionTime and s.maxSessionTime < blue.os.GetTime():
+                            if s.maxSessionTime and s.maxSessionTime < blue.os.GetWallclockTime():
                                 transport.Close('Game Time Expired', 'GAMETIMEEXPIRED')
 
             except Exception:
@@ -2166,13 +2229,19 @@ class MachoNetService(service.Service):
     def __NodeLoadPush(self):
         while not getattr(self, 'stop', True):
             try:
-                blue.pyos.synchro.Sleep(1000 * self.nodeLoadPush)
+                blue.pyos.synchro.SleepWallclock(1000 * self.nodeLoadPush)
                 if macho.mode == 'server' and self.GetNodeFromAddress(const.cluster.SERVICE_CLUSTERSESSIONINFO, 0) == self.GetNodeID():
-                    cluGetNodes = self.dbzcluster.Nodes_Select()
+                    if NEW_CLUSTER_CONFIG:
+                        cluGetNodes = self.dbzcluster.Nodes_Select2()
+                    else:
+                        cluGetNodes = self.dbzcluster.Nodes_Select()
                     self.nodeCPULoadValue = {}
                     for r in cluGetNodes:
                         self.nodeCPULoadValue[r.nodeID] = r.currentCpu or 0.0
-                        self.serverNames[r.nodeID] = r.hostName or None
+                        if NEW_CLUSTER_CONFIG:
+                            self.serverNames[r.nodeID] = r.machineName or None
+                        else:
+                            self.serverNames[r.nodeID] = r.hostName or None
 
                     self.ClusterBroadcast('OnNodeLoadPush', self.nodeCPULoadValue, self.serverNames)
             except UnMachoDestination as e:
@@ -2189,7 +2258,7 @@ class MachoNetService(service.Service):
     def __DisconnectUnauthorizedUsers(self):
         while not getattr(self, 'stop', True):
             try:
-                blue.pyos.synchro.Sleep(1000 * self.disconnectUnauthorizedUsersPollInterval)
+                blue.pyos.synchro.SleepWallclock(1000 * self.disconnectUnauthorizedUsersPollInterval)
                 if self.GetNodeFromAddress(const.cluster.SERVICE_CLUSTERSESSIONINFO, 0) == self.GetNodeID():
                     peopleWhoShouldntBeLoggedIn = self.dbzuser.OnlineUsers_SelectInactive()
                     if peopleWhoShouldntBeLoggedIn:
@@ -2225,8 +2294,11 @@ class MachoNetService(service.Service):
 
     def __DelayedClose(self, transport, message):
         clientID = transport.clientID
-        self.SinglecastByClientID(clientID, 'OnServerMessage', getattr(mls, 'MACHONET_DELAYEDCLOSENOTIFICATION_' + message))
-        blue.pyos.synchro.Sleep(self.disconnectUnauthorizedUsersDelayInterval * 1000)
+        if message == 'ACCOUNTBANNED':
+            self.SinglecastByClientID(clientID, 'OnServerMessage', ('/Carbon/MachoNet/DelayedCloseNotification/AccountBanned', {}))
+        elif message == 'ACCOUNTNOTACTIVE':
+            self.SinglecastByClientID(clientID, 'OnServerMessage', ('/Carbon/MachoNet/DelayedCloseNotification/AccountNotActive', {}))
+        blue.pyos.synchro.SleepWallclock(self.disconnectUnauthorizedUsersDelayInterval * 1000)
         transport.Close(message, message)
 
 
@@ -2244,9 +2316,15 @@ class MachoNetService(service.Service):
         if nodeID not in self.serverNames and not (stackless.getcurrent().block_trap or stackless.getcurrent().is_main):
             DB2 = self.session.ConnectToAnyService('DB2')
             try:
-                for r in DB2.CallProc('zcluster.Nodes_Select'):
-                    nodeID = r.nodeID
-                    self.serverNames[nodeID] = r.hostName or None
+                if NEW_CLUSTER_CONFIG:
+                    for r in DB2.CallProc('zcluster.Nodes_Select2'):
+                        nodeID = r.nodeID
+                        self.serverNames[nodeID] = r.machineName or None
+
+                else:
+                    for r in DB2.CallProc('zcluster.Nodes_Select'):
+                        nodeID = r.nodeID
+                        self.serverNames[nodeID] = r.hostName or None
 
                 if nodeID not in self.serverNames:
                     self.serverNames[nodeID] = None
@@ -2355,9 +2433,9 @@ class MachoNetService(service.Service):
                 log.LogTraceback()
                 return 
             if self.nodeID is None:
-                self.LogError(logname, 'Cannot lay tracks before we have a node ID.  Sleeping...')
+                self.LogError(logname, 'Cannot lay tracks before we have a node ID. Sleeping...')
                 while self.nodeID is None:
-                    blue.pyos.synchro.Sleep(100)
+                    blue.pyos.synchro.SleepWallclock(100)
 
                 self.LogInfo(logname, 'Woke up, have nodeID', self.nodeID)
             if False:
@@ -2406,8 +2484,10 @@ class MachoNetService(service.Service):
                     else:
                         self.LogInfo(logname, 'Succesfully established a connection to ', response.nodeID, ' reason: ', repr(reason))
                         transport.nodeID = response.nodeID
+                        blue.net.EnumerateTransport(transport.transport.socket.getSocketDescriptor(), transport.transportID, transport.transportName, 0, 0, transport.nodeID)
                         if response.isProxy:
                             self.transportIDbyProxyNodeID[transport.nodeID] = transportID
+                            blue.net.AddProxyNode(transportID, transport.nodeID)
                         else:
                             self.transportIDbySolNodeID[transport.nodeID] = transportID
                         self.transportsByID[transportID] = transport
@@ -2421,7 +2501,6 @@ class MachoNetService(service.Service):
                                 polarisID = self.GetNodeFromAddress(const.cluster.SERVICE_POLARIS, 0)
                             isPolaris = response.nodeID == polarisID
                             sm.ScatterEvent('OnNewNode', response.nodeID, address, response.isProxy, isPolaris, response.serviceMask)
-                        blue.net.EnumerateTransport(transport.transport.socket.getSocketDescriptor(), transport.transportID, transport.transportName, 0, 0, transport.nodeID)
                     others = response.others
                     for (otherAddress, otherNodeID,) in others:
                         self.LayTracksIfNeeded(otherAddress, otherNodeID, 'LayTracks::response.others')
@@ -2449,7 +2528,7 @@ class MachoNetService(service.Service):
 
         def GracefulShutdownWrapper(whenMinutes, duration, explaination):
             userID = 0
-            when = whenMinutes * MIN + blue.os.GetTime()
+            when = whenMinutes * MIN + blue.os.GetWallclockTime()
             self.session.ConnectToAllSolServerServices('machoNet').GracefulShutdown(userID, when, duration, explaination)
             return True
 
@@ -2557,18 +2636,18 @@ class MachoNetService(service.Service):
                                 if nodeID == -1:
                                     self.LogError('zcluster.Cluster_NodeFromAddress informed us that an app lock timeout occurred')
                                     self.LogError('Sleeping and retrying.  This is very bad.')
-                                    blue.pyos.synchro.Sleep(15000)
+                                    blue.pyos.synchro.SleepWallclock(15000)
                                     continue
                                 elif nodeID == -2:
                                     self.LogError("zcluster.Cluster_NodeFromAddress informed us that we're dead")
                                     log.LogTraceback()
-                                    blue.pyos.synchro.Sleep(60000)
+                                    blue.pyos.synchro.SleepWallclock(60000)
                                     self.dbzcluster.Nodes_Trash(self.nodeID, "zcluster.Cluster_NodeFromAddress informed us that we're dead", 1)
                                     log.Quit("zcluster.Cluster_NodeFromAddress informed us that we're dead")
                                 elif nodeID == -3:
                                     if borkPrevention > 0:
-                                        self.LogWarn('Cluster Segmentation Initial Fragmentation Prevention for ', key, ':  Sleeping for ', 1 + self.heartbeatInterval / 10, ' seconds to allow other segments to pass the safety time.')
-                                        blue.pyos.synchro.Sleep(1000 * (1 + self.heartbeatInterval / 10))
+                                        self.LogWarn('Cluster Segmentation Initial Fragmentation Prevention for ', key, ': Sleeping for ', 1 + self.heartbeatInterval / 10, ' seconds to allow other segments to pass the safety time.')
+                                        blue.pyos.synchro.SleepWallclock(1000 * (1 + self.heartbeatInterval / 10))
                                         borkPrevention = borkPrevention - 1
                                         continue
                                     if borkPrevention == 0:
@@ -2582,7 +2661,7 @@ class MachoNetService(service.Service):
                                 elif nodeID == -4:
                                     self.LogWarn('zcluster.Cluster_NodeFromAddress informed us that the address we requested (', serviceID, ',', address, ") was recently mapped on a node that has not yet acknowledged it's death")
                                     self.LogWarn('Sleeping and retrying.')
-                                    blue.pyos.synchro.Sleep(15000)
+                                    blue.pyos.synchro.SleepWallclock(15000)
                                     continue
                                 else:
                                     self.LogError('zcluster.Cluster_NodeFromAddress went haywire')
@@ -2597,7 +2676,7 @@ class MachoNetService(service.Service):
                                 break
                             else:
                                 log.LogTraceback('zcluster.Cluster_NodeFromAddress returned 0 or None???  Entering bork-prevention loop')
-                                blue.pyos.synchro.Sleep(5000)
+                                blue.pyos.synchro.SleepWallclock(5000)
 
                         if nodeID is None:
                             log.LogTraceback('Failing to acquire a nodeID for address (%s).  Raising.' % strx(key))
@@ -2614,7 +2693,7 @@ class MachoNetService(service.Service):
             if nodeID in self.deadNodes:
                 self.LogError('Tried to return a dead mapping: Dead Node ', nodeID, ' has been registered in the address cache for ', key)
                 self._addressCache.Remove(serviceID, address)
-                blue.pyos.synchro.Sleep(3000)
+                blue.pyos.synchro.SleepWallclock(3000)
             else:
                 break
 
@@ -2765,7 +2844,7 @@ class MachoNetService(service.Service):
             while self.nodeID is None:
                 self.LogError("Some dude is trying to get our nodeID before we're up and running...  Can't have that, now can we?  Let's sleeping on it.")
                 log.LogTraceback()
-                blue.pyos.synchro.Sleep(1000)
+                blue.pyos.synchro.SleepWallclock(1000)
 
         return self.nodeID
 
@@ -2846,12 +2925,12 @@ class MachoNetService(service.Service):
 
     def OnHeartBeat(self):
         while not getattr(self, 'stop', True):
-            blue.pyos.synchro.Sleep(int(self.heartbeatInterval * 1000))
-            if self.nodeID is not None and (self.shutdown is None or self.shutdown.when > blue.os.GetTime()):
+            blue.pyos.synchro.SleepWallclock(int(self.heartbeatInterval * 1000))
+            if self.nodeID is not None and (self.shutdown is None or self.shutdown.when > blue.os.GetWallclockTime()):
                 try:
                     secs = self.dbzcluster.Nodes_HeartBeat(self.nodeID)
                     if self.debugHeartBeat:
-                        self.LogNotice('Node', self.nodeID, 'Done sending Heartbeat @ ', util.FmtDate(blue.os.GetTime()), ' result ', repr(secs))
+                        self.LogNotice('Node', self.nodeID, 'Done sending Heartbeat @ ', util.FmtDateEng(blue.os.GetWallclockTime()), ' result ', repr(secs))
                 except StandardError:
                     self.LogError('!! ---------------------------------------------------------- !!')
                     self.LogError('Oh my God!  An exception during zcluster.Nodes_HeartBeat!!!')
@@ -2891,7 +2970,7 @@ class MachoNetService(service.Service):
         if not __debug__:
             while not getattr(self, 'stop', True):
                 try:
-                    blue.pyos.synchro.Sleep(int(self.cleanupInterval * 1000))
+                    blue.pyos.synchro.SleepWallclock(int(self.cleanupInterval * 1000))
                     self.dbzcluster.Nodes_TrashLimbos(self.cleanupInterval)
                 except Exception:
                     log.LogException('Exception during OnCleanUp.  Ignoring.')
@@ -2903,12 +2982,12 @@ class MachoNetService(service.Service):
     def GetGPCS(self, channel = None):
         if macho.mode == 'client':
             while self.authenticating == 2:
-                blue.pyos.synchro.Sleep(500)
+                blue.pyos.synchro.SleepWallclock(500)
 
         while not self.state == SERVICE_RUNNING:
             self.LogError("GetGPCS shouldn't be called on machoNet before it's running...")
             log.LogTraceback()
-            blue.pyos.synchro.Sleep(500)
+            blue.pyos.synchro.SleepWallclock(500)
 
         return self.channelHandlersDown.get(channel, None)
 
@@ -2974,8 +3053,8 @@ class MachoNetService(service.Service):
               '(millisecs)',
               '(blues)',
               '(millisecs)']]
-            retval = self._BlockingCall(macho.PingReq(destination=address, times=[(blue.os.GetTime(), blue.os.GetTime(1), macho.mode + '::start')]))
-            retval.times.append((blue.os.GetTime(), blue.os.GetTime(1), macho.mode + '::stop'))
+            retval = self._BlockingCall(macho.PingReq(destination=address, times=[(blue.os.GetWallclockTime(), blue.os.GetWallclockTimeNow(), macho.mode + '::start')]))
+            retval.times.append((blue.os.GetWallclockTime(), blue.os.GetWallclockTimeNow(), macho.mode + '::stop'))
             for n in range(len(retval.times)):
                 each = retval.times[n]
                 stopminusstartb = ''
@@ -3128,8 +3207,7 @@ class MachoNetService(service.Service):
                 del self.clientConfigVals[key]
         else:
             self.clientConfigVals[key] = value
-        if macho.mode == 'client':
-            sm.ScatterEvent('OnClientConfigValsChanged', self.clientConfigVals)
+        sm.ScatterEvent('OnClientConfigValsChanged', self.clientConfigVals)
 
 
 
@@ -3196,7 +3274,7 @@ class MachoNetService(service.Service):
 
 
     def __AutoLogOffClient(self, transport, clientID):
-        blue.pyos.synchro.Sleep(self.autoLogoffAuthenticatedTransportInterval * 1000)
+        blue.pyos.synchro.SleepWallclock(self.autoLogoffAuthenticatedTransportInterval * 1000)
         if clientID not in self.transportIDbyClientID and not transport.IsClosed():
             transport.Close('Authentication Timeout', 'HANDSHAKE_TIMEOUT_AUTHENTICATED')
             self.session.ConnectToRemoteService('authentication').Logout(clientID)
@@ -3210,7 +3288,7 @@ class MachoNetService(service.Service):
 
 
     def GetTime(self):
-        return blue.os.GetTime(1)
+        return blue.os.GetWallclockTimeNow()
 
 
 
@@ -3237,9 +3315,9 @@ class MachoNetService(service.Service):
                 timeout = []
                 k = None
                 v = None
-                blue.pyos.synchro.Sleep(100 * self.callTimeOutInterval)
+                blue.pyos.synchro.SleepWallclock(100 * self.callTimeOutInterval)
                 for k in self.calls.keys():
-                    if blue.os.GetTime() > self.calls[k][1]:
+                    if blue.os.GetWallclockTime() > self.calls[k][1]:
                         v = self.calls[k]
                         timeout.append((self._MachoNetService__TimeoutCall, (v[0],)))
                         del self.calls[k]
@@ -3263,10 +3341,10 @@ class MachoNetService(service.Service):
             keepAliveTimerInterval = self.serverKeepAliveTimerInterval
         while not getattr(self, 'stop', True):
             try:
-                blue.pyos.synchro.Sleep(keepAliveTimerInterval * 1000 / 4)
+                blue.pyos.synchro.SleepWallclock(keepAliveTimerInterval * 1000 / 4)
                 if not self.clockReset:
                     continue
-                time = blue.os.GetTime()
+                time = blue.os.GetWallclockTime()
                 clientCheck = time - self.clientKeepAliveTimerInterval * const.SEC
                 clientDead = time - 3 * self.clientKeepAliveTimerInterval * const.SEC
                 serverCheck = time - self.serverKeepAliveTimerInterval * const.SEC
@@ -3302,12 +3380,12 @@ class MachoNetService(service.Service):
         try:
             transport.pinging = True
             try:
-                t0 = blue.os.GetTime(1)
+                t0 = blue.os.GetWallclockTimeNow()
                 if not transport.lastPing:
                     transport.lastPing = [0, 0]
                 transport.lastPing[0] = t0
                 response = self._BlockingCall(macho.PingReq(destination=transport.GetMachoAddressOfOtherSide(), times=[]))
-                t1 = blue.os.GetTime(1)
+                t1 = blue.os.GetWallclockTimeNow()
                 tResponse = response.times[0][1] - transport.estimatedRTT / 2
                 tDiff = t1 - t0
                 transport.estimatedRTT = transport.estimatedRTT * 0.85 + (t1 - t0) * 0.15
@@ -3347,24 +3425,26 @@ class MachoNetService(service.Service):
             source = macho.MachoAddress(nodeID=self.nodeID, callID=callID)
         packet.source = source
         self.calls[callID] = [uthread.Channel('machoNet::BlockingCall'),
-         blue.os.GetTime() + packet.oob.get('machoTimeout', self.callTimeOutInterval) * const.SEC,
+         blue.os.GetWallclockTime() + packet.oob.get('machoTimeout', self.callTimeOutInterval) * const.SEC,
          transport.calls,
          callID]
         self.callsCountMax = max(self.callsCountMax, len(self.calls))
         try:
             try:
                 transport.calls[callID] = self.calls[callID][0]
-                before = blue.os.GetTime()
+                before = blue.os.GetWallclockTime()
                 try:
                     transport.Write(packet)
                     while 1:
                         retval = self.calls[callID][0].receive()
+                        if boot.role == 'client':
+                            transport.TagPacketSizes(packet, retval)
                         provisional = retval.oob.get('provisional', None)
                         if provisional is None:
                             break
                         if macho.mode == 'client':
                             self.LogInfo('Received Provisional Response, provisional=', provisional)
-                            self.calls[callID][1] = blue.os.GetTime() + provisional[0] * const.SEC
+                            self.calls[callID][1] = blue.os.GetWallclockTime() + provisional[0] * const.SEC
                             if provisional[1].startswith('Process'):
                                 sm.ChainEventWithoutTheStars(provisional[1], provisional[2])
                             else:
@@ -3377,7 +3457,7 @@ class MachoNetService(service.Service):
                 finally:
                     if transport.calls.has_key(callID):
                         del transport.calls[callID]
-                    after = blue.os.GetTime()
+                    after = blue.os.GetWallclockTime()
                     diff = after - before
                     self.blockingCallTimes.Add(diff)
 
@@ -3760,16 +3840,16 @@ class MachoNetService(service.Service):
                         self.LogError('Odds are that this server is going down anyway, and an explanation will be found elsewhere')
                     else:
                         uthread.worker('machoNet::DelayedTransportCloseFromProcessSessionChange', self.transportsByID[transportID].Close, reason)
-        elif not isremote and 'charid' in change and change['charid'][1] is not None and self.shutdown is not None and self.shutdown.notify is not None and self.shutdown.when - const.HOUR <= blue.os.GetTime():
+        elif not isremote and 'charid' in change and change['charid'][1] is not None and self.shutdown is not None and self.shutdown.notify is not None and self.shutdown.when - const.HOUR <= blue.os.GetWallclockTime():
             clientID = getattr(sess, 'clientID', 0)
             if not clientID and 'clientID' in change:
                 clientID = change['clientID'][1]
             if clientID:
-                now = blue.os.GetTime()
-                msg = self.shutdown.explanation % {'when': util.FmtDate(self.shutdown.when, 'ns'),
-                 'delay': util.FmtTimeInterval(self.shutdown.when - now, 'min')}
+                now = blue.os.GetWallclockTime()
+                msg = self.shutdown.explanation % {'when': util.FmtDateEng(self.shutdown.when, 'ns'),
+                 'delay': util.FmtTimeIntervalEng(self.shutdown.when - now, 'min')}
                 if self.shutdown.notify is None and self.shutdown.duration:
-                    msg += '  See you again in ' + util.FmtTimeInterval(self.shutdown.duration * const.MIN, 'min')
+                    msg += '  See you again in ' + util.FmtTimeIntervalEng(self.shutdown.duration * const.MIN, 'min')
                 self.SinglecastByClientID(clientID, 'OnClusterShutdownInitiated', msg, self.shutdown.when)
 
 
@@ -3782,7 +3862,7 @@ class MachoNetService(service.Service):
             self.transportID = self.transportID + 1
             while not transport.IsClosed():
                 if counter > 0:
-                    blue.pyos.synchro.Sleep(3000)
+                    blue.pyos.synchro.SleepWallclock(3000)
                 try:
                     if llv:
                         llvresponse = transport.HandleClientAuthentication(self.loggedOnUserCount, transportID)
@@ -3921,13 +4001,6 @@ class MachoNetService(service.Service):
                             msgSession[0].version += 1
                             self.LogInfo('Incrementing actual session(', msgSession[0].sid, ")'s version number to ", msgSession[0].version)
                         else:
-                            sessionNotificationPacket = theMessage.oob.get(OOB_SESSIONNOTIFICATION, None)
-                            if sessionNotificationPacket:
-                                msgSession[3] += 1
-                                self.LogInfo('Incrementing macho-packet session(', msgSession[0].sid, ")'s version number to ", msgSession[3], '. Caused by OOB session notification')
-                                self.HandleMessage(transport, sessionNotificationPacket)
-                                msgSession[0].version += 1
-                                self.LogInfo('Incrementing actual session(', msgSession[0].sid, ")'s version number to ", msgSession[0].version, '. Caused by OOB session notification')
                             self.HandleMessage(transport, theMessage)
                 except SessionUnavailable as e:
                     self.LogError('Message abandoned in TransportReader due to unavailable user session')
@@ -3997,7 +4070,7 @@ class MachoNetService(service.Service):
     @bluepy.TimedFunction('machoNet::HandleMessage')
     def HandleMessage(self, transport, theMessage, skipSanityCheck = 0):
         if theMessage.command in self.__pingrequestorresponse__:
-            theMessage.times.append((blue.os.GetTime(), blue.os.GetTime(1), macho.mode + '::handle_message'))
+            theMessage.times.append((blue.os.GetWallclockTime(), blue.os.GetWallclockTimeNow(), macho.mode + '::handle_message'))
             theMessage.Changed()
         try:
             if transport.transportID not in self.transportsByID:
@@ -4071,7 +4144,7 @@ class MachoNetService(service.Service):
                     if macho.mode == 'proxy' and not (theMessage.destination.addressType == const.ADDRESS_TYPE_NODE and theMessage.destination.nodeID == self.nodeID):
                         forward = 1
                     elif theMessage.command == MACHONETMSG_TYPE_PING_REQ:
-                        theMessage.times.append((blue.os.GetTime(), blue.os.GetTime(1), macho.mode + '::turnaround'))
+                        theMessage.times.append((blue.os.GetWallclockTime(), blue.os.GetWallclockTimeNow(), macho.mode + '::turnaround'))
                         theResponse = theMessage.Response(times=theMessage.times[:])
                         transport.Write(theResponse)
                 elif theMessage.command == MACHONETMSG_TYPE_IDENTIFICATION_REQ:
@@ -4141,28 +4214,7 @@ class MachoNetService(service.Service):
                         theMessage.destination.narrowcast = []
                         theMessage.Changed()
                     for each in transports:
-                        sessionprops = None
-                        if theMessage.source.addressType == const.ADDRESS_TYPE_CLIENT:
-                            (rs, rc, theID,) = transport._SessionAndChannelAndIDFromPacket(theMessage)
-                            nhk = not transport.dependants.has_key(each.transportID)
-                            if nhk or rs[0].version > transport.dependants[each.transportID]:
-                                transport.dependants[each.transportID] = rs[0].version
-                                if nhk:
-                                    sessionprops = {}
-                                    for v in rs[0].GetDistributedProps(0):
-                                        sessionprops[v] = getattr(rs[0], v)
-
-                                    sessionprops = macho.SessionInitialStateNotification(source=macho.MachoAddress(clientID=theID), destination=macho.MachoAddress(nodeID=each.nodeID), sid=rs[0].sid, initialstate=sessionprops)
-                                    if theMessage.command == MACHONETMSG_TYPE_SESSIONCHANGENOTIFICATION:
-                                        theMessage = sessionprops
-                                        sessionprops = None
-                                else:
-                                    change = {}
-                                    for v in rs[0].GetDistributedProps(1):
-                                        change[v] = (None, getattr(rs[0], v))
-
-                                sessionprops = macho.SessionChangeNotification(source=macho.MachoAddress(clientID=theID), destination=macho.MachoAddress(nodeID=each.nodeID), sid=rs[0].sid, change=(1, change))
-                        self.FragileWrite(each, theMessage, sessionprops)
+                        self.FragileWrite(each, theMessage)
 
                 except UnMachoDestination as e:
                     if theMessage.destination.addressType != const.ADDRESS_TYPE_CLIENT or theMessage.command == MACHONETMSG_TYPE_CALL_REQ:
@@ -4197,15 +4249,10 @@ class MachoNetService(service.Service):
 
 
     @bluepy.TimedFunction('machoNet::FragileWrite')
-    def FragileWrite(self, transport, message, sessionprops):
+    def FragileWrite(self, transport, message):
         try:
-            if sessionprops:
-                if prefs.GetValue('inlineSessionJIT', 0):
-                    message.oob[OOB_SESSIONNOTIFICATION] = sessionprops
-                else:
-                    transport.Write(sessionprops)
             if message.command in self.__pingrequestorresponse__:
-                message.times.append((blue.os.GetTime(), blue.os.GetTime(1), macho.mode + '::writing'))
+                message.times.append((blue.os.GetWallclockTime(), blue.os.GetWallclockTimeNow(), macho.mode + '::writing'))
                 message.Changed()
             transport.Write(message)
         except GPSTransportClosed as e:
@@ -4235,6 +4282,7 @@ class MachoNetService(service.Service):
 
     def GetIDOfAddress(self, address, clientMode = True, customIDData = None):
         (ipaddr, port,) = address.split(':')
+        ipaddr = GetPreferredHostByName(ipaddr)
         x = ipaddr.split('.')
         if clientMode:
             t = self.clientIDOffset
@@ -4272,7 +4320,7 @@ def WhitelistDumper():
             print >> f, v[0] + '.' + v[1]
 
         f.close()
-        blue.pyos.synchro.Sleep(5000)
+        blue.pyos.synchro.SleepWallclock(5000)
 
 
 
@@ -4290,6 +4338,18 @@ def RegisterPortOffset(mapname, portOffset, modeRoleBootMacho = None):
     offsetMap[modeRoleBootMacho][mapname] = portOffset
 
 
+
+def GetPreferredHostByName(name):
+    addressList = socket.gethostbyname_ex(name)[2]
+    lookingFor = PREFERRED_SUBNETWORKS.get(macho.mode, DEFAULT_SUBNETWORK)
+    for address in addressList:
+        if address.startswith(lookingFor):
+            return address
+
+    if addressList:
+        return addressList[0]
+
+
 exports = {'macho.Loads': MachoLoads,
  'macho.Dumps': MachoDumps,
  'macho.LoadsSanitized': MachoLoadsSanitized,
@@ -4305,7 +4365,8 @@ exports = {'macho.Loads': MachoLoads,
  'macho.gpsMap': gpsMap,
  'macho.ThrottledCall': ThrottledCall,
  'macho.gpcsMap': gpcsMap,
- 'macho.packetTypeChannelMap': packetTypeChannelMap}
+ 'macho.packetTypeChannelMap': packetTypeChannelMap,
+ 'macho.GetPreferredHostByName': GetPreferredHostByName}
 exports['macho.mode'] = boot.role
 util.InitWhitelist()
 

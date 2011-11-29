@@ -77,7 +77,6 @@ class BaseWorldSpaceService(service.Service):
 
     def OnEntitySceneLoaded(self, sceneID):
         ws = self.GetWorldSpaceInstance(sceneID)
-        ws.LoadEntities()
         gw = sm.GetService('gameWorld' + boot.role.title()).GetGameWorld(sceneID)
         gw.LoadPathData(ws.GetWorldSpaceTypeID(), blue.pyos.packaged)
 

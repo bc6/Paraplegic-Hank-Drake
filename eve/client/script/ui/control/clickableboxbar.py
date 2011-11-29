@@ -3,6 +3,7 @@ import uix
 import blue
 import uicls
 import uiconst
+import localization
 
 class ClickableBoxBar(uicls.Container):
     __guid__ = 'uicls.ClickableBoxBar'
@@ -227,7 +228,7 @@ class ClickableBoxBar(uicls.Container):
     def GetHint(self, box, *args):
         hintText = ''
         if self.hintFormat is not None:
-            hintText += self.hintFormat % self.value
+            hintText = localization.GetByLabel(self.hintFormat, value=self.value)
         if box.identifier < self.minimumIndex and self.belowMaxHint is not None:
             hintText += self.belowMaxHint % self.GetIndexValue(box.identifier)
         if box.identifier > self.maximumIndex and self.aboveMaxHint is not None:

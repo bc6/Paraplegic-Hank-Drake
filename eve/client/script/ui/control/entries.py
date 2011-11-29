@@ -6,13 +6,15 @@ import blue
 import listentry
 import base
 import uthread
-import types
 import uiconst
 import uicls
 import form
 import log
 import trinity
 import bluepy
+import localization
+import localizationUtil
+import fontConst
 events = ('OnClick',
  'OnMouseDown',
  'OnMouseUp',
@@ -49,7 +51,7 @@ class Generic(uicls.SE_BaseClassCore):
 
 
     def Startup(self, *args):
-        self.sr.label = uicls.Label(text='', parent=self, left=5, state=uiconst.UI_DISABLED, color=None, singleline=1, align=uiconst.CENTERLEFT)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=self, left=5, state=uiconst.UI_DISABLED, color=None, singleline=1, align=uiconst.CENTERLEFT)
         self.sr.line = uicls.Container(name='lineparent', align=uiconst.TOBOTTOM, parent=self, height=1)
         self.sr.mainline = uicls.Fill(parent=self.sr.line)
         self.sr.selection = uicls.Fill(parent=self, padding=(1, 1, 1, 1), color=(1.0, 1.0, 1.0, 0.25))
@@ -89,7 +91,7 @@ class Generic(uicls.SE_BaseClassCore):
         if data.Get('fontsize', None):
             self.sr.label.fontsize = data.fontsize
         else:
-            self.sr.label.fontsize = 12
+            self.sr.label.fontsize = fontConst.EVE_MEDIUM_FONTSIZE
         if data.Get('hspace', None):
             self.sr.label.letterspace = data.hspace
         else:
@@ -108,7 +110,7 @@ class Generic(uicls.SE_BaseClassCore):
         data = self.sr.node
         hint = data.hint
         if hint is None:
-            self.hint = data.label.replace('<t>', '<br>').replace('<right>', '')
+            self.hint = uiutil.ReplaceTags(data.label, (('<t>', '<br>'), ('<right>', '')))
         else:
             self.hint = hint
 
@@ -117,9 +119,9 @@ class Generic(uicls.SE_BaseClassCore):
     def GetHeight(_self, *args):
         (node, width,) = args
         if node.vspace is not None:
-            node.height = uix.GetTextHeight(node.label, autoWidth=1, singleLine=1) + node.vspace
+            node.height = uix.GetTextHeight(node.label, singleLine=1) + node.vspace
         else:
-            node.height = uix.GetTextHeight(node.label, autoWidth=1, singleLine=1) + 4
+            node.height = uix.GetTextHeight(node.label, singleLine=1) + 4
         return node.height
 
 
@@ -245,8 +247,8 @@ class StatusBar(uicls.SE_BaseClassCore):
         uicls.Frame(parent=bar, color=(1.0, 1.0, 1.0, 0.5))
         progress = uicls.Container(parent=bar, width=20, name='progress', state=uiconst.UI_NORMAL, align=uiconst.TORIGHT)
         uicls.Fill(parent=bar, color=(1.0, 1.0, 1.0, 0.5))
-        self.sr.label = uicls.Label(text='', parent=container, idx=0, left=6, top=2, letterspace=2, fontsize=9, uppercase=1, singleline=1, state=uiconst.UI_NORMAL)
-        self.sr.text = uicls.Label(text='', parent=container, idx=1, left=95, top=12, fontsize=12, singleLine=1, state=uiconst.UI_NORMAL)
+        self.sr.label = uicls.EveLabelSmall(text='', parent=container, idx=0, left=6, top=2, singleline=1, state=uiconst.UI_NORMAL)
+        self.sr.text = uicls.EveLabelMedium(text='', parent=container, idx=1, left=95, top=12, singleLine=1, state=uiconst.UI_NORMAL)
         self.sr.progress = progress
 
 
@@ -272,8 +274,8 @@ class StatusBar(uicls.SE_BaseClassCore):
 
     def GetHeight(_self, *args):
         (node, width,) = args
-        labelheight = uix.GetTextHeight(node.label, fontsize=9, autoWidth=1, singleLine=1, uppercase=1)
-        textheight = uix.GetTextHeight('%i/%i' % (node.status, node.total), fontsize=12, autoWidth=1, singleLine=1)
+        labelheight = uix.GetTextHeight(node.label, fontsize=fontConst.EVE_SMALL_FONTSIZE, singleLine=1, uppercase=1)
+        textheight = uix.GetTextHeight('%i/%i' % (node.status, node.total), fontsize=fontConst.EVE_MEDIUM_FONTSIZE, singleLine=1)
         node.height = 2 + labelheight + textheight
         return node.height
 
@@ -320,7 +322,7 @@ class Item(Generic):
             self.sr.icon.state = uiconst.UI_HIDDEN
             self.sr.label.left = 8
         self.sr.label.text = data.label
-        self.hint = data.Get('hint', '') or self.sr.label.text.replace('<t>', '  ')
+        self.hint = data.Get('hint', '') or data.label
         if self.typeID or self.isStation:
             self.sr.infoicon.state = uiconst.UI_NORMAL
         else:
@@ -461,10 +463,11 @@ class Slider(Generic):
         mainpar = uicls.Container(name='listentry_slider', align=uiconst.TOTOP, width=0, height=10, left=0, top=14, state=uiconst.UI_NORMAL, parent=self)
         mainpar._OnResize = self.Resize
         slider = xtriui.Slider(parent=mainpar, align=uiconst.TOPLEFT, top=20, state=uiconst.UI_NORMAL)
-        lbl = uicls.Label(text='', parent=mainpar, align=uiconst.TOPLEFT, width=200, left=5, top=-10, fontsize=9, letterspace=2, autowidth=False)
+        lbl = uicls.EveLabelSmall(text='', parent=mainpar, width=200, left=5, top=-12)
         lbl.name = 'label'
         self.sr.lbl = lbl
         slider.SetSliderLabel = self.SetSliderLabel
+        slider.GetSliderHint = lambda idname, dname, value: localizationUtil.FormatNumeric(int(value))
         self.sr.slider = slider
 
 
@@ -491,7 +494,7 @@ class Slider(Generic):
 
 
     def SetSliderLabel(self, label, idname, dname, value):
-        self.sr.lbl.text = '%s %d' % (dname, int(value))
+        self.sr.lbl.text = dname
         if self.sr.node.Get('setsliderlabel', None) is not None:
             self.sr.node.setsliderlabel(label, idname, dname, value)
 
@@ -569,7 +572,7 @@ class Checkbox(Generic):
 
     def GetHeight(_self, *args):
         (node, width,) = args
-        node.height = max(19, uix.GetTextHeight(node.label, autoWidth=1, singleLine=1) + 4)
+        node.height = max(19, uix.GetTextHeight(node.label, singleLine=1) + 4)
         return node.height
 
 
@@ -586,9 +589,9 @@ class Progress(uicls.SE_BaseClassCore):
     __params__ = ['header', 'startTime', 'duration']
 
     def Startup(self, args):
-        header = uicls.Label(text='', parent=self, left=2, fontsize=12, letterspace=1, top=2, uppercase=1, state=uiconst.UI_DISABLED)
+        header = uicls.EveLabelMedium(text='', parent=self, left=2, top=2, state=uiconst.UI_DISABLED)
         p = uicls.Container(name='gauge', parent=self, width=84, height=14, left=6, top=20, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, idx=0)
-        t = uicls.Label(text='', parent=p, left=6, fontsize=9, letterspace=1, uppercase=1, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT)
+        t = uicls.EveLabelSmall(text='', parent=p, left=6, top=1, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT)
         f = uicls.Fill(parent=p, align=uiconst.RELATIVE, width=1, height=10, left=2, top=2, color=(1.0, 1.0, 1.0, 0.25))
         uicls.Frame(parent=p, color=(1.0, 1.0, 1.0, 0.5))
         self.sr.progress = p
@@ -614,13 +617,13 @@ class Progress(uicls.SE_BaseClassCore):
         maxWidth = self.sr.progress.width - self.sr.progressFill.left * 2
         self.sr.progress.state = uiconst.UI_DISABLED
         while self and not self.destroyed:
-            msFromStart = max(0, blue.os.TimeDiffInMs(startTime))
+            msFromStart = max(0, blue.os.TimeDiffInMs(startTime, blue.os.GetSimTime()))
             portion = 1.0
             if msFromStart:
                 portion -= float(msFromStart) / duration
             self.sr.progressFill.width = int(maxWidth * portion)
             diff = max(0, duration - msFromStart)
-            self.sr.progressText.text = '%.1f %s' % (diff / 1000.0, [mls.UI_GENERIC_SECONDSHORT, mls.UI_GENERIC_SECONDSSHORT][(diff / 1000.0 > 2.0)])
+            self.sr.progressText.text = localization.GetByLabel('UI/Control/Entries/Seconds', seconds=diff / 1000.0)
             if msFromStart > duration:
                 break
             blue.pyos.synchro.Yield()
@@ -808,7 +811,7 @@ class ColumnLine(uicls.SE_BaseClassCore):
              textOrObject):
                 each.Close()
 
-        if type(textOrObject) in types.StringTypes:
+        if isinstance(textOrObject, basestring):
             col.sr.textCtrl.state = uiconst.UI_DISABLED
             col.sr.textCtrl.text = textOrObject
         else:
@@ -849,7 +852,7 @@ class ColumnLine(uicls.SE_BaseClassCore):
 
     def GetHeight(_self, *args):
         (node, width,) = args
-        node.height = uix.GetTextHeight(''.join([ text for text in node.texts if type(text) in types.StringTypes ]), autoWidth=1, singleLine=1) + 1
+        node.height = uix.GetTextHeight(''.join([ text for text in node.texts if isinstance(text, basestring) ]), singleLine=1) + 1
         return node.height
 
 
@@ -952,7 +955,7 @@ class ColumnLine(uicls.SE_BaseClassCore):
 
 
     def OnHeaderGetMenu(self, sender, *args):
-        m = [(mls.UI_SHARED_COLUMN_MOVE_FORWARD, self.ChangeColumnOrder, (sender, -1)), (mls.UI_SHARED_COLUMN_MOVE_BACKWARD, self.ChangeColumnOrder, (sender, 1))]
+        m = [(localization.GetByLabel('UI/Control/Entries/ColumnMoveForward'), self.ChangeColumnOrder, (sender, -1)), (localization.GetByLabel('UI/Control/Entries/ColumnMoveBackward'), self.ChangeColumnOrder, (sender, 1))]
         return m
 
 
@@ -1003,7 +1006,7 @@ class ColumnLine(uicls.SE_BaseClassCore):
                 extraSpace = 0
                 if node is self.sr.node and self.sr.node.Get('editable', 0):
                     extraSpace = 10
-                if type(text) in types.StringTypes:
+                if isinstance(text, basestring):
                     textWidth = sm.GetService('font').GetTextWidth(text, fontsize, hspace, uppercase)
                     if text:
                         columnWidths.append(padLeft + textWidth + padRight + 3 + extraSpace)
@@ -1045,7 +1048,7 @@ class Header(uicls.SE_BaseClassCore):
     __notifyevents__ = ['OnUIColorsChanged']
 
     def Startup(self, args):
-        self.sr.label = uicls.Label(text='', parent=self, left=8, top=0, state=uiconst.UI_DISABLED, letterspace=4, uppercase=1, singleline=1, align=uiconst.CENTERLEFT)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=self, left=8, top=0, state=uiconst.UI_DISABLED, singleline=1, align=uiconst.CENTERLEFT, bold=True)
         uicls.Line(parent=self, align=uiconst.TOBOTTOM)
         self.sr.mainFill = uicls.Fill(parent=self, padding=(1, 1, 1, 1))
         self.OnUIColorsChanged()
@@ -1068,7 +1071,7 @@ class Header(uicls.SE_BaseClassCore):
 
     def GetHeight(self, *args):
         (node, width,) = args
-        node.height = uix.GetTextHeight(node.label, autoWidth=1, singleLine=1) + 6
+        node.height = uix.GetTextHeight(node.label, singleLine=1) + 6
         return node.height
 
 
@@ -1080,7 +1083,7 @@ class Subheader(uicls.SE_BaseClassCore):
     __notifyevents__ = ['OnUIColorsChanged']
 
     def Startup(self, args):
-        self.sr.label = uicls.Label(text='', parent=self, left=8, top=0, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=self, left=8, top=0, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT, bold=True)
         uicls.Line(parent=self, align=uiconst.TOBOTTOM)
         self.sr.fill = uicls.Fill(parent=self, padding=(1, 1, 1, 1))
         (color, bgColor, comp, compsub,) = sm.GetService('window').GetWindowColors()
@@ -1104,7 +1107,7 @@ class Subheader(uicls.SE_BaseClassCore):
 
     def GetHeight(self, *args):
         (node, width,) = args
-        node.height = uix.GetTextHeight(node.label, autoWidth=1, singleLine=1) + 6
+        node.height = uix.GetTextHeight(node.label, singleLine=1) + 6
         return node.height
 
 
@@ -1115,7 +1118,7 @@ class Text(uicls.SE_BaseClassCore):
     __params__ = ['text']
 
     def Startup(self, *args):
-        self.sr.text = self.sr.label = uicls.Label(text='', parent=self, left=8, top=0, state=uiconst.UI_DISABLED, color=None, singleline=1, align=uiconst.CENTERLEFT)
+        self.sr.text = self.sr.label = uicls.EveLabelMedium(text='', parent=self, left=8, top=0, state=uiconst.UI_DISABLED, color=None, singleline=1, align=uiconst.CENTERLEFT)
         self.sr.infoicon = uicls.InfoIcon(size=16, left=2, top=2, parent=self, idx=0, align=uiconst.TOPRIGHT)
         self.sr.infoicon.OnClick = self.ShowInfo
         self.sr.icon = uicls.Icon(parent=self, pos=(1, 2, 24, 24), align=uiconst.TOPLEFT, idx=0, ignoreSize=True)
@@ -1127,14 +1130,14 @@ class Text(uicls.SE_BaseClassCore):
     def Load(self, node):
         self.sr.node = node
         data = node
-        self.sr.text.text = data.text
+        self.sr.text.text = unicode(data.text)
         self.typeID = data.Get('typeID', None)
         self.itemID = data.Get('itemID', None)
         self.isStation = data.Get('isStation', 0)
         if node.Get('hint', None):
             self.hint = node.hint
         else:
-            self.hint = self.sr.text.text.replace('<t>', '  ')
+            self.hint = uiutil.ReplaceTags(self.sr.text.text, ('<t>', '  '))
         if self.typeID or self.isStation and self.itemID:
             self.sr.infoicon.state = uiconst.UI_NORMAL
         else:
@@ -1152,7 +1155,7 @@ class Text(uicls.SE_BaseClassCore):
         else:
             self.sr.icon.state = uiconst.UI_HIDDEN
             self.sr.text.left = 8
-        if self.sr.text.text.find('<url') != -1:
+        if uiutil.GetAsUnicode(self.sr.text).find('<url') != -1:
             self.sr.text.state = uiconst.UI_NORMAL
         else:
             self.sr.text.state = uiconst.UI_DISABLED
@@ -1177,7 +1180,7 @@ class Text(uicls.SE_BaseClassCore):
         if self.sr.node.Get('OnDblClick', None):
             self.sr.node.OnDblClick(self)
         elif self.sr.node.Get('canOpen', None):
-            uix.TextBox(self.sr.node.canOpen, self.sr.node.text.replace('<t>', '<br>').replace('\r', ''), preformatted=1)
+            uix.TextBox(self.sr.node.canOpen, uiutil.GetAsUnicode(self.sr.node.text).replace('<t>', '<br>').replace('\r', ''), preformatted=1)
 
 
 
@@ -1193,13 +1196,13 @@ class Text(uicls.SE_BaseClassCore):
 
     def GetHeight(self, *args):
         (node, width,) = args
-        node.height = uix.GetTextHeight(node.text, autoWidth=1, singleLine=1) + 6
+        node.height = uix.GetTextHeight(node.text, singleLine=1) + 6
         return node.height
 
 
 
     def CopyText(self):
-        text = unicode(self.sr.node.text)
+        text = uiutil.GetAsUnicode(self.sr.node.text)
         blue.pyos.SetClipboardData(uiutil.StripTags(text.replace('<t>', ' ')))
 
 
@@ -1212,15 +1215,15 @@ class Text(uicls.SE_BaseClassCore):
             try:
                 hasShowInfo = False
                 for item in m:
-                    if item is not None and item[0] == mls.UI_CMD_SHOWINFO:
+                    if item is not None and item[0] == localization.GetByLabel('UI/Commands/ShowInfo'):
                         hasShowInfo = True
                         break
 
                 if not hasShowInfo:
-                    m += [(mls.UI_CMD_SHOWINFO, self.ShowInfo), None]
+                    m += [(localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo), None]
             except:
                 pass
-        return m + [(mls.UI_CMD_COPY, self.CopyText)]
+        return m + [(localization.GetByLabel('UI/Common/Copy'), self.CopyText)]
 
 
 
@@ -1233,12 +1236,10 @@ class KillMail(uicls.SE_BaseClassCore):
     def Startup(self, *args):
         sub = uicls.Container(name='sub', parent=self, pos=(0, 0, 0, 0))
         self.sr.leftbox = uicls.Container(parent=sub, align=uiconst.TOLEFT, width=42, height=42, padding=(0, 2, 4, 2))
-        self.sr.middlebox = uicls.Container(parent=sub, align=uiconst.TOALL, pos=(0, 0, 0, 0))
+        self.sr.middlebox = uicls.Container(parent=sub, align=uiconst.TOALL, padding=(0, 2, 0, 0))
         self.sr.icon = uicls.Icon(parent=self.sr.leftbox, align=uiconst.TOALL, state=uiconst.UI_DISABLED)
         uicls.Frame(parent=self.sr.leftbox, color=(0.4, 0.4, 0.4, 0.5))
-        self.sr.lefttext = uicls.Label(text='', parent=self.sr.middlebox, state=uiconst.UI_DISABLED, idx=0, align=uiconst.CENTERLEFT)
-        self.sr.lefttext.linespace = 11
-        self.sr.copyicon = uicls.Icon(icon='ui_73_16_1', parent=sub, pos=(4, 4, 16, 16), align=uiconst.TOPRIGHT, hint=mls.UI_COMBATLOG_COPYKILLINFO)
+        self.sr.copyicon = uicls.Icon(icon='ui_73_16_1', parent=sub, pos=(4, 4, 16, 16), align=uiconst.TOPRIGHT, hint=localization.GetByLabel('UI/Control/Entries/CopyKillInfo'))
         self.sr.copyicon.OnClick = (self.GetCombatText, 1)
         self.sr.selection = uicls.Fill(parent=self, padding=(1, 1, 1, 1), color=(1.0, 1.0, 1.0, 0.25))
         self.sr.line = uicls.Container(name='lineparent', align=uiconst.TOBOTTOM, parent=self, idx=0, height=1)
@@ -1259,53 +1260,94 @@ class KillMail(uicls.SE_BaseClassCore):
             expanded = 1
         else:
             expanded = 0
+        topLine = 14
         if eve.session.charid == kill.victimCharacterID or eve.session.corpid == kill.victimCorporationID:
-            textBox = '<b>' + cfg.invtypes.Get(kill.victimShipTypeID).name + '</b> '
-            textBox += ' (' + util.FormatTimeAgo(kill.killTime) + ')'
+            text = localization.GetByLabel('UI/Control/Entries/KillMailShipAndTime', shipTypeID=kill.victimShipTypeID, killTime=blue.os.GetWallclockTime() - kill.killTime)
+            self.AddOrSetTextLine(text, configName='killMailsShipAndTimeLabel')
+            text = ''
             if kill.victimShipTypeID is not None:
                 self.sr.icon.LoadIconByTypeID(kill.victimShipTypeID, ignoreSize=True)
-            if kill.finalCorporationID is not None:
-                textBox += '<br>%s' % cfg.eveowners.Get(kill.finalCorporationID).name
-                if cfg.corptickernames.data.has_key(kill.finalCorporationID):
-                    textBox += ' [%s]' % cfg.corptickernames.Get(kill.finalCorporationID).tickerName
-            if kill.finalAllianceID is not None:
-                textBox += ' / %s' % cfg.eveowners.Get(kill.finalAllianceID).name
-                if cfg.allianceshortnames.data.has_key(kill.finalAllianceID):
-                    textBox += ' [%s]' % cfg.allianceshortnames.Get(kill.finalAllianceID).shortName
-            if kill.finalShipTypeID is not None:
-                textBox += '<br>%s' % cfg.invtypes.Get(kill.finalShipTypeID).name
-            if kill.finalWeaponTypeID is not None:
-                textBox += ' / %s' % cfg.invtypes.Get(kill.finalWeaponTypeID).name
+            text = self._GetCorpAndOrAllianceText(kill.finalCorporationID, kill.finalAllianceID)
+            self.AddOrSetTextLine(text, configName='killerCorpOrAllianceLabel', top=topLine)
+            text = ''
+            if kill.finalShipTypeID is not None and kill.finalWeaponTypeID is not None:
+                text = localization.GetByLabel('UI/Control/Entries/KillMailShipAndWeapon', shipTypeID=kill.finalShipTypeID, weaponTypeID=kill.finalWeaponTypeID)
+            elif kill.finalShipTypeID is not None:
+                text = cfg.invtypes.Get(kill.finalShipTypeID).name
+            elif kill.finalWeaponTypeID is not None:
+                text = cfg.invtypes.Get(kill.finalWeaponTypeID).name
+            self.AddOrSetTextLine(text, configName='killerShipOrWeaponLabel', top=topLine * 2)
         elif eve.session.charid == kill.finalCharacterID or eve.session.corpid == kill.finalCorporationID:
             if kill.victimCharacterID is not None or kill.victimCorporationID is not None:
                 if kill.victimCharacterID is not None:
-                    textBox = '<b>' + cfg.eveowners.Get(kill.victimCharacterID).name + '</b>'
-                    textBox += ' (' + util.FormatTimeAgo(kill.killTime) + ')<br>'
+                    text = localization.GetByLabel('UI/Control/Entries/KillMailCharacterAndTime', characterID=kill.victimCharacterID, killTime=blue.os.GetWallclockTime() - kill.killTime)
                 else:
-                    textBox = util.FormatTimeAgo(kill.killTime) + '<br>'
-                if kill.victimCorporationID is not None:
-                    textBox += cfg.eveowners.Get(kill.victimCorporationID).name
-                    textBox += ' [%s]' % cfg.corptickernames.Get(kill.victimCorporationID).tickerName
-                if kill.victimAllianceID is not None:
-                    textBox += ' / %s' % cfg.eveowners.Get(kill.victimAllianceID).name
-                    textBox += ' [%s]' % cfg.allianceshortnames.Get(kill.victimAllianceID).shortName
-                textBox += '<br>'
-                if kill.victimShipTypeID:
-                    textBox += '%s, ' % cfg.invtypes.Get(kill.victimShipTypeID).name
-                if kill.solarSystemID:
+                    text = util.FormatTimeAgo(kill.killTime)
+                self.AddOrSetTextLine(text, configName='victimNameOrTimeLabel')
+                text = ''
+                text = self._GetCorpAndOrAllianceText(kill.victimCorporationID, kill.victimAllianceID)
+                self.AddOrSetTextLine(text, configName='victimCorpOrAllianceLabel', top=topLine)
+                text = ''
+                if kill.victimShipTypeID and kill.solarSystemID:
                     mapSvc = sm.GetService('map')
-                    regionName = cfg.evelocations.Get(mapSvc.GetParent(mapSvc.GetParent(kill.solarSystemID))).name
-                    textBox += '%s, %s, %s' % (cfg.evelocations.Get(kill.solarSystemID).name, regionName, sm.GetService('map').GetSecurityStatus(kill.solarSystemID))
+                    regionID = mapSvc.GetParent(mapSvc.GetParent(kill.solarSystemID))
+                    text = localization.GetByLabel('UI/Control/Entries/KillMailShipAndSolarSystem', shipTypeID=kill.victimShipTypeID, solarSystemID=kill.solarSystemID, regionID=regionID, security=sm.GetService('map').GetSecurityStatus(kill.solarSystemID))
+                elif kill.victimShipTypeID:
+                    text = cfg.invtypes.Get(kill.victimShipTypeID).name
+                elif kill.solarSystemID:
+                    mapSvc = sm.GetService('map')
+                    regionID = mapSvc.GetParent(mapSvc.GetParent(kill.solarSystemID))
+                    text = localization.GetByLabel('UI/Control/Entries/KillMailSolarSystem', solarSystemID=kill.solarSystemID, regionID=regionID, security=sm.GetService('map').GetSecurityStatus(kill.solarSystemID))
+                self.AddOrSetTextLine(text, configName='shipNameAndSolarSystemLabel', top=topLine * 2)
             else:
-                textBox = '<b>' + mls.UNKNOWN + '</b>'
+                self.AddOrSetTextLine(localization.GetByLabel('UI/Control/Entries/KillMailUnknown'), configName='unknownLabel')
             if kill.victimShipTypeID is not None:
                 self.sr.icon.LoadIconByTypeID(kill.victimShipTypeID, ignoreSize=True)
         else:
-            textBox = mls.ERROR_UPDATING_USER_INFO
+            text = localization.GetByLabel('UI/Control/Entries/KillMailError')
             self.sr.icon.LoadIcon('ui_7_64_7', ignoreSize=True)
             self.sr.copyicon.state = uiconst.UI_HIDDEN
             self.GetMenu = None
-        self.sr.lefttext.text = textBox
+
+
+
+    def _GetCorpAndOrAllianceText(self, corpID, allianceID):
+        corpName = None
+        corpTicker = ''
+        allianceName = None
+        allianceTicker = ''
+        text = None
+        if corpID is not None:
+            corpName = cfg.eveowners.Get(corpID).name
+            try:
+                corpTicker = cfg.corptickernames.Get(corpID).tickerName
+            except KeyError as e:
+                pass
+        if allianceID is not None:
+            allianceName = cfg.eveowners.Get(allianceID).name
+            try:
+                allianceTicker = cfg.allianceshortnames.Get(allianceID).shortName
+            except KeyError as e:
+                pass
+        if corpName and allianceName:
+            text = localization.GetByLabel('UI/Control/Entries/KillMailCorpAndAlliance', corpName=corpName, corpTicker=corpTicker, allianceName=allianceName, allianceTicker=allianceTicker)
+        elif corpName:
+            text = localization.GetByLabel('UI/Control/Entries/KillMailCorpOrAlliance', name=corpName, ticker=corpTicker)
+        elif allianceName:
+            text = localization.GetByLabel('UI/Control/Entries/KillMailCorpOrAlliance', name=allianceName, ticker=allianceTicker)
+        return text
+
+
+
+    def AddOrSetTextLine(self, text, configName = '', top = 0):
+        if text:
+            label = getattr(self, configName, None)
+            if label is not None:
+                label.text = text
+            else:
+                label = uicls.EveLabelSmall(text=text, parent=self.sr.middlebox, align=uiconst.TOPLEFT, top=top)
+                if configName:
+                    setattr(self, configName, label)
 
 
 
@@ -1313,7 +1355,7 @@ class KillMail(uicls.SE_BaseClassCore):
         m = []
         if self.sr.node.GetMenu:
             m = self.sr.node.GetMenu()
-        return m + [(mls.UI_CMD_SHOWINFO, self.RedirectToInfo, (1,)), None, (mls.UI_COMBATLOG_COPYKILLINFO, self.GetCombatText, (1,))]
+        return m + [(localization.GetByLabel('UI/Commands/ShowInfo'), self.RedirectToInfo, (1,)), None, (localization.GetByLabel('UI/Control/Entries/CopyKillInformation'), self.GetCombatText, (1,))]
 
 
 
@@ -1365,7 +1407,7 @@ class KillMail(uicls.SE_BaseClassCore):
 
     def GetHeight(self, *args):
         (node, width,) = args
-        node.height = 42
+        node.height = 46
         return node.height
 
 
@@ -1383,23 +1425,22 @@ class KillMail(uicls.SE_BaseClassCore):
     def OnDblClick(self, *args):
         mail = self.sr.node.mail
         ret = util.CombatLog_CopyText(mail)
-        wnd = sm.GetService('window').GetWindow('CombatDetails')
+        wnd = form.CombatDetailsWnd.GetIfOpen()
         if wnd:
             wnd.UpdateDetails(ret)
             wnd.Maximize()
         else:
-            wnd = sm.GetService('window').GetWindow('CombatDetails', decoClass=form.CombatDetailsWnd, create=1, ret=ret)
+            wnd = form.CombatDetailsWnd.Open(create=1, ret=ret)
 
 
 
 
 class LabelText(uicls.SE_BaseClassCore):
     __guid__ = 'listentry.LabelText'
-    __params__ = ['label', 'text']
 
     def Startup(self, args):
-        self.sr.label = uicls.Label(text='', parent=self, left=8, top=4, state=uiconst.UI_DISABLED, letterspace=2, fontsize=9, uppercase=1)
-        self.sr.text = uicls.Label(text='', parent=self, left=0, top=4, align=uiconst.TOALL, state=uiconst.UI_DISABLED, autoheight=False, autowidth=False)
+        self.sr.label = uicls.EveLabelSmall(text='', parent=self, left=8, top=4, state=uiconst.UI_DISABLED, bold=True)
+        self.sr.text = uicls.EveLabelMedium(text='', parent=self, left=0, top=4, align=uiconst.TOALL, state=uiconst.UI_DISABLED)
         self.sr.line = uicls.Container(name='lineparent', align=uiconst.TOBOTTOM, parent=self, state=uiconst.UI_HIDDEN, height=1)
         uicls.Fill(parent=self.sr.line)
 
@@ -1411,7 +1452,6 @@ class LabelText(uicls.SE_BaseClassCore):
         self.sr.text.left = int(self.sr.node.Get('textpos', 128)) + 4
         self.sr.text.text = self.sr.node.text
         if self.sr.node.Get('labelAdjust', 0):
-            self.sr.label.autowidth = 0
             self.sr.label.width = self.sr.node.Get('labelAdjust', 0)
         if node.Get('line', 0):
             self.sr.line.state = uiconst.UI_DISABLED
@@ -1423,8 +1463,94 @@ class LabelText(uicls.SE_BaseClassCore):
     def GetHeight(self, *args):
         (node, width,) = args
         descwidth = min(256 - int(node.Get('textpos', 128)), width - int(node.Get('textpos', 128)) - 8)
-        height = uix.GetTextHeight(node.text, fontsize=12, width=descwidth, hspace=0, linespace=12)
-        height = max(height, uix.GetTextHeight(node.label, fontsize=12, width=width, hspace=0, linespace=12))
+        height = uix.GetTextHeight(node.text, fontsize=fontConst.EVE_MEDIUM_FONTSIZE, width=descwidth, hspace=0, linespace=12)
+        height = max(height, uix.GetTextHeight(node.label, fontsize=fontConst.EVE_MEDIUM_FONTSIZE, width=width, hspace=0, linespace=12))
+        node.height = max(19, height + 4)
+        return node.height
+
+
+
+
+class IconLabelText(uicls.SE_BaseClassCore):
+    __guid__ = 'listentry.IconLabelText'
+    ICON_POS_REPLACES_LABEL = 0
+    ICON_POS_REPLACES_TEXT = 1
+    ICON_POS_IN_FRONT_OF_LABEL = 2
+    ICON_POS_BEHIND_LABEL = 3
+    ICON_POS_IN_FRONT_OF_TEXT = 4
+    ICON_POS_BEHIND_TEXT = 5
+    ICON_POS_NO_ICON = 6
+    iconSize = 16
+    margin = 4
+    defaultTextWidth = 128
+
+    def Startup(self, args):
+        self.sr.label = uicls.EveHeaderSmall(text='', parent=self, left=8, top=4, state=uiconst.UI_DISABLED)
+        self.sr.text = uicls.EveLabelMedium(text='', parent=self, left=0, top=4, align=uiconst.TOALL, state=uiconst.UI_DISABLED)
+        self.sr.line = uicls.Container(name='lineparent', align=uiconst.TOBOTTOM, parent=self, state=uiconst.UI_HIDDEN, height=1)
+        uicls.Fill(parent=self.sr.line)
+
+
+
+    def Load(self, node):
+        self.sr.node = node
+        iconPositioning = self.sr.node.Get('iconPositioning', IconLabelText.ICON_POS_IN_FRONT_OF_LABEL)
+        self.iconID = self.sr.node.Get('icon', None)
+        if self.iconID is None:
+            iconPositioning = IconLabelText.ICON_POS_NO_ICON
+        hasLabel = True
+        hasText = True
+        if iconPositioning == IconLabelText.ICON_POS_REPLACES_LABEL:
+            hasLabel = False
+            textOffset = self.margin
+            self.InsertIcon(textOffset)
+        elif iconPositioning == IconLabelText.ICON_POS_REPLACES_TEXT:
+            hasText = False
+            textOffset = int(self.sr.node.Get('textpos', self.defaultTextWidth)) + self.margin
+            self.InsertIcon(textOffset)
+        elif iconPositioning == IconLabelText.ICON_POS_IN_FRONT_OF_LABEL:
+            textOffset = self.margin
+            self.InsertIcon(textOffset)
+            textOffset += self.sr.icon.width
+            self.sr.label.left = textOffset + self.margin
+        elif iconPositioning == IconLabelText.ICON_POS_IN_FRONT_OF_TEXT:
+            textOffset = self.margin + self.sr.text.left
+            self.InsertIcon(textOffset)
+            textOffset += self.sr.icon.width
+            self.sr.text.left = textOffset + self.margin
+        if hasLabel:
+            self.sr.label.text = self.name = self.sr.node.label
+            if self.sr.node.Get('labelAdjust', 0):
+                self.sr.label.width = self.sr.node.Get('labelAdjust', 0)
+        if hasText:
+            self.sr.text.left = int(self.sr.node.Get('textpos', self.defaultTextWidth)) + self.margin
+            self.sr.text.text = self.sr.node.text
+        if iconPositioning == IconLabelText.ICON_POS_BEHIND_LABEL:
+            textOffset = self.margin + self.sr.label.left + self.sr.label.width
+            self.InsertIcon(textOffset)
+        elif iconPositioning == IconLabelText.ICON_POS_BEHIND_TEXT:
+            textOffset = self.margin + self.sr.text.left + self.sr.text.width
+            self.InsertIcon(textOffset)
+        if node.Get('line', 0):
+            self.sr.line.state = uiconst.UI_DISABLED
+        else:
+            self.sr.line.state = uiconst.UI_HIDDEN
+
+
+
+    def InsertIcon(self, offset):
+        self.sr.icon = uicls.Icon(icon=self.iconID, parent=self, pos=(offset,
+         1,
+         self.iconSize,
+         self.iconSize), align=uiconst.TOPLEFT, idx=0)
+
+
+
+    def GetHeight(self, *args):
+        (node, width,) = args
+        descwidth = min(256 - int(node.Get('textpos', 128)), width - int(node.Get('textpos', 128)) - 8)
+        height = uix.GetTextHeight(node.text, fontsize=fontConst.EVE_MEDIUM_FONTSIZE, width=descwidth, hspace=0, linespace=12)
+        height = max(height, uix.GetTextHeight(node.label, fontsize=fontConst.EVE_MEDIUM_FONTSIZE, width=width, hspace=0, linespace=12))
         node.height = max(19, height + 4)
         return node.height
 
@@ -1436,7 +1562,7 @@ class TextTimer(Text):
 
     def Startup(self, *args):
         listentry.Text.Startup(self, args)
-        self.sr.label = uicls.Label(text='', parent=self, left=8, top=2, state=uiconst.UI_DISABLED, letterspace=2, fontsize=9, uppercase=1)
+        self.sr.label = uicls.EveLabelSmall(text='', parent=self, left=8, top=2, state=uiconst.UI_DISABLED)
         self.sr.text.SetAlign(uiconst.TOPLEFT)
         self.sr.text.top = 12
 
@@ -1453,15 +1579,15 @@ class TextTimer(Text):
             self.UpdateTime(countdownTime, countupTime)
             self.sr.timeOutTimer = base.AutoTimer(1000, self.UpdateTime, countdownTime, countupTime)
         else:
-            self.sr.text.text = mls.UI_GENERIC_UNKNOWN
+            self.sr.text.text = localization.GetByLabel('UI/Control/Entries/TimeUnknown')
             self.sr.timeOutTimer = None
 
 
 
     def GetHeight(self, *args):
         (node, width,) = args
-        labelheight = uix.GetTextHeight(node.label, fontsize=9, autoWidth=1, singleLine=1, uppercase=1)
-        textheight = uix.GetTextHeight(node.text, fontsize=12, autoWidth=1, singleLine=1)
+        labelheight = uix.GetTextHeight(node.label, fontsize=fontConst.EVE_SMALL_FONTSIZE, singleLine=1, uppercase=1)
+        textheight = uix.GetTextHeight(node.text, fontsize=fontConst.EVE_MEDIUM_FONTSIZE, singleLine=1)
         node.height = 2 + labelheight + textheight
         return node.height
 
@@ -1469,11 +1595,11 @@ class TextTimer(Text):
 
     def UpdateTime(self, countdownTime = None, countupTime = None):
         if countupTime:
-            timerText = mls.UI_GENERIC_AGO_WITH_FORMAT % {'time': util.FmtTimeInterval(blue.os.GetTime() - countupTime, 'sec')}
+            timerText = localization.GetByLabel('UI/Control/Entries/TimeAgo', time=blue.os.GetWallclockTime() - countupTime)
             self.sr.text.text = timerText
             self.hint = timerText
         elif countdownTime:
-            timerText = mls.UI_GENERIC_IN_WITH_FORMAT % {'time': util.FmtTimeInterval(countdownTime - blue.os.GetTime(), 'sec')}
+            timerText = localization.GetByLabel('UI/Control/Entries/TimeIn', time=countdownTime - blue.os.GetWallclockTime())
             self.sr.text.text = timerText
             self.hint = timerText
         if getattr(self.sr.node, 'text', None) is not None:
@@ -1487,7 +1613,7 @@ class LabelTextTop(Text):
 
     def Startup(self, *args):
         listentry.Text.Startup(self, args)
-        self.sr.label = uicls.Label(text='', parent=self, left=8, top=2, state=uiconst.UI_DISABLED, letterspace=2, fontsize=9, uppercase=1)
+        self.sr.label = uicls.EveLabelSmall(text='', parent=self, left=8, top=2, state=uiconst.UI_DISABLED)
         self.sr.text.SetAlign(uiconst.TOPLEFT)
         self.sr.text.top = 12
 
@@ -1497,14 +1623,14 @@ class LabelTextTop(Text):
         listentry.Text.Load(self, node)
         self.sr.label.text = self.sr.node.label
         self.sr.label.left = self.sr.text.left
-        self.sr.text.top = self.sr.label.top + self.sr.label.textheight - 2
+        self.sr.text.top = self.sr.label.top + self.sr.label.textheight
 
 
 
     def GetHeight(self, *args):
         (node, width,) = args
-        labelheight = uix.GetTextHeight(node.label, fontsize=9, autoWidth=1, singleLine=1, uppercase=1)
-        textheight = uix.GetTextHeight(node.text, fontsize=12, autoWidth=1, singleLine=1)
+        labelheight = uix.GetTextHeight(node.label, fontsize=fontConst.EVE_SMALL_FONTSIZE, singleLine=1, uppercase=1)
+        textheight = uix.GetTextHeight(node.text, fontsize=fontConst.EVE_MEDIUM_FONTSIZE, singleLine=1)
         node.height = 2 + labelheight + textheight
         return node.height
 
@@ -1520,7 +1646,8 @@ class LabelPlanetTextTop(LabelTextTop):
         itemID = self.sr.node.Get('itemID', None)
         typeID = self.sr.node.Get('typeID', None)
         if locationID is not None and itemID is not None and itemID is not None:
-            return [(mls.UI_PI_VIEW_IN_PLANET_MODE, sm.GetService('planetUI').Open, (itemID,)), None] + baseMenu
+            openPlanetFunc = lambda planetID: sm.GetService('viewState').ActivateView('planet', planetID=planetID)
+            return [(localization.GetByLabel('UI/PI/Common/ViewInPlanetMode'), openPlanetFunc, (itemID,)), None] + baseMenu
         else:
             return baseMenu
 
@@ -1532,7 +1659,7 @@ class Button(uicls.SE_BaseClassCore):
     __params__ = ['label', 'caption', 'OnClick']
 
     def Startup(self, args):
-        self.sr.label = uicls.Label(text='', parent=self, left=8, top=-1, state=uiconst.UI_DISABLED, singleline=1, align=uiconst.CENTERLEFT)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=self, left=8, top=-1, state=uiconst.UI_DISABLED, singleline=1, align=uiconst.CENTERLEFT, lineSpacing=-0.2)
         self.sr.line = uicls.Container(name='lineparent', align=uiconst.TOBOTTOM, parent=self, state=uiconst.UI_HIDDEN, height=1)
         uicls.Fill(parent=self.sr.line)
         self.sr.button = uicls.Button(parent=self, label='', align=uiconst.TOPRIGHT, pos=(2, 2, 0, 0), idx=0)
@@ -1555,11 +1682,8 @@ class Button(uicls.SE_BaseClassCore):
             btnWidth = self.sr.button.width
         else:
             self.sr.button.state = uiconst.UI_HIDDEN
-        if singleline:
-            self.sr.label.autowidth = 1
-        else:
+        if not singleline:
             (l, t, w, h,) = self.GetAbsolute()
-            self.sr.label.autowidth = 0
             self.sr.label.width = w - btnWidth - self.sr.label.left * 2
         self.sr.label.text = self.sr.node.label
         self.sr.line.state = [uiconst.UI_HIDDEN, uiconst.UI_DISABLED][self.sr.node.Get('line', 1)]
@@ -1569,19 +1693,20 @@ class Button(uicls.SE_BaseClassCore):
     def GetHeight(self, *args):
         (node, width,) = args
         if node.Get('OnClick', None):
-            btnLabelWidth = uix.GetTextWidth(node.caption, fontsize=10, hspace=1, uppercase=1)
+            btnLabelWidth = uix.GetTextWidth(node.caption, fontsize=fontConst.EVE_MEDIUM_FONTSIZE)
             btnWidth = min(256, max(48, btnLabelWidth + 24))
-            btnLabelHeight = uix.GetTextHeight(node.caption, fontsize=10, hspace=1, uppercase=1)
+            btnLabelHeight = uix.GetTextHeight(node.caption, fontsize=fontConst.EVE_MEDIUM_FONTSIZE)
             btnHeight = min(32, btnLabelHeight + 9)
         else:
             btnWidth = 0
             btnHeight = 0
         singleline = node.Get('singleline', 1)
         if singleline:
-            mainLabelHeight = uix.GetTextHeight(node.label, singleLine=1)
+            mainLabelHeight = uix.GetTextHeight(node.label, fontsize=fontConst.EVE_MEDIUM_FONTSIZE, singleLine=1)
             node.height = max(16, mainLabelHeight + 4, btnHeight + 2)
         else:
-            mainLabelHeight = uix.GetTextHeight(node.label, width=width - btnWidth - 16)
+            width = node.Get('entryWidth', 100) - btnWidth
+            mainLabelHeight = uix.GetTextHeight(node.label, width=width, fontsize=fontConst.EVE_MEDIUM_FONTSIZE)
             node.height = max(16, mainLabelHeight + 4, btnHeight + 2)
         return node.height
 
@@ -1618,7 +1743,7 @@ class Combo(uicls.SE_BaseClassCore):
         uicls.Container(name='push', parent=self, height=5, align=uiconst.TOTOP, idx=0)
         self.sr.combo = uicls.Combo(parent=self, label='', options=[], name='', callback=self.OnComboChange, align=uiconst.TOTOP)
         self.sr.push = uicls.Container(name='push', parent=self, width=128, align=uiconst.TOLEFT, idx=0)
-        self.sr.label = uicls.Label(text='', parent=self, left=8, top=5, width=112, height=20, state=uiconst.UI_DISABLED, letterspace=2, fontsize=9, linespace=9, uppercase=1, autoheight=False, autowidth=False)
+        self.sr.label = uicls.EveLabelSmall(text='', parent=self, left=8, top=5, width=112, state=uiconst.UI_DISABLED)
         uicls.Container(name='push', parent=self, width=3, align=uiconst.TORIGHT, idx=0)
         self.sr.line = uicls.Container(name='lineparent', align=uiconst.TOBOTTOM, parent=self, idx=0, height=1)
         uicls.Fill(parent=self.sr.line)
@@ -1645,7 +1770,7 @@ class Combo(uicls.SE_BaseClassCore):
 
     def GetHeight(self, *args):
         (node, width,) = args
-        node.height = max(22, uix.GetTextHeight(node.label, width=128)) + 6
+        node.height = max(22, uix.GetTextHeight(node.label, width=112)) + 6
         return node.height
 
 
@@ -1660,7 +1785,7 @@ class Edit(uicls.SE_BaseClassCore):
         uicls.Container(name='push', parent=self, width=128, align=uiconst.TOLEFT)
         uicls.Container(name='push', parent=self, width=3, align=uiconst.TORIGHT)
         self.sr.edit = uicls.SinglelineEdit(name='edit', parent=self, align=uiconst.TOTOP)
-        self.sr.label = uicls.Label(text='', parent=self, left=8, top=5, width=112, height=20, state=uiconst.UI_DISABLED, letterspace=2, fontsize=9, linespace=9, uppercase=1, autoheight=False, autowidth=False)
+        self.sr.label = uicls.EveLabelSmall(text='', parent=self, left=8, top=5, width=112, state=uiconst.UI_DISABLED)
         self.sr.line = uicls.Container(name='lineparent', align=uiconst.TOBOTTOM, parent=self, idx=0, height=1)
         uicls.Fill(parent=self.sr.line)
 
@@ -1698,7 +1823,7 @@ class Edit(uicls.SE_BaseClassCore):
 
     def GetHeight(self, *args):
         (node, width,) = args
-        node.height = max(22, uix.GetTextHeight(node.label, width=128)) + 6
+        node.height = max(22, uix.GetTextHeight(node.label, width=112)) + 6
         return node.height
 
 
@@ -1714,7 +1839,7 @@ class TextEdit(uicls.SE_BaseClassCore):
         uicls.Container(name='push', parent=self, width=127, align=uiconst.TOLEFT)
         uicls.Container(name='push', parent=self, width=2, align=uiconst.TORIGHT)
         self.sr.edit = uicls.EditPlainText(setvalue='', parent=self, align=uiconst.TOALL)
-        self.sr.label = uicls.Label(text='', parent=self, left=8, top=3, width=112, state=uiconst.UI_DISABLED, letterspace=2, fontsize=9, linespace=9, uppercase=1, autowidth=False)
+        self.sr.label = uicls.EveLabelSmall(text='', parent=self, left=8, top=3, width=112, state=uiconst.UI_DISABLED)
         self.sr.line = uicls.Container(name='lineparent', align=uiconst.TOBOTTOM, parent=self, idx=0, height=1)
         uicls.Fill(parent=self.sr.line)
 
@@ -1759,8 +1884,8 @@ class ImplantEntry(uicls.SE_BaseClassCore):
     __params__ = ['label']
 
     def Startup(self, *etc):
-        self.sr.label = uicls.Label(text='', parent=self, left=32, top=2, state=uiconst.UI_DISABLED)
-        self.sr.timeLabel = uicls.Label(text='', parent=self, left=24, top=2, state=uiconst.UI_DISABLED, align=uiconst.BOTTOMRIGHT)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=self, left=32, top=2, state=uiconst.UI_DISABLED)
+        self.sr.timeLabel = uicls.EveLabelMedium(text='', parent=self, left=24, top=2, state=uiconst.UI_DISABLED, align=uiconst.BOTTOMRIGHT)
         uicls.Line(parent=self, align=uiconst.TOBOTTOM)
         self.sr.icon = uicls.Icon(icon='ui_22_32_30', parent=self, size=32, align=uiconst.RELATIVE, state=uiconst.UI_DISABLED)
         self.sr.infoicon = uicls.InfoIcon(size=16, left=2, top=2, parent=self, idx=0, align=uiconst.TOPRIGHT)
@@ -1782,7 +1907,7 @@ class ImplantEntry(uicls.SE_BaseClassCore):
             self.sr.label.text = data.label
         else:
             self.sr.label.top = 2
-            self.sr.label.text = '%s<br>%s: %s' % (data.label, mls.UI_GENERIC_SLOT, util.FmtAmt(slot))
+            self.sr.label.text = localization.GetByLabel('UI/Control/Entries/ImplantLabel', implantName=data.label, slotNum=int(slot))
         self.sr.icon.LoadIcon(cfg.invtypes.Get(node.implant_booster.typeID).iconID, ignoreSize=True)
         self.sr.icon.SetSize(32, 32)
         if timeToEnd is not None:
@@ -1795,7 +1920,7 @@ class ImplantEntry(uicls.SE_BaseClassCore):
 
 
     def UpdateTime(self, timeToEnd):
-        timeInterval = timeToEnd - blue.os.GetTime()
+        timeInterval = timeToEnd - blue.os.GetWallclockTime()
         if timeInterval > MONTH:
             timeBreakAt = 'hour'
         elif timeInterval > DAY:
@@ -1807,9 +1932,9 @@ class ImplantEntry(uicls.SE_BaseClassCore):
 
 
     def GetMenu(self):
-        m = [(mls.UI_CMD_SHOWINFO, self.ShowInfo)]
+        m = [(localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo)]
         if not cfg.invtypes.Get(self.sr.node.implant_booster.typeID).groupID == const.groupBooster and getattr(self.sr.node.implant_booster, 'itemID', None):
-            m.append((mls.UI_CMD_UNPLUG, self.RemoveImplant, (self.sr.node.implant_booster.itemID,)))
+            m.append((localization.GetByLabel('UI/Control/Entries/ImplantUnplug'), self.RemoveImplant, (self.sr.node.implant_booster.itemID,)))
         return m
 
 
@@ -1844,7 +1969,7 @@ class IconEntry(uicls.SE_BaseClassCore):
 
     def Startup(self, *etc):
         self.labelleft = 32
-        self.sr.label = uicls.Label(text='', parent=self, left=self.labelleft, top=0, width=512, autowidth=False, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=self, left=self.labelleft, top=0, width=512, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT)
         self.sr.line = uicls.Line(parent=self, align=uiconst.TOBOTTOM)
         self.sr.icon = uicls.Icon(icon='ui_5_32_10', parent=self, pos=(0, 0, 0, 0), align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED)
         self.sr.selection = uicls.Fill(parent=self, align=uiconst.TOALL, pos=(0, 1, 0, 1), color=(1.0, 1.0, 1.0, 0.25))
@@ -2020,13 +2145,13 @@ class FittingEntry(Generic):
         self.sr.infoContainer = uicls.Container(name='infoContainer', parent=parent, align=uiconst.TORIGHT, width=16)
         self.sr.infoicon = uicls.InfoIcon(size=16, left=1, top=1, parent=self.sr.infoContainer, idx=0)
         self.sr.have = uicls.Icon(parent=parent, align=uiconst.TORIGHT, left=0, top=0, height=16, width=16)
-        self.sr.label = uicls.Label(parent=parent, left=5, autowidth=1, autoheight=1, state=uiconst.UI_DISABLED, singleline=1, align=uiconst.CENTERLEFT)
+        self.sr.label = uicls.EveLabelMedium(parent=parent, left=5, state=uiconst.UI_DISABLED, singleline=1, align=uiconst.CENTERLEFT)
         self.sr.line = uicls.Container(name='lineparent', align=uiconst.TOBOTTOM, parent=self, height=1)
         self.sr.mainline = uicls.Fill(parent=self.sr.line)
         self.sr.selection = uicls.Fill(parent=self, padTop=1, padBottom=1, color=(1.0, 1.0, 1.0, 0.25))
         self.sr.hilite = uicls.Fill(parent=self, padTop=1, padBottom=1, color=(1.0, 1.0, 1.0, 0.25))
         self.sr.infoicon.OnClick = self.ShowInfo
-        self.hints = [mls.UI_GENERIC_DOESNOTHAVESKILLSFORFITTING, mls.UI_GENERIC_HASSKILLSFORFITTING]
+        self.hints = [localization.GetByLabel('UI/Control/Entries/FittingSkillMissing'), localization.GetByLabel('UI/Control/Entries/FittingSkillOK')]
         for eventName in events:
             setattr(self.sr, eventName, None)
 
@@ -2052,9 +2177,9 @@ class FittingEntry(Generic):
     def GetHeight(_self, *args):
         (node, width,) = args
         if node.Get('vspace', None):
-            node.height = uix.GetTextHeight(node.label, autoWidth=1, singleLine=1) + node.vspace
+            node.height = uix.GetTextHeight(node.label, singleLine=1) + node.vspace
         else:
-            node.height = uix.GetTextHeight(node.label, autoWidth=1, singleLine=1) + 4
+            node.height = uix.GetTextHeight(node.label, singleLine=1) + 4
         return node.height
 
 
@@ -2079,7 +2204,7 @@ class FittingModuleEntry(FittingEntry):
 
     def Startup(self, *args):
         listentry.FittingEntry.Startup(self, args)
-        self.hints = [mls.UI_GENERIC_DOESNOTHAVESKILL, mls.UI_GENERIC_HASSKILL]
+        self.hints = [localization.GetByLabel('UI/Control/Entries/FittingModuleSkillMissing'), localization.GetByLabel('UI/Control/Entries/FittingModuleSkillOK')]
 
 
 
@@ -2121,38 +2246,28 @@ class CorpAllianceEntry(Generic):
 
 
 
+class DraggableItem(Item):
+    __guid__ = 'listentry.DraggableItem'
+
+    def GetDragData(self, *args):
+        return self.sr.node.scroll.GetSelectedNodes(self.sr.node)
+
+
+
+
 def Get(entryType, settings = {}, data = None):
     import listentry
     decoClass = getattr(listentry, entryType)
     if data is None:
-        reqParams = getattr(decoClass, '__params__', [])
-        for each in reqParams:
-            if each not in settings:
-                raise RuntimeError('Required params for %s are %s, pass it in as settings=dict or data=util.KeyVal()' % (decoClass.__guid__, reqParams))
-
         if isinstance(settings, util.KeyVal):
-            data = uiutil.Bunch(settings.__dict__)
+            data = settings.__dict__
         else:
-            data = uiutil.Bunch(settings)
+            data = settings
     elif isinstance(data, util.KeyVal):
-        data = uiutil.Bunch(data.__dict__)
-    data.__guid__ = getattr(decoClass, '__guid__', None)
-    data.decoClass = decoClass
-    data.GetHeightFunction = getattr(decoClass, 'GetHeight', None)
-    data.GetColumnWidthFunction = getattr(decoClass, 'GetColumnWidth', None)
-    data.PreLoadFunction = getattr(decoClass, 'PreLoad', None)
-    data.allowDynamicResize = getattr(decoClass, 'allowDynamicResize', False)
-    if data.GetHeightFunction:
-        data.GetHeightFunction = data.GetHeightFunction.im_func
-    if data.PreLoadFunction:
-        data.PreLoadFunction = data.PreLoadFunction.im_func
-    if data.GetColumnWidthFunction:
-        data.GetColumnWidthFunction = data.GetColumnWidthFunction.im_func
-    if not data.charIndex and data.label:
-        data.charIndex = data.label.split('<t>')[0]
-    if data.charIndex:
-        data.charIndex = data.charIndex.lower()
-    return data
+        data = data.__dict__
+    data['__guid__'] = getattr(decoClass, '__guid__', None)
+    data['decoClass'] = decoClass
+    return uicls.ScrollEntryNode(**data)
 
 
 
@@ -2219,7 +2334,7 @@ def InitCustomTabstops(columnID, entries):
             fontsize = node.Get('fontsize', 12)
             hspace = node.Get('letterspace', 0)
             uppercase = node.Get('uppercase', 0)
-            if type(text) in types.StringTypes:
+            if isinstance(text, basestring):
                 textWidth = sm.GetService('font').GetTextWidth(text, fontsize, hspace, uppercase)
             else:
                 textWidth = text.width
@@ -2241,5 +2356,6 @@ def GetCustomTabstops(columnID):
 exports = {'listentry.Get': Get,
  'listentry.SortColumnEntries': SortColumnEntries,
  'listentry.InitCustomTabstops': InitCustomTabstops,
- 'listentry.GetCustomTabstops': GetCustomTabstops}
+ 'listentry.GetCustomTabstops': GetCustomTabstops,
+ 'listentry.DraggableItem': DraggableItem}
 

@@ -55,7 +55,7 @@ class UIPointerSvc(service.Service):
             uiPointerText = self.currentPointer['uiPointerText']
             if pointToElement is None or pointToElement.destroyed:
                 self.HidePointer()
-                blue.pyos.synchro.Sleep(WAITING_FOR_ELEMENT_TO_COME_BACK_SEC)
+                blue.pyos.synchro.SleepWallclock(WAITING_FOR_ELEMENT_TO_COME_BACK_SEC)
                 rediscoveredElement = self.FindElementToPointTo()
                 if rediscoveredElement is None or rediscoveredElement.destroyed:
                     continue
@@ -79,7 +79,7 @@ class UIPointerSvc(service.Service):
                  'uiPointerText': uiPointerText}
             uiPointerElement.top = cumTop
             uiPointerElement.left = cumLeft
-            blue.pyos.synchro.Sleep(20)
+            blue.pyos.synchro.SleepWallclock(20)
 
 
 
@@ -387,7 +387,7 @@ class UIPointerSvc(service.Service):
         arrowSprite.rectWidth = 128
         arrowSprite.rectHeight = 128
         maxTextWidth = UIPOINTER_WIDTH - 23
-        label = uicls.Label(text=text, parent=elementContainer, align=uiconst.CENTER, width=maxTextWidth, fontsize=12, state=uiconst.UI_DISABLED, color=(0.0, 0.0, 0.0, 1.0), shadow=None, idx=0)
+        label = uicls.EveLabelMedium(text=text, parent=elementContainer, align=uiconst.CENTER, width=maxTextWidth, state=uiconst.UI_DISABLED, color=(0.0, 0.0, 0.0, 1.0), shadowOffset=(0, 0), idx=0)
         if label.textwidth < maxTextWidth:
             label.left = (maxTextWidth - label.textwidth) / 2
         elementContainer.height = max(elementContainer.height, label.textheight + 2 * const.defaultPadding)

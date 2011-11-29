@@ -16,6 +16,7 @@ class UIRoot(uicls.Container):
     default_backgroundColor = (0, 0, 0, 1)
     default_isFullscreen = True
     default_align = uiconst.ABSOLUTE
+    default_dpiScaling = 1.0
 
     def PrepareProperties(self):
         self._rotationX = 0.0
@@ -40,6 +41,7 @@ class UIRoot(uicls.Container):
         self.isFullscreen = attributes.isFullscreen or self.default_isFullscreen
         self.clearBackground = attributes.clearBackground or self.default_clearBackground
         self.backgroundColor = attributes.backgroundColor or self.default_backgroundColor
+        self._dpiScaling = attributes.dpiScaling or self.default_dpiScaling
         renderJob = attributes.renderJob or uicore.uilib.GetRenderJob()
         renderJob.SetViewport().name = 'Set fullscreen viewport'
         updateStep = renderJob.Update(myScene)
@@ -158,12 +160,13 @@ class UIRoot(uicls.Container):
     @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateAlignment(self):
         self._alignmentDirty = False
-        if self.isFullscreen and not self.renderTargetStep:
-            self.displayWidth = trinity.device.width
-            self.displayHeight = trinity.device.height
-        else:
-            self.displayWidth = self.width
-            self.displayHeight = self.height
+        self.displayWidth = self.ScaleDpi(self.width)
+        self.displayHeight = self.ScaleDpi(self.height)
+        self.FlagAlignmentDirty()
+        for each in self.children:
+            if each.display:
+                each.FlagAlignmentDirty()
+
         budget = (0,
          0,
          self.displayWidth,
@@ -180,13 +183,17 @@ class UIRoot(uicls.Container):
 
 
     def UpdateSize(self):
-        self.width = trinity.app.width
-        self.height = trinity.app.height
+        if self.isFullscreen and not self.renderTargetStep:
+            self.width = int(float(trinity.device.width) / self.dpiScaling)
+            self.height = int(float(trinity.device.height) / self.dpiScaling)
+            self.renderObject.isFullscreen = True
         if self.camera:
             self.camera.AdjustForDesktop()
         self.FlagAlignmentDirty()
+        self._displayDirty = True
         for each in self.children:
             if each.display:
+                each._displayDirty = True
                 each.FlagAlignmentDirty()
 
 
@@ -199,6 +206,30 @@ class UIRoot(uicls.Container):
 
     def GetAbsolutePosition(self):
         return (0, 0)
+
+
+
+    @apply
+    def dpiScaling():
+        doc = 'DPI scaling - scale the UI independent of resolution'
+
+        def fget(self):
+            return self._dpiScaling
+
+
+
+        def fset(self, value):
+            self._dpiScaling = value
+            ro = self.renderObject
+            if ro:
+                ro.dpiScaling = value
+            self.UpdateSize()
+            for each in uicore.textObjects:
+                each.OnCreate(trinity.device)
+
+
+
+        return property(**locals())
 
 
 

@@ -11,8 +11,16 @@ import dungeonHelper
 import sys
 import uiconst
 import uicls
-import lh2rhUtil
+import localization
 pi = 3.141592653589793
+
+def GetMessageFromLocalization(messageID):
+    if '/jessica' in blue.pyos.GetArg():
+        return localization.MessageText.Get(messageID).text
+    else:
+        return localization.GetByMessageID(messageID)
+
+
 
 class DungeonEditor(uicls.Window):
     __guid__ = 'form.DungeonEditor'
@@ -26,6 +34,7 @@ class DungeonEditor(uicls.Window):
      'OnDungeonEdit',
      'OnDungeonSelectionGroupRotation',
      'OnBSDTablesChanged']
+    default_windowID = 'dungeoneditor'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -33,7 +42,7 @@ class DungeonEditor(uicls.Window):
         self.roomTabSelected = 'Objects'
         self.loadingThread = None
         self.scope = 'inflight'
-        self.SetCaption(mls.UI_INFLIGHT_DUNGEONEDITOR)
+        self.SetCaption('Dungeon Editor')
         self.SetWndIcon()
         self.SetTopparentHeight(0)
         self.LoadPanels()
@@ -52,43 +61,42 @@ class DungeonEditor(uicls.Window):
             self.cache = sm.RemoteSvc('cache')
         self.hidePlacementGrid = settings.user.ui.Get('hidePlacementGrid', 0)
         self.cameraSvc.SetFreeLook()
-        nav = uix.GetInflightNav(create=0)
-        nav.dungeonEditorSelectionEnabled = True
+        uicore.layer.inflight.dungeonEditorSelectionEnabled = True
 
 
 
     def LoadPanels(self):
         panel = uicls.Container(name='panel', parent=self.sr.main, left=const.defaultPadding, top=const.defaultPadding, width=const.defaultPadding, height=const.defaultPadding)
         self.sr.panel = panel
-        self.sr.roomobjecttabs = uicls.TabGroup(name='tabparent', parent=self.sr.main, idx=0, tabs=[[mls.UI_INFLIGHT_OBJECTS,
+        self.sr.roomobjecttabs = uicls.TabGroup(name='tabparent', parent=self.sr.main, idx=0, tabs=[['Objects',
           panel,
           self,
-          'RoomObjectTab'], [mls.UI_INFLIGHT_GROUPS,
+          'RoomObjectTab'], ['Groups',
           panel,
           self,
           'RoomGroupTab']], groupID='roomobjectstab')
         self.sr.roomobjecttabs.state = uiconst.UI_HIDDEN
-        self.sr.maintabs = uicls.TabGroup(name='tabparent', parent=self.sr.main, idx=0, tabs=[[mls.UI_INFLIGHT_DUNGEONS,
+        self.sr.maintabs = uicls.TabGroup(name='tabparent', parent=self.sr.main, idx=0, tabs=[['Dungeons',
           panel,
           self,
           'DungeonTab'],
-         [mls.UI_INFLIGHT_ROOMOBJECTS,
+         ['Room objects',
           panel,
           self,
           'RoomTab'],
-         [mls.UI_INFLIGHT_TRANSFORM,
+         ['Transform',
           panel,
           self,
           'AlignTab'],
-         [mls.UI_INFLIGHT_SETTINGS,
+         ['Settings',
           panel,
           self,
           'SettingTab'],
-         [mls.UI_GENERIC_PALETTE,
+         ['Palette',
           panel,
           self,
           'PaletteTab'],
-         [mls.UI_INFLIGHT_DUNGEONTEMPLATES,
+         ['Templates',
           panel,
           self,
           'TemplateTab']], groupID='tabgroupid')
@@ -140,7 +148,10 @@ class DungeonEditor(uicls.Window):
             comboOptions = []
             dungeons = sm.RemoteSvc('dungeon').DEGetDungeons(archetypeID=archetypeID, factionID=factionID)
             for dungeon in dungeons:
-                name = dungeon.dungeonName
+                if dungeon.dungeonNameID is not None:
+                    name = GetMessageFromLocalization(dungeon.dungeonNameID)
+                else:
+                    name = ''
                 if dungeon.factionID:
                     factionName = cfg.eveowners.Get(dungeon.factionID).name
                     name = '%s (%s) [%d]' % (name, factionName, dungeon.dungeonID)
@@ -149,7 +160,7 @@ class DungeonEditor(uicls.Window):
                 comboOptions.append((name, dungeon.dungeonID))
 
             comboOptions.sort()
-            comboOptions.insert(0, [' - %s - ' % mls.UI_INFLIGHT_SELECTDUNGEON, None])
+            comboOptions.insert(0, [' - Select Dungeon - ', None])
             self.prevArchetypeID = archetypeID
             self.prevFactionID = factionID
             self.prevDungeonResults = comboOptions
@@ -184,31 +195,31 @@ class DungeonEditor(uicls.Window):
 
     def Load_DungeonTab(self):
         scenarioMgr = sm.GetService('scenario')
-        uicls.Label(text='%s:' % mls.UI_INFLIGHT_SEARCHDUNGEONS, parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Search Dungeons:', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
         uicls.Container(name='push', parent=self.sr.panel, align=uiconst.TOTOP, height=const.defaultPadding)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=20)
-        sb = uicls.Button(parent=row, label=mls.UI_CMD_SEARCH, func=self.OnFilterDungeon, align=uiconst.CENTERRIGHT, left=2)
+        sb = uicls.Button(parent=row, label='Search', func=self.OnFilterDungeon, align=uiconst.CENTERRIGHT, left=2)
         self.dungeonFilter = uicls.SinglelineEdit(name='dungeonFilter', parent=row, setvalue=self.filterText, align=uiconst.TOALL, padRight=sb.width + 4)
         uicls.Container(name='push', parent=self.sr.panel, align=uiconst.TOTOP, height=const.defaultPadding)
-        uicls.Label(text='%s:' % mls.UI_INFLIGHT_OPTIONALFILTERS, parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Optional Filters:', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
         uicls.Container(name='push', parent=self.sr.panel, align=uiconst.TOTOP, height=const.defaultPadding)
-        uicls.Label(text='%s:' % mls.UI_GENERIC_ARCHETYPE, parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Archetype:', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         archetypes = sm.RemoteSvc('dungeon').GetArchetypes()
         archetypeOptions = [ (archetype.archetypeName, archetype.archetypeID) for archetype in archetypes ]
         archetypeOptions.sort()
-        archetypeOptions.insert(0, (mls.UI_GENERIC_ALL, None))
+        archetypeOptions.insert(0, ('All', None))
         self._CreateCombo(archetypeOptions, 'dungeonArchetypeID')
         uicls.Container(name='push', parent=self.sr.panel, align=uiconst.TOTOP, height=const.defaultPadding)
-        uicls.Label(text='%s:' % mls.UI_GENERIC_FACTION, parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Faction:', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         factions = sm.RemoteSvc('dungeon').DEGetFactions()
         factionOptions = [ (cfg.eveowners.Get(faction.factionID).name, faction.factionID) for faction in factions ]
         factionOptions.sort()
-        factionOptions.insert(0, (mls.UI_GENERIC_ALL, None))
+        factionOptions.insert(0, ('All', None))
         self._CreateCombo(factionOptions, 'dungeonFactionID')
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=24, parent=self.sr.panel)
-        uicls.Label(text='%s:' % mls.UI_INFLIGHT_SELECTDUNGEON, parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Select Dungeon:', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
         uicls.Container(name='push', parent=self.sr.panel, align=uiconst.TOTOP, height=const.defaultPadding)
         (comboOptions, availableDungeons,) = self._GetDungeons()
@@ -216,24 +227,24 @@ class DungeonEditor(uicls.Window):
         dungeonID = settings.user.ui.Get(comboID, 'All')
         uicls.Combo(parent=self.sr.panel, label='', options=comboOptions, name=comboID, select=dungeonID, callback=self.OnComboChange, align=uiconst.TOTOP)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=16, parent=self.sr.panel)
-        uicls.Label(text='%s:' % mls.UI_INFLIGHT_SELECTROOM, parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Select Room:', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
         if dungeonID not in availableDungeons:
             uicls.Container(name='push', parent=self.sr.panel, align=uiconst.TOTOP, height=const.defaultPadding * 2)
-            uicls.Label(text=' - %s - ' % mls.UI_INFLIGHT_NODUNGEONSELECTED, parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+            uicls.EveLabelMedium(text=' - No dungeon selected - ', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
             return 
         seldungeon = sm.RemoteSvc('dungeon').DEGetDungeons(dungeonID=dungeonID)[0]
-        uicls.Label(text=seldungeon.dungeonName + ' - %s ' % mls.UI_INFLIGHT_VERSION, parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=GetMessageFromLocalization(seldungeon.dungeonNameID) + ' - Version ', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOBOTTOM, height=16)
         godMode = settings.user.ui.Get('dungeonGodMode', 1)
         self.godModeCheckbox = uicls.Checkbox(text='God Mode', parent=row, configName='dungeonGodMode', retval=0, checked=godMode, callback=self.OnGodMode)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOBOTTOM, height=16)
-        uicls.Button(parent=row, label=mls.UI_INFLIGHT_PLAYDUNGEON, func=self.PlayDungeon, align=uiconst.TOLEFT)
-        uicls.Button(parent=row, label=mls.UI_INFLIGHT_GOTOSELECTEDROOM, func=self.GotoRoom, args=(), align=uiconst.TOLEFT)
+        uicls.Button(parent=row, label='Play Dungeon', func=self.PlayDungeon, align=uiconst.TOLEFT)
+        uicls.Button(parent=row, label='Go to selected room', func=self.GotoRoom, args=(), align=uiconst.TOLEFT)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOBOTTOM, height=16)
-        uicls.Button(parent=row, label=mls.UI_INFLIGHT_EDITROOM, func=self.EditRoom, align=uiconst.TOLEFT)
-        uicls.Button(parent=row, label=mls.UI_INFLIGHT_SAVEROOM, func=self.SaveRoom, align=uiconst.TOLEFT)
-        uicls.Button(parent=row, label=mls.UI_INFLIGHT_RESET, func=self.ResetD, args=(), align=uiconst.TOLEFT)
+        uicls.Button(parent=row, label='Edit Room', func=self.EditRoom, align=uiconst.TOLEFT)
+        uicls.Button(parent=row, label='Save Room', func=self.SaveRoom, align=uiconst.TOLEFT)
+        uicls.Button(parent=row, label='Reset', func=self.ResetD, args=(), align=uiconst.TOLEFT)
         uicls.Container(name='push', parent=self.sr.panel, align=uiconst.TOBOTTOM, height=const.defaultPadding)
         rooms = sm.RemoteSvc('dungeon').DEGetRooms(dungeonID=seldungeon.dungeonID)
         uicls.Container(name='push', parent=self.sr.panel, align=uiconst.TOTOP, height=const.defaultPadding)
@@ -280,6 +291,7 @@ class DungeonEditor(uicls.Window):
 
 
     def PlayDungeon(self, *args):
+        self.cameraSvc.SetFreeLook(False)
         dungeonID = settings.user.ui.Get('dungeonDungeon', None)
         if dungeonID is None or dungeonID == 'All':
             return 
@@ -296,6 +308,7 @@ class DungeonEditor(uicls.Window):
 
 
     def EditRoom(self, *args):
+        self.cameraSvc.SetFreeLook()
         dungeonID = settings.user.ui.Get('dungeonDungeon', None)
         if dungeonID is None or dungeonID == 'All':
             return 
@@ -351,7 +364,7 @@ class DungeonEditor(uicls.Window):
             SLEEP_TIME = 250
             waitTime = 0
             while True:
-                blue.synchro.Sleep(SLEEP_TIME)
+                blue.synchro.SleepWallclock(SLEEP_TIME)
                 waitTime += SLEEP_TIME
                 objIsMissing = False
                 dunObjects = scenario.GetDunObjects()
@@ -385,7 +398,7 @@ class DungeonEditor(uicls.Window):
         dunObjs = self.scenario.GetDunObjects()
         if len(dunObjs) == 0:
             uicls.Container(name='push', parent=self.sr.panel, align=uiconst.TOTOP, height=28)
-            uicls.Label(text=mls.UI_INFLIGHT_NODUNGEONOBJECTSFOUND, parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+            uicls.EveLabelMedium(text='No dungeon objects found', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
             return 
         self.sr.roomobjecttabs.state = uiconst.UI_NORMAL
         if hasattr(self, 'Load_%sTab' % self.roomTabSelected):
@@ -436,20 +449,20 @@ class DungeonEditor(uicls.Window):
         self.sr.objscrollbox.LoadContent(contentList=scrollOptions)
         uicls.Container(name='push', parent=self.sr.panel, align=uiconst.TOTOP, height=16)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=20)
-        uicls.Button(parent=row, label=mls.UI_CMD_SELECTALL, func=self.ObjSelectAll, args=(), align=uiconst.TOLEFT)
-        uicls.Button(parent=row, label=mls.UI_CMD_INVERSESELECTION, func=self.ObjInverseSel, args=(), align=uiconst.TOLEFT)
-        uicls.Button(parent=row, label=mls.UI_CMD_CLEARSELECTION, func=self.ObjClearSel, args=(), align=uiconst.TOLEFT)
+        uicls.Button(parent=row, label='Select All', func=self.ObjSelectAll, args=(), align=uiconst.TOLEFT)
+        uicls.Button(parent=row, label='Invert selection', func=self.ObjInverseSel, args=(), align=uiconst.TOLEFT)
+        uicls.Button(parent=row, label='Clear selection', func=self.ObjClearSel, args=(), align=uiconst.TOLEFT)
         uicls.Container(name='push', parent=self.sr.panel, align=uiconst.TOTOP, height=16)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
-        uicls.Label(text='%s: ' % mls.UI_GENERIC_DUBLICATE, parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Duplicate: ', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=16)
         counter = 0
         for each in 'XYZ':
             checkbox1ID = 'duplicateOffset%s' % each
             curVal = 0
-            uicls.Label(text=each, parent=row, left=50 + counter * 52, state=uiconst.UI_NORMAL)
+            uicls.EveLabelMedium(text=each, parent=row, left=50 + counter * 52, state=uiconst.UI_NORMAL)
             ed = uicls.SinglelineEdit(name='duplicateOffset%s' % each, parent=row, setvalue=curVal, pos=(60 + counter * 52,
              0,
              38,
@@ -457,22 +470,22 @@ class DungeonEditor(uicls.Window):
             counter = counter + 1
             setattr(self, checkbox1ID, ed)
 
-        uicls.Label(text='Offset: ', parent=row, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Offset: ', parent=row, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=16)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=32)
         self.duplicateAmount = uicls.SinglelineEdit(name='duplicateAmount', parent=row, setvalue=1, pos=(60, 0, 38, 0), ints=(1, 100))
-        uicls.Button(parent=row, label=mls.UI_GENERIC_DUBLICATE, func=self.OnDuplicateClicked, args=('btn1',), pos=(112, 0, 0, 0))
-        uicls.Label(text='%s: ' % mls.UI_GENERIC_AMOUNT, parent=row, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.Button(parent=row, label='Duplicate', func=self.OnDuplicateClicked, args=('btn1',), pos=(112, 0, 0, 0))
+        uicls.EveLabelMedium(text='Amount: ', parent=row, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=20)
-        uicls.Button(parent=row, label=mls.UI_CMD_CREATEGROUP, func=self.OnCreateGroup, args=(), align=uiconst.TOLEFT)
-        uicls.Button(parent=row, label=mls.UI_GENERIC_CREATETEMPLATE, func=self.OnCreateTemplateFromSelection, args=(), align=uiconst.TOLEFT)
-        uicls.Button(parent=row, label=mls.UI_CMD_DELETESELECTED, func=self.OnDeleteSelected, args=(), align=uiconst.TOLEFT)
+        uicls.Button(parent=row, label='Create Group', func=self.OnCreateGroup, args=(), align=uiconst.TOLEFT)
+        uicls.Button(parent=row, label='Create Template', func=self.OnCreateTemplateFromSelection, args=(), align=uiconst.TOLEFT)
+        uicls.Button(parent=row, label='Delete selected', func=self.OnDeleteSelected, args=(), align=uiconst.TOLEFT)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=20)
-        uicls.Button(parent=row, label=mls.UI_INFLIGHT_SAVEROOM, func=self.SaveRoom, align=uiconst.TOLEFT)
+        uicls.Button(parent=row, label='Save Room', func=self.SaveRoom, align=uiconst.TOLEFT)
 
 
 
@@ -501,9 +514,9 @@ class DungeonEditor(uicls.Window):
         self.sr.objgroupscrollbox.LoadContent(contentList=scrollOptions)
         uicls.Container(name='push', parent=self.sr.panel, align=uiconst.TOTOP, height=16)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=16)
-        uicls.Button(parent=row, label=mls.UI_CMD_RENAMEGROUP, func=self.OnRenameGroup, args=(), align=uiconst.TOLEFT)
-        uicls.Button(parent=row, label=mls.UI_CMD_REMOVEGROUP, func=self.OnRemoveGroup, args=(), align=uiconst.TOLEFT)
-        uicls.Button(parent=row, label=mls.UI_CMD_DELETEGROUPOBJECTS, func=self.OnDeleteSelectedGroup, args=(), align=uiconst.TOLEFT)
+        uicls.Button(parent=row, label='Rename Group', func=self.OnRenameGroup, args=(), align=uiconst.TOLEFT)
+        uicls.Button(parent=row, label='Remove Group', func=self.OnRemoveGroup, args=(), align=uiconst.TOLEFT)
+        uicls.Button(parent=row, label='Delete Group Objects', func=self.OnDeleteSelectedGroup, args=(), align=uiconst.TOLEFT)
 
 
 
@@ -519,7 +532,6 @@ class DungeonEditor(uicls.Window):
         Y = getattr(self, 'duplicateOffsetY').GetValue()
         Z = getattr(self, 'duplicateOffsetZ').GetValue()
         amount = self.duplicateAmount.GetValue()
-        (X, Y, Z,) = lh2rhUtil.ConvertPosition(X, Y, Z)
         sm.StartService('scenario').DuplicateSelection(amount, X, Y, Z)
 
 
@@ -671,9 +683,9 @@ class DungeonEditor(uicls.Window):
 
     def Load_AlignTab(self):
         uicls.Container(name='push', parent=self.sr.panel, align=uiconst.TOTOP, height=16)
-        uicls.Label(text='%s: ' % mls.UI_GENERIC_ALIGN, parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Align: ', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=16)
-        uicls.Button(parent=row, label='  %s  ' % mls.UI_INFLIGHT_ALIGNCENTRES, func=self.OnAlignCentres, args=('btn1',), align=uiconst.TOLEFT)
+        uicls.Button(parent=row, label='  Align centres  ', func=self.OnAlignCentres, args=('btn1',), align=uiconst.TOLEFT)
         for each in 'XYZ':
             checkbox1ID = 'alignCentre%s' % each
             checkbox1Setval = settings.user.ui.Get(checkbox1ID, 0)
@@ -683,7 +695,7 @@ class DungeonEditor(uicls.Window):
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=16)
-        uicls.Button(parent=row, label=mls.UI_INFLIGHT_DISTRIBUTECENTRES, func=self.OnDistributeCentres, args=('btn1',), align=uiconst.TOLEFT)
+        uicls.Button(parent=row, label='Distribute centres', func=self.OnDistributeCentres, args=('btn1',), align=uiconst.TOLEFT)
         for each in 'XYZ':
             checkbox1ID = 'distributeCentre%s' % each
             checkbox1Setval = settings.user.ui.Get(checkbox1ID, 0)
@@ -692,7 +704,7 @@ class DungeonEditor(uicls.Window):
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
-        uicls.Label(text='Jitter: ', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Jitter: ', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=16)
         for (counter, each,) in enumerate('XYZ'):
             checkbox1ID = 'jitterOffset%s' % each
@@ -703,7 +715,7 @@ class DungeonEditor(uicls.Window):
              0), ints=(0, 30000))
             setattr(self, checkbox1ID, ed)
 
-        uicls.Label(text='%s: ' % mls.UI_GENERIC_OFFSET, parent=row, align=uiconst.TOLEFT, state=uiconst.UI_NORMAL).name = 'Pos Text'
+        uicls.EveLabelMedium(text='Offset: ', parent=row, align=uiconst.TOLEFT, state=uiconst.UI_NORMAL).name = 'Pos Text'
         uicls.Button(parent=row, label='Jitter Position', func=self.OnJitterClicked, args=('btn1',), pos=(220, 0, 0, 0))
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=16)
@@ -716,19 +728,19 @@ class DungeonEditor(uicls.Window):
              0), ints=(0, 30000))
             setattr(self, checkbox1ID, ed)
 
-        uicls.Label(text='Rotation: ', parent=row, align=uiconst.TOLEFT, state=uiconst.UI_NORMAL).name = 'Rot Text'
+        uicls.EveLabelMedium(text='Rotation: ', parent=row, align=uiconst.TOLEFT, state=uiconst.UI_NORMAL).name = 'Rot Text'
         uicls.Button(parent=row, label='Jitter Rotation', func=self.OnJitterRotationClicked, pos=(220, 0, 0, 0))
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
-        uicls.Label(text='%s: ' % mls.UI_GENERIC_ARRANGE, parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Arrange: ', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=16)
         counter = 0
-        uicls.Button(parent=row, label=mls.UI_GENERIC_ARRANGE, func=self.OnArrangeClicked, args=('btn1',), pos=(220, 0, 0, 0))
+        uicls.Button(parent=row, label='Arrange', func=self.OnArrangeClicked, args=('btn1',), pos=(220, 0, 0, 0))
         for each in 'XYZ':
             checkbox1ID = 'arrangeOffset%s' % each
             curVal = 0
-            uicls.Label(text=each, parent=row, left=50 + counter * 52, state=uiconst.UI_NORMAL)
+            uicls.EveLabelMedium(text=each, parent=row, left=50 + counter * 52, state=uiconst.UI_NORMAL)
             ed = uicls.SinglelineEdit(name='arrangeOffset%s' % each, parent=row, setvalue=curVal, pos=(60 + counter * 52,
              0,
              38,
@@ -736,30 +748,30 @@ class DungeonEditor(uicls.Window):
             counter = counter + 1
             setattr(self, checkbox1ID, ed)
 
-        uicls.Label(text='%s: ' % mls.UI_GENERIC_OFFSET, parent=row, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Offset: ', parent=row, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
-        uicls.Label(text='Quantity: (Only works on asteroids and clouds)', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Quantity: (Only works on asteroids and clouds)', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=16)
         counter = 0
         uicls.Button(parent=row, label='Set Quantity', func=self.OnSetQuantityClicked, args=('btn1',), pos=(220, 0, 0, 0))
         minMaxQuantity = self.GetSelectedObjectsMinMaxQuantity()
         minQuantity = minMaxQuantity[0]
         maxQuantity = minMaxQuantity[1]
-        uicls.Label(text=mls.UI_GENERIC_MIN, parent=row, left=40, width=32, height=14, state=uiconst.UI_NORMAL)
-        uicls.Label(text=mls.UI_GENERIC_MAX, parent=row, left=130, width=32, height=14, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Min.', parent=row, left=40, width=32, height=14, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Max.', parent=row, left=130, width=32, height=14, state=uiconst.UI_NORMAL)
         self.quantityMin = uicls.SinglelineEdit(name='quantityMin', parent=row, setvalue=int(minQuantity), pos=(60, 0, 64, 0), ints=(0, sys.maxint))
         self.quantityMax = uicls.SinglelineEdit(name='quantityMax', parent=row, setvalue=int(maxQuantity), pos=(154, 0, 64, 0), ints=(0, sys.maxint))
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
-        uicls.Label(text='Radius: (Only works on asteroids and clouds)', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Radius: (Only works on asteroids and clouds)', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=16)
         counter = 0
         uicls.Button(parent=row, label='Set Radius', func=self.OnSetRadiusClicked, args=('btn1',), pos=(220, 0, 0, 0))
-        uicls.Label(text=mls.UI_GENERIC_MIN, parent=row, left=40, width=32, height=14, state=uiconst.UI_NORMAL)
-        uicls.Label(text=mls.UI_GENERIC_MAX, parent=row, left=130, width=32, height=14, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Min.', parent=row, left=40, width=32, height=14, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Max.', parent=row, left=130, width=32, height=14, state=uiconst.UI_NORMAL)
         minMaxRadius = self.GetSelectedObjectsMinMaxRadius()
         minRadius = minMaxRadius[0]
         maxRadius = minMaxRadius[1]
@@ -768,14 +780,14 @@ class DungeonEditor(uicls.Window):
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
-        uicls.Label(text='%s: ' % mls.UI_INFLIGHT_ROTATEOBJ, parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Rotate objects: ', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=16)
         counter = 0
-        uicls.Button(parent=row, label='%s ' % mls.UI_GENERIC_ROTATE, func=self.OnRotateClicked, args=('btn1',), pos=(220, 0, 0, 0))
+        uicls.Button(parent=row, label='Rotate ', func=self.OnRotateClicked, args=('btn1',), pos=(220, 0, 0, 0))
         for each in ['Y', 'P', 'R']:
             checkbox1ID = 'rotate_%s' % each
             curVal = 0
-            uicls.Label(text=each, parent=row, left=50 + counter * 52, height=14, state=uiconst.UI_NORMAL)
+            uicls.EveLabelMedium(text=each, parent=row, left=50 + counter * 52, height=14, state=uiconst.UI_NORMAL)
             ed = uicls.SinglelineEdit(name='rotate_%s' % each, parent=row, setvalue=curVal, pos=(60 + counter * 52,
              0,
              38,
@@ -783,18 +795,18 @@ class DungeonEditor(uicls.Window):
             counter = counter + 1
             setattr(self, checkbox1ID, ed)
 
-        uicls.Label(text='%s: ' % mls.UI_GENERIC_ROTATION, parent=row, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='ROTATION: ', parent=row, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
-        uicls.Label(text='%s: ' % mls.UI_INFLIGHT_SETROTATION, parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Set rotation: ', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=16)
         counter = 0
-        uicls.Button(parent=row, label='%s' % mls.UI_INFLIGHT_SETROTATION, func=self.OnSetRotateClicked, args=('btn1',), pos=(220, 0, 0, 0))
+        uicls.Button(parent=row, label='Set rotation', func=self.OnSetRotateClicked, args=('btn1',), pos=(220, 0, 0, 0))
         for each in ['Y', 'P', 'R']:
             checkbox1ID = 'rotateset_%s' % each
             curVal = 0
-            uicls.Label(text=each, parent=row, left=50 + counter * 52, height=14, state=uiconst.UI_NORMAL)
+            uicls.EveLabelMedium(text=each, parent=row, left=50 + counter * 52, height=14, state=uiconst.UI_NORMAL)
             ed = uicls.SinglelineEdit(name='rotateset_%s' % each, parent=row, setvalue=curVal, pos=(60 + counter * 52,
              0,
              38,
@@ -802,7 +814,7 @@ class DungeonEditor(uicls.Window):
             counter = counter + 1
             setattr(self, checkbox1ID, ed)
 
-        uicls.Label(text='%s: ' % mls.UI_GENERIC_ROTATION, parent=row, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='ROTATION: ', parent=row, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
 
 
 
@@ -918,7 +930,7 @@ class DungeonEditor(uicls.Window):
         if not len(selObjs):
             sm.GetService('gameui').Say('ERROR: Cannot create a new template because no objects are selected.')
             return 
-        wnd = sm.StartService('window').GetWindow('dungeonTemplateCreator', create=1, decoClass=form.CreateDungeonTemplateWindow)
+        wnd = form.CreateDungeonTemplateWindow.Open()
         wnd.ShowModal()
 
 
@@ -928,11 +940,8 @@ class DungeonEditor(uicls.Window):
 
 
 
-    def CreateGroup(self, groupName = None, selectedObjSlimItems = None, orientation = None):
-        if not selectedObjSlimItems:
-            sm.GetService('gameui').Say('ERROR: Cannot create a new group because no objects are selected.')
-            return 
-        (groupName, selectedObjSlimItems,) = self.CreateGroupForEditor(groupName, selectedObjSlimItems, orientation)
+    def CreateGroup(self):
+        (groupName, selectedObjSlimItems,) = self.CreateGroupForEditor()
         self.CreateGroupForDatabase(groupName, selectedObjSlimItems)
         return groupName
 
@@ -942,6 +951,9 @@ class DungeonEditor(uicls.Window):
         scenario = sm.StartService('scenario')
         if selectedObjSlimItems is None:
             selectedObjSlimItems = scenario.GetSelObjects()
+        if not selectedObjSlimItems:
+            sm.GetService('gameui').Say('ERROR: Cannot create a new group because no objects are selected.')
+            return 
         if not groupName:
             maxUntitledGroupIndex = 0
             for groupName in self.objectGroups:
@@ -1003,7 +1015,7 @@ class DungeonEditor(uicls.Window):
           'setvalue': key,
           'maxLength': 64,
           'labelwidth': len('Group Name:') * 7,
-          'label': '%s:' % mls.UI_GENERIC_GROUPNAME,
+          'label': 'Group Name:',
           'key': 'newGroupName',
           'required': 1,
           'frame': 1},
@@ -1015,7 +1027,7 @@ class DungeonEditor(uicls.Window):
           'data': {'oldGroupName': oldGroupName}},
          {'type': 'errorcheck',
           'errorcheck': self.RenameGroupErrorCheck}]
-        retval = uix.HybridWnd(format, mls.UI_CMD_RENAMEGROUP, 1, buttons=uiconst.OKCANCEL, minW=300, minH=50)
+        retval = uix.HybridWnd(format, 'Rename Group', 1, buttons=uiconst.OKCANCEL, minW=300, minH=50)
         if retval and retval['newGroupName'] and len(retval['newGroupName']) > 1:
             self.RenameGroup(retval['oldGroupName'], retval['newGroupName'])
 
@@ -1027,7 +1039,7 @@ class DungeonEditor(uicls.Window):
         if oldGroupName == newGroupName:
             return ''
         if newGroupName in self.objectGroups:
-            return mls.UI_INFLIGHT_GROUPNAMEEXISTS % {'groupName': oldGroupName}
+            return 'Cannot rename %s: A group with the name you specified already exists. Specify a new group name.' % oldGroupName
 
 
 
@@ -1173,10 +1185,10 @@ class DungeonEditor(uicls.Window):
 
 
     def Load_SettingTab(self):
-        uicls.Label(text=mls.UI_INFLIGHT_CURSORSIZECLAMPING, parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Cursor size clamping', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=16)
         counter = 0
-        uicls.Button(parent=row, label=mls.UI_INFLIGHT_SETMINANDMAX, func=self.OnSetCursorRadiusClicked, args=('btn1',), pos=(220, 0, 0, 0))
+        uicls.Button(parent=row, label='Set min and max', func=self.OnSetCursorRadiusClicked, args=('btn1',), pos=(220, 0, 0, 0))
         minRadius = settings.user.ui.Get('cursorMin', 1.0)
         maxRadius = settings.user.ui.Get('cursorMax', 100000.0)
         selObjs = sm.GetService('scenario').GetSelObjects()
@@ -1188,34 +1200,34 @@ class DungeonEditor(uicls.Window):
                     minRadius = min(minRadius, slimItem.radius)
                 maxRadius = max(maxRadius, slimItem.radius)
 
-        uicls.Label(text=mls.UI_GENERIC_MIN, parent=row, left=40, width=32, state=uiconst.UI_NORMAL)
-        uicls.Label(text=mls.UI_GENERIC_MAX, parent=row, left=130, width=32, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Min.', parent=row, left=40, width=32, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Max.', parent=row, left=130, width=32, state=uiconst.UI_NORMAL)
         self.cursorMin = uicls.SinglelineEdit(name='cursorMin', parent=row, setvalue=int(minRadius), pos=(60, 0, 64, 0), ints=(0, 60000))
         self.cursorMax = uicls.SinglelineEdit(name='cursorMax', parent=row, setvalue=int(maxRadius), pos=(154, 0, 64, 0), ints=(0, 60000))
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=6, parent=self.sr.panel)
-        uicls.Label(text='%s: ' % mls.UI_INFLIGHT_AGGRESSIONRADIUS, parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Aggression radius: ', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         checkbox1ID = 'showAggrRadius'
         checkbox1Setval = settings.user.ui.Get(checkbox1ID, 0)
-        self.aggrSettings = uicls.Checkbox(text=mls.UI_INFLIGHT_SHOWAGGRESSIONRAD, parent=self.sr.panel, configName=checkbox1ID, retval=None, checked=settings.user.ui.Get('showAggrRadius', 0), callback=self.OnDisplaySettingsChange)
-        self.aggrSettingsAll = uicls.Checkbox(text=mls.UI_INFLIGHT_SHOWAGGRESSIONRADALL, parent=self.sr.panel, configName=checkbox1ID, retval=None, checked=settings.user.ui.Get('aggrSettingsAll', 0), callback=self.OnDisplaySettingsChange)
+        self.aggrSettings = uicls.Checkbox(text='Aggression radius', parent=self.sr.panel, configName=checkbox1ID, retval=None, checked=settings.user.ui.Get('showAggrRadius', 0), callback=self.OnDisplaySettingsChange)
+        self.aggrSettingsAll = uicls.Checkbox(text='Show agression radius of all objects', parent=self.sr.panel, configName=checkbox1ID, retval=None, checked=settings.user.ui.Get('aggrSettingsAll', 0), callback=self.OnDisplaySettingsChange)
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=7, parent=self.sr.panel)
         self.freeLookCheckbox = uicls.Checkbox(text='Free Look Camera', parent=self.sr.panel, configName=checkbox1ID, retval=None, checked=self.cameraSvc.IsFreeLook(), callback=self.OnDisplaySettingsChange)
-        uicls.Label(text='Free Look Camera Controls', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
-        uicls.Label(text=' CTRL + WASD - Moves forward, left, backwards, and right', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
-        uicls.Label(text=' CTRL + RF - Moves up and down', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
-        uicls.Label(text=' ALT + Left Mouse Button - Rotate camera around focus point', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
-        uicls.Label(text=' ALT + Middle Mouse Button - Moves camera focus point in screen space.', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
-        uicls.Label(text=' ALT + Right Mouse Button - Zooms camera in and out of focus point', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
-        uicls.Label(text=' Double Click on Object - Changes focus point to that object.', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
-        uicls.Label(text=' Can also use "Look At" to set the focus point to an object.', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Free Look Camera Controls', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=' CTRL + WASD - Moves forward, left, backwards, and right', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=' CTRL + RF - Moves up and down', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=' ALT + Left Mouse Button - Rotate camera around focus point', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=' ALT + Middle Mouse Button - Moves camera focus point in screen space.', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=' ALT + Right Mouse Button - Zooms camera in and out of focus point', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=' Double Click on Object - Changes focus point to that object.', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text=' Can also use "Look At" to set the focus point to an object.', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
         self.axisCheckbox = uicls.Checkbox(text='Draw Axis Lines', parent=self.sr.panel, configName=checkbox1ID, retval=None, checked=self.cameraSvc.IsDrawingAxis(), callback=self.OnDisplaySettingsChange)
         self.gridCheckbox = uicls.Checkbox(text='Draw Grid Lines', parent=self.sr.panel, configName=checkbox1ID, retval=None, checked=self.cameraSvc.IsGridEnabled(), callback=self.OnDisplaySettingsChange)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=7, parent=self.sr.panel)
-        uicls.Label(text='Palette Placement Grid', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Palette Placement Grid', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         gridSizeOptions = [('20x20m', 20.0),
          ('200x200m', 200.0),
          ('2x2km', 2000.0),
@@ -1232,10 +1244,10 @@ class DungeonEditor(uicls.Window):
         self.gridSpacingDropdown = uicls.Combo(parent=self.sr.panel, label='Unit Size', options=gridSpacingOptions, name='', select=self.cameraSvc.GetGridSpacing(), callback=self.OnDisplaySettingsChange, align=uiconst.TOTOP, adjustWidth=True)
         self.gridCheckbox = uicls.Checkbox(text='Hide Placement Grid when not in Palette View', parent=self.sr.panel, configName=checkbox1ID, retval=None, checked=settings.user.ui.Get('hidePlacementGrid', 0), callback=self.OnDisplaySettingsChange)
         uicls.Container(name='pusher', align=uiconst.TOTOP, height=14, parent=self.sr.panel)
-        uicls.Label(text='Free Look Camera must be enabled to use the placement grid.', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
-        uicls.Label(text='Red Axis Line = X Axis', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
-        uicls.Label(text='Green Axis Line = Y Axis', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
-        uicls.Label(text='Blue Axis Line = Z Axis', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Free Look Camera must be enabled to use the placement grid.', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Red Axis Line = X Axis', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Green Axis Line = Y Axis', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Blue Axis Line = Z Axis', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
 
 
 
@@ -1274,7 +1286,7 @@ class DungeonEditor(uicls.Window):
         comboSetval = settings.user.ui.Get(comboID, 'combo_retval1')
         uicls.Combo(label='', parent=self.sr.panel, options=comboOptions, name=comboID, select=comboSetval, callback=self.OnComboChange, align=uiconst.TOTOP)
         uicls.Container(name='push', parent=self.sr.panel, align=uiconst.TOTOP, height=const.defaultPadding)
-        uicls.Label(text='Label 1', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Label 1', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         scrollOptions = self.GetScrollOptions(comboSetval)
         scrollbox = uicls.Scroll(parent=self.sr.panel, name='scrollID', align=uiconst.TOTOP, height=256)
         scrollbox.LoadContent(contentList=scrollOptions)
@@ -1370,7 +1382,7 @@ class DungeonEditor(uicls.Window):
              'form': self}
             scrollOptions.append(listentry.Get('DungeonTemplateEntry', data))
 
-        text = uicls.Label(text='Drag templates onto the grid to add their contents to the room', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        text = uicls.EveLabelMedium(text='Drag templates onto the grid to add their contents to the room', parent=self.sr.panel, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         self.sr.templatescroll = uicls.Scroll(name='scroll', parent=self.sr.panel, align=uiconst.TOALL)
         self.sr.templatescroll.Load(contentList=scrollOptions, scrolltotop=0)
         autoCreateGroupings = settings.user.ui.Get('dungeonTemplateGroupings', 1)
@@ -1453,9 +1465,8 @@ class DungeonEditor(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
-        nav = uix.GetInflightNav(create=0)
-        nav.dungeonEditorSelectionEnabled = False
+    def _OnClose(self, *args):
+        uicore.layer.inflight.dungeonEditorSelectionEnabled = False
         self.scenario.ClearSelection()
         self.cameraSvc.SetFreeLook(False)
 
@@ -1479,7 +1490,7 @@ class DungeonDragEntry(listentry.Generic):
 
     def OnEndDrag(self):
         where = uicore.uilib.mouseOver
-        if where and hasattr(where, '__guid__') and where.__guid__ == 'form.InflightNav':
+        if where and type(where) is uicls.InflightLayer:
             scenarioSvc = sm.services['scenario']
             roomID = scenarioSvc.GetEditingRoomID()
             if roomID is None:
@@ -1520,8 +1531,7 @@ class PaletteEntry(DungeonDragEntry):
     __guid__ = 'listentry.PaletteEntry'
 
     def DropIntoDungeonRoom(self, roomID, posInRoom):
-        (x, y, z,) = lh2rhUtil.ConvertPosition(posInRoom.x, posInRoom.y, posInRoom.z)
-        dungeonHelper.CreateObject(roomID, self.sr.node.id, self.sr.node.label, x, y, z, None, None, None, None)
+        dungeonHelper.CreateObject(roomID, self.sr.node.id, self.sr.node.label, posInRoom.x, posInRoom.y, posInRoom.z, None, None, None, None)
 
 
 
@@ -1544,7 +1554,7 @@ class DungeonTemplateEntry(DungeonDragEntry):
 
 
     def GetMenu(self):
-        return [(mls.UI_CMD_EDITDETAILS, self.OnEditDetails), (mls.UI_CMD_DELETE, self.OnDeleteTemplate)]
+        return [('Edit details', self.OnEditDetails), ('Delete', self.OnDeleteTemplate)]
 
 
 
@@ -1573,7 +1583,7 @@ class DungeonTemplateEntry(DungeonDragEntry):
         if row.userID != session.userid:
             sm.GetService('gameui').Say('Can only edit templates you have created yourself.<br>This template was created by: %s' % row.userName)
             return 
-        wnd = sm.StartService('window').GetWindow('dungeonTemplateDetailEditor', create=1, decoClass=form.EditDungeonTemplateWindow, templateRow=row, dungeonEditorForm=dungeonEditorForm)
+        wnd = form.EditDungeonTemplateWindow.Open(templateRow=row, dungeonEditorForm=dungeonEditorForm)
         wnd.ShowModal()
 
 
@@ -1583,7 +1593,8 @@ class DungeonObjectProperties(uicls.Window):
     __guid__ = 'form.DungeonObjectProperties'
     __nonpersistvars__ = []
     __notifyevents__ = ['OnBSDRevisionChange', 'OnDungeonObjectProperties', 'OnSelectObjectInGame']
-    _windowHeight = 180
+    _windowHeight = 200
+    default_windowID = 'dungeonObjectProperties'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -1591,58 +1602,62 @@ class DungeonObjectProperties(uicls.Window):
         self.SetCaption('Object Properties')
         self.SetWndIcon()
         self.SetTopparentHeight(0)
-        self.width = 275
+        self.width = 300
         self.height = self._windowHeight
         self.SetHeight(self._windowHeight)
         self.bsdTable = sm.StartService('bsdTable')
         self.inventoryTypesTable = self.bsdTable.GetTable('inventory', 'types')
         self.objectTable = self.bsdTable.GetTable('dungeon', 'objects')
+        self.bsdTable.GetTable(localization.MessageText.__primaryTable__.tableName)
+        self.bsdTable.GetTable(localization.Message.__primaryTable__.tableName)
         self.objectRow = None
-        self.noObjects = uicls.Label(text='No Objects Selected', parent=self.sr.main, left=5, top=4, state=uiconst.UI_NORMAL)
+        self.noObjects = uicls.EveLabelMedium(text='No Objects Selected', parent=self.sr.main, left=5, top=4, state=uiconst.UI_NORMAL)
         panel = uicls.Container(name='panel', parent=self.sr.main, left=const.defaultPadding, top=const.defaultPadding, width=const.defaultPadding, height=const.defaultPadding)
         self.sr.panel = panel
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=18)
-        uicls.Label(text='Selected:', parent=row, left=2, top=4, state=uiconst.UI_NORMAL)
-        self.selectedCombo = uicls.Combo(label='', parent=row, options=(('Nothing', 0),), name='combo', select=0, callback=self.OnComboChange, pos=(60, 0, 0, 0), align=uiconst.TOPLEFT)
+        uicls.EveLabelMedium(text='Selected:', parent=row, left=2, top=4, state=uiconst.UI_NORMAL)
+        self.selectedCombo = uicls.Combo(label='', parent=row, options=(('Nothing', 0),), name='combo', select=0, callback=self.OnComboChange, pos=(80, 0, 0, 0), align=uiconst.TOPLEFT)
         self.selectedCombo.width = 202
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=20)
-        uicls.Label(text='Object Name:', parent=row, left=2, top=4, state=uiconst.UI_NORMAL)
-        self.objectName = uicls.SinglelineEdit(name='objectName', parent=row, setvalue='', pos=(60, 0, 202, 16))
+        uicls.EveLabelMedium(text='Object Name:', parent=row, left=2, top=4, state=uiconst.UI_NORMAL)
+        self.objectName = uicls.SinglelineEdit(name='objectName', parent=row, setvalue='', pos=(80, 0, 202, 16))
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=20)
-        uicls.Label(text='Object Type:', parent=row, left=2, top=4, state=uiconst.UI_NORMAL)
-        self.objectType = uicls.Label(text='', parent=row, left=60, top=4, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Object Type:', parent=row, left=2, top=4, state=uiconst.UI_NORMAL)
+        self.objectType = uicls.EveLabelMedium(text='', parent=row, left=80, top=4, state=uiconst.UI_NORMAL)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=20)
-        uicls.Label(text='Quantity:', parent=row, left=2, top=4, state=uiconst.UI_NORMAL)
-        self.quantity = uicls.SinglelineEdit(name='quantity', parent=row, setvalue=0, pos=(60, 16, 202, 0), ints=(0, sys.maxint))
+        uicls.EveLabelMedium(text='Quantity:', parent=row, left=2, top=4, state=uiconst.UI_NORMAL)
+        self.quantity = uicls.SinglelineEdit(name='quantity', parent=row, setvalue=0, pos=(80, 0, 202, 0), ints=(0, sys.maxint))
         self.oldQuantity = 0
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=20)
-        uicls.Label(text='Radius:', parent=row, left=2, top=4, state=uiconst.UI_NORMAL)
-        self.radius = uicls.SinglelineEdit(name='radius', parent=row, setvalue=0, pos=(60, 0, 202, 16), ints=(0, sys.maxint))
+        uicls.EveLabelMedium(text='Radius:', parent=row, left=2, top=4, state=uiconst.UI_NORMAL)
+        self.radius = uicls.SinglelineEdit(name='radius', parent=row, setvalue=0, pos=(80, 0, 202, 16), ints=(0, sys.maxint))
         self.oldRadius = 0
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=20)
-        uicls.Label(text='Position:', parent=row, left=2, top=4, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Position:', parent=row, left=2, top=4, state=uiconst.UI_NORMAL)
         for (i, each,) in enumerate('XYZ'):
             editId = 'position%s' % each
             curVal = 0
-            editBox = uicls.SinglelineEdit(name=editId, parent=row, setvalue=0, pos=(60 + i * 69,
+            editBox = uicls.SinglelineEdit(name=editId, parent=row, setvalue=0, pos=(80 + i * 69,
              0,
              64,
              16), floats=(-100000.0, 100000.0))
             setattr(self, editId, editBox)
 
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=20)
-        uicls.Label(text='Rotation:', parent=row, left=2, top=4, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='Rotation:', parent=row, left=2, top=4, state=uiconst.UI_NORMAL)
         for (i, each,) in enumerate(['Yaw', 'Pitch', 'Roll']):
             editId = 'rotation%s' % each
             curVal = 0
-            editBox = uicls.SinglelineEdit(name=editId, parent=row, setvalue=0, pos=(60 + i * 69,
+            editBox = uicls.SinglelineEdit(name=editId, parent=row, setvalue=0, pos=(80 + i * 69,
              0,
              64,
              16), floats=(-100000.0, 100000.0))
             setattr(self, editId, editBox)
 
+        spacer = uicls.Container(name='spacer', parent=self.sr.panel, align=uiconst.TOTOP, height=5)
         uicls.Line(parent=self.sr.panel, align=uiconst.TOTOP)
+        spacer = uicls.Container(name='spacer', parent=self.sr.panel, align=uiconst.TOTOP, height=5)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=20)
         uicls.Button(parent=row, label='Change Type', func=self.OnChangeType, align=uiconst.TOLEFT).width = 87
         uicls.Button(parent=row, label='Save', func=self.OnSave, align=uiconst.TOLEFT).width = 87
@@ -1678,7 +1693,10 @@ class DungeonObjectProperties(uicls.Window):
     def UpdateDisplay(self):
         self.ShowLoad()
         self.SetCaption('Object Properties: %d' % self.objectRow.objectID)
-        self.objectName.SetValue(self.objectRow.objectName or '')
+        objectName = ''
+        if self.objectRow.objectNameID is not None:
+            objectName = GetMessageFromLocalization(self.objectRow.objectNameID)
+        self.objectName.SetValue(objectName)
         typeRow = self.inventoryTypesTable.GetRowByKey(self.objectRow.typeID)
         if typeRow:
             typeName = typeRow.typeName
@@ -1731,7 +1749,7 @@ class DungeonObjectProperties(uicls.Window):
                 sleepTime = 0
                 while ball is None or slimItem is None and sleepTime < 5000:
                     sleepTime += 200
-                    blue.synchro.Sleep(200)
+                    blue.synchro.SleepWallclock(200)
                     (ball, slimItem,) = scenarioSvc.GetBallAndSlimItemFromObjectID(objectID)
 
                 if ball is None or slimItem is None:
@@ -1765,15 +1783,20 @@ class DungeonObjectProperties(uicls.Window):
 
 
     def OnChangeType(self, *args, **kwargs):
-        sm.StartService('window').GetWindow('objectTypeChooser', create=1, decoClass=form.ObjectTypeChooser, ignoreCurrent=1, objectRow=self.objectRow)
+        form.ObjectTypeChooser.Open(objectRow=self.objectRow)
 
 
 
     def OnSave(self, *args, **kwargs):
-        objectName = self.objectName.GetValue()
-        if objectName == '':
-            objectName = None
-        self.objectRow.objectName = objectName
+        dungeonID = settings.user.ui.Get('dungeonDungeon', None)
+        if dungeonID is None or dungeonID == 'All':
+            return 
+        selDungeon = sm.RemoteSvc('dungeon').DEGetDungeons(dungeonID=dungeonID)[0]
+        dungeonNameID = selDungeon.dungeonNameID
+        if dungeonNameID is not None:
+            dungeonName = GetMessageFromLocalization(dungeonNameID)
+        else:
+            dungeonName = selDungeon.dungeonName
         quantity = self.quantity.GetValue()
         if quantity != 'Quantity Invalid For This Type' and quantity != self.oldQuantity:
             self.oldQuantity = quantity
@@ -1790,6 +1813,25 @@ class DungeonObjectProperties(uicls.Window):
         pitch = self.rotationPitch.GetValue()
         roll = self.rotationRoll.GetValue()
         dungeonHelper.SetObjectRotation(self.objectRow.objectID, yaw, pitch, roll)
+        objectName = self.objectName.GetValue()
+        if not objectName:
+            if self.objectRow.objectNameID:
+                localization.MessageText.Get(self.objectRow.objectNameID).text = ''
+            objectName = None
+        if objectName is not None:
+            objectNameID = self.objectRow.objectNameID
+            if objectNameID is not None and objectName == GetMessageFromLocalization(objectNameID):
+                return 
+            if objectNameID is not None and unicode(objectNameID) in objectName:
+                msgText = 'Do you really want to name this object %s?'
+                msgText += " Selecting 'No' will save other changes you have made to the object, but will not change the name."
+                ret = eve.Message('CustomQuestion', {'header': 'Rename Object?',
+                 'question': msgText % objectName}, uiconst.YESNO)
+                if ret == uiconst.ID_NO:
+                    return 
+            import localizationTableToMessageUtil
+            self.objectRow.objectNameID = localizationTableToMessageUtil.UpdateMessage('DUNGEON-OBJECTS', dungeonID, objectNameID, objectName, 'dungeon.objects', 'objectNameID', self.objectRow.revisionID, None, dungeonID, dungeonName)
+        self.UpdateDisplay()
 
 
 
@@ -1808,8 +1850,6 @@ class DungeonObjectProperties(uicls.Window):
 
 class ObjectTypeChooser(uicls.Window):
     __guid__ = 'form.ObjectTypeChooser'
-    __nonpersistvars__ = []
-    __notifyevents__ = []
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -1882,7 +1922,7 @@ class ObjectGroupListEntry(listentry.Generic):
 
     def Startup(self, *args):
         listentry.Generic.Startup(self, args)
-        self.sr.lock = uicls.Icon(icon='ui_22_32_30', parent=self, size=24, align=uiconst.CENTERRIGHT, state=uiconst.UI_HIDDEN, hint=mls.UI_SYSMENU_LOCKEDSHORTCUTHINT)
+        self.sr.lock = uicls.Icon(icon='ui_22_32_30', parent=self, size=24, align=uiconst.CENTERRIGHT, state=uiconst.UI_HIDDEN, hint='You can not change this shortcut')
 
 
 
@@ -1897,7 +1937,7 @@ class ObjectGroupListEntry(listentry.Generic):
     def GetMenu(self):
         if self.sr.isLocked:
             return []
-        m = [(mls.UI_CMD_RENAMEGROUP, self.RenameGroup), (mls.UI_CMD_REMOVEGROUP, self.RemoveGroup), (mls.UI_CMD_DELETEGROUPOBJECTS, self.DeleteGroupObjects)]
+        m = [('Rename Group', self.RenameGroup), ('Remove Group', self.RemoveGroup), ('Delete Group Objects', self.DeleteGroupObjects)]
         return m
 
 
@@ -1935,29 +1975,30 @@ class ObjectGroupListEntry(listentry.Generic):
 
 class CreateDungeonTemplateWindow(uicls.Window):
     __guid__ = 'form.CreateDungeonTemplateWindow'
+    default_windowID = 'dungeonTemplateCreator'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.SetScope('station_inflight')
-        self.SetCaption(mls.UI_GENERIC_CREATETEMPLATE)
+        self.SetCaption('Create Template')
         self.SetWndIcon('ui_74_65_15')
         self.MakeUnResizeable()
         self.SetMinSize([300, 280], 1)
         self.SetTopparentHeight(64)
         self.MakeUnpinable()
         self.HideHeader()
-        newCaption = uicls.CaptionLabel(text=mls.UI_GENERIC_CREATETEMPLATE, parent=self.sr.topParent, align=uiconst.CENTERLEFT, left=70)
+        newCaption = uicls.CaptionLabel(text='Create Template', parent=self.sr.topParent, align=uiconst.CENTERLEFT, left=70)
         outerPanel = uicls.Container(name='panel', parent=self.sr.main, left=const.defaultPadding, top=const.defaultPadding, width=const.defaultPadding, height=const.defaultPadding)
         panel = uicls.Container(name='subpar', parent=outerPanel, align=uiconst.TOALL, pos=(0, 0, 0, 0))
         self.sr.panel = outerPanel
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=20)
-        uicls.Label(text=mls.NAME, parent=row, left=6, top=8, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='NAME', parent=row, left=6, top=8, state=uiconst.UI_NORMAL)
         self.templateName = uicls.SinglelineEdit(name='templateName', parent=row, setvalue='', pos=(60, 8, 202, 16))
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=20)
-        uicls.Label(text=mls.DESCRIPTION, parent=row, left=6, top=8, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='DESCRIPTION', parent=row, left=6, top=8, state=uiconst.UI_NORMAL)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=self.sr.topParent.height)
         self.templateDescription = uicls.EditPlainText(setvalue='', parent=row, top=8, align=uiconst.TOALL)
-        self.DefineButtons(uiconst.OKCANCEL, okLabel=mls.UI_CMD_SUBMIT, okFunc=self.OnSubmit)
+        self.DefineButtons(uiconst.OKCANCEL, okLabel='Submit', okFunc=self.OnSubmit)
         uicls.Frame(parent=panel)
 
 
@@ -1981,11 +2022,11 @@ class CreateDungeonTemplateWindow(uicls.Window):
         templateID = dungeonSvc.TemplateAdd(templateName, templateDescription)
         dungeonSvc.TemplateObjectAddDungeonList(templateID, objectIDList)
         sm.GetService('gameui').Say('Created the template')
-        self.SelfDestruct()
+        self.Close()
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         pass
 
 
@@ -1993,6 +2034,7 @@ class CreateDungeonTemplateWindow(uicls.Window):
 
 class EditDungeonTemplateWindow(uicls.Window):
     __guid__ = 'form.EditDungeonTemplateWindow'
+    default_windowID = 'dungeonTemplateDetailEditor'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -2002,26 +2044,26 @@ class EditDungeonTemplateWindow(uicls.Window):
         self.dungeonEditorForm = dungeonEditorForm
         self.sr.main = uiutil.GetChild(self, 'main')
         self.SetScope('station_inflight')
-        self.SetCaption(mls.EDIT)
+        self.SetCaption('EDIT')
         self.SetWndIcon('ui_74_64_15')
         self.MakeUnResizeable()
         self.SetMinSize([300, 280], 1)
         self.SetTopparentHeight(64)
         self.MakeUnpinable()
         self.HideHeader()
-        newCaption = uicls.CaptionLabel(text=mls.EDIT, parent=self.sr.topParent, align=uiconst.CENTERLEFT, left=70)
+        newCaption = uicls.CaptionLabel(text='EDIT', parent=self.sr.topParent, align=uiconst.CENTERLEFT, left=70)
         outerPanel = uicls.Container(name='panel', parent=self.sr.main, left=const.defaultPadding, top=const.defaultPadding, width=const.defaultPadding, height=const.defaultPadding)
         panel = uicls.Container(name='subpar', parent=outerPanel, align=uiconst.TOALL, pos=(0, 0, 0, 0))
         self.sr.panel = outerPanel
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=20)
-        uicls.Label(text=mls.NAME, parent=row, left=6, top=8, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='NAME', parent=row, left=6, top=8, state=uiconst.UI_NORMAL)
         self.templateName = uicls.SinglelineEdit(name='templateName', parent=row, setvalue=templateRow.templateName, pos=(60, 8, 202, 16))
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=20)
-        uicls.Label(text=mls.DESCRIPTION, parent=row, left=6, top=8, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='DESCRIPTION', parent=row, left=6, top=8, state=uiconst.UI_NORMAL)
         row = uicls.Container(name='row', parent=self.sr.panel, align=uiconst.TOTOP, height=self._windowHeight)
         self.templateDescription = uicls.EditPlainText(setvalue=templateRow.description, parent=row, top=8, align=uiconst.TOALL)
-        self.DefineButtons(uiconst.OKCANCEL, okLabel=mls.UI_CMD_SUBMIT, okFunc=self.OnSubmit)
-        draw.Frame(panel, state=uiconst.UI_PICKCHILDREN)
+        self.DefineButtons(uiconst.OKCANCEL, okLabel='Submit', okFunc=self.OnSubmit)
+        uicls.Frame(parent=panel, state=uiconst.UI_PICKCHILDREN)
 
 
 
@@ -2037,11 +2079,11 @@ class EditDungeonTemplateWindow(uicls.Window):
         dungeonSvc = sm.RemoteSvc('dungeon')
         dungeonSvc.TemplateEdit(self.templateRow.templateID, templateName, templateDescription)
         uthread.new(self.dungeonEditorForm.Load, ('TemplateTab', None)).context = 'UI.DungeonEditor.OnEditTemplateDetails'
-        self.SelfDestruct()
+        self.Close()
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         pass
 
 

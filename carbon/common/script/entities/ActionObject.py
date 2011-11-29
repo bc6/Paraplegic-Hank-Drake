@@ -4,6 +4,7 @@ import const
 import geo2
 import GameWorld
 import zaction
+import cef
 
 class ActionObjectSvc(service.Service):
     __guid__ = 'svc.actionObjectSvc'
@@ -26,6 +27,12 @@ class ActionObjectSvc(service.Service):
 
 
     def CreateComponent(self, name, state):
+        actionObjectID = state.get(cef.ActionObjectComponentView.ACTIONOBJECT_ID, None)
+        if actionObjectID is None or actionObjectID == 0:
+            recipeID = state.get('_recipeID', '<UNKNOWN>')
+            spawnID = state.get('_spawnID', '<UNKNOWN>')
+            self.LogError('ActionObject component ignored for recipeID=%s/spawnID=%s: no actionObjectID was set for it' % (recipeID, spawnID))
+            return 
         actionObj = GameWorld.ActionObject()
         self.preservedStates[actionObj] = state
         return actionObj
@@ -76,6 +83,12 @@ class ActionObjectSvc(service.Service):
 
 
 
+    def ReportState(self, component, entity):
+        state = self.PackUpForClientTransfer(component)
+        return state
+
+
+
     def UnRegisterComponent(self, entity, component):
         self.manager.RemoveActionObject(component)
 
@@ -89,7 +102,7 @@ class ActionObjectSvc(service.Service):
     def InitActionObject(self, actionObject, actionObjectUID, entID):
         aoData = self.manager.GetActionObjectData(actionObjectUID)
         if aoData is None:
-            self.LogError('Could not look up ActionObjectData for ActionObject with UID ' + str(actionObjectUID) + '.')
+            self.LogError('Could not look up ActionObjectData for ActionObject with UID %d.' % actionObjectUID)
             return 
         actionObject.Init(aoData, entID)
         self.manager.AddActionObject(actionObject)
@@ -100,11 +113,14 @@ class ActionObjectSvc(service.Service):
     def _LoadActionObjectData(self, actionObjectUID):
         aoDbData = self.GetActionObjectRecord(actionObjectUID)
         if aoDbData is None:
+            self.LogError('Error getting ActionObject record with UID %d.' % actionObjectUID)
             return 
         aoData = GameWorld.ActionObjectData(actionObjectUID, str(aoDbData['Name']))
         if self._LoadExitPoints(aoData) is False:
+            self.LogError('Error loading exit points for ActionObject data with UID %d.' % actionObjectUID)
             return 
         if self._LoadActionStationLocalData(aoData) is False:
+            self.LogError('Error loading action stations for ActionObject data with UID %d.' % actionObjectUID)
             return 
         self.manager.AddActionObjectData(aoData)
         return aoData
@@ -134,6 +150,7 @@ class ActionObjectSvc(service.Service):
             asGlobalData = self.manager.GetActionStationGlobalData(asMapping['StationID'])
             asLocalData = GameWorld.ActionStationLocalData(asGlobalData, asMapping['pos'], asMapping['rot'])
             if self._LoadActionStationExitPoints(asLocalData, aoData.UID, asMapping['InstID']) is False:
+                self.LogError('Error loading exit points on action station with ID %d for ActionObject data with UID %d.' % (asMapping['StationID'], aoData.UID))
                 return False
             aoData.actionStationLocalDatas.append(asLocalData)
 
@@ -217,7 +234,7 @@ class ActionObjectSvc(service.Service):
         stations = []
         if rows is not None:
             for row in rows:
-                quat = geo2.QuaternionRotationSetYawPitchRoll(row.rotX, row.rotY, row.rotZ)
+                quat = geo2.QuaternionRotationSetYawPitchRoll(row.rotY, row.rotX, row.rotZ)
                 pos = (row.posX, row.posY, row.posZ)
                 stations.append({'StationID': row.actionStationTypeID,
                  'InstID': row.actionStationInstanceID,
@@ -235,7 +252,7 @@ class ActionObjectSvc(service.Service):
             rows = aoRows.get(actionStationInstanceID)
             if rows is not None:
                 for row in rows:
-                    quat = geo2.QuaternionRotationSetYawPitchRoll(row.rotX, row.rotY, row.rotZ)
+                    quat = geo2.QuaternionRotationSetYawPitchRoll(row.rotY, row.rotX, row.rotZ)
                     pos = (row.posX, row.posY, row.posZ)
                     exits.append({'pos': pos,
                      'rot': quat})
@@ -244,11 +261,11 @@ class ActionObjectSvc(service.Service):
 
 
 
-exports = {'actionProcTypes.UseActionObject': zaction.ProcTypeDef(isMaster=True, procCategory='ActionObject', properties=[zaction.ProcPropertyTypeDef('Distance', 'F', userDataType=None, isPrivate=False)]),
- 'actionProcTypes.StopUsingActionObject': zaction.ProcTypeDef(isMaster=True, procCategory='ActionObject'),
- 'actionProcTypes.IsActionObjectActionAvailable': zaction.ProcTypeDef(isMaster=True, isConditional=True, procCategory='ActionObject', properties=[zaction.ProcPropertyTypeDef('Distance', 'F', userDataType=None, isPrivate=False)]),
- 'actionProcTypes.ExclusiveIsActionObjectActionAvailable': zaction.ProcTypeDef(isMaster=True, isConditional=True, procCategory='ActionObject', properties=[zaction.ProcPropertyTypeDef('Distance', 'F', userDataType=None, isPrivate=False)]),
- 'actionProcTypes.SetActionObjectEntry': zaction.ProcTypeDef(isMaster=False, procCategory='ActionObject'),
- 'actionProcTypes.GetActionStationPosRot': zaction.ProcTypeDef(isMaster=False, procCategory='ActionObject'),
- 'actionProcTypes.IsEntityOnActionObject': zaction.ProcTypeDef(isMaster=True, isConditional=True, procCategory='ActionObject')}
+exports = {'actionProcTypes.UseActionObject': zaction.ProcTypeDef(isMaster=True, procCategory='ActionObject', properties=[zaction.ProcPropertyTypeDef('Distance', 'F', userDataType=None, isPrivate=False)], description='Set the ActionObject in use by the requesting entity.'),
+ 'actionProcTypes.StopUsingActionObject': zaction.ProcTypeDef(isMaster=True, procCategory='ActionObject', description='Set the ActionObject as no longer in use by the requesting entity.'),
+ 'actionProcTypes.IsActionObjectActionAvailable': zaction.ProcTypeDef(isMaster=True, isConditional=True, procCategory='ActionObject', properties=[zaction.ProcPropertyTypeDef('Distance', 'F', userDataType=None, isPrivate=False)], description='Prereq to determine if the Action is available on the target object.'),
+ 'actionProcTypes.ExclusiveIsActionObjectActionAvailable': zaction.ProcTypeDef(isMaster=True, isConditional=True, procCategory='ActionObject', properties=[zaction.ProcPropertyTypeDef('Distance', 'F', userDataType=None, isPrivate=False)], description='Prereq to determine if the Action is available on the target object. (Requires the reqesting entity not be involved in an ActionObject elsewhere.)'),
+ 'actionProcTypes.SetActionObjectEntry': zaction.ProcTypeDef(isMaster=False, procCategory='ActionObject', description='Finds the closest action entry and sets its position and rotation in the ALIGN_POS and ALIGN_ROT properties.'),
+ 'actionProcTypes.GetActionStationPosRot': zaction.ProcTypeDef(isMaster=False, procCategory='ActionObject', description='Finds the closest action station and sets its position and rotation in the ALIGN_POS and ALIGN_ROT properties.'),
+ 'actionProcTypes.IsEntityOnActionObject': zaction.ProcTypeDef(isMaster=True, isConditional=True, procCategory='ActionObject', description='Returns true if the requesting entity is currently using an Action Object.')}
 

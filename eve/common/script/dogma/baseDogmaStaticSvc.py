@@ -1,9 +1,11 @@
 import service
 import util
 import bluepy
+import sys
 
 class BaseDogmaStaticSvc(service.Service):
     __guid__ = 'svc.baseDogmaStaticSvc'
+    __notifyevents__ = ['OnCfgRevisionChange']
 
     def __init__(self):
         service.Service.__init__(self)
@@ -24,23 +26,43 @@ class BaseDogmaStaticSvc(service.Service):
 
 
 
-    def Load(self):
-        with bluepy.Timer('LoadTypeEffects'):
+    def OnCfgRevisionChange(self, uniqueRefName, cfgEntryName, cacheID, keyIDs, keyCols, oldRow, newRow):
+        (keyID, keyID2, keyID3,) = keyIDs
+        if cacheID == const.cacheDogmaAttributes:
             self.LoadAttributes()
-        typeAttributes = []
-        for row in cfg.dgmtypeattribs.itervalues():
-            typeAttributes.extend(row)
+        elif cacheID == const.cacheDogmaEffects:
+            self.LoadEffects()
+        elif cacheID == const.cacheDogmaTypeAttributes:
+            self.LoadTypeAttributes(keyID, keyID2, newRow)
+        elif cacheID == const.cacheDogmaTypeEffects:
+            self.LoadTypeEffects(keyID, keyID2, newRow)
 
+
+
+    def RefreshTwoKeyIndexedRows(self, ir, keyID, keyID2, newRow):
+        if keyID in ir:
+            ir2 = ir[keyID]
+            if keyID2 in ir2:
+                del ir2[keyID2]
+        if newRow:
+            if keyID in ir:
+                ir2 = ir[keyID]
+            else:
+                ir2 = util.IndexedRows()
+                ir[keyID] = ir2
+            ir2[keyID2] = newRow
+
+
+
+    def Load(self):
+        with bluepy.Timer('LoadAttributes'):
+            self.LoadAttributes()
         with bluepy.Timer('LoadTypeAttributes'):
-            self.LoadTypeAttributes(typeAttributes)
+            self.LoadTypeAttributes()
         with bluepy.Timer('LoadEffects'):
             self.LoadEffects()
-        typeEffects = []
-        for row in cfg.dgmtypeeffects.itervalues():
-            typeEffects.extend(row)
-
         with bluepy.Timer('LoadTypeEffects'):
-            self.LoadTypeEffects(typeEffects, True)
+            self.LoadTypeEffects(run=True)
         self.crystalGroupIDs = cfg.GetCrystalGroups()
         self.controlBunkersByFactionID = {}
         for typeObj in cfg.typesByGroups.get(const.groupControlBunker, []):
@@ -69,6 +91,8 @@ class BaseDogmaStaticSvc(service.Service):
 
     def LoadAttributes(self):
         self.attributes = util.IndexedRows(cfg.dgmattribs.data.itervalues(), ('attributeID',))
+        if len(self.attributes) == 0:
+            self.LogError('STATIC DATA MISSING: Dogma Attributes')
         self.attributesByName = util.IndexedRows(cfg.dgmattribs.data.itervalues(), ('attributeName',))
         self.attributesByCategory = util.IndexedRowLists(cfg.dgmattribs.data.itervalues(), ('attributeCategory',))
         chargedAttributes = []
@@ -82,9 +106,12 @@ class BaseDogmaStaticSvc(service.Service):
         self.attributesByIdx = {}
         self.idxByAttribute = {}
         self.canFitShipGroupAttributes = []
+        self.allowedDroneGroupAttributes = []
         for att in self.attributesByCategory[const.dgmAttrCatGroup]:
             if att.attributeName.startswith('canFitShipGroup'):
                 self.canFitShipGroupAttributes.append(att.attributeID)
+            elif att.attributeName.startswith('allowedDroneGroup'):
+                self.allowedDroneGroupAttributes.append(att.attributeID)
 
         self.canFitShipTypeAttributes = []
         self.requiresSovUpgrade = []
@@ -103,17 +130,35 @@ class BaseDogmaStaticSvc(service.Service):
          (const.attributeLowSlots, const.attributeLowSlotModifier),
          (const.attributeTurretSlotsLeft, const.attributeTurretHardpointModifier),
          (const.attributeLauncherSlotsLeft, const.attributeLauncherHardPointModifier)]
+        self.mirroredAttributes = set()
+        for r in self.attributesByCategory.get(9, []):
+            if r.attributeID != const.attributeRaceID:
+                self.mirroredAttributes.add(r.attributeID)
+
 
 
 
     def LoadEffects(self):
         self.effects = util.IndexedRows(cfg.dgmeffects.data.itervalues(), ('effectID',))
+        if len(self.effects) == 0:
+            self.LogError('STATIC DATA MISSING: Dogma Effects')
         self.effectsByName = util.IndexedRows(cfg.dgmeffects.data.itervalues(), ('effectName',))
 
 
 
-    def LoadTypeEffects(self, rs, run):
-        self.effectsByType = util.IndexedRows(rs, ('typeID', 'effectID'))
+    def LoadTypeEffects(self, typeID = None, effectID = None, newRow = None, run = False):
+        if typeID is None:
+            rs = []
+            for r in cfg.dgmtypeeffects.itervalues():
+                rs.extend(r)
+
+            if len(rs) == 0:
+                self.LogError('STATIC DATA MISSING: Dogma Type Effects')
+            self.effectsByType = util.IndexedRows(rs, ('typeID', 'effectID'))
+            self.typesByEffect = util.IndexedRows(rs, ('effectID', 'typeID'))
+        else:
+            self.RefreshTwoKeyIndexedRows(self.effectsByType, typeID, effectID, newRow)
+            self.RefreshTwoKeyIndexedRows(self.typesByEffect, effectID, typeID, newRow)
         self.passiveFilteredEffectsByType = {}
         for typeID in self.effectsByType.iterkeys():
             passiveEffects = []
@@ -127,50 +172,32 @@ class BaseDogmaStaticSvc(service.Service):
             if len(passiveEffects):
                 self.passiveFilteredEffectsByType[typeID] = passiveEffects
 
-        self.typesByEffect = util.IndexedRows(rs, ('effectID', 'typeID'))
-        etec = {}
         defaultEffect = {}
-        if len(rs) > 0:
-            defaults = util.IndexedRowLists(rs, ('isDefault',))
-            for eff in defaults[1]:
-                defaultEffect[eff.typeID] = eff.effectID
+        for typeID2 in cfg.dgmtypeeffects:
+            for r in cfg.dgmtypeeffects[typeID2]:
+                if r.isDefault == 1:
+                    defaultEffect[typeID2] = r.effectID
 
-        else:
-            self.LogError('STATIC DATA MISSING: Dogma Type Effects')
+
         self.defaultEffectByType = defaultEffect
 
 
 
-    def LoadTypeAttributes(self, rs):
-        self.typesByAttribute = util.IndexedRows(rs, ('attributeID', 'typeID'))
-        attRS = util.IndexedRowLists(rs, ('typeID',))
-        vals = {}
-        for typeID in attRS.iterkeys():
-            v = {}
-            for attribute in attRS[typeID]:
-                v[attribute.attributeID] = attribute.value
-
-            vals[typeID] = v
-
-        atts9 = self.attributesByCategory.get(9, [])
-        for typeID in vals.iterkeys():
-            v = vals[typeID]
-            invtype = cfg.invtypes.GetIfExists(typeID)
-            if invtype:
-                for attribute in atts9:
-                    if attribute.attributeID != 195:
-                        v[attribute.attributeID] = getattr(invtype, attribute.attributeName)
-
-
-        for attributeID1 in self.attributesRechargedByAttribute.iterkeys():
-            if self.typesByAttribute.has_key(attributeID1):
-                for typeID in self.typesByAttribute[attributeID1].iterkeys():
-                    for row1 in self.attributesRechargedByAttribute[attributeID1]:
-                        vals[typeID][row1.attributeID] = 0.0
+    def LoadAllTypeAttributes(self):
+        raise NotImplementedError('LoadAllTypeAttributes - not implemented')
 
 
 
-        self.attributesByTypeAttribute.update(vals)
+    def LoadSpecificTypeAttributes(self, typeID, attributeID, newRow):
+        raise NotImplementedError('LoadSpecificTypeAttributes - not implemented')
+
+
+
+    def LoadTypeAttributes(self, typeID = None, attributeID = None, newRow = None):
+        if typeID is None:
+            self.LoadAllTypeAttributes()
+        else:
+            self.LoadSpecificTypeAttributes(typeID, attributeID, newRow)
 
 
 
@@ -269,7 +296,6 @@ class BaseDogmaStaticSvc(service.Service):
 
 
     def GetCanFitShipGroups(self, typeID):
-        import sys
         rtn = []
         for att in self.canFitShipGroupAttributes:
             try:
@@ -282,7 +308,6 @@ class BaseDogmaStaticSvc(service.Service):
 
 
     def GetCanFitShipTypes(self, typeID):
-        import sys
         rtn = []
         for att in self.canFitShipTypeAttributes:
             try:
@@ -291,6 +316,19 @@ class BaseDogmaStaticSvc(service.Service):
                 sys.exc_clear()
 
         return rtn
+
+
+
+    def GetAllowedDroneGroups(self, typeID):
+        groups = []
+        attributes = self.attributesByTypeAttribute.get(typeID)
+        if attributes:
+            for attributeID in self.allowedDroneGroupAttributes:
+                value = attributes.get(attributeID)
+                if value:
+                    groups.append(int(value))
+
+        return groups
 
 
 

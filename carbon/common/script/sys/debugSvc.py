@@ -219,7 +219,7 @@ class debugSvc(service.Service):
         log.general.Log('%s %s' % (pre, txt), lvl)
         if pst:
             log.general.Log(pst, lvl)
-        self.logEvents[blue.os.GetTime(1)] = txt
+        self.logEvents[blue.os.GetWallclockTimeNow()] = txt
 
 
 

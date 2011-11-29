@@ -10,6 +10,7 @@ import uthread
 import const
 import listentry
 import uiutil
+import localization
 
 class ProcessorContainer(planet.ui.BasePinContainer):
     __guid__ = 'planet.ui.ProcessorContainer'
@@ -22,7 +23,7 @@ class ProcessorContainer(planet.ui.BasePinContainer):
 
 
     def _GetActionButtons(self):
-        btns = [util.KeyVal(name=mls.UI_PI_SCHEMATICS, panelCallback=self.PanelShowSchematics, icon='ui_44_32_7'), util.KeyVal(name=mls.UI_GENERIC_PRODUCTS, panelCallback=self.PanelShowProducts, icon='ui_44_32_2')]
+        btns = [util.KeyVal(id=planetCommon.PANEL_SCHEMATICS, panelCallback=self.PanelShowSchematics), util.KeyVal(id=planetCommon.PANEL_PRODUCTS, panelCallback=self.PanelShowProducts)]
         btns.extend(planet.ui.BasePinContainer._GetActionButtons(self))
         return btns
 
@@ -81,19 +82,18 @@ class ProcessorContainer(planet.ui.BasePinContainer):
         cont = uicls.Container(parent=parent, pos=(0, 0, 0, 140), align=uiconst.TOTOP, state=uiconst.UI_PICKCHILDREN)
         left = self.infoContRightColAt
         output = schematic.outputs[0]
-        schematicTxt = '%s %s' % (output.quantity, output.name)
-        planet.ui.CaptionAndSubtext(parent=cont, caption=mls.UI_PI_OUTPUT, subtext=schematicTxt, iconTypeID=output.typeID, left=5, top=0)
-        planet.ui.CaptionAndSubtext(parent=cont, caption=mls.UI_PI_GENERIC_CYCLETIME, subtext=util.FmtTime(schematic.cycleTime * SEC), left=5, top=40)
-        attr = cfg.dgmattribs.GetIfExists(const.attributeLogisticalCapacity)
-        outputVolumeTxt = sm.GetService('info').GetFormatAndValue(attr, schematic.outputVolume)
-        planet.ui.CaptionAndSubtext(parent=cont, caption=mls.UI_PI_OUTPUTPERHOUR, subtext=outputVolumeTxt, left=5, top=80)
+        schematicTxt = localization.GetByLabel('UI/PI/Common/ItemAmount', amount=int(output.quantity), itemName=output.name)
+        planet.ui.CaptionAndSubtext(parent=cont, caption=localization.GetByLabel('UI/PI/Common/OutputProduct'), subtext=schematicTxt, iconTypeID=output.typeID, left=5, top=0)
+        planet.ui.CaptionAndSubtext(parent=cont, caption=localization.GetByLabel('UI/PI/Common/CycleTime'), subtext=localization.GetByLabel('UI/PI/Common/TimeHourMinSec', time=schematic.cycleTime * SEC), left=5, top=40)
+        outputVolumeTxt = localization.GetByLabel('UI/PI/Common/CapacityAmount', amount=schematic.outputVolume)
+        planet.ui.CaptionAndSubtext(parent=cont, caption=localization.GetByLabel('UI/PI/Common/OutputPerHour'), subtext=outputVolumeTxt, left=5, top=80)
         for (i, input,) in enumerate(schematic.inputs):
             topPos = i * 40
-            caption = '%s %s' % (mls.UI_PI_INPUT, i + 1)
-            subtext = '%s %s' % (input.quantity, cfg.invtypes.Get(input.typeID).name)
+            caption = localization.GetByLabel('UI/PI/Common/InputNumberX', inputNum=i + 1)
+            subtext = localization.GetByLabel('UI/PI/Common/ItemAmount', amount=int(input.quantity), itemName=cfg.invtypes.Get(input.typeID).name)
             planet.ui.CaptionAndSubtext(parent=cont, caption=caption, subtext=subtext, iconTypeID=input.typeID, left=left, top=topPos)
 
-        btns = [[mls.UI_CMD_INSTALL, self.InstallSchematic, ()]]
+        btns = [[localization.GetByLabel('UI/PI/Common/InstallSchematic'), self.InstallSchematic, ()]]
         self.buttons = uicls.ButtonGroup(btns=btns, parent=cont, line=False, alwaysLite=True)
         return cont
 
@@ -107,7 +107,7 @@ class ProcessorContainer(planet.ui.BasePinContainer):
         schematicID = entry.schematic.schematicID
         self.planetUISvc.myPinManager.InstallSchematic(self.pin.id, schematicID)
         self.RenderIngredientGauges()
-        self.ShowPanel(self.PanelShowProducts, mls.UI_GENERIC_PRODUCTS)
+        self.ShowPanel(self.PanelShowProducts, localization.GetByLabel('UI/PI/Common/Products'))
 
 
 
@@ -117,15 +117,15 @@ class ProcessorContainer(planet.ui.BasePinContainer):
          p,
          p,
          p))
-        self.currProductTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=mls.UI_PI_PRODUCING)
-        self.ingredientsTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=mls.UI_PI_INPUT, top=50)
+        self.currProductTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=localization.GetByLabel('UI/PI/Common/Producing'))
+        self.ingredientsTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=localization.GetByLabel('UI/PI/Common/SchematicInput'), top=50)
         self.ingredientsTxt.state = uiconst.UI_DISABLED
         self.ingredientCont = uicls.Container(parent=infoCont, pos=(0, 63, 100, 0), state=uiconst.UI_PICKCHILDREN)
         self.RenderIngredientGauges()
         left = self.infoContRightColAt
         self.currCycleGauge = uicls.Gauge(parent=infoCont, value=0.0, color=planetCommon.PLANET_COLOR_CYCLE, left=left)
-        self.amountPerCycleTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption='%s:' % mls.UI_PI_OUTPUTPERCYCLE, left=left, top=40)
-        self.amountPerHourTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption='%s:' % mls.UI_PI_OUTPUTPERHOUR, left=left, top=70)
+        self.amountPerCycleTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=localization.GetByLabel('UI/PI/Common/OutputPerCycle'), left=left, top=40)
+        self.amountPerHourTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=localization.GetByLabel('UI/PI/Common/OutputPerHour'), left=left, top=70)
         return infoCont
 
 
@@ -140,7 +140,7 @@ class ProcessorContainer(planet.ui.BasePinContainer):
             i += 1
 
         if not self.pin.GetConsumables():
-            self.ingredientsTxt.SetSubtext('<color=red>%s</color>' % mls.UI_PI_NOSCHEMATICSSELECTED)
+            self.ingredientsTxt.SetSubtext(localization.GetByLabel('UI/PI/Common/NoSchematicSelected'))
         else:
             self.ingredientsTxt.SetSubtext('')
 
@@ -158,21 +158,21 @@ class ProcessorContainer(planet.ui.BasePinContainer):
             if self.pin.activityState < planet.STATE_IDLE:
                 currCycle = 0
                 currCycleProportion = 0.0
-                status = mls.UI_GENERIC_INACTIVE
+                status = localization.GetByLabel('UI/Common/Inactive')
             elif self.pin.IsActive():
                 nextCycle = self.pin.GetNextRunTime()
-                if nextCycle is None or nextCycle < blue.os.GetTime():
-                    status = '<color=yellow>%s</color>' % mls.UI_SHARED_COMPLETIONIMMINENT
+                if nextCycle is None or nextCycle < blue.os.GetWallclockTime():
+                    status = localization.GetByLabel('UI/PI/Common/ProductionCompletionImminent')
                 else:
-                    status = '<color=green>%s</color>' % mls.UI_PI_INPRODUCTION
-                currCycle = self.pin.GetCycleTime() - (self.pin.GetNextRunTime() - blue.os.GetTime())
+                    status = localization.GetByLabel('UI/PI/Common/InProduction')
+                currCycle = self.pin.GetCycleTime() - (self.pin.GetNextRunTime() - blue.os.GetWallclockTime())
                 currCycleProportion = currCycle / float(self.pin.GetCycleTime())
-            status = mls.UI_PI_WAITINGFORRESOURCES
+            status = localization.GetByLabel('UI/PI/Common/WaitingForResources')
             currCycle = 0
             currCycleProportion = 0.0
         else:
-            schematicName = '<color=red>%s</color>' % mls.UI_GENERIC_NOTHING
-            status = mls.UI_GENERIC_INACTIVE
+            schematicName = localization.GetByLabel('UI/PI/Common/NothingExtracted')
+            status = localization.GetByLabel('UI/Common/Inactive')
             currCycleProportion = 0.0
             currCycle = 0
             outputPerCycle = 0
@@ -184,23 +184,19 @@ class ProcessorContainer(planet.ui.BasePinContainer):
                 continue
             gauge.SetValue(float(amount) / amountNeeded)
             name = cfg.invtypes.Get(typeID).name
-            gauge.hint = '%s<br>%s/%s %s' % (name,
-             amount,
-             amountNeeded,
-             mls.UI_GENERIC_UNITS)
+            gauge.hint = localization.GetByLabel('UI/PI/Common/ProductionGaugeHint', resourceName=name, amount=amount, amountNeeded=amountNeeded)
 
         self.currProductTxt.SetSubtext(schematicName)
         if self.pin.schematicID:
             if self.pin.activityState < planet.STATE_IDLE:
-                self.currCycleGauge.SetSubText(mls.UI_PI_INACTIVE_REASON % {'reason': mls.UI_PI_GENERIC_EDITMODE})
+                self.currCycleGauge.SetSubText(localization.GetByLabel('UI/PI/Common/InactiveEditMode'))
             else:
-                self.currCycleGauge.SetSubText('%s / %s' % (util.FmtTime(currCycle), util.FmtTime(self.pin.GetCycleTime())))
+                self.currCycleGauge.SetSubText(localization.GetByLabel('UI/PI/Common/CycleTimeElapsed', currTime=long(currCycle), totalTime=self.pin.GetCycleTime()))
         self.currProductTxt.SetIcon(outputTypeID)
         self.currCycleGauge.SetValueInstantly(currCycleProportion)
-        self.currCycleGauge.SetText(status.upper())
-        self.amountPerCycleTxt.SetSubtext('%s %s' % (outputPerCycle, mls.UI_GENERIC_UNITS))
-        attr = cfg.dgmattribs.GetIfExists(const.attributeLogisticalCapacity)
-        self.amountPerHourTxt.SetSubtext(sm.GetService('info').GetFormatAndValue(attr, self.pin.GetOutputVolumePerHour()))
+        self.currCycleGauge.SetText(status)
+        self.amountPerCycleTxt.SetSubtext(localization.GetByLabel('UI/PI/Common/UnitsAmount', amount=outputPerCycle))
+        self.amountPerHourTxt.SetSubtext(localization.GetByLabel('UI/PI/Common/CapacityAmount', amount=self.pin.GetOutputVolumePerHour()))
 
 
 
@@ -234,7 +230,7 @@ class ProcessorGaugeContainer(uicls.Container):
          self.width), align=uiconst.TOPLEFT)
         self.gauge = uicls.Fill(parent=gaugeCont, align=uiconst.TOLEFT, width=0, color=color, state=uiconst.UI_DISABLED)
         uicls.Fill(parent=gaugeCont, color=bgColor, state=uiconst.UI_DISABLED)
-        self.subText = uicls.Label(text='', parent=self, letterspace=1, fontsize=9, top=22, state=uiconst.UI_DISABLED)
+        self.subText = uicls.EveLabelSmall(text='', parent=self, top=22, state=uiconst.UI_DISABLED)
         self.busy = False
         self.SetValue(self.value)
 
@@ -263,9 +259,9 @@ class ProcessorGaugeContainer(uicls.Container):
 
 
     def GetMenu(self):
-        ret = [(mls.UI_CMD_SHOWINFO, sm.GetService('info').ShowInfo, [self.typeID])]
+        ret = [(localization.GetByLabel('UI/Commands/ShowInfo'), sm.GetService('info').ShowInfo, [self.typeID])]
         if session.role & ROLE_GML == ROLE_GML:
-            ret.append((mls.UI_CMD_GMEXTRAS, self.GetGMMenu()))
+            ret.append(('GM / WM Extras', self.GetGMMenu()))
         return ret
 
 

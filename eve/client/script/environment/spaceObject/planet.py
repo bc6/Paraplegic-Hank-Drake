@@ -10,7 +10,6 @@ import datetime
 import util
 import os
 GRAVITATIONAL_CONST = 6.673e-11
-rot = blue.rot
 
 def CopyRenderTargetToTexture(renderTarget, copySurface, size, format):
     tex = None
@@ -19,7 +18,7 @@ def CopyRenderTargetToTexture(renderTarget, copySurface, size, format):
             dev = trinity.device
             rect = trinity.TriRect(0, 0, 2 * size, size)
             dev.GetRenderTargetData(renderTarget, copySurface)
-            tex = dev.CreateTexture(2 * size, size, 0, 0, format, trinity.TRIPOOL_MANAGED)
+            tex = dev.CreateTexture(2 * size, size, 0, trinity.TRIUSAGE_DYNAMIC if trinity.device.UsingEXDevice() else 0, format, trinity.TRIPOOL_DEFAULT if trinity.device.UsingEXDevice() else trinity.TRIPOOL_MANAGED)
             dev.UpdateSurface(copySurface, rect, tex.GetSurfaceLevel(0))
             tex.GenerateMipMaps()
         except trinity.D3DERR_OUTOFVIDEOMEMORY:
@@ -155,7 +154,8 @@ class Planet(spaceObject.SpaceObject):
         if hasattr(self.model, 'children'):
             del self.model.children[:]
         scene2 = sm.StartService('sceneManager').GetRegisteredScene2('default')
-        scene2.planets.fremove(self.model)
+        if scene2:
+            scene2.planets.fremove(self.model)
         spaceObject.SpaceObject.Release(self, 'Planet')
 
 

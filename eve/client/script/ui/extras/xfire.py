@@ -42,7 +42,7 @@ class XFire(service.Service):
             except Exception as e:
                 self.LogError('RunXFireLoop Error: ', e)
                 sys.exc_clear()
-            blue.pyos.synchro.Sleep(self.delay)
+            blue.pyos.synchro.SleepWallclock(self.delay)
 
 
 

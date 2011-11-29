@@ -4,7 +4,6 @@ import uiutil
 import mathUtil
 import uthread
 import blue
-import draw
 import uicls
 import uiconst
 
@@ -109,34 +108,32 @@ class ExpandableMenu(uicls.Container):
         self._lastExpandedHeight = None
         self._hideHeaderContentOnMaximize = hideHeaderContentOnMaximize
         self._resizeAble = resizeAble
-        divider = xtriui.Divider(parent=self.parent, align=uiconst.TOTOP, height=4, state=uiconst.UI_NORMAL, name='divider')
+        divider = xtriui.Divider(parent=self.parent, align=uiconst.TOTOP, height=5, state=uiconst.UI_NORMAL, name='divider')
         divider.Startup(self, 'height', 'y', 48, maxHeight or 256)
         divider.OnSizeChanged = self._OnSizeChanged
         divider.OnSizeChangeStarting = self._OnSizeChangeStarting
         self.sr.divider = divider
-        headerParent = uicls.Container(parent=self, name='headerParent', align=uiconst.TOTOP, state=uiconst.UI_DISABLED, height=24)
+        headerParent = uicls.Container(parent=self, name='headerParent', align=uiconst.TOTOP, state=uiconst.UI_PICKCHILDREN, height=24, padBottom=-1)
         self.sr.headerParent = headerParent
         contentParent = uicls.Container(parent=self, name='contentParent', align=uiconst.TOALL, state=uiconst.UI_NORMAL, pos=(0, 1, 0, 1))
         self.sr.content = content
         self.sr.callback = callback
         if dropCallback:
             self.OnDropData = dropCallback
-        t = uicls.Label(text='<b>' + label + '</b>', parent=headerParent, state=uiconst.UI_DISABLED, left=22, align=uiconst.CENTERLEFT)
+        t = uicls.EveLabelMedium(text='<b>' + label + '</b>', parent=headerParent, state=uiconst.UI_DISABLED, left=22, top=1, align=uiconst.CENTERLEFT)
         self.sr.headerLabel = t
         self._headerLabel = label
-        expander = uicls.Icon(icon='ui_38_16_228', align=uiconst.CENTERLEFT)
+        expander = uicls.Icon(icon='ui_38_16_228', align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED, left=4, top=1)
         expander.SetAlpha(0.8)
-        expander.state = uiconst.UI_DISABLED
-        expander.left = 4
         headerParent.children.append(expander)
-        self.sr.backgroundFrame = uicls.BumpedUnderlay(parent=headerParent, padding=(-1, 1, -1, 1))
+        self.sr.backgroundFrame = uicls.BumpedUnderlay(bgParent=headerParent, alphaDiff=0.15)
         self.sr.expanderIcon = expander
-        headerParent.height = max(20, t.textheight + 6)
+        headerParent.height = max(20, t.textheight + 2)
         self._minHeight = headerParent.height
         if content:
             contentParent.children.append(content)
         if headerContent:
-            self.AddHeaderContent(headerContent)
+            self.AddHeaderContent(headerContent, hideHeaderContentOnMaximize)
         if self.parent.multipleExpanded:
             current = settings.user.ui.Get('multipleExpandableMenu', {})
             if self.prefsKey in current and self.name in current[self.prefsKey]:
@@ -207,7 +204,6 @@ class ExpandableMenu(uicls.Container):
         self._loaded = True
         sh = self.height
         (pl, pt, pw, ph,) = self.parent.GetAbsolute()
-        spreadData = []
         eh = self.GetMaxHeight()
         self.sr.expanderIcon.LoadIcon('ui_38_16_229')
         self.sr.content.state = uiconst.UI_NORMAL
@@ -215,25 +211,17 @@ class ExpandableMenu(uicls.Container):
         if time == -1:
             self.height = sh + int(eh - sh)
             self.sr.content.opacity = 1.0
-            if spreadData:
-                for (menu, menuSh, menuEh,) in spreadData:
-                    menu.SetHeight(menuSh - int(menuSh - menuEh))
-
             if self.parent.sizecallback:
                 self.parent.sizecallback(self)
         else:
-            (start, ndt,) = (blue.os.GetTime(), 0.0)
+            (start, ndt,) = (blue.os.GetWallclockTime(), 0.0)
             time = time or 250.0
             while ndt != 1.0:
-                ndt = max(ndt, min(blue.os.TimeDiffInMs(start) / time, 1.0))
+                ndt = max(ndt, min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / time, 1.0))
                 self.height = sh + int((eh - sh) * ndt)
                 self.sr.content.opacity = 1.0 * ndt
                 if self.sr.headerContent and self._hideHeaderContentOnMaximize:
                     self.sr.headerContent.opacity = 1.0 - 1.0 * ndt
-                if spreadData:
-                    for (menu, menuSh, menuEh,) in spreadData:
-                        menu.SetHeight(menuSh - int((menuSh - menuEh) * ndt))
-
                 if self.parent.sizecallback:
                     self.parent.sizecallback(self)
                 blue.pyos.synchro.Yield()
@@ -306,10 +294,10 @@ class ExpandableMenu(uicls.Container):
         if not startup:
             if self.sr.headerContent:
                 sho = self.sr.headerContent.opacity
-            (start, ndt,) = (blue.os.GetTime(), 0.0)
+            (start, ndt,) = (blue.os.GetWallclockTime(), 0.0)
             time = 250.0
             while ndt != 1.0:
-                ndt = max(ndt, min(blue.os.TimeDiffInMs(start) / time, 1.0))
+                ndt = max(ndt, min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / time, 1.0))
                 self.height = sh - int((sh - eh) * ndt)
                 self.sr.content.opacity = 1.0 - 1.0 * ndt
                 if self.sr.headerContent and self._hideHeaderContentOnMaximize:
@@ -345,6 +333,8 @@ class ExpandableMenu(uicls.Container):
 
 
     def GetMaxHeight(self):
+        if hasattr(self.sr.content, 'fixedHeight'):
+            return self.sr.content.fixedHeight
         if hasattr(self.sr.content, 'GetTotalHeight'):
             totalHeight = self.sr.content.top + self.sr.content.GetTotalHeight() + self.GetMinHeight() + 5
             return min(totalHeight, self._maxHeight)

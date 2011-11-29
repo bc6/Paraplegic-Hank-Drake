@@ -8,7 +8,7 @@ class BasicCamera(object):
     __guid__ = 'cameras.BasicCamera'
 
     def __init__(self):
-        self.direction = (0, 0, 0)
+        self.direction = (math.pi / 4.0, math.pi / 4.0, math.pi / 4.0)
         self.cameraPosition = (0, 0, 0)
         self.viewMatrix = trinity.TriView()
         self.baseViewMatrix = trinity.TriView()
@@ -23,7 +23,7 @@ class BasicCamera(object):
         self.desiredDeltaY = 0
         self.controlEnabled = True
         self.cameraBehaviors = []
-        self.lastUpdateTime = blue.os.GetTime()
+        self.lastUpdateTime = blue.os.GetWallclockTime()
         self.audio2Listener = None
 
 
@@ -84,7 +84,6 @@ class BasicCamera(object):
 
 
     def AdjustYaw(self, delta):
-        return 
         if not self.controlEnabled:
             return 
         self.yaw += delta
@@ -132,18 +131,6 @@ class BasicCamera(object):
 
     def GetPosition(self):
         return self.cameraPosition
-
-
-
-    def GetYaw(self):
-        (yaw, pitch,) = self.GetYawPitch()
-        return yaw
-
-
-
-    def GetPitch(self):
-        (yaw, pitch,) = self.GetYawPitch()
-        return pitch
 
 
 
@@ -198,7 +185,7 @@ class BasicCamera(object):
 
 
     def Update(self):
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         frameTime = float(now - self.lastUpdateTime) / const.SEC
         for (priority, behavior,) in self.cameraBehaviors:
             behavior.ProcessCameraUpdate(self, now, frameTime)

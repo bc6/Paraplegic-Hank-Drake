@@ -30,6 +30,11 @@ class AnimationController(object):
 
 
 
+    def Stop(self, stream):
+        pass
+
+
+
     def _MapEventTrackNames(self):
         for (name, id,) in self.eventTrackIDs.iteritems():
             self.eventTrackNames[id] = name

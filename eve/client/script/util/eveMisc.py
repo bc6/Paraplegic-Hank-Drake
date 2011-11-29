@@ -6,39 +6,6 @@ import log
 import uix
 import uiconst
 
-def FormatTimeAgo(theTime):
-    delta = blue.os.GetTime() - theTime
-    (hours, minutes, seconds,) = util.HoursMinsSecsFromSecs(util.SecsFromBlueTimeDelta(delta))
-    days = 0
-    if hours > 48:
-        days = int(hours / 24)
-        hours %= 24
-    t = util.FormatTimeDelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
-    if t is None:
-        howLongAgo = mls.UI_GENERIC_RIGHTNOW
-    else:
-        howLongAgo = mls.UI_GENERIC_AGO_WITH_FORMAT % {'time': t}
-    return howLongAgo
-
-
-
-def FormatTimeDelta(days = None, hours = None, minutes = None, seconds = None):
-    ret = []
-    if days:
-        ret.append('%s %s' % (days, uix.Plural(days, 'UI_GENERIC_DAY').lower()))
-    if hours:
-        ret.append('%s %s' % (hours, uix.Plural(hours, 'UI_GENERIC_HOUR').lower()))
-    if minutes:
-        ret.append('%s %s' % (minutes, uix.Plural(minutes, 'UI_GENERIC_MINUTE').lower()))
-    if seconds:
-        ret.append('%s %s' % (seconds, uix.Plural(seconds, 'UI_GENERIC_SECOND').lower()))
-    if ret:
-        return ', '.join(ret)
-    else:
-        return None
-
-
-
 def LaunchFromShip(items, whoseBehalfID = None, ignoreWarning = False):
     oldItems = []
     for item in items:

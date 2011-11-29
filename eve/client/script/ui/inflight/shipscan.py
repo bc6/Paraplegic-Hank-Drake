@@ -6,18 +6,19 @@ import listentry
 import uicls
 import blue
 import uiconst
+import localization
 
 class ShipScan(uicls.Window):
     __guid__ = 'form.ShipScan'
+    default_windowID = 'shipscan'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         shipID = attributes.shipID
-        self.SetCaption('%s SCAN RESULTS' % cfg.evelocations.Get(shipID).name)
         self.SetMinSize([200, 200])
         self.SetWndIcon('ui_3_64_10', mainTop=-13)
         self.DefineButtons(uiconst.CLOSE)
-        self.sr.capacityText = uicls.Label(text=' ', name='capacityText', parent=self.sr.topParent, left=8, top=4, align=uiconst.TOPRIGHT, autoheight=1, autowidth=1, letterspace=1, fontsize=9, state=uiconst.UI_DISABLED, uppercase=1)
+        self.sr.capacityText = uicls.EveHeaderSmall(text=' ', name='capacityText', parent=self.sr.topParent, left=8, top=4, align=uiconst.TOPRIGHT, state=uiconst.UI_DISABLED)
         self.sr.gaugeParent = uicls.Container(name='gaugeParent', align=uiconst.TOPRIGHT, parent=self.sr.topParent, left=const.defaultPadding, height=7, width=100, state=uiconst.UI_DISABLED, top=self.sr.capacityText.top + self.sr.capacityText.textheight + 1)
         uicls.Frame(parent=self.sr.gaugeParent, color=(0.5, 0.5, 0.5, 0.3))
         self.sr.gauge = uicls.Container(name='gauge', align=uiconst.TOLEFT, parent=self.sr.gaugeParent, state=uiconst.UI_PICKCHILDREN, width=0)
@@ -27,7 +28,8 @@ class ShipScan(uicls.Window):
          const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding))
-        t = uicls.Label(text=mls.UI_INFLIGHT_MODULESFITTED, parent=self.sr.topParent, left=8, letterspace=2, fontsize=9, state=uiconst.UI_DISABLED, uppercase=1, align=uiconst.BOTTOMLEFT)
+        t = uicls.EveHeaderSmall(text=localization.GetByLabel('UI/Ship/ShipScan/hdrModulesFitted'), parent=self.sr.topParent, left=8, state=uiconst.UI_DISABLED, align=uiconst.BOTTOMLEFT)
+        self.LoadResult(*attributes.results)
 
 
 
@@ -38,7 +40,8 @@ class ShipScan(uicls.Window):
         else:
             proportion = 1.0
         self.sr.gauge.width = int(proportion * self.sr.gaugeParent.width)
-        self.sr.capacityText.text = '%s/%s %s' % (util.FmtAmt(full, showFraction=1), util.FmtAmt(total, showFraction=1), cfg.dgmunits.Get(const.unitCapacitorUnits).displayName)
+        units = cfg.dgmunits.Get(const.unitCapacitorUnits).displayName
+        self.sr.capacityText.text = localization.GetByLabel('UI/Ship/ShipScan/CapacityResults', full=full, total=total, units=units)
         scrolllist = []
         for info in moduleList:
             if type(info) == type(()):
@@ -59,7 +62,7 @@ class ShipScan(uicls.Window):
 
         self.sr.scroll.Load(contentList=scrolllist)
         if len(scrolllist) == 0:
-            self.SetHint(mls.UI_INFLIGHT_NOMODULESDETECTED)
+            self.SetHint(localization.GetByLabel('UI/Ship/ShipScan/hintNoModulesDetected'))
         else:
             self.SetHint(None)
 
@@ -74,6 +77,7 @@ class ShipScan(uicls.Window):
 
 class CargoScan(uicls.Window):
     __guid__ = 'form.CargoScan'
+    default_windowID = 'cargoScan'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -84,8 +88,7 @@ class CargoScan(uicls.Window):
             return 
         slimItem = bp.slimItems[shipID]
         shipName = uix.GetSlimItemName(slimItem)
-        self.SetCaption(mls.UI_INFLIGHT_CARGOSCANRESULT2 % {'name': shipName,
-         'num': len(cargoList)})
+        self.SetCaption(localization.GetByLabel('UI/Ship/ShipScan/ShipNameCargo', shipName=shipName, cargoListLen=len(cargoList)))
         self.SetMinSize([200, 200])
         self.SetWndIcon('ui_3_64_11', mainTop=-13)
         self.DefineButtons(uiconst.CLOSE)
@@ -93,7 +96,7 @@ class CargoScan(uicls.Window):
          const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding))
-        t = uicls.Label(text=mls.UI_GENERIC_ITEMSINCONTAINER, parent=self.sr.topParent, left=8, letterspace=2, fontsize=9, state=uiconst.UI_DISABLED, uppercase=1, align=uiconst.BOTTOMLEFT)
+        t = uicls.EveHeaderSmall(text=localization.GetByLabel('UI/Ship/ShipScan/hdrCargoScan'), parent=self.sr.topParent, left=8, state=uiconst.UI_DISABLED, align=uiconst.BOTTOMLEFT)
 
 
 
@@ -110,16 +113,18 @@ class CargoScan(uicls.Window):
             qty = quantity if quantity > 0 else 1
             data = util.KeyVal()
             isCopy = False
+            param = {'qty': qty,
+             'typeID': typeID}
             if invType.categoryID == const.categoryBlueprint:
                 if quantity == -const.singletonBlueprintCopy:
-                    typeName = '%s (<color=0xff999999><b>%s</b></color>)' % (invType.name, mls.UI_GENERIC_COPY)
+                    typeName = 'UI/Ship/ShipScan/BlueprintCopy'
                     quantity = 1
                     isCopy = True
                 else:
-                    typeName = '%s (<color=0xff55bb55><b>%s</b></color>)' % (invType.name, mls.UI_GENERIC_ORIGINAL)
+                    typeName = 'UI/Ship/ShipScan/BlueprintOriginal'
             else:
-                typeName = invType.name
-            data.label = '%d %s' % (qty, typeName)
+                typeName = 'UI/Ship/ShipScan/FoundTypes'
+            data.label = localization.GetByLabel(typeName, **param)
             data.itemID = None
             data.typeID = typeID
             data.isCopy = isCopy
@@ -129,7 +134,7 @@ class CargoScan(uicls.Window):
             data.GetMenu = lambda x: []
             scrolllist.append(listentry.Get('Item', data=data))
 
-        self.sr.scroll.Load(contentList=scrolllist, noContentHint=mls.UI_GENERIC_NOITEMSFOUND)
+        self.sr.scroll.Load(contentList=scrolllist, noContentHint=localization.GetByLabel('UI/Ship/ShipScan/NoBookmarksFound'))
 
 
 

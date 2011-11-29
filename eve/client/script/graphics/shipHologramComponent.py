@@ -20,8 +20,8 @@ class ShipHologramComponentManager(service.Service):
     __guid__ = 'svc.shipHologram'
     __displayname__ = 'Ship Hologram Component Client Service'
     __componentTypes__ = ['shipHologram']
-    __notifyevents__ = ['OnActiveShipModelChange']
-    __dependencies__ = ['station']
+    __notifyevents__ = ['OnActiveShipModelChange', 'ProcessActiveShipChanged']
+    __dependencies__ = []
 
     def __init__(self):
         service.Service.__init__(self)
@@ -31,6 +31,8 @@ class ShipHologramComponentManager(service.Service):
 
     def Run(self, *etc):
         service.Service.Run(self, *etc)
+        self.activeShipModel = None
+        self.activeShipID = None
 
 
 
@@ -57,10 +59,8 @@ class ShipHologramComponentManager(service.Service):
         interiorPlaceableComponent = entity.GetComponent('interiorPlaceable')
         hologramComponent = entity.GetComponent('shipHologram')
         if interiorPlaceableComponent is not None and hologramComponent is not None:
-            shipModel = self.station.GetActiveShipModel()
-            activeShipID = self.station.GetActiveShip()
             hologramComponent.graphicLoaded = True
-            self.SetShipModel(entity, shipModel, activeShipID)
+            self.SetShipModel(entity)
 
 
 
@@ -78,6 +78,8 @@ class ShipHologramComponentManager(service.Service):
         if interiorPlaceable is None:
             return 
         visualModel = interiorPlaceable.renderObject.placeableRes.visualModel
+        if visualModel is None:
+            return 
         for each in visualModel.meshes:
             if each.name == 'shipHologramMesh':
                 visualModel.meshes.remove(each)
@@ -86,18 +88,33 @@ class ShipHologramComponentManager(service.Service):
 
 
 
-    def UpdateShipModels(self, shipModel = None, activeShipID = None):
-        if shipModel == None:
-            shipModel = self.station.GetActiveShipModel()
+    def UpdateShipModels(self, shipModel, activeShipID = None):
         if activeShipID is None:
-            activeShipID = self.station.GetActiveShip()
+            activeShipID = util.GetActiveShip()
+        self.activeShipModel = shipModel
+        self.activeShipID = activeShipID
         for each in self.entities:
-            self.SetShipModel(each, shipModel, activeShipID)
+            self.SetShipModel(each)
 
 
 
 
-    def SetShipModel(self, entity, model, activeShipID):
+    def CalculateModelScale(self, component, boundingRadius, shipID):
+        scale = component.shipTargetSize / boundingRadius
+        extraScaling = 1.0
+        if boundingRadius > 1000.0:
+            boundingRadius = 1000.0
+        if boundingRadius < 30.0:
+            boundingRadius = 30.0
+        scale *= 0.6 + 0.4 * boundingRadius / 970.0
+        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+        if getattr(dogmaLocation.GetDogmaItem(shipID), 'groupID', None) == const.groupCapsule:
+            extraScaling = 0.6
+        return (scale, extraScaling)
+
+
+
+    def SetShipModel(self, entity):
         hologramComponent = entity.GetComponent('shipHologram')
         if hologramComponent is None or not hologramComponent.graphicLoaded:
             return 
@@ -106,6 +123,8 @@ class ShipHologramComponentManager(service.Service):
             return 
         effect = trinity.Load('res:/graphics/interior/effect/hologram/shipHologramEffect.red')
         targetPlaceable = interiorPlaceable.renderObject
+        targetPlaceable.isUnique = True
+        targetPlaceable.BindLowLevelShaders()
         targetVisual = targetPlaceable.placeableRes.visualModel
         mesh = None
         for each in targetVisual.meshes:
@@ -116,21 +135,21 @@ class ShipHologramComponentManager(service.Service):
         if mesh is not None:
             targetVisual.meshes.remove(mesh)
         targetPlaceable.BoundingBoxReset()
-        if model is None:
+        if self.activeShipModel is None:
             return 
-        if activeShipID is None:
+        if self.activeShipID is None:
             return 
         mesh = trinity.Tr2Mesh()
         mesh.name = 'shipHologramMesh'
-        mesh.geometryResPath = model.mesh.geometryResPath
+        mesh.geometryResPath = self.activeShipModel.mesh.geometryResPath
         maxIndex = 0
-        for area in model.mesh.opaqueAreas:
+        for area in self.activeShipModel.mesh.opaqueAreas:
             maxIndex = max(maxIndex, area.index)
 
-        for area in model.mesh.decalAreas:
+        for area in self.activeShipModel.mesh.decalAreas:
             maxIndex = max(maxIndex, area.index)
 
-        for area in model.mesh.transparentAreas:
+        for area in self.activeShipModel.mesh.transparentAreas:
             maxIndex = max(maxIndex, area.index)
 
         meshArea = trinity.Tr2MeshArea()
@@ -141,21 +160,12 @@ class ShipHologramComponentManager(service.Service):
         (bbMinOriginal, bbMaxOriginal,) = targetVisual.GetBoundingBoxInLocalSpace()
         bbMinOriginal = (bbMinOriginal.x, bbMinOriginal.y, bbMinOriginal.z)
         bbMaxOriginal = (bbMaxOriginal.x, bbMaxOriginal.y, bbMaxOriginal.z)
+        (scale, extra,) = self.CalculateModelScale(hologramComponent, self.activeShipModel.boundingSphereRadius, self.activeShipID)
         param = effect.parameters['ScalingAndOffset']
         x = param.x = hologramComponent.positionOffset[0]
         y = param.y = hologramComponent.positionOffset[1]
         z = param.z = hologramComponent.positionOffset[2]
-        scale = hologramComponent.shipTargetSize / model.boundingSphereRadius
-        boundingRadius = model.boundingSphereRadius
-        if boundingRadius > 1000.0:
-            boundingRadius = 1000.0
-        if boundingRadius < 30.0:
-            boundingRadius = 30.0
-        scale *= 0.6 + 0.4 * boundingRadius / 970.0
-        param.w = scale
-        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
-        if getattr(dogmaLocation.GetDogmaItem(activeShipID), 'groupID', None) == const.groupCapsule:
-            param.w *= 0.6
+        param.w = scale * extra
         param = effect.parameters['Color']
         param.x = hologramComponent.color[0]
         param.y = hologramComponent.color[1]
@@ -166,7 +176,7 @@ class ShipHologramComponentManager(service.Service):
         param.z = hologramComponent.spotlightOrigin[2]
         targetVisual.meshes.append(mesh)
         trinity.WaitForResourceLoads()
-        (bbMin, bbMax,) = model.GetLocalBoundingBox()
+        (bbMin, bbMax,) = self.activeShipModel.GetLocalBoundingBox()
         if bbMin is None or bbMax is None:
             return 
         maxBounds = max(abs(bbMin.x), max(bbMax.x, max(abs(bbMin.z), bbMax.z)))
@@ -182,8 +192,14 @@ class ShipHologramComponentManager(service.Service):
 
 
 
-    def OnActiveShipModelChange(self, model):
-        self.UpdateShipModels(model)
+    def OnActiveShipModelChange(self, model, shipID):
+        self.UpdateShipModels(model, shipID)
+
+
+
+    def ProcessActiveShipChanged(self, shipID, oldShipID):
+        self.activeShipID = shipID
+        self.activeShipModel = None
 
 
 

@@ -19,6 +19,8 @@ SIEGE_TURRETS = [20450,
  20452,
  3571,
  20454]
+LASER_MISS_BEHAVIOUR_GROUPS = [53]
+PROJECTILE_MISS_BEHAVIOUR_GROUPS = [55]
 
 class TurretSet():
     __guid__ = 'turretSet.TurretSet'
@@ -30,6 +32,8 @@ class TurretSet():
         self.targetsAvailable = False
         self.shaderType = TURRETSET_SHADERTYPE_INVALID
         self.online = True
+        self.turretTypeID = 0
+        self.turretGroupID = 0
         if not hasattr(graphics, 'graphicFile'):
             log.LogError('New turret system got wrong initialization data, will use fallback: ' + str(graphics))
             turretPath = 'res:/dx9/model/turret/Special/FallbackTurret.red'
@@ -45,26 +49,12 @@ class TurretSet():
 
         blue.resMan.Wait()
         for turretSet in self.turretSets:
-            for j in range(turretSet.muzzleCount):
-                effect = trinity.Load(turretSet.firingEffectResPath)
-                if effect is not None:
-                    effect.source = None
-                    effect.dest = None
-                    if j == 0:
-                        self.AddSoundToEffect(effect, turretSet.soundSourceName, turretSet.soundDestName)
-                    turretSet.firingEffects.append(effect)
-                else:
-                    log.LogError('Could not find primary firingeffect ' + turretSet.firingEffectResPath + ' for turret: ' + turretPath)
-
-            for j in range(turretSet.secMuzzleCount):
-                effect = trinity.Load(turretSet.firingEffectSecResPath)
-                if effect is not None:
-                    effect.source = None
-                    effect.dest = None
-                    turretSet.firingEffects.append(effect)
-                else:
-                    log.LogError('Could not find secondary firingeffect ' + turretSet.firingEffectSecResPath + ' for turret: ' + turretPath)
-
+            effect = trinity.Load(turretSet.firingEffectResPath)
+            if effect is not None:
+                self.AddSoundToEffect(effect)
+                turretSet.firingEffect = effect
+            else:
+                log.LogError('Could not find firingeffect ' + turretSet.firingEffectResPath + ' for turret: ' + turretPath)
 
         if len(self.turretSets) > 0:
             if self.turretSets[0].turretEffect is not None:
@@ -78,22 +68,25 @@ class TurretSet():
 
 
 
-    def AddSoundToEffect(self, fe, srcName, destName):
-        srcAudio = audio2.AudEmitter(srcName)
-        destAudio = audio2.AudEmitter(destName)
-        if fe.sourceObject:
+    def AddSoundToEffect(self, effect):
+        srcAudio = audio2.AudEmitter('effect_source_%s' % str(id(self)))
+        destAudio = audio2.AudEmitter('effect_dest_%s' % str(id(self)))
+        if len(effect.stretch) < 1:
+            return 
+        sndStretch = effect.stretch[0]
+        if sndStretch.sourceObject:
             obs = trinity.TriObserverLocal()
             obs.front = (0.0, -1.0, 0.0)
             obs.observer = srcAudio
-            del fe.sourceObject.observers[:]
-            fe.sourceObject.observers.append(obs)
-        if fe.destObject:
+            del sndStretch.sourceObject.observers[:]
+            sndStretch.sourceObject.observers.append(obs)
+        if sndStretch.destObject:
             obs = trinity.TriObserverLocal()
             obs.front = (0.0, -1.0, 0.0)
             obs.observer = destAudio
-            del fe.destObject.observers[:]
-            fe.destObject.observers.append(obs)
-        for eachSet in fe.curveSets:
+            del sndStretch.destObject.observers[:]
+            sndStretch.destObject.observers.append(obs)
+        for eachSet in sndStretch.curveSets:
             for eachCurve in eachSet.curves:
                 if eachCurve.__typename__ == 'TriEventCurve':
                     if eachCurve.name == 'audioEventsSource':
@@ -153,11 +146,10 @@ class TurretSet():
         if color is None:
             return 
         for turretSet in self.turretSets:
-            for firingEffect in turretSet.firingEffects:
-                for curve in firingEffect.Find('trinity.TriColorCurve'):
+            if turretSet.firingEffect is not None:
+                for curve in turretSet.firingEffect.Find('trinity.TriColorCurve'):
                     if curve.name == 'Ammo':
                         curve.value = color
-
 
 
 
@@ -325,6 +317,12 @@ class TurretSet():
             newTurretSet.ApplyTurretPresets(parentTypeID, turretTypeID)
             if not online:
                 newTurretSet.Offline()
+        newTurretSet.turretTypeID = turretTypeID
+        newTurretSet.turretGroupID = groupID
+        for eveTurretSet in newTurretSet.turretSets:
+            eveTurretSet.laserMissBehaviour = groupID in LASER_MISS_BEHAVIOUR_GROUPS
+            eveTurretSet.projectileMissBehaviour = groupID in PROJECTILE_MISS_BEHAVIOUR_GROUPS
+
         return newTurretSet
 
 

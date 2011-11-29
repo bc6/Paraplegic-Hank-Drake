@@ -10,6 +10,7 @@ import time
 import uicls
 import uiconst
 import log
+import localization
 
 class FormAlliancesRankings(uicls.Container):
     __guid__ = 'form.AlliancesRankings'
@@ -17,7 +18,8 @@ class FormAlliancesRankings(uicls.Container):
 
     def CreateWindow(self):
         self.toolbarContainer = uicls.Container(name='toolbarContainer', align=uiconst.TOBOTTOM, parent=self)
-        buttonOptions = [[mls.UI_CORP_RANKEDALLIANCES_SHOWALL,
+        buttonLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Rankings/ShowAll')
+        buttonOptions = [[buttonLabel,
           self.ShowRankings,
           (0,),
           81]]
@@ -40,19 +42,21 @@ class FormAlliancesRankings(uicls.Container):
 
     def ShowRankings(self, maxLen = 100):
         log.LogInfo('ShowRankings', maxLen)
-        sm.GetService('corpui').LoadTop('ui_7_64_6', mls.UI_GENERIC_ALLIANCES, mls.UI_CORP_RANKCACHED5)
+        alliancesLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Alliances')
+        cachedLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Rankings/RankingsCached15')
+        sm.GetService('corpui').LoadTop('ui_7_64_6', alliancesLabel, cachedLabel)
         if maxLen == 0 and eve.Message('ConfirmShowAllRankedAlliances', {}, uiconst.YESNO, suppress=uiconst.ID_YES) != uiconst.ID_YES:
             return 
         try:
             sm.GetService('corpui').ShowLoad()
-            headers = [mls.UI_GENERIC_NAME,
-             mls.UI_CORP_EXECUTORCORP,
-             mls.UI_CORP_SHORTNAME,
-             mls.UI_CORP_CREATED,
-             mls.UI_GENERIC_MEMBERS,
-             mls.UI_GENERIC_CORPSTANDING]
+            headers = [localization.GetByLabel('UI/Common/Name'),
+             localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Rankings/ExecutorCorp'),
+             localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Rankings/ShortName'),
+             localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Rankings/Created'),
+             localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Members'),
+             localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Rankings/AllianceStanding')]
             scrolllist = []
-            hint = mls.UI_CORP_NORANKINGSFOUND
+            hint = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Rankings/NoRankingsFound')
             if self is None or self.destroyed:
                 log.LogInfo('ShowRankings Destroyed or None')
             else:
@@ -71,7 +75,8 @@ class FormAlliancesRankings(uicls.Container):
 
             self.sr.scroll.adjustableColumns = 1
             self.sr.scroll.sr.id = 'alliances_rankings'
-            self.sr.scroll.Load(contentList=scrolllist, headers=headers, noContentHint=mls.UI_CORP_NORANKINGSFOUND)
+            noFoundLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Rankings/NoRankingsFound')
+            self.sr.scroll.Load(contentList=scrolllist, headers=headers, noContentHint=noFoundLabel)
 
         finally:
             sm.GetService('corpui').HideLoad()
@@ -88,7 +93,7 @@ class FormAlliancesRankings(uicls.Container):
         else:
             executorCorpName = ''
         if standing is None:
-            standing = mls.UI_GENERIC_NOTSET
+            standing = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Rankings/NotSet')
         label = '%s<t>%s<t>%s<t>%s<t>%s<t>%s' % (row.allianceName,
          executorCorpName,
          row.shortName,
@@ -112,9 +117,11 @@ class FormAlliancesRankings(uicls.Container):
         allianceID = entry.sr.node.ranking.allianceID
         res = sm.GetService('menu').GetMenuFormItemIDTypeID(allianceID, const.typeAlliance)
         if eve.session.allianceid is None:
-            res.append([mls.UI_CMD_APPLYTOJOIN, [[mls.UI_CMD_APPLYTOJOIN, self.ApplyToJoin, [allianceID]]]])
+            joinLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Rankings/ApplyToJoin')
+            res.append([joinLabel, [[joinLabel, self.ApplyToJoin, [allianceID]]]])
         elif allianceID != eve.session.allianceid:
-            res.append([mls.UI_CMD_DECLAREWAR, [[mls.UI_CMD_DECLAREWAR, self.DeclareWarAgainst, [allianceID]]]])
+            declareWarLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Rankings/DeclareWar')
+            res.append([declareWarLabel, [[declareWarLabel, self.DeclareWarAgainst, [allianceID]]]])
         return res
 
 
@@ -129,7 +136,8 @@ class FormAlliancesRankings(uicls.Container):
         left = uicore.desktop.width / 2 - 500 / 2
         top = uicore.desktop.height / 2 - 400 / 2
         cost = sm.GetService('war').GetCostOfWarAgainst(allianceID)
-        if eve.Message('WarDeclareConfirm', {'corporalliance': mls.UI_GENERIC_ALLIANCE,
+        allianceLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Alliance')
+        if eve.Message('WarDeclareConfirm', {'corporalliance': allianceLabel,
          'against': cfg.eveowners.Get(allianceID).ownerName,
          'price': util.FmtISK(cost, showFractionsAlways=0)}, uiconst.YESNO) == uiconst.ID_YES:
             sm.GetService('alliance').DeclareWarAgainst(allianceID)

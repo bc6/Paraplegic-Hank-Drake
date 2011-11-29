@@ -1,5 +1,5 @@
 import blue
-import unittest2
+import unittest
 import types
 import const
 import util
@@ -12,10 +12,10 @@ from cStringIO import StringIO
 import copy
 import traceback2
 
-class SystemTestResult(unittest2.TestResult):
+class SystemTestResult(unittest.TestResult):
 
     def __init__(self):
-        unittest2.TestResult.__init__(self)
+        unittest.TestResult.__init__(self)
         self.previousFailureDate = None
         self.previousFailureChangelist = None
         self.previousFailureCount = None
@@ -79,12 +79,12 @@ TEST_IN_PROGRESS = 16
 GUI_SCREENSHOT_SAVE_FOLDER = '../GUIScreenshots'
 
 def WaitForConditionWithTimeout(condition, timeOut, pollTime = 100):
-    start = blue.os.GetTime() / const.MSEC
-    while not condition() and blue.os.GetTime() / const.MSEC - start < timeOut:
-        blue.pyos.synchro.Sleep(pollTime)
+    start = blue.os.GetWallclockTime() / const.MSEC
+    while not condition() and blue.os.GetWallclockTime() / const.MSEC - start < timeOut:
+        blue.pyos.synchro.SleepWallclock(pollTime)
 
     if condition():
-        return blue.os.GetTime() / const.MSEC - start
+        return blue.os.GetWallclockTime() / const.MSEC - start
     else:
         return None
 
@@ -95,7 +95,7 @@ def FindTestsByName(name, partial = False):
     lname = name.lower()
     matches = []
     for (k, v,) in SystemTests.__dict__.iteritems():
-        if isinstance(v, (type, types.ClassType)) and issubclass(v, unittest2.TestCase):
+        if isinstance(v, (type, types.ClassType)) and issubclass(v, unittest.TestCase):
             if partial:
                 matched = lname in v.__name__.lower()
             else:
@@ -113,7 +113,7 @@ def FindTestsByRunType(filter):
     for (k, v,) in SystemTests.__dict__.iteritems():
         print k,
         print v
-        if isinstance(v, (type, types.ClassType)) and issubclass(v, unittest2.TestCase):
+        if isinstance(v, (type, types.ClassType)) and issubclass(v, unittest.TestCase):
             runType = getattr(v, 'runType', 0)
             print v.__name__,
             print runType
@@ -127,11 +127,11 @@ def FindTestsByRunType(filter):
 def RunFoundTests(matches):
     for v in matches:
         result = SystemTestResult()
-        if isinstance(v, (type, types.ClassType)) and issubclass(v, unittest2.TestCase):
-            loader = unittest2.TestLoader()
+        if isinstance(v, (type, types.ClassType)) and issubclass(v, unittest.TestCase):
+            loader = unittest.TestLoader()
             suite = loader.loadTestsFromTestCase(v)
         else:
-            suite = unittest2.TestSuite([v])
+            suite = unittest.TestSuite([v])
         suite.run(result)
         yield (v, result)
 
@@ -140,11 +140,11 @@ def RunFoundTests(matches):
 
 def RunTest(test):
     result = SystemTestResult()
-    if isinstance(test, (type, types.ClassType)) and issubclass(test, unittest2.TestCase):
-        loader = unittest2.TestLoader()
+    if isinstance(test, (type, types.ClassType)) and issubclass(test, unittest.TestCase):
+        loader = unittest.TestLoader()
         suite = loader.loadTestsFromTestCase(test)
     else:
-        suite = unittest2.TestSuite([test])
+        suite = unittest.TestSuite([test])
     suite.run(result)
     return result
 

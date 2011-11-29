@@ -2,7 +2,6 @@ import form
 import uix
 import uiutil
 import listentry
-import draw
 import uthread
 import util
 import blue
@@ -15,12 +14,18 @@ import copy
 import sys
 import re
 import xtriui
+import localization
 LEFT_WIDTH = 150
 MILLION = 1000000
 MAXJUMPROUTENUM = 100
 PAGINGRANGE = 10
 NUM_SAVED_LOCATIONS = 5
 MAX_NUM_MILLIONS = 100000
+CONTRACT_SEARCH_MAPPINGS = {cc.SORT_ID: 'UI/Contracts/ContractsSearch/columnCreated',
+ cc.SORT_EXPIRED: 'UI/Contracts/ContractsSearch/columnTimeLeft',
+ cc.SORT_PRICE: 'UI/Contracts/ContractsSearch/columnPrice',
+ cc.SORT_REWARD: 'UI/Contracts/ContractsSearch/columnReward',
+ cc.SORT_COLLATERAL: 'UI/Contracts/ContractsSearch/columnCollateral'}
 
 class ContractSearchWindow(uicls.Container):
     __guid__ = 'form.ContractSearchWindow'
@@ -64,19 +69,25 @@ class ContractSearchWindow(uicls.Container):
 
     def PopulateSortCombo(self):
         contractType = settings.user.ui.Get('contracts_search_type', cc.CONTYPE_AUCTIONANDITEMECHANGE)
-        opt = [('%s (%s)' % (mls.UI_CONTRACTS_DATECREATED, mls.UI_CONTRACTS_OLDESTFIRST), (cc.SORT_ID, 0)),
-         ('%s (%s)' % (mls.UI_CONTRACTS_DATECREATED, mls.UI_CONTRACTS_NEWESTFIRST), (cc.SORT_ID, 1)),
-         ('%s (%s)' % (mls.UI_CONTRACTS_TIMELEFT, mls.UI_CONTRACTS_SHORTESTFIRST), (cc.SORT_EXPIRED, 0)),
-         ('%s (%s)' % (mls.UI_CONTRACTS_TIMELEFT, mls.UI_CONTRACTS_LONGESTFIRST), (cc.SORT_EXPIRED, 1))]
+        oldestFirst = localization.GetByLabel('UI/Contracts/ContractsSearch/OldestFirst')
+        newestFirst = localization.GetByLabel('UI/Contracts/ContractsSearch/NewestFirst')
+        shortestFirst = localization.GetByLabel('UI/Contracts/ContractsSearch/ShortestFirst')
+        longestFirst = localization.GetByLabel('UI/Contracts/ContractsSearch/LongestFirst')
+        lowFirst = localization.GetByLabel('UI/Contracts/ContractsSearch/LowerstFirst')
+        highFirst = localization.GetByLabel('UI/Contracts/ContractsSearch/HighestFirst')
+        opt = [(localization.GetByLabel('UI/Contracts/ContractsSearch/DateCreatedOption', text=oldestFirst), (cc.SORT_ID, 0)),
+         (localization.GetByLabel('UI/Contracts/ContractsSearch/DateCreatedOption', text=newestFirst), (cc.SORT_ID, 1)),
+         (localization.GetByLabel('UI/Contracts/ContractsSearch/TimeLeftOption', text=shortestFirst), (cc.SORT_EXPIRED, 0)),
+         (localization.GetByLabel('UI/Contracts/ContractsSearch/TimeLeftOption', text=longestFirst), (cc.SORT_EXPIRED, 1))]
         if contractType == const.conTypeCourier:
-            opt.extend([('%s (%s)' % (mls.UI_CONTRACTS_REWARD, mls.UI_CONTRACTS_LOWESTFIRST), (cc.SORT_REWARD, 0)),
-             ('%s (%s)' % (mls.UI_CONTRACTS_REWARD, mls.UI_CONTRACTS_HIGHESTFIRST), (cc.SORT_REWARD, 1)),
-             ('%s (%s)' % (mls.UI_CONTRACTS_COLLATERAL, mls.UI_CONTRACTS_LOWESTFIRST), (cc.SORT_COLLATERAL, 0)),
-             ('%s (%s)' % (mls.UI_CONTRACTS_COLLATERAL, mls.UI_CONTRACTS_HIGHESTFIRST), (cc.SORT_COLLATERAL, 1)),
-             ('%s (%s)' % (mls.UI_CONTRACTS_VOLUME, mls.UI_CONTRACTS_LOWESTFIRST), (cc.SORT_VOLUME, 0)),
-             ('%s (%s)' % (mls.UI_CONTRACTS_VOLUME, mls.UI_CONTRACTS_HIGHESTFIRST), (cc.SORT_VOLUME, 1))])
+            opt.extend([(localization.GetByLabel('UI/Contracts/ContractsSearch/RewardOption', text=lowFirst), (cc.SORT_REWARD, 0)),
+             (localization.GetByLabel('UI/Contracts/ContractsSearch/RewardOption', text=highFirst), (cc.SORT_REWARD, 1)),
+             (localization.GetByLabel('UI/Contracts/ContractsSearch/CollateralOption', text=lowFirst), (cc.SORT_COLLATERAL, 0)),
+             (localization.GetByLabel('UI/Contracts/ContractsSearch/CollateralOption', text=highFirst), (cc.SORT_COLLATERAL, 1)),
+             (localization.GetByLabel('UI/Contracts/ContractsSearch/VolumnOptions', text=lowFirst), (cc.SORT_VOLUME, 0)),
+             (localization.GetByLabel('UI/Contracts/ContractsSearch/VolumnOptions', text=highFirst), (cc.SORT_VOLUME, 1))])
         else:
-            opt.extend([('%s (%s)' % (mls.UI_CONTRACTS_PRICE, mls.UI_CONTRACTS_LOWESTFIRST), (cc.SORT_PRICE, 0)), ('%s (%s)' % (mls.UI_CONTRACTS_PRICE, mls.UI_CONTRACTS_HIGHESTFIRST), (cc.SORT_PRICE, 1))])
+            opt.extend([(localization.GetByLabel('UI/Contracts/ContractsSearch/PriceOption', text=lowFirst), (cc.SORT_PRICE, 0)), (localization.GetByLabel('UI/Contracts/ContractsSearch/PriceOption', text=highFirst), (cc.SORT_PRICE, 1))])
         sel = settings.user.ui.Get('contracts_search_sort', None)
         self.sr.fltSort.LoadOptions(opt, sel)
 
@@ -100,15 +111,15 @@ class ContractSearchWindow(uicls.Container):
          0))
         self.sr.topContainer = uicls.Container(name='topCont', parent=self, pos=(0, 2, 0, 26), align=uiconst.TOTOP)
         self.sr.viewMode0 = icon = xtriui.MiniButton(icon='ui_38_16_157', selectedIcon='ui_38_16_173', mouseOverIcon='ui_38_16_189', parent=self.sr.topContainer, pos=(6, 10, 16, 16), align=uiconst.TOPLEFT)
-        icon.hint = mls.UI_GENERIC_DETAILS
+        icon.hint = localization.GetByLabel('UI/Common/Details')
         icon.Click = lambda : self.ChangeViewMode(0)
         self.sr.viewMode1 = icon = xtriui.MiniButton(icon='ui_38_16_158', selectedIcon='ui_38_16_174', mouseOverIcon='ui_38_16_190', parent=self.sr.topContainer, pos=(22, 10, 16, 16), align=uiconst.TOPLEFT)
-        icon.hint = mls.UI_GENERIC_LIST
+        icon.hint = localization.GetByLabel('UI/Inventory/List')
         icon.Click = lambda : self.ChangeViewMode(1)
         self.sr.Get('viewMode%s' % int(prefs.GetValue('contractsSimpleView', 0) or 0), None).Select()
         sortCont = c = uicls.Container(name='sortCont', parent=self.sr.topContainer, pos=(0, 12, 0, 20), align=uiconst.TOTOP)
         sortDirWidth = 62
-        self.sr.fltSort = c = uicls.Combo(label=mls.UI_CONTRACTS_SORTPAGESBY, parent=sortCont, options=[], name='sort', align=uiconst.TOPRIGHT, callback=self.ComboChange)
+        self.sr.fltSort = c = uicls.Combo(label=localization.GetByLabel('UI/Contracts/ContractsSearch/SortPageBy'), parent=sortCont, options=[], name='sort', align=uiconst.TOPRIGHT, callback=self.ComboChange)
         self.PopulateSortCombo()
         c.width = 160
         c.left = 4
@@ -127,8 +138,8 @@ class ContractSearchWindow(uicls.Container):
         self.sr.expanderTextCont = uicls.Container(name='expanderTextCont', parent=expanderCont, align=uiconst.TOLEFT, pos=(0, 0, 200, 0), state=uiconst.UI_NORMAL)
         if prefs.GetValue('contractsClientFilters', 0):
             self.sr.expanderTextCont.OnClick = self.ToggleClientFilters
-        foundLabelText = '%s' % mls.UI_CONTRACTS_NOSEARCH
-        self.sr.foundLabel = uicls.Label(text=foundLabelText, parent=self.sr.expanderTextCont, align=uiconst.TOPLEFT, left=2, top=5, fontsize=9, letterspace=1, linespace=9, uppercase=1)
+        foundLabelText = localization.GetByLabel('UI/Contracts/ContractsSearch/NoSearch')
+        self.sr.foundLabel = uicls.EveLabelSmall(text=foundLabelText, parent=self.sr.expanderTextCont, align=uiconst.TOPLEFT, left=2, top=5)
         self.sr.expanderTextCont.width = self.sr.foundLabel.textwidth + 50
         pageArea = uicls.Container(name='pageArea', parent=expanderCont, pos=(10,
          2,
@@ -147,27 +158,27 @@ class ContractSearchWindow(uicls.Container):
         contractlist.sr.id = 'contractlist'
         contractlist.multiSelect = 0
         contractlistParent.top = 5
-        contractlist.ShowHint(mls.UI_CONTRACTS_CONTRACTLISTHINT_CLICKSEARCH % {'search': mls.UI_CONTRACTS_SEARCH})
+        contractlist.ShowHint(localization.GetByLabel('UI/Contracts/ContractsSearch/ClickSearchHint'))
         self.sr.loadingWheel = uicls.LoadingWheel(parent=self.sr.contractlist, align=uiconst.CENTER, state=uiconst.UI_NORMAL, idx=0)
         self.sr.loadingWheel.Hide()
-        contractlist.sr.defaultColumnWidth = {mls.UI_CONTRACTS_PICKUP: 120,
-         mls.UI_CONTRACTS_CONTRACT: 200,
-         mls.UI_CONTRACTS_BIDS: 20,
-         mls.UI_CONTRACTS_JUMPS: 90,
-         mls.UI_CONTRACTS_ROUTE: 80,
-         mls.UI_CONTRACTS_VOLUME: 60,
-         mls.UI_CONTRACTS_TIMELEFT: 70,
-         mls.UI_CONTRACTS_PRICE: 100,
-         mls.UI_CONTRACTS_LOCATION: 100,
-         mls.UI_CONTRACTS_ISSUER: 100}
+        contractlist.sr.defaultColumnWidth = {localization.GetByLabel('UI/Contracts/ContractsSearch/columPickup'): 120,
+         localization.GetByLabel('UI/Contracts/ContractsSearch/columnContract'): 200,
+         localization.GetByLabel('UI/Contracts/ContractsSearch/columnBids'): 20,
+         localization.GetByLabel('UI/Contracts/ContractsSearch/columnJumps'): 90,
+         localization.GetByLabel('UI/Contracts/ContractsSearch/columnRoute'): 80,
+         localization.GetByLabel('UI/Contracts/ContractsSearch/columnVolume'): 60,
+         localization.GetByLabel('UI/Contracts/ContractsSearch/columnTimeLeft'): 70,
+         localization.GetByLabel('UI/Contracts/ContractsSearch/columnPrice'): 100,
+         localization.GetByLabel('UI/Contracts/ContractsSearch/columnLocation'): 100,
+         localization.GetByLabel('UI/Contracts/ContractsSearch/columnIssuer'): 100}
         self.InitFilters()
 
 
 
     def GetContractFiltersMenu(self, *args):
         m = []
-        m.append((mls.UI_CONTRACTS_EXCLUDEUNREACHABLE, self.ToggleExcludeUnreachable, (None,)))
-        m.append((mls.UI_CONTRACTS_EXCLUDEIGNORED, self.ToggleExcludeIgnored, (None,)))
+        m.append((localization.GetByLabel('UI/Contracts/ContractsSearch/ExcludeUnreacable'), self.ToggleExcludeUnreachable, (None,)))
+        m.append((localization.GetByLabel('UI/Contracts/ContractsSearch/ExcludeIgnored'), self.ToggleExcludeIgnored, (None,)))
         return m
 
 
@@ -194,18 +205,18 @@ class ContractSearchWindow(uicls.Container):
         leftSide = self.sr.leftSide
         leftSide.Flush()
         EDIT_WIDTH = 61
-        self.sr.caption = uicls.CaptionLabel(text=mls.UI_CONTRACTS_CONTRACTSEARCH, parent=leftSide, align=uiconst.TOTOP, top=4, uppercase=False, letterspace=0)
+        self.sr.caption = uicls.CaptionLabel(text=localization.GetByLabel('UI/Contracts/ContractsSearch/ContractSearch'), parent=leftSide, align=uiconst.TOTOP, top=4, uppercase=False, letterspace=0)
         contractType = settings.user.ui.Get('contracts_search_type', cc.CONTYPE_AUCTIONANDITEMECHANGE)
         MENU_HEIGHT = 28
         self.sr.menu = uicls.Container(name='menu', parent=leftSide, align=uiconst.TOTOP, pos=(0,
          0,
          0,
          MENU_HEIGHT), padding=(2, 0, 2, 0))
-        tabs = [[mls.UI_CONTRACTS_BUYANDSELL,
+        tabs = [[localization.GetByLabel('UI/Contracts/ContractsSearch/tabBuyAndSell'),
           None,
           self,
           None,
-          cc.CONTYPE_AUCTIONANDITEMECHANGE], [mls.UI_CONTRACTS_COURIER,
+          cc.CONTYPE_AUCTIONANDITEMECHANGE], [localization.GetByLabel('UI/Contracts/ContractsSearch/tabCourier'),
           None,
           self,
           None,
@@ -214,24 +225,24 @@ class ContractSearchWindow(uicls.Container):
         self.pushButtons.Startup(tabs, selectedArgs=[contractType])
         if contractType != const.conTypeCourier:
             typeCont = uicls.Container(name='typeCont', parent=leftSide, pos=(0, -12, 0, 41), align=uiconst.TOTOP)
-            self.sr.typeName = c = uicls.SinglelineEdit(name='type', parent=typeCont, label='', hinttext=mls.UI_CONTRACTS_ITEMTYPE, setvalue=settings.user.ui.Get('contracts_search_typename', ''), align=uiconst.TOTOP, padTop=20, OnReturn=self.DoSearch, OnChange=self.GetTypeClearIcon)
-            self.sr.fltTypeClear = uicls.IconButton(icon='ui_73_16_210', parent=c, pos=(6, 0, 16, 16), align=uiconst.CENTERRIGHT, state=uiconst.UI_HIDDEN, idx=0, hint=mls.UI_CMD_CLEAR, func=self.ClearEditField, args=(c,))
+            self.sr.typeName = c = uicls.SinglelineEdit(name='type', parent=typeCont, label='', hinttext=localization.GetByLabel('UI/Wallet/WalletWindow/ItemType'), setvalue=settings.user.ui.Get('contracts_search_typename', ''), align=uiconst.TOTOP, padTop=20, OnReturn=self.DoSearch, OnChange=self.GetTypeClearIcon)
+            self.sr.fltTypeClear = uicls.IconButton(icon='ui_73_16_210', parent=c, pos=(6, 0, 16, 16), align=uiconst.CENTERRIGHT, state=uiconst.UI_HIDDEN, idx=0, hint=localization.GetByLabel('UI/Calendar/Hints/Clear'), func=self.ClearEditField, args=(c,))
             self.GetTypeClearIcon(text=c.GetValue())
             self.sr.typeName.OnDropData = self.OnDropType
         locationCont = uicls.Container(name='locationCont', parent=leftSide, padTop=-3, height=40, align=uiconst.TOTOP)
-        self.sr.fltLocation = c = uicls.Combo(label=mls.UI_GENERIC_LOCATION, parent=locationCont, options=[], name='location', callback=self.ComboChange, align=uiconst.TOTOP, padTop=20)
+        self.sr.fltLocation = c = uicls.Combo(label=localization.GetByLabel('UI/Common/Location'), parent=locationCont, options=[], name='location', callback=self.ComboChange, align=uiconst.TOTOP, padTop=20)
         self.PopulateLocationCombo()
         self.sr.advancedCont = advancedCont = uicls.Container(name='advancedCont', parent=leftSide, padTop=const.defaultPadding, align=uiconst.TOTOP)
         expanded = settings.user.ui.Get('contracts_search_expander_advanced', 0)
-        self.sr.advancedDivider = self.GetExpanderDivider(leftSide, 'advanced', mls.UI_RMR_SHOWLESSOPTIONS, mls.UI_RMR_SHOWMOREOPTIONS, expanded, self.sr.advancedCont, padTop=const.defaultPadding)
+        self.sr.advancedDivider = self.GetExpanderDivider(leftSide, 'advanced', localization.GetByLabel('UI/Contracts/ContractsSearch/buttonShowLessOptions'), localization.GetByLabel('UI/Contracts/ContractsSearch/buttonShowMoreOptions'), expanded, self.sr.advancedCont, padTop=const.defaultPadding)
         if contractType != const.conTypeCourier:
-            contractOptions = [(mls.UI_CONTRACTS_ALL, None),
-             (mls.UI_CONTRACTS_SELLCONTRACTS, 2),
-             (mls.UI_CONTRACTS_WANTTOBUYCONTRACTS, 3),
-             (mls.UI_CONTRACTS_AUCTIONCONTRACTS, 1),
-             (mls.UI_CONTRACTS_EXCLUDEWTB, 4)]
-            self.sr.fltContractOptions = c = uicls.Combo(label=mls.UI_CONTRACTS_CONTRACTTYPE, parent=advancedCont, options=contractOptions, name='contractOptions', select=settings.user.ui.Get('contracts_search_contractOptions', None), align=uiconst.TOTOP, callback=self.ComboChange, padTop=17)
-            catOptions = [(mls.UI_CONTRACTS_ALL, None)]
+            contractOptions = [(localization.GetByLabel('UI/Contracts/ContractsSearch/comboAll'), None),
+             (localization.GetByLabel('UI/Contracts/ContractsSearch/comboSellContracts'), 2),
+             (localization.GetByLabel('UI/Contracts/ContractsSearch/comboWantToBuy'), 3),
+             (localization.GetByLabel('UI/Contracts/ContractsSearch/combo'), 1),
+             (localization.GetByLabel('UI/Contracts/ContractsSearch/comboExcluedWantToBuy'), 4)]
+            self.sr.fltContractOptions = c = uicls.Combo(label=localization.GetByLabel('UI/Contracts/ContractsWindow/ContractType'), parent=advancedCont, options=contractOptions, name='contractOptions', select=settings.user.ui.Get('contracts_search_contractOptions', None), align=uiconst.TOTOP, callback=self.ComboChange, padTop=17)
+            catOptions = [(localization.GetByLabel('UI/Contracts/ContractsSearch/comboAll'), None)]
             categories = []
             principalCategories = [const.categoryBlueprint, const.categoryModule, const.categoryShip]
             for c in cfg.invcategories:
@@ -243,45 +254,45 @@ class ContractSearchWindow(uicls.Container):
                 c = cfg.invcategories.Get(catID)
                 catOptions.append([c.categoryName, (c.categoryID, 0)])
                 if c.categoryID == const.categoryBlueprint:
-                    catOptions.append([c.categoryName + ' %s' % mls.UI_GENERIC_ORIGINAL, (c.categoryID, cc.SEARCHHINT_BPO)])
-                    catOptions.append([c.categoryName + ' %s' % mls.UI_GENERIC_COPY, (c.categoryID, cc.SEARCHHINT_BPC)])
+                    catOptions.append([localization.GetByLabel('UI/Contracts/ContractsSearch/BlueprintCategoryOriginal', categoryName=c.categoryName), (c.categoryID, cc.SEARCHHINT_BPO)])
+                    catOptions.append([localization.GetByLabel('UI/Contracts/ContractsSearch/BlueprintCategoryCopy', categoryName=c.categoryName), (c.categoryID, cc.SEARCHHINT_BPC)])
 
             catOptions.append(['', -1])
             for c in categories:
                 catOptions.append((c[0], (c[1], c[2])))
 
-            self.sr.fltCategories = c = uicls.Combo(label=mls.UI_CONTRACTS_CATEGORY, parent=advancedCont, options=catOptions, name='category', select=settings.user.ui.Get('contracts_search_category', None), align=uiconst.TOTOP, callback=self.ComboChange, padTop=17)
-            grpOptions = [(mls.UI_CONTRACTS_SELECTCATEGORY, None)]
-            self.sr.fltGroups = c = uicls.Combo(label=mls.UI_CONTRACTS_GROUP, parent=advancedCont, options=grpOptions, name='group', select=settings.user.ui.Get('contracts_search_group', None), align=uiconst.TOTOP, callback=self.ComboChange, padTop=20)
-            self.sr.fltExcludeMultiple = c = uicls.Checkbox(text=mls.UI_CONTRACTS_EXCLUDEMULTIPLEITEMS, configName='contracts_search_excludemultiple', checked=settings.user.ui.Get('contracts_search_excludemultiple', 0), parent=advancedCont, callback=self.CheckBoxChange, padTop=4, align=uiconst.TOTOP)
-            self.sr.fltExactType = c = uicls.Checkbox(text=mls.UI_CONTRACTS_EXACTTYPEMATCH, configName='contracts_search_exacttype', checked=settings.user.ui.Get('contracts_search_exacttype', 0), parent=advancedCont, callback=self.CheckBoxChange)
+            self.sr.fltCategories = c = uicls.Combo(label=localization.GetByLabel('UI/Contracts/ContractsSearch/ContractCategory'), parent=advancedCont, options=catOptions, name='category', select=settings.user.ui.Get('contracts_search_category', None), align=uiconst.TOTOP, callback=self.ComboChange, padTop=17)
+            grpOptions = [(localization.GetByLabel('UI/Contracts/ContractsSearch/SelectCategory'), None)]
+            self.sr.fltGroups = c = uicls.Combo(label=localization.GetByLabel('UI/Contracts/ContractsSearch/contractroup'), parent=advancedCont, options=grpOptions, name='group', select=settings.user.ui.Get('contracts_search_group', None), align=uiconst.TOTOP, callback=self.ComboChange, padTop=20)
+            self.sr.fltExcludeMultiple = c = uicls.Checkbox(text=localization.GetByLabel('UI/Contracts/ContractsSearch/labelExcludeMultipleItems'), configName='contracts_search_excludemultiple', checked=settings.user.ui.Get('contracts_search_excludemultiple', 0), parent=advancedCont, callback=self.CheckBoxChange, padTop=4, align=uiconst.TOTOP)
+            self.sr.fltExactType = c = uicls.Checkbox(text=localization.GetByLabel('UI/Contracts/ContractsSearch/labelExactTypeMatch'), configName='contracts_search_exacttype', checked=settings.user.ui.Get('contracts_search_exacttype', 0), parent=advancedCont, callback=self.CheckBoxChange)
             self.PopulateGroupCombo(isSel=True)
             self.sr.priceCont = cont = uicls.Container(name='priceCont', parent=advancedCont, padTop=19, height=20, align=uiconst.TOTOP)
-            self.sr.fltMinPrice = c = uicls.SinglelineEdit(name='minprice', parent=cont, label=mls.UI_CONTRACTS_PRICE_MILLION, width=EDIT_WIDTH, align=uiconst.TOPLEFT, hinttext=mls.UI_CONTRACTS_MIN, ints=(None, None), setvalue=settings.user.ui.Get('contracts_search_minprice', ''), OnReturn=self.DoSearch)
-            uicls.Label(text=mls.UI_GENERIC_TONUMBER, parent=cont, align=uiconst.CENTER, fontsize=9, letterspace=1, linespace=9, uppercase=1)
-            self.sr.fltMaxPrice = c = uicls.SinglelineEdit(name='maxprice', parent=cont, width=EDIT_WIDTH, align=uiconst.TOPRIGHT, label='', hinttext=mls.UI_CONTRACTS_MAX, ints=(None, None), setvalue=settings.user.ui.Get('contracts_search_maxprice', ''), OnReturn=self.DoSearch)
-        options = [(mls.UI_CONTRACTS_PUBLIC, const.conAvailPublic), (mls.UI_CONTRACTS_MYSELF, const.conAvailMyself)]
+            self.sr.fltMinPrice = c = uicls.SinglelineEdit(name='minprice', parent=cont, label=localization.GetByLabel('UI/Contracts/ContractsSearch/labelPriceMillions'), width=EDIT_WIDTH, align=uiconst.TOPLEFT, hinttext=localization.GetByLabel('UI/Contracts/ContractsSearch/hintMin'), ints=(None, None), setvalue=settings.user.ui.Get('contracts_search_minprice', ''), OnReturn=self.DoSearch)
+            uicls.EveLabelSmall(text=localization.GetByLabel('UI/Common/ToNumber'), parent=cont, align=uiconst.CENTER)
+            self.sr.fltMaxPrice = c = uicls.SinglelineEdit(name='maxprice', parent=cont, width=EDIT_WIDTH, align=uiconst.TOPRIGHT, label='', hinttext=localization.GetByLabel('UI/Contracts/ContractsSearch/hintMax'), ints=(None, None), setvalue=settings.user.ui.Get('contracts_search_maxprice', ''), OnReturn=self.DoSearch)
+        options = [(localization.GetByLabel('UI/Generic/Public'), const.conAvailPublic), (localization.GetByLabel('UI/Contracts/ContractsWindow/Me'), const.conAvailMyself)]
         if not util.IsNPC(session.corpid):
-            options.append((mls.UI_CONTRACTS_MYCORP, const.conAvailMyCorp))
+            options.append((localization.GetByLabel('UI/Generic/MyCorp'), const.conAvailMyCorp))
         if session.allianceid:
-            options.append((mls.UI_CONTRACTS_MYALLIANCE, const.conAvailMyAlliance))
+            options.append((localization.GetByLabel('UI/Generic/MyAlliance'), const.conAvailMyAlliance))
         if contractType == const.conTypeCourier:
             dropoffCont = uicls.Container(name='dropoffCont', parent=advancedCont, padTop=9, height=20, align=uiconst.TOTOP)
             w = 22 + 2 * const.defaultPadding
-            self.sr.fltDropOff = c = uicls.SinglelineEdit(name='dropoff', parent=dropoffCont, setvalue=settings.user.ui.Get('contracts_search_dropoff', ''), align=uiconst.TOTOP, label='', padRight=w, hinttext=mls.UI_CONTRACTS_DROPOFFLOCATION, OnChange=self.GetDropOffClearIcon, OnReturn=self.OnDropOffReturn)
-            self.sr.fltDropOffClear = uicls.IconButton(icon='ui_73_16_210', parent=c, pos=(6, 0, 16, 16), align=uiconst.CENTERRIGHT, state=uiconst.UI_HIDDEN, idx=0, hint=mls.UI_CMD_CLEAR, func=self.ClearEditField, args=(c,))
+            self.sr.fltDropOff = c = uicls.SinglelineEdit(name='dropoff', parent=dropoffCont, setvalue=settings.user.ui.Get('contracts_search_dropoff', ''), align=uiconst.TOTOP, label='', padRight=w, hinttext=localization.GetByLabel('UI/Contracts/ContractsSearch/DropOffLocation'), OnChange=self.GetDropOffClearIcon, OnReturn=self.OnDropOffReturn)
+            self.sr.fltDropOffClear = uicls.IconButton(icon='ui_73_16_210', parent=c, pos=(6, 0, 16, 16), align=uiconst.CENTERRIGHT, state=uiconst.UI_HIDDEN, idx=0, hint=localization.GetByLabel('UI/Calendar/Hints/Clear'), func=self.ClearEditField, args=(c,))
             self.GetDropOffClearIcon(text=c.GetValue())
             buttonbox = uicls.Container(name='buttonbox', align=uiconst.TOPRIGHT, parent=dropoffCont, pos=(0, 1, 20, 20))
             btn = uix.GetBigButton(10, buttonbox, width=20, height=20)
             btn.sr.icon.LoadIcon('ui_38_16_228')
             btn.OnClick = self.ParseDropOff
             self.sr.rewardCont = rewardCont = uicls.Container(name='rewardCont', parent=advancedCont, padTop=19, height=20, align=uiconst.TOTOP)
-            self.sr.fltMinReward = c = uicls.SinglelineEdit(name='minreward', parent=rewardCont, width=EDIT_WIDTH, label=mls.UI_CONTRACTS_REWARD_MILLION, hinttext=mls.UI_CONTRACTS_MIN, left=0, top=0, ints=(0, MAX_NUM_MILLIONS), setvalue=settings.user.ui.Get('contracts_search_minreward', ''), OnReturn=self.DoSearch)
-            uicls.Label(text=mls.UI_GENERIC_TONUMBER, parent=rewardCont, align=uiconst.TOPLEFT, pos=(c.width + 8,
+            self.sr.fltMinReward = c = uicls.SinglelineEdit(name='minreward', parent=rewardCont, width=EDIT_WIDTH, label=localization.GetByLabel('UI/Contracts/ContractsSearch/CourierRewardInMillions'), hinttext=localization.GetByLabel('UI/Contracts/ContractsSearch/hintMin'), left=0, top=0, ints=(0, MAX_NUM_MILLIONS), setvalue=settings.user.ui.Get('contracts_search_minreward', ''), OnReturn=self.DoSearch)
+            uicls.EveLabelSmall(text=localization.GetByLabel('UI/Common/ToNumber'), parent=rewardCont, align=uiconst.TOPLEFT, pos=(c.width + 8,
              4,
-             10,
-             0), fontsize=9, letterspace=1, linespace=9, uppercase=1)
-            self.sr.fltMaxReward = c = uicls.SinglelineEdit(name='maxreward', parent=rewardCont, label='', hinttext=mls.UI_CONTRACTS_MAX, align=uiconst.TOPRIGHT, pos=(0,
+             20,
+             0))
+            self.sr.fltMaxReward = c = uicls.SinglelineEdit(name='maxreward', parent=rewardCont, label='', hinttext=localization.GetByLabel('UI/Contracts/ContractsSearch/hintMax'), align=uiconst.TOPRIGHT, pos=(0,
              0,
              EDIT_WIDTH,
              0), ints=(0, MAX_NUM_MILLIONS), setvalue=settings.user.ui.Get('contracts_search_maxreward', ''), OnReturn=self.DoSearch)
@@ -289,36 +300,36 @@ class ContractSearchWindow(uicls.Container):
             self.sr.fltMinCollateral = c = uicls.SinglelineEdit(name='mincollateral', parent=cont, pos=(0,
              0,
              EDIT_WIDTH,
-             0), label=mls.UI_CONTRACTS_COLLATERAL_MILLION, hinttext=mls.UI_CONTRACTS_MIN, ints=(0, MAX_NUM_MILLIONS), setvalue=settings.user.ui.Get('contracts_search_mincollateral', ''), OnReturn=self.DoSearch)
-            uicls.Label(text=mls.UI_GENERIC_TONUMBER, parent=cont, align=uiconst.TOPLEFT, width=10, left=c.width + 8, top=4, fontsize=9, letterspace=1, linespace=9, uppercase=1)
+             0), label=localization.GetByLabel('UI/Contracts/ContractsSearch/CourierCollateralInMillions'), hinttext=localization.GetByLabel('UI/Contracts/ContractsSearch/hintMin'), ints=(0, MAX_NUM_MILLIONS), setvalue=settings.user.ui.Get('contracts_search_mincollateral', ''), OnReturn=self.DoSearch)
+            uicls.EveLabelSmall(text=localization.GetByLabel('UI/Common/ToNumber'), parent=cont, align=uiconst.TOPLEFT, width=20, left=c.width + 8, top=4)
             self.sr.fltMaxCollateral = c = uicls.SinglelineEdit(name='maxcollateral', parent=cont, align=uiconst.TOPRIGHT, pos=(0,
              0,
              EDIT_WIDTH,
-             0), label='', hinttext=mls.UI_CONTRACTS_MAX, ints=(0, MAX_NUM_MILLIONS), setvalue=settings.user.ui.Get('contracts_search_maxcollateral', ''), OnReturn=self.DoSearch)
+             0), label='', hinttext=localization.GetByLabel('UI/Contracts/ContractsSearch/hintMax'), ints=(0, MAX_NUM_MILLIONS), setvalue=settings.user.ui.Get('contracts_search_maxcollateral', ''), OnReturn=self.DoSearch)
             self.sr.volumeCont = cont = uicls.Container(name='volumeCont', parent=advancedCont, pos=(0, 17, 0, 20), align=uiconst.TOTOP)
             self.sr.fltMinVolume = c = uicls.SinglelineEdit(name='minvolume', parent=cont, pos=(0,
              0,
              EDIT_WIDTH,
-             0), label=mls.UI_CONTRACTS_VOLUME, hinttext=mls.UI_CONTRACTS_MIN, ints=(0, None), setvalue=settings.user.ui.Get('contracts_search_minvolume', ''), OnReturn=self.DoSearch)
-            uicls.Label(text=mls.UI_GENERIC_TONUMBER, parent=cont, align=uiconst.TOPLEFT, width=10, left=c.width + 8, top=4, fontsize=9, letterspace=1, linespace=9, uppercase=1)
+             0), label=localization.GetByLabel('UI/Contracts/ContractsSearch/columnVolume'), hinttext=localization.GetByLabel('UI/Contracts/ContractsSearch/hintMin'), ints=(0, None), setvalue=settings.user.ui.Get('contracts_search_minvolume', ''), OnReturn=self.DoSearch)
+            uicls.EveLabelSmall(text=localization.GetByLabel('UI/Common/ToNumber'), parent=cont, align=uiconst.TOPLEFT, width=20, left=c.width + 8, top=4)
             self.sr.fltMaxVolume = c = uicls.SinglelineEdit(name='maxvolume', parent=cont, align=uiconst.TOPRIGHT, pos=(0,
              0,
              EDIT_WIDTH,
-             0), label='', hinttext=mls.UI_CONTRACTS_MAX, ints=(0, None), setvalue=settings.user.ui.Get('contracts_search_maxvolume', ''), OnReturn=self.DoSearch)
+             0), label='', hinttext=localization.GetByLabel('UI/Contracts/ContractsSearch/hintMax'), ints=(0, None), setvalue=settings.user.ui.Get('contracts_search_maxvolume', ''), OnReturn=self.DoSearch)
         contractAvailability = settings.user.ui.Get('contracts_search_avail', const.conAvailPublic)
-        self.sr.fltAvail = c = uicls.Combo(label=mls.UI_CONTRACTS_AVAILABILITY, parent=advancedCont, options=options, name='avail', select=contractAvailability, callback=self.ComboChange, align=uiconst.TOTOP, pos=(0, 18, 140, 20))
+        self.sr.fltAvail = c = uicls.Combo(label=localization.GetByLabel('UI/Contracts/ContractsSearch/Availability'), parent=advancedCont, options=options, name='avail', select=contractAvailability, callback=self.ComboChange, align=uiconst.TOTOP, pos=(0, 18, 140, 20))
         securityCont = c = uicls.Container(name='securityCont', parent=advancedCont, pos=(0, 6, 0, 30), align=uiconst.TOTOP)
-        c = uicls.Label(text=mls.UI_CONTRACTS_SECURITYFILTERS, parent=securityCont, left=5, top=0, fontsize=10, letterspace=1, uppercase=1, state=uiconst.UI_DISABLED, align=uiconst.TOPLEFT)
-        self.sr.fltSecHigh = c = uicls.Checkbox(text=mls.UI_GENERIC_HIGH, configName='contracts_search_sechigh', checked=settings.user.ui.Get('contracts_search_sechigh', 1), parent=securityCont, callback=self.CheckBoxChange, width=55, left=const.defaultPadding, top=12, align=uiconst.TOPLEFT)
-        self.sr.fltSecLow = c = uicls.Checkbox(text=mls.UI_GENERIC_LOW, configName='contracts_search_seclow', checked=settings.user.ui.Get('contracts_search_seclow', 1), parent=securityCont, callback=self.CheckBoxChange, width=55, left=c.left + c.width + 5, top=12, align=uiconst.TOPLEFT)
-        self.sr.fltSecNull = c = uicls.Checkbox(text=mls.UI_GENERIC_ZERO, configName='contracts_search_secnull', checked=settings.user.ui.Get('contracts_search_secnull', 1), parent=securityCont, callback=self.CheckBoxChange, width=55, left=c.left + c.width + 5, top=12, align=uiconst.TOPLEFT)
+        c = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Contracts/ContractsSearch/SecurityFilters'), parent=securityCont, left=5, top=0, state=uiconst.UI_DISABLED, align=uiconst.TOPLEFT)
+        self.sr.fltSecHigh = c = uicls.Checkbox(text=localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/HighQuality'), configName='contracts_search_sechigh', checked=settings.user.ui.Get('contracts_search_sechigh', 1), parent=securityCont, callback=self.CheckBoxChange, width=55, left=const.defaultPadding, top=12, align=uiconst.TOPLEFT)
+        self.sr.fltSecLow = c = uicls.Checkbox(text=localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/LowQuality'), configName='contracts_search_seclow', checked=settings.user.ui.Get('contracts_search_seclow', 1), parent=securityCont, callback=self.CheckBoxChange, width=55, left=c.left + c.width + 5, top=12, align=uiconst.TOPLEFT)
+        self.sr.fltSecNull = c = uicls.Checkbox(text=localization.GetByLabel('UI/Common/Zero'), configName='contracts_search_secnull', checked=settings.user.ui.Get('contracts_search_secnull', 1), parent=securityCont, callback=self.CheckBoxChange, width=55, left=c.left + c.width + 5, top=12, align=uiconst.TOPLEFT)
         issuerCont = uicls.Container(name='issuerCont', parent=advancedCont, pos=(0, 6, 0, 20), align=uiconst.TOTOP)
         w = 22 + 2 * const.defaultPadding
         self.sr.fltIssuer = c = uicls.SinglelineEdit(name='issuer', parent=issuerCont, setvalue=settings.user.ui.Get('contracts_search_issuer', ''), align=uiconst.TOTOP, padding=(0,
          0,
          w,
-         0), hinttext=mls.UI_CONTRACTS_ISSUER, OnReturn=self.OnIssuerReturn, OnChange=self.GetIssuerClearIcon)
-        self.sr.fltIssuerClear = uicls.IconButton(icon='ui_73_16_210', parent=c, pos=(6, 0, 16, 16), align=uiconst.CENTERRIGHT, state=uiconst.UI_HIDDEN, idx=0, hint=mls.UI_CMD_CLEAR, func=self.ClearEditField, args=(c,))
+         0), hinttext=localization.GetByLabel('UI/Contracts/ContractsSearch/columnIssuer'), OnReturn=self.OnIssuerReturn, OnChange=self.GetIssuerClearIcon)
+        self.sr.fltIssuerClear = uicls.IconButton(icon='ui_73_16_210', parent=c, pos=(6, 0, 16, 16), align=uiconst.CENTERRIGHT, state=uiconst.UI_HIDDEN, idx=0, hint=localization.GetByLabel('UI/Calendar/Hints/Clear'), func=self.ClearEditField, args=(c,))
         self.GetIssuerClearIcon(text=c.GetValue())
         self.sr.fltIssuer.OnDropData = self.OnDropIssuer
         buttonbox = uicls.Container(name='buttonbox', align=uiconst.TOPRIGHT, parent=issuerCont, pos=(0, 1, 20, 20))
@@ -346,23 +357,23 @@ class ContractSearchWindow(uicls.Container):
         uicls.Frame(parent=self.sr.filterCont, color=(0.5, 0.5, 0.5, 0.2))
         leftCont = uicls.Container(name='leftCont', parent=self.sr.filterCont, pos=(14, 0, 220, 0), align=uiconst.TOLEFT)
         rightCont = uicls.Container(name='rightCont', parent=self.sr.filterCont, pos=(0, 0, 0, 0), align=uiconst.TOALL)
-        self.sr.fltClientExcludeUnreachable = c = uicls.Checkbox(text=mls.UI_CONTRACTS_EXCLUDEUNREACHABLE, configName='contracts_search_client_excludeunreachable', checked=settings.user.ui.Get('contracts_search_client_excludeunreachable', 0), parent=leftCont, callback=self.FilterCheckBoxChange, pos=(0, 0, 160, 20), align=uiconst.TOTOP)
-        self.sr.fltClientExcludeIgnore = c = uicls.Checkbox(text=mls.UI_CONTRACTS_EXCLUDEIGNORED, configName='contracts_search_client_excludeignore', checked=settings.user.ui.Get('contracts_search_client_excludeignore', 1), parent=leftCont, callback=self.FilterCheckBoxChange, pos=(0, 0, 160, 20), align=uiconst.TOTOP)
-        self.sr.fltClientOnlyCurrentSecurity = c = uicls.Checkbox(text=mls.UI_CONTRACTS_ONLYCURRENTSECURITY, configName='contracts_search_client_currentsecurity', checked=settings.user.ui.Get('contracts_search_client_currentsecurity', 0), parent=leftCont, callback=self.FilterCheckBoxChange, pos=(0, 0, 160, 20), align=uiconst.TOTOP)
+        self.sr.fltClientExcludeUnreachable = c = uicls.Checkbox(text=localization.GetByLabel('UI/Contracts/ContractsSearch/ExcludeUnreacable'), configName='contracts_search_client_excludeunreachable', checked=settings.user.ui.Get('contracts_search_client_excludeunreachable', 0), parent=leftCont, callback=self.FilterCheckBoxChange, pos=(0, 0, 160, 20), align=uiconst.TOTOP)
+        self.sr.fltClientExcludeIgnore = c = uicls.Checkbox(text=localization.GetByLabel('UI/Contracts/ContractsSearch/ExcludeIgnored'), configName='contracts_search_client_excludeignore', checked=settings.user.ui.Get('contracts_search_client_excludeignore', 1), parent=leftCont, callback=self.FilterCheckBoxChange, pos=(0, 0, 160, 20), align=uiconst.TOTOP)
+        self.sr.fltClientOnlyCurrentSecurity = c = uicls.Checkbox(text=localization.GetByLabel('UI/Contracts/ContractsSearch/OnlyCurrentSecurity'), configName='contracts_search_client_currentsecurity', checked=settings.user.ui.Get('contracts_search_client_currentsecurity', 0), parent=leftCont, callback=self.FilterCheckBoxChange, pos=(0, 0, 160, 20), align=uiconst.TOTOP)
         jumpSettings = settings.user.ui.Get('contracts_search_client_maxjumps', 0)
-        self.sr.fltClientMaxJumps = c = uicls.Checkbox(text=mls.UI_CONTRACTS_MAXIMUMJUMPS, configName='maxjumps', checked=jumpSettings, parent=rightCont, callback=self.FilterCheckBoxChange, pos=(0, 6, 160, 20), align=uiconst.TOPLEFT)
+        self.sr.fltClientMaxJumps = c = uicls.Checkbox(text=localization.GetByLabel('UI/Contracts/ContractsSearch/labelMaximumJumps'), configName='maxjumps', checked=jumpSettings, parent=rightCont, callback=self.FilterCheckBoxChange, pos=(0, 6, 160, 20), align=uiconst.TOPLEFT)
         numJumps = settings.user.ui.Get('contracts_search_client_maxjumps_num', 10)
         self.sr.maxjumpsInput = c = uicls.SinglelineEdit(name='maxjumpsInput', parent=rightCont, align=uiconst.TOPLEFT, pos=(self.sr.fltClientMaxJumps.width + 20,
          5,
          40,
-         10), label='', setvalue=str(numJumps), hinttext=mls.UI_CONTRACTS_MAX, ints=(0, MAXJUMPROUTENUM), OnReturn=self.OnJumpInputReturn, OnFocusLost=self.OnJumpFocusLost)
+         10), label='', setvalue=str(numJumps), hinttext=localization.GetByLabel('UI/Contracts/ContractsSearch/hintMax'), ints=(0, MAXJUMPROUTENUM), OnReturn=self.OnJumpInputReturn, OnFocusLost=self.OnJumpFocusLost)
         if not jumpSettings:
             c.Disable()
         cLabel = self.sr.fltClientMaxJumps.sr.label
         inputLeft = cLabel.textwidth + cLabel.left
         if contractType == const.conTypeCourier:
             routeSettings = settings.user.ui.Get('contracts_search_client_maxroute', 0)
-            self.sr.fltClientMaxRoute = c = uicls.Checkbox(text=mls.UI_CONTRACTS_MAXROUTE, configName='maxroute', checked=routeSettings, parent=rightCont, callback=self.FilterCheckBoxChange, pos=(0, 32, 160, 30), align=uiconst.TOPLEFT)
+            self.sr.fltClientMaxRoute = c = uicls.Checkbox(text=localization.GetByLabel('UI/Contracts/ContractsSearch/labelMaxRoute'), configName='maxroute', checked=routeSettings, parent=rightCont, callback=self.FilterCheckBoxChange, pos=(0, 32, 160, 30), align=uiconst.TOPLEFT)
             cLabel = self.sr.fltClientMaxRoute.sr.label
             inputLeft = max(inputLeft, cLabel.textwidth + cLabel.left)
             self.sr.fltClientMaxRoute.width = inputLeft
@@ -370,7 +381,7 @@ class ContractSearchWindow(uicls.Container):
             self.sr.maxrouteInput = c = uicls.SinglelineEdit(name='maxrouteInput', parent=rightCont, align=uiconst.TOPLEFT, pos=(inputLeft + 30,
              31,
              40,
-             10), label='', setvalue=numRoute, hinttext=mls.UI_CONTRACTS_MAX, ints=(0, MAXJUMPROUTENUM), OnReturn=self.OnRouteInputReturn, OnFocusLost=self.OnRouteFocusLost)
+             10), label='', setvalue=numRoute, hinttext=localization.GetByLabel('UI/Contracts/ContractsSearch/hintMax'), ints=(0, MAXJUMPROUTENUM), OnReturn=self.OnRouteInputReturn, OnFocusLost=self.OnRouteFocusLost)
             if not routeSettings:
                 c.Disable()
         self.sr.fltClientMaxJumps.width = inputLeft
@@ -381,7 +392,7 @@ class ContractSearchWindow(uicls.Container):
         self.sr.pageFilterIcon.state = uiconst.UI_HIDDEN
         buttonbox = uicls.Container(name='buttonbox', align=uiconst.TOBOTTOM, parent=leftSide, pos=(0, 0, 0, 40), idx=0)
         self.sr.SearchButton = btn = uix.GetBigButton(10, buttonbox, width=140, height=32)
-        btn.SetInCaption(mls.UI_CONTRACTS_SEARCH)
+        btn.SetInCaption(localization.GetByLabel('UI/Contracts/ContractsSearch/buttonSearch'))
         btn.SetAlign(uiconst.CENTER)
         btn.OnClick = self.DoSearch
         self.inited = True
@@ -414,11 +425,7 @@ class ContractSearchWindow(uicls.Container):
                 self.PickLocation()
         elif wnd.name == 'sort':
             val = wnd.GetValue()
-            sortBy = {cc.SORT_ID: mls.UI_CONTRACTS_CREATED,
-             cc.SORT_EXPIRED: mls.UI_CONTRACTS_TIMELEFT,
-             cc.SORT_PRICE: mls.UI_CONTRACTS_PRICE,
-             cc.SORT_REWARD: mls.UI_CONTRACTS_REWARD,
-             cc.SORT_COLLATERAL: mls.UI_CONTRACTS_COLLATERAL}.get(val[0], mls.UI_CONTRACTS_CREATED)
+            sortBy = localization.GetByLabel(CONTRACT_SEARCH_MAPPINGS.get(val[0], 'UI/Contracts/ContractsSearch/columnCreated'))
             pr = settings.user.ui.Get('scrollsortby_%s' % uiconst.SCROLLVERSION, {})
             pr[self.sr.contractlist.sr.id] = (sortBy, not not val[1])
             if self.currPage in self.pageData:
@@ -427,8 +434,8 @@ class ContractSearchWindow(uicls.Container):
 
 
     def PickLocation(self):
-        desc = mls.UI_CONTRACTS_ENTERLOCATIONNAME
-        ret = uix.NamePopup(mls.UI_CONTRACTS_ENTERNAME_HEADER, desc, '', maxLength=20)
+        desc = localization.GetByLabel('UI/Contracts/ContractsSearch/labelEnterLocationName')
+        ret = uix.NamePopup(localization.GetByLabel('UI/Contracts/ContractsSearch/labelEnterName'), desc, '', maxLength=20)
         if ret:
             name = ret['name'].lower()
             locationID = self.SearchLocation(name)
@@ -468,7 +475,7 @@ class ContractSearchWindow(uicls.Container):
     def GetClientFilterTextAndIcon(self, *args):
         contractType = settings.user.ui.Get('contracts_search_type', const.conTypeItemExchange)
         excluded = ''
-        for (each, text, default,) in [('excludeunreachable', mls.UI_CONTRACTS_CLIENTFILTER_EXCLUDEUNREACHABLE, 1), ('excludeignore', mls.UI_CONTRACTS_CLIENTFILTER_EXCLUDEIGNORE, 1), ('currentsecurity', mls.UI_CONTRACTS_CLIENTFILTER_ONLYCURRENTSEC, 0)]:
+        for (each, text, default,) in [('excludeunreachable', localization.GetByLabel('UI/Contracts/ContractsSearch/ExcludeUnreacable'), 1), ('excludeignore', localization.GetByLabel('UI/Contracts/ContractsSearch/ExcludeIgnored'), 1), ('currentsecurity', localization.GetByLabel('UI/Contracts/ContractsSearch/OnlyCurrentSecurity'), 0)]:
             isChecked = settings.user.ui.Get('contracts_search_client_%s' % each, default)
             if isChecked is None:
                 continue
@@ -478,18 +485,18 @@ class ContractSearchWindow(uicls.Container):
         isChecked = settings.user.ui.Get('contracts_search_client_maxjumps', None)
         if isChecked:
             maxJumps = settings.user.ui.Get('contracts_search_client_maxjumps_num', '-')
-            excluded += '<br>%s (%s)' % (mls.UI_CONTRACTS_CLIENTFILTER_MAXJUMPS, maxJumps)
+            excluded += '<br>%s' % localization.GetByLabel('UI/Contracts/ContractsSearch/labelMaximumJumpsDisttance', maxJumps=maxJumps)
         if contractType == const.conTypeCourier:
             isChecked = settings.user.ui.Get('contracts_search_client_maxroute', None)
             if isChecked:
                 maxRoute = settings.user.ui.Get('contracts_search_client_maxroute_num', '-')
-                excluded += '<br>%s (%s)' % (mls.UI_CONTRACTS_CLIENTFILTER_MAXROUTE, maxRoute)
-        hintText = '<b>%s</b>' % mls.UI_CONTRACTS_PAGEFILTER
+                excluded += '<br>%s' % localization.GetByLabel('UI/Contracts/ContractsSearch/labelMaxRouteDistance', maxRoute=maxRoute)
+        hintText = '<b>%s</b>' % localization.GetByLabel('UI/Contracts/ContractsSearch/hintPageFilter')
         if excluded:
             hintText += excluded
             icon = 'ui_38_16_205'
         else:
-            hintText += '<br>%s' % mls.UI_STATION_SHOWALL
+            hintText += '<br>%s' % localization.GetByLabel('UI/Common/Show all')
             icon = 'ui_38_16_204'
         return (hintText, icon, bool(excluded))
 
@@ -523,7 +530,7 @@ class ContractSearchWindow(uicls.Container):
             else:
                 f = uicls.Frame(parent=pageCont, frameConst=uiconst.FRAME_BORDER1_CORNER0)
                 bold = 0
-            uicls.Label(text=pageName, parent=pageCont, pos=(1, 1, 0, 0), align=uiconst.CENTER, fontsize=13, bold=bold)
+            uicls.EveLabelMedium(text=pageName, parent=pageCont, pos=(1, 1, 0, 0), align=uiconst.CENTER, bold=bold)
             left = 5
 
         backState = uiconst.UI_NORMAL
@@ -546,7 +553,7 @@ class ContractSearchWindow(uicls.Container):
         if not belowCollapsed:
             expanderCont.SetAlign(uiconst.TOBOTTOM)
         expandText = [offText, onText][nowExpanded]
-        expanderCont.label = uicls.Label(text=expandText, parent=expanderCont, height=12, fontsize=9, letterspace=2, uppercase=1, state=uiconst.UI_DISABLED, align=uiconst.TOTOP, padTop=4)
+        expanderCont.label = uicls.EveLabelSmall(text=expandText, parent=expanderCont, state=uiconst.UI_DISABLED, align=uiconst.TOTOP, padTop=4, bold=True)
         expanderCont.OnClick = (self.ToggleAdvanced, expanderCont)
         expanderCont.expander = expander = uicls.IconButton(icon='', parent=expanderCont, pos=(4, 4, 11, 11), align=uiconst.TOPRIGHT, ignoreSize=True, func=self.ToggleAdvanced, args=(expanderCont,))
         icon = expander.sr.icon
@@ -671,7 +678,7 @@ class ContractSearchWindow(uicls.Container):
         node = nodes[0]
         guid = node.Get('__guid__', None)
         typeID = None
-        if guid in ('xtriui.InvItem', 'listentry.InvItem', 'listentry.InvFittingItem'):
+        if guid in ('xtriui.InvItem', 'listentry.InvItem'):
             typeID = getattr(node.item, 'typeID', None)
         elif guid in ('listentry.GenericMarketItem', 'listentry.QuickbarItem'):
             typeID = getattr(node, 'typeID', None)
@@ -683,12 +690,12 @@ class ContractSearchWindow(uicls.Container):
 
 
     def PopulateLocationCombo(self):
-        self.locationOptions = [(mls.UI_CONTRACTS_CURRENTSTATION, 0),
-         (mls.UI_CONTRACTS_CURRENTSOLARSYSTEM, 1),
-         (mls.UI_CONTRACTS_CURRENTCONSTELLATION, 3),
-         (mls.UI_CONTRACTS_CURRENTREGION, 2),
-         (mls.UI_CONTRACTS_ALLREGIONS, 7),
-         (mls.UI_CONTRACTS_PICKLOCATION, 10)]
+        self.locationOptions = [(localization.GetByLabel('UI/Generic/CurrentStation'), 0),
+         (localization.GetByLabel('UI/Generic/CurrentSystem'), 1),
+         (localization.GetByLabel('UI/Generic/CurrentConstellation'), 3),
+         (localization.GetByLabel('UI/Corporations/Assets/CurrentRegion'), 2),
+         (localization.GetByLabel('UI/Corporations/Assets/AllRegions'), 7),
+         (localization.GetByLabel('UI/Contracts/ContractsSearch/PickLocation'), 10)]
         settingsLocationID = settings.user.ui.Get('contracts_search_location', 2)
         customLocations = settings.user.ui.Get('contracts_search_customlocations', [])
         customLocations.reverse()
@@ -710,9 +717,9 @@ class ContractSearchWindow(uicls.Container):
     def PopulateGroupCombo(self, isSel = False):
         v = self.sr.fltCategories.GetValue()
         categoryID = v[0] if v and v != -1 else None
-        groups = [(mls.UI_CONTRACTS_SELECTCATEGORY, None)]
+        groups = [(localization.GetByLabel('UI/Contracts/ContractsSearch/SelectCategory'), None)]
         if categoryID:
-            groups = [(mls.UI_CONTRACTS_ALL, None)]
+            groups = [(localization.GetByLabel('UI/Contracts/ContractsSearch/comboAll'), None)]
             if categoryID in cfg.groupsByCategories:
                 groupsByCategory = cfg.groupsByCategories[categoryID].Copy()
                 groupsByCategory.Sort('groupName')
@@ -748,12 +755,12 @@ class ContractSearchWindow(uicls.Container):
 
 
     def ShowLoad(self):
-        sm.GetService('window').GetWindow('contracts').ShowLoad()
+        form.ContractsWindow.GetIfOpen().ShowLoad()
 
 
 
     def HideLoad(self):
-        sm.GetService('window').GetWindow('contracts').HideLoad()
+        form.ContractsWindow.GetIfOpen().HideLoad()
 
 
 
@@ -762,7 +769,7 @@ class ContractSearchWindow(uicls.Container):
             raise UserError('ConPleaseWait')
         self.pageData = {}
         self.sr.SearchButton.state = uiconst.UI_DISABLED
-        self.sr.SearchButton.SetInCaption('<color=gray>' + mls.UI_CONTRACTS_SEARCH + '</color>')
+        self.sr.SearchButton.SetInCaption('<color=gray>' + localization.GetByLabel('UI/Contracts/ContractsSearch/buttonSearch') + '</color>')
         uthread.new(self.EnableSearchButton)
         self.ShowLoad()
         try:
@@ -776,10 +783,10 @@ class ContractSearchWindow(uicls.Container):
 
 
     def EnableSearchButton(self):
-        blue.pyos.synchro.Sleep(2000)
+        blue.pyos.synchro.SleepWallclock(2000)
         try:
             self.sr.SearchButton.state = uiconst.UI_NORMAL
-            self.sr.SearchButton.SetInCaption(mls.UI_CONTRACTS_SEARCH)
+            self.sr.SearchButton.SetInCaption(localization.GetByLabel('UI/Contracts/ContractsSearch/buttonSearch'))
         except:
             pass
 
@@ -825,7 +832,7 @@ class ContractSearchWindow(uicls.Container):
 
     def DoPageThread(self):
         self.IndicateLoading(loading=1)
-        blue.pyos.synchro.Sleep(500)
+        blue.pyos.synchro.SleepWallclock(500)
         self.SearchContracts(page=self.currPage)
 
 
@@ -917,18 +924,18 @@ class ContractSearchWindow(uicls.Container):
                 groupID = self.GetLocationGroupID(l.locationID)
                 if not groupID:
                     continue
-                groupName = {const.groupSolarSystem: mls.UI_GENERIC_SOLARSYSTEM,
-                 const.groupConstellation: mls.UI_GENERIC_CONSTELLATION,
-                 const.groupRegion: mls.UI_GENERIC_REGION}.get(groupID, '')
+                groupName = {const.groupSolarSystem: localization.GetByLabel('UI/Common/LocationTypes/SolarSystem'),
+                 const.groupConstellation: localization.GetByLabel('UI/Common/LocationTypes/Constellation'),
+                 const.groupRegion: localization.GetByLabel('UI/Common/LocationTypes/Region')}.get(groupID, '')
                 if l.name.lower().startswith(name):
-                    foundList.append(('%s (%s)' % (l.name, groupName), l.locationID, const.typeSolarSystem))
+                    foundList.append((localization.GetByLabel('UI/Contracts/ContractsSearch/FormatSearchLocation', locationID=l.locationID, groupName=groupName), l.locationID, const.typeSolarSystem))
 
             if not foundList:
                 raise UserError('NoLocationFound', {'name': name})
             if len(foundList) == 1:
                 chosen = foundList[0]
             else:
-                chosen = uix.ListWnd(foundList, '', mls.UI_GENERIC_SELECTLOCATION, mls.UI_GENERIC_LOCATIONSEARCHHINT % {'num': len(foundList)}, 1, minChoices=1, isModal=1, windowName='locationsearch', unstackable=1)
+                chosen = uix.ListWnd(foundList, '', localization.GetByLabel('UI/Contracts/ContractsSearch/SelectLocation'), localization.GetByLabel('UI/Contracts/ContractsSearch/LocationSearchHint', foundList=len(foundList)), 1, minChoices=1, isModal=1, windowName='locationsearch', unstackable=1)
             if chosen:
                 return chosen[1]
             return None
@@ -1348,19 +1355,19 @@ class ContractSearchWindow(uicls.Container):
              'startSecurityClass': startSecurityClass,
              'endSecurityClass': endSecurityClass,
              'dateIssued': c.dateIssued}
-            d['sort_%s' % mls.UI_CONTRACTS_CURRENTBID] = (c.price if not bids else bids[0].amount, c.contractID)
-            d['sort_%s' % mls.UI_CONTRACTS_COLLATERAL] = (c.collateral, c.contractID)
-            d['sort_%s' % mls.UI_CONTRACTS_LOCATION] = (d['startSolarSystemName'], c.contractID)
-            d['sort_%s' % mls.UI_CONTRACTS_PRICE] = (int(c.price) or -int(c.reward), c.contractID)
-            d['sort_%s' % mls.UI_CONTRACTS_REWARD] = (c.reward, c.contractID)
-            d['sort_%s' % mls.UI_CONTRACTS_VOLUME] = (c.volume, c.contractID)
-            d['sort_%s' % mls.UI_CONTRACTS_CONTRACT] = (d['title'], c.contractID)
-            d['sort_%s' % mls.UI_CONTRACTS_TIMELEFT] = (c.dateExpired, c.contractID)
-            d['sort_%s' % mls.UI_CONTRACTS_JUMPS] = (d['numJumps'], c.contractID)
-            d['sort_%s' % mls.UI_CONTRACTS_PICKUP] = (d['startSolarSystemName'], c.contractID)
-            d['sort_%s' % mls.UI_CONTRACTS_DROPOFF] = (d['endSolarSystemName'], c.contractID)
-            d['sort_%s' % mls.UI_CONTRACTS_CREATED] = c.dateIssued
-            d['sort_%s' % mls.UI_CONTRACTS_ISSUER] = issuer.lower()
+            d['sort_%s' % localization.GetByLabel('UI/Contracts/ContractsSearch/columnCurrentBid')] = (c.price if not bids else bids[0].amount, c.contractID)
+            d['sort_%s' % localization.GetByLabel('UI/Contracts/ContractsSearch/columnCollateral')] = (c.collateral, c.contractID)
+            d['sort_%s' % localization.GetByLabel('UI/Contracts/ContractsSearch/columnLocation')] = (d['startSolarSystemName'], c.contractID)
+            d['sort_%s' % localization.GetByLabel('UI/Contracts/ContractsSearch/columnPrice')] = (int(c.price) or -int(c.reward), c.contractID)
+            d['sort_%s' % localization.GetByLabel('UI/Contracts/ContractsSearch/columnReward')] = (c.reward, c.contractID)
+            d['sort_%s' % localization.GetByLabel('UI/Contracts/ContractsSearch/columnVolume')] = (c.volume, c.contractID)
+            d['sort_%s' % localization.GetByLabel('UI/Contracts/ContractsSearch/columnContract')] = (d['title'], c.contractID)
+            d['sort_%s' % localization.GetByLabel('UI/Contracts/ContractsSearch/columnTimeLeft')] = (c.dateExpired, c.contractID)
+            d['sort_%s' % localization.GetByLabel('UI/Contracts/ContractsSearch/columnJumps')] = (d['numJumps'], c.contractID)
+            d['sort_%s' % localization.GetByLabel('UI/Contracts/ContractsSearch/columPickup')] = (d['startSolarSystemName'], c.contractID)
+            d['sort_%s' % localization.GetByLabel('UI/Contracts/ContractsSearch/columnDropOff')] = (d['endSolarSystemName'], c.contractID)
+            d['sort_%s' % localization.GetByLabel('UI/Contracts/ContractsSearch/columnCreated')] = c.dateIssued
+            d['sort_%s' % localization.GetByLabel('UI/Contracts/ContractsSearch/columnIssuer')] = issuer.lower()
             data.append(d)
             i += 1
 
@@ -1391,7 +1398,7 @@ class ContractSearchWindow(uicls.Container):
             ignoreList = set(settings.user.ui.Get('contracts_ignorelist', []))
             for d in data:
                 contract = d['contract']
-                d['sort_%s' % mls.UI_CONTRACTS_ROUTE] = (d['routeLength'], d['contract'].contractID)
+                d['sort_%s' % localization.GetByLabel('UI/Contracts/ContractsSearch/columnRoute')] = (d['routeLength'], d['contract'].contractID)
                 if settings.user.ui.Get('contracts_search_client_maxjumps', False):
                     maxNumJumps = settings.user.ui.Get('contracts_search_client_maxjumps_num', 0)
                     if maxNumJumps and d['numJumps'] > maxNumJumps:
@@ -1420,44 +1427,44 @@ class ContractSearchWindow(uicls.Container):
                 scrolllist.append(listentry.Get(className, d))
 
             if contractType == const.conTypeItemExchange:
-                columns = [mls.UI_CONTRACTS_CONTRACT,
-                 mls.UI_CONTRACTS_LOCATION,
-                 mls.UI_CONTRACTS_PRICE,
-                 mls.UI_CONTRACTS_JUMPS,
-                 mls.UI_CONTRACTS_TIMELEFT,
-                 mls.UI_CONTRACTS_ISSUER,
-                 mls.UI_CONTRACTS_CREATED]
+                columns = [localization.GetByLabel('UI/Contracts/ContractsSearch/columnContract'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnLocation'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnPrice'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnJumps'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnTimeLeft'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnIssuer'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnCreated')]
             elif contractType == const.conTypeAuction:
-                columns = [mls.UI_CONTRACTS_CONTRACT,
-                 mls.UI_CONTRACTS_LOCATION,
-                 mls.UI_CONTRACTS_CURRENTBID,
-                 mls.UI_CONTRACTS_BUYOUT,
-                 mls.UI_CONTRACTS_BIDS,
-                 mls.UI_CONTRACTS_JUMPS,
-                 mls.UI_CONTRACTS_TIMELEFT,
-                 mls.UI_CONTRACTS_ISSUER,
-                 mls.UI_CONTRACTS_CREATED]
+                columns = [localization.GetByLabel('UI/Contracts/ContractsSearch/columnContract'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnLocation'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnCurrentBid'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnBuyOut'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnBids'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnJumps'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnTimeLeft'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnIssuer'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnCreated')]
             else:
-                columns = [mls.UI_CONTRACTS_PICKUP,
-                 mls.UI_CONTRACTS_DROPOFF,
-                 mls.UI_CONTRACTS_VOLUME,
-                 mls.UI_CONTRACTS_REWARD,
-                 mls.UI_CONTRACTS_COLLATERAL,
-                 mls.UI_CONTRACTS_ROUTE,
-                 mls.UI_CONTRACTS_JUMPS,
-                 mls.UI_CONTRACTS_TIMELEFT,
-                 mls.UI_CONTRACTS_ISSUER,
-                 mls.UI_CONTRACTS_CREATED]
+                columns = [localization.GetByLabel('UI/Contracts/ContractsSearch/columPickup'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnDropOff'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnVolume'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnReward'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnCollateral'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnRoute'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnJumps'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnTimeLeft'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnIssuer'),
+                 localization.GetByLabel('UI/Contracts/ContractsSearch/columnCreated')]
             self.sr.contractlist.sr.id = 'contractlist'
-            self.sr.contractlist.sr.minColumnWidth = {mls.UI_CONTRACTS_CONTRACT: 100,
-             mls.UI_CONTRACTS_BUYOUT: 200}
+            self.sr.contractlist.sr.minColumnWidth = {localization.GetByLabel('UI/Contracts/ContractsSearch/columnContract'): 100,
+             localization.GetByLabel('UI/Contracts/ContractsSearch/columnBuyOut'): 200}
             reset = False
-            self.sr.contractlist.LoadContent(contentList=scrolllist, headers=columns, noContentHint=mls.UI_CONTRACTS_CONTRACTLISTHINT_NOCONTRACTSFOUND, ignoreSort=reset, scrolltotop=True)
+            self.sr.contractlist.LoadContent(contentList=scrolllist, headers=columns, noContentHint=localization.GetByLabel('UI/Contracts/ContractsSearch/labelNoContractsFound'), ignoreSort=reset, scrolltotop=True)
             if reset:
                 if self.sr.contractlist and self.sr.contractlist.sr.columnHilite:
                     self.sr.contractlist.HiliteSorted(None, None)
                     self.sr.contractlist.sr.columnHilite.state = uiconst.UI_HIDDEN
-            txt = mls.UI_CONTRACTS_NUMCONTRACTSFOUND % {'num': self.numFound}
+            txt = localization.GetByLabel('UI/Contracts/ContractsSearch/labelNumberContractsFound', num=self.numFound)
             self.sr.foundLabel.SetText(txt)
             self.sr.expanderTextCont.width = self.sr.foundLabel.textwidth + 50
             self.UpdatePaging(self.currPage + 1, self.numPages)

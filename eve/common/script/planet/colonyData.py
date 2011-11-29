@@ -330,7 +330,7 @@ class ColonyData:
             if maxValue is None or cycleTime is None or numCycles is None:
                 sh = self.eventHandler.GetResourceType(typeID)
                 (maxValue, cycleTime, numCycles, overlapModifiers,) = self.eventHandler.CreateProgram(sh, pinID, typeID, headRadius=headRadius)
-            startTime = blue.os.GetTime()
+            startTime = blue.os.GetWallclockTime()
             endTime = startTime + cycleTime * numCycles
             pin.InstallProgram(typeID, cycleTime, endTime, maxValue, headRadius)
         else:

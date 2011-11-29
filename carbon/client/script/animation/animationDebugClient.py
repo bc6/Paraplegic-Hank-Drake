@@ -14,31 +14,32 @@ import log
 import time
 import math
 
-class AnimationDebugWindow(uicls.WindowCore):
+class AnimationDebugWindow(uicls.Window):
     __guid__ = 'uicls.AnimationDebugWindow'
     default_windowID = 'AnimationDebugWindow'
-    ENTRY_FONTSIZE = 11
-    HEADER_FONTSIZE = 12
-    ENTRY_FONT = 'res:/UI/Fonts/arial.ttf'
-    HEADER_FONT = 'res:/UI/Fonts/arialbd.ttf'
-    ENTRY_LETTERSPACE = 1
+    default_width = 200
+    default_height = 250
+    default_topParentHeight = 0
 
     def ApplyAttributes(self, attributes):
         super(uicls.AnimationDebugWindow, self).ApplyAttributes(attributes)
-        self.SetMinSize([100, 175])
-        self.SetSize(200, 175)
         self.SetCaption('Animation Debug Draw')
-        self.sr.content.SetPadding(5, 5, 5, 5)
+        parent = self.GetMainArea()
+        parent.SetAlign(uiconst.TOALL)
+        parent.SetPadding(5, 5, 5, 5)
         self.entityClient = sm.GetService('entityClient')
         self.animationDebugClient = sm.GetService('animationDebugClient')
-        uicls.Checkbox(parent=self.sr.content, text='Draw position trace', checked=self.animationDebugClient.IsPositionTrace(), callback=self.OnPositionTraceCheckbox)
-        uicls.Checkbox(parent=self.sr.content, text='Draw velocity trace', checked=self.animationDebugClient.IsVelocityTrace(), callback=self.OnVelocityTraceCheckbox)
-        uicls.Checkbox(parent=self.sr.content, text='Draw rotational trace', checked=self.animationDebugClient.IsRotationalTrace(), callback=self.OnRotationalTraceCheckbox)
-        uicls.Checkbox(parent=self.sr.content, text='Draw Char Controller', checked=self.animationDebugClient.IsPlayerAvatarDebugDraw(), callback=self.OnPlayerAvatarDebugDraw)
-        uicls.Checkbox(parent=self.sr.content, text='Draw Morpheme Skeleton', checked=self.animationDebugClient.IsAnimationSkeletonEnabled(), callback=self.SetAnimationSkeletonDraw)
-        uicls.Checkbox(parent=self.sr.content, text='Draw Mesh Skeleton', checked=self.animationDebugClient.IsMeshSkeletonEnabled(), callback=self.SetMeshSkeletonDraw)
-        uicls.Checkbox(parent=self.sr.content, text='Draw Net Controller', checked=self.animationDebugClient.IsNetDebugDraw(), callback=self.OnNetDebugDraw)
-        uicls.ButtonCore(parent=self.sr.content, align=uiconst.BOTTOMLEFT, label='Reload Animation Network', func=self.OnReloadAnimationNetwork)
+        uicls.Checkbox(parent=parent, text='Draw position trace', checked=self.animationDebugClient.IsPositionTrace(), callback=self.OnPositionTraceCheckbox, align=uiconst.TOTOP)
+        uicls.Checkbox(parent=parent, text='Draw velocity trace', checked=self.animationDebugClient.IsVelocityTrace(), callback=self.OnVelocityTraceCheckbox)
+        uicls.Checkbox(parent=parent, text='Draw rotational trace', checked=self.animationDebugClient.IsRotationalTrace(), callback=self.OnRotationalTraceCheckbox)
+        uicls.Checkbox(parent=parent, text='Draw Char Controller', checked=self.animationDebugClient.IsPlayerAvatarDebugDraw(), callback=self.OnPlayerAvatarDebugDraw)
+        uicls.Checkbox(parent=parent, text='Draw Morpheme Skeleton', checked=self.animationDebugClient.IsAnimationSkeletonEnabled(), callback=self.SetAnimationSkeletonDraw)
+        uicls.Checkbox(parent=parent, text='Draw Mesh Skeleton', checked=self.animationDebugClient.IsMeshSkeletonEnabled(), callback=self.SetMeshSkeletonDraw)
+        uicls.Checkbox(parent=parent, text='Draw Net Controller', checked=self.animationDebugClient.IsNetDebugDraw(), callback=self.OnNetDebugDraw)
+        uicls.Checkbox(parent=parent, text='Draw Net History', checked=self.animationDebugClient.IsNetDebugDrawHistory(), callback=self.OnNetDebugDrawHistory)
+        uicls.Button(parent=parent, align=uiconst.TOBOTTOM, padding=(0, 5, 0, 0), label='Reload Animation Network', func=self.OnReloadAnimationNetwork)
+        button = uicls.Button(parent=parent, align=uiconst.TOBOTTOM, label='Reload Static States', func=self.OnReloadStaticStates)
+        self.SetMinSize([button.width + 10, 250])
 
 
 
@@ -67,6 +68,11 @@ class AnimationDebugWindow(uicls.WindowCore):
 
 
 
+    def OnNetDebugDrawHistory(self, checkbox):
+        self.animationDebugClient.SetNetDebugDrawHistory(checkbox.GetValue())
+
+
+
     def SetAnimationSkeletonDraw(self, checkbox):
         self.animationDebugClient.SetAnimationSkeleton(checkbox.GetValue())
 
@@ -79,6 +85,11 @@ class AnimationDebugWindow(uicls.WindowCore):
 
     def OnReloadAnimationNetwork(self, button):
         self.animationDebugClient.ReloadAnimationNetwork()
+
+
+
+    def OnReloadStaticStates(self, button):
+        self.animationDebugClient.ReloadStaticStates()
 
 
 
@@ -101,12 +112,12 @@ class AnimationDebugClient(service.Service):
         self.velocityTraceOn = False
         self.rotationalTraceOn = False
         self.netDebugDrawOn = False
+        self.netDebugDrawHistoryOn = False
         self.animationSkeletonOn = False
         self.meshSkeletonOn = False
         self.positionTrace = None
         self.velocityTrace = None
         self.rotationalTrace = None
-        self.netDebugDraw = None
 
 
 
@@ -267,7 +278,7 @@ class AnimationDebugClient(service.Service):
                     self.lastPos = pos
             except:
                 log.LogException()
-            blue.pyos.synchro.Sleep(const.ONE_TICK / const.MSEC)
+            blue.pyos.synchro.SleepWallclock(const.ONE_TICK / const.MSEC)
 
 
 
@@ -327,7 +338,7 @@ class AnimationDebugClient(service.Service):
                     scaleFactor = 1.5 / 4.0
                     offset = 0.25
                     pos = entity.position.position
-                    vel = entity.GetComponent('movement').avatar.vel
+                    vel = entity.GetComponent('movement').physics.velocity
                     speed = geo2.Vec3Length(vel)
                     speedScaled = speed * scaleFactor
                     velPos = geo2.Vec3Add(pos, (0, offset + speedScaled, 0))
@@ -339,7 +350,7 @@ class AnimationDebugClient(service.Service):
                         self.lastVelRulePos = velRulePos
             except:
                 log.LogException()
-            blue.pyos.synchro.Sleep(const.ONE_TICK / const.MSEC)
+            blue.pyos.synchro.SleepWallclock(const.ONE_TICK / const.MSEC)
 
 
 
@@ -430,7 +441,7 @@ class AnimationDebugClient(service.Service):
                         self.lastRotVel = rotVel
             except:
                 log.LogException()
-            blue.pyos.synchro.Sleep(const.ONE_TICK / const.MSEC)
+            blue.pyos.synchro.SleepWallclock(const.ONE_TICK / const.MSEC)
 
 
 
@@ -473,7 +484,7 @@ class AnimationDebugClient(service.Service):
             return False
         if not entity.HasComponent('movement'):
             return False
-        return entity.GetComponent('movement').avatar.renderDebug
+        return entity.GetComponent('movement').characterController.renderDebug
 
 
 
@@ -484,7 +495,7 @@ class AnimationDebugClient(service.Service):
             return 
         if not entity.HasComponent('movement'):
             return 
-        entity.GetComponent('movement').avatar.renderDebug = bool(value)
+        entity.GetComponent('movement').characterController.renderDebug = bool(value)
 
 
 
@@ -504,38 +515,59 @@ class AnimationDebugClient(service.Service):
         entity = self.debugSelectionClient.GetSelectedEntity()
         if entity is None:
             return 
-        self.netDebugDraw = uthread.worker('animationDebugClient.NetDebugDraw', self._DrawNetDebugDraw, self.debugRenderStep)
+        GameWorld.SetNetMoveDebugDraw(entity.entityID, True)
 
 
 
     def TurnOffNetDebugDraw(self):
         try:
-            self.netDebugDraw.kill()
-            self.netDebugDraw = None
+            entity = self.debugSelectionClient.GetSelectedEntity()
+            if entity is None:
+                return 
+            GameWorld.SetNetMoveDebugDraw(entity.entityID, False)
         except:
             pass
 
 
 
-    def _DrawNetDebugDraw(self, dr):
-        while True:
-            try:
-                entity = self.debugSelectionClient.GetSelectedEntity()
-                if entity is not None:
-                    if not entity.HasComponent('movement'):
-                        continue
-                dr.Clear()
-                if entity.GetComponent('movement').avatar.GetActiveMoveMode() and hasattr(entity.GetComponent('movement').avatar.GetActiveMoveMode(), 'DrawMovesToDebugRender'):
-                    entity.GetComponent('movement').avatar.GetActiveMoveMode().DrawMovesToDebugRender(dr)
-            except:
-                log.LogException()
-            blue.pyos.synchro.Sleep(const.ONE_TICK / const.MSEC)
-
-
-
-
     def IsNetDebugDraw(self):
         return self.netDebugDrawOn
+
+
+
+    def SetNetDebugDrawHistory(self, desireOn):
+        if self.netDebugDrawHistoryOn != desireOn:
+            self.netDebugDrawHistoryOn = not self.netDebugDrawHistoryOn
+        if self.netDebugDrawHistoryOn:
+            self.TurnOnNetDebugDrawHistory()
+        else:
+            self.TurnOffNetDebugDrawHistory()
+
+
+
+    def TurnOnNetDebugDrawHistory(self):
+        self.CreateDebugRenderer()
+        self.TurnOffNetDebugDrawHistory()
+        entity = self.debugSelectionClient.GetSelectedEntity()
+        if entity is None:
+            return 
+        GameWorld.SetNetMoveDebugDrawHistory(entity.entityID, True)
+
+
+
+    def TurnOffNetDebugDrawHistory(self):
+        try:
+            entity = self.debugSelectionClient.GetSelectedEntity()
+            if entity is None:
+                return 
+            GameWorld.SetNetMoveDebugDrawHistory(entity.entityID, False)
+        except:
+            pass
+
+
+
+    def IsNetDebugDrawHistory(self):
+        return self.netDebugDrawHistoryOn
 
 
 
@@ -554,15 +586,26 @@ class AnimationDebugClient(service.Service):
 
 
     def ReloadAnimationNetwork(self):
+        animService = sm.GetService('animationClient')
         entity = self.debugSelectionClient.GetSelectedEntity()
+        animService.AnimManager.RemoveEntity(entity.entityID, entity.animation.updater)
         av = entity.paperdoll.doll.avatar
         bundle = entity.animation.updater.network.morphemeBundleRes
         path = entity.animation.updater.network.morphemeBundleRes.path
         bundle.Reload()
-        av.animationUpdater = GameWorld.GWAnimation(None)
-        av.animationUpdater.InitMorpheme(path)
-        entity.animation.controller.animationNetwork = av.animationUpdater.network
-        entity.GetComponent('movement').avatar.animation = av.animationUpdater
+        av.animationUpdater = GameWorld.GWAnimation(path)
+        entity.animation.updater = av.animationUpdater
+        entity.animation.updater.positionComponent = entity.GetComponent('position')
+        entity.animation.controller.animationNetwork = entity.animation.updater.network
+        entity.animation.updater.SetUpdateCallback(component.controller.Update)
+        animService.AnimManager.AddEntity(entity.entityID, entity.animation.updater)
+        animService.RegisterAnimationController(entity.animation.controller)
+
+
+
+    def ReloadStaticStates(self):
+        movementService = sm.GetService('movementClient')
+        movementService.movementStates.LoadStates()
 
 
 

@@ -9,68 +9,11 @@ import nodemanager
 import locks
 import paperDoll
 import geo2
-import const
+import sys
 from math import asin, atan2
 SCENE_TYPE_CHARACTER_CREATION = 0
 SCENE_TYPE_INTERIOR = 1
 SCENE_TYPE_SPACE = 2
-WORMHOLE_SCENES = ['res:/Scene/Askur/askur.red',
- 'res:/dx9/Scene/Wormholes/wormhole_class_01.red',
- 'res:/dx9/Scene/Wormholes/wormhole_class_02.red',
- 'res:/dx9/Scene/Wormholes/wormhole_class_03.red',
- 'res:/dx9/Scene/Wormholes/wormhole_class_04.red',
- 'res:/dx9/Scene/Wormholes/wormhole_class_05.red',
- 'res:/dx9/Scene/Wormholes/wormhole_class_06.red']
-KNOWN_SCENES = ['res:/Scene/Askur/askur.red',
- 'res:/dx9/scene/Universe/a01_cube.red',
- 'res:/dx9/scene/Universe/a02_cube.red',
- 'res:/dx9/scene/Universe/a03_cube.red',
- 'res:/dx9/scene/Universe/a04_cube.red',
- 'res:/dx9/scene/Universe/a05_cube.red',
- 'res:/dx9/scene/Universe/a06_cube.red',
- 'res:/dx9/scene/Universe/a07_cube.red',
- 'res:/dx9/scene/Universe/a08_cube.red',
- 'res:/dx9/scene/Universe/a09_cube.red',
- 'res:/dx9/scene/Universe/a10_cube.red',
- 'res:/dx9/scene/Universe/c01_cube.red',
- 'res:/dx9/scene/Universe/c02_cube.red',
- 'res:/dx9/scene/Universe/c03_cube.red',
- 'res:/dx9/scene/Universe/c04_cube.red',
- 'res:/dx9/scene/Universe/c05_cube.red',
- 'res:/dx9/scene/Universe/c06_cube.red',
- 'res:/dx9/scene/Universe/c07_cube.red',
- 'res:/dx9/scene/Universe/c08_cube.red',
- 'res:/dx9/scene/Universe/c09_cube.red',
- 'res:/dx9/scene/Universe/c10_cube.red',
- 'res:/dx9/scene/Universe/c11_cube.red',
- 'res:/dx9/scene/Universe/c12_cube.red',
- 'res:/dx9/scene/Universe/g01_cube.red',
- 'res:/dx9/scene/Universe/g02_cube.red',
- 'res:/dx9/scene/Universe/g03_cube.red',
- 'res:/dx9/scene/Universe/g04_cube.red',
- 'res:/dx9/scene/Universe/g05_cube.red',
- 'res:/dx9/scene/Universe/g06_cube.red',
- 'res:/dx9/scene/Universe/g07_cube.red',
- 'res:/dx9/scene/Universe/g08_cube.red',
- 'res:/dx9/scene/Universe/g09_cube.red',
- 'res:/dx9/scene/Universe/g10_cube.red',
- 'res:/dx9/scene/Universe/g11_cube.red',
- 'res:/dx9/scene/Universe/j01_cube.red',
- 'res:/dx9/scene/Universe/j02_cube.red',
- 'res:/dx9/scene/Universe/m01_cube.red',
- 'res:/dx9/scene/Universe/m02_cube.red',
- 'res:/dx9/scene/Universe/m03_cube.red',
- 'res:/dx9/scene/Universe/m04_cube.red',
- 'res:/dx9/scene/Universe/m05_cube.red',
- 'res:/dx9/scene/Universe/m06_cube.red',
- 'res:/dx9/scene/Universe/m07_cube.red',
- 'res:/dx9/scene/Universe/m08_cube.red',
- 'res:/dx9/scene/Universe/m09_cube.red',
- 'res:/dx9/scene/Universe/m10_cube.red',
- 'res:/dx9/scene/Universe/m11_cube.red',
- 'res:/dx9/scene/Universe/s01_cube.red',
- 'res:/dx9/scene/Universe/s02_cube.red',
- 'res:/dx9/scene/Universe/s03_cube.red']
 
 class SceneContext():
 
@@ -88,9 +31,10 @@ class SceneManager(service.Service):
     __guid__ = 'svc.sceneManager'
     __exportedcalls__ = {'LoadScene': [],
      'GetScene': [],
-     'GetIncarnaRenderJob': []}
+     'GetIncarnaRenderJob': [],
+     'EnableIncarnaRendering': []}
     __startupdependencies__ = ['settings', 'device']
-    __notifyevents__ = ['OnGraphicSettingsChanged']
+    __notifyevents__ = ['OnGraphicSettingsChanged', 'OnSessionChanged']
 
     def __init__(self):
         service.Service.__init__(self)
@@ -98,6 +42,10 @@ class SceneManager(service.Service):
         self.renderLoopJob = None
         self.secondaryRenderJob = None
         self.secondarySceneContext = None
+        self.loadingClearJob = trinity.CreateRenderJob()
+        self.loadingClearJob.name = 'loadingClear'
+        self.loadingClearJob.Clear((0, 0, 0, 1))
+        self.loadingClearJob.enabled = False
         self.scene1 = None
         self.scene2 = None
         self.activeSceneKey = None
@@ -113,7 +61,10 @@ class SceneManager(service.Service):
         self.uiBackdropScene = None
         self.ui = None
         self.camera = None
+        self.charCreationCamera = None
         self.sceneType = None
+        if '/skiprun' not in blue.pyos.GetArg():
+            self._EnableLoadingClear()
         trinity.device.RegisterResource(self)
         self.interiorRenderJobCreated = False
 
@@ -125,6 +76,27 @@ class SceneManager(service.Service):
         self.fisRenderJob = CreateSceneRenderJobSpace()
         self.incarnaRenderJob = CreateEveSceneRenderJobInterior()
         self.incarnaRenderJob.CreateBasicRenderSteps()
+
+
+
+    def _EnableLoadingClear(self):
+        if not self.loadingClearJob.enabled:
+            self.loadingClearJob.enabled = True
+            trinity.device.scheduledRecurring.insert(0, self.loadingClearJob)
+
+
+
+    def _DisableLoadingClear(self):
+        if self.loadingClearJob.enabled:
+            self.loadingClearJob.enabled = False
+            trinity.device.scheduledRecurring.remove(self.loadingClearJob)
+
+
+
+    def EnableIncarnaRendering(self):
+        self._DisableLoadingClear()
+        if self.secondaryRenderJob is None:
+            self.incarnaRenderJob.Enable()
 
 
 
@@ -176,16 +148,19 @@ class SceneManager(service.Service):
         if self.showUIBackdropScene:
             self.updateUiBackdropScene = rj.Update(self.uiBackdropScene)
             self.updateUiBackdropScene.name = 'Update BackdropScene'
+        self.cameraUpdateStep = rj.RunJob()
+        self.cameraUpdateStep.name = 'Update Camera'
+        self.cameraUpdateStep.job = self.charCreationCamera
         rj.Clear((0.0, 0.0, 0.0, 0.0), 1.0)
         rj.SetProjection(self.projection)
         rj.SetView(self.view)
         paperDoll.SkinSpotLightShadows.CreateShadowStep(rj)
         paperDoll.SkinLightmapRenderer.CreateScatterStep(rj, self.scene2)
         if self.showUIBackdropScene:
-            self.renderUIBackdropScene = rj.RenderScene(self.uiBackdropScene)
-            self.renderUIBackdropScene.name = 'Render BackdropScene'
-        self.renderInteriorSceneStep = rj.RenderScene(self.scene2)
-        self.renderInteriorSceneStep.name = 'Render Interiors'
+            renderUIBackdropScene = rj.RenderScene(self.uiBackdropScene)
+            renderUIBackdropScene.name = 'Render BackdropScene'
+        renderInteriorSceneStep = rj.RenderScene(self.scene2)
+        renderInteriorSceneStep.name = 'Render Interiors'
         paperDoll.AvatarGhost.CreateSculptingStep(rj)
         if schedule:
             trinity.device.scheduledRecurring.insert(0, rj)
@@ -286,18 +261,30 @@ class SceneManager(service.Service):
         self.incarnaBackgroundRotation = sceneRotation
         if scene is not None:
             self.incarnaRenderJob.SetBackgroundScene(scene)
-            backgroundView = trinity.TriView()
-            backgroundProjection = trinity.TriProjection()
-            backGroundCameraUpdateFunction = self.incarnaRenderJob.GetBackgroundCameraUpdateFunction(backgroundView, backgroundProjection, 10.0, 40000.0, sceneTranslation, sceneRotation)
-            self.incarnaRenderJob.SetBackgroundCameraViewAndProjection(backgroundView, backgroundProjection, backGroundCameraUpdateFunction)
+            self.backgroundView = trinity.TriView()
+            self.backgroundProjection = trinity.TriProjection()
+            backGroundCameraUpdateFunction = self.incarnaRenderJob.GetBackgroundCameraUpdateFunction(self.backgroundView, self.backgroundProjection, 10.0, 40000.0, sceneTranslation, sceneRotation)
+            self.incarnaRenderJob.SetBackgroundCameraViewAndProjection(self.backgroundView, self.backgroundProjection, backGroundCameraUpdateFunction)
+
+
+
+    def OnSessionChanged(self, isremote, session, change):
+        if 'locationid' in change:
+            newLocationID = change['locationid'][1]
+            if util.IsSolarSystem(newLocationID) and self.sceneType != SCENE_TYPE_SPACE:
+                log.LogWarn('SceneManager: I detected a session change into space but no one has bothered to update my scene type!')
+                self.SetSceneType(SCENE_TYPE_SPACE)
 
 
 
     def SetSceneType(self, sceneType):
         if self.sceneType == sceneType:
-            self.CreateJob()
+            if sceneType == SCENE_TYPE_INTERIOR:
+                self._EnableLoadingClear()
+            else:
+                self.CreateJob()
             return 
-        hasOverlay = sm.GetService('gameui').HasActiveOverlay()
+        hasOverlay = sm.GetService('viewState').IsCurrentViewSecondary()
         self.sceneType = sceneType
         scene1 = self.scene1
         scene2 = self.scene2
@@ -315,11 +302,13 @@ class SceneManager(service.Service):
             if hasOverlay:
                 self.SetActiveScenes(scene1, scene2, self.activeSceneKey)
                 self.SetActiveCamera(self.camera)
+            self._EnableLoadingClear()
         elif sceneType == SCENE_TYPE_CHARACTER_CREATION:
             log.LogInfo('Setting up character creation scene rendering')
             self.incarnaRenderJob.Disable()
             self.fisRenderJob.Disable()
             self.ApplyClothSimulationSettings()
+            self._DisableLoadingClear()
         elif sceneType == SCENE_TYPE_SPACE:
             log.LogInfo('Setting up space scene rendering')
             self.incarnaBackgroundScene = None
@@ -328,6 +317,7 @@ class SceneManager(service.Service):
             self.incarnaRenderJob.SetBackgroundScene(None)
             self.fisRenderJob.Enable()
             self.fisRenderJob.UseFXAA(False)
+            self._DisableLoadingClear()
             if self.secondarySceneContext is not None:
                 scene1 = self.secondarySceneContext.scene1
                 scene2 = self.secondarySceneContext.scene2
@@ -337,7 +327,6 @@ class SceneManager(service.Service):
                 self.secondaryRenderJob = None
                 self.SetActiveScenes(scene1, scene2, key)
                 self.SetActiveCamera(camera)
-        self.CreateJob()
 
 
 
@@ -552,37 +541,19 @@ class SceneManager(service.Service):
 
 
 
-    def GetSceneFromIndex(self, idx):
-        try:
-            if idx < 0:
-                scene = WORMHOLE_SCENES[(-idx)]
-            else:
-                scene = KNOWN_SCENES[idx]
-        except:
-            log.LogException()
-            scene = KNOWN_SCENES[0]
-        return scene
-
-
-
     def GetScene(self, location = None):
         if location is None:
             location = (eve.session.solarsystemid2, eve.session.constellationid, eve.session.regionid)
-        idx = cfg.GetLocationSceneIndex(*location)
-        scene = self.GetSceneFromIndex(idx)
-        return scene
+        resPath = cfg.GetNebula(*location)
+        return resPath
 
 
 
     def DeriveTextureFromSceneName(self, scenePath):
-        texturePath = ''
-        if 'wormhole' in scenePath.lower():
-            texturePath = '%s_cube.dds' % scenePath.split('.')[0]
-        else:
-            lst = scenePath.split('/')
-            name = lst[-1].split('.')[0]
-            texturePath = 'res:/dx9/scene/universe/%s.dds' % name
-        return texturePath
+        scene = trinity.Load(scenePath)
+        if scene is None:
+            return ''
+        return scene.envMap1ResPath
 
 
 
@@ -602,103 +573,33 @@ class SceneManager(service.Service):
 
 
 
-    def PrepareScene(self, scene, inflight = 0):
-        if inflight:
-            scene.nebula.children[0].object.areas[0].shader = eve.rot.GetInstance(self.GetNebulaShaderPath())
-            scene.fogStart = -500.0
-            scene.fogEnd = 25000.0
-            scene.fogEnable = 1
-            scene.fogColor.SetRGB(0.0, 0.0, 0.0)
-            scene.fogTableMode = trinity.TRIFOG_LINEAR
-        if getattr(scene, 'dustfield', None) is not None:
-            scene.dustfield = None
-        planets = []
-        for celestial in scene.models:
-            b = getattr(celestial, 'translationCurve', None)
-            if b and b.__guid__ == 'spaceObject.Planet':
-                planets.append(b)
-
-        if len(planets) < 3:
-            return 
-        A = planets[0].GetVectorAt(blue.os.GetTime(1))
-        B = planets[1].GetVectorAt(blue.os.GetTime(1))
-        C = planets[2].GetVectorAt(blue.os.GetTime(1))
-        A.Scale(1e-07)
-        B.Scale(1e-07)
-        C.Scale(1e-07)
-        VA = A - B
-        VB = C - B
-        up = trinity.TriVector(0.0, 1.0, 0.0)
-        normal = trinity.TriVector()
-        normal.SetCrossProduct(VA, VB)
-        normal.Normalize()
-        rotation = trinity.TriQuaternion()
-        rotation.SetRotationArc(normal, up)
-        if not len(scene.nebula.children):
-            return 
-        nebula = scene.nebula.children[0]
-        nebula.scaling.z = 1.0
-        nebula.object.areas[0].areaTextures[0].rotation = rotation
-
-
-
-    def CreateScene2FromScene(self, s1):
-        s1.Update(0L)
-        s2 = trinity.EveSpaceScene()
-        textures = s1.nebula.children[0].object.areas[0].areaTextures
-        s2.envMap1ResPath = textures[0].pixels.encode('ascii')
-        if len(textures) > 1:
-            s2.envMap2ResPath = textures[1].pixels.encode('ascii')
-        rot1 = textures[0].rotation
-        s2.envMapRotation = (rot1.x,
-         rot1.y,
-         rot1.z,
-         rot1.w)
-        scale1 = textures[0].scaling
-        s2.envMapScaling = (scale1.x, scale1.y, scale1.z)
-        diff1 = s1.sunDiffuseForShaders
-        s2.sunDiffuseColor = (diff1.x, diff1.y, diff1.z)
-        dir1 = s1.sunLight.direction
-        s2.sunDirection = (dir1.x, dir1.y, dir1.z)
-        amb1 = s1.ambientLight
-        s2.ambientColor = (amb1.r, amb1.g, amb1.b)
-        fog1 = s1.fogColor
-        s2.fogColor = (fog1.r, fog1.g, fog1.b)
-        s2.fogStart = s1.rangeFogStart
-        s2.fogEnd = s1.rangeFogEnd
-        s2.fogMax = 0.0
-        return s2
-
-
-
-    def PrepareBackgroundLandscapes(self, scene, scene2):
+    def PrepareBackgroundLandscapes(self, scene):
         starSeed = 0
         securityStatus = 1
         if eve.session.stationid is not None:
             return 
-        if scene is None or scene2 is None:
+        if scene is None:
             return 
         if bool(eve.session.solarsystemid2):
             starSeed = int(eve.session.constellationid)
             securityStatus = sm.StartService('map').GetSecurityStatus(eve.session.solarsystemid)
-        scene2.starfield = trinity.Load('res:/dx9/scene/starfield/spritestars.red')
-        if scene2.starfield is not None:
-            scene2.starfield.seed = starSeed
-            scene2.starfield.maxDist = 200
+        scene.starfield = trinity.Load('res:/dx9/scene/starfield/spritestars.red')
+        if scene.starfield is not None:
+            scene.starfield.seed = starSeed
+            scene.starfield.minDist = 40
+            scene.starfield.maxDist = 80
             if util.IsWormholeSystem(eve.session.solarsystemid):
-                scene2.starfield.numStars = 0
+                scene.starfield.numStars = 0
             else:
-                scene2.starfield.numStars = 250 + int(500 * securityStatus)
-        scene2.backgroundEffect = trinity.Load('res:/dx9/scene/starfield/starfieldNebula.red')
-        if scene2.backgroundEffect is not None:
-            node = nodemanager.FindNode(scene2.backgroundEffect.resources, 'NebulaMap', 'trinity.TriTexture2DParameter')
+                scene.starfield.numStars = 500 + int(250 * securityStatus)
+        if scene.backgroundEffect is None:
+            scene.backgroundEffect = trinity.Load('res:/dx9/scene/starfield/starfieldNebula.red')
+            node = nodemanager.FindNode(scene.backgroundEffect.resources, 'NebulaMap', 'trinity.TriTexture2DParameter')
             if node is not None:
-                node.resourcePath = scene2.envMap1ResPath
-        if scene2.starfield is None or scene2.backgroundEffect is None:
+                node.resourcePath = scene.envMap1ResPath
+        if scene.starfield is None or scene.backgroundEffect is None:
             return 
-        scene.nebula.display = False
-        scene.pointStarfield.display = False
-        scene2.backgroundRenderingEnabled = True
+        scene.backgroundRenderingEnabled = True
 
 
 
@@ -713,66 +614,80 @@ class SceneManager(service.Service):
 
 
 
-    def LoadScene(self, scenefile, sceneName = '', fov = None, leaveUntouched = 0, inflight = 0, registerKey = None):
+    def LoadScene(self, scenefile, sceneName = '', fov = None, leaveUntouched = 0, inflight = 0, registerKey = None, setupCamera = True):
         try:
-            if registerKey:
-                self.sceneLoadedEvents[registerKey] = locks.Event(registerKey)
-            if self.scene1 is not None:
-                self.scene1.ballpark = None
-            sceneFromFile = trinity.Load(scenefile)
-            if sceneFromFile is None:
-                return 
-            else:
-                camera = None
-                if sceneFromFile.__bluetype__ == 'trinity.TriScene':
-                    scene = sceneFromFile
-                    camera = scene.camera
-                    scene.camera = None
-                    scene2 = self.CreateScene2FromScene(scene)
-                else:
-                    scene = trinity.TriScene()
-                    camera = trinity.EveCamera()
-                    scene2 = sceneFromFile
-                if inflight:
-                    if scene2.dustfield is None:
-                        scene2.dustfield = trinity.Load('res:/dx9/scene/dustfield.red')
-                    scene2.dustfield.camera = camera
-                    scene2.dustfield.ballpark = sm.GetService('michelle').GetBallpark()
-                if leaveUntouched:
-                    self.SetupSceneForRendering(scene, scene2, registerKey)
-                    return scene
-                self.PrepareCamera(camera)
-                self.PrepareScene(scene, inflight)
-                self.PrepareBackgroundLandscapes(scene, scene2)
-                if fov:
-                    camera.fieldOfView = fov
+            try:
                 if registerKey:
-                    self.RegisterCamera(registerKey, camera)
-                    self.RegisterScenes(registerKey, scene, scene2)
-                    if self.scene2 is None or self.scene2 not in self.registeredScenes2.values():
+                    self.sceneLoadedEvents[registerKey] = locks.Event(registerKey)
+                if self.scene1 is not None:
+                    self.scene1.ballpark = None
+                sceneFromFile = trinity.Load(scenefile)
+                if sceneFromFile is None:
+                    return 
+                else:
+                    camera = None
+                    scene = trinity.TriScene()
+                    scene2 = sceneFromFile
+                    if setupCamera:
+                        camera = trinity.Load('res:/dx9/scene/camera.red')
+                    if inflight:
+                        if scene2.dustfield is None:
+                            scene2.dustfield = trinity.Load('res:/dx9/scene/dustfield.red')
+                        scene2.dustfield.camera = camera
+                        scene2.dustfield.ballpark = sm.GetService('michelle').GetBallpark()
+                        scene2.sunDiffuseColor = (1.5, 1.5, 1.5, 1.0)
+                        if settings.user.ui.Get('effectsEnabled', 1) and session.solarsystemid is not None:
+                            universe = getattr(self, 'universe', None)
+                            if not universe:
+                                universe = trinity.Load('res:/dx9/scene/starfield/universe.red')
+                                setattr(self, 'universe', universe)
+                            scene2.backgroundObjects.append(universe)
+                            here = sm.GetService('map').GetItem(session.solarsystemid)
+                            if here:
+                                scale = 10000000000.0
+                                position = (here.x / scale, here.y / scale, -here.z / scale)
+                                universe.children[0].translation = position
+                    if leaveUntouched:
                         self.SetupSceneForRendering(scene, scene2, registerKey)
-                        self.SetCamera(camera)
-                else:
-                    self.SetupSceneForRendering(scene, scene2, registerKey)
-                    self.SetCamera(camera)
-                bp = sm.GetService('michelle').GetBallparkForScene(scene)
-                if bp is not None:
-                    scene.ballpark = bp
-                else:
-                    scene.ballpark = None
-                camera.audio2Listener = audio2.GetListener(0)
-                if bp is not None:
-                    myShipBall = bp.GetBallById(bp.ego)
-                    vel = geo2.Vector(myShipBall.vx, myShipBall.vy, myShipBall.vz)
-                    if geo2.Vec3Length(vel) > 0.0:
-                        vel = geo2.Vec3Normalize(vel)
-                        pitch = asin(-vel[1])
-                        yaw = atan2(vel[0], vel[2])
-                        yaw = yaw - 0.3
-                        pitch = pitch - 0.15
-                        camera.SetOrbit(yaw, pitch)
-                sm.ScatterEvent('OnLoadScene')
-                return scene
+                        return scene
+                    if camera:
+                        self.PrepareCamera(camera)
+                        if fov:
+                            camera.fieldOfView = fov
+                    self.PrepareBackgroundLandscapes(scene2)
+                    if registerKey:
+                        self.RegisterCamera(registerKey, camera)
+                        self.RegisterScenes(registerKey, scene, scene2)
+                        if self.scene2 is None or self.scene2 not in self.registeredScenes2.values():
+                            self.SetupSceneForRendering(scene, scene2, registerKey)
+                            if camera:
+                                self.SetCamera(camera)
+                    else:
+                        self.SetupSceneForRendering(scene, scene2, registerKey)
+                        if camera:
+                            self.SetCamera(camera)
+                    bp = sm.GetService('michelle').GetBallparkForScene(scene)
+                    if bp is not None:
+                        scene.ballpark = bp
+                    else:
+                        scene.ballpark = None
+                    if camera:
+                        camera.audio2Listener = audio2.GetListener(0)
+                    if camera and bp is not None:
+                        myShipBall = bp.GetBallById(bp.ego)
+                        vel = geo2.Vector(myShipBall.vx, myShipBall.vy, myShipBall.vz)
+                        if geo2.Vec3Length(vel) > 0.0:
+                            vel = geo2.Vec3Normalize(vel)
+                            pitch = asin(-vel[1])
+                            yaw = atan2(vel[0], vel[2])
+                            yaw = yaw - 0.3
+                            pitch = pitch - 0.15
+                            camera.SetOrbit(yaw, pitch)
+                    sm.ScatterEvent('OnLoadScene')
+                    return scene
+            except Exception:
+                log.LogException('sceneManager::LoadScene')
+                sys.exc_clear()
 
         finally:
             if registerKey and registerKey in self.sceneLoadedEvents:

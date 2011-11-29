@@ -6,6 +6,7 @@ import log
 import os
 import trinity
 import const
+import form
 
 class EveShip2BuildEvent:
 
@@ -113,6 +114,21 @@ class t3ShipSvc(service.Service):
                 return 
             log.LogError('Failed building ship:', path)
         doneChannel.send(False)
+
+
+
+    def MakeModularShipFromShipItem(self, ship):
+        subSystemIds = {}
+        for fittedItem in ship.GetFittedItems().itervalues():
+            if fittedItem.categoryID == const.categorySubSystem:
+                subSystemIds[fittedItem.groupID] = fittedItem.typeID
+
+        if len(subSystemIds) < const.visibleSubSystems:
+            windowID = 'assembleWindow_modular'
+            form.AssembleShip.CloseIfOpen(windowID=windowID)
+            form.AssembleShip.Open(windowID=windowID, ship=ship, groupIDs=subSystemIds.keys())
+            return 
+        return self.GetTech3ShipFromDict(ship.typeID, subSystemIds)
 
 
 

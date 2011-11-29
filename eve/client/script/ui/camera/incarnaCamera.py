@@ -1,5 +1,4 @@
 import sys
-import uix
 import log
 import util
 import blue
@@ -13,20 +12,22 @@ MAX_SPIN_SPEED = 15
 MAX_MOUSE_DELTA = 0.2
 SPIN_RESISTANCE = 0.992
 SPIN_DELTA_MODIFIER = 60
+ZOOM_SPEED_MODIFIER = 4.0
 SPIN_FALLOFF_RATIO = 700.0
 DISPLAY_MOUSE_AGAIN_DELAY = 85
 CAMERA_SPIN_RELEASE_MOUSE_CUTOFF_SECONDS = 0.1
+INCARNA_MAX_ZOOM = 2.9
 
-class IncarnaCamera(cameras.WorldspaceCamera):
+class IncarnaCamera(cameras.PolarCamera):
     __guid__ = 'cameras.IncarnaCamera'
 
     def __init__(self):
-        cameras.WorldspaceCamera.__init__(self)
+        cameras.PolarCamera.__init__(self)
         self.frontClip = 0.15
         self.cameraClient = None
         self.fieldOfView = 0.7
-        self.zoom = 1.9
-        self.properZoom = 1.9
+        self.zoom = cameras.INCARNA_MAX_ZOOM
+        self.properZoom = cameras.INCARNA_MAX_ZOOM
         self.desiredZoom = self.zoom
         self.collisionZoom = self.zoom
         self.collisionCorrectionPerFrame = 0
@@ -44,6 +45,7 @@ class IncarnaCamera(cameras.WorldspaceCamera):
         self.waitForLayerCapture = False
         self.updateMouse = False
         self.defaultCursor = uiconst.UICURSOR_CROSS
+        self.lastUpdateTime = blue.os.GetWallclockTime()
 
 
 
@@ -53,6 +55,8 @@ class IncarnaCamera(cameras.WorldspaceCamera):
 
 
     def OnMouseDown(self, posX, posY, button):
+        if button != const.INPUT_TYPE_LEFTCLICK and button != const.INPUT_TYPE_RIGHTCLICK:
+            return 
         if not self.mouseLeftButtonDown and not self.mouseRightButtonDown:
             if button == const.INPUT_TYPE_LEFTCLICK and uicore.uilib.GetMouseButtonState(uiconst.MOUSERIGHT):
                 return 
@@ -61,7 +65,7 @@ class IncarnaCamera(cameras.WorldspaceCamera):
             self.waitForLayerCapture = True
             self.preClickCursorPos = (posX, posY)
             self.originalMouseButtonPressed = button
-        cameras.WorldspaceCamera.OnMouseDown(self, posX, posY, button)
+        cameras.PolarCamera.OnMouseDown(self, posX, posY, button)
 
 
 
@@ -71,7 +75,7 @@ class IncarnaCamera(cameras.WorldspaceCamera):
 
 
     def DisplayCursorAgain(self):
-        blue.pyos.synchro.Sleep(cameras.DISPLAY_MOUSE_AGAIN_DELAY)
+        blue.pyos.synchro.SleepWallclock(cameras.DISPLAY_MOUSE_AGAIN_DELAY)
         if self.navigationLayer:
             self.SetCursorType(self.defaultCursor)
 
@@ -89,7 +93,7 @@ class IncarnaCamera(cameras.WorldspaceCamera):
 
     def SetCursorPos(self, x, y):
         try:
-            trinity.app.SetCursorPos(x, y)
+            uicore.uilib.SetCursorPos(x, y)
         except RuntimeError:
             sys.exc_clear()
 
@@ -104,6 +108,8 @@ class IncarnaCamera(cameras.WorldspaceCamera):
 
 
     def OnMouseUp(self, posX, posY, button):
+        if button != const.INPUT_TYPE_LEFTCLICK and button != const.INPUT_TYPE_RIGHTCLICK:
+            return 
         if button == const.INPUT_TYPE_LEFTCLICK:
             self.mouseLeftButtonDown = False
         if button == const.INPUT_TYPE_RIGHTCLICK:
@@ -188,24 +194,26 @@ class IncarnaCamera(cameras.WorldspaceCamera):
 
     def ClipMouseAround(self):
         margin = 10
-        marginPlus = 11
+        marginPlus = 13
         currCursorPos = (uicore.uilib.x, uicore.uilib.y)
+        screenWidth = uicore.ReverseScaleDpi(trinity.app.width)
+        screenHeight = uicore.ReverseScaleDpi(trinity.app.height)
         if currCursorPos[0] < margin:
-            newXPos = trinity.app.width - marginPlus
-            self.cameraClient.ignoreNextMouseUpdate = True
+            newXPos = screenWidth - marginPlus
+            self.cameraClient.skipMouseFrameCount = 1
             self.SetCursorPos(newXPos, currCursorPos[1])
             currCursorPos = (newXPos, currCursorPos[1])
         if currCursorPos[1] < margin:
-            newYPos = trinity.app.height - marginPlus
-            self.cameraClient.ignoreNextMouseUpdate = True
+            newYPos = screenHeight - marginPlus
+            self.cameraClient.skipMouseFrameCount = 1
             self.SetCursorPos(currCursorPos[0], newYPos)
             currCursorPos = (currCursorPos[0], newYPos)
-        if currCursorPos[0] >= trinity.app.width - margin:
-            self.cameraClient.ignoreNextMouseUpdate = True
+        if currCursorPos[0] >= screenWidth - margin:
+            self.cameraClient.skipMouseFrameCount = 1
             self.SetCursorPos(marginPlus, currCursorPos[1])
             currCursorPos = (marginPlus, currCursorPos[1])
-        if currCursorPos[1] >= trinity.app.height - margin:
-            self.cameraClient.ignoreNextMouseUpdate = True
+        if currCursorPos[1] >= screenHeight - margin:
+            self.cameraClient.skipMouseFrameCount = 1
             self.SetCursorPos(currCursorPos[0], marginPlus)
             currCursorPos = (currCursorPos[0], marginPlus)
 
@@ -256,14 +264,14 @@ class IncarnaCamera(cameras.WorldspaceCamera):
 
 
     def HandleZooming(self):
-        self.zoom = mathUtil.Lerp(self.zoom, self.desiredZoom, self.frameTime * cameras.ZOOM_SPEED_MODIFIER * self.zoomAccelerate)
+        self.zoom = mathUtil.Lerp(self.zoom, self.desiredZoom, self.frameTime * cameras.ZOOM_SPEED_MODIFIER)
         self.collisionZoom = self.zoom
 
 
 
     def Init(self):
-        if self.navigationLayer is None and not sm.GetService('gameui').HasActiveOverlay():
-            self.navigationLayer = uix.GetWorldspaceNav(create=0)
+        if self.navigationLayer is None and sm.GetService('viewState').IsViewActive('station'):
+            self.navigationLayer = sm.GetService('viewState').GetView('station').layer
             if self.navigationLayer is None:
                 log.LogError('Could not retrieve the character control layer using uix.GetWorldspaceNav(create=0)')
             else:
@@ -296,11 +304,13 @@ class IncarnaCamera(cameras.WorldspaceCamera):
 
     def Update(self):
         self.Init()
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         self.frameTime = float(now - self.lastUpdateTime) / const.SEC
+        if self.frameTime < const.FLOAT_TOLERANCE:
+            return 
+        self.lastUpdateTime = now
         self.HandleYawAndPitch()
         self.HandleZooming()
-        self.lastUpdateTime = now
         self.HandleMouseMove()
         for (priority, behavior,) in self.cameraBehaviors:
             behavior.ProcessCameraUpdate(self, now, self.frameTime)

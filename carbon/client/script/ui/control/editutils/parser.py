@@ -213,6 +213,8 @@ class Tag_img(Tag):
         Tag.__init__(self, **attrs)
         self.src = getattr(self, 'src', None)
         self.SetDefault('alt', 'align', 'width', 'height', 'border', 'bordercolor', 'hspace', 'vspace', 'usemap')
+        if hasattr(self, 'size'):
+            self.size = int(self.size)
 
 
 

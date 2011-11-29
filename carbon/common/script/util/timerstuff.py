@@ -95,10 +95,16 @@ def TracebackTimingFunction(runtime = 1.0, wallclock = None):
 class TimerObject:
     __guid__ = 'base.TimerObject'
 
-    def __init__(self):
+    def __init__(self, useSimTime = False):
         self.abort = 0
         self.id = 0
         self.aborts = {}
+        if useSimTime:
+            self.GetTime = blue.os.GetSimTime
+            self.Sleep = blue.pyos.synchro.SleepSim
+        else:
+            self.GetTime = blue.os.GetWallclockTime
+            self.Sleep = blue.pyos.synchro.SleepWallclock
 
 
 
@@ -110,7 +116,7 @@ class TimerObject:
     def DelayedCall(self, func, time, *args, **kw):
         self.id += 1
         callID = self.id
-        if time - blue.os.GetTime() > const.DAY:
+        if time - self.GetTime() > const.DAY:
             raise RuntimeError('Cannot sleep for more than 24 hours')
         uthread.new(self.DelayedCall_thread, callID, func, time, args, kw)
         return callID
@@ -118,9 +124,9 @@ class TimerObject:
 
 
     def DelayedCall_thread(self, callID, func, time, args, kw):
-        delay = (time - blue.os.GetTime()) / 10000
+        delay = (time - self.GetTime()) / 10000
         if delay > 0:
-            blue.pyos.synchro.Sleep(delay)
+            self.Sleep(delay)
         if callID in self.aborts:
             del self.aborts[callID]
         elif not self.abort:
@@ -163,7 +169,7 @@ class AutoTimer(object):
         caller = traceback.format_list(caller_tb)[0].replace('\n', '')
         methrepr = getattr(method, '__name__', '(no __name__)').replace('<', '&lt;').replace('>', '&gt;')
         ctx = 'AutoTimer::(%s) on %s' % (caller, methrepr)
-        self.wakeupAt = blue.os.GetTime() / 10000 + self.interval
+        self.wakeupAt = blue.os.GetWallclockTime() / 10000 + self.interval
         AutoTimer.autoTimers[self] = None
         uthread.pool(ctx, AutoTimer.Loop, weakref.ref(self))
 
@@ -177,7 +183,7 @@ class AutoTimer(object):
     def Reset(self, newInterval = None):
         if newInterval is not None:
             self.interval = newInterval
-        self.wakeupAt = blue.os.GetTime() / 10000 + self.interval
+        self.wakeupAt = blue.os.GetWallclockTime() / 10000 + self.interval
 
 
 
@@ -188,11 +194,11 @@ class AutoTimer(object):
         nap = self.interval
         del self
         while True:
-            blue.pyos.synchro.Sleep(nap)
+            blue.pyos.synchro.SleepWallclock(nap)
             self = weakSelf()
             if not self or not self.run:
                 return 
-            now = blue.os.GetTime() / 10000
+            now = blue.os.GetWallclockTime() / 10000
             if now < self.wakeupAt:
                 nap = self.wakeupAt - now
             else:

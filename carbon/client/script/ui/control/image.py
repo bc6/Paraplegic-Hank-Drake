@@ -4,6 +4,7 @@ import uiutil
 import uiconst
 import uthread
 import copy
+import localization
 
 class ImageCore(uicls.Container):
     __guid__ = 'uicls.ImageCore'
@@ -53,7 +54,7 @@ class ImageCore(uicls.Container):
         m = []
         if getattr(self, 'attrs', None) and getattr(self.attrs, 'src', None) and self.attrs.src:
             src = self.attrs.src
-            m += [(mls.UI_CMD_RELOADIMAGE, self.Reload)]
+            m += [(localization.GetByLabel('UI/Common/ReloadImage'), self.Reload)]
             if getattr(self.attrs, 'a', None):
                 m += self.GetLinkMenu(self, self.attrs.a.href)
         return m

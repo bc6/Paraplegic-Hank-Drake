@@ -2,6 +2,7 @@ from contractscommon import *
 import util
 import blue
 import uix
+import localization
 COL_PAY = '0xffcc2222'
 COL_GET = '0xff00bb00'
 
@@ -11,21 +12,21 @@ def FmtISKWithDescription(isk, justDesc = False):
     if abs(isk) >= 1000000000:
         isk = long(isk / 10000000L)
         if justDesc:
-            iskFmt = '%.2f %s %s' % (isk / 100.0, mls.UI_GENERIC_BILLION, mls.UI_GENERIC_ISK)
+            iskFmt = localization.GetByLabel('UI/Contracts/Util/AmountInBillions', amount=isk / 100.0)
         else:
-            iskFmt += ' (%.2f %s)' % (isk / 100.0, mls.UI_GENERIC_BILLION)
+            iskFmt = localization.GetByLabel('UI/Contracts/Util/AmountInBillionsDetailed', iskAmount=iskFmt, amount=isk / 100.0)
     elif abs(isk) >= 1000000:
         isk = long(isk / 10000L)
         if justDesc:
-            iskFmt = '%.2f %s %s' % (isk / 100.0, mls.UI_GENERIC_MILLION, mls.UI_GENERIC_ISK)
+            iskFmt = localization.GetByLabel('UI/Contracts/Util/AmountInMillions', amount=isk / 100.0)
         else:
-            iskFmt += ' (%.2f %s)' % (isk / 100.0, mls.UI_GENERIC_MILLION)
+            iskFmt = localization.GetByLabel('UI/Contracts/Util/AmountInMillionDetailed', iskAmount=iskFmt, amount=isk / 100.0)
     elif abs(isk) >= 10000:
         isk = long(isk / 10L)
         if justDesc:
-            iskFmt = '%.2f %s %s' % (isk / 100.0, mls.THOUSAND, mls.UI_GENERIC_ISK)
+            iskFmt = localization.GetByLabel('UI/Contracts/Util/AmountInThousands', amount=isk / 100.0)
         else:
-            iskFmt += ' (%.2f %s)' % (isk / 100.0, mls.THOUSAND)
+            iskFmt = localization.GetByLabel('UI/Contracts/Util/AmountInThousandsDetailed', iskAmount=iskFmt, amount=isk / 100.0)
     return iskFmt
 
 
@@ -73,46 +74,38 @@ def GetColoredContractStatusText(status):
 
 def ConFmtDate(time, isText = False):
     if time < 0:
-        return '<color=red>%s</color>' % mls.UI_CONTRACTS_EXPIRED
+        return localization.GetByLabel('UI/Contracts/Util/ContractExpiredEmphasized')
     res = ''
     d = time / DAY
     h = (time - d * DAY) / HOUR
     if isText:
         if d >= 1:
-            res = '%s %s' % (d, [mls.UI_GENERIC_DAYLOWER, mls.UI_GENERIC_DAYSLOWER][(d > 1)])
+            res = localization.GetByLabel('/Carbon/UI/Common/WrittenDateTimeQuantity/Day', days=d)
         elif d < 0:
-            res = mls.UI_CONTRACTS_EXPIRED
+            res = localization.GetByLabel('UI/Contracts/Util/ContractExpiredEmphasized')
         elif h >= 1:
-            res = mls.UI_CONTRACTS_LESSTHANADAY
+            res = localization.GetByLabel('UI/Contracts/Util/LessThanADay')
         else:
-            res = mls.UI_CONTRACTS_LESSTHANANHOUR
-    elif d == 1:
-        res += '%s %s ' % (d, mls.UI_GENERIC_DAYLOWER)
-    elif d > 1:
-        res += '%s %s ' % (d, mls.UI_GENERIC_DAYSLOWER)
-    if h == 1 and d >= 0:
-        res += '%s %s' % (h, mls.UI_GENERIC_HOURLOWER)
-    elif h > 1 and d >= 0:
-        res += '%s %s' % (h, mls.UI_GENERIC_HOURSLOWER)
+            res = localization.GetByLabel('UI/Contracts/Util/LessThanAnHour')
+    elif d >= 1:
+        if h > 0:
+            res = localization.GetByLabel('UI/Contracts/Util/DayToHour', days=d, hours=h)
+        else:
+            res = localization.GetByLabel('/Carbon/UI/Common/WrittenDateTimeQuantity/Day', days=d)
+    elif h >= 1 and d == 0:
+        res = localization.GetByLabel('/Carbon/UI/Common/WrittenDateTimeQuantity/Hour', hours=h)
     if time / HOUR == 0:
-        res = mls.UI_CONTRACTS_LESSTHANANHOUR
+        res = localization.GetByLabel('UI/Contracts/Util/LessThanAnHour')
     return res
 
 
 
 def GetContractTimeLeftText(c):
     if c.status == const.conStatusOutstanding:
-        if c.dateExpired < blue.os.GetTime():
-            return mls.UI_CONTRACTS_EXPIRED
+        if c.dateExpired < blue.os.GetWallclockTime():
+            return localization.GetByLabel('UI/Contracts/Util/ContractExpired')
         else:
-            return ConFmtDate(c.dateExpired - blue.os.GetTime(), c.type == const.conTypeAuction)
-    elif c.status == const.conStatusInProgress:
-        de = c.dateAccepted + c.numDays * DAY
-        diff = de - blue.os.GetTime()
-        if diff > 0:
-            timeleft = '%s' % ConFmtDate(diff, False)
-        else:
-            timeleft = '<color:0xffff0000><b>%s</b> (%s)</color>' % (mls.UI_CONTRACTS_OVERDUE, ConFmtDate(-diff, False), mls.UI_GENERIC_AGO)
+            return ConFmtDate(c.dateExpired - blue.os.GetWallclockTime(), c.type == const.conTypeAuction)
     else:
         return ''
 
@@ -131,7 +124,8 @@ def SelectItemTypeDlg(itemTypes):
     for typeID in itemTypes:
         t = cfg.invtypes.Get(typeID)
         c = cfg.invcategories.Get(t.categoryID)
-        tmplst.append(('%s (%s)' % (TypeName(typeID), c.categoryName), typeID))
+        itemTypeRow = localization.GetByLabel('UI/Contracts/Util/ItemTypeLine', item=typeID, categoryName=c.categoryName)
+        tmplst.append((itemTypeRow, typeID))
 
     if not tmplst:
         eve.Message('ConNoItemsFound')
@@ -139,7 +133,7 @@ def SelectItemTypeDlg(itemTypes):
     else:
         if len(tmplst) == 1:
             return tmplst[0][1]
-        ret = uix.ListWnd(tmplst, 'generic', mls.UI_CONTRACTS_SELECTITEMTYPE, None, 1, windowName='contractSelectItemTypeDlg')
+        ret = uix.ListWnd(tmplst, 'generic', localization.GetByLabel('UI/Contracts/Util/SelectItemType'), None, 1, windowName='contractSelectItemTypeDlg')
         return ret and ret[1]
 
 

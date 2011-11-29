@@ -81,7 +81,7 @@ class Missile(spaceObject.SpaceObject):
         targetBall = bp.GetBallById(self.targetId)
         if targetBall is None:
             return 
-        now = blue.os.GetTime()
+        now = blue.os.GetSimTime()
         myPos = self.GetVectorAt(now)
         targetPos = targetBall.GetVectorAt(now)
         offset = myPos - targetPos
@@ -106,7 +106,7 @@ class Missile(spaceObject.SpaceObject):
         if targetId != self.id:
             if self.mode == destiny.DSTBALL_MISSILE and self.followId != targetId:
                 return 
-        now = blue.os.GetTime()
+        now = blue.os.GetSimTime()
         myPos = self.GetVectorAt(now)
         myVel = self.GetVectorDotAt(now)
         targetBall = bp.GetBallById(self.targetId)
@@ -148,7 +148,7 @@ class Missile(spaceObject.SpaceObject):
     def CollisionExplode(self, delay, translation, fake = False):
         if delay > 2000:
             delay = 2000
-        blue.pyos.synchro.Sleep(delay)
+        blue.pyos.synchro.SleepSim(delay)
         scene = sm.StartService('sceneManager').GetRegisteredScene('default')
         scene2 = sm.StartService('sceneManager').GetRegisteredScene2('default')
         if not self.released:
@@ -196,7 +196,7 @@ class Missile(spaceObject.SpaceObject):
 
 
     def DelayedRemove(self, delay, model):
-        blue.pyos.synchro.Sleep(delay)
+        blue.pyos.synchro.SleepSim(delay)
         self.RemoveAndClearModel(model)
 
 

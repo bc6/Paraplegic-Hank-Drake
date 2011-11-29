@@ -8,13 +8,15 @@ import types
 import uiconst
 import uicls
 import log
+import localization
 
 class CorpStandings(uicls.Container):
     __guid__ = 'form.CorpStandings'
     __nonpersistvars__ = []
     __notifyevents__ = ['OnSetCorpStanding']
 
-    def init(self):
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
         sm.RegisterNotify(self)
 
 
@@ -41,18 +43,18 @@ class CorpStandings(uicls.Container):
              const.defaultPadding,
              const.defaultPadding))
             self.sr.tabs = uicls.TabGroup(name='tabparent', parent=self, idx=0)
-            self.sr.tabs.Startup([[mls.UI_CONTACTS_CORPCONTACTS,
+            self.sr.tabs.Startup([[localization.GetByLabel('UI/Corporations/CorporationWindow/Standings/CorpContacts'),
               self.sr.contacts,
               self,
-              'corpcontact'], [mls.UI_GENERIC_LIKEDBY,
+              'corpcontact'], [localization.GetByLabel('UI/Corporations/CorporationWindow/Standings/LikedBy'),
               self.sr.scroll,
               self,
-              'mystandings_to_positive'], [mls.UI_GENERIC_DISLIKEDBY,
+              'mystandings_to_positive'], [localization.GetByLabel('UI/Corporations/CorporationWindow/Standings/DislikedBy'),
               self.sr.scroll,
               self,
               'mystandings_to_negative']], 'corporationstandings', autoselecttab=1)
             return 
-        sm.GetService('corpui').LoadTop('ui_7_64_6', mls.UI_CORP_STANDINGS)
+        sm.GetService('corpui').LoadTop('ui_7_64_6', localization.GetByLabel('UI/Corporations/CorporationWindow/Standings/CorpStandings'))
         self.SetHint()
         if type(args) == types.StringType and args.startswith('mystandings_'):
             self.sr.standingtype = args
@@ -62,7 +64,7 @@ class CorpStandings(uicls.Container):
                 positive = False
             self.ShowStandings(positive)
         else:
-            sm.GetService('addressbook').ShowContacts('corpcontact', self.sr.contacts)
+            self.sr.contacts.LoadContactsForm('corpcontact')
 
 
 
@@ -81,122 +83,9 @@ class CorpStandings(uicls.Container):
 
 
 
-class CorporationPickerDialog(uicls.Window):
-    __guid__ = 'form.CorporationPickerDialog'
-
-    def ApplyAttributes(self, attributes):
-        uicls.Window.ApplyAttributes(self, attributes)
-        self.corporationID = None
-        self.searchStr = ''
-        self.playerCorpsOnly = 0
-        self.SetScope('all')
-        self.Confirm = self.ValidateOK
-        strTitle = mls.UI_CORP_SELECTCORPORALLIANCE
-        if self.playerCorpsOnly:
-            strTitle = mls.UI_CORP_SELECTPLAYERCORP
-        self.SetCaption(strTitle)
-        self.SetMinSize([320, 300])
-        self.SetWndIcon('ui_7_64_6')
-        self.sr.scroll = uicls.Scroll(parent=self.sr.main, padding=(const.defaultPadding,
-         const.defaultPadding,
-         const.defaultPadding,
-         const.defaultPadding))
-        self.sr.standardBtns = uicls.ButtonGroup(btns=[[mls.UI_CMD_OK,
-          self.OnOK,
-          (),
-          81], [mls.UI_CMD_CANCEL,
-          self.OnCancel,
-          (),
-          81]])
-        self.sr.main.children.insert(0, self.sr.standardBtns)
-        self.label = uicls.Label(text=mls.UI_SHARED_TYPESEARCHSTR, parent=self.sr.topParent, left=70, top=16, fontsize=9, letterspace=2, uppercase=1, state=uiconst.UI_NORMAL)
-        inpt = uicls.SinglelineEdit(name='edit', parent=self.sr.topParent, left=70, top=self.label.top + self.label.height + 2, width=86, align=uiconst.TOPLEFT, maxLength=37)
-        inpt.OnReturn = self.Search
-        self.sr.inpt = inpt
-        btn = uicls.Button(parent=self.sr.topParent, label=mls.UI_CMD_SEARCH, pos=(inpt.left + inpt.width + 2,
-         inpt.top,
-         0,
-         0), func=self.Search, btn_default=1)
-
-
-
-    def Search(self, *args):
-        self.ShowLoad()
-        scrolllist = []
-        try:
-            (groupID, exact,) = (const.groupCorporation, 0)
-            self.searchStr = self.GetSearchStr()
-            self.SetHint()
-            if len(self.searchStr) < 1:
-                self.SetHint(mls.UI_SHARED_PLEASETYPESOMETHING)
-                return 
-            result = sm.RemoteSvc('lookupSvc').LookupCorporationsOrAlliances(self.searchStr, exact)
-            if result is None or not len(result):
-                self.SetHint(mls.UI_CORP_HINT53 % {'search': self.searchStr})
-                return 
-            cfg.eveowners.Prime([ each.ownerID for each in result ])
-            for each in result:
-                owner = cfg.eveowners.Get(each.ownerID)
-                scrolllist.append(listentry.Get('Item', {'label': owner.name,
-                 'typeID': owner.typeID,
-                 'itemID': each.ownerID,
-                 'confirmOnDblClick': 1,
-                 'listvalue': [owner.name, each.ownerID]}))
-
-
-        finally:
-            self.sr.scroll.Load(fixedEntryHeight=18, contentList=scrolllist)
-            self.HideLoad()
-
-
-
-
-    def GetSearchStr(self):
-        return self.sr.inpt.GetValue().strip()
-
-
-
-    def Confirm(self):
-        self.OnOK()
-
-
-
-    def ValidateOK(self):
-        if self.searchStr != self.GetSearchStr():
-            self.Search()
-            return 0
-        log.LogInfo('ValidateOK')
-        if self.corporationID is None:
-            return 0
-        return 1
-
-
-
-    def SetHint(self, hintstr = None):
-        if self.sr.scroll:
-            self.sr.scroll.ShowHint(hintstr)
-
-
-
-    def OnOK(self, *args):
-        sel = self.sr.scroll.GetSelected()
-        if sel:
-            self.corporationID = sel[0].itemID
-            self.CloseX()
-        else:
-            self.SetHint(mls.UI_CORP_PLEASESELCORP)
-
-
-
-    def OnCancel(self, *args):
-        self.corporationID = None
-        self.CloseX()
-
-
-
-
 class CorporationOrAlliancePickerDailog(uicls.Window):
     __guid__ = 'form.CorporationOrAlliancePickerDailog'
+    default_windowID = 'CorporationOrAlliancePickerDailog'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -206,41 +95,37 @@ class CorporationOrAlliancePickerDailog(uicls.Window):
         self.warableEntitysOnly = warableEntitysOnly
         self.SetScope('all')
         self.Confirm = self.ValidateOK
-        strTitle = mls.UI_CORP_SELCORPORALLIANCE
+        strTitle = localization.GetByLabel('UI/Corporations/CorporationWindow/Standings/SelectCorpOrAlliance')
         if self.warableEntitysOnly:
-            strTitle = mls.UI_CORP_SELWARABLECORPORALLIANCE
+            strTitle = localization.GetByLabel('UI/Corporations/CorporationWindow/Standings/SelectWarableCorpOrAlliance')
         self.SetCaption(strTitle)
         self.SetMinSize([320, 300])
         self.SetWndIcon('ui_7_64_6')
         self.sr.main = uiutil.GetChild(self, 'main')
-        self.sr.standardBtns = uicls.ButtonGroup(btns=[[mls.UI_CMD_OK,
+        self.sr.standardBtns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Generic/OK'),
           self.OnOK,
           (),
-          81], [mls.UI_CMD_CANCEL,
+          81], [localization.GetByLabel('UI/Generic/Cancel'),
           self.OnCancel,
           (),
           81]])
         self.sr.main.children.insert(0, self.sr.standardBtns)
-        self.sr.txtWarningContainer = uicls.Container(name='txtWarningContainer', parent=self.sr.main, align=uiconst.TOBOTTOM, state=uiconst.UI_HIDDEN)
-        self.sr.txtWarningContainerPad = uicls.Container(name='txtWarningCenteredContainer', parent=self.sr.txtWarningContainer, pos=(const.defaultPadding * 2,
-         0,
-         self.sr.main.width - const.defaultPadding * 4,
-         0))
-        self.sr.txtWarning = uicls.Label(text='', parent=self.sr.txtWarningContainerPad, align=uiconst.TOALL, top=0, color=[1,
+        self.sr.txtWarningContainer = uicls.Container(name='txtWarningContainer', parent=self.sr.main, align=uiconst.TOBOTTOM, state=uiconst.UI_HIDDEN, height=32, padding=const.defaultPadding)
+        self.sr.txtWarning = uicls.EveLabelMedium(text='', parent=self.sr.txtWarningContainer, align=uiconst.TOALL, top=0, color=[1,
          0,
          0,
-         1], autowidth=False, autoheight=False, state=uiconst.UI_NORMAL)
+         1], state=uiconst.UI_NORMAL)
         self.sr.scroll = uicls.Scroll(parent=self.sr.main, left=const.defaultPadding, top=const.defaultPadding, state=uiconst.UI_NORMAL)
         self.sr.scroll.multiSelect = False
         self.sr.scroll.OnSelectionChange = self.OnScrollSelectionChange
-        self.label = uicls.Label(text=mls.UI_SHARED_TYPESEARCHSTR, parent=self.sr.topParent, left=70, top=5, fontsize=9, letterspace=2, uppercase=1, state=uiconst.UI_NORMAL)
+        self.label = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Shared/TypeSearchString'), parent=self.sr.topParent, left=70, top=5, state=uiconst.UI_NORMAL)
         inpt = self.sr.inpt = uicls.SinglelineEdit(name='edit', parent=self.sr.topParent, left=70, top=self.label.top + self.label.height + 2, width=86, align=uiconst.TOPLEFT, maxLength=32)
         inpt.OnReturn = self.Search
-        btn = uicls.Button(parent=self.sr.topParent, label=mls.UI_CMD_SEARCH, pos=(inpt.left + inpt.width + 2,
+        btn = uicls.Button(parent=self.sr.topParent, label=localization.GetByLabel('UI/Corporations/CorporationWindow/Standings/Search'), pos=(inpt.left + inpt.width + 2,
          inpt.top,
          0,
          0), func=self.Search, btn_default=1)
-        self.sr.exactChkBox = uicls.Checkbox(text=mls.UI_SHARED_SEARCHEXACT, parent=self.sr.topParent, configName='SearchExactChk', retval=1, align=uiconst.TOPLEFT, pos=(inpt.left,
+        self.sr.exactChkBox = uicls.Checkbox(text=localization.GetByLabel('UI/Corporations/CorporationWindow/Standings/SearchExact'), parent=self.sr.topParent, configName='SearchExactChk', retval=1, align=uiconst.TOPLEFT, pos=(inpt.left,
          inpt.top + inpt.height,
          200,
          0))
@@ -257,14 +142,14 @@ class CorporationOrAlliancePickerDailog(uicls.Window):
             self.searchStr = self.GetSearchStr()
             self.SetHint()
             if len(self.searchStr) < 1:
-                self.SetHint(mls.UI_SHARED_PLEASETYPESOMETHING)
+                self.SetHint(localization.GetByLabel('UI/Shared/PleaseTypeSomething'))
                 return 
             result = sm.RemoteSvc('lookupSvc').LookupCorporationsOrAlliances(self.searchStr, exact, self.warableEntitysOnly)
             if result is None or not len(result):
                 if exact:
-                    self.SetHint(mls.UI_CORP_HINT54 % {'search': self.searchStr})
+                    self.SetHint(localization.GetByLabel('UI/Corporations/CorporationWindow/Standings/ExactCorpOrAllianceNameNotFound', searchString=self.searchStr))
                 else:
-                    self.SetHint(mls.UI_CORP_HINT55 % {'search': self.searchStr})
+                    self.SetHint(localization.GetByLabel('UI/Corporations/CorporationWindow/Standings/CorpOrAllianceNameNotFound', searchString=self.searchStr))
                 return 
             cfg.eveowners.Prime([ each.ownerID for each in result ])
             for each in result:
@@ -309,7 +194,6 @@ class CorporationOrAlliancePickerDailog(uicls.Window):
         if hintstr is not None:
             self.sr.txtWarning.text = hintstr
             self.sr.txtWarningContainer.state = uiconst.UI_DISABLED
-            self.sr.txtWarningContainer.height = self.sr.txtWarning.textheight
 
 
 
@@ -323,24 +207,19 @@ class CorporationOrAlliancePickerDailog(uicls.Window):
 
 
 
-    def OnResizeUpdate(self, *args):
-        self.sr.txtWarningContainer.height = self.sr.txtWarning.textheight
-
-
-
     def OnOK(self, *args):
         sel = self.sr.scroll.GetSelected()
         if sel:
             self.ownerID = sel[0].itemID
-            self.CloseX()
+            self.CloseByUser()
         else:
-            self.SetHint(mls.UI_GENERIC_PICKERROR2B % {'num': 1})
+            self.SetHint(localization.GetByLabel('UI/Corporations/CorporationWindow/Standings/ErrorPleaseChoose'))
 
 
 
     def OnCancel(self, *args):
         self.ownerID = None
-        self.CloseX()
+        self.CloseByUser()
 
 
 

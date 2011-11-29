@@ -25,7 +25,7 @@ class PyChildrenList(object):
         if owner:
             self._childrenObjects.append(obj)
             obj._parentRef = weakref.ref(owner)
-            owner.AppendChild(obj)
+            owner._AppendChildRO(obj)
             return self
 
 
@@ -40,7 +40,7 @@ class PyChildrenList(object):
         owner = self.GetOwner()
         if owner:
             self._childrenObjects.insert(idx, obj)
-            owner.InsertChild(idx, obj)
+            owner._InsertChildRO(idx, obj)
             obj._parentRef = weakref.ref(owner)
             return self
 
@@ -52,7 +52,7 @@ class PyChildrenList(object):
         obj._parentRef = None
         owner = self.GetOwner()
         if owner:
-            owner.RemoveChild(obj)
+            owner._RemoveChildRO(obj)
         return self
 
 

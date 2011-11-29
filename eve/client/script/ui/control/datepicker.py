@@ -1,27 +1,28 @@
-import xtriui
 import blue
 import uicls
 import uiconst
 import calendar
 import time
+import localization
+import localizationUtil
 
 class DatePicker(uicls.Container):
     __guid__ = 'xtriui.DatePicker'
     __nonpersistvars__ = []
 
     def init(self):
-        self.months = [mls.UI_GENERIC_JANUARY,
-         mls.UI_GENERIC_FEBRUARY,
-         mls.UI_GENERIC_MARCH,
-         mls.UI_GENERIC_APRIL,
-         mls.UI_GENERIC_MAY,
-         mls.UI_GENERIC_JUNE,
-         mls.UI_GENERIC_JULY,
-         mls.UI_GENERIC_AUGUST,
-         mls.UI_GENERIC_SEPTEMBER,
-         mls.UI_GENERIC_OCTOBER,
-         mls.UI_GENERIC_NOVEMBER,
-         mls.UI_GENERIC_DECEMBER]
+        self.months = [localization.GetByLabel('UI/Common/Months/January'),
+         localization.GetByLabel('UI/Common/Months/February'),
+         localization.GetByLabel('UI/Common/Months/March'),
+         localization.GetByLabel('UI/Common/Months/April'),
+         localization.GetByLabel('UI/Common/Months/May'),
+         localization.GetByLabel('UI/Common/Months/June'),
+         localization.GetByLabel('UI/Common/Months/July'),
+         localization.GetByLabel('UI/Common/Months/August'),
+         localization.GetByLabel('UI/Common/Months/September'),
+         localization.GetByLabel('UI/Common/Months/October'),
+         localization.GetByLabel('UI/Common/Months/November'),
+         localization.GetByLabel('UI/Common/Months/December')]
 
 
 
@@ -39,21 +40,21 @@ class DatePicker(uicls.Container):
             yRange = year - startYear + 1
         else:
             yRange = yearRange
-        yearops = [ (str(startYear + i), startYear + i) for i in xrange(yRange) ]
-        self.ycombo = uicls.Combo(parent=self, label=mls.UI_GENERIC_YEAR, options=yearops, name='year', select=year, callback=self.OnComboChange, pos=(left,
+        yearops = [ (localizationUtil.FormatNumeric(startYear + i, decimalPlaces=0), startYear + i) for i in xrange(yRange) ]
+        self.ycombo = uicls.Combo(parent=self, label=localization.GetByLabel('UI/Common/DateWords/Year'), options=yearops, name='year', select=year, callback=self.OnComboChange, pos=(left,
          0,
          0,
          0), width=48, align=uiconst.TOPLEFT)
         left += self.ycombo.width + 4
         monthops = [ (self.months[i], i + 1) for i in xrange(12) ]
-        self.mcombo = uicls.Combo(parent=self, label=mls.UI_GENERIC_MONTH, options=monthops, name='month', select=month, callback=self.OnComboChange, pos=(left,
+        self.mcombo = uicls.Combo(parent=self, label=localization.GetByLabel('UI/Common/DateWords/Month'), options=monthops, name='month', select=month, callback=self.OnComboChange, pos=(left,
          0,
          0,
          0), width=64, align=uiconst.TOPLEFT)
         left += self.mcombo.width + 4
         (firstday, numdays,) = calendar.monthrange(year, month)
-        dayops = [ (str(i + 1), i + 1) for i in xrange(numdays) ]
-        self.dcombo = uicls.Combo(parent=self, label=mls.UI_GENERIC_DAY, options=dayops, name='day', select=day, callback=self.OnComboChange, pos=(left,
+        dayops = [ (localizationUtil.FormatNumeric(i + 1, decimalPlaces=0), i + 1) for i in xrange(numdays) ]
+        self.dcombo = uicls.Combo(parent=self, label=localization.GetByLabel('UI/Common/DateWords/Day'), options=dayops, name='day', select=day, callback=self.OnComboChange, pos=(left,
          0,
          0,
          0), width=48, align=uiconst.TOPLEFT)
@@ -63,7 +64,7 @@ class DatePicker(uicls.Container):
             index = self.GetTimeIndex(now)
             hourops = self.GetTimeOptions()
             left += self.dcombo.width + 4
-            self.hcombo = uicls.Combo(parent=self, label=mls.UI_GENERIC_TIME, options=hourops, name='time', select=index, callback=self.OnComboChange, pos=(left,
+            self.hcombo = uicls.Combo(parent=self, label=localization.GetByLabel('UI/Common/DateWords/Time'), options=hourops, name='time', select=index, callback=self.OnComboChange, pos=(left,
              0,
              0,
              0), width=48, align=uiconst.TOPLEFT)
@@ -128,7 +129,17 @@ class DatePicker(uicls.Container):
             interval = 60 / self.timeparts
             for m in xrange(0, self.timeparts):
                 min = m * interval
-                hours.append(('%.2d:%.2d' % (h, min), counter))
+                ts = time.struct_time((0,
+                 1,
+                 1,
+                 h,
+                 min,
+                 0,
+                 0,
+                 1,
+                 0))
+                timeStr = localizationUtil.FormatDateTime(value=ts, dateFormat='none', timeFormat='short')
+                hours.append((timeStr, counter))
                 counter += 1
 
 

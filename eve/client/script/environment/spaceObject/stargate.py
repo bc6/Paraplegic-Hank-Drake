@@ -10,6 +10,7 @@ class Stargate(spaceObject.SpaceObject):
         filename = cfg.invtypes.Get(slimItem.typeID).GraphicFile()
         filename = self.GetTrinityVersionFilename(filename)
         spaceObject.SpaceObject.LoadModel(self, filename, useInstance)
+        self.SetStaticRotation()
 
 
 

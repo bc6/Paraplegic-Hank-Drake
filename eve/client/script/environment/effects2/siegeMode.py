@@ -81,7 +81,7 @@ class SiegeMode(effects.GenericEffect):
                 curve.Sort()
                 done[curve] = 1
 
-        now = blue.os.GetTime()
+        now = blue.os.GetSimTime()
         for soundNode in soundNodes:
             if soundNode.name.startswith('Siege'):
                 soundNode.Play()

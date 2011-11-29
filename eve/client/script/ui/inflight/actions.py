@@ -10,21 +10,20 @@ import uiconst
 
 class ActionPanel(uicls.Window):
     __guid__ = 'form.ActionPanel'
+    default_width = 256
+    default_height = 160
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
-        panelID = attributes.panelID
         showActions = attributes.get('showActions', True)
         panelName = attributes.panelName
         self.lastActionSerial = None
         self.sr.actions = None
         self.sr.actionsTimer = None
         self.sr.blink = None
-        self.panelID = None
         self.panelname = ''
         self.scope = 'inflight'
-        self.panelID = panelID.replace(' ', '').lower()
-        self.panelname = panelName or panelID
+        self.panelname = panelName
         main = self.sr.main
         self.SetTopparentHeight(0)
         self.SetWndIcon()
@@ -53,7 +52,7 @@ class ActionPanel(uicls.Window):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         self.sr.actionsTimer = None
         self.Closing()
 

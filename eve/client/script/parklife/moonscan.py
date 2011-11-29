@@ -29,7 +29,7 @@ class MoonScanSvc(service.Service):
 
 
     def GetWnd(self, create):
-        wnd = sm.GetService('window').GetWindow('scanner')
+        wnd = form.Scanner.GetIfOpen()
         if not wnd and create:
             uicore.cmd.OpenScanner()
             return self.GetWnd(0)

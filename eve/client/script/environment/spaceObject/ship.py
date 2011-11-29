@@ -218,6 +218,20 @@ class Ship(spaceObject.SpaceObject):
 
 
 
+    def UnfitHardpoints(self):
+        if not self.fitted:
+            return 
+        newModules = {}
+        for (key, val,) in self.modules.iteritems():
+            if val not in self.turrets:
+                newModules[key] = val
+
+        self.modules = newModules
+        del self.turrets[:]
+        self.fitted = False
+
+
+
     def FitHardpoints(self):
         if self.fitted:
             return 

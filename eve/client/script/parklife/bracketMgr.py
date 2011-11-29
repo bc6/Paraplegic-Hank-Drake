@@ -8,7 +8,6 @@ import base
 import uthread
 import state
 import util
-import draw
 import trinity
 import sys
 import fleetbr
@@ -17,6 +16,8 @@ import stackless
 import log
 import uiconst
 import weakref
+import localization
+import bluepy
 SHOW_NONE = -1
 SHOW_DEFAULT = 0
 SHOW_ALL = 1
@@ -51,15 +52,18 @@ class BracketMgr(service.Service):
      'OnAttribute',
      'OnAttributes',
      'OnCaptureChanged',
-     'OnBSDTablesChanged']
+     'OnBSDTablesChanged',
+     'ProcessShipEffect']
     __dependencies__ = ['michelle',
      'tactical',
      'map',
-     'settings']
+     'settings',
+     'target']
 
     def __init__(self):
         service.Service.__init__(self)
         self.unwantedBracketGroups = [const.groupSecondarySun]
+        self.showState = SHOW_DEFAULT
 
 
 
@@ -114,7 +118,6 @@ class BracketMgr(service.Service):
 
 
     def Reload(self, waitForPark = True):
-        self.showState = SHOW_DEFAULT
         self.specials = (const.groupLargeCollidableStructure, const.groupMoon)
         self.bypassFilter = False
         self.CleanUp()
@@ -376,7 +379,7 @@ class BracketMgr(service.Service):
                                   inf,
                                   0,
                                   0),
-         const.categoryOrbital: ('ui_38_16_149',
+         const.categoryOrbital: ('ui_38_16_31',
                                  1,
                                  0.0,
                                  inf,
@@ -430,15 +433,9 @@ class BracketMgr(service.Service):
                               inf,
                               0,
                               0),
-         const.groupControlBunker: ('ui_38_16_252',
-                                    1,
-                                    7000.0,
-                                    inf,
-                                    0,
-                                    0),
-         const.groupConstructionPlatform: ('ui_38_16_252', 1, 7000.0, 50000.0, 0, 0),
-         const.groupStationImprovementPlatform: ('ui_38_16_252', 1, 7000.0, 50000.0, 0, 0),
-         const.groupStationUpgradePlatform: ('ui_38_16_252', 1, 7000.0, 50000.0, 0, 0),
+         const.groupConstructionPlatform: ('ui_38_16_252', 1, 0.0, 50000.0, 0, 0),
+         const.groupStationImprovementPlatform: ('ui_38_16_252', 1, 0.0, 50000.0, 0, 0),
+         const.groupStationUpgradePlatform: ('ui_38_16_252', 1, 0.0, 50000.0, 0, 0),
          const.groupDestructibleStationServices: ('ui_38_16_135',
                                                   1,
                                                   0.0,
@@ -976,14 +973,7 @@ class BracketMgr(service.Service):
                                               0.0,
                                               inf,
                                               0,
-                                              0),
-         const.groupFlashpoint: ('38_164',
-                                 1,
-                                 0.0,
-                                 inf,
-                                 0,
-                                 0),
-         const.groupImpactor: ('38_07', 1, 0.0, 60000.0, 0, 0)}
+                                              0)}
         for group in cfg.invgroups:
             if group.fittableNonSingleton and not self.grp_mapping.has_key(group.groupID):
                 self.grp_mapping[group.groupID] = self.grp_mapping[const.groupMissile]
@@ -1129,11 +1119,6 @@ class BracketMgr(service.Service):
 
 
 
-    def ShowingHidden(self):
-        return not not self.showHiddenTimer
-
-
-
     def StopShowingAllNone(self):
         self.showState = SHOW_DEFAULT
         lst = []
@@ -1251,7 +1236,7 @@ class BracketMgr(service.Service):
         slimItem = sm.GetService('michelle').GetBallpark().slimItems.get(objectID, None)
         if not objectID:
             return ''
-        return self.DisplayName(slimItem, uix.GetSlimItemName(slimItem))
+        return self.GetDisplayNameForBracket(slimItem)
 
 
 
@@ -1298,25 +1283,35 @@ class BracketMgr(service.Service):
             bracket = self.brackets.get(newSlim.itemID, None)
             if bracket:
                 bracket.slimItem = newSlim
-                bracket.displayName = self.DisplayName(newSlim, uix.GetSlimItemName(newSlim))
+                bracket.displayName = self.GetDisplayNameForBracket(newSlim)
                 bracket.UpdateStructureState(newSlim)
         elif util.IsOrbital(newSlim.categoryID):
-            if newSlim.orbitalState == oldSlim.orbitalState and newSlim.orbitalTimestamp == oldSlim.orbitalTimestamp and newSlim.ownerID == oldSlim.ownerID:
+            if newSlim.orbitalState == oldSlim.orbitalState and newSlim.orbitalTimestamp == oldSlim.orbitalTimestamp and newSlim.ownerID == oldSlim.ownerID and newSlim.orbitalHackerID == oldSlim.orbitalHackerID and newSlim.orbitalHackerProgress == oldSlim.orbitalHackerProgress:
                 return 
             bracket = self.brackets.get(newSlim.itemID, None)
             if bracket is not None:
                 bracket.slimItem = newSlim
-                bracket.displayName = self.DisplayName(newSlim, uix.GetSlimItemName(newSlim))
+                bracket.displayName = self.GetDisplayNameForBracket(newSlim)
                 bracket.UpdateOrbitalState(newSlim)
         elif newSlim.categoryID == const.categoryShip and newSlim.itemID in self.brackets:
             self.brackets[newSlim.itemID].slimItem = newSlim
-            self.brackets[newSlim.itemID].displayName = self.DisplayName(newSlim, uix.GetSlimItemName(newSlim))
+            self.brackets[newSlim.itemID].displayName = self.GetDisplayNameForBracket(newSlim)
         elif newSlim.categoryID == const.categoryStation:
             bracket = self.brackets.get(newSlim.itemID, None)
             if bracket:
                 bracket.slimItem = newSlim
-                bracket.displayName = self.DisplayName(newSlim, uix.GetSlimItemName(newSlim))
+                bracket.displayName = self.GetDisplayNameForBracket(newSlim)
                 bracket.UpdateOutpostState(newSlim, oldSlim)
+        elif newSlim.groupID in (const.groupPlanet, const.groupPlanetaryCustomsOffices) and newSlim.corpID != oldSlim.corpID:
+            bracket = self.brackets.get(newSlim.itemID, None)
+            if bracket:
+                bracket.slimItem = newSlim
+                bracket.displayName = self.GetDisplayNameForBracket(newSlim)
+            if newSlim.groupID == const.groupPlanet:
+                if newSlim.corpID is not None:
+                    bracket.displaySubLabel = localization.GetByLabel('UI/DustLink/ControlledBy', corpName=cfg.eveowners.Get(newSlim.corpID).name)
+                else:
+                    bracket.displaySubLabel = ''
         elif newSlim.itemID in self.brackets:
             self.brackets[newSlim.itemID].slimItem = newSlim
         if newSlim.corpID != oldSlim.corpID:
@@ -1413,7 +1408,7 @@ class BracketMgr(service.Service):
         t = stackless.getcurrent()
         timer = t.PushTimer(blue.pyos.taskletTimer.GetCurrent() + '::BracketMgr')
         try:
-            return self.DoBallsAdded_(*args, **kw)
+            uthread.new(self.DoBallsAdded_, *args, **kw).context = blue.pyos.taskletTimer.GetCurrent() + '::DoBallsAdded_'
 
         finally:
             t.PopTimer(timer)
@@ -1421,11 +1416,11 @@ class BracketMgr(service.Service):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def DoBallsAdded_(self, lst, useFilter = True, ignoreMoons = 0, ignoreAsteroids = 1):
         uthread.worker('BracketMgr::UpdateBracketsForDungeonEditing', self.UpdateBracketsForDungeonEditing, lst)
         if not hasattr(self, 'specialGroups'):
             self.specialGroups = (const.groupMoon, const.groupLargeCollidableStructure)
-        t = blue.os.GetTime(1)
         if not self.gotProps:
             self.gotProps = 1
             self.SetupProps()
@@ -1451,6 +1446,7 @@ class BracketMgr(service.Service):
         currNumAsteroidBelt = 1
         currNumAsteroid = 1
         currNumStations = 1
+        bracketsToUpdateSubLabel = []
         for (ball, slimItem,) in lst:
             show = 1
             if slimItem.groupID == const.groupDeadspaceOverseersStructure:
@@ -1485,6 +1481,8 @@ class BracketMgr(service.Service):
             if panel.displayName is None:
                 panel.Close()
                 continue
+            if slimItem.groupID == const.groupPlanet and slimItem.corpID:
+                bracketsToUpdateSubLabel.append((panel, slimItem))
             self.SetupBracketProperties(panel, ball, slimItem)
             panel.updateItem = sm.GetService('state').CheckIfUpdateItem(slimItem) and ball.id != eve.session.shipid
             panel.Startup(slimItem, ball)
@@ -1493,7 +1491,11 @@ class BracketMgr(service.Service):
                 self.updateBrackets.append(ball.id)
             if hasattr(self, 'capturePoints') and ball.id in self.capturePoints.keys():
                 self.brackets[ball.id].UpdateCaptureProgress(self.capturePoints[ball.id])
+            if util.IsOrbital(slimItem.categoryID):
+                self.brackets[ball.id].UpdateOrbitalState(slimItem)
 
+        if len(bracketsToUpdateSubLabel) > 0:
+            uthread.worker('BracketMgr::UpdateSubLabels', self.UpdateSubLabels, bracketsToUpdateSubLabel)
 
 
 
@@ -1514,10 +1516,10 @@ class BracketMgr(service.Service):
             elif slimItem.groupID == const.groupStargate:
                 uthread.new(self.PrimeLocations, slimItem)
             elif slimItem.groupID == const.groupHarvestableCloud:
-                displayName = '%s (%s)' % (mls.UI_GENERIC_HARVESTABLE_CLOUD, cfg.invtypes.Get(slimItem.typeID).name)
+                displayName = localization.GetByLabel('UI/Generic/HarvestableCloud', item=slimItem.typeID)
             elif slimItem.categoryID == const.categoryAsteroid:
-                displayName = '%s (%s)' % (mls.UI_GENERIC_ASTEROID, cfg.invtypes.Get(slimItem.typeID).name)
-        if slimItem.corpID:
+                displayName = localization.GetByLabel('UI/Generic/Asteroid', item=slimItem.typeID)
+        if not util.IsOrbital(slimItem.categoryID) and slimItem.corpID:
             displayName = self.DisplayName(slimItem, displayName)
         return displayName
 
@@ -1550,7 +1552,7 @@ class BracketMgr(service.Service):
         (_iconNo, _dockType, _minDist, _maxDist, _iconOffset, _logflag,) = props
         tracker = bracket.projectBracket
         tracker.trackBall = ball
-        tracker.name = ball.name
+        tracker.name = unicode(cfg.evelocations.Get(ball.id).locationName)
         tracker.parent = uicore.layer.inflight.GetRenderObject()
         tracker.dock = _dockType
         tracker.marginRight = tracker.marginLeft + bracket.width
@@ -1571,7 +1573,16 @@ class BracketMgr(service.Service):
         for bracket in self.brackets:
             slimItem = self.brackets[bracket].slimItem
             if slimItem.corpID:
-                self.brackets[slimItem.itemID].displayName = self.DisplayName(slimItem, uix.GetSlimItemName(slimItem))
+                self.brackets[slimItem.itemID].displayName = self.GetDisplayNameForBracket(slimItem)
+            if slimItem.groupID == const.groupPlanet and slimItem.corpID:
+                self.brackets[slimItem.itemID].displaySubLabel = localization.GetByLabel('UI/DustLink/ControlledBy', corpName=cfg.eveowners.Get(slimItem.corpID).name)
+
+
+
+
+    def UpdateSubLabels(self, updates):
+        for (bracket, slimItem,) in updates:
+            bracket.displaySubLabel = localization.GetByLabel('UI/DustLink/ControlledBy', corpName=cfg.eveowners.Get(slimItem.corpID).name)
 
 
 
@@ -1729,7 +1740,7 @@ class BracketMgr(service.Service):
         if what == 'evelocations':
             bracket = self.GetBracket(data[0])
             if bracket is not None and getattr(bracket, 'slimItem', None):
-                bracket.displayName = self.DisplayName(bracket.slimItem, uix.GetSlimItemName(bracket.slimItem))
+                bracket.displayName = self.GetDisplayNameForBracket(bracket.slimItem)
 
 
 
@@ -1738,7 +1749,7 @@ class BracketMgr(service.Service):
         if not hasattr(self, 'capturePoints'):
             self.capturePoints = {}
         self.capturePoints[ballID] = {'captureID': captureID,
-         'lastIncident': blue.os.GetTime(),
+         'lastIncident': blue.os.GetSimTime(),
          'points': points,
          'captureTime': captureTime,
          'lastCapturing': lastCapturing}
@@ -1786,6 +1797,7 @@ class BracketMgr(service.Service):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def CheckOverlaps(self, sender, hideRest = 0):
         self.checkingOverlaps = sender.itemID
         self.ResetOverlaps()
@@ -1793,13 +1805,25 @@ class BracketMgr(service.Service):
         excludedC = (const.categoryAsteroid,)
         excludedG = (const.groupHarvestableCloud,)
         sameX = []
+        LEFT = 0
+        TOP = 1
+        WIDTH = 2
+        HEIGHT = 3
+        BOTTOM = 4
+        RIGHT = 5
 
+        @util.Memoized
         def GetAbsolute(bracket):
             ro = bracket.GetRenderObject()
-            (x, y,) = ro.translation
+            (x, y,) = (uicore.ReverseScaleDpi(ro.translation[0]), uicore.ReverseScaleDpi(ro.translation[1]))
             centerX = x + bracket.width / 2
             centerY = y + bracket.height / 2
-            return uiutil.Bunch(left=centerX - 8, top=centerY - 8, width=16, height=16, bottom=centerY + 8, right=centerX + 8)
+            return (centerX - 8,
+             centerY - 8,
+             16,
+             16,
+             centerY + 8,
+             centerX + 8)
 
 
         s = GetAbsolute(sender)
@@ -1807,8 +1831,8 @@ class BracketMgr(service.Service):
             if not getattr(bracket, 'IsBracket', 0) or not bracket.display or bracket.invisible and bracket.sr.tempIcon is None or bracket.categoryID in excludedC or bracket.groupID in excludedG or bracket == sender:
                 continue
             b = GetAbsolute(bracket)
-            overlapx = not (b.right <= s.left or b.left >= s.right)
-            overlapy = not (b.bottom <= s.top or b.top >= s.bottom)
+            overlapx = not (b[RIGHT] <= s[LEFT] or b[LEFT] >= s[RIGHT])
+            overlapy = not (b[BOTTOM] <= s[TOP] or b[TOP] >= s[BOTTOM])
             if overlapx and overlapy:
                 overlaps.append((bracket.displayName.lower(), bracket))
             elif overlapx and not overlapy:
@@ -1820,7 +1844,7 @@ class BracketMgr(service.Service):
             return 
 
         def GroupHeight(group):
-            return sum([ GetAbsolute(b).height for (name, b,) in group ])
+            return sum([ GetAbsolute(b)[HEIGHT] for (name, b,) in group ])
 
 
         totalH = GroupHeight(overlaps)
@@ -1828,22 +1852,21 @@ class BracketMgr(service.Service):
         if sameX:
             for i in xrange(10):
                 minY = sender.absoluteTop - totalH
-                maxY = s.bottom
+                maxY = s[BOTTOM]
                 (oo, sameX,) = self.GetOverlapOverlap(sameX, minY, maxY)
                 if not oo:
                     break
                 overlaps.extend(oo)
                 totalH += GroupHeight(oo)
 
-        overlaps = uiutil.SortListOfTuples(overlaps)
-        overlaps.reverse()
+        overlaps = uiutil.SortListOfTuples(overlaps, reverse=True)
 
         def Nail(bracket, top):
             projectBracket = bracket.projectBracket
             if projectBracket:
                 projectBracket.bracket = None
             bracket.SetAlign(uiconst.TOPLEFT)
-            bracket.left = s.left + s.width / 2 - bracket.width / 2
+            bracket.left = s[LEFT] + s[WIDTH] / 2 - bracket.width / 2
             bracket.top = top - (bracket.height - 16) / 2
             bracket._pervious_opacity = bracket.opacity
             bracket.opacity = 1.0
@@ -1852,7 +1875,7 @@ class BracketMgr(service.Service):
             uiutil.SetOrder(bracket, 0)
 
 
-        top = s.top
+        top = s[TOP]
         Nail(sender, top)
         if sender.sr.hitchhiker:
             (lh, th, wh, hh,) = sender.sr.hitchhiker.GetAbsolute()
@@ -1862,7 +1885,9 @@ class BracketMgr(service.Service):
             if sender.sr.bubble.data[1] in (0, 1, 2):
                 top -= sender.sr.bubble.height + 8
         for bracket in overlaps:
-            shift = GetAbsolute(bracket).height
+            if top < 0:
+                break
+            shift = GetAbsolute(bracket)[HEIGHT]
             shift += 2
             hasBubble = bool(bracket.sr.bubble)
             if hasBubble:
@@ -1958,6 +1983,23 @@ class BracketMgr(service.Service):
                         objectList.append((ball, slimItem))
 
                 self.DoBallsAdded(objectList, ignoreAsteroids=0)
+
+
+
+    def ProcessShipEffect(self, godmaStm, effectState):
+        (moduleID, characterID, shipID, targetID, otherID, areaIDs, effectID,) = effectState.environment
+        if effectID == const.effectHackOrbital:
+            (slimItem, bracket,) = self.GetSlimItem(targetID)
+            if bracket:
+                if effectState.active:
+                    progress = sm.GetService('planetInfo').GetMyHackProgress(targetID)
+                    bracket.BeginHacking()
+                    bracket.UpdateHackProgress(progress)
+                    if slimItem:
+                        bracket.UpdateOrbitalState(slimItem)
+                else:
+                    progress = sm.GetService('planetInfo').GetMyHackProgress(targetID)
+                    bracket.StopHacking(success=progress is not None and progress >= 1.0)
 
 
 

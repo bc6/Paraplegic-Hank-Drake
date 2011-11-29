@@ -2,31 +2,26 @@ import uiconst
 import service
 import svc
 import blue
-import sys
-import log
-import os
 import const
-import moniker
-import uiconst
 import util
-import zlib
 import form
-import xtriui
 import uiutil
-import uthread
 import uix
 import uicls
 import state
-RESPONSETYPES = {const.eventResponseAccepted: mls.UI_CAL_ACCEPTED,
- const.eventResponseDeclined: mls.UI_CAL_DECLINED,
- const.eventResponseDeleted: mls.UI_CAL_EVENTCANCELED,
- const.eventResponseUninvited: mls.UI_CAL_UNINVITED,
- const.eventResponseUndecided: mls.UI_CAL_NOTRESPONDED,
- const.eventResponseMaybe: mls.UI_CAL_MAYBEREPLY}
-EVENTTYPES = {const.calendarTagPersonal: mls.UI_CAL_GROUPPERSONCAL,
- const.calendarTagCorp: mls.UI_CAL_GROUPCORP,
- const.calendarTagAlliance: mls.UI_CAL_GROUPALLIANCE,
- const.calendarTagCCP: mls.UI_CAL_GROUPCCP}
+import localization
+import localizationUtil
+import time
+RESPONSETYPES = {const.eventResponseAccepted: localization.GetByLabel('UI/Calendar/ResponseTypes/Accepted'),
+ const.eventResponseDeclined: localization.GetByLabel('UI/Calendar/ResponseTypes/Declined'),
+ const.eventResponseDeleted: localization.GetByLabel('UI/Calendar/ResponseTypes/Canceled'),
+ const.eventResponseUninvited: localization.GetByLabel('UI/Calendar/ResponseTypes/Uninvited'),
+ const.eventResponseUndecided: localization.GetByLabel('UI/Calendar/ResponseTypes/NotResponded'),
+ const.eventResponseMaybe: localization.GetByLabel('UI/Calendar/ResponseTypes/MaybeReply')}
+EVENTTYPES = {const.calendarTagPersonal: localization.GetByLabel('UI/Calendar/CalendarWindow/GroupPersonal'),
+ const.calendarTagCorp: localization.GetByLabel('UI/Calendar/CalendarWindow/GroupCorp'),
+ const.calendarTagAlliance: localization.GetByLabel('UI/Calendar/CalendarWindow/GroupAlliance'),
+ const.calendarTagCCP: localization.GetByLabel('UI/Calendar/CalendarWindow/GroupCcp')}
 
 class EveCalendarSvc(svc.calendar):
     __guid__ = 'svc.eveCalendar'
@@ -54,7 +49,7 @@ class EveCalendarSvc(svc.calendar):
 
     def OpenNewEventWnd(self, year, month, monthday, *args):
         configname = 'calendarNewEventWnd_%s_%s_%s' % (year, month, monthday)
-        wnd = sm.GetService('window').GetWindow(configname, create=1, decoClass=form.CalendarNewEventWnd, maximize=1, year=year, month=month, monthday=monthday)
+        form.CalendarNewEventWnd.Open(windowID=configname, year=year, month=month, monthday=monthday)
 
 
 
@@ -94,6 +89,9 @@ class EveCalendarSvc(svc.calendar):
 
 
     def EditEvent(self, eventID, oldDateTime, dateTime, duration, title, description, eventTag, important = 0):
+        (year, month, wd, day, hour, min, sec, ms,) = util.GetTimeParts(dateTime)
+        if self.IsTooFarInFuture(year, month):
+            raise UserError('CalendarTooFarIntoFuture', {'numMonths': const.calendarViewRangeInMonths})
         if oldDateTime != dateTime:
             if eve.Message('CalendarEventEditDate', {}, uiconst.YESNO) != uiconst.ID_YES:
                 return False
@@ -155,24 +153,21 @@ class EveCalendarSvc(svc.calendar):
 
 
     def OpenSingleDayWnd(self, config, year, month, monthday, events, isADay = 1, *args):
-        wnd = sm.GetService('window').GetWindow('singleDayWnd', create=0, decoClass=form.CalendarSingleDayWnd)
         configname = '%s_%s_%s_%s' % (config,
          year,
          month,
          monthday)
+        wnd = form.CalendarSingleDayWnd.GetIfOpen(windowID=configname)
         if wnd:
-            if wnd.configname == configname:
-                wnd.Maximize()
-                return 
-            shift = uicore.uilib.Key(uiconst.VK_SHIFT)
-            if shift:
-                wnd = sm.GetService('window').GetWindow('singleDayWnd', create=1, decoClass=form.CalendarSingleDayWnd, maximize=1, ignoreCurrent=1, config=config, year=year, month=month, monthday=monthday, events=events, configname=configname, isADay=isADay)
-                return 
-            while wnd:
-                wnd.CloseX()
-                wnd = sm.GetService('window').GetWindow('singleDayWnd', create=0, decoClass=form.CalendarSingleDayWnd)
+            wnd.Maximize()
+            return 
+        shift = uicore.uilib.Key(uiconst.VK_SHIFT)
+        if not shift:
+            for someWnd in uicore.registry.GetWindows()[:]:
+                if isinstance(someWnd, form.CalendarSingleDayWnd):
+                    someWnd.CloseX()
 
-        wnd = sm.GetService('window').GetWindow('singleDayWnd', create=1, decoClass=form.CalendarSingleDayWnd, maximize=1, config=config, year=year, month=month, monthday=monthday, events=events, configname=configname, isADay=isADay)
+        wnd = form.CalendarSingleDayWnd.Open(windowID=configname, config=config, year=year, month=month, monthday=monthday, events=events, configname=configname, isADay=isADay)
 
 
 
@@ -180,10 +175,10 @@ class EveCalendarSvc(svc.calendar):
         (year, month, wd, monthday, hour, min, sec, ms,) = util.GetTimeParts(eventInfo.eventDateTime)
         name = 'calendarEventWnd_%s' % eventInfo.eventID
         if edit:
-            wnd = sm.GetService('window').GetWindow(name, create=0, decoClass=form.CalendarNewEventWnd)
+            wnd = form.CalendarNewEventWnd.GetIfOpen(windowID=name)
             if wnd and not wnd.inEditMode:
-                wnd.CloseX()
-        wnd = sm.GetService('window').GetWindow(name, create=1, decoClass=form.CalendarNewEventWnd, maximize=1, year=year, month=month, monthday=monthday, eventInfo=eventInfo, edit=edit)
+                wnd.CloseByUser()
+        wnd = form.CalendarNewEventWnd.Open(windowID=name, year=year, month=month, monthday=monthday, eventInfo=eventInfo, edit=edit)
 
 
 
@@ -207,15 +202,13 @@ class EveCalendarSvc(svc.calendar):
             return False
         self.calendarMgr.DeleteEvent(eventID, ownerID)
         name = 'calendarEventWnd_%s' % eventID
-        wnd = sm.GetService('window').GetWindow(name, create=0, decoClass=form.CalendarNewEventWnd)
-        if wnd:
-            wnd.CloseX()
+        form.CalendarNewEventWnd.CloseIfOpen(windowID=name)
         return True
 
 
 
     def IsInNextEventsWindow(self, eventYear, eventMonth):
-        (nowYear, nowMonth,) = util.GetYearMonthFromTime(blue.os.GetTime())
+        (nowYear, nowMonth,) = util.GetYearMonthFromTime(blue.os.GetWallclockTime())
         if eventYear == nowYear:
             return eventMonth in (nowMonth, nowMonth + 1)
         if eventYear == nowYear + 1:
@@ -226,13 +219,13 @@ class EveCalendarSvc(svc.calendar):
 
     def OnNewCalendarEvent(self, eventID, ownerID, eventDateTime, eventDuration, eventTitle, importance, doBlink = True):
         (year, month,) = util.GetYearMonthFromTime(eventDateTime)
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         eventList = self.events.get((month, year))
         if eventList is not None:
             if eventID not in [ x.eventID for x in eventList ]:
                 eventKV = util.KeyVal(eventID=eventID, ownerID=ownerID, eventDateTime=eventDateTime, eventDuration=eventDuration, eventTitle=eventTitle, importance=importance, flag=self.GetEventFlag(ownerID))
                 eventKV.isDeleted = False
-                eventKV.dateModified = blue.os.GetTime()
+                eventKV.dateModified = blue.os.GetWallclockTime()
                 eventList.append(eventKV)
                 self.events[(month, year)] = eventList
                 if eventDateTime > now and self.IsInNextEventsWindow(year, month):
@@ -258,7 +251,7 @@ class EveCalendarSvc(svc.calendar):
                 if oldReply in (const.eventResponseUndecided, const.eventResponseAccepted, const.eventResponseMaybe):
                     self.eventResponses[eventID] = const.eventResponseUndecided
                     (year, month,) = util.GetYearMonthFromTime(eventDateTime)
-                    if eventDateTime > blue.os.GetTime() and self.IsInNextEventsWindow(year, month):
+                    if eventDateTime > blue.os.GetWallclockTime() and self.IsInNextEventsWindow(year, month):
                         sm.GetService('neocom').Blink('clock')
             self.objectCaching.InvalidateCachedMethodCall('calendarMgr', 'GetResponsesToEvent', eventID, ownerID)
         eventList = self.events.get((oldMonth, oldYear))
@@ -280,7 +273,7 @@ class EveCalendarSvc(svc.calendar):
                 if x.eventID == eventID:
                     if isDeleted:
                         x.isDeleted = True
-                        x.dateModified = blue.os.GetTime()
+                        x.dateModified = blue.os.GetWallclockTime()
                     else:
                         eventList.remove(x)
                     break
@@ -424,7 +417,7 @@ class EveCalendarSvc(svc.calendar):
         events = self.GetEventsNextXMonths(monthsAhead)
         showTag = self.GetActiveTags()
         changedEvents = {}
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         for (eventID, eventKV,) in events.iteritems():
             if self.IsInUpdateEventsList(now, eventKV) and (showTag is None or showTag & eventKV.flag != 0):
                 changedEvents[eventID] = eventKV
@@ -437,7 +430,7 @@ class EveCalendarSvc(svc.calendar):
         events = self.GetEventsNextXMonths(monthsAhead)
         showTag = self.GetActiveTags()
         myNextEvents = {}
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         for (eventID, eventKV,) in events.iteritems():
             if self.IsOnToDoList(now, eventKV) and (showTag is None or showTag & eventKV.flag != 0):
                 myNextEvents[eventID] = eventKV
@@ -456,7 +449,7 @@ class EveCalendarSvc(svc.calendar):
 
 
     def FetchNextEvents(self, monthsAhead = 1):
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         (year, month, wd, day, hour, min, sec, ms,) = util.GetTimeParts(now)
         nextEvents = self.FetchNextEventsDict(month, year, now)
         for i in xrange(monthsAhead):
@@ -514,27 +507,26 @@ class EveCalendarSvc(svc.calendar):
         if eventInfo is None:
             return ''
         if eventInfo.eventDuration is None:
-            durationLabel = mls.UI_SHARED_NOTSPECIFIED
+            durationLabel = localization.GetByLabel('UI/Calendar/EventWindow/DateNotSpecified')
         else:
             hours = eventInfo.eventDuration / 60
-            if hours > 1:
-                durationLabel = mls.UI_CAL_NUMHOURS % {'num': hours}
-            else:
-                durationLabel = mls.UI_CAL_ONEHOUR
-        responseLabel = self.GetResponseType().get(myResponse, mls.UI_GENERIC_UNKNOWN)
+            durationLabel = localization.GetByLabel('UI/Calendar/EventWindow/DateSpecified', hours=hours)
+        responseLabel = self.GetResponseType().get(myResponse, localization.GetByLabel('UI/Generic/Unknown'))
         if getattr(eventInfo, 'eventTimeStamp', None) is None:
             (year, month, wd, day, hour, min, sec, ms,) = util.GetTimeParts(eventInfo.eventDateTime)
-            eventInfo.eventTimeStamp = '%02d:%02d' % (hour, min)
-        hint = '%(time)s %(title)s<br>%(eventType)s<br>%(response)s<br>%(durationText)s: %(duration)s<br>%(ownerText)s: %(owner)s' % {'time': eventInfo.eventTimeStamp,
-         'title': eventInfo.eventTitle,
-         'response': responseLabel,
-         'eventType': self.GetEventTypes().get(eventInfo.flag, '-'),
-         'durationText': mls.UI_GENERIC_DURATION,
-         'duration': durationLabel,
-         'ownerText': mls.UI_GENERIC_OWNER,
-         'owner': cfg.eveowners.Get(eventInfo.ownerID).name}
+            ts = time.struct_time((year,
+             month,
+             day,
+             hour + 1,
+             min,
+             sec,
+             0,
+             1,
+             0))
+            eventInfo.eventTimeStamp = localizationUtil.FormatDateTime(value=ts, dateFormat='none', timeFormat='short')
+        hint = localization.GetByLabel('UI/Calendar/Hints/Event', time=eventInfo.eventTimeStamp, title=eventInfo.eventTitle, eventType=self.GetEventTypes().get(eventInfo.flag, '-'), response=responseLabel, duration=durationLabel, owner=cfg.eveowners.Get(eventInfo.ownerID).name)
         if eventInfo.importance > 0:
-            hint += '<br>%s ' % mls.UI_GENERIC_IMPORTANT
+            hint += localization.GetByLabel('UI/Calendar/Hints/EventImportant')
         return hint
 
 
@@ -556,7 +548,7 @@ class EveCalendarSvc(svc.calendar):
 
     def FindCalendar(self, *args):
         calendar = None
-        wnd = sm.GetService('window').GetWindow('calendar', create=0, decoClass=form.eveCalendarWnd)
+        wnd = form.eveCalendarWnd.GetIfOpen()
         if wnd:
             calendar = wnd.sr.calendarForm
         return calendar

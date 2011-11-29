@@ -11,6 +11,8 @@ import log
 import xtriui
 import util
 import uiconst
+import form
+import localization
 
 class TargetMgr(service.Service):
     __guid__ = 'svc.target'
@@ -20,7 +22,6 @@ class TargetMgr(service.Service):
      'GetActiveTargetID': [],
      'GetTargets': [],
      'GetTargeting': [],
-     'SetAsInterest': [],
      'StartLockTarget': [],
      'FailLockTarget': []}
     __notifyevents__ = ['OnTarget',
@@ -41,7 +42,7 @@ class TargetMgr(service.Service):
         self.Reset()
         if eve.session.shipid and not eve.session.stationid:
             self.godma.GetStateManager().RefreshTargets()
-        sm.GetService('ui').SortGlobalLayer()
+        self.ownerToShipIDCache = {}
 
 
 
@@ -61,12 +62,12 @@ class TargetMgr(service.Service):
         origin.OnMouseDown = (self.OnOriginMD, origin)
         origin.OnMouseUp = (self.OnOriginMU, origin)
         origin.GetMenu = self.GetOriginMenu
-        origin.hint = mls.UI_INFLIGHT_TARGETSORIGIN
+        origin.hint = localization.GetByLabel('UI/Inflight/TargetListAnchor/TargetListAnchorHint')
         origin.leftline = uicls.Line(parent=origin, align=uiconst.RELATIVE, width=4, height=1, left=-4, top=7, color=(1.0, 1.0, 1.0, 1.0))
         origin.topline = uicls.Line(parent=origin, align=uiconst.RELATIVE, width=1, height=4, left=7, top=-4, color=(1.0, 1.0, 1.0, 1.0))
         origin.rightline = uicls.Line(parent=origin, align=uiconst.RELATIVE, width=4, height=1, left=15, top=7, color=(1.0, 1.0, 1.0, 1.0))
         origin.bottomline = uicls.Line(parent=origin, align=uiconst.RELATIVE, width=1, height=4, left=7, top=15, color=(1.0, 1.0, 1.0, 1.0))
-        origin.opacity = 0.25
+        origin.opacity = 0.75
         uicls.Icon(icon='ui_38_16_72', parent=origin, state=uiconst.UI_DISABLED)
         self.origin = origin
         self.PositionOriginWithAnchors()
@@ -95,13 +96,13 @@ class TargetMgr(service.Service):
 
     def GetOriginMenu(self):
         if settings.user.ui.Get('targetOriginLocked', 0):
-            m = [(mls.UI_INFLIGHT_UNLOCKTARGETSORIGIN, self.UnlockOrigin)]
+            m = [(localization.GetByLabel('UI/Inflight/TargetListAnchor/UnlockAnchor'), self.UnlockOrigin)]
         else:
-            m = [(mls.UI_INFLIGHT_LOCKTARGETSORIGIN, self.LockOrigin)]
+            m = [(localization.GetByLabel('UI/Inflight/TargetListAnchor/LockAnchor'), self.LockOrigin)]
         if settings.user.ui.Get('alignHorizontally', 1):
-            m += [(mls.UI_INFLIGHT_ARRANGETARGETSVERTICALLY, self.ToggleAlignment)]
+            m += [(localization.GetByLabel('UI/Inflight/TargetListAnchor/ArrangeTargetsVertically'), self.ToggleAlignment)]
         else:
-            m += [(mls.UI_INFLIGHT_ARRANGETARGETSHORIZONTALLY, self.ToggleAlignment)]
+            m += [(localization.GetByLabel('UI/Inflight/TargetListAnchor/ArrangeTargetsHorizontally'), self.ToggleAlignment)]
         return m
 
 
@@ -143,17 +144,17 @@ class TargetMgr(service.Service):
         (wnd, pl, pt, pw, ph,) = self.GetTargetLayerAbsolutes()
         myPrefs = settings.user.ui.Get('targetOrigin', None)
         if myPrefs is None:
-            selecteditem = sm.GetService('window').GetWindow('selecteditemview')
+            selecteditem = form.ActiveItem.GetIfOpen()
             if selecteditem and not selecteditem.IsMinimized():
                 stack = getattr(selecteditem.sr, 'stack', None)
                 if stack:
                     selecteditem = stack
-                topAlignedWindows = selecteditem.FindConnectingWindows(selecteditem, 'top')
-                (left, top, width, height,) = sm.GetService('window').GetGroupAbsolute(topAlignedWindows)
+                topAlignedWindows = selecteditem.FindConnectingWindows('top')
+                (left, top, width, height,) = selecteditem.GetGroupAbsolute(topAlignedWindows)
                 dw = d.width
                 dh = d.height
             else:
-                (left, top, width, height, dw, dh,) = sm.GetService('window').GetWndPositionAndSize('selecteditemview')
+                (left, top, width, height, dw, dh,) = form.ActiveItem.GetRegisteredPositionAndSizeByClass()
             portionalCY = top / float(dh)
             if left + width < d.width / 2:
                 portionalCX = (left + width - pl) / float(pw)
@@ -180,7 +181,7 @@ class TargetMgr(service.Service):
             (par, tl, tt, tw, th,) = self.GetTargetLayerAbsolutes()
             origin.left = uicore.uilib.x - origin.grab[0]
             origin.top = uicore.uilib.y - origin.grab[1]
-            origin.opacity = 0.25
+            origin.opacity = 0.75
             d = uicore.desktop
             (l, t, w, h,) = origin.GetAbsolute()
             cX = l - tl + w / 2
@@ -192,7 +193,7 @@ class TargetMgr(service.Service):
         sm.GetService('ui').ForceCursorUpdate()
         origin.dragging = 0
         uicore.uilib.UnclipCursor()
-        origin.hint = mls.UI_INFLIGHT_TARGETSORIGIN
+        origin.hint = localization.GetByLabel('UI/Inflight/TargetListAnchor/TargetListAnchorHint')
 
 
 
@@ -244,10 +245,10 @@ class TargetMgr(service.Service):
             origin.top = uicore.uilib.y - origin.grab[1]
             self.UpdateOriginDirection()
             if uicore.uilib.mouseOver == self.origin:
-                self.origin.hint = mls.UI_INFLIGHT_MOVINGORIGIN
+                self.origin.hint = localization.GetByLabel('UI/Inflight/TargetListAnchor/AnchorIsMoving')
             else:
                 self.origin.hint = ''
-            blue.pyos.synchro.Sleep(1)
+            blue.pyos.synchro.SleepWallclock(1)
 
 
 
@@ -262,27 +263,27 @@ class TargetMgr(service.Service):
         self.targeting = []
         self.autoTargeting = []
         self.weaponsOnMe = {}
-        self.caminterest = None
         self.needtarget = []
         self.teams = [[], []]
         self.origin = None
+        self.ownerToShipIDCache = {}
         uiutil.Flush(uicore.layer.target)
 
 
 
     def CheckViewMode(self):
-        toggleWnds = {'main': [ each for each in uicore.layer.main.children ],
-         'inflight': [ each for each in uicore.layer.inflight.children if each.name not in 'l_target' ]}
+        toggleWnds = {'main': [ child for child in uicore.layer.main.children ],
+         'inflight': [ child for child in uicore.layer.inflight.children if child.name is not 'l_target' ]}
         if self.viewMode == 'normal':
             if self.origin:
                 self.origin.state = uiconst.UI_NORMAL
             if self.preViewMode:
                 for wnd in toggleWnds:
                     layer = uicore.layer.Get(wnd)
-                    for (state, name,) in self.preViewMode:
+                    for (wndState, name,) in self.preViewMode:
                         wnd = uiutil.FindChild(layer, name)
                         if wnd:
-                            wnd.state = state
+                            wnd.state = wndState
 
 
             self.preViewMode = None
@@ -291,7 +292,7 @@ class TargetMgr(service.Service):
         self.preViewMode = []
         for (layer, children,) in toggleWnds.iteritems():
             for wnd in children:
-                if wnd and wnd.name not in ('l_bracket', 'inflightnav'):
+                if wnd and wnd.name not in 'l_bracket':
                     self.preViewMode.append((wnd.state, wnd.name))
                     wnd.state = uiconst.UI_HIDDEN
 
@@ -382,7 +383,6 @@ class TargetMgr(service.Service):
             sm.GetService('neocom').ShowHideNeoComLeftSide(hide=True)
         else:
             sm.GetService('neocom').ShowHideNeoComLeftSide(hide=False)
-        sm.GetService('ui').SortGlobalLayer()
 
 
 
@@ -582,16 +582,12 @@ class TargetMgr(service.Service):
 
 
     def ShowTargetingCursor(self):
-        nav = uix.GetInflightNav(0)
-        if nav:
-            nav.sr.tcursor.state = uiconst.UI_DISABLED
+        uicore.layer.inflight.sr.tcursor.state = uiconst.UI_DISABLED
 
 
 
     def HideTargetingCursor(self):
-        nav = uix.GetInflightNav(0)
-        if nav:
-            nav.sr.tcursor.state = uiconst.UI_HIDDEN
+        uicore.layer.inflight.sr.tcursor.state = uiconst.UI_HIDDEN
 
 
 
@@ -644,36 +640,54 @@ class TargetMgr(service.Service):
             horizontally = settings.user.ui.Get('alignHorizontally', 1)
             x = 0
             y = 0
+            self.columns = 0
+            self.rows = 0
             (par, pl, pt, pw, ph,) = self.GetTargetLayerAbsolutes()
             if toLeft:
-                baseleft = pw - cX - 16 + 48
+                baseleft = pw - cX + 12
             else:
-                baseleft = cX + 16
+                baseleft = cX + 12
             if toTop:
-                basetop = ph - cY
+                basetop = ph - cY - 8
             else:
-                basetop = cY + 16
+                basetop = cY + 8
             margin = 2
-            colOffset = 0
             for target in uicore.layer.target.children:
                 if getattr(target, '__guid__', None) != 'xtriui.Target':
                     continue
-                target.left = baseleft + (margin + (target.width + margin) * (x + colOffset))
-                target.top = basetop + (margin + (target.height + margin) * y)
+                if horizontally:
+                    self.rows = y + 1
+                    topmargin = 2
+                else:
+                    self.columns = x + 1
+                    topmargin = 8
+                target.left = baseleft + (margin + (target.width + margin) * x)
+                target.top = basetop + (margin + (target.height + topmargin) * y)
                 target.state = uiconst.UI_NORMAL
                 target.SetAlign(originAlign)
                 if horizontally:
                     if target.left + target.width * 2 >= pw:
                         y += 1
+                        self.columns = max(self.columns, x)
                         x = 0
                     else:
                         x += 1
                 elif target.top + target.height * 2 >= ph:
                     x += 1
+                    self.rows = max(self.rows, y)
                     y = 0
                 else:
                     y += 1
 
+            if horizontally:
+                self.columns = max(self.columns, x) + 1
+            else:
+                self.rows = max(self.rows, y) + 1
+
+
+
+    def GetTargetsSize(self):
+        return (self.rows, self.columns)
 
 
 
@@ -726,6 +740,9 @@ class TargetMgr(service.Service):
         bp = sm.GetService('michelle').GetBallpark()
         if bp is not None:
             slimItem = bp.GetInvItem(otherID)
+            if slimItem is not None:
+                if slimItem.ownerID:
+                    self.ownerToShipIDCache[slimItem.ownerID] = otherID
         if bp is None or slimItem is None:
             if otherID not in self.pendingTargeters:
                 self.pendingTargeters.append(otherID)
@@ -754,6 +771,12 @@ class TargetMgr(service.Service):
         except ValueError:
             self.LogInfo('was not targeted by', otherID)
             sys.exc_clear()
+        bp = sm.GetService('michelle').GetBallpark()
+        if bp is not None:
+            slimItem = bp.GetInvItem(otherID)
+            if slimItem is not None:
+                if slimItem.ownerID and slimItem.ownerID in self.ownerToShipIDCache:
+                    del self.ownerToShipIDCache[slimItem.ownerID]
 
 
 
@@ -789,9 +812,6 @@ class TargetMgr(service.Service):
             self.ArrangeTargets()
         if tid in self.pendingTargets:
             self.pendingTargets.remove(tid)
-        if tid == self.caminterest:
-            camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
-            camera.interest = None
         if not len(self.targets):
             if self.origin is not None and not self.origin.destroyed:
                 self.origin.Close()
@@ -935,23 +955,6 @@ class TargetMgr(service.Service):
 
     def IsTarget(self, targetID):
         return targetID in self.targets
-
-
-
-    def SetAsInterest(self, id):
-        if id is None:
-            uthread.new(self.ResetInterest)
-            return 
-        self.caminterest = id
-        sm.StartService('camera').SetCameraInterest(id)
-
-
-
-    def ResetInterest(self):
-        self.caminterest = None
-        blue.pyos.synchro.Sleep(1000)
-        if self.caminterest is None:
-            sm.StartService('camera').SetCameraInterest(None)
 
 
 

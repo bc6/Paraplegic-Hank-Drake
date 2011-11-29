@@ -61,7 +61,7 @@ class BracketClient(service.Service):
             if bracket.bracketUI:
                 bracket.bracketUI.Close()
                 self._CreateBracket(bracket.bracketUI.entity)
-            if bracket.bracketUI.entity.entityID in self.activeBrackets:
+            if bracket.bracketUI and bracket.bracketUI.entity.entityID in self.activeBrackets:
                 bracket.bracketUI.SetActive()
 
 
@@ -88,8 +88,8 @@ class BracketClient(service.Service):
             if interiorStatic is not None:
                 renderObject = interiorStatic.renderObject
         bracket = entity.GetComponent('bracket')
-        bracket.bracketUI = uicls.EntityBracket(parent=uicore.layer.charcontrol.bracketContainer, entity=entity, trackObject=renderObject, maxWidth=bracket.maxWidth, maxHeight=bracket.maxHeight)
-        if uicore.layer.charcontrol.IsClosed():
+        bracket.bracketUI = uicls.EntityBracket(parent=uicore.layer.stationEntityBrackets, entity=entity, trackObject=renderObject, maxWidth=bracket.maxWidth, maxHeight=bracket.maxHeight)
+        if uicore.layer.station.IsClosed():
             bracket.bracketUI.Close()
 
 

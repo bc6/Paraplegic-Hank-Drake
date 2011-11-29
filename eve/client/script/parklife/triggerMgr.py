@@ -3,6 +3,7 @@ import blue
 import base
 import uix
 import service
+import localization
 
 class Triggers(service.Service):
     __guid__ = 'svc.trigger'
@@ -23,7 +24,7 @@ class Triggers(service.Service):
 
     def OnDungeonTriggerMessage(self, messageType, body):
         color = self.GetMessageColor(messageType)
-        sm.GetService('LSC').LocalEchoAll('<color=%s>%s</color>' % (color, body), mls.UI_GENERIC_MESSAGE)
+        sm.GetService('LSC').LocalEchoAll('<color=%s>%s</color>' % (color, body), localization.GetByLabel('UI/Common/Message'))
 
 
 

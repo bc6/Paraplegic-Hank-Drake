@@ -18,6 +18,9 @@ import locks
 import bluepy
 import const
 from nasty import nasty
+import localization
+import memorySnapshot
+import HTMLParser
 
 def GetVersion():
     subbuild = None
@@ -43,6 +46,7 @@ TEST_SERVER1 = '87.237.38.50'
 TEST_SERVER2 = '87.237.38.51'
 TEST_SERVER3 = '87.237.38.60'
 WEB_EVE = 'http://www.eveonline.com'
+WEB_CLIENT_EVE = 'http://client.eveonline.com'
 WEB_MYEVE = 'http://www.eveonline.com'
 WEB_ACCOUNT = 'https://secure.eveonline.com/'
 WEB_SUPPORT = 'http://www.eveonline.com/mb/support.asp'
@@ -85,6 +89,39 @@ def GetServerName(checkServerIP):
 
 
 
+def GetServerInfo():
+    serverName = util.GetServerName()
+    ip = GetServerIP(serverName)
+    servers = [['Tranquility', '87.237.38.200', '87.237.38.201'],
+     ['Multiplicity', '87.237.38.51', '87.237.38.15'],
+     ['Singularity', '87.237.38.50', '87.237.38.24'],
+     ['Duality', '87.237.38.60', '87.237.38.61'],
+     ['Chaos', '87.237.38.55', '87.237.38.71']]
+    espUrl = ip
+    for s in servers:
+        if s[1] == ip:
+            espUrl = s[2]
+            serverName = s[0]
+            break
+
+    espUrl += ':50001'
+    isLive = True
+    if boot.region != 'optic' and ip != LIVE_SERVER:
+        isLive = False
+    serverInfo = util.KeyVal(name=serverName, IP=ip, espUrl=espUrl, isLive=isLive, version=getattr(eve, 'serverVersion', None), build=getattr(eve, 'serverBuild', None))
+    return serverInfo
+
+
+try:
+    if not GetServerInfo().isLive:
+        if prefs.GetValue('nominidump', 0):
+            log.general.Log('Running against a test server. Crash minidump is NOT active because of nominidump=1 in prefs.ini', log.LGNOTICE)
+        else:
+            log.general.Log('Running against a test server. Crash minidump is active. You can disable this with nominidump=1 in prefs.ini', log.LGNOTICE)
+            blue.os.miniDump = True
+except:
+    log.LogException()
+
 class BackgroundWrapper(object):
 
     def __init__(self, fadeCont):
@@ -109,18 +146,18 @@ class BackgroundWrapper(object):
 
 class Login(uicls.LayerCore):
     __guid__ = 'form.LoginII'
-    __notifyevents__ = ['OnEndChangeDevice', 'OnGraphicSettingsChanged']
+    __notifyevents__ = ['OnEndChangeDevice', 'OnGraphicSettingsChanged', 'ProcessUIRefresh']
 
     def TerminateStartupTestLater_t(self):
-        blue.synchro.Sleep(1000)
+        blue.synchro.SleepWallclock(1000)
         bluepy.TerminateStartupTest()
 
 
 
     def OnCloseView(self):
-        sys = uicore.layer.systemmenu
-        if sys.isopen:
-            uthread.new(sys.CloseMenu)
+        systemmenu = uicore.layer.systemmenu
+        if systemmenu.isopen:
+            uthread.new(systemmenu.CloseMenu)
         self.Reset()
         self.ClearScene()
         sm.GetService('sceneManager').SetupSceneForRendering(None, None)
@@ -128,6 +165,21 @@ class Login(uicls.LayerCore):
         del self.scene.curveSets[:]
         self.scene = None
         self.ship = None
+
+
+
+    def ProcessUIRefresh(self):
+        if self.isopen:
+            if self.reloading:
+                self.pendingReload = 1
+                return 
+            currentUsername = self.usernameEditCtrl.GetValue()
+            currentPassword = self.passwordEditCtrl.GetValue()
+            self.reloading = 1
+            self.Layout(False, None, currentUsername, currentPassword)
+            self.reloading = 0
+            if self.pendingReload:
+                self.pendingReload = 0
 
 
 
@@ -175,10 +227,9 @@ class Login(uicls.LayerCore):
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def OnOpenView(self):
+        memorySnapshot.AutoMemorySnapshotIfEnabled('Login_OnOpenView')
         self.Reset()
         uthread.worker('login::StatusTextWorker', self._Login__StatusTextWorker)
-        sm.RegisterNotify(self)
-        sm.GetService('loading').GoBlack()
         blue.resMan.Wait()
         self.serverName = util.GetServerName()
         self.serverIP = GetServerIP(self.serverName)
@@ -190,6 +241,7 @@ class Login(uicls.LayerCore):
         uthread.new(self.UpdateServerStatus)
         if bluepy.IsRunningStartupTest():
             uthread.new(self.TerminateStartupTestLater_t)
+        sm.ScatterEvent('OnClientStageChanged', 'login')
 
 
 
@@ -198,14 +250,14 @@ class Login(uicls.LayerCore):
         self.eulaclosex.state = uiconst.UI_HIDDEN
         self.eulaBlock = uicls.Fill(parent=self.eulaParent.parent, idx=self.eulaParent.parent.children.index(self.eulaParent) + 1, state=uiconst.UI_NORMAL, color=(0.0, 0.0, 0.0, 0.75))
         par = uicls.Container(name='btnpar', parent=self.eulaBrowser, align=uiconst.TOBOTTOM, height=40, idx=0)
-        self.scrollText = uicls.Label(text=mls.UI_LOGIN_SCROLLTOBOTTOM, parent=par, align=uiconst.CENTER, width=400, autowidth=False, idx=0, state=uiconst.UI_NORMAL)
-        btns = uicls.ButtonGroup(btns=[[mls.UI_CMD_ACCEPT,
+        self.scrollText = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Login/ScrollToBottom'), parent=par, align=uiconst.CENTER, idx=0, state=uiconst.UI_NORMAL)
+        btns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Login/Accept'),
           self.AcceptEula,
           2,
           81,
           uiconst.ID_OK,
           0,
-          0], [mls.UI_CMD_DECLINE,
+          0], [localization.GetByLabel('UI/Login/Decline'),
           self.ClickExit,
           (),
           81,
@@ -215,7 +267,7 @@ class Login(uicls.LayerCore):
         btns.state = uiconst.UI_HIDDEN
         par.children.insert(0, btns)
         self.acceptbtns = btns
-        self.pushButtons.SelectPanelByName(mls.UI_LOGIN_EULA)
+        self.pushButtons.SelectPanelByName(localization.GetByLabel('UI/Login/EULA/EULAHeader'))
         self.eulaBrowser.OnUpdatePosition = self.ScrollingEula
         self.waitingForEula = 1
 
@@ -252,7 +304,7 @@ class Login(uicls.LayerCore):
 
 
     def FadeSplash(self, sprite):
-        blue.pyos.synchro.Sleep(500)
+        blue.pyos.synchro.SleepWallclock(500)
         sm.GetService('ui').Fade(1.0, 0.0, sprite)
         sprite.Close()
 
@@ -275,7 +327,7 @@ class Login(uicls.LayerCore):
         bottomUnderlay.SetPadding(-16, 6, -16, -16)
         self.fadeCont = uicls.Container(name='fadeCont', parent=self, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, width=uicore.desktop.width, height=uicore.desktop.height, idx=-1)
         if trinity.app.fullscreen:
-            closex = uicls.Icon(icon='ui_73_16_49', parent=self, pos=(0, 1, 0, 0), align=uiconst.TOPRIGHT, idx=0, state=uiconst.UI_NORMAL, hint=mls.UI_CMD_QUITGAME)
+            closex = uicls.Icon(icon='ui_73_16_49', parent=self, pos=(0, 1, 0, 0), align=uiconst.TOPRIGHT, idx=0, state=uiconst.UI_NORMAL, hint=localization.GetByLabel('UI/Login/QuitGame'))
             closex.OnClick = self.ClickExit
             closex.sr.hintAbRight = uicore.desktop.width - 16
             closex.sr.hintAbTop = 16
@@ -293,10 +345,10 @@ class Login(uicls.LayerCore):
         browser.viewing = 'eula_ccp'
         self.eulaBrowser = browser
         self.sr.eulaUnderlay = uicls.WindowUnderlay(parent=self.eulaParent)
-        self.sr.maintabs = uicls.TabGroup(name='maintabs', parent=eulaCont, idx=0, tabs=[[mls.UI_EULAEVE,
+        self.sr.maintabs = uicls.TabGroup(name='maintabs', parent=eulaCont, idx=0, tabs=[[localization.GetByLabel('UI/Login/EULA/EveEULAHeader'),
           browser,
           self,
-          'eula_ccp'], [mls.UI_EULA3RDPARTY,
+          'eula_ccp'], [localization.GetByLabel('UI/Login/EULA/ThirdPartyEULAHeader'),
           browser,
           self,
           'eula_others']], groupID='eula', autoselecttab=0)
@@ -316,7 +368,7 @@ class Login(uicls.LayerCore):
          editswidth,
          0), maxLength=64)
         edit.SetHistoryVisibility(0)
-        t1 = uicls.Label(text=mls.UI_LOGIN_USERNAME, parent=edit, letterspace=2, fontsize=9, top=1, state=uiconst.UI_DISABLED, color=(1.0, 1.0, 1.0, 0.75), uppercase=1)
+        t1 = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Login/Username'), parent=edit, top=3, state=uiconst.UI_DISABLED, color=(1.0, 1.0, 1.0, 0.75))
         if knownUserNames:
             ops = [ (name, name) for name in knownUserNames ]
             edit.LoadCombo('usernamecombo', ops, self.OnComboChange, comboIsTabStop=0)
@@ -327,50 +379,54 @@ class Login(uicls.LayerCore):
          edit.top + edit.height + 6,
          editswidth,
          0), maxLength=64)
-        t2 = uicls.Label(text=mls.UI_LOGIN_PASSWORD, parent=edit, letterspace=2, fontsize=9, top=1, state=uiconst.UI_DISABLED, color=(1.0, 1.0, 1.0, 0.75), uppercase=1)
-        edit.SetPasswordChar('\x95')
+        t2 = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Login/Password'), parent=edit, top=3, state=uiconst.UI_DISABLED, color=(1.0, 1.0, 1.0, 0.75))
+        edit.SetPasswordChar(u'\u2022')
         edit.SetValue(setPassword or '')
         edit.OnReturn = self.Confirm
         self.passwordEditCtrl = edit
         tw = max(t1.textwidth, t2.textwidth)
         t1.left = t2.left = -tw - 6
-        connectBtn = uicls.Button(parent=bottomSub, label=mls.UI_LOGIN_CONNECT, func=self.Connect, pos=(editsleft,
+        connectBtn = uicls.Button(parent=bottomSub, label=localization.GetByLabel('UI/Login/Connect'), func=self.Connect, pos=(editsleft,
          edit.top + edit.height + 4,
          0,
          0), fixedwidth=120, btn_default=1)
-        self.serverStatusTextControl = uicls.Label(text=mls.UI_LOGIN_CHECKINGSTATUS, parent=bottomSub, left=editsleft + editswidth + 6, top=editstop, fontsize=9, state=uiconst.UI_DISABLED, uppercase=1, mousehilite=1, letterspace=1)
+        statusContainer = uicls.Container(parent=bottomSub, left=editsleft + editswidth + 6, top=editstop)
+        self.serverNameTextControl = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Login/CheckingStatus'), parent=statusContainer, align=uiconst.TOTOP, state=uiconst.UI_DISABLED)
+        self.serverStatusTextControl = uicls.EveLabelSmall(text='', parent=statusContainer, align=uiconst.TOTOP, state=uiconst.UI_DISABLED, mousehilite=1)
+        self.serverPlayerCountTextControl = uicls.EveLabelSmall(text='', parent=statusContainer, align=uiconst.TOTOP, state=uiconst.UI_DISABLED)
+        self.serverVersionTextControl = uicls.EveLabelSmall(text='', parent=statusContainer, align=uiconst.TOTOP, state=uiconst.UI_DISABLED)
         self.motdParent = uicls.Container(name='motdParent', parent=self, align=uiconst.CENTERBOTTOM, top=borderHeight + 16, width=400, height=64, state=uiconst.UI_HIDDEN)
-        motdBrowser = uicls.Edit(parent=self.motdParent, readonly=1)
-        motdBrowser.isTabStop = 0
-        self.sr.motdBrowser = motdBrowser
-        versionstr = '%s: %s' % (mls.UI_LOGIN_VERSION, GetVersion())
-        vers = uicls.Label(text=versionstr, parent=self, left=6, top=6, letterspace=1, fontsize=9, uppercase=1, idx=0, state=uiconst.UI_NORMAL)
-        tabs = [[mls.UI_GENERIC_SETTINGS,
+        motdLabel = uicls.EveLabelMedium(parent=self.motdParent, align=uiconst.CENTER, width=360, state=uiconst.UI_NORMAL)
+        self.sr.motdLabel = motdLabel
+        uicls.BumpedUnderlay(parent=self.motdParent, name='background')
+        versionstr = localization.GetByLabel('UI/Login/Version', versionNumber=GetVersion())
+        vers = uicls.EveLabelSmall(text=versionstr, parent=self, left=6, top=6, idx=0, state=uiconst.UI_NORMAL)
+        tabs = [[localization.GetByLabel('UI/Login/Settings'),
           None,
           self,
           None,
           ('settings',)],
-         [mls.UI_LOGIN_SUPPORT,
+         [localization.GetByLabel('UI/Login/Support'),
           self.mainBrowserParent,
           self,
           None,
           ('support',)],
-         [mls.UI_LOGIN_NEWS,
+         [localization.GetByLabel('UI/Login/News'),
           self.mainBrowserParent,
           self,
           None,
           ('news',)],
-         [mls.UI_LOGIN_PATCHINFO,
+         [localization.GetByLabel('UI/Login/PatchInfo'),
           self.mainBrowserParent,
           self,
           None,
           ('patchinfo',)],
-         [mls.UI_LOGIN_EULA,
+         [localization.GetByLabel('UI/Login/EULA/EULAHeader'),
           self.eulaParent,
           self,
           None,
           ('eula',)],
-         [mls.UI_LOGIN_ACCOUNTMGMT,
+         [localization.GetByLabel('UI/Login/AccountManagement'),
           None,
           self,
           None,
@@ -421,170 +477,52 @@ class Login(uicls.LayerCore):
         text = ''
         if key == 'eula_others':
             eula = self.GetEulaOthers()
-            text = mls.UI_LOGIN_SCROLLTOEVEBOTTOM
+            text = localization.GetByLabel('UI/Login/ScrollToEveBottom')
         else:
             eula = self.GetEulaCCP()
-            text = mls.UI_LOGIN_SCROLLTOBOTTOM
+            text = localization.GetByLabel('UI/Login/ScrollToBottom')
         if self.scrollText is not None:
             self.scrollText.text = text
         self.eulaBrowser.LoadHTML(eula)
 
 
 
-    @bluepy.CCP_STATS_ZONE_METHOD
-    def R2_2011_PauseCurves(self):
-        if self.scene is not None:
-            for model in self.scene.objects:
-                for cs in model.curveSets:
-                    cs.scale = 0.0
-
-
-            for cs in self.scene.curveSets:
-                cs.scale = 0.0
-
+    def OnGraphicSettingsChanged(self, changes):
+        if self.isopen and 'shaderQuality' in changes and getattr(self, 'scene', None):
+            self.CheckHeightMaps()
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def R2_2011_PlayCurves(self):
-        if self.scene is not None:
-            for model in self.scene.objects:
-                for cs in model.curveSets:
-                    cs.scale = 1.0
+    def CheckHeightMaps(self):
+        if 'LO' in trinity.GetShaderModel():
+            heightMapParams = nodemanager.FindNodes(self.scene, 'HeightMap', 'trinity.TriTexture2DParameter')
+            for param in heightMapParams:
+                param.resourcePath = param.resourcePath.replace('_hi.dds', '_lo.dds')
 
+        else:
+            heightMapParams = nodemanager.FindNodes(self.scene, 'HeightMap', 'trinity.TriTexture2DParameter')
+            for param in heightMapParams:
+                param.resourcePath = param.resourcePath.replace('_lo.dds', '_hi.dds')
 
-            for cs in self.scene.curveSets:
-                cs.scale = 1.0
-
-
-
-
-    @bluepy.CCP_STATS_ZONE_METHOD
-    def R2_2011_AssignFiringEffects(self):
-        firingEffectResPath = 'res:/dx9/model/turret/energy/beam/m/beam_quad_t1_fx.red'
-        for turretSet in self.ship.turretSets:
-            for j in range(4):
-                effect = trinity.Load(firingEffectResPath)
-                if effect is not None:
-                    effect.source = None
-                    effect.dest = None
-                    turretSet.firingEffects.append(effect)
-
-            turretSet.FreezeHighDetailLOD()
-
-
-
-
-    @bluepy.CCP_STATS_ZONE_METHOD
-    def R2_2011_SetTarget(self):
-        for model in self.scene.objects:
-            if model.name == 'target':
-                target = model
-                break
-
-        if target is None:
-            log.LogError('Login scene: No target!')
-            return 
-        for each in self.ship.turretSets:
-            each.targetObject = target
-
-
-
-
-    @bluepy.CCP_STATS_ZONE_METHOD
-    def R2_2011_Perform(self, action):
-        uthread.new(self._R2_2011_Perform, action)
-
-
-
-    @bluepy.CCP_STATS_ZONE_METHOD
-    def _R2_2011_Perform(self, action):
-        if self.ship is None:
-            log.LogError('Login scene: could not find shooter')
-            return 
-        if action == 'Aim':
-            try:
-                for turretSet in self.ship.turretSets:
-                    turretSet.EnterStateTargeting()
-
-            except:
-                log.LogError('Login scene: Failed to aim at target')
-        elif action == 'Shoot':
-            try:
-                for turretSet in self.ship.turretSets:
-                    turretSet.EnterStateFiring()
-
-            except:
-                log.LogError('Login scene: Failed to shoot')
-        elif action == 'WarpIn':
-            for turretSet in self.ship.turretSets:
-                turretSet.ForceStateDeactive()
-
-            curveSets = nodemanager.FindNodes(self.scene, 'WarpIn', 'trinity.TriCurveSet')
-            for cs in curveSets:
-                cs.Play()
-
-        elif action == 'WarpOut':
-            for turretSet in self.ship.turretSets:
-                turretSet.EnterStateDeactive()
-
-            for cs in self.ship.curveSets:
-                if cs.name == 'WarpOut':
-                    cs.Play()
-
-
-
-
-    @bluepy.CCP_STATS_ZONE_METHOD
-    def R2_2011_HookUpEventCurve(self):
-        curveSet = trinity.TriCurveSet()
-        eventCurve = trinity.TriEventCurve()
-        eventCurve.AddKey(0.0, u'Start')
-        eventCurve.AddCallableKey(0.01, self.R2_2011_Perform, ('WarpIn',))
-        eventCurve.AddCallableKey(27.0, self.R2_2011_Perform, ('Aim',))
-        eventCurve.AddCallableKey(41.455, self.R2_2011_Perform, ('Shoot',))
-        eventCurve.AddCallableKey(43.636, self.R2_2011_Perform, ('Shoot',))
-        eventCurve.AddCallableKey(45.818, self.R2_2011_Perform, ('Shoot',))
-        eventCurve.AddCallableKey(50.182, self.R2_2011_Perform, ('Shoot',))
-        eventCurve.AddCallableKey(56.727, self.R2_2011_Perform, ('Shoot',))
-        eventCurve.AddCallableKey(61.091, self.R2_2011_Perform, ('Shoot',))
-        eventCurve.AddCallableKey(63.273, self.R2_2011_Perform, ('Shoot',))
-        eventCurve.AddCallableKey(70.0, self.R2_2011_Perform, ('WarpOut',))
-        eventCurve.AddKey(128.727, u'End')
-        eventCurve.extrapolation = trinity.TRIEXT_CYCLE
-        curveSet.curves.append(eventCurve)
-        curveSet.Play()
-        self.scene.curveSets.append(curveSet)
 
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
     def LoadScene(self):
         self.camera = trinity.Load('res:/dx9/scene/login_screen_camera.red')
-        self.scene = trinity.Load('res:/dx9/scene/login_screen_incarna.red')
+        self.scene = trinity.Load('res:/dx9/scene/login_screen.red')
         blue.resMan.Wait()
-        self.ship = None
-        for model in self.scene.objects:
-            if model.name == 'shooter':
-                self.ship = model
-                break
-
-        if self.ship is None:
-            log.LogError('Login scene: No ship')
-            return 
-        self.R2_2011_AssignFiringEffects()
-        self.R2_2011_SetTarget()
-        self.R2_2011_HookUpEventCurve()
+        self.CheckHeightMaps()
         jukebox = sm.GetService('jukebox')
-        jukebox.AddPlaylist('mls://UI_SHARED_PLAYLIST_EVE_LOGIN', 'res:/audio/login2.pink', isHidden=True)
-        jukebox.SetPlaylist('mls://UI_SHARED_PLAYLIST_EVE_LOGIN', persist=False)
+        jukebox.AddPlaylist(localization.GetByLabel('UI/Jukebox/PlaylistEveLogin'), 'res:/audio/login2.pink', isHidden=True)
+        jukebox.SetPlaylist(localization.GetByLabel('UI/Jukebox/PlaylistEveLogin'), persist=False)
         jukebox.PlayTrack(0, ignoreState=True)
         self.camera.audio2Listener = audio2.GetListener(0)
         sm.GetService('sceneManager').SetCamera(self.camera)
         sm.GetService('sceneManager').SetupSceneForRendering(None, self.scene)
         self.sceneLoadedEvent.set()
         blue.pyos.synchro.Yield()
-        sm.GetService('loading').FadeFromBlack()
 
 
 
@@ -677,7 +615,7 @@ class Login(uicls.LayerCore):
                 activePanelName = activePanelArgs[0]
                 self.pushButtons.DeselectAll()
             else:
-                self.pushButtons.SelectPanelByName(mls.UI_GENERIC_SETTINGS)
+                self.pushButtons.SelectPanelByName(localization.GetByLabel('UI/Login/Settings'))
 
 
 
@@ -757,9 +695,9 @@ class Login(uicls.LayerCore):
         if self is None:
             return 
         ndt = 0.0
-        start = blue.os.GetTime(1)
+        start = blue.os.GetWallclockTimeNow()
         while ndt != 1.0:
-            ndt = min(blue.os.TimeDiffInMs(start) / time, 1.0)
+            ndt = min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / time, 1.0)
             if self is None or pic is None or pic.destroyed:
                 break
             pic.SetAlpha(mathUtil.Lerp(fr, to, ndt))
@@ -781,20 +719,17 @@ class Login(uicls.LayerCore):
 
 
     def GetEulaCCP(self, *args):
-        thirdPartyInsert = ''
-        thirdPartyInsert = mls.EVE_EULA_THIRDPARTYINSERT % {'tabName': '"%s"' % mls.UI_EULA3RDPARTY}
-        thirdPartyInsert = thirdPartyInsert + '<br><br>'
-        return mls.EVE_EULA2 % {'insert': thirdPartyInsert}
+        return localization.GetByLabel('EULA/EveEULA', tabName=localization.GetByLabel('UI/Login/EULA/ThirdPartyEULAHeader'))
 
 
 
     def GetEulaOthers(self, *args):
         tgEula = ''
         if blue.win32.IsTransgaming():
-            tgEula = mls.EVE_EULA_TRANSGAMING
+            tgEula = localization.GetByLabel('EULA/TransGaming')
         else:
-            tgEula = mls.EVE_EULA_DIRECTX
-        return tgEula + '<p><p>' + mls.EVE_EULA_CHROME + '<p><p>' + mls.EVE_EULA_XIPH
+            tgEula = localization.GetByLabel('EULA/DirectX')
+        return tgEula + '<p><p>' + localization.GetByLabel('EULA/Chrome') + '<p><p>' + localization.GetByLabel('EULA/Xiph')
 
 
 
@@ -803,7 +738,12 @@ class Login(uicls.LayerCore):
         ip = self.serverIP
         try:
             extraParam = sm.StartService('patch').GetWebRequestParameters()
-            ret = corebrowserutil.GetStringFromURL(WEB_EVE + '/motd.asp?server=%s&%s' % (ip, extraParam)).read()
+            if boot.region == 'optic':
+                url = WEB_EVE + '/motd.asp?server=%s&%s'
+            else:
+                url = WEB_CLIENT_EVE + '/motd/%s?%s'
+            ret = corebrowserutil.GetStringFromURL(url % (ip, extraParam)).read()
+            ret = HTMLParser.HTMLParser().unescape(ret)
         except Exception as e:
             log.LogError('Failed to fetch motd', e)
             sys.exc_clear()
@@ -816,8 +756,8 @@ class Login(uicls.LayerCore):
                     self.motdParent.state = uiconst.UI_HIDDEN
                 else:
                     self.motdParent.state = uiconst.UI_NORMAL
-                self.sr.motdBrowser.LoadHTML('<html><body>%s</body></html>' % ret)
-                self.motdParent.height = max(32, min(128, self.sr.motdBrowser.GetTotalHeight() + 10))
+                self.sr.motdLabel.text = ret
+                self.motdParent.height = max(32, self.sr.motdLabel.textheight + 10)
             else:
                 self.motdParent.state = uiconst.UI_HIDDEN
 
@@ -860,20 +800,10 @@ class Login(uicls.LayerCore):
 
 
 
-    def SetMotdMessage(self, message):
-        if self.motdParent and not self.motdParent.destroyed and not getattr(self, 'suppressMotd', False):
-            self.sr.motdBrowser.LoadHTML('<html><body>%s</body></html>' % message)
-            self.motdParent.height = max(32, min(128, self.sr.motdBrowser.GetTotalHeight() + 24))
-            self.motdParent.state = uiconst.UI_NORMAL
-        if message is None:
-            self.motdParent.state = uiconst.UI_HIDDEN
-
-
-
     @bluepy.CCP_STATS_ZONE_METHOD
     def __StatusTextWorker(self):
         while not eve.session.userid:
-            blue.pyos.synchro.Sleep(750)
+            blue.pyos.synchro.SleepWallclock(750)
             try:
                 if getattr(self, 'serverStatusTextFunc', None) is not None:
                     if not getattr(self, 'connecting', 0):
@@ -897,24 +827,21 @@ class Login(uicls.LayerCore):
                 uthread.new(self.UpdateServerStatus, False)
             return 
         (serverversion, serverbuild, serverUserCount,) = self.serverStatusTextFunc[1:]
-        text = '%s: %s<br>%s: %s' % (mls.UI_LOGIN_SERVER,
-         self.serverName,
-         mls.UI_GENERIC_STATUS,
-         statusText)
+        self.SetNameText(localization.GetByLabel('UI/Login/ServerStatus/Server', serverName=self.serverName))
+        (label, parameters,) = statusText
+        self.SetStatusText(localization.GetByLabel('UI/Login/ServerStatus/Status', statusText=localization.GetByLabel(label, **parameters)))
         if serverUserCount is not None:
-            text += '<br>%s %s' % (util.FmtAmt(int(serverUserCount)), mls.UI_LOGIN_PLAYERS)
+            self.SetPlayerCountText(localization.GetByLabel('UI/Login/ServerStatus/PlayerCount', players=int(serverUserCount)))
+        eve.serverVersion = serverversion
+        eve.serverBuild = serverbuild
         if serverversion and serverbuild:
-            if text.endswith(', '):
-                text = self.serverStatusTextControl.text[:-2]
             if '%.2f' % serverversion != '%.2f' % boot.version or serverbuild > boot.build:
-                text += '<br>%s %.2f.%s' % (mls.UI_LOGIN_VERSION, serverversion, serverbuild)
-                text += '<color=0xffff0000> (%s).' % mls.UI_LOGIN_INCOMPATIBLE
-        self.SetStatusText(text)
+                self.SetVersionText(localization.GetByLabel('UI/Login/ServerStatus/VersionIncompatible', serverVersion=serverversion, serverBuild=serverbuild))
 
 
 
     def UpdateServerStatus(self, allowPatch = True):
-        self.SetStatusText(mls.UI_LOGIN_CHECKINGSTATUS)
+        self.SetStatusText(localization.GetByLabel('UI/Login/CheckingStatus'))
         self.serverStatusTextFunc = None
         blue.pyos.synchro.Yield()
         try:
@@ -922,7 +849,7 @@ class Login(uicls.LayerCore):
         except Exception as e:
             log.LogError(e)
             sys.exc_clear()
-            self.SetStatusText('%s: %s' % (mls.UI_LOGIN_INVALIDPORTNUMBER, self.serverPort))
+            self.SetStatusText(localization.GetByLabel('UI/Login/InvalidPortNumber', port=self.serverPort))
             self.serverStatusTextFunc = None
             return 
         serverUserCount = serverversion = serverbuild = servercodename = None
@@ -938,7 +865,7 @@ class Login(uicls.LayerCore):
         try:
             log.LogInfo('checking status of %s' % self.serverIP)
             try:
-                (statusText, serverStatus,) = sm.GetService('machoNet').GetServerStatus('%s:%s' % (self.serverIP, self.serverPort))
+                (statusMessage, serverStatus,) = sm.GetService('machoNet').GetServerStatus('%s:%s' % (self.serverIP, self.serverPort))
             except UserError as e:
                 if e.msg == 'AlreadyConnecting':
                     sys.exc_clear()
@@ -955,31 +882,32 @@ class Login(uicls.LayerCore):
             self.serverStatusTextFunc = None
             if serverUserCount:
                 uthread.new(self.StartXFire, str(util.FmtAmt(serverUserCount)))
-            if type(statusText) in (types.LambdaType, types.FunctionType, types.MethodType):
-                self.serverStatusTextFunc = (statusText,
+            if type(statusMessage) in (types.LambdaType, types.FunctionType, types.MethodType):
+                self.serverStatusTextFunc = (statusMessage,
                  serverversion,
                  serverbuild,
                  serverUserCount)
             else:
-                self.serverStatusTextFunc = (lambda statusText = statusText: statusText,
+                self.serverStatusTextFunc = (lambda : statusMessage,
                  serverversion,
                  serverbuild,
                  serverUserCount)
             self._Login__SetServerStatusText()
+            statusMessage = apply(self.serverStatusTextFunc[0])
             user = self.usernameEditCtrl.GetValue()
             if serverversion and serverbuild:
-                if statusText == mls.UI_LOGIN_INCOMPATIBLE or '%.2f' % serverversion != '%.2f' % boot.version or serverbuild > boot.build:
+                if statusMessage is not None and 'Incompatible' in statusMessage[0] or '%.2f' % serverversion != '%.2f' % boot.version or serverbuild > boot.build:
                     if serverbuild > boot.build and isAutoPatch:
                         patch.Patch(user, self.serverIP, isForce=True)
                         patch.HandleProtocolMismatch()
             elif isAutoPatch:
                 patch.Patch(user, self.serverIP, isForce=False)
-            reasonText = None
+            reasonMessage = None
             if callable(self.serverStatusTextFunc[0]):
-                reasonText = self.serverStatusTextFunc[0]()
+                reasonMessage = self.serverStatusTextFunc[0]()
             else:
-                reasonText = self.serverStatusTextFunc[0]
-            if reasonText == mls.MACHONET_GETSERVERSTATUS_INCOMPATIBLE_PROTOCOL:
+                reasonMessage = self.serverStatusTextFunc[0]
+            if reasonMessage is not None and 'IncompatibleProtocol' in reasonMessage[0]:
                 patch.HandleProtocolMismatch()
             if updateinfo != const.responseUnknown:
                 try:
@@ -990,8 +918,7 @@ class Login(uicls.LayerCore):
         except Exception as e:
             log.LogError(e)
             sys.exc_clear()
-            self.SetStatusText(mls.UI_LOGIN_UNABLETOCONNECTTO % {'ip': self.serverIP,
-             'port': self.serverPort})
+            self.SetStatusText(localization.GetByLabel('UI/Login/UnableToConnect', IP=self.serverIP, port=self.serverPort))
             self.serverStatusTextFunc = None
             if isAutoPatch:
                 patch.Patch('', self.serverIP, isForce=False)
@@ -1000,17 +927,32 @@ class Login(uicls.LayerCore):
 
 
     def StartXFire(self, serverUserCount):
-        blue.pyos.synchro.Sleep(5000)
+        blue.pyos.synchro.SleepWallclock(5000)
         sm.StartService('xfire').AddKeyValue('Users', serverUserCount)
+
+
+
+    def SetNameText(self, text):
+        if self.serverNameTextControl and not self.serverNameTextControl.destroyed:
+            self.serverNameTextControl.text = text
 
 
 
     def SetStatusText(self, text):
         if self.serverStatusTextControl and not self.serverStatusTextControl.destroyed:
-            if text is not None:
-                self.serverStatusTextControl.text = text
-            else:
-                self.serverStatusTextControl.text = ''
+            self.serverStatusTextControl.text = text
+
+
+
+    def SetPlayerCountText(self, text):
+        if self.serverPlayerCountTextControl and not self.serverPlayerCountTextControl.destroyed:
+            self.serverPlayerCountTextControl.text = text
+
+
+
+    def SetVersionText(self, text):
+        if self.serverVersionTextControl and not self.serverVersionTextControl.destroyed:
+            self.serverVersionTextControl.text = text
 
 
 
@@ -1022,6 +964,7 @@ class Login(uicls.LayerCore):
 
 
     def Confirm(self):
+        memorySnapshot.AutoMemorySnapshotIfEnabled('Login_Confirm')
         self.Connect()
 
 
@@ -1036,37 +979,19 @@ class Login(uicls.LayerCore):
     def _Connect(self):
         if self.connecting:
             return 
-        self.R2_2011_PauseCurves()
         self.connecting = True
         giveFocus = None
         try:
             try:
                 user = self.usernameEditCtrl.GetValue()
                 password = util.PasswordString(self.passwordEditCtrl.GetValue(raw=1))
-                serverName = self.serverName
-                eve.serverName = serverName
-                invalidFields = []
+                giveFocus = None
                 if user is None or len(user) == 0:
-                    invalidFields.append(mls.UI_LOGIN_USERNAME.lower())
                     giveFocus = 'username'
                 if password is None or len(password) == 0:
-                    invalidFields.append(mls.UI_LOGIN_PASSWORD.lower())
                     giveFocus = 'password' if giveFocus is None else giveFocus
-                invalidFieldsText = None
-                if len(invalidFields):
-                    invalidFieldsText = ''
-                    while len(invalidFields) > 0:
-                        field = invalidFields.pop(0)
-                        if len(invalidFieldsText):
-                            if len(invalidFields) == 0:
-                                invalidFieldsText = '%s %s %s' % (invalidFieldsText, mls.UI_GENERIC_AND, field)
-                            else:
-                                invalidFieldsText = '%s, %s' % (invalidFieldsText, field)
-                        else:
-                            invalidFieldsText = field
-
-                if invalidFieldsText is not None:
-                    eve.Message('LoginParameterIncorrect', {'invalidFields': invalidFieldsText})
+                if giveFocus is not None:
+                    eve.Message('LoginAuthFailed')
                     self.CancelLogin()
                     self.SetFocus(giveFocus)
                     return 
@@ -1093,7 +1018,7 @@ class Login(uicls.LayerCore):
                         eve.Message('UnableToConnectToServer')
                         self.CancelLogin()
                         return 
-                sm.GetService('loading').ProgressWnd(mls.UI_LOGIN_LOGGINGIN, mls.UI_LOGIN_CONNECTINGCLUSTER, 1, 100)
+                sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Login/LoggingIn'), localization.GetByLabel('UI/Login/ConnectingToCluster'), 1, 100)
                 blue.pyos.synchro.Yield()
                 eve.Message('OnConnecting')
                 blue.pyos.synchro.Yield()
@@ -1115,7 +1040,6 @@ class Login(uicls.LayerCore):
                     knownUserNames.append(user)
                     settings.public.ui.Set('usernames', knownUserNames)
             except UserError as e:
-                self.R2_2011_PlayCurves()
                 if e.msg.startswith('LoginAuthFailed'):
                     giveFocus = 'password'
                 eve.Message(e.msg, e.dict)
@@ -1129,7 +1053,6 @@ class Login(uicls.LayerCore):
 
 
     def CancelLogin(self):
-        self.R2_2011_PlayCurves()
         sm.GetService('loading').CleanUp()
 
 
@@ -1146,5 +1069,6 @@ class Login(uicls.LayerCore):
 
 
 exports = {'login.servers': SERVERS,
- 'login.GetServerIP': GetServerIP}
+ 'login.GetServerIP': GetServerIP,
+ 'login.GetServerInfo': GetServerInfo}
 

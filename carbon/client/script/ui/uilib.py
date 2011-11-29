@@ -14,25 +14,6 @@ import menu
 import bluepy
 from util import ResFile
 DBLCLICKDELAY = 250.0
-UTHREADEDEVENTS = (uiconst.UI_CLICK,
- uiconst.UI_DBLCLICK,
- uiconst.UI_TRIPLECLICK,
- uiconst.UI_KEYUP,
- uiconst.UI_KEYDOWN,
- uiconst.UI_MOUSEMOVE,
- uiconst.UI_MOUSEWHEEL)
-EVENTMAP = {uiconst.UI_MOUSEHOVER: 'OnMouseHover',
- uiconst.UI_MOUSEMOVE: 'OnMouseMove',
- uiconst.UI_MOUSEENTER: 'OnMouseEnter',
- uiconst.UI_MOUSEEXIT: 'OnMouseExit',
- uiconst.UI_MOUSEDOWN: 'OnMouseDown',
- uiconst.UI_MOUSEUP: 'OnMouseUp',
- uiconst.UI_MOUSEWHEEL: 'OnMouseWheel',
- uiconst.UI_CLICK: 'OnClick',
- uiconst.UI_DBLCLICK: 'OnDblClick',
- uiconst.UI_TRIPLECLICK: 'OnTripleClick',
- uiconst.UI_KEYDOWN: 'OnKeyDown',
- uiconst.UI_KEYUP: 'OnKeyUp'}
 WM_NULL = 0
 WM_CREATE = 1
 WM_DESTROY = 2
@@ -266,10 +247,30 @@ class Uilib(object):
      'renderJob',
      'desktop']
     __guid__ = 'uicls.Uilib'
+    UTHREADEDEVENTS = (uiconst.UI_CLICK,
+     uiconst.UI_DBLCLICK,
+     uiconst.UI_TRIPLECLICK,
+     uiconst.UI_KEYUP,
+     uiconst.UI_KEYDOWN,
+     uiconst.UI_MOUSEMOVE,
+     uiconst.UI_MOUSEWHEEL)
+    EVENTMAP = {uiconst.UI_MOUSEHOVER: 'OnMouseHover',
+     uiconst.UI_MOUSEMOVE: 'OnMouseMove',
+     uiconst.UI_MOUSEENTER: 'OnMouseEnter',
+     uiconst.UI_MOUSEEXIT: 'OnMouseExit',
+     uiconst.UI_MOUSEDOWN: 'OnMouseDown',
+     uiconst.UI_MOUSEUP: 'OnMouseUp',
+     uiconst.UI_MOUSEWHEEL: 'OnMouseWheel',
+     uiconst.UI_CLICK: 'OnClick',
+     uiconst.UI_DBLCLICK: 'OnDblClick',
+     uiconst.UI_TRIPLECLICK: 'OnTripleClick',
+     uiconst.UI_KEYDOWN: 'OnKeyDown',
+     uiconst.UI_KEYUP: 'OnKeyUp'}
 
     def __init__(self, paparazziMode = False):
         if len(trinity.textureAtlasMan.atlases) == 0:
-            trinity.textureAtlasMan.AddAtlas(trinity.D3DFMT_A8R8G8B8, 2048, 1024)
+            trinity.textureAtlasMan.AddAtlas(trinity.D3DFMT_A8R8G8B8, 2048, 2048)
+        trinity.textureAtlasMan.atlases[0].optimizeOnRemoval = False
         self.renderObjectToPyObjectDict = weakref.WeakValueDictionary()
         self.x = -1
         self.y = -1
@@ -283,6 +284,7 @@ class Uilib(object):
         self.exclusiveMouseFocusActive = False
         self.appfocusitem = None
         self.selectedCursorType = uiconst.UICURSOR_DEFAULT
+        self.centerMouse = False
         self._clickTime = None
         self._clickCount = 0
         self._clickTimer = None
@@ -303,6 +305,7 @@ class Uilib(object):
         self.cursorCache = {}
         self.alignIslands = []
         uicore.uilib = self
+        trinity.fontMan.loadFlag = 32
         if not paparazziMode:
             self.inSceneRenderJob = trinity.CreateRenderJob()
             self.inSceneRenderJob.name = 'In-scene UI'
@@ -310,6 +313,7 @@ class Uilib(object):
             self.renderJob = trinity.CreateRenderJob()
             self.renderJob.name = 'UI'
             self.sceneViewStep = self.renderJob.SetView()
+            self.scaledViewportStep = self.renderJob.SetViewport()
             self.sceneProjectionStep = self.renderJob.SetProjection()
             videoJobStep = self.renderJob.RunJob()
             videoJobStep.name = 'Videos'
@@ -319,6 +323,7 @@ class Uilib(object):
             self.bracketCurveSet = trinity.TriCurveSet()
             self.bracketCurveSet.Play()
             self.renderJob.Update(self.bracketCurveSet).name = 'Update brackets'
+            self.renderJob.SetViewport()
             self.renderJob.PythonCB(self.Update).name = 'Update uilib'
             isFpsEnabled = trinity.IsFpsEnabled()
             if isFpsEnabled:
@@ -327,7 +332,7 @@ class Uilib(object):
             if isFpsEnabled:
                 trinity.SetFpsEnabled(True)
             self.desktop = self.CreateRootObject('Desktop', isFullscreen=True)
-            trinity.app.eventHandler = self.OnAppEvent
+            uthread.new(self.EnableEventHandling)
         trinity.device.RegisterResource(self)
         self._hoverThread = None
 
@@ -337,6 +342,15 @@ class Uilib(object):
         trinity.app.eventHandler = None
         if self.renderJob:
             self.renderJob.UnscheduleRecurring()
+
+
+
+    def EnableEventHandling(self):
+        while not uicore.IsReady():
+            blue.synchro.SleepWallclock(1)
+
+        trinity.app.eventHandler = self.OnAppEvent
+        log.LogInfo('Uilib event handling enabled')
 
 
 
@@ -587,6 +601,10 @@ class Uilib(object):
     def Update(self, *args):
         if getattr(self, 'updatingFromRoot', False):
             return 
+        vp = trinity.TriViewport()
+        vp.width = trinity.device.width
+        vp.height = trinity.device.height
+        self.scaledViewportStep.viewport = vp
         self.UpdateMouseOver()
         for root in self.rootObjects:
             root.UpdateAlignment()
@@ -616,15 +634,15 @@ class Uilib(object):
             if root.renderTargetStep:
                 pass
             elif camera:
-                triobj = RO.PickObject(self.x, self.y, camera.projectionMatrix, camera.viewMatrix, trinity.device.viewport)
+                triobj = RO.PickObject(int(uicore.ScaleDpi(self.x)), int(uicore.ScaleDpi(self.y)), camera.projectionMatrix, camera.viewMatrix, trinity.device.viewport)
             else:
-                triobj = RO.PickObject(self.x, self.y, self._pickProjection, self._pickView, self._pickViewport)
+                triobj = RO.PickObject(int(uicore.ScaleDpi(self.x)), int(uicore.ScaleDpi(self.y)), self._pickProjection, self._pickView, self._pickViewport)
             if triobj:
                 pyObject = self.GetPyObjectFromRenderObject(triobj)
                 if pyObject:
                     overridePick = getattr(pyObject, 'OverridePick', None)
                     if overridePick:
-                        overrideObject = overridePick(self.x, self.y)
+                        overrideObject = overridePick(int(uicore.ScaleDpi(self.x)), int(uicore.ScaleDpi(self.y)))
                         if overrideObject:
                             pyObject = overrideObject
                 if pyObject:
@@ -641,7 +659,7 @@ class Uilib(object):
                 self._TryExecuteHandler(uiconst.UI_MOUSEEXIT, currentMouseOver, param=None)
             if newMouseOver:
                 self._TryExecuteHandler(uiconst.UI_MOUSEENTER, newMouseOver, param=None)
-                (hoverHandlerArgs, hoverHandler,) = self.FindEventHandler(newMouseOver, EVENTMAP[uiconst.UI_MOUSEHOVER])
+                (hoverHandlerArgs, hoverHandler,) = self.FindEventHandler(newMouseOver, self.EVENTMAP[uiconst.UI_MOUSEHOVER])
                 if hoverHandler:
                     self._hoverThread = uthread.new(self._HoverThread)
             uicore.CheckHint()
@@ -656,14 +674,16 @@ class Uilib(object):
             returnValue = 0
             currentMouseOver = self.GetMouseOver()
             if msgID == WM_MOUSEMOVE:
-                mouseX = lParam & 65535
-                mouseY = lParam >> 16
+                mouseX = uicore.ReverseScaleDpi(lParam & 65535)
+                mouseY = uicore.ReverseScaleDpi(lParam >> 16)
                 if self.x != mouseX or self.y != mouseY:
                     self.dx = mouseX - self.x
                     self.dy = mouseY - self.y
                     self.x = mouseX
                     self.y = mouseY
                     self.z = 0
+                    if self.centerMouse:
+                        self.SetCursorPos(uicore.desktop.width / 2, uicore.desktop.height / 2)
                     mouseCaptureItem = self.GetMouseCapture()
                     if mouseCaptureItem:
                         self._TryExecuteHandler(uiconst.UI_MOUSEMOVE, mouseCaptureItem, param=(wParam, lParam))
@@ -811,6 +831,9 @@ class Uilib(object):
             elif msgID == WM_IME_NOTIFY:
                 if self.imeNotifyHandler:
                     returnValue = self.imeNotifyHandler(wParam, lParam)
+            elif msgID == WM_CLOSE:
+                uthread.new(uicore.cmd.CmdQuitGame)
+                returnValue = 1
             else:
                 returnValue = None
             return returnValue
@@ -885,15 +908,17 @@ class Uilib(object):
                 self._TryExecuteHandler(uiconst.UI_TRIPLECLICK, currentMouseOver, param=(wParam, lParam))
             self._clickCount = 1
         if self._clickCount == 1:
-            self._TryExecuteHandler(uiconst.UI_CLICK, currentMouseOver, param=(wParam, lParam))
-            self.SetClickObject(currentMouseOver)
-            self._clickPosition = (self.x, self.y)
+            (handlerArgs, handler,) = self.FindEventHandler(currentMouseOver, 'OnClick')
+            if handler:
+                self._TryExecuteHandler(uiconst.UI_CLICK, currentMouseOver, param=(wParam, lParam))
+                self.SetClickObject(currentMouseOver)
+                self._clickPosition = (self.x, self.y)
         self._clickTimer = base.AutoTimer(CLICKCOUNTRESETTIME, self.ResetClickCounter)
 
 
 
     def _TryExecuteHandler(self, eventID, object, eventArgs = None, param = None):
-        functionName = EVENTMAP.get(eventID, None)
+        functionName = self.EVENTMAP.get(eventID, None)
         if functionName is None:
             raise NotImplementedError
         itemCapturingMouse = self.GetMouseCapture()
@@ -907,7 +932,7 @@ class Uilib(object):
                 args = handlerArgs + eventArgs
             else:
                 args = handlerArgs
-            if eventID in UTHREADEDEVENTS:
+            if eventID in self.UTHREADEDEVENTS:
                 uthread.new(handler, *args)
             else:
                 handler(*args)
@@ -942,7 +967,9 @@ class Uilib(object):
 
 
     def SetCursorPos(self, x, y):
-        return trinity.app.SetCursorPos(x, y)
+        self.x = x
+        self.y = y
+        return trinity.app.SetCursorPos(uicore.ScaleDpi(x), uicore.ScaleDpi(y))
 
 
 
@@ -1008,7 +1035,7 @@ class Uilib(object):
     def ClipCursor(self, *rect):
         self._cursorClip = rect
         (l, t, r, b,) = rect
-        trinity.app.ClipCursor(int(l), int(t), int(r), int(b))
+        trinity.app.ClipCursor(uicore.ScaleDpi(l), uicore.ScaleDpi(t), uicore.ScaleDpi(r), uicore.ScaleDpi(b))
 
 
 
@@ -1022,7 +1049,7 @@ class Uilib(object):
         while True:
             if not trinity.app.IsActive():
                 return 
-            blue.synchro.Sleep(HOVERTIME)
+            blue.synchro.SleepWallclock(HOVERTIME)
             self._TryExecuteHandler(uiconst.UI_MOUSEHOVER, self.mouseOver)
             uicore.CheckHint()
 

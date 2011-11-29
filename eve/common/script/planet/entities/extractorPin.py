@@ -90,7 +90,7 @@ class ExtractorPin(planet.BasePin):
         if lastRunTime is not None:
             self.lastRunTime = lastRunTime
         else:
-            self.lastRunTime = blue.os.GetTime()
+            self.lastRunTime = blue.os.GetWallclockTime()
         if installTime is not None:
             self.installTime = installTime
         else:
@@ -154,7 +154,7 @@ class ExtractorPin(planet.BasePin):
 
     def GetTimeToDepletion(self):
         if self.depositType is not None and self.depositQtyPerCycle > 0:
-            currCycle = blue.os.GetTime() - self.lastRunTime
+            currCycle = blue.os.GetWallclockTime() - self.lastRunTime
             currCycleTimeLeft = self.cycleTime - currCycle
             numCyclesLeft = math.ceil((self.depositQtyRemaining - self.depositQtyPerCycle) / float(self.depositQtyPerCycle))
             totalTimeLeft = numCyclesLeft * self.cycleTime + currCycleTimeLeft
@@ -165,7 +165,7 @@ class ExtractorPin(planet.BasePin):
 
 
     def GetTimeToExpiry(self):
-        return self.depositExpiryTime - blue.os.GetTime()
+        return self.depositExpiryTime - blue.os.GetWallclockTime()
 
 
 

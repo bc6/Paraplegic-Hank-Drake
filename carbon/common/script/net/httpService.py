@@ -168,6 +168,11 @@ class Request():
 
 
 
+    def FormItems(self):
+        return dict(((k, htmlwriter.Pythonize(v)) for (k, v,) in self.form.items()))
+
+
+
     def FormCheck(self, element):
         if self.Form(element) == 'on':
             return 1
@@ -339,6 +344,10 @@ class Request():
                     fields = cgi.FieldStorage(StringIO.StringIO(body), headers=headers, strict_parsing=1, environ={'REQUEST_METHOD': method})
                     self.formfields = fields
                     htmlwriter.SplitMIMEArgs(fields, self.form)
+                if 'action' in self.form and 'action' not in self.query:
+                    action = self.form['action']
+                    if action != 'ActionTakenFromQuery':
+                        self.query['action'] = action
 
 
 
@@ -493,14 +502,14 @@ def GetSession(parent, request, response, sessionsBySID, sessionsByFlatkaka):
                     break
 
             if macho.mode == 'server' and ('authentication' not in sm.services or sm.services['authentication'].state != service.SERVICE_RUNNING):
-                blue.pyos.synchro.Sleep(3000)
+                blue.pyos.synchro.SleepWallclock(3000)
                 raise UserError('AutClusterStarting')
             try:
                 if sm.services['http'].session.ConnectToProxyServerService('machoNet').CheckACL(request.ep.address, espCheck=True):
-                    blue.pyos.synchro.Sleep(3000)
+                    blue.pyos.synchro.SleepWallclock(3000)
                     raise UserError('AutClusterStarting')
             except UnMachoDestination:
-                blue.pyos.synchro.Sleep(3000)
+                blue.pyos.synchro.SleepWallclock(3000)
                 raise UserError('AutClusterStarting')
             sess = base.CreateUserSession()
             sess.esps = ESPSession(parent, sess.sid)
@@ -701,7 +710,7 @@ class ESPSession():
         self.username = ''
         self.password = ''
         self.owner = owner
-        self.flatkokudeig = blue.os.GetTime(1)
+        self.flatkokudeig = blue.os.GetWallclockTimeNow()
         self.remappings = {}
 
 
@@ -841,7 +850,7 @@ class ConnectionService(service.Service):
          'Oct',
          'Nov',
          'Dec']
-        (year, month, weekday, day, hour, minute, second, ms,) = util.GetTimeParts(utc=True)
+        (year, month, weekday, day, hour, minute, second, ms,) = util.GetTimeParts(blue.os.GetWallclockTime(), utc=True)
         args = (dayname[weekday],
          day + d,
          monthname[(month - 1)],
@@ -1060,7 +1069,7 @@ class ConnectionService(service.Service):
                     refuse = True
                 else:
                     ext = filename[(extidx + 1):]
-                    if ext.lower() not in ('py', 'gif', 'jpg', 'htm', 'htc', 'html', 'txt', 'mp3', 'js', 'xsl', 'xml', 'xls', 'css', 'png', 'ico', 'pickle', 'lbw', 'cab', '7z', 'uc'):
+                    if ext.lower() not in ('py', 'gif', 'jpg', 'htm', 'htc', 'html', 'txt', 'mp3', 'js', 'xsl', 'xml', 'xls', 'css', 'png', 'ico', 'pickle', 'lbw', 'cab', '7z', 'uc', 'swf'):
                         self.LogError('Refusing to give ', filename, ' to ', sess.userid, " because he's trying to get a file that has an extension that only programmers may acquire :(")
                         refuse = True
             if refuse:
@@ -1156,11 +1165,11 @@ class ConnectionService(service.Service):
 
     def _TrackPage(self, title, session):
         trackID = 1 if prefs.clusterMode == 'LOCAL' else prefs.GetValue('webTrackID', -1)
-        trackUrl = prefs.GetValue('trackUrl', 'http://10.1.5.131/piwik/')
+        trackUrl = prefs.GetValue('trackUrl', 'http://esp-staging-ws/piwik/')
         if not trackUrl.endswith('/'):
             trackUrl += '/'
         if trackID > -1:
-            return '\n    <!-- Piwik -->\n    <script type="text/javascript">\n    var pkBaseURL = (("https:" == document.location.protocol) ? "%(trackHttps)s" : "%(trackHttp)s");\n    document.write(unescape("%%3Cscript src=\'" + pkBaseURL + "piwik.js\' type=\'text/javascript\'%%3E%%3C/script%%3E"));\n    </script><script type="text/javascript">\n    try {\n    var user = { \'userID\' : %(userid)s };\n    var piwikTracker = Piwik.getTracker(pkBaseURL + "piwik.php", %(trackID)d);\n    piwikTracker.setCustomData(user);\n    piwikTracker.setDocumentTitle(\'%(documentTitle)s\');\n    piwikTracker.trackPageView();\n    piwikTracker.enableLinkTracking();\n    } catch( err ) {}\n    </script><noscript><p><img src="%(trackHttp)spiwik.php?idsite=%(trackID)d" style="border:0" alt="" /></p></noscript>\n    <!-- End Piwik Tracking Tag -->\n            ' % {'userid': session.userid if session.userid is not None else 'Not Authorized',
+            return '\n    <!-- Piwik -->\n    <script type="text/javascript">\n    var pkBaseURL = (("https:" == document.location.protocol) ? "%(trackHttps)s" : "%(trackHttp)s");\n    document.write(unescape("%%3Cscript src=\'" + pkBaseURL + "piwik.js\' type=\'text/javascript\'%%3E%%3C/script%%3E"));\n    </script><script type="text/javascript">\n    try {\n    var user = { \'userID\' : %(userid)s };\n    var piwikTracker = Piwik.getTracker(pkBaseURL + "piwik.php", %(trackID)d);\n    piwikTracker.setCustomData(user);\n    piwikTracker.setDocumentTitle(\'%(documentTitle)s\');\n    piwikTracker.trackPageView();\n    piwikTracker.enableLinkTracking();\n    } catch(err) {}\n    </script><noscript><p><img src="%(trackHttp)spiwik.php?idsite=%(trackID)d" style="border:0" alt="" /></p></noscript>\n    <!-- End Piwik Tracking Tag -->\n            ' % {'userid': session.userid if session.userid is not None else 'Not Authorized',
              'documentTitle': 'title',
              'trackID': trackID,
              'trackHttp': trackUrl,
@@ -1292,7 +1301,7 @@ class ConnectionService(service.Service):
 
 
     def CheckSessionTimeout(self, sess, oldRequestCount):
-        blue.pyos.synchro.Sleep(60000 * self.TimoutOutIntervalInMinutes)
+        blue.pyos.synchro.SleepWallclock(60000 * self.TimoutOutIntervalInMinutes)
         try:
             if sess.requestCount == oldRequestCount:
                 self.LogInfo("%s's http session timeout, removing session. sid=%s" % (sess.esps.contents.get('username', '?'), sess.sid))

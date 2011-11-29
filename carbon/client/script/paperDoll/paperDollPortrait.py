@@ -5,6 +5,7 @@ import blue
 import yaml
 import math
 import bluepy
+import geo2
 import paperDoll as PD
 
 def ApplySuffix(basePath, suffix):
@@ -24,7 +25,7 @@ class PortraitTools(object):
         else:
             effect.effectFilePath = 'res:/Graphics/Effect/Managed/Interior/Avatar/avatarbrdfcombined_detailed' + suffix
         while effect.effectResource.isLoading:
-            blue.synchro.Yield()
+            PD.Yield()
 
         effect.PopulateParameters()
         for res in effect.resources:
@@ -57,6 +58,7 @@ class PortraitTools(object):
 
         avatar.curveSets.append(set)
         weakAvatar = blue.BluePythonWeakRef(avatar)
+        pdDoll.LoadBindPose()
 
         def CreateBoneDriver(set, bone1, bone2, zone, min, max, oldMin, oldMax, curveDictionary, name, tweakData):
             if bone1 in pdDoll.bindPose and bone1 in pdDoll.boneOffsets and bone2 in pdDoll.bindPose and bone2 in pdDoll.boneOffsets:
@@ -72,19 +74,20 @@ class PortraitTools(object):
                 oldMin = oldMin * multiplier
                 oldMax = oldMax * multiplier
 
-            def GetOrMakeCurve(bone, set, curveDictionary):
+            def GetOrMakeCurve(bone, set, curveDictionary, name):
                 curve = curveDictionary.get((weakAvatar, bone), None)
                 if curve is not None:
                     return curve
                 curve = trinity.Tr2BoneMatrixCurve()
                 curve.bone = bone
+                curve.name = name
                 curveDictionary[(weakAvatar, bone)] = curve
                 set.curves.append(curve)
                 return curve
 
 
-            curve1 = GetOrMakeCurve(bone1, set, curveDictionary)
-            curve2 = GetOrMakeCurve(bone2, set, curveDictionary)
+            curve1 = GetOrMakeCurve(bone1, set, curveDictionary, 'bone1')
+            curve2 = GetOrMakeCurve(bone2, set, curveDictionary, 'bone2')
             bind = trinity.TriValueBinding()
             set.bindings.append(bind)
 
@@ -100,7 +103,6 @@ class PortraitTools(object):
                     return 
                 p1 = curve1.currentValue[3]
                 p2 = curve2.currentValue[3]
-                import geo2
                 dist = geo2.Vec3Distance(p1, p2)
                 d = 1.0 - (dist - min) * 1 / (max - min)
                 if d < 0:
@@ -285,9 +287,11 @@ class PortraitTools(object):
     @staticmethod
     def BindLinearAvatarBRDF(effect, suffix):
         path = effect.effectFilePath.lower()
-        pathSansSuffix = path.replace(suffix, '')
+        pathSansSuffix = path[:path.rfind('.')]
         if pathSansSuffix.endswith('skinnedavatarbrdf') or pathSansSuffix.endswith('skinnedavatarbrdfdouble') or pathSansSuffix.endswith('clothavatar'):
             effect.effectFilePath = ApplySuffix(pathSansSuffix + 'linear', suffix)
+        elif pathSansSuffix.endswith('skinnedavatarbrdflinear') or pathSansSuffix.endswith('skinnedavatarbrdfdoublelinear') or pathSansSuffix.endswith('clothavatarlinear'):
+            effect.effectFilePath = ApplySuffix(pathSansSuffix, suffix)
 
 
 
@@ -314,7 +318,7 @@ class PortraitTools(object):
             fxPath = PD.SKINNED_AVATAR_SINGLEPASS_DOUBLE_PATH if wasDouble else PD.SKINNED_AVATAR_SINGLEPASS_SINGLE_PATH
             effect.effectFilePath = ApplySuffix(fxPath[:-3], fxSuffix)
             while effect.effectResource.isLoading:
-                blue.synchro.Yield()
+                PD.Yield()
 
             effect.PopulateParameters()
             PD.SetOrAddMap(effect, 'BeckmannLookup', 'res:/Texture/Global/beckmannSpecular.dds')
@@ -395,7 +399,7 @@ class PortraitTools(object):
 
 
 
-    def BindCustomShaders(effect, useFastShaders):
+    def BindCustomShaders(effect, useFastShaders, doll):
         path = effect.effectFilePath.lower()
         name = effect.name.lower()
         if 'glassshader' in path:
@@ -424,6 +428,8 @@ class PortraitTools(object):
         fastFx = '_fast.fx'
         if useFastShaders and fastFx not in path and path in PD.SHADERS_THAT_CAN_SWITCH_TO_FAST_SHADER_MODE:
             effect.effectFilePath = ApplySuffix(effect.effectFilePath[:-3], fastFx)
+        elif doll.useDXT5N:
+            effect.effectFilePath = ApplySuffix(effect.effectFilePath[:-3], '_dxt5n.fx')
 
 
 
@@ -437,7 +443,7 @@ class PortraitTools(object):
         else:
             effect.effectFilePath = ApplySuffix('res:/Graphics/Effect/Managed/Interior/Avatar/skinnedavatarhair_detailed', suffix)
         while effect.effectResource.isLoading:
-            blue.synchro.Yield()
+            PD.Yield()
 
         name = effect.name.lower()
         effect.PopulateParameters()
@@ -456,7 +462,7 @@ class PortraitTools(object):
         suffix = '_dxt5n.fx' if useDXT5n else '.fx'
         effect.effectFilePath = ApplySuffix('res:/Graphics/Effect/Managed/Interior/Avatar/ClothAvatarLinear', suffix)
         while effect.effectResource.isLoading:
-            blue.synchro.Yield()
+            PD.Yield()
 
         effect.PopulateParameters()
         PortraitTools.TweakDiffuseSampler(effect)
@@ -483,7 +489,7 @@ class PortraitTools(object):
                     for resource in stubbleArea.effect.resources:
                         if resource.name == 'LengthTexture':
                             while resource.resource.IsLoading():
-                                blue.synchro.Yield()
+                                PD.Yield()
 
 
                     mesh.decalAreas.append(stubbleArea)

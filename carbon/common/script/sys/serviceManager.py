@@ -97,7 +97,7 @@ class ServiceManager(log.LogMixin):
                         counter += 1
                         if counter % 100 == 0:
                             print "Service start still pending: '%s', sleeping..." % sm.services[each].__guid__
-                        blue.pyos.synchro.Sleep(100)
+                        blue.pyos.synchro.SleepWallclock(100)
 
 
                 for each in sm.services.keys():
@@ -132,7 +132,7 @@ class ServiceManager(log.LogMixin):
             data = bluepy.GetBlueInfo(isYield=False)
             txt = 'Timestamp\tProcess CPU\tThread CPU\tTotal Memory\tBlue Memory\tPython Memory\tLateness\n'
             for i in xrange(len(data.timeData)):
-                txt += '%s\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\n' % (util.FmtDate(data.timeData[i]),
+                txt += '%s\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\n' % (util.FmtDateEng(data.timeData[i]),
                  data.procCpuData[i],
                  data.threadCpuData[i],
                  data.memData[i],
@@ -142,7 +142,7 @@ class ServiceManager(log.LogMixin):
 
             if not os.path.exists(dumpPath):
                 os.mkdir(dumpPath)
-            fileName = 'Blue %s %s %s.txt' % (computerName, nodeID, util.FmtDate(blue.os.GetTime()))
+            fileName = 'Blue %s %s %s.txt' % (computerName, nodeID, util.FmtDateEng(blue.os.GetWallclockTime()))
             fileName = os.path.join(dumpPath, fileName.replace(':', '.').replace(' ', '.'))
             f = open(fileName, 'w')
             f.write(txt)
@@ -159,7 +159,7 @@ class ServiceManager(log.LogMixin):
         self.logChannel.Log('ServiceManager.Stop(), stopping services')
         dag = util.DAG()
         for (k, v,) in self.services.iteritems():
-            depends = v.__dependencies__ + getattr(v, '__exitdependencies__', [])
+            depends = v.__dependencies__ + getattr(v, '__exitdependencies__', []) + getattr(v, '__startupdependencies__', [])
             for d in depends:
                 if type(d) is not str:
                     d = d[0]
@@ -193,7 +193,13 @@ class ServiceManager(log.LogMixin):
         stackless.getcurrent().block_trap = 1
         self.state = service.SERVICE_STOP_PENDING
         try:
-            for (k, v,) in ((each, self.services[each]) for each in order):
+            for k in order:
+                try:
+                    v = self.services[k]
+                except KeyError:
+                    self.LogWarn('Warning, the service', k, 'has been stopped already but something that depends on it might still be running!')
+                    sys.exc_clear()
+                    continue
                 if not hasattr(v, 'state'):
                     self.logChannel.Log("ServiceManager.Stop(), service '" + str(k) + " doesn't have state therefore has already stopped")
                 elif v.state not in (service.SERVICE_STOPPED, service.SERVICE_STOP_PENDING):
@@ -279,7 +285,7 @@ class ServiceManager(log.LogMixin):
                     raise svc.__error__[1], None, svc.__error__[2]
                 else:
                     raise RuntimeError, 'Service %s made unexpected state transition' % svc.__logname__
-            blue.pyos.synchro.Sleep(100)
+            blue.pyos.synchro.SleepWallclock(100)
             if i % 600 == 0 and i > 0:
                 svc.LogWarn('WaitForServiceObjectState has been sleeping for a long time waiting for ', svc.__logname__, ' to either get to state ', desiredStates, 'current state is', svc.state)
             i += 1
@@ -291,6 +297,13 @@ class ServiceManager(log.LogMixin):
         if serviceName in self.services:
             srv = self.services[serviceName]
             self.WaitForServiceObjectState(srv, (service.SERVICE_RUNNING,))
+            return srv
+
+
+
+    def GetServiceIfRunning(self, serviceName):
+        if self.IsServiceRunning(serviceName):
+            srv = self.services[serviceName]
             return srv
 
 
@@ -335,7 +348,7 @@ class ServiceManager(log.LogMixin):
                     setattr(srv, asname, depService)
 
             srv.state = service.SERVICE_START_PENDING
-            uthread.new(self._LoadServiceDependenciesAsych, srv, serviceName)
+            uthread.new(self._LoadServiceDependenciesAsych, srv, serviceName).context = serviceName + ' _LoadServiceDependenciesAsych'
             for notify in srv.__notifyevents__:
                 if not hasattr(srv, notify):
                     raise RuntimeError('MissingSvcExportAttribute', serviceName, 'notify', notify)
@@ -353,7 +366,7 @@ class ServiceManager(log.LogMixin):
         if serviceName in self.startInline:
             self.StartServiceRun(srv, args, serviceName)
         else:
-            uthread.pool('StartService::StartServiceRun', self.StartServiceRun, srv, args, serviceName)
+            uthread.pool(serviceName + ' StartServiceRun', self.StartServiceRun, srv, args, serviceName)
         return srv
 
 

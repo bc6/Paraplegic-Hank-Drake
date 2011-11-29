@@ -5,6 +5,8 @@ import util
 import uiconst
 import uicls
 import calendar
+import localization
+import localizationUtil
 const.calendarMonday = 0
 const.calendarTuesday = 1
 const.calendarWednesday = 2
@@ -32,6 +34,13 @@ const.calendarTagCCP = 8
 const.calendarViewRangeInMonths = 12
 const.defaultPadding = 4
 NUM_DAYROWS = 6
+DAY_NAME_TEXT = ['/Carbon/UI/Common/Days/Monday',
+ '/Carbon/UI/Common/Days/Tuesday',
+ '/Carbon/UI/Common/Days/Wednesday',
+ '/Carbon/UI/Common/Days/Thursday',
+ '/Carbon/UI/Common/Days/Friday',
+ '/Carbon/UI/Common/Days/Saturday',
+ '/Carbon/UI/Common/Days/Sunday']
 
 class Calendar(uicls.Container):
     __guid__ = 'form.Calendar'
@@ -61,7 +70,7 @@ class Calendar(uicls.Container):
 
     def Setup(self):
         sm.RegisterNotify(self)
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         (year, month, wd, day, hour, min, sec, ms,) = util.GetTimeParts(now)
         self.today = (year, month, day)
         self.calendar = calendar.Calendar()
@@ -118,7 +127,8 @@ class Calendar(uicls.Container):
         if row is not None:
             row.SetAlign(uiconst.TOALL)
             row.height = 0
-        (boxWidth, boxHeight,) = self.SetSizes()
+        self.SetSizes()
+        self.sr.gridCont._OnSizeChange_NoBlock = self.OnGridContainerSize
 
 
 
@@ -136,15 +146,16 @@ class Calendar(uicls.Container):
 
 
 
-    def _OnResize(self, *args):
-        uicls.Container._OnResize(self, *args)
-        if not self.destroyed and self.sr.gridCont:
-            self.SetSizes()
+    def OnGridContainerSize(self, displayWidth, displayHeight):
+        self.SetSizes((displayWidth, displayHeight))
 
 
 
-    def SetSizes(self):
-        (l, t, w, h,) = self.sr.gridCont.GetAbsolute()
+    def SetSizes(self, size = None):
+        if size is None:
+            (w, h,) = self.sr.gridCont.GetAbsoluteSize()
+        else:
+            (w, h,) = size
         newBoxWidth = w / const.calendarNumDaysInWeek
         newBoxHeight = (h - self.headerHeight) / NUM_DAYROWS
         newBoxWidth -= 2 * self.dayPadding
@@ -173,10 +184,10 @@ class Calendar(uicls.Container):
 
     def InsertBrowseControls(self, *args):
         self.sr.backBtn = uicls.Container(name='backBtn', parent=self.sr.monthTextCont, align=uiconst.TOPLEFT, pos=(0, 0, 16, 16))
-        icon = uicls.Icon(parent=self.sr.backBtn, icon='ui_1_16_13', pos=(0, 0, 0, 0), hint=mls.UI_GENERIC_PREVIOUS)
+        icon = uicls.Icon(parent=self.sr.backBtn, icon='ui_1_16_13', pos=(0, 0, 0, 0), hint=localization.GetByLabel('/Carbon/UI/Common/Previous'))
         icon.OnClick = (self.ChangeMonth, -1)
         self.sr.fwdBtn = uicls.Container(name='fwdBtn', parent=self.sr.monthTextCont, align=uiconst.TOPRIGHT, pos=(0, 0, 16, 16))
-        icon = uicls.Icon(parent=self.sr.fwdBtn, icon='ui_1_16_14', pos=(0, 0, 0, 0), hint=mls.UI_CMD_NEXT)
+        icon = uicls.Icon(parent=self.sr.fwdBtn, icon='ui_1_16_14', pos=(0, 0, 0, 0), hint=localization.GetByLabel('/Carbon/UI/Common/Next'))
         icon.OnClick = (self.ChangeMonth, 1)
 
 
@@ -206,7 +217,7 @@ class Calendar(uicls.Container):
 
 
     def SetCurrentRLMonth(self, selectToday = True, *args):
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         (year, month, wd, monthday, hour, min, sec, ms,) = util.GetTimeParts(now)
         self.yearMonthInView = (year, month)
         self.SetMonth(year, month)
@@ -254,7 +265,7 @@ class Calendar(uicls.Container):
 
 
     def GetDayNameText(self, dayNumber):
-        dayName = getattr(mls, 'UI_CAL_DAY%s' % dayNumber, '')
+        dayName = localization.GetByLabel(DAY_NAME_TEXT[dayNumber])
         return dayName
 
 
@@ -262,7 +273,6 @@ class Calendar(uicls.Container):
     def SetMonth(self, year, month, updateInView = 0, *args):
         if updateInView:
             self.yearMonthInView = (year, month)
-        tags = sm.GetService('calendar').GetActiveTags()
         i = 1
         j = 0
         self.dayBoxesByDates = {}
@@ -323,7 +333,7 @@ class Calendar(uicls.Container):
         (year, month,) = sm.GetService('calendar').GetBrowsedMonth(direction, year, month)
         self.yearMonthInView = (year, month)
         self.SetMonth(year, month)
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         (rlYear, rlMonth, wd, day, hour, min, sec, ms,) = util.GetTimeParts(now)
         nowNumMonths = rlYear * 12 + rlMonth
         thenNumMonths = year * 12 + month
@@ -331,10 +341,8 @@ class Calendar(uicls.Container):
         self.disbleForward = 0
         self.disbleBack = 0
         if direction == 1 and difference >= const.calendarViewRangeInMonths:
-            fwdDisable = 1
             self.disbleForward = 1
         elif direction == -1 and -difference >= const.calendarViewRangeInMonths:
-            backDisable = 1
             self.disbleBack = 1
         self.ChangeBrowseDisplay(self.sr.backBtn, disable=self.disbleBack)
         self.ChangeBrowseDisplay(self.sr.fwdBtn, disable=self.disbleForward)
@@ -419,8 +427,6 @@ class Calendar(uicls.Container):
 
     def SelectNextDay(self, direction = 1, weekOrDay = 'day', *args):
         currentlySelected = self.selectedDay
-        usePreviousMonth = False
-        useNextMonth = False
         if currentlySelected is None:
             newSelected = self.sr.get('1_0', None)
         else:
@@ -564,13 +570,15 @@ class CalendarEventEntryCore(uicls.Container):
             myResponse = attributes.get('response', None)
             time = self.eventInfo.eventTimeStamp
             title = self.eventInfo.eventTitle
-            timeAndTitle = '%s %s' % (time, title)
             if settings.user.ui.Get('calendar_showTimestamp', 1):
-                text = timeAndTitle
+                if getattr(self.eventInfo, 'importance', None) > 0:
+                    text = localization.GetByLabel('/Carbon/UI/Calendar/EventTitleWithTimeImportant', timeStamp=time, eventTitle=title)
+                else:
+                    text = localization.GetByLabel('/Carbon/UI/Calendar/EventTitleWithTime', timeStamp=time, eventTitle=title)
+            elif getattr(self.eventInfo, 'importance', None) > 0:
+                text = localization.GetByLabel('/Carbon/UI/Calendar/EventTitleImportant', eventTitle=title)
             else:
-                text = title
-            if getattr(self.eventInfo, 'importance', None) > 0:
-                text = '<color=red>!</color> %s' % text
+                text = localization.GetByLabel('/Carbon/UI/Calendar/EventTitle', eventTitle=title)
             hint = sm.GetService('calendar').GetEventHint(self.eventInfo, myResponse)
             responseIconPath = attributes.get('responseIconPath', None)
         else:
@@ -630,7 +638,7 @@ class CalendarEventEntryCore(uicls.Container):
     def SetStatus(self, cont, iconPath = None):
         uiutil.Flush(cont)
         if iconPath:
-            icon = uicls.Icon(icon=iconPath, parent=cont, align=uiconst.CENTER, pos=(0, 0, 16, 16))
+            uicls.Icon(icon=iconPath, parent=cont, align=uiconst.CENTER, pos=(0, 0, 16, 16))
 
 
 
@@ -716,6 +724,7 @@ class CalendarDayCore(uicls.Container):
     def SetDayNumber(self, text = None, *args):
         self.AddDayNumber()
         if text is not None:
+            text = localizationUtil.FormatNumeric(text, decimalPlaces=0)
             self.sr.dayNumberText.text = text
 
 
@@ -774,9 +783,9 @@ class CalendarDayCore(uicls.Container):
         if self.disabled:
             return m
         if not sm.GetService('calendar').IsInPast(self.year, self.month, self.monthday, allowToday=1):
-            m += [(mls.UI_CAL_CREATEEVENT, self.OpenNewEventWnd)]
+            m += [(localization.GetByLabel('/Carbon/UI/Calendar/CreateNewEvent'), self.OpenNewEventWnd)]
         if not self.disabled:
-            m += [(mls.UI_CAL_VIEWDAY, self.OpenSingleDayWnd)]
+            m += [(localization.GetByLabel('/Carbon/UI/Calendar/ViewDay'), self.OpenSingleDayWnd)]
         return m
 
 

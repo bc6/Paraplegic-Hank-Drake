@@ -11,8 +11,8 @@ class ProximityOpenTutorialView(cef.BaseComponentView):
     @classmethod
     def SetupInputs(cls):
         cls.RegisterComponent(cls)
-        cls._AddInput(cls.TUTORIAL_ID, -1, cls.MANDATORY, const.cef.COMPONENTDATA_ID_TYPE)
-        cls._AddInput(cls.RADIUS, 0.0, cls.MANDATORY, const.cef.COMPONENTDATA_FLOAT_TYPE)
+        cls._AddInput(cls.TUTORIAL_ID, -1, cls.RECIPE, const.cef.COMPONENTDATA_ID_TYPE, displayName='Tutorial ID')
+        cls._AddInput(cls.RADIUS, 0.0, cls.RECIPE, const.cef.COMPONENTDATA_FLOAT_TYPE, displayName='Radius')
 
 
 

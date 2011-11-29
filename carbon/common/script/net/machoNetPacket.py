@@ -33,6 +33,7 @@ class MachoPacket:
         self.compressedPart = 0
         self.source = macho.MachoAddress()
         self.destination = macho.MachoAddress()
+        self.contextKey = None
         self.oob = {}
         dtc = 0
         for each in keywords.iterkeys():
@@ -76,12 +77,13 @@ class MachoPacket:
          self.destination,
          self.userID,
          tuple(body),
-         oob)
+         oob,
+         self.contextKey)
 
 
 
     def __setstate__(self, state):
-        (self.command, self.source, self.destination, self.userID, body, self.oob,) = state
+        (self.command, self.source, self.destination, self.userID, body, self.oob, self.contextKey,) = state
         if self.oob is None:
             self.oob = {}
         self.compressedPart = self.oob.get('compressedPart', 0)
@@ -106,6 +108,7 @@ class MachoPacket:
         theResponse.source = self.destination
         theResponse.destination = self.source
         theResponse.userID = self.userID
+        theResponse.contextKey = None
         responseParams = theResponse.__machodesc__['params']
         i = 0
         for each in responseParams:
@@ -136,6 +139,7 @@ class MachoPacket:
         theResponse.source = self.destination
         theResponse.destination = self.source
         theResponse.userID = self.userID
+        theResponse.contextKey = None
         return theResponse
 
 
@@ -198,35 +202,40 @@ class MachoPacket:
                  getattr(self, 'address', None))
             self.GetPickle()
             if len(self.thePickle) > 1500000:
-                return 'Packet::%s (%s,%s,GENOCIDAL PAYLOAD(%d bytes),%s)' % (self.__class__.__name__,
+                return 'Packet::%s (%s,%s,GENOCIDAL PAYLOAD(%d bytes),%s, %s)' % (self.__class__.__name__,
                  self.source,
                  self.destination,
                  len(self.thePickle),
-                 self.oob)
+                 self.oob,
+                 self.contextKey)
             if len(self.thePickle) > 1000000:
-                return 'Packet::%s (%s,%s,MURDEROUS PAYLOAD(%d bytes),%s)' % (self.__class__.__name__,
+                return 'Packet::%s (%s,%s,MURDEROUS PAYLOAD(%d bytes),%s, %s)' % (self.__class__.__name__,
                  self.source,
                  self.destination,
                  len(self.thePickle),
-                 self.oob)
+                 self.oob,
+                 self.contextKey)
             if len(self.thePickle) > 100000:
-                return 'Packet::%s (%s,%s,GARGANTUAN PAYLOAD(%d bytes),%s)' % (self.__class__.__name__,
+                return 'Packet::%s (%s,%s,GARGANTUAN PAYLOAD(%d bytes),%s, %s)' % (self.__class__.__name__,
                  self.source,
                  self.destination,
                  len(self.thePickle),
-                 self.oob)
+                 self.oob,
+                 self.contextKey)
             if len(self.thePickle) > 10000:
-                return 'Packet::%s (%s,%s,HUGE PAYLOAD(%d bytes),%s)' % (self.__class__.__name__,
+                return 'Packet::%s (%s,%s,HUGE PAYLOAD(%d bytes),%s, %s)' % (self.__class__.__name__,
                  self.source,
                  self.destination,
                  len(self.thePickle),
-                 self.oob)
+                 self.oob,
+                 self.contextKey)
             if len(self.thePickle) > 1000:
-                return 'Packet::%s (%s,%s,LARGE PAYLOAD(%d bytes),%s)' % (self.__class__.__name__,
+                return 'Packet::%s (%s,%s,LARGE PAYLOAD(%d bytes),%s, %s)' % (self.__class__.__name__,
                  self.source,
                  self.destination,
                  len(self.thePickle),
-                 self.oob)
+                 self.oob,
+                 self.contextKey)
             try:
                 l = len(self.thePickle)
                 params = []
@@ -239,19 +248,21 @@ class MachoPacket:
                         params.append(getattr(self, each))
 
                 if hasattr(self, 'strayload'):
-                    return 'Packet::%s (%s,%s,%s bytes,%s,%s)' % (self.__class__.__name__,
+                    return 'Packet::%s (%s,%s,%s bytes,%s,%s, %s)' % (self.__class__.__name__,
                      self.source,
                      self.destination,
                      l,
                      self.strayload,
-                     self.oob)
+                     self.oob,
+                     self.contextKey)
                 else:
-                    return 'Packet::%s (%s,%s,%s bytes,%s,%s)' % (self.__class__.__name__,
+                    return 'Packet::%s (%s,%s,%s bytes,%s,%s, %s)' % (self.__class__.__name__,
                      self.source,
                      self.destination,
                      l,
                      params,
-                     self.oob)
+                     self.oob,
+                     self.contextKey)
             except Exception:
                 log.LogException()
                 return 'Packet::%s (CRAPPY TUPLE)' % self.__class__.__name__

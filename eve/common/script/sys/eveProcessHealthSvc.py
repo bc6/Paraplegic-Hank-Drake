@@ -36,7 +36,7 @@ class EveProcessHealthSvc(svc.processHealth):
                 count += 1
                 if effectList:
                     try:
-                        dogmaLag.append(float(effectList[0][0] - blue.os.GetTime(1)) / float(const.SEC))
+                        dogmaLag.append(float(effectList[0][0] - blue.os.GetWallclockTimeNow()) / float(const.SEC))
                     except KeyError:
                         pass
                 if len(effectList) > maxModules:

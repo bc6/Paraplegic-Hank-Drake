@@ -14,6 +14,7 @@ import uiconst
 import uicls
 import corputil
 from corputil import *
+import localization
 
 class CorpMemberRoleEntry(listentry.Generic):
     __guid__ = 'listentry.CorpMemberRoleEntry'
@@ -153,7 +154,7 @@ class CorpMemberRoleEntry(listentry.Generic):
     def Load(self, node):
         try:
             self.Lock()
-            s = blue.os.GetTime(1)
+            s = blue.os.GetWallclockTimeNow()
             listentry.Generic.Load(self, node)
             (grantableRoles, grantableRolesAtHQ, grantableRolesAtBase, grantableRolesAtOther,) = sm.GetService('corp').GetMyGrantableRoles()
             self.sr.grantableRoles = grantableRoles
@@ -164,7 +165,7 @@ class CorpMemberRoleEntry(listentry.Generic):
             loadingCharacterID = node.srcRec.characterID
             self.sr.loadingCharacterID.append(loadingCharacterID)
             self.state = uiconst.UI_DISABLED
-            self.LogInfo('Load 0 took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetTime(1)))
+            self.LogInfo('Load 0 took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetWallclockTimeNow()))
 
         finally:
             self.Unlock()
@@ -173,7 +174,7 @@ class CorpMemberRoleEntry(listentry.Generic):
             try:
                 try:
                     self.Lock()
-                    s = blue.os.GetTime(1)
+                    s = blue.os.GetWallclockTimeNow()
                     if self.sr.node is None:
                         return 
                     if self.sr.node.rec is None or self.sr.node.rec.characterID != node.srcRec.characterID:
@@ -183,12 +184,12 @@ class CorpMemberRoleEntry(listentry.Generic):
                         return 
 
                 finally:
-                    self.LogInfo('Load 1 took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetTime(1)))
+                    self.LogInfo('Load 1 took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetWallclockTimeNow()))
                     self.Unlock()
 
                 try:
                     self.Lock()
-                    s = blue.os.GetTime(1)
+                    s = blue.os.GetWallclockTimeNow()
                     if self.sr.node is None:
                         return 
                     self.LoadColumns(loadingCharacterID)
@@ -196,18 +197,18 @@ class CorpMemberRoleEntry(listentry.Generic):
                         return 
 
                 finally:
-                    self.LogInfo('Load 2 took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetTime(1)))
+                    self.LogInfo('Load 2 took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetWallclockTimeNow()))
                     self.Unlock()
 
                 try:
                     self.Lock()
-                    s = blue.os.GetTime(1)
+                    s = blue.os.GetWallclockTimeNow()
                     if self.sr.node is None:
                         return 
                     self.UpdateLabelText()
 
                 finally:
-                    self.LogInfo('Load 3 took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetTime(1)))
+                    self.LogInfo('Load 3 took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetWallclockTimeNow()))
                     self.Unlock()
 
             except:
@@ -222,43 +223,37 @@ class CorpMemberRoleEntry(listentry.Generic):
 
 
 
-    def OnDataChanged(self, rowset, primaryKey, change, notificationParams):
+    def DataChanged(self, primaryKey, change):
         self.LogInfo('----------------------------------------------')
-        self.LogInfo('OnDataChanged')
+        self.LogInfo('DataChanged')
         self.LogInfo('primaryKey:', primaryKey)
         self.LogInfo('change:', change)
-        self.LogInfo('notificationParams:', notificationParams)
         self.LogInfo('----------------------------------------------')
         if change.has_key('corporationID') and change['corporationID'][1] == None:
             self.LogError('memberListEntry should have been removed for charID:', primaryKey)
             return 
         self.GetMembersListData()
         self.UpdateLabelText()
-        if notificationParams.has_key('charIDcallee'):
-            if eve.session.charid == notificationParams['charIDcallee']:
-                self.LoadColumns(primaryKey)
-                return 
         viewRoleGroupingID = self.GetViewRoleGroupingID()
         viewType = self.GetViewType()
         if not (change.has_key('roles') and None not in change['roles'] and const.corpRoleDirector & change['roles'][0] != const.corpRoleDirector & change['roles'][1]):
             if viewType == VIEW_ROLES:
                 roleGroup = self.sr.roleGroupings[viewRoleGroupingID]
                 if not change.has_key(roleGroup.appliesTo):
-                    self.LogInfo('OnDataChanged returning. Viewing roles have not changed')
+                    self.LogInfo('DataChanged returning. Viewing roles have not changed')
                     return 
             elif viewType == VIEW_GRANTABLE_ROLES:
                 roleGroup = self.sr.roleGroupings[viewRoleGroupingID]
                 if not change.has_key(roleGroup.appliesToGrantable):
-                    self.LogInfo('OnDataChanged returning. Viewing grantable roles have not changed')
+                    self.LogInfo('DataChanged returning. Viewing grantable roles have not changed')
                     return 
             elif viewType == VIEW_TITLES:
                 if not change.has_key('titleMask'):
-                    self.LogInfo('OnDataChanged returning. Viewing titles have not changed')
+                    self.LogInfo('DataChanged returning. Viewing titles have not changed')
                     return 
         else:
             return self.Load(self.sr.node)
         i = -1
-        previousTabPosition = 0
         self.LogInfo('change:', change)
         (old, new,) = self.GetRelevantChange(change)
         for tabstop in self.GetTabStops():
@@ -426,7 +421,6 @@ class CorpMemberRoleEntry(listentry.Generic):
     def LoadColumns(self, loadingCharacterID):
         if len(self.sr.loadingCharacterID) and loadingCharacterID != self.sr.loadingCharacterID[-1]:
             return 
-        fontsize = 12
         data = self.sr.node
         tabstops = self.GetTabStops()
         viewtype = self.GetViewType()
@@ -460,7 +454,7 @@ class CorpMemberRoleEntry(listentry.Generic):
                 width = tabstop - previousTabPosition - 4
                 if i == 0:
                     if not oldColumns or oldColumns[i] is None:
-                        column = uicls.Label(text=rec.name, parent=self, width=width, autowidth=False, left=left, top=top, state=uiconst.UI_DISABLED, singleline=1)
+                        column = uicls.EveLabelMedium(text=rec.name, parent=self, width=width, left=left, top=top, state=uiconst.UI_DISABLED, singleline=1)
                         maxHeight = max(maxHeight, column.textheight)
                         columnContents.append(column)
                     else:
@@ -491,7 +485,7 @@ class CorpMemberRoleEntry(listentry.Generic):
                             canRecycle = 1
                     if not canRecycle:
                         if canEditBase:
-                            s = blue.os.GetTime(1)
+                            s = blue.os.GetWallclockTimeNow()
                             bFound = 0
                             bases = []
                             bases.extend(self.sr.bases)
@@ -505,13 +499,13 @@ class CorpMemberRoleEntry(listentry.Generic):
                              3,
                              0,
                              0), align=uiconst.TOPLEFT, callback=self.OnComboChange)
-                            self.LogInfo('uicls.Combo took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetTime(1)))
+                            self.LogInfo('uicls.Combo took %s ms.' % blue.os.TimeDiffInMs(s, blue.os.GetWallclockTimeNow()))
                             column.z = 1
                         else:
                             text = '-'
                             if rec.baseID is not None:
                                 text = cfg.evelocations.Get(rec.baseID).locationName
-                            column = uicls.Label(text=text, parent=self, width=width, autowidth=False, left=left, top=top, state=uiconst.UI_DISABLED, singleline=1)
+                            column = uicls.EveLabelMedium(text=text, parent=self, width=width, left=left, top=top, state=uiconst.UI_DISABLED, singleline=1)
                             maxHeight = max(maxHeight, column.textheight)
                         columnContents.append(column)
                     elif canEditBase:
@@ -566,10 +560,10 @@ class CorpMemberRoleEntry(listentry.Generic):
                                     column = self.AddCheckBox(['%s' % i,
                                      roleID,
                                      subColumnName,
-                                     value], self, align, controlWidth, height, left, None, fontsize)
+                                     value], self, align, controlWidth, height, left, None)
                                     self.AddMenuDelegator(column)
                                 else:
-                                    column = uicls.Label(text=text, parent=self, width=controlWidth, autowidth=False, left=left, top=top, state=uiconst.UI_DISABLED, singleline=1)
+                                    column = uicls.EveLabelMedium(text=text, parent=self, width=controlWidth, left=left, top=top, state=uiconst.UI_DISABLED, singleline=1)
                                     maxHeight = max(maxHeight, column.textheight)
                                 columnContents.append(column)
                                 left += controlWidth
@@ -626,9 +620,9 @@ class CorpMemberRoleEntry(listentry.Generic):
                                 column = self.AddCheckBox(['%s' % i,
                                  titleID,
                                  subColumnName,
-                                 value], self, align, controlWidth, height, left, None, fontsize)
+                                 value], self, align, controlWidth, height, left, None)
                             else:
-                                column = uicls.Label(text=text, parent=self, width=controlWidth, autowidth=False, left=left, top=top, state=uiconst.UI_DISABLED, singleline=1)
+                                column = uicls.EveLabelMedium(text=text, parent=self, width=controlWidth, left=left, top=top, state=uiconst.UI_DISABLED, singleline=1)
                                 maxHeight = max(maxHeight, column.textheight)
                             columnContents.append(column)
                             left += controlWidth
@@ -668,16 +662,15 @@ class CorpMemberRoleEntry(listentry.Generic):
     def UpdateLabelText(self):
         relevantRoles = self.GetRelevantRoles()
         rec = self.GetRec()
-        label = ''
-        label += cfg.eveowners.Get(rec.characterID).ownerName
+        label = cfg.eveowners.Get(rec.characterID).ownerName
         baseID = rec.baseID
         baseName = '-'
         if baseID is not None:
             baseName = cfg.evelocations.Get(baseID).locationName
         label += '<t>%s' % baseName
         headers = self.sr.node.parent.GetHeaderValues()
-        self.sr.node.Set('sort_%s' % headers[0], uiutil.UpperCase(cfg.eveowners.Get(rec.characterID).ownerName))
-        self.sr.node.Set('sort_%s' % headers[1], uiutil.UpperCase(baseName))
+        self.sr.node.Set('sort_%s' % headers[0], cfg.eveowners.Get(rec.characterID).ownerName)
+        self.sr.node.Set('sort_%s' % headers[1], baseName)
         viewtype = self.GetViewType()
         viewRoleGroupingID = self.GetViewRoleGroupingID()
         if viewtype in (VIEW_ROLES, VIEW_GRANTABLE_ROLES):
@@ -690,10 +683,13 @@ class CorpMemberRoleEntry(listentry.Generic):
                 grantableRoles = getattr(rec, roleGroup.appliesToGrantable)
                 for (subColumnName, role,) in subColumns:
                     isChecked = [roles, grantableRoles][viewtype] & role.roleID == role.roleID
-                    newtext += ' [%s] %s' % ([' ', 'X'][(not not isChecked)], subColumnName)
+                    if isChecked:
+                        newtext += ' [X] %s' % subColumnName
+                    else:
+                        newtext += ' [ ] %s' % subColumnName
                     sortmask += [' ', 'X'][(not not isChecked)]
 
-                self.sr.node.Set('sort_%s' % columnName, '%s' % sortmask)
+                self.sr.node.Set('sort_%s' % columnName, sortmask)
                 label += newtext
 
         else:
@@ -712,9 +708,12 @@ class CorpMemberRoleEntry(listentry.Generic):
                 newtext = '<t>'
                 sortmask = ''
                 isChecked = relevantRoles & titleID == titleID
-                newtext += ' [%s] %s' % ([' ', 'X'][(not not isChecked)], subColumnName)
+                if isChecked:
+                    newtext += ' [X] %s' % subColumnName
+                else:
+                    newtext += ' [ ] %s' % subColumnName
                 sortmask += [' ', 'X'][(not not isChecked)]
-                self.sr.node.Set('sort_%s' % columnName, '%s' % sortmask)
+                self.sr.node.Set('sort_%s' % columnName, sortmask)
                 label += newtext
 
         self.sr.node.label = label
@@ -764,7 +763,7 @@ class CorpMemberRoleEntry(listentry.Generic):
 
 
 
-    def AddCheckBox(self, config, where, align, width, height, left, group, fontsize):
+    def AddCheckBox(self, config, where, align, width, height, left, group):
         (cfgname, retval, desc, default,) = config
         cbox = uicls.Checkbox(text=desc, parent=where, configName=cfgname, retval=retval, checked=default, groupname=group, callback=self.CheckBoxChange, align=align, pos=(left,
          2,
@@ -874,7 +873,7 @@ class CorpMemberRoleEntry(listentry.Generic):
     def GetMenu(self, *args):
         self.OnClick()
         m = []
-        m.append((mls.UI_CMD_SHOWINFO, sm.GetService('info').ShowInfo, (cfg.eveowners.Get(self.GetRec().characterID).typeID, self.GetRec().characterID)))
+        m.append((localization.GetByLabel('UI/Commands/ShowInfo'), sm.GetService('info').ShowInfo, (cfg.eveowners.Get(self.GetRec().characterID).typeID, self.GetRec().characterID)))
         m += sm.GetService('menu').CharacterMenu(self.GetRec().characterID)
         return m
 

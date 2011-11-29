@@ -9,6 +9,7 @@ import blue
 import sys
 import state
 import trinity
+import localization
 
 class User(uicls.SE_BaseClassCore):
     __guid__ = 'listentry.User'
@@ -46,15 +47,17 @@ class User(uicls.SE_BaseClassCore):
         self.sr.picture.left = 2
         self.sr.picture.top = 2
         self.sr.extraIconCont = uicls.Container(name='extraIconCont', parent=self, idx=0, pos=(0, 0, 16, 16), align=uiconst.BOTTOMLEFT, state=uiconst.UI_HIDDEN)
-        self.sr.namelabel = uicls.Label(text='', parent=self, state=uiconst.UI_DISABLED, idx=0)
-        self.sr.contactLabels = uicls.Label(text='', parent=self, state=uiconst.UI_DISABLED, idx=0, align=uiconst.BOTTOMLEFT)
+        if sm.GetService('machoNet').GetClientConfigVals().get('enableDustLink'):
+            self.sr.characterTypeCont = uicls.Container(name='characterTypeCont', parent=self, idx=0, pos=(0, 0, 32, 32), align=uiconst.CENTERRIGHT, state=uiconst.UI_HIDDEN)
+        self.sr.namelabel = uicls.EveLabelMedium(text='', parent=self, state=uiconst.UI_DISABLED, idx=0)
+        self.sr.contactLabels = uicls.EveLabelMedium(text='', parent=self, state=uiconst.UI_DISABLED, idx=0, align=uiconst.BOTTOMLEFT)
         self.sr.contactLabels.top = 2
         self.sr.selection = uicls.Fill(parent=self, padTop=1, padBottom=1, color=(1.0, 1.0, 1.0, 0.125), state=uiconst.UI_HIDDEN)
         self.sr.voiceIcon = None
         uicls.Line(parent=self, align=uiconst.TOBOTTOM, idx=0)
-        self.sr.standingLabel = uicls.Label(text='', parent=self, state=uiconst.UI_DISABLED, idx=0, align=uiconst.TOPRIGHT)
+        self.sr.standingLabel = uicls.EveLabelMedium(text='', parent=self, state=uiconst.UI_DISABLED, idx=0, align=uiconst.TOPRIGHT)
         self.sr.blockedicon = uicls.Icon(icon='ui_77_32_12', parent=self, pos=(16, 18, 13, 13), state=uiconst.UI_HIDDEN, ignoreSize=True, align=uiconst.TOPRIGHT)
-        self.sr.corpApplicationLabel = uicls.Label(text='', parent=self, state=uiconst.UI_DISABLED, idx=0, align=uiconst.CENTERRIGHT)
+        self.sr.corpApplicationLabel = uicls.EveLabelMedium(text='', parent=self, state=uiconst.UI_DISABLED, idx=0, align=uiconst.CENTERRIGHT)
         self.sr.corpApplicationLabel.left = 16
         sm.RegisterNotify(self)
 
@@ -71,27 +74,28 @@ class User(uicls.SE_BaseClassCore):
             agentInfo = sm.GetService('agents').GetAgentByID(data.charID)
             if agentInfo:
                 if data.charID in sm.GetService('agents').GetTutorialAgentIDs():
-                    label += ', %s' % mls.CHAR_TUTORIAL_AGENT
+                    label = localization.GetByLabel('UI/Tutorial/TutorialAgent', charid=data.charID)
                 elif agentInfo.agentTypeID == const.agentTypeEpicArcAgent:
-                    label += ', %s' % mls.CHAR_EPICARC_AGENT
+                    label = localization.GetByLabel('UI/Agents/EpicArcs/EpicArcAgent', charid=data.charID)
                 elif agentInfo.agentTypeID == const.agentTypeAura:
-                    label = 'Aura'
+                    label = cfg.eveowners.Get(data.charID).name
                 elif agentInfo.agentTypeID not in (const.agentTypeGenericStorylineMissionAgent, const.agentTypeStorylineMissionAgent, const.agentTypeEventMissionAgent):
-                    label += ', %s: %s' % (mls.UI_GENERIC_LEVEL, uiutil.GetLevel(agentInfo.level))
+                    label = localization.GetByLabel('UI/Agents/AgentNameAndLevel', charid=data.charID, level=uiutil.GetLevel(agentInfo.level))
                 else:
-                    t = {const.agentTypeGenericStorylineMissionAgent: mls.UI_SHARED_STORYLINE,
-                     const.agentTypeStorylineMissionAgent: mls.UI_SHARED_STORYLINE,
-                     const.agentTypeEventMissionAgent: mls.UI_SHARED_EVENT}.get(agentInfo.agentTypeID, None)
+                    t = {const.agentTypeGenericStorylineMissionAgent: localization.GetByLabel('UI/Agents/StorylineAgent', charid=data.charID),
+                     const.agentTypeStorylineMissionAgent: localization.GetByLabel('UI/Agents/StorylineAgent', charid=data.charID),
+                     const.agentTypeEventMissionAgent: localization.GetByLabel('UI/Agents/EventAgent', charid=data.charID)}.get(agentInfo.agentTypeID, None)
                     if t:
-                        label += ', %s' % t
+                        label = t
                 if agentInfo.stationID and eve.session.stationid != agentInfo.stationID:
-                    label += '<br>%s %s' % (mls.UI_SHARED_LOCATEDAT, cfg.evelocations.Get(agentInfo.stationID).name)
+                    label += '<br>' + localization.GetByLabel('UI/Agents/LocatedAt', station=agentInfo.stationID)
                 if agentInfo.agentTypeID != const.agentTypeAura and (not data.Get('defaultDivisionID', None) or data.defaultDivisionID != agentInfo.divisionID):
-                    label += '<br>%s: %s' % (mls.UI_GENERIC_DIVISION, sm.GetService('agents').GetDivisions()[agentInfo.divisionID].divisionName.replace('&', '&amp;'))
+                    label += '<br>' + localization.GetByLabel('UI/Agents/Division', division=sm.GetService('agents').GetDivisions()[agentInfo.divisionID].divisionName.replace('&', '&amp;'))
             elif data.bounty:
-                label += '<br>%s: %s' % (mls.UI_GENERIC_BOUNTY, util.FmtISK(data.bounty.bounty))
+                label += '<br>'
+                label += localization.GetByLabel('UI/Common/BountyAmount', bountyAmount=util.FmtISK(data.bounty.bounty))
             elif data.killTime:
-                label += '<br>%s: %s' % (mls.UI_GENERIC_EXPIRES, util.FmtDate(data.killTime + 25920000000000L))
+                label += '<br>' + localization.GetByLabel('UI/PeopleAndPlaces/ExpiresTime', expires=data.killTime + 30 * DAY)
             data.label = label
         invtype = cfg.invtypes.Get(data.info.typeID)
         data.invtype = invtype
@@ -132,7 +136,8 @@ class User(uicls.SE_BaseClassCore):
         self.isCorpOrAllianceContact = data.contactType and data.contactType != 'contact'
         data.listvalue = [data.info.name, data.charID]
         level = self.sr.node.Get('sublevel', 0)
-        self.sr.picture.left = 2 + max(0, 16 * level)
+        subLevelOffset = 16
+        self.sr.picture.left = 2 + max(0, subLevelOffset * level)
         self.LoadPortrait()
         if data.IsCharacter:
             uthread.new(self.SetRelationship, data)
@@ -146,11 +151,16 @@ class User(uicls.SE_BaseClassCore):
                         sys.exc_clear()
             else:
                 uix.ClearStateFlag(self)
+            if sm.GetService('machoNet').GetClientConfigVals().get('enableDustLink'):
+                if util.IsDustCharacter(data.charID):
+                    self.sr.characterTypeCont.state = uiconst.UI_PICKCHILDREN
+                    charIcon = uicls.Sprite(parent=self.sr.characterTypeCont, name='DustMerc', pos=(0, 0, 32, 32), padding=(5, 5, 5, 5), state=uiconst.UI_PICKCHILDREN, align=uiconst.CENTER, texturePath='res:/UI/Texture/Icons/80_128_2.png')
+                    charIcon.opacity = 0.9
         elif self.sr.Get('onlinestatus', None):
             self.sr.onlinestatus.state = uiconst.UI_HIDDEN
         if data.charID != eve.session.charid:
             uthread.new(self.SetRelationship, data)
-        self.sr.namelabel.left = 40
+        self.sr.namelabel.left = 40 + max(0, subLevelOffset * level)
         self.sr.contactLabels.left = 40
         if self.sr.node.Get('selected', 0):
             self.Select()
@@ -164,11 +174,10 @@ class User(uicls.SE_BaseClassCore):
         if self.isCorpOrAllianceContact:
             self.SetStandingText(self.contactLevel)
         if self.applicationDate:
-            formattedDate = util.FmtDate(self.applicationDate, 'sn')
-            self.sr.corpApplicationLabel.SetText(mls.UI_CORP_APPLIED + ' ' + formattedDate)
+            self.sr.corpApplicationLabel.SetText(localization.GetByLabel('UI/Corporations/Applied', applydate=self.applicationDate))
             self.sr.corpApplicationLabel.Show()
-            data.Set('sort_' + mls.UI_GENERIC_DATE, self.applicationDate)
-            data.Set('sort_' + mls.UI_GENERIC_NAME, data.info.name)
+            data.Set('sort_' + localization.GetByLabel('UI/Common/Date'), self.applicationDate)
+            data.Set('sort_' + localization.GetByLabel('UI/Common/Name'), data.info.name)
         else:
             self.sr.corpApplicationLabel.SetText('')
             self.sr.corpApplicationLabel.Hide()
@@ -199,7 +208,7 @@ class User(uicls.SE_BaseClassCore):
 
     def GetHeight(self, *args):
         (node, width,) = args
-        node.height = max(37, uix.GetTextHeight(node.label, linespace=11, autoWidth=1))
+        node.height = max(37, uix.GetTextHeight(node.label, linespace=11))
         return node.height
 
 
@@ -317,7 +326,10 @@ class User(uicls.SE_BaseClassCore):
             col = xtriui.SquareDiode(parent=self, align=uiconst.TOPRIGHT, pos=(3, 3, 12, 12))
             self.sr.onlinestatus = col
         self.sr.onlinestatus.SetRGB(float(not online) * 0.75, float(online) * 0.75, 0.0)
-        self.sr.onlinestatus.hint = [mls.UI_GENERIC_OFFLINE, mls.UI_GENERIC_ONLINE][online]
+        if online:
+            self.sr.onlinestatus.hint = localization.GetByLabel('UI/Common/Online')
+        else:
+            self.sr.onlinestatus.hint = localization.GetByLabel('UI/Common/Offline')
         self.sr.onlinestatus.state = uiconst.UI_NORMAL
 
 
@@ -392,7 +404,7 @@ class User(uicls.SE_BaseClassCore):
 
             sm.GetService('addressbook').RefreshWindow()
         if charIDs and listname:
-            name = [mls.UI_SHARED_USERENTRYTEXT1, cfg.eveowners.Get(charIDs[0]).name][(len(charIDs) == 1)]
+            name = [localization.GetByLabel('UI/AddressBook/RemoveAddressBook1'), cfg.eveowners.Get(charIDs[0]).name][(len(charIDs) == 1)]
             if eve.Message('WarnDeleteFromAddressbook', {'name': name,
              'type': listname}, uiconst.YESNO, suppress=uiconst.ID_YES) != uiconst.ID_YES:
                 return 
@@ -409,6 +421,8 @@ class User(uicls.SE_BaseClassCore):
         if multi:
             return self._GetMultiMenu(selected)
         m = sm.GetService('menu').GetMenuFormItemIDTypeID(self.id, self.sr.node.invtype.typeID)
+        if self.sr.node.Get('GetMenu', None) is not None:
+            m += self.sr.node.GetMenu(self.sr.node)
         if self.sr.node.IsCharacter:
             doShowInfo = True
             if util.IsNPC(self.charid):
@@ -416,16 +430,14 @@ class User(uicls.SE_BaseClassCore):
                 if agentInfo and agentInfo.agentTypeID == const.agentTypeAura:
                     doShowInfo = False
             if doShowInfo:
-                m.insert(0, (mls.UI_CMD_SHOWINFO, self.ShowInfo))
-            if self.sr.node.Get('GetMenu', None) is not None:
-                m += self.sr.node.GetMenu(self.sr.node)
+                m.insert(0, (localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo))
         listGroupID = self.sr.node.Get('listGroupID', None)
         if listGroupID is not None:
             group = uicore.registry.GetListGroup(listGroupID)
             if group:
                 if listGroupID not in [('buddygroups', 'all'), ('buddygroups', 'allcorps'), ('agentgroups', 'all')]:
                     m.append(None)
-                    m.append(('%s %s' % (mls.UI_SHARED_REMOVEFROM, group['label']), self.RemoveFromListGroup, ([(listGroupID, self.charid)], [], '')))
+                    m.append((localization.GetByLabel('UI/Common/RemoveFrom', groupname=group['label']), self.RemoveFromListGroup, ([(listGroupID, self.charid)], [], '')))
         if self.sr.node.Get('MenuFunction', None):
             cm = [None]
             cm += self.sr.node.MenuFunction([self.sr.node])
@@ -435,10 +447,10 @@ class User(uicls.SE_BaseClassCore):
                 m.append(None)
                 assignLabelMenu = sm.StartService('addressbook').GetAssignLabelMenu(selected, [self.charid], self.isContactList)
                 if len(assignLabelMenu) > 0:
-                    m.append((mls.UI_EVEMAIL_ASSIGNLABEL, assignLabelMenu))
+                    m.append((localization.GetByLabel('UI/Mail/AssignLabel'), assignLabelMenu))
                 removeLabelMenu = sm.StartService('addressbook').GetRemoveLabelMenu(selected, [self.charid], self.isContactList)
                 if len(removeLabelMenu) > 0:
-                    m.append((mls.UI_EVEMAIL_REMOVELABEL, removeLabelMenu))
+                    m.append((localization.GetByLabel('UI/Mail/LabelRemove'), removeLabelMenu))
         return m
 
 
@@ -473,7 +485,7 @@ class User(uicls.SE_BaseClassCore):
                         if onlyCharacters:
                             return m
                         group = uicore.registry.GetListGroup(listGroupID)
-                        listname = [mls.UI_GENERIC_AGENTLIST, mls.UI_GENERIC_BUDDYLIST][(listGroupID == ('buddygroups', 'all'))]
+                        listname = [localization.GetByLabel('UI/Agents/AgentList'), localization.GetByLabel('UI/Generic/BuddyList')][(listGroupID == ('buddygroups', 'all'))]
                         delCharIDs.append(charID)
                         rem.append((listGroupID, charID))
 
@@ -487,47 +499,47 @@ class User(uicls.SE_BaseClassCore):
                         foldername = group['label']
                 label = ''
                 if delCharIDs and listname:
-                    label = '%s (%s)' % (mls.UI_CMD_REMOVEFROMADDRESSBOOK, len(delCharIDs))
+                    label = localization.GetByLabel('UI/PeopleAndPlaces/RemoveMultipleFromAddressbook', removecount=len(delCharIDs))
                     if listGroupID_charIDs:
-                        label += ', '
+                        label += [', ']
                 if listGroupID_charIDs:
-                    label += '%s %s (%s)' % (mls.UI_SHARED_REMOVEFROM, foldername, len(listGroupID_charIDs))
+                    label += localization.GetByLabel('UI/Common/RemoveFromFolder', foldername=foldername, removecount=len(listGroupID_charIDs))
                 m.append((label, self.RemoveFromListGroup, (listGroupID_charIDs, delCharIDs, listname)))
         else:
             addressBookSvc = sm.GetService('addressbook')
             counter = len(selected)
             blocked = 0
             if self.isContactList == 'contact':
-                editLabel = '%s (%s)' % (mls.UI_CONTACTS_EDITCONTACTS, counter)
+                editLabel = localization.GetByLabel('UI/PeopleAndPlaces/EditContacts', contactcount=counter)
                 m.append((editLabel, addressBookSvc.EditContacts, [multiCharIDs, 'contact']))
-                deleteLabel = '%s (%s)' % (mls.UI_CONTACTS_REMOVECONTACTS, counter)
+                deleteLabel = localization.GetByLabel('UI/PeopleAndPlaces/RemoveContacts', contactcount=counter)
                 m.append((deleteLabel, addressBookSvc.DeleteEntryMulti, [multiCharIDs, 'contact']))
                 for charid in multiCharIDs:
                     if sm.GetService('addressbook').IsBlocked(charid):
                         blocked += 1
 
                 if blocked == counter:
-                    unblockLabel = '%s (%s)' % (mls.UI_CMD_UNBLOCK, blocked)
+                    unblockLabel = localization.GetByLabel('UI/PeopleAndPlaces/UnblockContacts', contactcount=blocked)
                     m.append((unblockLabel, addressBookSvc.UnblockOwner, [multiCharIDs]))
             elif self.isContactList == 'corpcontact':
-                editLabel = '%s (%s)' % (mls.UI_CONTACTS_EDITCORPCONTACTS, counter)
+                editLabel = localization.GetByLabel('UI/PeopleAndPlaces/EditCorpContacts', contactcount=counter)
                 m.append((editLabel, addressBookSvc.EditContacts, [multiCharIDs, 'corpcontact']))
-                deleteLabel = '%s (%s)' % (mls.UI_CONTACTS_REMOVECORPCONTACTS, counter)
+                deleteLabel = localization.GetByLabel('UI/PeopleAndPlaces/RemoveCorpContacts', contactcount=counter)
                 m.append((deleteLabel, addressBookSvc.DeleteEntryMulti, [multiCharIDs, 'corpcontact']))
             elif self.isContactList == 'alliancecontact':
-                editLabel = '%s (%s)' % (mls.UI_CONTACTS_EDITALLIANCECONTACTS, counter)
+                editLabel = localization.GetByLabel('UI/PeopleAndPlaces/EditAllianceContacts', contactcount=counter)
                 m.append((editLabel, addressBookSvc.EditContacts, [multiCharIDs, 'alliancecontact']))
-                deleteLabel = '%s (%s)' % (mls.UI_CONTACTS_REMOVEALLIANCECONTACTS, counter)
+                deleteLabel = localization.GetByLabel('UI/PeopleAndPlaces/RemoveAllianceContacts', contactcount=counter)
                 m.append((deleteLabel, addressBookSvc.DeleteEntryMulti, [multiCharIDs, 'alliancecontact']))
             m.append(None)
             assignLabelMenu = sm.StartService('addressbook').GetAssignLabelMenu(selected, multiCharIDs, self.isContactList)
             if len(assignLabelMenu) > 0:
-                m.append((mls.UI_EVEMAIL_ASSIGNLABEL, assignLabelMenu))
+                m.append((localization.GetByLabel('UI/PeopleAndPlaces/AddContactLabel'), assignLabelMenu))
             removeLabelMenu = sm.StartService('addressbook').GetRemoveLabelMenu(selected, multiCharIDs, self.isContactList)
             if len(removeLabelMenu) > 0:
-                m.append((mls.UI_EVEMAIL_REMOVELABEL, removeLabelMenu))
+                m.append((localization.GetByLabel('UI/PeopleAndPlaces/RemoveContactLabel'), removeLabelMenu))
             m.append(None)
-            m.append((mls.UI_CMD_CAPTUREPORTRAIT, sm.StartService('photo').SavePortraits, [multiCharIDs]))
+            m.append((localization.GetByLabel('UI/Commands/CapturePortrait'), sm.StartService('photo').SavePortraits, [multiCharIDs]))
         if self.sr.node.Get('MenuFunction', None):
             cm = [None]
             cm += self.sr.node.MenuFunction(selected)
@@ -626,8 +638,11 @@ class OnOfflineUserEntry(uicls.SE_BaseClassCore):
         self.charid = charid
         self.online = online
         sm.GetService('photo').GetPortrait(self.charid, 128, self.sr.picture)
-        self.sr.hint = [mls.UI_SHARED_USERISNOWOFFLINE, mls.UI_SHARED_USERISNOWONLINE][online] % {'name': cfg.eveowners.Get(charid).name}
-        nme = uicls.Label(text='<center>%s' % uiutil.UpperCase(cfg.eveowners.Get(charid).name), parent=self, left=0, top=1, width=self.width, autowidth=False, letterspace=1, fontsize=9, state=uiconst.UI_DISABLED, color=(1.0, 1.0, 1.0, 0.75), idx=0)
+        if self.online:
+            self.sr.hint = localization.GetByLabel('UI/Common/UserIsOnline', charid=charid)
+        else:
+            self.sr.hint = localization.GetByLabel('UI/Common/UserIsOffline', charid=charid)
+        nme = uicls.EveHeaderSmall(text=['<center>', cfg.eveowners.Get(charid).name], parent=self, left=0, top=1, width=self.width, state=uiconst.UI_DISABLED, color=(1.0, 1.0, 1.0, 0.75), idx=0)
         h = nme.height
         nme.top = self.height - h
         uicls.Fill(parent=self, width=self.width, height=h + 1, top=self.height - h - 1, color=(float(not online) * 0.5,
@@ -639,7 +654,7 @@ class OnOfflineUserEntry(uicls.SE_BaseClassCore):
 
 
     def Kill(self):
-        blue.pyos.synchro.Sleep(10000)
+        blue.pyos.synchro.SleepWallclock(10000)
         par = self.parent
         if self.online:
             sm.GetService('ui').CharacterDoneOn(self.charid)

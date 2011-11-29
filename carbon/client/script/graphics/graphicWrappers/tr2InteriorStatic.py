@@ -12,7 +12,7 @@ class Tr2InteriorStatic(util.BlueClassNotifyWrap('trinity.Tr2InteriorStatic'), g
         Tr2InteriorStatic(triObject)
         triObject.AddNotify('worldPosition', triObject._PositionChange)
         triObject.AddNotify('rotation', triObject._RotationChange)
-        triObject.cellName = ''
+        triObject.cellName = '0'
         triObject.systemName = 0
         triObject.scene = None
         triObject.resPath = resPath

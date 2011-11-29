@@ -5,6 +5,7 @@ import math
 import uthread
 import uiutil
 import uicls
+import localization
 ICONWIDTH = 50
 SPACINGWIDTH = 6
 NUMCOLS = 5
@@ -16,6 +17,7 @@ SELECTCOLOR = (0.5, 0.5, 0.5, 0.5)
 
 class CtrlTabWindow(uicls.Window):
     __guid__ = 'form.CtrlTabWindow'
+    default_windowID = 'CtrlTabWindow'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -34,11 +36,11 @@ class CtrlTabWindow(uicls.Window):
         uicore.event.RegisterForTriuiEvents(uiconst.UI_MOUSEDOWN, self.OnGlobalMouseDown)
         uicls.Frame(parent=self, color=FRAMECOLOR)
         uicls.Fill(parent=self, color=FILLCOLOR)
-        self.currOpenWindows = sm.GetService('window').GetWindows()
+        self.currOpenWindows = uicore.registry.GetWindows()[:]
         self.showOrHide = self.AllWindowsMinimized()
         self.selectionBoxIndex = None
         self.windowIcons = []
-        self.showOrHideMessage = [mls.UI_CMD_HIDEWINDOWS, mls.UI_CMD_SHOWWINDOWS][self.showOrHide]
+        self.showOrHideMessage = [localization.GetByLabel('UI/Common/Windows/HideWindows'), localization.GetByLabel('UI/Common/Windows/ShowWindows')][self.showOrHide]
         self.InitializeWindowIcons()
         self.numIcons = len(self.windowIcons)
         self.numRows = int(math.ceil(float(self.numIcons) / float(NUMCOLS)))
@@ -58,19 +60,18 @@ class CtrlTabWindow(uicls.Window):
          ICONWIDTH,
          ICONWIDTH), state=uiconst.UI_HIDDEN)
         uicls.Fill(parent=self.sr.selectionBoxMouse, color=SELECTCOLOR)
-        self.sr.windowTextContainer = uicls.Container(name='textContainer', parent=self.sr.main, align=uiconst.TOBOTTOM, pos=(0, 0, 0, 30))
-        self.sr.windowText = uicls.Label(text='', parent=self.sr.windowTextContainer, align=uiconst.CENTER, fontsize=14, letterspace=1, color=(1, 1, 1, 1), state=uiconst.UI_DISABLED)
+        self.sr.windowText = uicls.EveLabelLarge(parent=self.sr.main, align=uiconst.TOBOTTOM, color=(1, 1, 1, 1), state=uiconst.UI_DISABLED, padding=BORDER)
 
 
 
     def SetWindowSize(self):
         self.width = BLOCKSIZE * NUMCOLS + SPACINGWIDTH + 2 * BORDER + 2
-        self.height = BLOCKSIZE * self.numRows + 2 * BORDER + 30
+        self.height = BLOCKSIZE * self.numRows + 3 * BORDER + self.sr.windowText.height
 
 
 
     def InitializeWindowIcons(self):
-        currOpenWindows = sm.GetService('window').GetWindows()
+        currOpenWindows = uicore.registry.GetWindows()
         self.windowIcons = []
         i = 0
         for w in currOpenWindows:
@@ -118,18 +119,24 @@ class CtrlTabWindow(uicls.Window):
 
 
 
+    def SetText(self, text):
+        self.sr.windowText.text = '<center>' + text
+        self.SetWindowSize()
+
+
+
     def OnMouseEnterIcon(self, icon):
         if icon['id'] != self.selectionBoxIndex:
             self.sr.selectionBoxMouse.state = uiconst.UI_NORMAL
             (self.sr.selectionBoxMouse.left, self.sr.selectionBoxMouse.top,) = self.IndexToPosition(icon['id'])
-            self.sr.windowText.text = icon['caption']
+            self.SetText(icon['caption'])
 
 
 
     def OnMouseLeaveIcon(self):
         self.sr.selectionBoxMouse.state = uiconst.UI_HIDDEN
         if self.selectionBoxIndex is not None:
-            self.sr.windowText.text = self.windowIcons[self.selectionBoxIndex]['caption']
+            self.SetText(self.windowIcons[self.selectionBoxIndex]['caption'])
 
 
 
@@ -159,9 +166,9 @@ class CtrlTabWindow(uicls.Window):
         self.RenderSelectionBox()
         caption = self.windowIcons[self.selectionBoxIndex]['caption']
         if caption is None or len(caption) == 0:
-            self.sr.windowText.text = ' '
+            self.SetText(' ')
         else:
-            self.sr.windowText.text = self.windowIcons[self.selectionBoxIndex]['caption']
+            self.SetText(self.windowIcons[self.selectionBoxIndex]['caption'])
 
 
 
@@ -176,9 +183,9 @@ class CtrlTabWindow(uicls.Window):
         self.RenderSelectionBox()
         caption = self.windowIcons[self.selectionBoxIndex]['caption']
         if caption is None or len(caption) == 0:
-            self.sr.windowText.text = ' '
+            self.SetText(' ')
         else:
-            self.sr.windowText.text = self.windowIcons[self.selectionBoxIndex]['caption']
+            self.SetText(self.windowIcons[self.selectionBoxIndex]['caption'])
 
 
 
@@ -193,11 +200,11 @@ class CtrlTabWindow(uicls.Window):
                     w.Maximize()
 
         else:
-            win = sm.GetService('window').GetWindow(winIcon['name'])
+            win = uicls.Window.GetIfOpen(windowID=winIcon['name'])
             self.currOpenWindows.remove(win)
             self.currOpenWindows.insert(0, win)
             win.Maximize()
-        self.SelfDestruct()
+        self.Close()
 
 
 
@@ -212,7 +219,7 @@ class CtrlTabWindow(uicls.Window):
 
     def OnGlobalMouseDown(self, downOn, *args, **kw):
         if not uiutil.IsUnder(downOn, self.sr.main):
-            self.SelfDestruct()
+            self.Close()
 
 
 

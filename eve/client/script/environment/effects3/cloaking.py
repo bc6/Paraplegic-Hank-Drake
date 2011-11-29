@@ -31,6 +31,7 @@ class Cloak(effects.ShipRenderEffect):
         shipID = self.GetEffectShipID()
         shipBall = self.GetEffectShipBall()
         shipBall.KillCloakedCopy()
+        shipBall.PlayGeneralAudioEvent('wise:/ship_cloak_play')
         shipBall.cloakedCopy = self.gfxModel
         effects.ShipRenderEffect.Start(self, duration)
         if getattr(shipBall, 'model', None) is not None:

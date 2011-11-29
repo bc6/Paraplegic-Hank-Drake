@@ -1,11 +1,8 @@
 import service
 import yaml
-import animUtils
 import blue
 import GameWorld
-import paperDoll
 import animation
-import safeThread
 import collections
 EVENT_TRACK_SOUND_LOOKUP_PATH = 'res:/Audio/animationEventTracks.yaml'
 
@@ -63,25 +60,22 @@ class AnimationComponent:
 
 
 
-class AnimationClient(service.Service, safeThread.SafeThread):
+class AnimationClient(service.Service):
     __guid__ = 'svc.animationClient'
     __exportedcalls__ = {}
-    __dependencies__ = ['paperDollClient']
     __notifyevents__ = []
     __componentTypes__ = ['animation']
 
     def __init__(self):
         service.Service.__init__(self)
         self.registeredControllers = {}
-        self.registeredComponents = []
         self.networkToController = {}
         self.audioCueFiles = {}
-        safeThread.SafeThread.init(self, 'svc.animationClient')
-        self.safeThreadActive = False
 
 
 
     def Run(self, *etc):
+        self.AnimManager = GameWorld.GetAnimationManager()
         service.Service.Run(self)
 
 
@@ -146,6 +140,7 @@ class AnimationClient(service.Service, safeThread.SafeThread):
 
 
     def UnregisterAnimationController(self, animationController):
+        animationController.Stop(None)
         if animationController in self.registeredControllers:
             del self.registeredControllers[animationController]
         if animationController.animationNetwork in self.networkToController:
@@ -155,7 +150,9 @@ class AnimationClient(service.Service, safeThread.SafeThread):
 
     def PackUpForSceneTransfer(self, component, destinationSceneID):
         state = {'updater': component.updater,
-         'controller': component.controller}
+         'controller': component.controller,
+         'poseState': component.poseState,
+         'resPath': component.resPath}
         return state
 
 
@@ -170,6 +167,8 @@ class AnimationClient(service.Service, safeThread.SafeThread):
         component.updater = state.get('updater')
         component.controller = state.get('controller')
         component.poseState = state.get('poseState')
+        component.poseStateControlParms = state.get('poseStateControlParms')
+        component.resPath = state.get('resPath')
         return component
 
 
@@ -184,25 +183,44 @@ class AnimationClient(service.Service, safeThread.SafeThread):
 
 
     def SetupComponent(self, entity, component):
+        if not entity.HasComponent('movement'):
+            self.LogError('Animation component is missing a sibling movement component on entity', entity.entityID, '. Will not setup')
+            return 
         if component.updater.network is None:
-            gender = self.paperDollClient.GetDBGenderToPaperDollGender(entity.paperdoll.gender)
-            if gender == paperDoll.GENDER.MALE:
-                component.updater.InitMorpheme(const.MALE_MORPHEME_PATH)
-            else:
-                component.updater.InitMorpheme(const.FEMALE_MORPHEME_PATH)
-            if component.poseState is not None:
-                component.updater.SetPoseByName(component.poseState)
+            if component.resPath is not None:
+                component.updater.InitMorpheme(component.resPath)
+            elif not entity.HasComponent('info'):
+                self.LogError('Animation component is missing a sibling info component on entity', entity.entityID, '. Will not setup')
+                return 
+            self._InitializeAnimationNetwork(component, entity)
+        else:
+            component.poseState = None
+            component.poseStateControlParms = None
         if component.controller is None:
             if component.isClientPlayer == True:
                 component.controller = animation.PlayerAnimationController(component.updater.network)
             else:
                 component.controller = animation.BipedAnimationController(component.updater.network)
+            component.updater.SetUpdateCallback(component.controller.Update)
         component.controller.entityRef = entity
-        self.registeredComponents.append(component)
         self._AnimationSetupHook(entity, component)
-        if self.safeThreadActive is False:
-            self.LaunchSafeThreadLoop_BlueTime(const.ONE_TICK)
-            self.safeThreadActive = True
+        component.updater.positionComponent = entity.GetComponent('position')
+        self.AnimManager.AddEntity(entity.entityID, component.updater)
+
+
+
+    def RegisterComponent(self, entity, component):
+        if not component.controller:
+            self.LogError('Animation component', entity.entityID, 'missing controller. Not registering.')
+            return 
+        if component.poseStateControlParms is not None:
+            for (key, value,) in component.poseStateControlParms.iteritems():
+                component.controller.SetControlParameter(key, float(value))
+
+            component.poseStateControlParms = None
+        if component.poseState is not None:
+            component.updater.SetPoseByName(component.poseState)
+            component.poseState = None
 
 
 
@@ -211,19 +229,21 @@ class AnimationClient(service.Service, safeThread.SafeThread):
 
 
 
-    def SafeThreadLoop(self, now):
-        for component in self.registeredComponents:
-            component.controller.Update()
-
+    def _InitializeAnimationNetwork(self, component, entity):
+        gender = entity.GetComponent('info').gender
+        if gender:
+            component.updater.InitMorpheme(const.MALE_MORPHEME_PATH)
+        else:
+            component.updater.InitMorpheme(const.FEMALE_MORPHEME_PATH)
 
 
 
     def UnRegisterComponent(self, entity, component):
+        self.AnimManager.RemoveEntity(entity.entityID, component.updater)
         self.UnregisterAnimationController(component.controller)
-        self.registeredComponents.remove(component)
+        component.updater = None
         component.controller.entityRef = None
         component.controller = None
-        component.updater = None
 
 
 
@@ -234,9 +254,10 @@ class AnimationClient(service.Service, safeThread.SafeThread):
 
     def ReportState(self, component, entity):
         report = collections.OrderedDict()
-        report['Current LOD'] = component.controller.currentLOD
-        report['Updated By'] = {0: 'GameWorld',
-         1: 'Trinity'}[component.updater.updateMode]
+        if component.controller:
+            report['Current LOD'] = component.controller.currentLOD
+            report['Updated By'] = {0: 'GameWorld',
+             1: 'Trinity'}[component.updater.updateMode]
         return report
 
 

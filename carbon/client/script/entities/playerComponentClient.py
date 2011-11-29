@@ -32,7 +32,7 @@ class PlayerComponentClient(service.Service):
         if self.entityService.IsClientSideOnly(entity.scene.sceneID):
             return 
         if entity.entityID == session.charid:
-            self.LogInfo('PlayerClientComponent tearing down, will send a PlayerComponentRegistered to server now')
+            self.LogInfo('PlayerClientComponent network syncing, will send a PlayerComponentRegistered to server now')
             uthread.new(sm.RemoteSvc('playerComponentServer').PlayerComponentRegistered, entity.scene.sceneID)
 
 

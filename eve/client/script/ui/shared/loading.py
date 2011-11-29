@@ -11,6 +11,7 @@ import types
 import base
 import uiconst
 import uicls
+import localization
 
 class Loading(service.Service):
     __exportedcalls__ = {'CleanUp': [],
@@ -68,7 +69,7 @@ class Loading(service.Service):
 
 
     def CountDownWindow(self, question, duration, confirmFunc, abortFunc, inModalLayer = False):
-        startTime = blue.os.GetTime()
+        startTime = blue.os.GetWallclockTime()
         if inModalLayer:
             par = uicore.layer.mloading
         else:
@@ -92,7 +93,7 @@ class Loading(service.Service):
         if self.disabled:
             return 
         if title is None:
-            title = mls.UI_GENERIC_LOADING
+            title = localization.GetByLabel('UI/Common/Loading')
         wnd = getattr(self, 'loadingwnd', None)
         par = uicore.layer.loading
         if not wnd or wnd.destroyed:
@@ -137,7 +138,7 @@ class Loading(service.Service):
         if self.disabled:
             return 
         if title is None:
-            title = mls.UI_GENERIC_LOADING
+            title = localization.GetByLabel('UI/Common/Loading')
         self.cycletext = (title, strng)
         uthread.new(self._Cycle)
 
@@ -215,9 +216,9 @@ class Loading(service.Service):
         (fill, current,) = self.GetFill()
         fill.state = uiconst.UI_NORMAL
         time = float(time)
-        (start, ndt,) = (blue.os.GetTime(), 0.0)
+        (start, ndt,) = (blue.os.GetWallclockTime(), 0.0)
         while ndt != 1.0 and not fill.destroyed and self.fadingToBlack:
-            ndt = min(blue.os.TimeDiffInMs(start) / time, 1.0)
+            ndt = min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / time, 1.0)
             fill.color.a = mathUtil.Lerp(current, 1.0, ndt)
             blue.pyos.synchro.Yield()
 
@@ -235,9 +236,9 @@ class Loading(service.Service):
         (fill, current,) = self.GetFill()
         fill.state = uiconst.UI_NORMAL
         time = float(time)
-        (start, ndt,) = (blue.os.GetTime(), 0.0)
+        (start, ndt,) = (blue.os.GetWallclockTime(), 0.0)
         while ndt != 1.0 and not fill.destroyed and self.fadingFromBlack:
-            ndt = min(blue.os.TimeDiffInMs(start) / time, 1.0)
+            ndt = min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / time, 1.0)
             fill.color.a = mathUtil.Lerp(current, 0.0, ndt)
             blue.pyos.synchro.Yield()
 
@@ -262,7 +263,7 @@ class ProgressWnd(uicls.Container):
     default_top = 0
     default_width = 320
     default_height = 87
-    default_name = 'progresswindow'
+    default_windowID = 'progresswindow'
     default_state = uiconst.UI_HIDDEN
     default_align = uiconst.CENTER
 
@@ -291,7 +292,7 @@ class ProgressWnd(uicls.Container):
         shadeFill = uicls.Fill(parent=shade, name='shadeFill', state=uiconst.UI_DISABLED, color=(0.0, 0.0, 0.0, 0.18), align=uiconst.TOALL)
         uicls.Frame(parent=progress)
         self.sr.loading_progress = progress
-        self.sr.progresstext = uicls.Label(text='', parent=progress, width=270, left=2, top=4, autowidth=False, fontsize=9, uppercase=1, letterspace=2, state=uiconst.UI_NORMAL)
+        self.sr.progresstext = uicls.EveLabelMedium(text='', parent=progress, width=270, left=2, top=4, state=uiconst.UI_NORMAL)
         self.state = uiconst.UI_PICKCHILDREN
 
 
@@ -303,7 +304,7 @@ class ProgressWnd(uicls.Container):
         if self.abortbtnpar is None:
             if func is None:
                 return 
-            self.abortbtnpar = uicls.ButtonGroup(btns=[[mls.UI_CMD_ABORT,
+            self.abortbtnpar = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Commands/Abort'),
               func,
               args,
               66]])
@@ -325,13 +326,13 @@ class ProgressWnd(uicls.Container):
         if type(confirmFunc) == types.TupleType:
             (confirmFunc, confirmArgs,) = confirmFunc
         if self.abortconfirmbtnpar is None:
-            self.abortconfirmbtnpar = uicls.ButtonGroup(btns=[[mls.UI_GENERIC_YES,
+            self.abortconfirmbtnpar = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Common/Yes'),
               self.Confirm,
               (),
               None,
               0,
               1,
-              0], [mls.UI_GENERIC_NO,
+              0], [localization.GetByLabel('UI/Common/No'),
               self.Abort,
               (),
               None,
@@ -378,14 +379,14 @@ class ProgressWnd(uicls.Container):
 
     def CountDown(self, startTime, duration):
         while True and not self.destroyed:
-            dt = blue.os.TimeDiffInMs(startTime, blue.os.GetTime(1))
+            dt = blue.os.TimeDiffInMs(startTime, blue.os.GetWallclockTimeNow())
             if dt > duration:
                 break
             self.sr.progresstext.text = util.FmtDate(long((duration - dt) * 10000) + SEC)
             self.sr.progresstext.top = -self.sr.progresstext.height - 2
             portion = dt / float(duration)
             self.SetProgressPortion(portion)
-            blue.pyos.synchro.Sleep(10)
+            blue.pyos.synchro.SleepWallclock(10)
 
         if not self.destroyed:
             self.sr.progresstext.text = util.FmtDate(0L)
@@ -416,7 +417,7 @@ class ProgressWnd(uicls.Container):
         if self.height != newheight:
             if morph:
                 uicore.effect.MorphUI(self, 'height', newheight, 125.0)
-                blue.pyos.synchro.Sleep(250)
+                blue.pyos.synchro.SleepWallclock(250)
             self.height = newheight
 
 
@@ -424,11 +425,9 @@ class ProgressWnd(uicls.Container):
     def SetReadProgress(self, have, need):
         if self is None or self.destroyed:
             return 
-        strng = self.sr.readprogress.text
-        if not strng:
+        if not self.sr.readprogress.text:
             return 
-        format = ' (%d/%d KB)'
-        strng += format % (have + self.sr.readprogress.prev, need + self.sr.readprogress.prev)
+        strng = localization.GetByLabel('UI/Shared/ReadProgress', text=self.sr.readprogress.text, done=have + self.sr.readprogress.prev, total=need + self.sr.readprogress.prev)
         if have == need:
             self.sr.readprogress.prev += have
         self.SetProgressPortion(have / float(need))
@@ -446,8 +445,6 @@ class ProgressWnd(uicls.Container):
             return 1
         self._SetCaption(title)
         self.SetAbortFunc(abortFunc)
-        if len(strng) > 128:
-            strng = strng[:128] + '...'
         self.sr.readprogress = util.KeyVal(text=strng, prev=0)
         if self.sr.progresstext.text != strng:
             self.sr.progresstext.text = strng
@@ -487,10 +484,10 @@ class ProgressWnd(uicls.Container):
 
     def _SetCaption(self, title):
         if self.sr.Get('loading_caption', None) is None:
-            self.sr.loading_caption = uicls.Label(text='<center>' + title, parent=self.sr.main, align=uiconst.CENTERTOP, width=self.width - 50, top=12, fontsize=16, linespace=16, letterspace=3, idx=0, state=uiconst.UI_DISABLED, uppercase=True, name='caption')
+            self.sr.loading_caption = uicls.EveCaptionMedium(text=['<center>', title], parent=self.sr.main, align=uiconst.CENTERTOP, width=self.width - 50, top=12, idx=0, state=uiconst.UI_DISABLED, name='caption')
             self.sr.loading_title = title
         elif self.sr.Get('loading_title', None) != title:
-            self.sr.loading_caption.text = '<center>' + title
+            self.sr.loading_caption.text = ['<center>', title]
             self.sr.loading_title = title
 
 
@@ -507,7 +504,7 @@ class ProgressWnd(uicls.Container):
 
 
     def DelayHide(self):
-        blue.pyos.synchro.Sleep(750)
+        blue.pyos.synchro.SleepWallclock(750)
         if not getattr(self, 'stophide', 0):
             uicore.layer.loading.state = uiconst.UI_HIDDEN
             if self and not self.destroyed and self.sr.glowClipper:
@@ -516,7 +513,7 @@ class ProgressWnd(uicls.Container):
 
 
     def SanityDelayHide(self):
-        blue.pyos.synchro.Sleep(5000)
+        blue.pyos.synchro.SleepWallclock(5000)
         if not getattr(self, 'stophide', 0):
             uicore.layer.loading.state = uiconst.UI_HIDDEN
             if self and not self.destroyed and self.sr.glowClipper:

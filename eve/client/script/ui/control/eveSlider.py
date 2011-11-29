@@ -23,10 +23,10 @@ class Slider(uicls.SliderCore):
 
 
     def Prepare_Label_(self):
-        self.label = uicls.Label(parent=self, font=self.font, fontsize=self.fontsize, pos=(self.labeltab,
+        self.label = uicls.Label(parent=self, fontsize=self.fontsize, pos=(self.labeltab,
          2,
          0,
-         0), autowidth=False, autoheight=False, state=uiconst.UI_NORMAL)
+         0), state=uiconst.UI_NORMAL)
 
 
 

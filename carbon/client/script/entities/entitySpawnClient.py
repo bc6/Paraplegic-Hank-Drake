@@ -1,34 +1,29 @@
-import entityCommon
 import entities
-import random
-import copy
 
 class EntitySpawnClient(entities.EntitySpawnService):
     __guid__ = 'svc.entitySpawnClient'
-    __notifyevents__ = ['ProcessEntitySceneUnloading', 'OnEntityDeleted']
+    __dependencies__ = entities.EntitySpawnService.__dependencies__
+    __dependencies__ += ['worldSpaceClient']
 
     def Run(self, *args):
         entities.EntitySpawnService.Run(self, args)
-        self.idCounter = 0
-        self.entityRecipeSvc = sm.GetService('entityRecipeSvc')
-        self.gameWorldService = sm.GetService('gameWorldClient')
+        self.idCounter = const.minFakeClientItem
 
 
 
-    def MapSceneIDToWorldSpaceID(self, sceneID):
-        return sm.GetService('worldSpaceClient').GetWorldSpaceTypeIDFromWorldSpaceID(sceneID)
+    def GetNextEntityID(self):
+        self.idCounter += 1
+        return self.idCounter
 
 
 
-    def GetGenerators(self, sceneID):
-        typeID = self.MapSceneIDToWorldSpaceID(sceneID)
-        return [ generator for generator in cfg.entityGeneratorsByWorldSpace.get(typeID, []) if generator.spawnOnClient ]
+    def GetWorldSpaceTypeID(self, sceneID):
+        return self.worldSpaceClient.GetWorldSpaceTypeIDFromWorldSpaceID(sceneID)
 
 
 
-    def GetNextSpawnID(self, sceneID, typeID):
-        self.idCounter = self.idCounter + 1
-        return const.minFakeClientItem + self.idCounter
+    def GetSceneID(self, worldSpaceTypeID):
+        raise NotImplementedError('GetSceneID() function not implemented on: ', self.__guid__)
 
 
 

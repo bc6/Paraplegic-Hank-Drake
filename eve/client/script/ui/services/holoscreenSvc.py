@@ -7,7 +7,6 @@ import service
 import uthread
 import util
 import cqscreen
-import uiutil
 import random
 import corebrowserutil
 import uix
@@ -15,6 +14,7 @@ import uicls
 import uiconst
 import urllib2
 import os
+import localization
 
 class HoloscreenSvc(service.Service):
     __guid__ = 'svc.holoscreen'
@@ -196,7 +196,7 @@ class HoloscreenSvc(service.Service):
 
 
     def GetCustomVideoPlaylist(self):
-        path = blue.os.cachepath + 'CQScreenVideos'
+        path = blue.os.ResolvePath(u'cache:/CQScreenVideos')
         if not os.path.isdir(path):
             try:
                 os.mkdir(path)
@@ -221,21 +221,12 @@ class HoloscreenSvc(service.Service):
             data = copy.deepcopy(random.choice(sovList))
             regionID = sm.GetService('map').GetRegionForSolarSystem(data.solarSystemID)
             solarSystemName = cfg.evelocations.Get(data.solarSystemID).name
-            regionName = cfg.evelocations.Get(regionID).name
             oldOwnerName = cfg.eveowners.Get(data.oldOwnerID).ownerName
             newOwnerName = cfg.eveowners.Get(data.newOwnerID).ownerName
-            textParams = {}
-            textParams['solarSystemName'] = '<color=WHITE>%s</color>' % solarSystemName
-            textParams['allianceName'] = newOwnerName
-            data.middleText = mls.UI_HOLOSCREEN_SOVEREIGNTYMIDDLE % textParams
-            textParams = {}
-            textParams['solarSystemName'] = solarSystemName
-            textParams['regionName'] = regionName
-            textParams['oldAllianceName'] = oldOwnerName
-            textParams['newAllianceName'] = newOwnerName
-            data.bottomText = mls.UI_HOLOSCREEN_SOVEREIGNTYBOTTOM % textParams
+            data.middleText = localization.GetByLabel('UI/Station/Holoscreen/SOV/AllianceControlsSystem', alliance=newOwnerName, system='<color=WHITE>' + solarSystemName + '</color>')
+            data.bottomText = localization.GetByLabel('UI/Station/Holoscreen/SOV/AllianceSoverigntySwitch', oldAlliance=oldOwnerName, newAlliance=newOwnerName, system=data.solarSystemID, region=regionID)
             data.clickFunc = uicore.cmd.OpenSovDashboard
-            data.clickFuncLabel = mls.UI_HOLOSCREEN_SOV_LABEL
+            data.clickFuncLabel = localization.GetByLabel('UI/Station/Holoscreen/SOV/OpenSovereigntyPanel')
             data.clickArgs = (data.solarSystemID,)
             return data
 
@@ -246,20 +237,20 @@ class HoloscreenSvc(service.Service):
         careerAgents = self.holoscreenMgr.GetRuntimeCache().careerAgents
         chosenCareerType = random.choice(careerAgents.keys())
         if chosenCareerType == const.agentCareerTypeIndustry:
-            careerText = mls.UI_TUTORIAL_INDUSTRY
-            careerDesc = mls.UI_TUTORIAL_INDUSTRY_DESC
+            careerText = localization.GetByLabel('UI/Tutorial/Industry')
+            careerDesc = localization.GetByLabel('UI/Tutorial/IndustryDesc')
         elif chosenCareerType == const.agentCareerTypeBusiness:
-            careerText = mls.UI_TUTORIAL_BUSINESS
-            careerDesc = mls.UI_TUTORIAL_BUSINESS_DESC
+            careerText = localization.GetByLabel('UI/Tutorial/Business')
+            careerDesc = localization.GetByLabel('UI/Tutorial/BusinessDesc')
         elif chosenCareerType == const.agentCareerTypeMilitary:
-            careerText = mls.UI_TUTORIAL_MILITARY
-            careerDesc = mls.UI_TUTORIAL_MILITARY_DESC
+            careerText = localization.GetByLabel('UI/Tutorial/Military')
+            careerDesc = localization.GetByLabel('UI/Tutorial/MilitaryDesc')
         elif chosenCareerType == const.agentCareerTypeExploration:
-            careerText = mls.UI_TUTORIAL_EXPLORATION
-            careerDesc = mls.UI_TUTORIAL_EXPLORATION_DESC
+            careerText = localization.GetByLabel('UI/Tutorial/Exploration')
+            careerDesc = localization.GetByLabel('UI/Tutorial/ExplorationDesc')
         elif chosenCareerType == const.agentCareerTypeAdvMilitary:
-            careerText = mls.UI_TUTORIAL_ADVMILITARY
-            careerDesc = mls.UI_TUTORIAL_ADVMILITARY_DESC
+            careerText = localization.GetByLabel('UI/Tutorial/AdvMilitary')
+            careerDesc = localization.GetByLabel('UI/Tutorial/AdvMilitaryDesc')
         agentStationDict = {}
         for row in careerAgents[chosenCareerType]:
             agentStationDict[row.agentID] = row
@@ -281,7 +272,6 @@ class HoloscreenSvc(service.Service):
         careerAdData.agentID = chosenAgentID
         careerAdData.stationID = chosenStationID
         careerAdData.jumpDistance = nearestDist
-        stationName = cfg.evelocations.Get(careerAdData.stationID).locationName
         careerVideoPath = {const.agentCareerTypeIndustry: 'res:/video/cq/CQ_TEMPLATE_CAREER_INDUSTRY.bik',
          const.agentCareerTypeBusiness: 'res:/video/cq/CQ_TEMPLATE_CAREER_TRADE_BUSINESS.bik',
          const.agentCareerTypeMilitary: 'res:/video/cq/CQ_TEMPLATE_CAREER_MILITARY.bik',
@@ -290,10 +280,10 @@ class HoloscreenSvc(service.Service):
         data = util.KeyVal()
         data.charID = chosenAgentID
         data.headingText = '<fontsize=60>' + careerText
-        data.subHeadingText = mls.UI_HOLOSCREEN_CAREERAGENTS_TITLE
-        data.mainText = '<fontsize=20>' + careerDesc + '\n\n' + mls.UI_HOLOSCREEN_CAREERAGENT_INFO % {'stationName': stationName}
+        data.subHeadingText = localization.GetByLabel('UI/Station/Holoscreen/CareerAgent/CareerAgentTitle')
+        data.mainText = '<fontsize=20>' + careerDesc + '\n\n' + localization.GetByLabel('UI/Station/Holoscreen/CareerAgent/AgentInfo', station=careerAdData.stationID)
         data.clickFunc = sm.StartService('tutorial').ShowCareerFunnel
-        data.clickFuncLabel = mls.UI_HOLOSCREEN_CAREER_AGENT_LABEL
+        data.clickFuncLabel = localization.GetByLabel('UI/Station/Holoscreen/CareerAgent/OpenCareerAgentDirectory')
         data.introVideoPath = 'res:/video/cq/LOGO_CONCORD.bik'
         data.careerVideoPath = careerVideoPath
         return data
@@ -311,9 +301,9 @@ class HoloscreenSvc(service.Service):
         constellationName = cfg.evelocations.Get(constellationID).name
         securityLevel = str(sm.GetService('map').GetSecurityStatus(chosenIncursion.stagingSolarSystemID))
         jumpDistance = sm.GetService('pathfinder').GetJumpCountFromCurrent(chosenIncursion.stagingSolarSystemID)
-        jumpDistanceText = '(%s)' % (uix.Plural(jumpDistance, 'UI_SHARED_NUM_JUMP') % {'num': jumpDistance})
+        jumpDistanceText = localization.GetByLabel('UI/Station/Holoscreen/Incursion/NumberOfJumps', jumps=jumpDistance)
         data = util.KeyVal()
-        data.headingText = mls.UI_HOLOSCREEN_INCURSION_HEADER
+        data.headingText = localization.GetByLabel('UI/Station/Holoscreen/Incursion/IncursionWarning')
         data.introVideoPath = 'res:/video/cq/LOGO_CONCORD.bik'
         data.videoPath = 'res:/video/cq/CQ_TEMPLATE_INCURSION.bik'
         data.constellationText = '<color=orange>' + constellationName
@@ -321,13 +311,13 @@ class HoloscreenSvc(service.Service):
         data.systemInfoText += ' <color=orange>' + solarSystemName
         data.systemInfoText += ' <color=white>' + jumpDistanceText
         data.influence = chosenIncursion.influence
-        data.bottomText = mls.UI_HOLOSCREEN_INCURSION_NEWSFEED % {'constellationName': constellationName}
+        data.bottomText = localization.GetByLabel('UI/Station/Holoscreen/Incursion/IncursionNewsFeed', constellation=constellationID)
         data.clickFunc = sm.GetService('journal').ShowIncursionTab
         data.clickArgs = (None,
          None,
          None,
          True)
-        data.clickFuncLabel = mls.UI_HOLOSCREEN_INCURSION_LABEL
+        data.clickFuncLabel = localization.GetByLabel('UI/Station/Holoscreen/Incursion/IncursionLabel')
         return data
 
 
@@ -383,12 +373,12 @@ class HoloscreenSvc(service.Service):
         shipCachedInfo = cfg.invtypes.Get(data.shipTypeID)
         data.shipName = shipCachedInfo.name
         data.shipGroupName = shipCachedInfo.Group().groupName
-        data.buttonText = mls.UI_HOLOSCREEN_MARKET_AVAILABLE
-        data.mainText = '<fontsize=30>' + mls.UI_HOLOSCREEN_SHIPDETAILS_TITLE
+        data.buttonText = localization.GetByLabel('UI/Station/Holoscreen/Common/AvailableOnMarketNow')
+        data.mainText = '<fontsize=30>' + localization.GetByLabel('UI/Station/Holoscreen/Ship/ShipDetailsTitle')
         data.mainText += '\n<fontsize=25>' + shipCachedInfo.description
         data.clickFunc = sm.GetService('marketutils').ShowMarketDetails
         data.clickArgs = (data.shipTypeID, None)
-        data.clickFuncLabel = mls.UI_HOLOSCREEN_SHIP_EXPOSURE_LABEL % {'shipName': data.shipName}
+        data.clickFuncLabel = localization.GetByLabel('UI/Station/Holoscreen/Ship/OpenMarketForShip', ship=data.shipTypeID)
         return data
 
 
@@ -406,22 +396,15 @@ class HoloscreenSvc(service.Service):
         data.headingText = ''
         solarSystemID = sm.GetService('agents').GetSolarSystemOfAgent(epicArcData.agentID)
         regionID = sm.GetService('map').GetRegionForSolarSystem(solarSystemID)
-        mainText = '<fontsize=30><color=WHITE>%(solarSystemString)s: %(solarSystemName)s\n%(regionString)s: %(regionName)s\n%(securityLevelString)s: %(securityLevel)s\n        '
-        textParams = {}
-        textParams['solarSystemString'] = mls.UI_GENERIC_SOLARSYSTEM
-        textParams['solarSystemName'] = cfg.evelocations.Get(solarSystemID).locationName
-        textParams['regionString'] = mls.UI_GENERIC_REGION
-        textParams['regionName'] = cfg.evelocations.Get(regionID).locationName
-        textParams['securityLevelString'] = mls.UI_GENERIC_SECURITY
-        textParams['securityLevel'] = str(sm.GetService('map').GetSecurityStatus(solarSystemID))
-        data.mainText = mainText % textParams
-        epicArcDict = {48: (const.factionAmarrEmpire, mls.UI_HOLOSCREEN_EPICARCAMARR),
-         52: (const.factionGallenteFederation, mls.UI_HOLOSCREEN_EPICARCGALLENTE),
-         40: (const.factionCaldariState, mls.UI_HOLOSCREEN_EPICARCCALDARI),
-         29: (const.factionSistersOfEVE, mls.UI_HOLOSCREEN_EPICARCSISTERS),
-         53: (const.factionMinmatarRepublic, mls.UI_HOLOSCREEN_EPICARCMINMATAR),
-         56: (const.factionAngelCartel, mls.UI_HOLOSCREEN_EPICARCANGELS),
-         55: (const.factionGuristasPirates, mls.UI_HOLOSCREEN_EPICARCGURISTAS)}
+        securityLevel = sm.GetService('map').GetSecurityStatus(solarSystemID)
+        data.mainText = '<fontsize=30><color=WHITE>' + localization.GetByLabel('UI/Station/Holoscreen/RacialEpicArc/AgentAdvert', system=solarSystemID, region=regionID, securityLevel=securityLevel)
+        epicArcDict = {48: (const.factionAmarrEmpire, localization.GetByLabel('UI/Station/Holoscreen/RacialEpicArc/AmarrNews')),
+         52: (const.factionGallenteFederation, localization.GetByLabel('UI/Station/Holoscreen/RacialEpicArc/GallenteNews')),
+         40: (const.factionCaldariState, localization.GetByLabel('UI/Station/Holoscreen/RacialEpicArc/CaldariNews')),
+         29: (const.factionSistersOfEVE, localization.GetByLabel('UI/Station/Holoscreen/RacialEpicArc/SistersNews')),
+         53: (const.factionMinmatarRepublic, localization.GetByLabel('UI/Station/Holoscreen/RacialEpicArc/MinmatarNews')),
+         56: (const.factionAngelCartel, localization.GetByLabel('UI/Station/Holoscreen/RacialEpicArc/AngelsNews')),
+         55: (const.factionGuristasPirates, localization.GetByLabel('UI/Station/Holoscreen/RacialEpicArc/GuristasNews'))}
         if epicArcData.epicArcID not in epicArcDict:
             return 
         (data.factionID, data.bottomText,) = epicArcDict.get(epicArcData.epicArcID, '')
@@ -449,18 +432,7 @@ class HoloscreenSvc(service.Service):
         data.videoPath = videoDict.get(factionKey, 'res:/video/cq/CQ_TEMPLATE_EPICARC_GALLENTE.bik')
         data.clickFunc = sm.GetService('agents').InteractWith
         data.clickArgs = (data.charID,)
-        data.clickFuncLabel = mls.UI_HOLOSCREEN_RACIAL_EPIC_ARC_LABEL
-        return data
-
-
-
-    @bluepy.CCP_STATS_ZONE_METHOD
-    def GetNewsAndLoreTemplateData(self):
-        data = util.KeyVal()
-        data.introVideoPath = 'res:/video/cq/CQ_NEWS_LORE_INTRO.bik'
-        data.videoPath = 'res:/video/cq/CQ_TEMPLATE_SOVEREIGNTY.bik'
-        data.clickFunc = uicore.cmd.OpenJournal
-        data.clickFuncLabel = mls.UI_HOLOSCREEN_NEWS_AND_LORE_LABEL
+        data.clickFuncLabel = localization.GetByLabel('UI/Station/Holoscreen/RacialEpicArc/StartAgentConversation')
         return data
 
 
@@ -469,23 +441,21 @@ class HoloscreenSvc(service.Service):
     def GetNPEEpicArcTemplateData(self):
         rookieList = self.holoscreenMgr.GetRecentEpicArcCompletions()
         if not rookieList:
-            return None
-        rookieData = random.choice(rookieList)
+            rookieData = util.KeyVal(characterID=session.charid, completionDate=blue.os.GetWallclockTime())
+        else:
+            rookieData = random.choice(rookieList)
         data = util.KeyVal(charID=rookieData.characterID)
         charInfo = cfg.eveowners.Get(data.charID)
         completionDate = util.FmtDate(rookieData.completionDate)
         data.introVideoPath = 'res:/video/cq/LOGO_CONCORD.bik'
-        data.heading = '<b>%s</b>' % uiutil.UpperCase(mls.UI_HOLOSCREEN_NPECOMPLETIONHEADING)
-        data.mainText = '<fontsize=30>%s:\n' % mls.UI_HOLOSCREEN_NPECOMPLETIONCAPSULEERSTATUS
-        data.mainText += '    %s\n' % charInfo.ownerName
-        data.mainText += '%s:\n' % mls.UI_HOLOSCREEN_NPECOMPLETIONDATE
-        data.mainText += '    %s\n\n' % completionDate
-        data.mainText += '<fontsize=20>' + mls.UI_HOLOSCREEN_NPECOMPLETIONDISCLAIMER
-        data.bottomText = mls.UI_HOLOSCREEN_NPECOMPLETIONBOTTOM % {'pilotName': charInfo.ownerName}
+        data.heading = localization.GetByLabel('UI/Station/Holoscreen/NPEEpicArc/NewPilotCertification')
+        data.mainText = '<fontsize=25>' + localization.GetByLabel('UI/Station/Holoscreen/NPEEpicArc/CapsuleerStatus', owner=data.charID, completionDate=completionDate)
+        data.mainText += '<br><fontsize=20>' + localization.GetByLabel('UI/Station/Holoscreen/NPEEpicArc/CertificationDisclaimer')
+        data.bottomText = localization.GetByLabel('UI/Station/Holoscreen/NPEEpicArc/NewPilotCertificationCompletion', pilot=data.charID)
         data.isWanted = False
         data.clickFunc = sm.GetService('info').ShowInfo
-        data.clickArgs = (charInfo.Type(), data.charID)
-        data.clickFuncLabel = mls.UI_HOLOSCREEN_NPE_EPIC_ARC_LABEL
+        data.clickArgs = (charInfo.Type().typeID, data.charID)
+        data.clickFuncLabel = localization.GetByLabel('UI/Station/Holoscreen/NPEEpicArc/ViewCharacterInformation')
         return data
 
 
@@ -498,23 +468,23 @@ class HoloscreenSvc(service.Service):
         if not topBounties:
             return None
         chosenBounty = random.choice(topBounties)
-        bountyName = chosenBounty.ownerName
         bountyAmount = util.FmtISK(chosenBounty.bounty)
         data = util.KeyVal()
         data.introVideoPath = 'res:/video/cq/LOGO_SCOPE.bik'
         data.charID = chosenBounty.characterID
-        data.heading = '<b>%s</b>' % uiutil.UpperCase(mls.UI_HOLOSCREEN_WANTEDBOUNTYOFFER)
-        data.mainText = '<fontsize=30>%s:\n' % mls.UI_HOLOSCREEN_WANTEDHEADING
-        data.mainText += '<b><color=yellow><fontsize=50> %s\n</color></b>' % bountyName
-        data.mainText += '<fontsize=30>%s:\n' % mls.UI_HOLOSCREEN_WANTEDBOUNTYOFFER
-        data.mainText += '<b><fontsize=50> %s\n</b>' % bountyAmount
-        data.mainText += '<fontsize=20>' + mls.UI_HOLOSCREEN_WANTEDDISCLAIMER
-        data.bottomText = mls.UI_HOLOSCREEN_WANTEDNEWSFEED
+        data.heading = localization.GetByLabel('UI/Station/Holoscreen/Wanted/BountyOffer')
+        data.mainText = '<fontsize=30>' + localization.GetByLabel('UI/Station/Holoscreen/Wanted/BountyPost') + '\n'
+        data.mainText += '<fontsize=50><color=yellow>' + localization.GetByLabel('UI/Station/Holoscreen/Wanted/WantedCharacter', wanted=data.charID)
+        data.mainText += '</color>\n'
+        data.mainText += '<fontsize=30>' + localization.GetByLabel('UI/Station/Holoscreen/Wanted/BountyOffer') + '\n'
+        data.mainText += '<fontsize=50>' + localization.GetByLabel('UI/Station/Holoscreen/Wanted/BountyAmount', amount=bountyAmount) + '\n'
+        data.mainText += '<fontsize=20>' + localization.GetByLabel('UI/Station/Holoscreen/Wanted/WantedDisclaimer')
+        data.bottomText = localization.GetByLabel('UI/Station/Holoscreen/Wanted/MostWantedNewsFeed')
         data.isWanted = True
-        data.wantedHeading = mls.UI_HOLOSCREEN_WANTED_HEADER
-        data.wantedText = mls.UI_HOLOSCREEN_WANTEDWARNING
+        data.wantedHeading = localization.GetByLabel('UI/Station/Holoscreen/Wanted/Header')
+        data.wantedText = localization.GetByLabel('UI/Station/Holoscreen/Wanted/Warning')
         data.clickFunc = uicore.cmd.OpenMissions
-        data.clickFuncLabel = mls.UI_HOLOSCREEN_WANTED_LABEL
+        data.clickFuncLabel = localization.GetByLabel('UI/Station/Holoscreen/Wanted/ShowBountyOffice')
         return data
 
 
@@ -523,24 +493,13 @@ class HoloscreenSvc(service.Service):
     def GetPlexTemplateData(self):
         data = util.KeyVal()
         data.introVideoPath = 'res:/video/cq/LOGO_CONCORD.bik'
-        data.headingText = mls.UI_SHARED_PLEX_PURCHASE
-        data.subHeadingText = mls.UI_SHARED_PILOTLICENSEEXTENSION
-        data.buttonText = mls.UI_HOLOSCREEN_MARKET_AVAILABLE
-        data.mainText = mls.UI_HOLOSCREEN_PLEX_MIDDLE
+        data.headingText = '<fontsize=60>' + localization.GetByLabel('UI/Station/Holoscreen/PLEX/BuyPLEX')
+        data.subHeadingText = '<fontsize=25>' + localization.GetByLabel('UI/Station/Holoscreen/PLEX/PLEX')
+        data.buttonText = localization.GetByLabel('UI/Station/Holoscreen/Common/AvailableOnMarketNow')
+        data.mainText = localization.GetByLabel('UI/Station/Holoscreen/PLEX/PLEXInformation')
         data.clickFunc = sm.GetService('marketutils').ShowMarketDetails
         data.clickArgs = (const.typePilotLicence, None)
-        data.clickFuncLabel = mls.UI_HOLOSCREEN_PLEX_LABEL
-        return data
-
-
-
-    @bluepy.CCP_STATS_ZONE_METHOD
-    def GetBillboardMessagesData(self):
-        data = util.KeyVal()
-        data.introVideoPath = 'res:/video/cq/LOGO_SCOPE.bik'
-        data.videoPath = 'res:/video/cq/CQ_TEMPLATE_SOVEREIGNTY.bik'
-        data.clickFunc = uicore.cmd.OpenCharactersheet
-        data.clickFuncLabel = mls.UI_HOLOSCREEN_BILLBOARD_LABEL
+        data.clickFuncLabel = localization.GetByLabel('UI/Station/Holoscreen/PLEX/ViewMarketForPLEX')
         return data
 
 
@@ -551,10 +510,10 @@ class HoloscreenSvc(service.Service):
             return 
         data = util.KeyVal()
         data.introVideoPath = 'res:/video/cq/LOGO_CONCORD.bik'
-        data.headingText = uiutil.UpperCase(mls.UI_HOLOSCREEN_SKILLTRAININGTITLE)
-        data.subHeadingText = mls.UI_HOLOSCREEN_SKILLTRAININGMIDDLE
+        data.headingText = localization.GetByLabel('UI/Station/Holoscreen/SkillTraining/Title')
+        data.subHeadingText = localization.GetByLabel('UI/Station/Holoscreen/SkillTraining/Notification')
         data.clickFunc = uicore.cmd.OpenSkillQueueWindow
-        data.clickFuncLabel = mls.UI_HOLOSCREEN_SKILL_TRAINING_LABEL
+        data.clickFuncLabel = localization.GetByLabel('UI/Station/Holoscreen/SkillTraining/OpenSkillQueue')
         return data
 
 
@@ -568,10 +527,10 @@ class HoloscreenSvc(service.Service):
             return None
         data = util.KeyVal()
         data.introVideoPath = 'res:/video/cq/LOGO_CONCORD.bik'
-        data.headingText = uiutil.UpperCase(mls.UI_HOLOSCREEN_CLONESTATUSTITLE)
-        data.subHeadingText = mls.UI_HOLOSCREEN_CLONESTATUSMIDDLE
+        data.headingText = localization.GetByLabel('UI/Station/Holoscreen/Clones/CloneStatusAlert')
+        data.subHeadingText = localization.GetByLabel('UI/Station/Holoscreen/Clones/CloneNotice')
         data.clickFunc = uicore.cmd.OpenMedical
-        data.clickFuncLabel = mls.UI_HOLOSCREEN_CLONE_LABEL
+        data.clickFuncLabel = localization.GetByLabel('UI/Station/Holoscreen/Clones/ViewMedicalServices')
         return data
 
 
@@ -580,9 +539,9 @@ class HoloscreenSvc(service.Service):
     def GetVirtualGoodsStoreTemplateData(self):
         data = util.KeyVal()
         data.introVideoPath = 'res:/video/cq/LOGO_QUAFE.bik'
-        data.headingText = '<b>' + mls.UI_HOLOSCREEN_STOREGRANDOPENING
+        data.headingText = localization.GetByLabel('UI/Station/Holoscreen/VirtualGoods/GrandOpening')
         data.clickFunc = uicore.cmd.OpenStore
-        data.clickFuncLabel = mls.UI_CMD_OPENSTORE
+        data.clickFuncLabel = localization.GetByLabel('UI/Commands/OpenStore')
         return data
 
 
@@ -594,7 +553,7 @@ class HoloscreenSvc(service.Service):
                 rssData = corebrowserutil.GetStringFromURL(url)
             except urllib2.HTTPError:
                 failData = util.KeyVal()
-                failData.date = blue.os.GetTime()
+                failData.date = blue.os.GetWallclockTime()
                 failData.link = 'http://www.eveonline.com'
                 failData.title = 'The news service is temporarily unavailable.'
                 newsData = [failData]
@@ -604,7 +563,7 @@ class HoloscreenSvc(service.Service):
             except:
                 log.LogException('Uncaught (non-http) error with the mainscreen news ticker in GetNewsTickerData()')
                 failData = util.KeyVal()
-                failData.date = blue.os.GetTime()
+                failData.date = blue.os.GetWallclockTime()
                 failData.link = 'http://www.eveonline.com'
                 failData.title = 'The news service is unavailable.'
                 newsData = [failData]

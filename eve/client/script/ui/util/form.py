@@ -10,6 +10,7 @@ import types
 import form
 import uiconst
 import uicls
+import localization
 
 class Form(service.Service):
     __guid__ = 'svc.form'
@@ -200,7 +201,7 @@ class Form(service.Service):
 
     def AddHeader(self):
         self.new = uicls.Container(name='headerField', parent=self.parent, align=uiconst.TOTOP)
-        header = uicls.Label(text=self.type.get('text', ''), parent=self.new, name='header', padding=(7, 3, 7, 3), fontsize=9, letterspace=2, uppercase=1, linespace=9, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        header = uicls.EveLabelSmall(text=self.type.get('text', ''), parent=self.new, name='header', padding=(7, 3, 7, 3), align=uiconst.TOTOP, state=uiconst.UI_NORMAL, bold=True)
         self.new.height = max(self.type.get('height', 17), header.textheight + header.padTop * 2)
         self.refresh.append((self.new, header))
         if not self.type.get('hideLine', False):
@@ -211,13 +212,13 @@ class Form(service.Service):
 
     def AddLabeltext(self):
         self.new = uicls.Container(name='labeltextField', parent=self.parent, align=uiconst.TOTOP, height=self.type.get('height', 20))
-        text = uicls.Label(text=self.type.get('text', ''), parent=self.new, align=uiconst.TOTOP, name='text', padding=(self.leftPush,
+        text = uicls.EveLabelMedium(text=self.type.get('text', ''), parent=self.new, align=uiconst.TOTOP, name='text', padding=(self.leftPush,
          3,
          0,
          0), state=uiconst.UI_NORMAL)
         label = self.type.get('label', '')
         if label and label != '_hide':
-            label = uicls.Label(text=label, parent=self.new, name='label', left=7, width=self.leftPush - 6, top=5, fontsize=9, letterspace=2, uppercase=1, linespace=9)
+            label = uicls.EveHeaderSmall(text=label, parent=self.new, name='label', left=7, width=self.leftPush - 6, top=5)
             self.refresh.append((self.new, text, label))
         else:
             self.refresh.append((self.new, text))
@@ -244,7 +245,7 @@ class Form(service.Service):
          2,
          0,
          2), ints=self.type.get('intonly', None), floats=self.type.get('floatonly', None), align=uiconst.TOTOP, maxLength=self.type.get('maxlength', None) or self.type.get('maxLength', None), passwordCharacter=self.type.get('passwordChar', None), readonly=self.type.get('readonly', 0), autoselect=self.type.get('autoselect', 0))
-        self.new.height = self.code.height + self.code.padTop * 2
+        self.new.height = self.code.height + self.code.padTop * 4
         width = self.type.get('width', None)
         if width:
             self.code.SetAlign(uiconst.TOLEFT)
@@ -262,7 +263,7 @@ class Form(service.Service):
         if label == '_hide':
             self.code.padLeft = 0
         elif caption:
-            l = uicls.Label(text=caption, align=uiconst.CENTERLEFT, parent=self.new, name='label', left=7, width=self.leftPush - 6, fontsize=9, letterspace=2, uppercase=1, linespace=9)
+            l = uicls.EveLabelSmall(text=caption, align=uiconst.CENTERLEFT, parent=self.new, name='label', left=7, width=self.leftPush - 6)
 
 
 
@@ -276,7 +277,7 @@ class Form(service.Service):
         if label == '_hide':
             self.code.padLeft = 0
         elif label:
-            uicls.Label(text=label, parent=self.new, name='label', left=7, width=self.leftPush - 6, top=5, fontsize=9, letterspace=2, uppercase=1, linespace=9)
+            uicls.EveLabelSmall(text=label, parent=self.new, name='label', left=7, width=self.leftPush - 6, top=5)
 
 
 
@@ -299,12 +300,12 @@ class Form(service.Service):
 
     def AddCombo(self):
         self.new = uicls.Container(name='comboField', parent=self.parent, align=uiconst.TOTOP, height=self.type.get('height', 20))
-        options = self.type.get('options', [(mls.UI_GENERIC_NONE, None)])
+        options = self.type.get('options', [(localization.GetByLabel('UI/Common/None'), None)])
         self.code = uicls.Combo(label='', parent=self.new, options=options, name=self.type.get('key', 'combo'), select=self.type.get('setvalue', ''), padding=(self.leftPush,
          2,
          0,
          2), align=uiconst.TOTOP, callback=self.type.get('callback', None), labelleft=self.leftPush)
-        self.new.height = self.code.height + self.code.padTop * 2
+        self.new.height = self.code.height + self.code.padTop * 4
         width = self.type.get('width', None)
         if width:
             self.code.SetAlign(uiconst.TOLEFT)
@@ -313,7 +314,7 @@ class Form(service.Service):
         if label == '_hide':
             self.code.padLeft = 0
         else:
-            uicls.Label(text=label, parent=self.new, name='label', left=7, width=self.leftPush - 6, fontsize=9, letterspace=2, uppercase=1, linespace=9, align=uiconst.CENTERLEFT)
+            uicls.EveLabelSmall(text=label, parent=self.new, name='label', left=7, width=self.leftPush - 6, align=uiconst.CENTERLEFT)
 
 
 
@@ -334,7 +335,7 @@ class Form(service.Service):
              wantedbtn.get('btn_default', 0),
              wantedbtn.get('btn_cancel', 0)])
 
-        btns = uicls.ButtonGroup(btns=btns, subalign=align, line=0, parent=self.new, padTop=4, align=uiconst.TOTOP, unisize=self.type.get('uniSize', 1))
+        btns = uicls.ButtonGroup(btns=btns, subalign=align, line=0, parent=self.new, align=uiconst.TOTOP, unisize=self.type.get('uniSize', 1))
 
 
 
@@ -394,7 +395,6 @@ class FormWnd(uicls.Container):
             if wnd is not None and not wnd.destroyed:
                 wnd.Close()
 
-        self.sr.panels = None
 
 
 

@@ -2,6 +2,7 @@ import blue
 import browserutil
 import form
 import listentry
+import localization
 import service
 import types
 import uix
@@ -15,8 +16,8 @@ import uiconst
 class AgentDialogueWindow(uicls.Window):
     __guid__ = 'form.AgentDialogueWindow'
     __notifyevents__ = ['OnSessionChanged', 'OnAgentMissionChange']
-    default_width = 825
-    default_height = 525
+    default_width = 835
+    default_height = 545
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -32,9 +33,11 @@ class AgentDialogueWindow(uicls.Window):
         self.rightPaneBottomHeight = 26
         self.SetTopparentHeight(0)
         self.SetWndIcon(None)
-        self.SetCaption(mls.AGT_DIALOGUE_CAPTION % {'agent.name': '???'})
         self.sr.agentID = None
         self.sr.agentMoniker = None
+        agentID = attributes.agentID
+        if agentID is not None:
+            self.SetAgentID(agentID)
 
 
 
@@ -54,7 +57,7 @@ class AgentDialogueWindow(uicls.Window):
 
     def SetAgentID(self, agentID):
         agentInfo = sm.GetService('agents').GetAgentByID(agentID)
-        self.SetCaption(mls.AGT_DIALOGUE_BLURBCONVERSATION + ' - ' + sm.GetService('agents').GetAgentDisplayName(agentID))
+        self.SetCaption(localization.GetByLabel('UI/Agents/Dialogue/AgentConversationWith', agentID=agentID))
         self.sr.agentID = agentID
         self.sr.agentMoniker = sm.GetService('agents').GetAgentMoniker(agentID)
 
@@ -80,9 +83,9 @@ class AgentDialogueWindow(uicls.Window):
 
     def DefineButtons(self, buttons, okLabel = None, okFunc = 'default', args = 'self', cancelLabel = None, cancelFunc = 'default', okModalResult = 'default', default = None):
         if okLabel is None:
-            okLabel = mls.UI_CMD_OK
+            okLabel = localization.GetByLabel('UI/Generic/OK')
         if cancelLabel is None:
-            cancelLabel = mls.UI_CMD_CANCEL
+            cancelLabel = localization.GetByLabel('UI/Generic/Cancel')
         if okModalResult == 'default':
             okModalResult = uiconst.ID_OK
         if okFunc == 'default':
@@ -118,21 +121,21 @@ class AgentDialogueWindow(uicls.Window):
               None,
               okModalResult,
               1,
-              0], [mls.UI_CMD_CLOSE,
-              self.CloseX,
+              0], [localization.GetByLabel('UI/Common/Buttons/Close'),
+              self.CloseByUser,
               args,
               None,
               uiconst.ID_CLOSE,
               0,
               1]]
         elif buttons == uiconst.YESNO:
-            btns = [[mls.UI_CMD_YES,
+            btns = [[localization.GetByLabel('UI/Common/Buttons/Yes'),
               self.ButtonResult,
               args,
               None,
               uiconst.ID_YES,
               1,
-              0], [mls.UI_CMD_NO,
+              0], [localization.GetByLabel('UI/Common/Buttons/No'),
               self.ButtonResult,
               args,
               None,
@@ -140,13 +143,13 @@ class AgentDialogueWindow(uicls.Window):
               0,
               0]]
         elif buttons == uiconst.YESNOCANCEL:
-            btns = [[mls.UI_CMD_YES,
+            btns = [[localization.GetByLabel('UI/Common/Buttons/Yes'),
               self.ButtonResult,
               args,
               None,
               uiconst.ID_YES,
               1,
-              0], [mls.UI_CMD_NO,
+              0], [localization.GetByLabel('UI/Common/Buttons/No'),
               self.ButtonResult,
               args,
               None,
@@ -160,8 +163,8 @@ class AgentDialogueWindow(uicls.Window):
               0,
               1]]
         elif buttons == uiconst.CLOSE:
-            btns = [[mls.UI_CMD_CLOSE,
-              self.CloseX,
+            btns = [[localization.GetByLabel('UI/Common/Buttons/Close'),
+              self.CloseByUser,
               args,
               None,
               uiconst.ID_CANCEL,
@@ -323,6 +326,11 @@ class AgentDialogueWindow(uicls.Window):
     def RefreshBrowsers(self):
         self.sr.briefingBrowser.UpdatePosition(fromWhere='AgentDialogueWindow.RefreshBrowsers')
         self.sr.objectiveBrowser.UpdatePosition(fromWhere='AgentDialogueWindow.RefreshBrowsers')
+
+
+
+    def OnUIRefresh(self):
+        pass
 
 
 

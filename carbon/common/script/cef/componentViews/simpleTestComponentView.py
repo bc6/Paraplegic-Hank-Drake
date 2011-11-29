@@ -18,15 +18,15 @@ class SimpleTestComponentView(cef.BaseComponentView):
     @classmethod
     def SetupInputs(cls):
         cls.RegisterComponent(cls)
-        cls._AddInput(cls.TEST_GRAPHIC_ID, -1, cls.MANDATORY, const.cef.COMPONENTDATA_GRAPHIC_ID_TYPE)
-        cls._AddInput(cls.TEST_ID, -1, cls.OPTIONAL, const.cef.COMPONENTDATA_ID_TYPE)
-        cls._AddInput(cls.TEST_STR, '', cls.OPTIONAL, const.cef.COMPONENTDATA_STRING_TYPE)
-        cls._AddInput(cls.TEST_INT, 0, cls.OPTIONAL, const.cef.COMPONENTDATA_INT_TYPE)
-        cls._AddInput(cls.TEST_FLOAT, 0.0, cls.OPTIONAL, const.cef.COMPONENTDATA_FLOAT_TYPE)
-        cls._AddInput(cls.TEST_BOOL, 0, cls.OPTIONAL, const.cef.COMPONENTDATA_BOOL_TYPE)
-        cls._AddInput(cls.TEST_VECTOR, '(0.0,0.0,0.0)', cls.OPTIONAL, const.cef.COMPONENTDATA_FLOAT_VECTOR_AS_STRING_TYPE)
-        cls._AddInput(cls.TEST_COLOR_RGBA, (1.0, 1.0, 1.0, 1.0), cls.OPTIONAL, const.cef.COMPONENTDATA_COLOR_TYPE)
-        cls._AddInput(cls.TEST_COLOR_RGB, (1.0, 1.0, 1.0), cls.OPTIONAL, const.cef.COMPONENTDATA_COLOR_TYPE)
+        cls._AddInput(cls.TEST_GRAPHIC_ID, -1, cls.RECIPE, const.cef.COMPONENTDATA_GRAPHIC_ID_TYPE, displayName='Test Graphic ID')
+        cls._AddInput(cls.TEST_ID, -1, cls.RECIPE, const.cef.COMPONENTDATA_ID_TYPE, displayName='Test ID')
+        cls._AddInput(cls.TEST_STR, '', cls.RECIPE, const.cef.COMPONENTDATA_STRING_TYPE, displayName='Test Str')
+        cls._AddInput(cls.TEST_INT, 0, cls.RECIPE, const.cef.COMPONENTDATA_INT_TYPE, displayName='Test Int')
+        cls._AddInput(cls.TEST_FLOAT, 0.0, cls.RECIPE, const.cef.COMPONENTDATA_FLOAT_TYPE, displayName='Test Float')
+        cls._AddInput(cls.TEST_BOOL, 0, cls.RECIPE, const.cef.COMPONENTDATA_BOOL_TYPE, displayName='Test Bool')
+        cls._AddInput(cls.TEST_VECTOR, '(0.0,0.0,0.0)', cls.RECIPE, const.cef.COMPONENTDATA_FLOAT_VECTOR_AS_STRING_TYPE, displayName='Test Vector')
+        cls._AddInput(cls.TEST_COLOR_RGBA, (1.0, 1.0, 1.0, 1.0), cls.RECIPE, const.cef.COMPONENTDATA_COLOR_TYPE, displayName='Test Color RGBA')
+        cls._AddInput(cls.TEST_COLOR_RGB, (1.0, 1.0, 1.0), cls.RECIPE, const.cef.COMPONENTDATA_COLOR_TYPE, displayName='Test Color RGB')
 
 
 

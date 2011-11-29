@@ -12,17 +12,20 @@ import uix
 import uthread
 import util
 import xtriui
+import localization
+import localizationUtil
 INFINITY = 999999999999999999L
 
 class RegionalMarket(uicls.Window):
     __guid__ = 'form.RegionalMarket'
     default_width = 800
     default_height = 600
+    default_windowID = 'market'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.scope = 'station_inflight'
-        self.SetCaption(mls.UI_MARKET_MARKET)
+        self.SetCaption(localization.GetByLabel('UI/Station/Market'))
         self.sr.main = uiutil.GetChild(self, 'main')
         self.SetMinSize([650, 416])
         self.SetWndIcon('ui_18_128_1')
@@ -30,11 +33,6 @@ class RegionalMarket(uicls.Window):
         self.SetTopparentHeight(0)
         self.sr.market = form.Market(name='marketbase', parent=self.sr.main, state=uiconst.UI_PICKCHILDREN, pos=(0, 0, 0, 0))
         self.sr.market.Startup()
-
-
-
-    def OnEndScale_(self, *args):
-        self.sr.market.OnEndScale_()
 
 
 
@@ -66,7 +64,7 @@ class MarketBase(uicls.Container):
         self.inited = 0
         self.pendingType = None
         self.loadingType = 0
-        self.lastdetailTab = mls.UI_MARKET_MARKETDATA
+        self.lastdetailTab = localization.GetByLabel('UI/Market/MarketData')
         self.lastOnOrderChangeTime = None
         self.refreshOrdersTimer = None
         self.groupListData = None
@@ -82,6 +80,7 @@ class MarketBase(uicls.Container):
         self.settingsInited = 0
         self.OnChangeFuncs = {}
         self.lastid = 0
+        self.marketItemList = []
         self.name = 'MarketBase'
         self.sr.detailTypeID = None
         self.parentDictionary = {}
@@ -108,11 +107,11 @@ class MarketBase(uicls.Container):
         uicls.Line(parent=divider, align=uiconst.TORIGHT)
         uicls.Line(parent=divider, align=uiconst.TOLEFT)
         self.sr.leftSide = leftSide
-        caption = '%s %s' % (cfg.evelocations.Get(session.regionid).name, mls.UI_MARKET_REGIONALMARKET)
+        caption = localization.GetByLabel('UI/Market/RegionalMarket', name=cfg.evelocations.Get(session.regionid).name)
         top = uicls.Container(name='top', parent=leftSide, align=uiconst.TOTOP, height=90)
         top.state = uiconst.UI_NORMAL
-        self.sr.caption = uicls.CaptionLabel(text=caption, parent=top, align=uiconst.TOALL, left=8, top=4, uppercase=0, letterspace=0)
-        combo = uicls.Combo(label=mls.UI_MARKET_RANGEFILTER, parent=top, options=self.GetOptions(), name='marketComboRangeFilter', select=self.GetRange(), align=uiconst.TOPLEFT, pos=(9, 68, 0, 0), callback=self.OnComboChange)
+        self.sr.caption = uicls.EveCaptionMedium(text=caption, parent=top, align=uiconst.TOALL, left=8, top=4)
+        combo = uicls.Combo(label=localization.GetByLabel('UI/Market/RangeFilter'), parent=top, options=self.GetOptions(), name='marketComboRangeFilter', select=self.GetRange(), align=uiconst.TOPLEFT, pos=(9, 68, 0, 0), callback=self.OnComboChange)
         self.sr.filtericon = uicls.Icon(name='icon', parent=top, width=16, height=16, left=combo.width + combo.left + 8, top=68, state=uiconst.UI_NORMAL)
         tabs = uicls.TabGroup(name='tabparent', parent=leftSide)
         uicls.Container(name='push', align=uiconst.TOLEFT, width=const.defaultPadding, parent=leftSide)
@@ -121,49 +120,44 @@ class MarketBase(uicls.Container):
         uicls.Container(name='push', align=uiconst.TOTOP, height=const.defaultPadding, parent=leftSide)
         self.sr.sbTabs = tabs
         self.sr.tabs = uicls.TabGroup(name='tabparent', parent=self)
-        self.sr.grouplist = uicls.Edit(parent=self, padding=(const.defaultPadding,
-         const.defaultPadding,
-         const.defaultPadding,
-         const.defaultPadding), readonly=1, hideBackground=1)
-        self.sr.grouplist.AllowResizeUpdates(0)
-        uicls.Frame(parent=self.sr.grouplist, color=(1.0, 1.0, 1.0, 0.25))
+        self.sr.grouplist = uicls.ScrollArea(parent=self, padding=const.defaultPadding)
         self.sr.myorders = form.MarketOrders(name='orders', parent=self, pos=(const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding))
         searchparent = uicls.Container(name='searchparent', parent=leftSide, align=uiconst.TOTOP, padBottom=const.defaultPadding)
-        btn = uicls.Button(parent=searchparent, label=mls.UI_CMD_SEARCH, func=self.Search, btn_default=1, idx=0, align=uiconst.TOPRIGHT)
+        btn = uicls.Button(parent=searchparent, label=localization.GetByLabel('UI/Common/Search'), func=self.Search, btn_default=1, idx=0, align=uiconst.TOPRIGHT)
         inpt = uicls.SinglelineEdit(name='edit', parent=searchparent, pos=(0, 0, 0, 0), padRight=btn.width + 6, maxLength=64, align=uiconst.TOTOP)
         inpt.OnReturn = self.Search
         searchparent.height = max(btn.height, inpt.height)
         self.sr.searchInput = inpt
         self.sr.soaCont = uicls.Container(name='show only available', align=uiconst.TOBOTTOM, height=16, state=uiconst.UI_HIDDEN, parent=leftSide)
-        self.soaCb = uicls.Checkbox(text=mls.UI_MARKET_SHOWONLYAVAIL, parent=self.sr.soaCont, configName='showonlyavailable', retval=None, checked=settings.user.ui.Get('showonlyavailable', 1), callback=self.OnCheckboxChange, align=uiconst.TOTOP)
+        self.soaCb = uicls.Checkbox(text=localization.GetByLabel('UI/Market/ShowOnlyAvailable'), parent=self.sr.soaCont, configName='showonlyavailable', retval=None, checked=settings.user.ui.Get('showonlyavailable', 1), callback=self.OnCheckboxChange, align=uiconst.TOTOP)
         self.sr.quickButtons = uicls.Container(name='quickButtons', align=uiconst.TOBOTTOM, height=20, padTop=4, state=uiconst.UI_HIDDEN, parent=leftSide)
-        newFolder = uicls.Button(parent=self.sr.quickButtons, label=mls.UI_CMD_NEWFOLDER, align=uiconst.TOTOP, func=self.NewFolderClick, args=0)
+        newFolder = uicls.Button(parent=self.sr.quickButtons, label=localization.GetByLabel('UI/Market/NewFolder'), align=uiconst.TOTOP, func=self.NewFolderClick, args=0)
         self.sr.quickButtons.height = newFolder.height
         self.sr.detailsparent = uicls.Container(name='details', parent=self)
         self.sr.settingsparent = uicls.Container(name='settings', parent=self, padding=(const.defaultPadding,
          0,
          const.defaultPadding,
          0))
-        maintabs = [[mls.UI_MARKET_BROWSE,
+        maintabs = [[localization.GetByLabel('UI/Market/Browse'),
           None,
           self,
-          'browse'], [mls.UI_MARKET_SEARCH,
+          'browse'], [localization.GetByLabel('UI/Market/Search'),
           searchparent,
           self,
-          'search'], [mls.UI_MARKET_QUICKBAR,
+          'search'], [localization.GetByLabel('UI/Market/QuickBar'),
           None,
           self,
           'quickbar']]
-        subtabs = [[mls.UI_MARKET_DETAILS,
+        subtabs = [[localization.GetByLabel('UI/Common/Details'),
           self.sr.detailsparent,
           self,
-          'details'], [mls.UI_MARKET_GROUPS,
+          'details'], [localization.GetByLabel('UI/Common/Groups'),
           self.sr.grouplist,
           self,
-          'groups'], [mls.UI_MARKET_MYORDERS,
+          'groups'], [localization.GetByLabel('UI/Market/Orders/MyOrders'),
           self.sr.myorders,
           self,
           'myorders']]
@@ -172,11 +166,11 @@ class MarketBase(uicls.Container):
              const.defaultPadding,
              const.defaultPadding,
              const.defaultPadding))
-            subtabs.append([mls.UI_MARKET_CORPORDERS,
+            subtabs.append([localization.GetByLabel('UI/Market/Orders/CorporationOrders'),
              self.sr.corporders,
              self,
              'corporders'])
-        subtabs.append([mls.UI_GENERIC_SETTINGS,
+        subtabs.append([localization.GetByLabel('UI/Market/Settings'),
          self.sr.settingsparent,
          self,
          'settings'])
@@ -185,6 +179,7 @@ class MarketBase(uicls.Container):
         self.sr.typescroll = uicls.Scroll(name='typescroll', parent=leftSide)
         self.sr.typescroll.multiSelect = 0
         self.sr.typescroll.OnSelectionChange = self.CheckTypeScrollSelection
+        self.sr.typescroll.GetContentContainer().OnDropData = self.OnQuickbarScrollDrop
         self.sr.sbTabs.Startup(maintabs, 'tbselectortabs_%s' % self.idName, autoselecttab=1, UIIDPrefix='marketTab')
         self.sr.tabs.Startup(subtabs, 'marketsubtabs_%s' % self.idName, autoselecttab=1, UIIDPrefix='marketTab')
         sm.RegisterNotify(self)
@@ -207,9 +202,9 @@ class MarketBase(uicls.Container):
 
     def GetOptions(self):
         if eve.session.stationid:
-            options = [(mls.UI_GENERIC_STATION, const.rangeStation), (mls.UI_GENERIC_SOLARSYSTEM, const.rangeSolarSystem), (mls.UI_GENERIC_REGION, const.rangeRegion)]
+            options = [(localization.GetByLabel('UI/Common/LocationTypes/Station'), const.rangeStation), (localization.GetByLabel('UI/Common/LocationTypes/SolarSystem'), const.rangeSolarSystem), (localization.GetByLabel('UI/Common/LocationTypes/Region'), const.rangeRegion)]
         else:
-            options = [(mls.UI_GENERIC_SOLARSYSTEM, const.rangeSolarSystem), (mls.UI_GENERIC_REGION, const.rangeRegion)]
+            options = [(localization.GetByLabel('UI/Common/LocationTypes/SolarSystem'), const.rangeSolarSystem), (localization.GetByLabel('UI/Common/LocationTypes/Region'), const.rangeRegion)]
         return options
 
 
@@ -281,7 +276,7 @@ class MarketBase(uicls.Container):
             if reason != 'Expiry':
                 if self.lastOnOrderChangeTime and self.OnOrderChangeTimer is None:
                     intval = 15000
-                    diff = blue.os.TimeDiffInMs(self.lastOnOrderChangeTime)
+                    diff = blue.os.TimeDiffInMs(self.lastOnOrderChangeTime, blue.os.GetWallclockTime())
                     if diff > intval:
                         self._OnOwnOrderChanged(order.typeID)
                     else:
@@ -302,7 +297,7 @@ class MarketBase(uicls.Container):
                         self.LoadMarketList()
                     self.sr.tabs.ReloadVisible()
                     self.OnOrderChangeTimer = None
-                    self.lastOnOrderChangeTime = blue.os.GetTime()
+                    self.lastOnOrderChangeTime = blue.os.GetWallclockTime()
                 elif orderTypeID == self.sr.detailTypeID:
                     self.sr.reloadBtn.state = uiconst.UI_NORMAL
             except AttributeError:
@@ -321,13 +316,13 @@ class MarketBase(uicls.Container):
                 combo.LoadOptions(self.GetOptions(), newValue)
                 if oldValue != newValue:
                     self.ReloadMarketListTab()
-            self.sr.caption.text = '%s %s' % (cfg.evelocations.Get(session.regionid).name, mls.UI_MARKET_REGIONALMARKET)
+            self.sr.caption.text = localization.GetByLabel('UI/Market/RegionalMarket', name=cfg.evelocations.Get(session.regionid).name)
 
 
 
     def GetQuickItemMenu(self, btn, *args):
-        m = [(mls.UI_CMD_REMOVE, self.RemoveFromQuickBar, (btn.sr.node,))]
-        m += [(mls.UI_CMD_SHOWINFO, self.ShowInfo, (btn.sr.node.invtype.typeID,))]
+        m = [(localization.GetByLabel('UI/Market/Remove'), self.RemoveFromQuickBar, (btn.sr.node,))]
+        m += [(localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo, (btn.sr.node.invtype.typeID,))]
         if eve.session.role & service.ROLEMASK_ELEVATEDPLAYER:
             m.append(None)
             m += sm.GetService('menu').GetGMTypeMenu(btn.sr.node.typeID)
@@ -337,12 +332,6 @@ class MarketBase(uicls.Container):
 
     def RemoveFromQuickBar(self, node):
         sm.GetService('menu').RemoveFromQuickBar(node)
-
-
-
-    def OnEndScale_(self, *args):
-        if self.sr.grouplist and self.sr.grouplist.state != uiconst.UI_HIDDEN:
-            uthread.pool('MarketBase::OnEndScale_', self.ShowGroupPage)
 
 
 
@@ -386,8 +375,9 @@ class MarketBase(uicls.Container):
                 data.ignoreRightClick = 1
                 data.showinfo = 1
                 data.typeID = invType.typeID
-                scrolllist.append((invType.name.lower(), listentry.Get('GenericMarketItem', data=data)))
+                scrolllist.append((invType.name, listentry.Get('GenericMarketItem', data=data)))
 
+            scrolllist = [ item[1] for item in localizationUtil.Sort(scrolllist, key=lambda x: x[0]) ]
         else:
             marketGroupID = None
             level = 0
@@ -423,9 +413,10 @@ class MarketBase(uicls.Container):
                  'MenuFunction': self.SelectFolderMenu}
                 if marketGroupInfo.hasTypes and getattr(self, 'groupListData', None) and self.groupListData.marketGroupID != marketGroupInfo.marketGroupID:
                     uicore.registry.SetListGroupOpenState(groupID, 0)
-                scrolllist.append(((marketGroupInfo.hasTypes, marketGroupInfo.marketGroupName.lower()), listentry.Get('Group', data)))
+                scrolllist.append(((marketGroupInfo.hasTypes, marketGroupInfo.marketGroupName), listentry.Get('Group', data)))
 
-        scrolllist = uiutil.SortListOfTuples(scrolllist)
+            scrolllist = [ item for item in localizationUtil.Sort(scrolllist, key=lambda x: x[0][1]) ]
+            scrolllist = [ item[1] for item in sorted(scrolllist, key=lambda x: x[0][0]) ]
         return scrolllist
 
 
@@ -458,7 +449,7 @@ class MarketBase(uicls.Container):
                         self.sr.typescroll.SelectNode(entry)
                         self.groupListData = entry.marketGroupInfo
                         self.sr.typescroll.ShowNodeIdx(entry.idx)
-                        self.sr.tabs.ShowPanelByName(mls.UI_MARKET_GROUPS)
+                        self.sr.tabs.ShowPanelByName(localization.GetByLabel('UI/Common/Groups'))
 
 
         finally:
@@ -527,30 +518,36 @@ class MarketBase(uicls.Container):
 
 
 
-    def GetRequirement(self, invType, freeslots):
+    def GetRequirement(self, invType, freeslots, parent):
         requiredSkills = sm.GetService('info').GetRequiredSkills(invType.typeID)
-        missingSkill = ''
+        missingSkill = localization.GetByLabel('UI/Market/Marketbase/RequirementsMet')
         haveSkills = 1
         isSkill = cfg.invgroups.Get(invType.groupID).categoryID == const.categorySkill
         haveThisSkill = False
         mine = self.GetMySkills()
+        ret = uicls.Container(parent=parent, align=uiconst.TOPLEFT)
         if isSkill:
             if mine.get(invType.typeID, None) != None:
                 haveThisSkill = True
         if requiredSkills:
             for (skillID, level,) in requiredSkills:
                 if skillID not in mine or mine[skillID] < level:
-                    missingSkill = ' ' + mls.UI_MARKET_MISSINGSKILLLEVEL % {'skill': cfg.invtypes.Get(skillID).name,
-                     'level': int(level)}
+                    missingSkill = localization.GetByLabel('UI/Market/Marketbase/MissingSkillLevel', skillID=skillID, level=int(level))
                     haveSkills = 0
                     break
 
         if isSkill and haveThisSkill:
-            ret = '\n                <table cellspacing=0 cellpadding=0 height=20 width=66>\n                    <tr height=16>\n                        <td width=22 valign=top>\n                            <img src="icon:38_193" size=16 alt="%s">\n                        </td>\n\n\n                ' % (mls.UI_GENERIC_YOUALREADYKNOWTHISSKILL,)
+            skillIcon = uicls.Icon(parent=ret, icon='ui_38_16_193', align=uiconst.TOLEFT, hint=localization.GetByLabel('UI/Market/Marketbase/AlreadyKnowSkill'), width=24, height=24, ignoreSize=True)
+            ret.width += skillIcon.width + const.defaultPadding
+            ret.height = max(ret.height, skillIcon.height)
         elif requiredSkills:
-            ret = '\n                <table cellspacing=0 cellpadding=0 height=32 width=66>\n                    <tr height=32>\n                        <td width=22 valign=top>\n                            <img src="icon:50_11" bgcolor=%s size=22 alt="%s%s">\n                        </td>\n\n\n                ' % (['#33ff0000', '#3300ff00'][haveSkills], mls.UI_GENERIC_REQUIREDSKILL, missingSkill)
-        else:
-            ret = '\n                <table cellspacing=0 cellpadding=0>\n                    <tr height=32>\n                '
+            skillContainer = uicls.Container(parent=ret, align=uiconst.TOLEFT)
+            skillIcon = uicls.Icon(parent=skillContainer, icon='ui_50_64_11', hint=missingSkill, width=24, height=24, ignoreSize=True)
+            uicls.Fill(parent=skillContainer, color=[(1, 0, 0, 0.3), (0, 1, 0, 0.3)][haveSkills])
+            skillContainer.width = skillIcon.width
+            skillContainer.height = skillIcon.height
+            ret.width += skillIcon.width + const.defaultPadding
+            ret.height = max(ret.height, skillIcon.height)
         haveSlot = 0
         havePower = 0
         haveCpu = 0
@@ -585,14 +582,25 @@ class MarketBase(uicls.Container):
             if powerEffect:
                 cpuLoad = int(cpuLoad)
                 powerLoad = int(powerLoad)
-                ret += '\n                        <td width=22 align=center><img src="icon:ui_2_64_7" bgcolor=%s size=22 alt="%s"><br><font style="font-size:8; letter-spacing:1px">%s</font></td>\n                        <td width=22 align=center><img src="icon:ui_12_64_7" bgcolor=%s size=22 alt="%s" margin-left=-10><br><font style="font-size:8; letter-spacing:1px">%s</font></td>\n\n                ' % (['#33ff0000', '#3300ff00'][havePower],
-                 mls.UI_GENERIC_POWERLOAD,
-                 powerLoad,
-                 ['#33ff0000', '#3300ff00'][haveCpu],
-                 mls.UI_GENERIC_CPULOAD,
-                 cpuLoad)
+                powerContainer = uicls.Container(parent=ret, align=uiconst.TOLEFT, padLeft=const.defaultPadding / 2)
+                powerIcon = uicls.Icon(parent=powerContainer, icon='ui_2_64_7', hint=localization.GetByLabel('UI/Market/Marketbase/PowerLoad'), width=24, height=24, ignoreSize=True, align=uiconst.CENTER)
+                powerLabel = uicls.EveLabelSmallBold(parent=powerContainer, align=uiconst.CENTERBOTTOM, text=powerLoad, idx=0)
+                powerLabel.top = -powerLabel.height - const.defaultPadding / 2
+                uicls.Fill(parent=powerContainer, color=[(1, 0, 0, 0.3), (0, 1, 0, 0.3)][havePower], width=powerIcon.width, height=powerIcon.height, align=uiconst.CENTER)
+                powerContainer.width = max(powerIcon.width, powerLabel.width)
+                powerContainer.height = powerIcon.height
+                ret.width += powerContainer.width + const.defaultPadding
+                ret.height = max(ret.height, powerIcon.height)
+                cpuContainer = uicls.Container(parent=ret, align=uiconst.TOLEFT, padLeft=const.defaultPadding / 2)
+                cpuIcon = uicls.Icon(parent=cpuContainer, icon='ui_12_64_7', hint=localization.GetByLabel('UI/Market/Marketbase/CPULoad'), width=24, height=24, ignoreSize=True, align=uiconst.CENTER)
+                cpuLabel = uicls.EveLabelSmallBold(parent=cpuContainer, align=uiconst.CENTERBOTTOM, text=cpuLoad, idx=0)
+                cpuLabel.top = -cpuLabel.height - const.defaultPadding / 2
+                uicls.Fill(parent=cpuContainer, color=[(1, 0, 0, 0.3), (0, 1, 0, 0.3)][haveCpu], width=cpuIcon.width, height=cpuIcon.height, align=uiconst.CENTER)
+                cpuContainer.width = max(cpuIcon.width, cpuLabel.width)
+                cpuContainer.height = cpuIcon.height
+                ret.width += cpuContainer.width + const.defaultPadding
+                ret.height = max(ret.height, cpuIcon.height)
                 done = 1
-        ret += '\n            </tr>\n          </table>\n        '
         return ret
 
 
@@ -602,67 +610,97 @@ class MarketBase(uicls.Container):
             return 
         self.updatingGroups = 0
         self.PopulateAsksForMyRange()
+        if self.sr.grouplist.content:
+            self.sr.grouplist.content.Close()
+        contentContainer = uicls.Container(parent=self.sr.grouplist.clipper, align=uiconst.TOPLEFT, width=self.sr.grouplist.clipper.GetAbsoluteSize()[0], state=uiconst.UI_NORMAL)
+
+        def SetWidth(width):
+            if getattr(self, '_refreshHeightThread', None):
+                self._refreshHeightThread.kill()
+            self._refreshHeightThread = uthread.new(RefreshContentHeight, width)
+
+
+
+        def RefreshContentHeight(width):
+            blue.synchro.Sleep(100)
+            contentContainer.width = width
+            blue.pyos.synchro.Yield()
+            newHeight = sum([ item.height + item.padTop + item.padBottom for item in contentContainer.children ])
+            positionBeforeResize = self.sr.grouplist.GetVerticalScrollProportion()
+            if newHeight != contentContainer.height:
+                contentContainer.height = newHeight
+                self.sr.grouplist.ScrollToProportion(positionBeforeResize, 1)
+            self._refreshHeightThread = None
+
+
+        contentContainer.SetWidth = SetWidth
         try:
-            self.sr.grouplist.LoadHTML('<body>%s ...</body>' % mls.UI_GENERIC_LOADING, newThread=0)
-            html = '\n                <body>\n                <br>\n                '
+            defaultLabel = uicls.Label(parent=contentContainer, text=localization.GetByLabel('UI/Market/Marketbase/Loading'), left=const.defaultPadding, top=const.defaultPadding, align=uiconst.TOTOP)
             group = self.groupListData
             if group:
                 ship = None
                 if eve.session.shipid:
                     ship = sm.GetService('godma').GetItem(eve.session.shipid)
                 freeslots = self.GetActiveShipSlots()
-                width = self.sr.grouplist.GetContentWidth() - 96
                 sorted = []
                 self.mine = self.GetMySkills()
                 for data in self.FilterItemsForGroupPage(group):
                     invType = cfg.invtypes.Get(data.typeID)
-                    sorted.append((invType.name.lower(), data))
+                    sorted.append((invType.name, data))
 
-                sorted = uiutil.SortListOfTuples(sorted)
+                sorted = [ item[1] for item in localizationUtil.Sort(sorted, key=lambda x: x[0]) ]
+                contentContainer.Flush()
                 if not sorted:
-                    html += '\n                        %s\n                        ' % mls.UI_SHARED_MARKETBASE_SHOWGROUPLIST_MSG1
+                    noItemsText = localization.GetByLabel('UI/Market/Marketbase/NoItemsAvailable')
                     if settings.user.ui.Get('showonlyavailable', 1):
-                        html += '\n                            <br>%s\n                            ' % mls.UI_SHARED_MARKETBASE_SHOWGROUPLIST_MSG2
+                        noItemsText += '<br><br>' + localization.GetByLabel('UI/Market/Marketbase/DisableShowOnlyAvailable')
+                    noItemsLabel = uicls.Label(parent=contentContainer, text=noItemsText, padLeft=const.defaultPadding * 2, top=const.defaultPadding * 2, align=uiconst.TOTOP)
                 for data in sorted:
                     invtype = cfg.invtypes.Get(data.typeID)
-                    if data.qty:
-                        buttonTxt = mls.UI_CMD_BUY
-                    else:
-                        buttonTxt = mls.UI_CMD_PLACEBUYORDER
-                    btn = '<span style=text-align:right>'
-                    btn += '<FORM ACTION="localsvc:service=marketutils&method=ProcessRequest&subMethod=Buy&typeID=%s" METHOD="get"><INPUT TYPE="submit" NAME="" VALUE="%s"></FORM>' % (data.typeID, buttonTxt)
-                    btn += '<FORM ACTION="localsvc:service=marketutils&method=ProcessRequest&subMethod=ShowMarketDetails&typeID=%s" METHOD="get"><INPUT TYPE="submit" NAME="" VALUE="%s"><br></span></FORM>' % (data.typeID, mls.UI_MARKET_VIEWDETAILS)
+                    headerContainer = uicls.Container(parent=contentContainer, align=uiconst.TOTOP, height=64, padTop=const.defaultPadding * 2, padBottom=const.defaultPadding * 2, state=uiconst.UI_PICKCHILDREN)
+                    typeImage = uicls.MarketGroupItemImage(parent=headerContainer, align=uiconst.TOLEFT, width=64, height=64, left=const.defaultPadding * 2, state=uiconst.UI_NORMAL)
+                    typeImage.attrs = uiutil.Bunch(width=64, height=64, src='typeicon:%s' % data.typeID, bumped=True, showfitting=True, showtechlevel=True)
+                    typeImage.typeName = invtype.name
+                    typeImage.LoadTypeIcon(data.typeID)
+                    typeNameLabel = uicls.EveCaptionMedium(parent=headerContainer, align=uiconst.TOPLEFT, left=typeImage.left + typeImage.width + const.defaultPadding * 2, text=invtype.name)
+                    requirementsContainer = self.GetRequirement(invtype, freeslots, headerContainer)
+                    requirementsContainer.left = typeNameLabel.left
+                    requirementsContainer.top = typeNameLabel.top + typeNameLabel.height + const.defaultPadding
+                    showInfoIcon = uicls.InfoIcon(parent=headerContainer, align=uiconst.TOPLEFT, size=16, typeID=data.typeID, left=typeNameLabel.left + typeNameLabel.width + const.defaultPadding, top=typeNameLabel.top + (typeNameLabel.height - 16) / 2, hint=localization.GetByLabel('UI/Commands/ShowInfo'))
+                    desc = invtype.description.replace('\r\n', '<br>').strip()
+                    if desc.endswith('<br>'):
+                        desc = desc[:(len(desc) - 4)]
+                    descriptionLabel = uicls.Label(parent=contentContainer, align=uiconst.TOTOP, text=desc, padTop=const.defaultPadding * 2, padLeft=const.defaultPadding * 2, state=uiconst.UI_NORMAL)
+                    stationLabel = localization.GetByLabel('UI/Common/LocationTypes/Station')
+                    systemLabel = localization.GetByLabel('UI/Common/LocationTypes/System')
+                    regionLabel = localization.GetByLabel('UI/Common/LocationTypes/Region')
+                    where = {const.rangeStation: stationLabel,
+                     const.rangeSolarSystem: systemLabel,
+                     const.rangeRegion: regionLabel}[self.GetRange()]
+                    bestPriceLabel = uicls.EveLabelMedium(parent=contentContainer, align=uiconst.TOTOP, text=localization.GetByLabel('UI/Market/Marketbase/BestPriceIn', place=where), padTop=20, padLeft=const.defaultPadding * 2)
+                    priceLabel = uicls.EveCaptionMedium(parent=contentContainer, align=uiconst.TOTOP, text=data.fmt_price, padLeft=const.defaultPadding * 2)
                     jump = ''
                     if data.qty:
                         jumps = int(data.jumps)
                         if jumps == 0:
-                            jump = ' %s' % mls.UI_MARKET_INTHISSYSTEM
+                            jump = localization.GetByLabel('UI/Market/Marketbase/InThisSystem')
                         elif jumps == -1:
-                            jump = ' %s' % mls.UI_MARKET_INTHISSTATION
-                        jump = ', %s' % [mls.UI_MARKET_JUMPAWAY, mls.UI_MARKET_JUMPSAWAY][(data.jumps > 1)] % {'jumps': data.jumps}
-                    desc = invtype.description.replace('\r\n', '<br>').strip()
-                    if desc.endswith('<br>'):
-                        desc = desc[:(len(desc) - 4)]
-                    where = {const.rangeStation: mls.UI_GENERIC_STATION,
-                     const.rangeSolarSystem: mls.UI_GENERIC_SOLARSYSTEMSYSTEM,
-                     const.rangeRegion: mls.UI_GENERIC_REGION}[self.GetRange()]
-                    html += '\n                        <p>\n                        <img style=margin-right:10;margin-bottom:4 src="typeicon:typeID=%s&bumped=1&showFitting=1&showTechLevel=1" align=left>\n                        %s\n                        <font size=20 margin-left=20>%s</font>\n                        <a href=showinfo:%s><img style:vertical-align:bottom src="icon:38_208" size=16 alt="%s"></a>\n                        <br>\n                        </p>\n                        <font size=12>%s</font>\n                        <br><br>\n                        <font size=12>%s</font>\n                        <br>\n                        <font size=20>%s</font>\n                        <br>\n                        <font size=12>%s%s<br></font>\n                        %s\n\n                    ' % (data.typeID,
-                     self.GetRequirement(invtype, freeslots),
-                     invtype.name,
-                     data.typeID,
-                     mls.UI_CMD_SHOWINFO,
-                     desc,
-                     mls.UI_MARKET_BESTPRICEIN % {'where': where},
-                     data.fmt_price,
-                     mls.UI_MARKET_UNITAVAILABLE % {'units': data.fmt_qty},
-                     jump,
-                     btn)
-                    html += '<hr>'
+                            jump = localization.GetByLabel('UI/Market/Marketbase/InThisStation')
+                        jump = localization.GetByLabel('UI/Market/Marketbase/JumpsAway', jump=data.jumps)
+                    unitsAvailableLabel = uicls.EveLabelMedium(parent=contentContainer, align=uiconst.TOTOP, text=localization.GetByLabel('UI/Market/Marketbase/UnitsAvailable', quantity=data.qty, numberOfJumps=jump), padLeft=const.defaultPadding * 2)
+                    buttonContainer = uicls.Container(parent=contentContainer, align=uiconst.TOTOP)
+                    viewDetailsButton = uicls.Button(parent=buttonContainer, align=uiconst.TORIGHT, label=localization.GetByLabel('UI/Market/Marketbase/CommandViewDetails'), func=sm.GetService('marketutils').ShowMarketDetails, args=(data.typeID, None), left=const.defaultPadding * 2)
+                    buyLabel = localization.GetByLabel('UI/Market/MarketQuote/CommandBuy') if data.qty else localization.GetByLabel('UI/Market/Marketbase/CommandPlaceBuyOrder')
+                    buyButton = uicls.Button(parent=buttonContainer, align=uiconst.TORIGHT, label=buyLabel, func=sm.GetService('marketutils').Buy, args=(data.typeID, None), left=const.defaultPadding)
+                    buttonContainer.height = viewDetailsButton.height + const.defaultPadding
+                    divider = uicls.Line(parent=contentContainer, align=uiconst.TOTOP, color=(1, 1, 1, 1), padTop=const.defaultPadding * 2, padLeft=const.defaultPadding * 2, padRight=const.defaultPadding * 2)
 
             else:
-                html += '\n                    %s\n                    ' % mls.UI_MARKET_SELECTGROUPTOBROWSE
-            html += '\n                </body>\n                '
-            self.sr.grouplist.LoadHTML(html, newThread=0)
+                contentContainer.Flush()
+                selectGroupLabel = uicls.Label(parent=contentContainer, text=localization.GetByLabel('UI/Market/Marketbase/SelectGroupToBrowse'), padLeft=const.defaultPadding * 2, top=const.defaultPadding * 2, align=uiconst.TOTOP)
+            contentContainer.height = sum([ item.height + item.padTop + item.padBottom for item in contentContainer.children ])
+            self.sr.grouplist.SetContent(contentContainer)
+            self.sr.grouplist.UpdateScrollProportion()
 
         finally:
             if self.destroyed:
@@ -674,7 +712,7 @@ class MarketBase(uicls.Container):
 
     def Load(self, key):
         if key == 'marketdata':
-            self.lastdetailTab = mls.UI_MARKET_MARKETDATA
+            self.lastdetailTab = localization.GetByLabel('UI/Market/MarketData')
             self.LoadMarketData()
         elif key == 'quickbar':
             self.sr.filtericon.state = uiconst.UI_HIDDEN
@@ -682,7 +720,7 @@ class MarketBase(uicls.Container):
         elif key == 'details':
             self.LoadDetails()
         elif key == 'pricehistory':
-            self.lastdetailTab = mls.UI_MARKET_PRICEHISTORY
+            self.lastdetailTab = localization.GetByLabel('UI/Market/Marketbase/PriceHistory')
             self.LoadPriceHistory()
         elif key == 'browse':
             self.sr.filtericon.state = uiconst.UI_NORMAL
@@ -723,13 +761,14 @@ class MarketBase(uicls.Container):
         self.sr.quickButtons.state = uiconst.UI_HIDDEN
         search = self.sr.searchInput.GetValue().lower()
         if not search or search == ' ':
-            self.sr.typescroll.Load(contentList=[listentry.Get('Generic', {'label': mls.UI_MARKET_PLEASETYPEANDSEARCH})])
+            pleaseTypeAndSearchLabel = localization.GetByLabel('UI/Market/PleaseTypeAndSearch')
+            self.sr.typescroll.Load(contentList=[listentry.Get('Generic', {'label': pleaseTypeAndSearchLabel})])
             return 
         self.sr.typescroll.Load(contentList=[])
-        self.sr.typescroll.ShowHint(mls.UI_GENERIC_SEARCHING)
+        self.sr.typescroll.ShowHint(localization.GetByLabel('UI/Common/Searching'))
         t = uix.TakeTime('Market::GetSearchResult', self.GetSearchResult)
         if not t:
-            t = [listentry.Get('Generic', {'label': mls.UI_MARKET_NOTHINGFOUNDWITHSEARCH % {'search': search}})]
+            t = [listentry.Get('Generic', {'label': localization.GetByLabel('UI/Market/NothingFoundWithSearch', search=search)})]
         self.sr.typescroll.ShowHint()
         self.sr.typescroll.Load(contentList=t)
 
@@ -740,41 +779,41 @@ class MarketBase(uicls.Container):
         if not self.detailsInited:
             uicls.Container(name='push', parent=self.sr.detailsparent, align=uiconst.TOTOP, height=const.defaultPadding)
             top = uicls.Container(name='tabparent', align=uiconst.TOTOP, height=90, parent=self.sr.detailsparent, clipChildren=1)
-            self.sr.reloadBtn = uicls.Button(parent=top, label=mls.UI_GENERIC_RELOAD, pos=(const.defaultPadding,
+            self.sr.reloadBtn = uicls.Button(parent=top, label=localization.GetByLabel('UI/Market/Marketbase/Reload'), pos=(const.defaultPadding,
              0,
              0,
              0), func=self.OnReload, align=uiconst.TOPRIGHT)
             self.sr.reloadBtn.state = uiconst.UI_HIDDEN
-            self.sr.detailIcon = uicls.DraggableIcon(parent=top, align=uiconst.TOPLEFT, state=uiconst.UI_HIDDEN, left=12, top=2)
-            self.sr.techIcon = uicls.Sprite(name='techIcon', parent=top, align=uiconst.TOPLEFT, left=self.sr.detailIcon.left + 1, top=self.sr.detailIcon.top + 1, width=16, height=16, idx=0, state=uiconst.UI_HIDDEN)
-            self.sr.detailGroupTrace = uicls.Label(text='', parent=top, top=2, left=86, state=uiconst.UI_NORMAL)
+            self.sr.detailIcon = uicls.MarketGroupItemImage(parent=top, align=uiconst.TOPLEFT, name='detailIcon', left=12, top=2, width=64, height=64)
+            self.sr.detailIcon.Hide()
+            self.sr.detailGroupTrace = uicls.EveLabelMedium(text='', parent=top, top=2, left=86, state=uiconst.UI_NORMAL)
             self.sr.detailGroupTrace.OnClick = (self.ClickGroupTrace, self.sr.detailGroupTrace)
-            self.sr.detailTop = uicls.CaptionLabel(text=mls.UI_MARKET_NOTYPESELECTED, parent=top, align=uiconst.TOPLEFT)
+            noTypeSelectedLabel = localization.GetByLabel('UI/Market/Marketbase/NoTypeSelected')
+            self.sr.detailTop = uicls.EveCaptionMedium(text=noTypeSelectedLabel, parent=top, align=uiconst.TOPLEFT)
             self.sr.detailTop.left = 86
             self.sr.detailTop.top = 20
             self.sr.detailInfoicon = uicls.InfoIcon(size=16, left=78, top=0, parent=top, idx=0, state=uiconst.UI_HIDDEN)
             self.sr.detailInfoicon.OnClick = self.ShowInfoFromDetails
             self.sr.detailTypeID = None
             typeID = self.GetTypeIDFromDetails()
-            self.sr.filtersText = uicls.Label(text='', parent=top, autowidth=False, align=uiconst.TOPLEFT, top=50, state=uiconst.UI_NORMAL, left=86)
+            self.sr.filtersText = uicls.EveLabelMedium(text='', parent=top, align=uiconst.TOPLEFT, top=50, state=uiconst.UI_NORMAL, left=86)
             self.sr.detailtabs = uicls.TabGroup(name='tabparent', parent=self.sr.detailsparent)
             self.sr.marketdata = uicls.Container(name='marketinfo', parent=self.sr.detailsparent, pos=(0, 0, 0, 0))
             self.sr.pricehistory = xtriui.PriceHistoryParent(name='pricehistory', parent=self.sr.detailsparent, pos=(0, 0, 0, 0))
-            detailtabs = [[mls.UI_MARKET_MARKETDATA,
+            detailtabs = [[localization.GetByLabel('UI/Market/MarketData'),
               self.sr.marketdata,
               self,
-              'marketdata'], [mls.UI_MARKET_PRICEHISTORY,
+              'marketdata'], [localization.GetByLabel('UI/Market/Marketbase/PriceHistory'),
               self.sr.pricehistory,
               self,
               'pricehistory']]
             self.sr.detailtabs.Startup(detailtabs, 'marketdetailtabs', autoselecttab=1, UIIDPrefix='marketDetailsTab')
-            self.sr.detailtabs.state = uiconst.UI_HIDDEN
             self.detailsInited = 1
             return 
         if self.lastdetailTab:
             self.sr.detailtabs.ShowPanelByName(self.lastdetailTab)
         filtersInUse = self.FiltersInUse2()
-        self.sr.filtersText.text = ['', mls.UI_MARKET_FILTERS][bool(filtersInUse)]
+        self.sr.filtersText.text = ['', localization.GetByLabel('UI/Market/Marketbase/MarketFilters')][bool(filtersInUse)]
         self.sr.filtersText.hint = ['', filtersInUse][bool(filtersInUse)]
 
 
@@ -785,7 +824,7 @@ class MarketBase(uicls.Container):
         if self.sr.sbTabs.GetSelectedArgs() == 'browse':
             self.LoadMarketList()
         self.OnOrderChangeTimer = None
-        self.lastOnOrderChangeTime = blue.os.GetTime()
+        self.lastOnOrderChangeTime = blue.os.GetWallclockTime()
 
 
 
@@ -818,7 +857,7 @@ class MarketBase(uicls.Container):
     def ClickGroupTrace(self, trace, *args):
         if trace.sr.marketGroupInfo:
             self.groupListData = trace.sr.marketGroupInfo
-            self.sr.tabs.ShowPanelByName(mls.UI_MARKET_GROUPS)
+            self.sr.tabs.ShowPanelByName(localization.GetByLabel('UI/Common/Groups'))
 
 
 
@@ -833,13 +872,14 @@ class MarketBase(uicls.Container):
                 self.LoadOldQuickBar()
         scrolllist = self.LoadQuickBarItems()
         if self.selectFolder:
-            result = self.ListWnd([], 'item', mls.UI_MARKET_QUICKBAR_SELECTFOLDER, None, 1, contentList=scrolllist)
+            selectAFolderLabel = localization.GetByLabel('UI/Market/Marketbase/SelectAFolder')
+            result = self.ListWnd([], 'item', selectAFolderLabel, None, 1, contentList=scrolllist)
             if not result:
                 return False
             (id, parentDepth,) = result
             if self.depth + 1 + parentDepth + 1 > 7:
-                msg = mls.UI_MARKET_DEEPQUICKBAR
-                yesNo = eve.Message('AskAreYouSure', {'cons': msg % {'num': self.depth + 1 + parentDepth + 1}}, uiconst.YESNO)
+                msg = localization.GetByLabel('UI/Market/Marketbase/DeepQuickbarFolder', folderDepth=self.depth + 1 + parentDepth + 1)
+                yesNo = eve.Message('AskAreYouSure', {'cons': msg}, uiconst.YESNO)
                 return [False, id][(yesNo == uiconst.ID_YES)]
             return id
         self.sr.typescroll.Load(contentList=scrolllist)
@@ -902,10 +942,10 @@ class MarketBase(uicls.Container):
                     data.invtype = t
                     data.showinfo = 1
                     data.typeID = t.typeID
-                    scrollList.append((t.name.lower(), listentry.Get('GenericMarketItem', data=data)))
+                    scrollList.append((t.name, listentry.Get('GenericMarketItem', data=data)))
                     blue.pyos.BeNice()
 
-                scrollList = uiutil.SortListOfTuples(scrollList)
+                scrollList = [ item[1] for item in localizationUtil.Sort(scrollList, key=lambda x: x[0]) ]
         self.sr.lastSearchResult = (search, scrollList[:])
         return scrollList
 
@@ -925,9 +965,10 @@ class MarketBase(uicls.Container):
     def OnTypeMenu(self, entry):
         invtype = entry.sr.node.invtype
         categoryID = invtype.categoryID
-        menu = [(mls.UI_CMD_ADDTOMARKETQUICKBAR, self.AddToQuickBar, (invtype,)), (mls.UI_CMD_SHOWINFO, self.ShowInfo, (invtype.typeID,))]
+        menu = [(localization.GetByLabel('UI/Inventory/ItemActions/AddTypeToMarketQuickbar'), self.AddToQuickBar, (invtype,)), (localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo, (invtype.typeID,))]
         if categoryID in const.previewCategories and invtype.Icon() and invtype.Icon().iconFile != '':
-            menu.append((mls.UI_CMD_PREVIEW, sm.GetService('preview').PreviewType, (entry.sr.node.invtype.typeID,)))
+            previewLabel = localization.GetByLabel('UI/Market/Marketbase/Preview')
+            menu.append((previewLabel, sm.GetService('preview').PreviewType, (entry.sr.node.invtype.typeID,)))
         if eve.session.role & service.ROLEMASK_ELEVATEDPLAYER:
             menu.append(None)
             menu += sm.GetService('menu').GetGMTypeMenu(entry.sr.node.invtype.typeID)
@@ -940,10 +981,10 @@ class MarketBase(uicls.Container):
 
 
 
-    def AddToQuickBar(self, invtype):
+    def AddToQuickBar(self, invtype, parent = 0):
         settings.user.ui.Set('quickbar', self.folders)
         settings.user.ui.Set('quickbar_lastid', self.lastid)
-        sm.GetService('menu').AddToQuickBar(invtype.typeID)
+        sm.GetService('menu').AddToQuickBar(invtype.typeID, parent)
         self.lastid = settings.user.ui.Get('quickbar_lastid', 0)
         self.folders = settings.user.ui.Get('quickbar', {})
 
@@ -967,7 +1008,7 @@ class MarketBase(uicls.Container):
         self.loadingType = 1
         blue.pyos.synchro.Yield()
         try:
-            self.sr.tabs.ShowPanelByName(mls.UI_MARKET_DETAILS)
+            self.sr.tabs.ShowPanelByName(localization.GetByLabel('UI/Common/Details'))
         except StandardError as e:
             self.loadingType = 0
             raise e
@@ -977,11 +1018,11 @@ class MarketBase(uicls.Container):
             self.loadingType = 0
             return 
         self.sr.detailTop.text = invtype.name
-        self.sr.detailIcon.LoadIconByTypeID(invtype.typeID)
-        self.sr.detailIcon.SetSize(64, 64)
-        techSprite = uix.GetTechLevelIcon(self.sr.techIcon, typeID=invtype.typeID)
-        self.sr.detailIcon.state = uiconst.UI_DISABLED
-        self.sr.detailtabs.state = uiconst.UI_NORMAL
+        self.sr.detailIcon.attrs = uiutil.Bunch(width=64, height=64, src='typeicon:%s' % invtype.typeID, bumped=True, showfitting=True, showtechlevel=True)
+        self.sr.detailIcon.typeName = invtype.name
+        self.sr.detailIcon.LoadTypeIcon(invtype.typeID)
+        self.sr.detailIcon.SetState(uiconst.UI_NORMAL)
+        self.sr.detailIcon.Show()
         left = self.sr.detailTop.left + self.sr.detailTop.textwidth + 8
         top = self.sr.detailTop.top + 4
         self.sr.detailInfoicon.state = uiconst.UI_NORMAL
@@ -1085,10 +1126,10 @@ class MarketBase(uicls.Container):
                     data['OnDblClick'] = self.OnDblClick
                     if data.get('sublevel', 0) + self.depth >= self.maxdepth:
                         return []
-                scrolllist.append((n.label, listentry.Get('Group', data)))
+                scrolllist.append((n.label, listentry.Get('QuickbarGroup', data)))
 
         if scrolllist:
-            scrolllist = uiutil.SortListOfTuples(scrolllist)
+            scrolllist = [ item[1] for item in localizationUtil.Sort(scrolllist, key=lambda x: x[0]) ]
         tempScrolllist = []
         if not self.selectFolder:
             for (id, n,) in notes.items():
@@ -1106,10 +1147,10 @@ class MarketBase(uicls.Container):
                      'parent': n.parent,
                      'selected': 1,
                      'invtype': cfg.invtypes.Get(n.label)}
-                    tempScrolllist.append((cfg.invtypes.Get(n.label).name.lower(), listentry.Get('QuickbarItem', data)))
+                    tempScrolllist.append((cfg.invtypes.Get(n.label).name, listentry.Get('QuickbarItem', data)))
 
         if tempScrolllist:
-            tempScrolllist = uiutil.SortListOfTuples(tempScrolllist)
+            tempScrolllist = [ item[1] for item in localizationUtil.Sort(tempScrolllist, key=lambda x: x[0]) ]
             scrolllist.extend(tempScrolllist)
         return scrolllist
 
@@ -1118,7 +1159,7 @@ class MarketBase(uicls.Container):
     def GroupMenu(self, node):
         m = []
         if node.sublevel < self.maxdepth:
-            m.append((mls.UI_CMD_NEWFOLDER, self.NewFolder, (node.id[1], node)))
+            m.append((localization.GetByLabel('UI/Market/NewFolder'), self.NewFolder, (node.id[1], node)))
         return m
 
 
@@ -1138,8 +1179,8 @@ class MarketBase(uicls.Container):
         m = []
         if node.sublevel < self.maxdepth:
             if self.QuickbarHasFolder():
-                m.append((mls.UI_MARKET_QUICKBAR_ADDGROUPTOFOLDER, self.FolderPopUp, (node,)))
-            m.append((mls.UI_MARKET_QUICKBAR_ADDGROUPTOROOT, self.FolderPopUp, (node, True)))
+                m.append((localization.GetByLabel('UI/Market/Marketbase/AddGroupToQuickbarFolder'), self.FolderPopUp, (node,)))
+            m.append((localization.GetByLabel('UI/Market/Marketbase/AddGroupToQuickbarRoot'), self.FolderPopUp, (node, True)))
         return m
 
 
@@ -1173,20 +1214,20 @@ class MarketBase(uicls.Container):
                 if type(note.label) == types.UnicodeType:
                     entry = self.GroupCreateEntry((note.label, id), nodedata.sublevel + 1)
                     if entry:
-                        scrolllist.append((note.label.lower(), entry))
+                        scrolllist.append((note.label, entry))
 
             if scrolllist:
-                scrolllist = uiutil.SortListOfTuples(scrolllist)
+                scrolllist = [ item[1] for item in localizationUtil.Sort(scrolllist, key=lambda x: x[0]) ]
             tempScrolllist = []
             if not self.selectFolder:
                 for (id, note,) in notelist.items():
                     if type(note.label) == types.IntType:
                         entry = self.GroupCreateEntry((note.label, id), nodedata.sublevel + 1)
                         if entry:
-                            tempScrolllist.append((cfg.invtypes.Get(note.label).name.lower(), entry))
+                            tempScrolllist.append((cfg.invtypes.Get(note.label).name, entry))
 
             if tempScrolllist:
-                tempScrolllist = uiutil.SortListOfTuples(tempScrolllist)
+                tempScrolllist = [ item[1] for item in localizationUtil.Sort(tempScrolllist, key=lambda x: x[0]) ]
                 scrolllist.extend(tempScrolllist)
             if len(nodedata.groupItems) != len(scrolllist):
                 nodedata.groupItems = self.GroupGetContentIDList(nodedata.id)
@@ -1220,7 +1261,7 @@ class MarketBase(uicls.Container):
                 data['OnDblClick'] = self.OnDblClick
                 if data.get('sublevel', 0) + self.depth >= self.maxdepth:
                     return []
-            return listentry.Get('Group', data)
+            return listentry.Get('QuickbarGroup', data)
         if type(note.label) == types.IntType:
             groupID = ('quickbar', id)
             data = {'label': cfg.invtypes.Get(note.label).name,
@@ -1274,7 +1315,9 @@ class MarketBase(uicls.Container):
 
     def RenameFolder(self, folderID = 0, entry = None, name = None, *args):
         if name is None:
-            ret = uix.NamePopup(mls.UI_GENERIC_FOLDERNAME, mls.UI_SHARED_TYPENEWFOLDERNAME, maxLength=20)
+            folderNameLabel = localization.GetByLabel('UI/Market/Marketbase/FolderName')
+            typeNewFolderNameLabel = localization.GetByLabel('UI/Market/Marketbase/TypeNewFolderName')
+            ret = uix.NamePopup(folderNameLabel, typeNewFolderNameLabel, maxLength=20)
             if ret is None:
                 return self.folders[folderID].label
             name = ret['name']
@@ -1285,7 +1328,9 @@ class MarketBase(uicls.Container):
 
 
     def NewFolder(self, folderID = 0, node = None, *args):
-        ret = uix.NamePopup(mls.UI_GENERIC_FOLDERNAME, mls.UI_SHARED_TYPEFOLDERNAME, maxLength=20)
+        folderNameLabel = localization.GetByLabel('UI/Market/Marketbase/FolderName')
+        typeFolderNameLabel = localization.GetByLabel('UI/Market/Marketbase/TypeFolderName')
+        ret = uix.NamePopup(folderNameLabel, typeFolderNameLabel, maxLength=20)
         if ret is not None:
             self.lastid += 1
             n = util.KeyVal()
@@ -1322,15 +1367,94 @@ class MarketBase(uicls.Container):
 
     def GroupDropNode(self, id, nodes):
         for node in nodes:
-            if node.__guid__ == 'listentry.QuickbarItem':
+            if node.id:
+                parent = self.folders[id[1]].parent
+                while parent:
+                    if node.id[1] == parent or node.id[1] == id[1]:
+                        return 
+                    parent = self.folders[parent].parent
+
+            for (folderID, data,) in self.folders.items():
+                if data.label == node.typeID and data.parent == id[1]:
+                    return 
+
+            if node.__guid__ in ('listentry.QuickbarItem', 'listentry.QuickbarGroup'):
                 noteID = node.id[1]
                 if noteID in self.folders:
-                    for (folderID, data,) in self.folders.items():
-                        if not data.label == node.itemID:
-                            self.folders[noteID].parent = id[1]
-
+                    self.folders[noteID].parent = id[1]
+            elif node.__guid__ == 'listentry.GenericMarketItem':
+                self.AddToQuickBar(cfg.invtypes.Get(node.typeID), parent=id[1])
 
         sm.ScatterEvent('OnMarketQuickbarChange')
+
+
+
+    def OnQuickbarScrollDrop(self, dropObj, nodes):
+        if self.sr.sbTabs.GetSelectedArgs() == 'quickbar':
+            for node in nodes:
+                if node.__guid__ == 'listentry.GenericMarketItem':
+                    self.AddToQuickBar(cfg.invtypes.Get(node.typeID))
+                elif node.__guid__ in ('listentry.QuickbarItem', 'listentry.QuickbarGroup'):
+                    self.folders[node.id[1]].parent = 0
+                    sm.ScatterEvent('OnMarketQuickbarChange')
+                elif node.__guid__ == 'listentry.FittingEntry':
+                    self.lastid += 1
+                    fittingGroup = util.KeyVal()
+                    fittingGroup.parent = 0
+                    fittingGroup.id = self.lastid
+                    fittingGroup.label = node.label
+                    self.folders[fittingGroup.id] = fittingGroup
+                    settings.user.ui.Set('quickbar', self.folders)
+                    settings.user.ui.Set('quickbar_lastid', self.lastid)
+                    rackTypes = sm.GetService('fittingSvc').GetTypesByRack(node.fitting)
+                    rackNames = {'hiSlots': const.effectHiPower,
+                     'medSlots': const.effectMedPower,
+                     'lowSlots': const.effectLoPower,
+                     'rigSlots': const.effectRigSlot,
+                     'subSystems': const.effectSubSystem}
+                    marketGroups = sm.GetService('marketutils').GetMarketGroups()
+
+                    def DigThroughMarketGroups(group, typeIDList):
+                        if group.hasTypes:
+                            for typeID in group.types:
+                                typeIDList.append(typeID)
+
+
+
+                    if not len(self.marketItemList):
+                        for groupID in marketGroups.keys():
+                            for row in marketGroups[groupID]:
+                                DigThroughMarketGroups(row, self.marketItemList)
+
+
+                    for (rack, contents,) in rackTypes.iteritems():
+                        if len(contents):
+                            name = None
+                            if rack == 'drones':
+                                name = localization.GetByLabel('UI/Drones/Drones')
+                            elif rack == 'charges':
+                                name = localization.GetByLabel('UI/Generic/Charges')
+                            elif rack in rackNames:
+                                name = cfg.dgmeffects.Get(rackNames[rack]).displayName
+                            self.lastid += 1
+                            n = util.KeyVal()
+                            n.parent = fittingGroup.id
+                            n.id = self.lastid
+                            n.label = name
+                            self.folders[n.id] = n
+                            for typeID in contents:
+                                if typeID in self.marketItemList:
+                                    invType = cfg.invtypes.Get(typeID)
+                                    self.AddToQuickBar(invType, parent=n.id)
+
+                            settings.user.ui.Set('quickbar', self.folders)
+                            settings.user.ui.Set('quickbar_lastid', self.lastid)
+
+                    if node.fitting.shipTypeID in self.marketItemList:
+                        invType = cfg.invtypes.Get(node.fitting.shipTypeID)
+                        self.AddToQuickBar(invType, parent=fittingGroup.id)
+                    sm.ScatterEvent('OnMarketQuickbarChange')
+
 
 
 
@@ -1375,7 +1499,7 @@ class MarketBase(uicls.Container):
             data.typeID = typeID
             data.price = getattr(ask, 'price', 0)
             data.qty = getattr(ask, 'volRemaining', 0)
-            data.fmt_price = util.FmtISK(data.price) if data.price else mls.UI_MARKET_NONEAVAIL
+            data.fmt_price = util.FmtISK(data.price) if data.price else localization.GetByLabel('UI/Market/Marketbase/NoneAvailable')
             data.fmt_qty = util.FmtAmt(data.qty) if data.qty else '0'
             data.jumps = marketSvc.GetStationDistance(ask.stationID, False) if ask else None
             ret.append(data)
@@ -1456,12 +1580,15 @@ class MarketBase(uicls.Container):
              const.defaultPadding))
             self.sr.buttonPar = uicls.Container(name='buttonParent', align=uiconst.TOBOTTOM, height=20, parent=details)
             uicls.Frame(parent=details, idx=0)
-            uix.GetContainerHeader('%s - %s' % (mls.UI_GENERIC_FILTERINGOPTIONS, mls.UI_MARKET_FILTERS_APPLY_TO_DETAILS), details, 0)
+            uix.GetContainerHeader(localization.GetByLabel('UI/Market/Marketbase/FilteringOptions'), details, 0)
             uicls.Container(name='push', align=uiconst.TOLEFT, width=6, parent=details)
             uicls.Container(name='push', align=uiconst.TORIGHT, width=6, parent=details)
             uicls.Container(name='push', align=uiconst.TOTOP, height=4, parent=details)
+            priceLabel = localization.GetByLabel('UI/Market/Marketbase/Price')
+            jumpsLabel = localization.GetByLabel('UI/Market/Marketbase/Jumps')
+            quantityLabel = localization.GetByLabel('UI/Common/Quantity')
             boxes = [(12,
-              mls.UI_GENERIC_PRICE,
+              priceLabel,
               'market_filter_price',
               settings.user.ui.Get('market_filter_price', 0) == 1,
               settings.user.ui.Get('market_filter_price', 0),
@@ -1469,7 +1596,7 @@ class MarketBase(uicls.Container):
               [0, 9223372036854L],
               None,
               True), (12,
-              mls.UI_GENERIC_JUMPS,
+              jumpsLabel,
               'market_filter_jumps',
               settings.user.ui.Get('market_filter_jumps', 0) == 1,
               settings.user.ui.Get('market_filter_jumps', 0),
@@ -1477,7 +1604,7 @@ class MarketBase(uicls.Container):
               [0, None],
               None,
               False), (12,
-              mls.UI_GENERIC_QUANTITY,
+              quantityLabel,
               'market_filter_quantity',
               settings.user.ui.Get('market_filter_quantity', 0) == 1,
               settings.user.ui.Get('market_filter_quantity', 0),
@@ -1493,22 +1620,26 @@ class MarketBase(uicls.Container):
             self.OnChangeFuncs['market_filter_quantity_max'] = self.OnChange_maxEdit_market_filter_quantity
             self.CheckboxRange(boxes, details)
             uicls.Container(name='push', align=uiconst.TOTOP, height=6, parent=details)
+            sellOrdersDeviationLabel = localization.GetByLabel('UI/Market/Marketbase/SellOrdersDeviation')
+            sellOrdersDeviationToolTipLabel = localization.GetByLabel('UI/Market/Marketbase/SellOrdersDeviationToolTip')
+            buyOrdersDeviationLabel = localization.GetByLabel('UI/Market/Marketbase/BuyOrdersDeviation')
+            buyOrdersDeviationToolTipLabel = localization.GetByLabel('UI/Market/Marketbase/BuyOrdersDeviationToolTip')
             boxes = [(12,
-              mls.UI_MARKET_FILTERS_SELLDEV,
+              sellOrdersDeviationLabel,
               'market_filters_sellorderdev',
               settings.user.ui.Get('market_filters_sellorderdev', 0) == 1,
               settings.user.ui.Get('market_filters_sellorderdev', 0),
               None,
               [-100, None],
-              mls.UI_MARKET_FILTERS_DEV_TOOLTIP_SELL,
+              sellOrdersDeviationToolTipLabel,
               False), (12,
-              mls.UI_MARKET_FILTERS_BUYDEV,
+              buyOrdersDeviationLabel,
               'market_filters_buyorderdev',
               settings.user.ui.Get('market_filters_buyorderdev', 0) == 1,
               settings.user.ui.Get('market_filters_buyorderdev', 0),
               None,
               [-100, None],
-              mls.UI_MARKET_FILTERS_DEV_TOOLTIP_BUY,
+              buyOrdersDeviationToolTipLabel,
               False)]
             self.OnChangeFuncs['market_filters_sellorderdev_min'] = self.OnChange_minEdit_market_filters_sellorderdev
             self.OnChangeFuncs['market_filters_sellorderdev_max'] = self.OnChange_maxEdit_market_filters_sellorderdev
@@ -1517,28 +1648,34 @@ class MarketBase(uicls.Container):
             self.CheckboxRange(boxes, details)
             uicls.Container(name='push', align=uiconst.TOTOP, height=6, parent=details)
             uicls.Container(name='push', align=uiconst.TOTOP, height=6, parent=details)
+            highSecurityLabel = localization.GetByLabel('UI/Market/Marketbase/FilterHighSecurity')
+            highSecurityToolTipLabel = localization.GetByLabel('UI/Market/Marketbase/FilterHighSecurityToolTip')
+            lowSecurityLabel = localization.GetByLabel('UI/Market/Marketbase/FilterLowSecurity')
+            lowSecurityToolTipLabel = localization.GetByLabel('UI/Market/Marketbase/FilterLowSecurityToolTip')
+            zeroSecurityLabel = localization.GetByLabel('UI/Market/Marketbase/FilterZeroSecurity')
+            zeroSecurityToolTipLabel = localization.GetByLabel('UI/Market/Marketbase/FilterZeroSecurityToolTip')
             boxes = [(12,
-              mls.UI_MARKET_FILTERS_HIGH_SEC,
+              highSecurityLabel,
               'market_filter_highsec',
               settings.user.ui.Get('market_filter_highsec', 0) == 1,
               settings.user.ui.Get('market_filter_highsec', 0),
               None,
               False,
-              mls.UI_MARKET_FILTERS_HIGHSEC_TOOLTIP), (12,
-              mls.UI_MARKET_FILTERS_LOW_SEC,
+              highSecurityToolTipLabel), (12,
+              lowSecurityLabel,
               'market_filter_lowsec',
               settings.user.ui.Get('market_filter_lowsec', 0) == 1,
               settings.user.ui.Get('market_filter_lowsec', 0),
               None,
               False,
-              mls.UI_MARKET_FILTERS_LOWSEC_TOOLTIP), (12,
-              mls.UI_MARKET_FILTERS_ZERO_SEC,
+              lowSecurityToolTipLabel), (12,
+              zeroSecurityLabel,
               'market_filter_zerosec',
               settings.user.ui.Get('market_filter_zerosec', 0) == 1,
               settings.user.ui.Get('market_filter_zerosec', 0),
               None,
               False,
-              mls.UI_MARKET_FILTERS_ZEROSEC_TOOLTIP)]
+              zeroSecurityToolTipLabel)]
             for (height, label, configname, retval, checked, groupname, hasRange, hint,) in boxes:
                 box = uicls.Container(name='checkbox_%s' % configname, parent=details, align=uiconst.TOTOP)
                 cb = uicls.Checkbox(text='%s' % label, parent=box, configName=configname, retval=retval, checked=checked, groupname=groupname, callback=self.OnCheckboxChangeSett, align=uiconst.TOPLEFT, pos=(0, 0, 400, 0))
@@ -1548,40 +1685,47 @@ class MarketBase(uicls.Container):
             uicls.Container(name='push', align=uiconst.TOTOP, height=6, parent=details)
             uicls.Container(name='push', align=uiconst.TOTOP, height=6, parent=details)
             uicls.Container(name='push', align=uiconst.TOTOP, height=6, parent=details)
-            uix.GetContainerHeader(mls.UI_SYSMENU_ADVANCEDSETTINGS, details, xmargin=-6)
+            uix.GetContainerHeader(localization.GetByLabel('UI/Market/Marketbase/AdvancedSettings'), details, xmargin=-6)
             uicls.Container(name='push', align=uiconst.TOTOP, height=6, parent=details)
+            skillsLabel = localization.GetByLabel('UI/Market/Marketbase/FilterBySkills')
+            skillsToolTipLabel = localization.GetByLabel('UI/Market/Marketbase/FilterBySkillsToolTip')
+            cpuAndPowerGridLabel = localization.GetByLabel('UI/Market/Marketbase/FilterByCPUAndPowergrid')
+            cpuAndPowerGridToolTipsLabel = localization.GetByLabel('UI/Market/Marketbase/FilterByCPUAndPowergridToolTip')
+            untrainedSkillsLabel = localization.GetByLabel('UI/Market/Marketbase/FilterByUntrainedSkills')
+            untrainedSkillsToolTipLabel = localization.GetByLabel('UI/Market/Marketbase/FilterByUntrainedSkillsToolTip')
             boxes = [(12,
-              mls.UI_MARKET_FILTERS_BY_SKILLS,
+              skillsLabel,
               'showonlyskillsfor',
               settings.user.ui.Get('showonlyskillsfor', 0) == 1,
               settings.user.ui.Get('showonlyskillsfor', 0),
               None,
               False,
-              mls.UI_MARKET_FILTERS_BYSKILLS_TOOLTIP), (12,
-              mls.UI_MARKET_FILTERS_BY_CPUPOWER,
+              skillsToolTipLabel), (12,
+              cpuAndPowerGridLabel,
               'showhavecpuandpower',
               settings.user.ui.Get('showhavecpuandpower', 0) == 1,
               settings.user.ui.Get('showhavecpuandpower', 0),
               None,
               False,
-              mls.UI_MARKET_FILTERS_BYCPUPOWER_TOOLTIP), (12,
-              mls.UI_MARKET_FILTERS_NEWSKILLS,
+              cpuAndPowerGridToolTipsLabel), (12,
+              untrainedSkillsLabel,
               'shownewskills',
               settings.user.ui.Get('shownewskills', 0) == 1,
               settings.user.ui.Get('shownewskills', 0),
               None,
               False,
-              mls.UI_MARKET_FILTERS_NEWSKILLS_TOOLTIP)]
+              untrainedSkillsToolTipLabel)]
             for (height, label, configname, retval, checked, groupname, hasRange, hint,) in boxes:
                 box = uicls.Container(name='checkbox_%s' % configname, parent=details, align=uiconst.TOTOP)
-                cb = uicls.Checkbox(text='%s' % label, parent=box, configName=configname, retval=retval, checked=checked, groupname=groupname, callback=self.OnCheckboxChange, align=uiconst.TOPLEFT, pos=(0, 0, 400, 0))
+                cb = uicls.Checkbox(text='%s' % label, parent=box, configName=configname, retval=retval, checked=checked, groupname=groupname, callback=self.OnCheckboxChange, align=uiconst.TOTOP)
                 box.height = cb.height
                 if hint:
                     cb.hint = hint
 
             uicls.Container(name='push', align=uiconst.TOTOP, height=6, parent=details)
+            autoRefreshLabel = localization.GetByLabel('UI/Market/Marketbase/AutoRefresh')
             boxes = [(12,
-              mls.UI_MARKET_AUTOREFRESH,
+              autoRefreshLabel,
               'autorefresh',
               settings.user.ui.Get('autorefresh', 0) == 1,
               settings.user.ui.Get('autorefresh', 0),
@@ -1595,16 +1739,16 @@ class MarketBase(uicls.Container):
                 if hint:
                     cb.hint = hint
 
-            self.buttons = [(mls.UI_SYSMENU_RESETSETTINGS,
+            self.buttons = [(localization.GetByLabel('UI/Market/Marketbase/ResetSettings'),
               self.ResetSettings,
               (),
-              84), (mls.UI_MARKET_RESET_QUICKBAR,
+              84), (localization.GetByLabel('UI/Market/Marketbase/ResetQuickbar'),
               self.ResetQuickbar,
               (),
               84)]
             self.sr.buttonWnd = uicls.ButtonGroup(btns=self.buttons, parent=self.sr.buttonPar, unisize=1)
-            self.sr.resetSettings = self.sr.buttonWnd.GetBtnByLabel(mls.UI_SYSMENU_RESETSETTINGS)
-            self.sr.resetQuickbar = self.sr.buttonWnd.GetBtnByLabel(mls.UI_MARKET_RESET_QUICKBAR)
+            self.sr.resetSettings = self.sr.buttonWnd.GetBtnByLabel(localization.GetByLabel('UI/Market/Marketbase/ResetSettings'))
+            self.sr.resetQuickbar = self.sr.buttonWnd.GetBtnByLabel(localization.GetByLabel('UI/Market/Marketbase/ResetQuickbar'))
             self.settingsInited = 0
 
 
@@ -1679,10 +1823,10 @@ class MarketBase(uicls.Container):
 
     def FiltersInUse1(self):
         filterUsed = False
-        browseFilters = [(mls.UI_MARKET_SHOWONLYAVAIL, 'showonlyavailable'),
-         (mls.UI_MARKET_FILTERS_BY_SKILLS, 'showonlyskillsfor'),
-         (mls.UI_MARKET_FILTERS_BY_CPUPOWER, 'showhavecpuandpower'),
-         (mls.UI_MARKET_FILTERS_NEWSKILLS, 'shownewskills')]
+        browseFilters = [(localization.GetByLabel('UI/Market/ShowOnlyAvailable'), 'showonlyavailable'),
+         (localization.GetByLabel('UI/Market/Marketbase/FilterBySkills'), 'showonlyskillsfor'),
+         (localization.GetByLabel('UI/Market/Marketbase/FilterByCPUAndPowergrid'), 'showhavecpuandpower'),
+         (localization.GetByLabel('UI/Market/Marketbase/FilterByUntrainedSkills'), 'shownewskills')]
         retBrowse = ''
         for (label, filter,) in browseFilters:
             if settings.user.ui.Get('%s' % filter, 0):
@@ -1691,10 +1835,10 @@ class MarketBase(uicls.Container):
                 retBrowse += temp
 
         if retBrowse == '' and not settings.user.ui.Get('showonlyavailable', 0):
-            temp = '%s<br>' % mls.UI_STATION_SHOWALL
+            temp = '%s<br>' % localization.GetByLabel('UI/Common/Show all')
             retBrowse += temp
         if retBrowse:
-            retBrowse = '<B>%s</B><br>%s' % (mls.UI_MARKET_FILTERS_BROWSE, retBrowse)
+            retBrowse = '%s<br>%s' % (localization.GetByLabel('UI/Market/Marketbase/BrowseFilters'), retBrowse)
             retBrowse = retBrowse[:-1]
         return (retBrowse, filterUsed)
 
@@ -1702,12 +1846,12 @@ class MarketBase(uicls.Container):
 
     def FiltersInUse2(self, *args):
         ret = ''
-        jumpFilter = [(mls.UI_GENERIC_JUMPS, 'market_filter_jumps')]
-        detailFilters = [(mls.UI_GENERIC_QUANTITY, 'market_filter_quantity'),
-         (mls.UI_GENERIC_PRICE, 'market_filter_price'),
-         (mls.UI_MARKET_FILTERS_SELLDEV, 'market_filters_sellorderdev'),
-         (mls.UI_MARKET_FILTERS_BUYDEV, 'market_filters_buyorderdev')]
-        secFilters = [(mls.UI_MARKET_FILTERS_NOHIGHSEC, 'market_filter_highsec'), (mls.UI_MARKET_FILTERS_NOLOWSEC, 'market_filter_lowsec'), (mls.UI_MARKET_FILTERS_NOZEROSEC, 'market_filter_zerosec')]
+        jumpFilter = [(localization.GetByLabel('UI/Market/Marketbase/Jumps'), 'market_filter_jumps')]
+        detailFilters = [(localization.GetByLabel('UI/Common/Quantity'), 'market_filter_quantity'),
+         (localization.GetByLabel('UI/Market/Marketbase/Price'), 'market_filter_price'),
+         (localization.GetByLabel('UI/Market/Marketbase/SellOrdersDeviation'), 'market_filters_sellorderdev'),
+         (localization.GetByLabel('UI/Market/Marketbase/BuyOrdersDeviation'), 'market_filters_buyorderdev')]
+        secFilters = [(localization.GetByLabel('UI/Market/Marketbase/NoHighSecurity'), 'market_filter_highsec'), (localization.GetByLabel('UI/Market/Marketbase/NoLowSecurity'), 'market_filter_lowsec'), (localization.GetByLabel('UI/Market/Marketbase/NoZeroSecurity'), 'market_filter_zerosec')]
         retJump = ''
         for (label, filter,) in jumpFilter:
             if settings.user.ui.Get('%s' % filter, 0):
@@ -1716,10 +1860,9 @@ class MarketBase(uicls.Container):
                 andUp = False
                 if min > max:
                     andUp = True
-                temp = '%s, %s: %s %s <br>' % (label,
-                 mls.UI_GENERIC_FROMNUMBER,
-                 settings.user.ui.Get('minEdit_%s' % filter, 0),
-                 ['%s: %s' % (mls.UI_GENERIC_TONUMBER, int(max)), mls.UI_MARKET_ANDUP][andUp])
+                    temp = '%s<br>' % localization.GetByLabel('UI/Market/Marketbase/FilterRangeAndUp', filterType=label, minValue=min)
+                else:
+                    temp = '%s<br>' % localization.GetByLabel('UI/Market/Marketbase/FilterRangeTo', filterType=label, minValue=min, maxValue=max)
                 retJump += temp
 
         retDetail = retJump
@@ -1729,15 +1872,15 @@ class MarketBase(uicls.Container):
                 max = float(settings.user.ui.Get('maxEdit_%s' % filter, 0))
                 andUp = False
                 if min >= max:
-                    andUp = True and filter not in ('market_filters_sellorderdev', 'market_filters_buyorderdev')
-                temp = '%s, %s: %s %s <br>' % (label,
-                 mls.UI_GENERIC_FROMNUMBER,
-                 min,
-                 ['%s: %s' % (mls.UI_GENERIC_TONUMBER, max), mls.UI_MARKET_ANDUP][andUp])
+                    andUp = filter not in ('market_filters_sellorderdev', 'market_filters_buyorderdev')
+                    if andUp:
+                        temp = '%s<br>' % localization.GetByLabel('UI/Market/Marketbase/FilterRangeAndUp', filterType=label, minValue=min)
+                if not andUp:
+                    temp = '%s<br>' % localization.GetByLabel('UI/Market/Marketbase/FilterRangeTo', filterType=label, minValue=min, maxValue=max)
                 retDetail += temp
 
         if retDetail:
-            retDetail = '<B>%s</B><br>%s' % (mls.UI_MARKET_FILTERS_DETAIL, retDetail)
+            retDetail = '%s<br>%s' % (localization.GetByLabel('UI/Market/Marketbase/DetailFilters'), retDetail)
         retSecurity = ''
         for (label, filter,) in secFilters:
             if not settings.user.ui.Get('%s' % filter, 0):
@@ -1745,7 +1888,7 @@ class MarketBase(uicls.Container):
                 retSecurity += temp
 
         if retSecurity:
-            retSecurity = '<B>%s</B><br>%s' % (mls.UI_MARKET_FILTERS_SECURITY, retSecurity)
+            retSecurity = '%s<br>%s' % (localization.GetByLabel('UI/Market/Marketbase/SecurityFilters'), retSecurity)
         for each in [retDetail, retSecurity]:
             if each:
                 ret += '%s<br>' % each
@@ -1760,10 +1903,11 @@ class MarketBase(uicls.Container):
         for (height, label, configname, retval, checked, groupname, numRange, hint, isFloat,) in boxes:
             box = uicls.Container(name='checkbox_%s' % configname, parent=container, align=uiconst.TOTOP)
             rbox = uicls.Container(name='checkbox_%s' % configname, parent=box, align=uiconst.TORIGHT, width=180)
-            cb = uicls.Checkbox(text='%s' % label, parent=box, configName=configname, retval=retval, checked=checked, groupname=groupname, callback=self.OnCheckboxChangeSett, align=uiconst.CENTERLEFT, pos=(0, 0, 150, 0))
+            cb = uicls.Checkbox(text='%s' % label, parent=box, configName=configname, retval=retval, checked=checked, groupname=groupname, callback=self.OnCheckboxChangeSett, align=uiconst.TOTOP)
             if numRange:
                 funcKey = '%s_min' % configname
-                minText = uicls.Label(text=mls.UI_GENERIC_FROMNUMBER, parent=rbox, align=uiconst.CENTERLEFT, state=uiconst.UI_NORMAL)
+                fromLabel = localization.GetByLabel('UI/Common/FromNumber')
+                minText = uicls.EveLabelMedium(text=fromLabel, parent=rbox, align=uiconst.CENTERLEFT, state=uiconst.UI_NORMAL)
                 if not isFloat:
                     minEdit = uicls.SinglelineEdit(name='minEdit_%s' % configname, setvalue=settings.user.ui.Get('minEdit_%s' % configname, 0), parent=rbox, pos=(minText.left + minText.textwidth + const.defaultPadding,
                      0,
@@ -1775,7 +1919,7 @@ class MarketBase(uicls.Container):
                      68,
                      0), maxLength=32, align=uiconst.TOPLEFT, floats=[numRange[0], numRange[1], 2], OnChange=self.OnChangeFuncs[funcKey])
                 funcKey = '%s_max' % configname
-                maxText = uicls.Label(text=mls.UI_GENERIC_TONUMBER, parent=rbox, left=minEdit.left + minEdit.width + const.defaultPadding, align=uiconst.CENTERLEFT, state=uiconst.UI_NORMAL)
+                maxText = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Common/ToNumber'), parent=rbox, left=minEdit.left + minEdit.width + const.defaultPadding, align=uiconst.CENTERLEFT, state=uiconst.UI_NORMAL)
                 if not isFloat:
                     maxEdit = uicls.SinglelineEdit(name='maxEdit_%s' % configname, setvalue=settings.user.ui.Get('maxEdit_%s' % configname, 0), parent=rbox, pos=(maxText.left + maxText.textwidth + const.defaultPadding,
                      0,
@@ -1867,7 +2011,7 @@ class MarketBase(uicls.Container):
                 parent = self.parentDictionary.get(marketGroupInfo.parentGroupID, 0)
                 self.InsertQuickbarGroupItem(marketGroupInfo.marketGroupName, parent)
                 self.parentDictionary[marketGroupInfo.marketGroupID] = self.tempLastid
-                scrolllist.append(((marketGroupInfo.hasTypes, marketGroupInfo.marketGroupName.lower()), listentry.Get('Group', data)))
+                scrolllist.append(((marketGroupInfo.hasTypes, marketGroupInfo.marketGroupName.lower()), listentry.Get('QuickbarGroup', data)))
 
         return scrolllist
 
@@ -1886,13 +2030,11 @@ class MarketBase(uicls.Container):
 
     def ListWnd(self, lst, listtype = None, caption = None, hint = None, ordered = 0, minw = 200, minh = 256, minChoices = 1, maxChoices = 1, initChoices = [], validator = None, isModal = 1, scrollHeaders = [], iconMargin = 0, contentList = None):
         if caption is None:
-            caption = mls.UI_MARKET_QUICKBAR_SELECTFOLDER
+            caption = localization.GetByLabel('UI/Market/Marketbase/SelectAFolder')
         import form
         if not isModal:
-            wnd = sm.GetService('window').GetWindow('listwindow')
-            if wnd:
-                wnd.SelfDestruct()
-        wnd = sm.GetService('window').GetWindow('listwindow', create=1, decoClass=form.SelectFolderWindow, lst=[], listtype=listtype, ordered=ordered, minw=minw, minh=minh, caption=caption, minChoices=minChoices, maxChoices=maxChoices, initChoices=initChoices, validator=validator, scrollHeaders=scrollHeaders, iconMargin=iconMargin)
+            form.SelectFolderWindow.CloseIfOpen()
+        wnd = form.SelectFolderWindow.Open(lst=[], listtype=listtype, ordered=ordered, minw=minw, minh=minh, caption=caption, minChoices=minChoices, maxChoices=maxChoices, initChoices=initChoices, validator=validator, scrollHeaders=scrollHeaders, iconMargin=iconMargin)
         wnd.scroll.Load(contentList=contentList)
         wnd.Error(wnd.GetError(checkNumber=0))
         if hint:
@@ -1917,53 +2059,6 @@ class MarketBase(uicls.Container):
 
 
 
-
-class MarketGroup(uicls.SE_BaseClassCore):
-    __guid__ = 'listentry.MarketGroup'
-
-    def Startup(self, *args):
-        uicls.Line(parent=self, align=uiconst.TOBOTTOM)
-        left = uicls.Container(name='leftside', parent=self, align=uiconst.TOLEFT, width=70)
-        right = uicls.Container(name='rightside', parent=self, align=uiconst.TOLEFT, width=8)
-        self.sr.textarea = uicls.Edit(setvalue='', parent=self, readonly=1, hideBackground=1)
-
-
-
-    def PreLoad(node):
-        if not node.Get('loaded', 0):
-            invtype = cfg.invtypes.Get(node.ask.typeID)
-            jump = ''
-            if node.ask.qty and node.marketRange != 0:
-                jumps = int(node.ask.jumps)
-                if jumps == 0:
-                    jump = ' %s' % mls.UI_MARKET_INTHISSYSTEM
-                else:
-                    jump = ', %s' % [mls.UI_MARKET_JUMPAWAY, mls.UI_MARKET_JUMPSAWAY][(node.ask.jumps > 1)] % {'jumps': node.ask.jumps}
-            where = [mls.UI_GENERIC_STATION, mls.UI_GENERIC_SOLARSYSTEMSYSTEM, mls.UI_GENERIC_REGION][node.marketRange]
-            html = '\n                <html>\n                <body>\n                <br>\n                <font size=20>%s</font>\n                <br>\n                <font size=10>%s</font>\n                <br><br>\n                <font size=8>%s</font>\n                <br>\n                <font size=20>%s</font>\n                <br>\n                <font size=8>%s%s</font>\n\n                <br>\n                </body>\n                </html>\n                ' % (invtype.name,
-             invtype.description.replace('\r\n', '<br>'),
-             mls.UI_MARKET_BESTPRICEIN % {'where': where},
-             node.ask.fmt_price,
-             mls.UI_MARKET_UNITAVAILABLE % {'units': node.ask.fmt_qty},
-             jump)
-            node.text = html
-            node.loaded = 1
-
-
-
-    def Load(self, node, *args):
-        self.sr.textarea.LoadHTML(node.text, newThread=0)
-        node.height = 8 + sum([ each.height for each in self.sr.textarea.sr.content.children ])
-
-
-
-    def GetHeight(self, *args):
-        (node, width,) = args
-        node.height = node.Get('height', 1)
-        return node.height
-
-
-
 MINSCROLLHEIGHT = 64
 LEFTSIDEWIDTH = 90
 LABELWIDTH = 110
@@ -1979,39 +2074,39 @@ class MarketData(uicls.Container):
         self.invType = None
         self.loading = None
         self.scrollHeight = 0
-        self.buyheaders = [mls.UI_GENERIC_JUMPS,
-         mls.UI_GENERIC_QUANTITY,
-         mls.UI_GENERIC_PRICE,
-         mls.UI_GENERIC_LOCATION,
-         mls.UI_GENERIC_EXPIRESIN]
-        self.sellheaders = [mls.UI_GENERIC_JUMPS,
-         mls.UI_GENERIC_QUANTITY,
-         mls.UI_GENERIC_PRICE,
-         mls.UI_GENERIC_LOCATION,
-         mls.UI_GENERIC_RANGE,
-         mls.UI_GENERIC_MINVOLUME,
-         mls.UI_GENERIC_EXPIRESIN]
+        self.buyheaders = [localization.GetByLabel('UI/Market/Marketbase/Jumps'),
+         localization.GetByLabel('UI/Common/Quantity'),
+         localization.GetByLabel('UI/Market/Marketbase/Price'),
+         localization.GetByLabel('UI/Common/Location'),
+         localization.GetByLabel('UI/Market/Marketbase/ExpiresIn')]
+        self.sellheaders = [localization.GetByLabel('UI/Market/Marketbase/Jumps'),
+         localization.GetByLabel('UI/Common/Quantity'),
+         localization.GetByLabel('UI/Market/Marketbase/Price'),
+         localization.GetByLabel('UI/Common/Location'),
+         localization.GetByLabel('UI/Common/Range'),
+         localization.GetByLabel('UI/Market/MarketQuote/HeaderMinVolumn'),
+         localization.GetByLabel('UI/Market/Marketbase/ExpiresIn')]
         self.avgSellPrice = None
         self.avgBuyPrice = None
         self.sr.buyParent = uicls.Container(name='buyParent', parent=self, align=uiconst.TOTOP, height=64)
         buyLeft = uicls.Container(name='buyLeft', parent=self.sr.buyParent, align=uiconst.TOTOP, height=20)
-        cap = uicls.CaptionLabel(text=mls.UI_MARKET_SELLERS, parent=buyLeft, align=uiconst.RELATIVE, left=4, top=0, width=LEFTSIDEWIDTH)
-        buyLeft.height = max(20, cap.textheight + 6)
-        a = uicls.Label(text='', parent=buyLeft, left=24, top=3, fontsize=9, letterspace=2, uppercase=1, state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
+        sellersLabel = localization.GetByLabel('UI/Market/Marketbase/Sellers')
+        cap = uicls.EveCaptionMedium(text=sellersLabel, parent=buyLeft, align=uiconst.TOPLEFT, left=4)
+        a = uicls.EveHeaderSmall(text='', parent=buyLeft, left=24, top=3, state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
         a.OnClick = self.BuyClick
         a.GetMenu = None
         self.buyFiltersActive1 = a
-        a = uicls.Label(text='', parent=buyLeft, left=24, top=14, fontsize=9, letterspace=2, uppercase=1, state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
+        a = uicls.EveHeaderSmall(text='', parent=buyLeft, left=24, top=14, state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
         a.OnClick = self.BuyClick
         a.GetMenu = None
         self.buyFiltersActive2 = a
         self.sr.buyIcon = uicls.Sprite(name='buyIcon', parent=buyLeft, width=16, height=16, left=6, top=2, align=uiconst.TOPRIGHT)
         self.sr.buyIcon.OnClick = self.BuyClick
         self.sr.buyIcon.state = uiconst.UI_HIDDEN
-        btns = [(mls.UI_MARKET_EXPORTTOFILE,
+        btns = [(localization.GetByLabel('UI/Market/Marketbase/ExportToFile'),
           self.ExportToFile,
           (),
-          84), (mls.UI_CMD_PLACEBUYORDER,
+          84), (localization.GetByLabel('UI/Market/Marketbase/CommandPlaceBuyOrder'),
           self.PlaceOrder,
           ('buy',),
           84)]
@@ -2034,13 +2129,13 @@ class MarketData(uicls.Container):
         uicls.Container(name='divider', align=uiconst.TOTOP, height=const.defaultPadding, parent=self)
         self.sr.sellParent = uicls.Container(name='sellParent', parent=self, align=uiconst.TOALL)
         sellLeft = uicls.Container(name='sellLeft', parent=self.sr.sellParent, align=uiconst.TOTOP, height=20)
-        cap = uicls.CaptionLabel(text=mls.UI_MARKET_BUYERS, parent=sellLeft, align=uiconst.RELATIVE, left=4, top=0, width=LEFTSIDEWIDTH)
-        sellLeft.height = max(20, cap.textheight + 6)
-        a = uicls.Label(text='', parent=sellLeft, left=24, top=3, fontsize=9, letterspace=2, uppercase=1, align=uiconst.TOPRIGHT, state=uiconst.UI_NORMAL)
+        buyersLabel = localization.GetByLabel('UI/Market/Marketbase/Buyers')
+        cap = uicls.EveCaptionMedium(text=buyersLabel, parent=sellLeft, align=uiconst.TOPLEFT, left=4)
+        a = uicls.EveHeaderSmall(text='', parent=sellLeft, left=24, top=3, align=uiconst.TOPRIGHT, state=uiconst.UI_NORMAL)
         a.OnClick = self.SellClick
         a.GetMenu = None
         self.sellFiltersActive1 = a
-        a = uicls.Label(text='', parent=sellLeft, left=24, top=14, fontsize=9, letterspace=2, uppercase=1, state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
+        a = uicls.EveHeaderSmall(text='', parent=sellLeft, left=24, top=14, state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
         a.OnClick = self.SellClick
         a.GetMenu = None
         self.sellFiltersActive2 = a
@@ -2136,7 +2231,7 @@ class MarketData(uicls.Container):
 
     def PlaceOrder(self, what, *args):
         if not self.invType:
-            eve.Message('CustomNotify', {'notify': mls.UI_MARKET_NOTYPETOBUY})
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Market/Marketbase/NoTypeToBuy')})
             return 
         if what == 'buy':
             sm.GetService('marketutils').Buy(self.invType.typeID, placeOrder=True)
@@ -2175,10 +2270,11 @@ class MarketData(uicls.Container):
                 accumPrice += order.price * order.volRemaining
                 count += order.volRemaining
                 data.flag = IsOrderASellWithinReach(order)
-                expires = order.issueDate + order.duration * DAY - blue.os.GetTime()
+                expires = order.issueDate + order.duration * DAY - blue.os.GetWallclockTime()
                 if expires < 0:
                     continue
                 for header in visibleHeaders:
+                    header = uiutil.StripTags(header, stripOnly=['localized'])
                     funcName = funcs.get(header, None)
                     if funcName and hasattr(marketUtil, funcName):
                         apply(getattr(marketUtil, funcName, None), (order, data))
@@ -2207,21 +2303,21 @@ class MarketData(uicls.Container):
         if not scrollList:
             if self.invType:
                 if (usingFilters or settings.user.ui.Get('market_filters_%sorderdev' % ['buy', 'sell'][(what == 'buy')], 0)) and self.sr.Get('%s_ActiveFilters' % what, None):
-                    hintText = mls.UI_MARKET_NOORDERSMATCHED
+                    hintText = localization.GetByLabel('UI/Market/Marketbase/NoOrdersMatched')
                 else:
-                    hintText = mls.UI_MARKET_NOORDERSFOUND
+                    hintText = localization.GetByLabel('UI/Market/Orders/NoOrdersFound')
             else:
-                hintText = mls.UI_MARKET_NOTYPESELECTED
+                hintText = localization.GetByLabel('UI/Market/Marketbase/NoTypeToBuy')
                 self.sr.filtersText.text = ''
                 self.sr.filtersText.hint = ''
         scroll.Load(contentList=scrollList, headers=headers, noContentHint=hintText)
         if what == 'buy':
             if usingFilters or settings.user.ui.Get('market_filters_sellorderdev', 0):
                 if self.sr.buy_ActiveFilters:
-                    text1 = mls.UI_MARKET_FILTER_FOUNDMORE1 % {'num': foundCounter}
-                    text2 = mls.UI_MARKET_FILTER_FOUNDMORE2
+                    text1 = localization.GetByLabel('UI/Market/Marketbase/AdditionalEntriesFound', foundCounter=foundCounter)
+                    text2 = localization.GetByLabel('UI/Market/Marketbase/TurnFiltersOff')
                 else:
-                    text1 = mls.UI_MARKET_FILTERS_TURNON
+                    text1 = localization.GetByLabel('UI/Market/Marketbase/TurnFiltersOn')
                     text2 = ''
                 self.buyFiltersActive1.text = text1
                 self.buyFiltersActive2.text = text2
@@ -2234,10 +2330,10 @@ class MarketData(uicls.Container):
         if what == 'sell':
             if usingFilters or settings.user.ui.Get('market_filters_buyorderdev', 0):
                 if self.sr.sell_ActiveFilters:
-                    text1 = mls.UI_MARKET_FILTER_FOUNDMORE1 % {'num': foundCounter}
-                    text2 = mls.UI_MARKET_FILTER_FOUNDMORE2
+                    text1 = localization.GetByLabel('UI/Market/Marketbase/AdditionalEntriesFound', foundCounter=foundCounter)
+                    text2 = localization.GetByLabel('UI/Market/Marketbase/TurnFiltersOff')
                 else:
-                    text1 = mls.UI_MARKET_FILTERS_TURNON
+                    text1 = localization.GetByLabel('UI/Market/Marketbase/TurnFiltersOn')
                     text2 = ''
                 self.sellFiltersActive1.text = text1
                 self.sellFiltersActive2.text = text2
@@ -2264,8 +2360,7 @@ class MarketData(uicls.Container):
         data.Set('filter_Price', record.price)
         filterJumps = record.jumps
         if record.jumps == 0:
-            if record.stationID == session.stationid:
-                filterJumps = -1
+            filterJumps = -1
         data.Set('filter_Jumps', filterJumps)
         data.Set('filter_Quantity', int(record.volRemaining))
 
@@ -2389,8 +2484,8 @@ class MarketData(uicls.Container):
         if self.invType:
             self.sr.sellscroll.Load(contentList=[], fixedEntryHeight=18, headers=self.sellheaders)
             self.sr.buyscroll.Load(contentList=[], fixedEntryHeight=18, headers=self.buyheaders)
-            self.sr.sellscroll.ShowHint(mls.UI_MARKET_FETCHINGORDERS)
-            self.sr.buyscroll.ShowHint(mls.UI_MARKET_FETCHINGORDERS)
+            self.sr.sellscroll.ShowHint(localization.GetByLabel('UI/Market/Marketbase/FetchingOrders'))
+            self.sr.buyscroll.ShowHint(localization.GetByLabel('UI/Market/Marketbase/FetchingOrders'))
             (self.sr.buyItems, self.sr.sellItems,) = sm.GetService('marketQuote').GetOrders(self.invType.typeID)
             self.Reload('buy')
             self.Reload('sell')
@@ -2459,13 +2554,13 @@ class MarketOrder(listentry.Generic):
         self.OnClick()
         m = []
         if self.sr.node.mode == 'buy':
-            m.append((mls.UI_CMD_BUYTHIS, self.Buy, (self.sr.node, True)))
+            m.append((localization.GetByLabel('UI/Market/Marketbase/BuyThis'), self.Buy, (self.sr.node, True)))
         m.append(None)
-        m += [(mls.UI_CMD_SHOWINFO, self.ShowInfo, (self.sr.node,))]
+        m += [(localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo, (self.sr.node,))]
         stationID = self.sr.node.order.stationID
         if stationID:
             stationInfo = sm.GetService('ui').GetStation(stationID)
-            m += [(mls.UI_CMD_LOCATION, sm.GetService('menu').CelestialMenu(stationID, typeID=stationInfo.stationTypeID, parentID=stationInfo.solarSystemID, mapItem=None))]
+            m += [(localization.GetByLabel('UI/Common/Location'), sm.GetService('menu').CelestialMenu(stationID, typeID=stationInfo.stationTypeID, parentID=stationInfo.solarSystemID, mapItem=None))]
         return m
 
 
@@ -2494,11 +2589,6 @@ class GenericMarketItem(listentry.Generic):
 class QuickbarItem(GenericMarketItem):
     __guid__ = 'listentry.QuickbarItem'
 
-    def Startup(self, *args):
-        listentry.GenericMarketItem.Startup(self, *args)
-
-
-
     def Load(self, node):
         listentry.GenericMarketItem.Load(self, node)
         self.sr.sublevel = node.Get('sublevel', 0)
@@ -2525,10 +2615,19 @@ class QuickbarItem(GenericMarketItem):
 
 
 
-    def GetHeight(self, *args):
-        (node, width,) = args
-        node.height = 18
-        return node.height
+    def OnDropData(self, dragObj, nodes):
+        if self.sr.node.get('DropData', None):
+            self.sr.node.DropData(('quickbar', self.sr.node.parent), nodes)
+
+
+
+
+class QuickbarGroup(listentry.Group):
+    __guid__ = 'listentry.QuickbarGroup'
+
+    def GetDragData(self, *args):
+        nodes = [self.sr.node]
+        return nodes
 
 
 
@@ -2620,6 +2719,7 @@ class QuickbarEntries(uicls.Container):
 
 class SelectFolderWindow(form.ListWindow):
     __guid__ = 'form.SelectFolderWindow'
+    default_windowID = 'SelectFolderWindow'
 
     def GetError(self, checkNumber = 1):
         result = None
@@ -2633,10 +2733,10 @@ class SelectFolderWindow(form.ListWindow):
             if checkNumber:
                 if result == None:
                     if self.minChoices == self.maxChoices:
-                        label = mls.UI_GENERIC_PICKERROR2B
+                        label = localization.GetByLabel('UI/Control/ListWindow/MustSelectError', number=self.minChoices)
                     else:
-                        label = mls.UI_GENERIC_PICKERROR2A
-                    return label % {'num': self.minChoices}
+                        label = localization.GetByLabel('UI/Control/ListWindow/SelectTooFewError', num=self.minChoices)
+                    return label
         except ValueError as e:
             log.LogException()
             sys.exc_clear()
@@ -2661,11 +2761,46 @@ class SelectFolderWindow(form.ListWindow):
         ep = uiutil.GetChild(self, 'errorParent')
         uix.Flush(ep)
         if error:
-            t = uicls.Label(text='<center>' + error, top=-3, parent=ep, width=self.minsize[0] - 32, autowidth=False, state=uiconst.UI_DISABLED, color=(1.0, 0.0, 0.0, 1.0), align=uiconst.CENTER)
+            t = uicls.EveLabelMedium(text='<center>' + error, top=-3, parent=ep, width=self.minsize[0] - 32, state=uiconst.UI_DISABLED, color=(1.0, 0.0, 0.0, 1.0), align=uiconst.CENTER)
             ep.state = uiconst.UI_DISABLED
             ep.height = t.height + 8
         else:
             ep.state = uiconst.UI_HIDDEN
+
+
+
+
+class MarketGroupItemImage(uicls.Image):
+    __guid__ = 'uicls.MarketGroupItemImage'
+
+    def LoadTypeIcon(self, typeID):
+        uicls.Image.LoadTypeIcon(self)
+        self.typeID = typeID
+        if util.IsPreviewable(self.typeID):
+            self.OnClick = (sm.GetService('preview').PreviewType, self.typeID)
+        else:
+            self.OnClick = None
+
+
+
+    def GetDragData(self, *args):
+        invType = cfg.invtypes.Get(self.typeID)
+        return [uiutil.Bunch(typeID=self.typeID, __guid__='listentry.GenericMarketItem', label=self.typeName, invType=invType)]
+
+
+
+    def OnMouseMove(self, *args):
+        if self.IsBeingDragged():
+            self.cursor = self.default_cursor
+        uicls.Container.OnMouseMove(self)
+
+
+
+    def OnMouseEnter(self, *args):
+        if util.IsPreviewable(self.typeID):
+            self.cursor = uiconst.UICURSOR_MAGNIFIER
+        else:
+            self.cursor = self.default_cursor
 
 
 

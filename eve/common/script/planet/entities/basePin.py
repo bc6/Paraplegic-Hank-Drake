@@ -196,7 +196,7 @@ class BasePin(object):
             return False
         rt = runTime
         if runTime is None:
-            rt = blue.os.GetTime()
+            rt = blue.os.GetWallclockTime()
         nextRunTime = self.GetNextRunTime()
         if nextRunTime is None or nextRunTime <= rt:
             return True

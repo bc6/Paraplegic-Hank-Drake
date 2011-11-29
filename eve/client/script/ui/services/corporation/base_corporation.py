@@ -6,6 +6,11 @@ import util
 import moniker
 import corpObject
 import uiconst
+import localization
+import form
+import dbutil
+import listentry
+COMMUNICATIONS_OFFICER_ROLE_ID = 60217
 
 def ReturnNone():
     return None
@@ -28,6 +33,8 @@ class Corporation(Service):
      'GetAllianceApplications': [],
      'GetMemberIDs': [],
      'GetMembers': [],
+     'GetMembersPaged': [],
+     'GetMembersByIds': [],
      'GetMember': [],
      'GetMembersAsEveOwners': [],
      'GetMyGrantableRoles': [],
@@ -252,29 +259,29 @@ class Corporation(Service):
 
 
     def GetCorpStationManager(self):
-        if not eve.session.stationid:
+        if not eve.session.stationid2:
             if self._Corporation__corpStationManager is not None:
                 self._Corporation__corpStationManager.Unbind()
             raise RuntimeError('InvalidCallee due to state')
         elif self._Corporation__corpStationManager is None:
             self._Corporation__corpStationManager = moniker.GetCorpStationManager()
-            self._Corporation__corpStationManagerStationID = eve.session.stationid
-        if self._Corporation__corpStationManagerStationID != eve.session.stationid:
+            self._Corporation__corpStationManagerStationID = eve.session.stationid2
+        if self._Corporation__corpStationManagerStationID != eve.session.stationid2:
             if self._Corporation__corpStationManager is not None:
                 self._Corporation__corpStationManager.Unbind()
             self._Corporation__corpStationManager = moniker.GetCorpStationManager()
-            self._Corporation__corpStationManagerStationID = eve.session.stationid
+            self._Corporation__corpStationManagerStationID = eve.session.stationid2
         return self._Corporation__corpStationManager
 
 
 
     def PerformSelectiveSessionChange(self, reason, func, *args, **keywords):
         violateSafetyTimer = 0
-        if session.nextSessionChange is not None and session.nextSessionChange > blue.os.GetTime():
+        if session.nextSessionChange is not None and session.nextSessionChange > blue.os.GetSimTime():
             if session.sessionChangeReason == reason:
                 violateSafetyTimer = 1
         if violateSafetyTimer > 0:
-            print 'I will perform a session change even though I should wait %d more seconds' % ((session.nextSessionChange - blue.os.GetTime()) / SEC)
+            print 'I will perform a session change even though I should wait %d more seconds' % ((session.nextSessionChange - blue.os.GetSimTime()) / SEC)
         import copy
         kw2 = copy.copy(keywords)
         kw2['violateSafetyTimer'] = violateSafetyTimer
@@ -311,8 +318,8 @@ class Corporation(Service):
 
 
     def DoSessionChanging(self, isRemote, session, change):
-        if 'stationid' in change:
-            (oldID, newID,) = change['stationid']
+        if 'stationid2' in change:
+            (oldID, newID,) = change['stationid2']
             if self._Corporation__corpStationManager is not None:
                 self._Corporation__corpStationManager = None
                 self._Corporation__corpStationManagerStationID = None
@@ -422,6 +429,16 @@ class Corporation(Service):
 
 
 
+    def GetMembersPaged(self, page):
+        return self.members.GetMembersPaged(page)
+
+
+
+    def GetMembersByIds(self, memberIDs):
+        return self.members.GetMembersByIds(memberIDs)
+
+
+
     def GetMember(self, charID):
         return self.members.GetMember(charID)
 
@@ -489,7 +506,7 @@ class Corporation(Service):
 
     def KickOut(self, charID, confirm = True):
         if not self.CanKickOut(charID):
-            raise UserError('CrpAccessDenied', {'reason': mls.UI_CORP_ACCESSDENIED4})
+            raise UserError('CrpAccessDenied', {'reason': localization.GetByLabel('UI/Corporations/BaseCorporationUI/CannotKickMember')})
         if self.resigning:
             return 
         try:
@@ -498,7 +515,7 @@ class Corporation(Service):
                 if charID == eve.session.charid:
                     if eve.Message('ConfirmQuitCorporation', {}, uiconst.OKCANCEL) != uiconst.ID_OK:
                         return 
-                elif eve.Message('ConfirmKickCorpMember', {'name': cfg.eveowners.Get(charID).name}, uiconst.OKCANCEL) != uiconst.ID_OK:
+                elif eve.Message('ConfirmKickCorpMember', {'member': charID}, uiconst.OKCANCEL) != uiconst.ID_OK:
                     return 
 
         finally:
@@ -736,7 +753,7 @@ class Corporation(Service):
         if not eve.session.stationid2:
             raise UserError('CanNotApplyToCorpUnlessDocked')
         if eve.session.corpid == corpid:
-            raise UserError('CanNotJoinCorpAlreadyAMember', {'corporation': cfg.eveowners.Get(eve.session.corpid).name})
+            raise UserError('CanNotJoinCorpAlreadyAMember', {'corpName': cfg.eveowners.Get(eve.session.corpid).name})
         if self.UserIsCEO():
             raise UserError('CeoCanNotJoinACorp', {'CEOsCorporation': cfg.eveowners.Get(eve.session.corpid).name,
              'otherCorporation': cfg.eveowners.Get(corpid).name})
@@ -748,24 +765,23 @@ class Corporation(Service):
         corpName = cfg.eveowners.Get(corpid).name
         tax = corporation.taxRate * 100
         format = [{'type': 'header',
-          'text': mls.UI_STATION_APPLYFORMEMBERSHIPTO % {'corp': corpName}},
+          'text': localization.GetByLabel('UI/Corporations/BaseCorporationUI/ApplyForMembership', corporation=corpName)},
          {'type': 'push'},
          {'type': 'btline'},
          {'type': 'textedit',
           'key': 'appltext',
-          'label': mls.UI_CORP_APPLICATIONTEXT,
+          'label': localization.GetByLabel('UI/Corporations/BaseCorporationUI/CorporationApplicationText'),
           'maxLength': 1000},
          {'type': 'btline'},
          {'type': 'push'},
          {'type': 'header',
-          'text': mls.UI_STATION_CURRENTTAXRATEFOR % {'corp': '<b>%s</b>' % corpName,
-                   'taxrate': tax}}]
+          'text': localization.GetByLabel('UI/Corporations/BaseCorporationUI/CurrentTaxRateForCorporation', corporation=corpName, taxRate=tax)}]
         if not corporation.isRecruiting:
             format.append({'type': 'header',
-             'text': '<color=yellow>%s</color>' % mls.UI_CORP_RECRUITMAYBECLOSED})
+             'text': localization.GetByLabel('UI/Corporations/BaseCorporationUI/RecruitmentMayBeClosed')})
         format.append({'type': 'errorcheck',
          'errorcheck': self.CheckApplication})
-        retval = uix.HybridWnd(format, mls.UI_STATION_JOINCORPORATION, 1, None, uiconst.OKCANCEL, None, 400, 200, icon='ui_7_64_6', blockconfirm=True, unresizeAble=True)
+        retval = uix.HybridWnd(format, localization.GetByLabel('UI/Corporations/BaseCorporationUI/JoinCorporation'), 1, None, uiconst.OKCANCEL, None, 400, 200, icon='ui_7_64_6', blockconfirm=True, unresizeAble=True)
         if retval is not None:
             self.InsertApplication(corpid, retval['appltext'])
 
@@ -775,7 +791,7 @@ class Corporation(Service):
         if retval.has_key('appltext'):
             applicationText = retval['appltext']
             if len(applicationText) > 1000:
-                return mls.UI_CORP_HINT4 % {'len': len(applicationText)}
+                return localization.GetByLabel('UI/Corporations/BaseCorporationUI/ApplicationTextTooLong', length=len(applicationText))
         return ''
 
 
@@ -894,7 +910,7 @@ class Corporation(Service):
             divisionNames = self.GetDivisionNames()
             roles = self.GetRoles()
             divisions = {}
-            general = util.Rowset(roles.header)
+            general = util.Rowset(roles.columns)
             digits = ('1', '2', '3', '4', '5', '6', '7')
             for role in roles:
                 lastCharacter = role.roleName[-1:]
@@ -913,11 +929,21 @@ class Corporation(Service):
 
     def GetRoles(self):
         if self._Corporation__roles is None:
-            self._Corporation__roles = self.GetCorpRegistry().GetRoles()
-            if prefs.languageID != 'EN':
-                for row in self._Corporation__roles:
-                    row.shortDescription = Tr(row.shortDescription, 'dbo.crpRoles.shortDescription', row.roleIID)
-                    row.description = Tr(row.description, 'dbo.crpRoles.description', row.roleIID)
+            roles = self.GetCorpRegistry().GetRoles()
+            roleRowDesc = blue.DBRowDescriptor((('roleIID', const.DBTYPE_I4),
+             ('roleID', const.DBTYPE_I8),
+             ('roleName', const.DBTYPE_WSTR),
+             ('shortDescription', const.DBTYPE_WSTR),
+             ('description', const.DBTYPE_WSTR)))
+            self._Corporation__roles = dbutil.CRowset(roleRowDesc, [])
+            for row in roles:
+                shortDescription = localization.GetByMessageID(row.shortDescriptionID)
+                description = localization.GetByMessageID(row.descriptionID)
+                self._Corporation__roles.InsertNew([row.roleIID,
+                 row.roleID,
+                 row.roleName,
+                 shortDescription,
+                 description])
 
         return self._Corporation__roles
 
@@ -961,9 +987,9 @@ class Corporation(Service):
                             rolesByDivisions[divisionID] = []
                         desc = ''
                         if -1 != role.roleName.find('CanTake'):
-                            desc = mls.UI_GENERIC_TAKE
+                            desc = localization.GetByLabel('UI/Corporations/BaseCorporationUI/Take')
                         elif -1 != role.roleName.find('CanQuery'):
-                            desc = mls.UI_GENERIC_QUERY
+                            desc = localization.GetByLabel('UI/Corporations/BaseCorporationUI/Query')
                         if role.roleName.startswith('roleAccount'):
                             isAccount = True
                             desc = ''
@@ -1032,7 +1058,7 @@ class Corporation(Service):
 
 
     def ResignFromCEO(self):
-        if not eve.session.stationid:
+        if not session.stationid2:
             eve.Message('CrpCanNotChangeCorpInSpace')
             return 
         if not self.UserIsCEO():
@@ -1042,8 +1068,13 @@ class Corporation(Service):
         if memberCount <= 1:
             if eve.Message('CrpDestroyCorpWarning', {}, uiconst.YESNO, default=uiconst.ID_NO) != uiconst.ID_YES:
                 return 
-        elif eve.Message('AskResignAsCEO', {'memberCount': memberCount - 1}, uiconst.YESNO, default=uiconst.ID_NO) != uiconst.ID_YES:
-            return 
+        else:
+            potentialCEOs = self.members.GetNumberOfPotentialCEOs()
+            if potentialCEOs > 0:
+                if eve.Message('AskResignAsCEO', {'memberCount': potentialCEOs}, uiconst.YESNO, default=uiconst.ID_NO) != uiconst.ID_YES:
+                    return 
+            elif eve.Message('CrpDestroyNonEmptyCorpWarning', {}, uiconst.YESNO, default=uiconst.ID_NO) != uiconst.ID_YES:
+                return 
         res = sm.GetService('sessionMgr').PerformSessionChange('corp.resignceo', self._Corporation__ResignFromCEO)
         if res is None:
             return 
@@ -1059,7 +1090,7 @@ class Corporation(Service):
             owner = cfg.eveowners.Get(charID)
             tmplist.append((owner.name, charID, owner.typeID))
 
-        newCEO = uix.ListWnd(tmplist, 'character', mls.UI_CORP_SELECTREPLACEMENTCEO, mls.UI_CORP_SELECTREPLACEMENTCEOTEXT, 1)
+        newCEO = uix.ListWnd(tmplist, 'character', localization.GetByLabel('UI/Corporations/BaseCorporationUI/SelectReplacementCEO'), localization.GetByLabel('UI/Corporations/BaseCorporationUI/SelectReplacementCEOText'), 1)
         if newCEO:
             newCeoID = newCEO[1]
             eve.session.ResetSessionChangeTimer('Retrying with selected alternate CEO')
@@ -1071,37 +1102,37 @@ class Corporation(Service):
         data = self.GetCorpRegistry().GetInfoWindowDataForChar(charID)
         if not acceptBlank:
             if data.title1 is not None and len(data.title1) == 0:
-                data.title1 = mls.UI_CORP_TITLES_UNTITLED1
+                data.title1 = localization.GetByLabel('UI/Corporations/Common/TitleUntitled', index=1)
             if data.title2 is not None and len(data.title2) == 0:
-                data.title2 = mls.UI_CORP_TITLES_UNTITLED2
+                data.title2 = localization.GetByLabel('UI/Corporations/Common/TitleUntitled', index=2)
             if data.title3 is not None and len(data.title3) == 0:
-                data.title3 = mls.UI_CORP_TITLES_UNTITLED3
+                data.title3 = localization.GetByLabel('UI/Corporations/Common/TitleUntitled', index=3)
             if data.title4 is not None and len(data.title4) == 0:
-                data.title4 = mls.UI_CORP_TITLES_UNTITLED4
+                data.title4 = localization.GetByLabel('UI/Corporations/Common/TitleUntitled', index=4)
             if data.title5 is not None and len(data.title5) == 0:
-                data.title5 = mls.UI_CORP_TITLES_UNTITLED5
+                data.title5 = localization.GetByLabel('UI/Corporations/Common/TitleUntitled', index=5)
             if data.title6 is not None and len(data.title6) == 0:
-                data.title6 = mls.UI_CORP_TITLES_UNTITLED6
+                data.title6 = localization.GetByLabel('UI/Corporations/Common/TitleUntitled', index=6)
             if data.title7 is not None and len(data.title7) == 0:
-                data.title7 = mls.UI_CORP_TITLES_UNTITLED7
+                data.title7 = localization.GetByLabel('UI/Corporations/Common/TitleUntitled', index=7)
             if data.title8 is not None and len(data.title8) == 0:
-                data.title8 = mls.UI_CORP_TITLES_UNTITLED8
+                data.title8 = localization.GetByLabel('UI/Corporations/Common/TitleUntitled', index=8)
             if data.title9 is not None and len(data.title9) == 0:
-                data.title9 = mls.UI_CORP_TITLES_UNTITLED9
+                data.title9 = localization.GetByLabel('UI/Corporations/Common/TitleUntitled', index=9)
             if data.title10 is not None and len(data.title10) == 0:
-                data.title10 = mls.UI_CORP_TITLES_UNTITLED10
+                data.title10 = localization.GetByLabel('UI/Corporations/Common/TitleUntitled', index=10)
             if data.title11 is not None and len(data.title11) == 0:
-                data.title11 = mls.UI_CORP_TITLES_UNTITLED11
+                data.title11 = localization.GetByLabel('UI/Corporations/Common/TitleUntitled', index=11)
             if data.title12 is not None and len(data.title12) == 0:
-                data.title12 = mls.UI_CORP_TITLES_UNTITLED12
+                data.title12 = localization.GetByLabel('UI/Corporations/Common/TitleUntitled', index=12)
             if data.title13 is not None and len(data.title13) == 0:
-                data.title13 = mls.UI_CORP_TITLES_UNTITLED13
+                data.title13 = localization.GetByLabel('UI/Corporations/Common/TitleUntitled', index=13)
             if data.title14 is not None and len(data.title14) == 0:
-                data.title14 = mls.UI_CORP_TITLES_UNTITLED14
+                data.title14 = localization.GetByLabel('UI/Corporations/Common/TitleUntitled', index=14)
             if data.title15 is not None and len(data.title15) == 0:
-                data.title15 = mls.UI_CORP_TITLES_UNTITLED15
+                data.title15 = localization.GetByLabel('UI/Corporations/Common/TitleUntitled', index=15)
             if data.title16 is not None and len(data.title16) == 0:
-                data.title16 = mls.UI_CORP_TITLES_UNTITLED16
+                data.title16 = localization.GetByLabel('UI/Corporations/Common/TitleUntitled', index=16)
         return data
 
 
@@ -1140,32 +1171,29 @@ class Corporation(Service):
 
 
     def GetCorpBulletins(self):
-        if self.bulletins is None or self.bulletinsTimestamp < blue.os.GetTime():
+        if self.bulletins is None or self.bulletinsTimestamp < blue.os.GetWallclockTime():
             self.bulletins = self.GetCorpRegistry().GetBulletins()
-            self.bulletinsTimestamp = blue.os.GetTime() + 15 * MIN
+            self.bulletinsTimestamp = blue.os.GetWallclockTime() + 15 * MIN
         return self.bulletins
 
 
 
-    def GetFormattedBulletins(self, isAlliance = False):
-        canEditCorp = const.corpRoleChatManager & session.corprole == const.corpRoleChatManager
+    def GetBulletinEntries(self, isAlliance = False):
         bulletins = self.GetBulletins(isAlliance)
-        txt = ''
-        for b in bulletins:
-            postedBy = mls.UI_CORP_BULLETINPOSTEDBY % {'id': b.editCharacterID,
-             'name': cfg.eveowners.Get(b.editCharacterID).name,
-             'date': util.FmtDate(b.editDateTime, 'ls')}
+        canEditCorp = const.corpRoleChatManager & session.corprole == const.corpRoleChatManager
+        se = []
+        for bulletin in bulletins:
+            postedBy = localization.GetByLabel('UI/Corporations/BaseCorporationUI/BulletinPostedBy', charID=bulletin.editCharacterID, infoLinkData=('showinfo', cfg.eveowners.Get(bulletin.editCharacterID).typeID, bulletin.editCharacterID), postTime=bulletin.editDateTime)
+            text = '<fontsize=18><b>%s</b></fontsize><br>%s' % (bulletin.title, bulletin.body)
             editLinks = ''
             if canEditCorp:
-                editLinks = mls.UI_CORP_BULLETINEDITLINKS % {'id': b.bulletinID}
-            txt += "\n                <h3>%s</h3>\n                <p style='padding-right:10px'>%s</p>\n                <div align=right style='padding-right:10px; color:white'>%s%s</div>\n                <hr style='margin-top: 5px; margin-bottom: 14px'>\n                " % (b.title,
-             b.body,
-             postedBy,
-             editLinks)
+                editTag = '<a href="localsvc:service=corp&method=EditBulletin&id=%s">' % bulletin.bulletinID
+                delTag = '<a href="localsvc:service=corp&method=DeleteBulletin&id=%s">' % bulletin.bulletinID
+                editLinks = localization.GetByLabel('UI/Corporations/BaseCorporationUI/BulletinEditLinks', startEditTag=editTag, endEditTag='</a>', startDelTag=delTag, endDelTag='</a>')
+            se.append(listentry.Get('BulletinEntry', {'text': text,
+             'postedBy': postedBy + editLinks}))
 
-        if txt == '':
-            txt = '<h3>%s</h3>' % mls.UI_CORP_NOBULLETINS
-        return '<html><body>%s</body></html>' % txt
+        return se
 
 
 
@@ -1198,20 +1226,18 @@ class Corporation(Service):
 
     def EditBulletin(self, id, isAlliance = False):
         if not const.corpRoleChatManager & eve.session.corprole == const.corpRoleChatManager:
-            raise UserError('CrpAccessDenied', {'reason': mls.UI_CORP_DO_NOT_HAVE_ROLE_CHATMANAGER})
+            raise UserError('CrpAccessDenied', {'reason': localization.GetByLabel('UI/Corporations/BaseCorporationUI/DoNotHaveRole', roleName=localization.GetByMessageID(COMMUNICATIONS_OFFICER_ROLE_ID))})
         bulletin = self.GetBulletin(id)
         if bulletin and bulletin.ownerID == session.allianceid:
             isAlliance = True
-        wnd = sm.GetService('window').GetWindow('EditCorpBulletin')
-        if wnd:
-            wnd.SelfDestruct()
-        sm.GetService('window').GetWindow('EditCorpBulletin', 1, isAlliance=isAlliance, bulletin=bulletin)
+        form.EditCorpBulletin.CloseIfOpen()
+        form.EditCorpBulletin.Open(isAlliance=isAlliance, bulletin=bulletin)
 
 
 
     def DeleteBulletin(self, id):
         if not const.corpRoleChatManager & eve.session.corprole == const.corpRoleChatManager:
-            raise UserError('CrpAccessDenied', {'reason': mls.UI_CORP_DO_NOT_HAVE_ROLE_CHATMANAGER})
+            raise UserError('CrpAccessDenied', {'reason': localization.GetByLabel('UI/Corporations/BaseCorporationUI/DoNotHaveRole', roleName=localization.GetByMessageID(COMMUNICATIONS_OFFICER_ROLE_ID))})
         if uicore.Message('ConfirmDeleteBulletin', {}, uiconst.YESNO, suppress=uiconst.ID_YES) != uiconst.ID_YES:
             return 
         bulletin = self.GetBulletin(id)
@@ -1296,13 +1322,12 @@ class Corporation(Service):
     def _GetRecruitmentAdRegistryData(self):
         data = sm.RemoteSvc('corporationSvc').GetRecruitmentAdRegistryData()
         for row in data.types:
-            row.typeName = Tr(row.typeName, 'corporation.recruitmentTypes.typeName', row.dataID)
-            row.description = Tr(row.description, 'corporation.recruitmentTypes.description', row.dataID)
-            row.groupName = Tr(row.groupName, 'corporation.recruitmentGroups.groupName', row.groupDataID)
+            row.typeName = localization.GetByMessageID(row.typeNameID)
+            row.description = localization.GetByMessageID(row.descriptionID)
 
         for row in data.groups:
-            row.groupName = Tr(row.groupName, 'corporation.recruitmentGroups.groupName', row.dataID)
-            row.description = Tr(row.description, 'corporation.recruitmentGroups.description', row.dataID)
+            row.groupName = localization.GetByMessageID(row.groupNameID)
+            row.description = localization.GetByMessageID(row.descriptionID)
 
         self._Corporation__recruitmentAdTypes = data.types
         self._Corporation__recruitmentAdGroups = data.groups

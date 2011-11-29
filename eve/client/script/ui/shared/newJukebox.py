@@ -6,9 +6,11 @@ import uiutil
 import util
 import listentry
 import uiconst
-import draw
 import base
 import uicls
+import form
+import localization
+import localizationUtil
 MINHEIGHT = 400
 MINWIDTH = 250
 COLLAPSEDHEIGHT = 103
@@ -17,10 +19,10 @@ def GetJukeboxMenu():
     ret = []
     jukeboxSvc = sm.GetService('jukebox')
     if jukeboxSvc.jukeboxState == 'play':
-        ret += [(mls.UI_SHARED_JUKEBOXPAUSE, lambda *args: jukeboxSvc.Pause())]
+        ret += [(localization.GetByLabel('UI/Jukebox/Pause'), lambda *args: jukeboxSvc.Pause())]
     else:
-        ret += [(mls.UI_SHARED_JUKEBOXPLAY, lambda *args: jukeboxSvc.Play())]
-    ret += [(mls.UI_SHARED_JUKEBOXNEXT, lambda *args: jukeboxSvc.AdvanceTrack()), (mls.UI_SHARED_JUKEBOXPREV, lambda *args: jukeboxSvc.AdvanceTrack(forward=False))]
+        ret += [(localization.GetByLabel('UI/Jukebox/Play'), lambda *args: jukeboxSvc.Play())]
+    ret += [(localization.GetByLabel('UI/Jukebox/Next'), lambda *args: jukeboxSvc.AdvanceTrack()), (localization.GetByLabel('UI/Jukebox/Previous'), lambda *args: jukeboxSvc.AdvanceTrack(forward=False))]
     return ret
 
 
@@ -59,12 +61,12 @@ class JukeboxSvcWrapper():
     def DrawButtons(self, buttonCont):
         self.buttons = {}
         playing = self.jukeboxSvc.GetState() == 'play'
-        buttons = [util.KeyVal(name='play', iconID='ui_73_16_225', left=22, function=self.Play, hidden=playing, hint=mls.UI_SHARED_JUKEBOXPLAY),
-         util.KeyVal(name='pause', iconID='ui_73_16_226', left=22, function=self.Pause, hidden=not playing, hint=mls.UI_SHARED_JUKEBOXPAUSE),
-         util.KeyVal(name='previous', iconID='ui_73_16_229', left=0, function=self.PlayPreviousTrack, hidden=False, hint=mls.UI_SHARED_JUKEBOXPREVIOUSTRACK),
-         util.KeyVal(name='next', iconID='ui_73_16_228', left=44, function=self.PlayNextTrack, hidden=False, hint=mls.UI_SHARED_JUKEBOXNEXTTRACK),
-         util.KeyVal(name='shuffleOff', iconID='ui_73_16_8', left=71, function=self.ShuffleOff, hidden=not self.shuffleActive, hint=mls.UI_SHARED_JUKEBOXTURNSHUFFLEOFF),
-         util.KeyVal(name='shuffleOn', iconID='ui_73_16_3', left=71, function=self.ShuffleOn, hidden=self.shuffleActive, hint=mls.UI_SHARED_JUKEBOXTURNSHUFFLEON)]
+        buttons = [util.KeyVal(name='play', iconID='ui_73_16_225', left=22, function=self.Play, hidden=playing, hint=localization.GetByLabel('UI/Jukebox/Play')),
+         util.KeyVal(name='pause', iconID='ui_73_16_226', left=22, function=self.Pause, hidden=not playing, hint=localization.GetByLabel('UI/Jukebox/Pause')),
+         util.KeyVal(name='previous', iconID='ui_73_16_229', left=0, function=self.PlayPreviousTrack, hidden=False, hint=localization.GetByLabel('UI/Jukebox/PlayPreviousTrack')),
+         util.KeyVal(name='next', iconID='ui_73_16_228', left=44, function=self.PlayNextTrack, hidden=False, hint=localization.GetByLabel('UI/Jukebox/PlayNextTrack')),
+         util.KeyVal(name='shuffleOff', iconID='ui_73_16_8', left=71, function=self.ShuffleOff, hidden=not self.shuffleActive, hint=localization.GetByLabel('UI/Jukebox/TurnShuffleOff')),
+         util.KeyVal(name='shuffleOn', iconID='ui_73_16_3', left=71, function=self.ShuffleOn, hidden=self.shuffleActive, hint=localization.GetByLabel('UI/Jukebox/TurnShuffleOn'))]
         for b in buttons:
             btn = uix.GetBigButton(size=20, where=buttonCont, left=b.left, top=0, menu=0, iconMargin=0, hint=b.hint)
             btn.OnClick = b.function
@@ -148,7 +150,7 @@ class JukeboxSvcWrapper():
         self.volumeIcon.OnClick = self.volumeIconMuted.OnClick = self.ToggleMuted
         self.maxVolumeIcon = uicls.Icon(icon='ui_73_16_35', parent=container, pos=(85, -3, 16, 16), ignoreSize=1)
         self.maxVolumeIcon.OnClick = self.SetMaxVolume
-        self.volumeSlider = uix.GetSlider(name='volumeSlider', where=container, minval=0.0, maxval=1.0, hint=mls.UI_GENERIC_SOUNDVOLUME, align=uiconst.RELATIVE, width=60, height=10, left=20, setlabelfunc=lambda *args: None, endsliderfunc=self.SetVolume)
+        self.volumeSlider = uix.GetSlider(name='volumeSlider', where=container, minval=0.0, maxval=1.0, hint=localization.GetByLabel('UI/Jukebox/Volume'), align=uiconst.RELATIVE, width=60, height=10, left=20, setlabelfunc=lambda *args: None, endsliderfunc=self.SetVolume, gethintfunc=lambda idname, dname, value: localizationUtil.FormatNumeric(int(round(value * 100))))
         self.volumeHandle = uiutil.GetChild(self.volumeSlider, 'volumeSlider')
         self.volumeHandle.SlideTo(self.jukeboxSvc.GetVolume())
         self.volumeHandle.SetValue(self.jukeboxSvc.GetVolume())
@@ -286,11 +288,12 @@ class Jukebox(uicls.Window, JukeboxSvcWrapper):
     __notifyevents__ = ['OnJukeboxChange', 'OnAudioDeactivated']
     default_width = 600
     default_height = 450
+    default_windowID = 'jukebox'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         JukeboxSvcWrapper.Startup(self)
-        self.SetCaption(mls.UI_SHARED_JUKEBOX)
+        self.SetCaption(localization.GetByLabel('UI/Jukebox/WindowTitle'))
         self.SetWndIcon('ui_12_64_5', hidden=True)
         self.HideMainIcon()
         self.SetTopparentHeight(0)
@@ -298,13 +301,11 @@ class Jukebox(uicls.Window, JukeboxSvcWrapper):
         self.MakeUnstackable()
         self.playlistExpanded = bool(settings.user.ui.Get('JukeboxPlaylistExpanded', 1))
         self.elapsedTrackTime = 0
-        jukeboxMinimized = sm.GetService('window').GetWindow('JukeboxMinimized')
-        if jukeboxMinimized is not None:
-            jukeboxMinimized.CloseX()
+        form.jukeboxMinimized.CloseIfOpen()
         self.sr.playerCont = uicls.Container(name='playerCont', parent=self.sr.main, align=uiconst.TOTOP, pos=(0, 0, 0, 55), padding=(5, 6, 5, 5))
         self.sr.currTrackContainer = uicls.Container(name='currTrackContainer', parent=self.sr.playerCont, align=uiconst.TOTOP, pos=(0, 0, 0, 19), clipChildren=True)
-        self.sr.currTrackTimeEdit = uicls.Label(text='', parent=self.sr.currTrackContainer, align=uiconst.TOPLEFT, left=5, top=2, state=uiconst.UI_NORMAL)
-        self.sr.currTrackNameEdit = uicls.Label(text='', parent=self.sr.currTrackContainer, align=uiconst.TOPLEFT, left=55, top=2, state=uiconst.UI_NORMAL)
+        self.sr.currTrackTimeEdit = uicls.EveLabelMedium(text='', parent=self.sr.currTrackContainer, align=uiconst.TOPLEFT, left=5, top=2, state=uiconst.UI_NORMAL)
+        self.sr.currTrackNameEdit = uicls.EveLabelMedium(text='', parent=self.sr.currTrackContainer, align=uiconst.TOPLEFT, left=55, top=2, state=uiconst.UI_NORMAL)
         self.sr.backgroundFrame = uicls.BumpedUnderlay(parent=self.sr.currTrackContainer, padding=(-1, -1, -1, -1))
         buttonCont = uicls.Container(name='buttonCont', parent=self.sr.playerCont, align=uiconst.TOTOP, pos=(0, 0, 0, 15), padding=(0, 10, 0, 0))
         self.DrawButtons(buttonCont)
@@ -318,13 +319,13 @@ class Jukebox(uicls.Window, JukeboxSvcWrapper):
         self.sr.currPlaylistCont = uicls.Container(name='currPlaylistCont', parent=self.sr.bottomCont, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(0, 0, 0, 0))
         self.sr.expanderCont = uicls.Container(name='expanderCont', parent=self.sr.playlistsHeaderCont, align=uiconst.TOPLEFT, pos=(5, -1, 10, 10))
         self.expanderButton = uicls.ExpanderButton(align=uiconst.TOPRIGHT, parent=self.sr.expanderCont, expanded=not self.playlistExpanded, expandFunc=self.ExpandPlaylists, collapseFunc=self.CollapsePlaylists)
-        uicls.Label(text=mls.UI_SHARED_JUKEBOXPLAYLISTS.upper(), parent=uicls.Container(parent=self.sr.playlistsHeaderCont, align=uiconst.TOPLEFT, pos=(18, 1, 0, 14)), align=uiconst.TOPLEFT, fontsize=10, letterspace=1, state=uiconst.UI_NORMAL)
-        attrToHeader = {'title': mls.UI_SHARED_JUKEBOXTITLE,
-         'duration': mls.UI_SHARED_JUKEBOXDURATION,
-         'id': mls.UI_SHARED_JUKEBOXNUMBER}
+        uicls.EveLabelSmall(text=localization.GetByLabel('UI/Jukebox/Playlists'), parent=uicls.Container(parent=self.sr.playlistsHeaderCont, align=uiconst.TOPLEFT, pos=(18, 1, 0, 14)), align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL)
+        attrToHeader = {'title': localization.GetByLabel('UI/Jukebox/TrackTitle'),
+         'duration': localization.GetByLabel('UI/Jukebox/Duration'),
+         'id': localization.GetByLabel('UI/Jukebox/TrackNumber')}
         self.sortBy = attrToHeader[self.jukeboxSvc.GetSortAttr()]
         self.reverseSort = self.jukeboxSvc.GetSortDirection()
-        btns = [[mls.UI_GENERIC_NEW,
+        btns = [[localization.GetByLabel('UI/Jukebox/NewPlaylist'),
           self.CreatePlaylist,
           None,
           81]]
@@ -333,7 +334,7 @@ class Jukebox(uicls.Window, JukeboxSvcWrapper):
         self.sr.playlistsScroll.multiSelect = False
         self.sr.playlistsScroll.Confirm = self.Play
         self.sr.playlistsScroll.OnSelectionChange = self.OnPlaylistSelectionChanged
-        btns = [[mls.UI_SHARED_JUKEBOXADDTRACKS,
+        btns = [[localization.GetByLabel('UI/Jukebox/AddTracks'),
           self.AddTracksToPlaylist,
           (),
           81]]
@@ -351,9 +352,9 @@ class Jukebox(uicls.Window, JukeboxSvcWrapper):
 
 
     def SortTracks(self, by = None, reversesort = 0, forceHilite = 0, playlistName = None):
-        validAttributes = {mls.UI_SHARED_JUKEBOXTITLE: 'title',
-         mls.UI_SHARED_JUKEBOXDURATION: 'duration',
-         mls.UI_SHARED_JUKEBOXNUMBER: 'id'}
+        validAttributes = {localization.GetByLabel('UI/Jukebox/TrackTitle'): 'title',
+         localization.GetByLabel('UI/Jukebox/Duration'): 'duration',
+         localization.GetByLabel('UI/Jukebox/TrackNumber'): 'id'}
         sortAttr = validAttributes[by]
         if playlistName is None:
             playlistName = self.playlistSelected.name
@@ -378,7 +379,7 @@ class Jukebox(uicls.Window, JukeboxSvcWrapper):
         self.SortTracks(self.sortBy, self.reverseSort, playlistName=selectedPlaylists[0].name)
         if self.playlistSelected == self.jukeboxSvc.GetCurrentPlaylist():
             self.sr.tracksScroll.SetSelected(self.jukeboxSvc.GetTrackIndex())
-        btn = self.btnGroup.GetBtnByLabel(mls.UI_SHARED_JUKEBOXADDTRACKS)
+        btn = self.btnGroup.GetBtnByLabel(localization.GetByLabel('UI/Jukebox/AddTracks'))
         if self.playlistSelected and not self.playlistSelected.isLocked:
             btn.Enable()
         else:
@@ -403,13 +404,13 @@ class Jukebox(uicls.Window, JukeboxSvcWrapper):
 
 
     def OnAudioDeactivated(self, *args):
-        self.CloseX()
+        self.CloseByUser()
 
 
 
     def OnDblClick(self, *args):
         self.dblclicktimer = None
-        self = sm.GetService('window').GetWindow('jukeboxMinimized', create=1, expandIfCollapsed=False)
+        form.jukeboxMinimized.Open()
 
 
 
@@ -448,7 +449,6 @@ class Jukebox(uicls.Window, JukeboxSvcWrapper):
                 continue
             data = util.KeyVal(name=key, tracks=playlist.tracks)
             data.label = self.GetTrackTitle('', playlist.GetDisplayName())
-            data.hint = self.GetTrackTitle('', key)
             data.OnDblClick = self.Play
             data.GetMenu = self.GetPlaylistMenu
             data.ignoreRightClick = 1
@@ -473,10 +473,10 @@ class Jukebox(uicls.Window, JukeboxSvcWrapper):
 
 
     def GetPlaylistMenu(self, playlist):
-        m = [[mls.UI_SHARED_JUKEBOXPLAY, self.LoadAndPlayPlaylist, (playlist.sr.node,)]]
+        m = [[localization.GetByLabel('UI/Jukebox/Play'), self.LoadAndPlayPlaylist, (playlist.sr.node,)]]
         if not playlist.sr.node.isLocked:
-            m.append([mls.UI_CMD_DELETE, self.RemovePlaylist, (playlist.sr.node.name,)])
-            m.append([mls.UI_CMD_RENAME, self.RenamePlaylist, (playlist.sr.node,)])
+            m.append([localization.GetByLabel('UI/Jukebox/Delete'), self.RemovePlaylist, (playlist.sr.node.name,)])
+            m.append([localization.GetByLabel('UI/Jukebox/Rename'), self.RenamePlaylist, (playlist.sr.node,)])
         return m
 
 
@@ -485,7 +485,7 @@ class Jukebox(uicls.Window, JukeboxSvcWrapper):
         retval = self.GetNewPlaylistNameWindow(node.label)
         if retval is not None:
             p = self.jukeboxSvc.GetPlaylist(node.name)
-            p.SetDisplayName(unicode(retval[mls.UI_SHARED_JUKEBOXPLAYLISTNAME]))
+            p.SetDisplayName(unicode(retval[localization.GetByLabel('UI/Jukebox/PlaylistName')]))
             self.PopulatePlaylistsScroll()
 
 
@@ -503,10 +503,12 @@ class Jukebox(uicls.Window, JukeboxSvcWrapper):
         for (i, track,) in enumerate(playlist.tracks):
             data = util.KeyVal(track.__dict__)
             title = self.GetTrackTitle(track.message, track.title)
-            data.label = '<t>%s<t>%s<t>%d:%.2d' % (1 + track.id,
+            data.label = ['<t>',
+             localizationUtil.FormatNumeric(1 + track.id),
+             '<t>',
              title,
-             int(track.duration // 60),
-             int(track.duration % 60))
+             '<t>',
+             localizationUtil.FormatTimeIntervalShort(track.duration * const.SEC, showFrom='minute', showTo='second')]
             data.height = 20
             data.OnDblClick = self.Play
             data.GetMenu = self.GetTrackMenu
@@ -516,18 +518,17 @@ class Jukebox(uicls.Window, JukeboxSvcWrapper):
             data.charIndex = title.lower()
             scrolllist.append(listentry.Get('JukeboxTrack', data=data))
 
-        self.sr.tracksScroll.Load(contentList=scrolllist, noContentHint=mls.UI_SHARED_JUKEBOXNOTRACKS, headers=['',
-         mls.UI_SHARED_JUKEBOXNUMBER,
-         mls.UI_SHARED_JUKEBOXTITLE,
-         mls.UI_SHARED_JUKEBOXDURATION], ignoreSort=True, reversesort=self.reverseSort)
+        self.sr.tracksScroll.Load(contentList=scrolllist, noContentHint=localization.GetByLabel('UI/Jukebox/NoTracks'), headers=['',
+         localization.GetByLabel('UI/Jukebox/TrackNumber'),
+         localization.GetByLabel('UI/Jukebox/TrackTitle'),
+         localization.GetByLabel('UI/Jukebox/Duration')], ignoreSort=True, reversesort=self.reverseSort)
 
 
 
     def GetTrackMenu(self, *args):
-        tracks = self.sr.tracksScroll.GetSelected()
         m = []
         if not self.playlistSelected.isLocked:
-            m.append([mls.UI_SHARED_JUKEBOXREMOVEFROM, self.RemoveSelectedTracks])
+            m.append([localization.GetByLabel('UI/Jukebox/RemoveFromPlaylist'), self.RemoveSelectedTracks])
         return m
 
 
@@ -547,10 +548,10 @@ class Jukebox(uicls.Window, JukeboxSvcWrapper):
     def UpdateCurrTrackEdit(self):
         if self.trackPlaying is not None:
             trackName = self.GetTrackTitle('', self.trackPlaying.title)
-            self.sr.currTrackTimeEdit.text = util.FmtTime(self.elapsedTrackTime * SEC)
+            self.sr.currTrackTimeEdit.text = localizationUtil.FormatTimeIntervalShort(self.elapsedTrackTime * const.SEC, showFrom='minute', showTo='second')
             self.sr.currTrackNameEdit.text = trackName
         else:
-            self.sr.currTrackTimeEdit.text = util.FmtTime(0 * SEC)
+            self.sr.currTrackTimeEdit.text = localizationUtil.FormatTimeIntervalShort(0 * SEC, showFrom='minute', showTo='second')
             self.sr.currTrackNameEdit.text = ''
 
 
@@ -593,7 +594,7 @@ class Jukebox(uicls.Window, JukeboxSvcWrapper):
                     path = path.get('folders')[0]
         retval = self.GetNewPlaylistNameWindow()
         if retval is not None:
-            playlistName = unicode(retval[mls.UI_SHARED_JUKEBOXPLAYLISTNAME]).strip()
+            playlistName = unicode(retval[localization.GetByLabel('UI/Jukebox/PlaylistName')]).strip()
             playlist = self.jukeboxSvc.AddPlaylist(playlistName, path, isNew=True)
             playlist.SaveAsM3U()
 
@@ -601,23 +602,23 @@ class Jukebox(uicls.Window, JukeboxSvcWrapper):
 
     def GetNewPlaylistNameWindow(self, name = ''):
         format = [{'type': 'text',
-          'text': mls.UI_SHARED_JUKEBOXPLAYLISTNAME,
+          'text': localization.GetByLabel('UI/Jukebox/PlaylistName'),
           'frame': 0}, {'type': 'edit',
           'setvalue': name,
           'width': 140,
           'label': '_hide',
-          'key': mls.UI_SHARED_JUKEBOXPLAYLISTNAME,
+          'key': localization.GetByLabel('UI/Jukebox/PlaylistName'),
           'maxlength': 20,
           'required': 1}, {'type': 'errorcheck',
           'errorcheck': self.PlaylistNameErrorCheck}]
-        return uix.HybridWnd(format, mls.UI_SHARED_JUKEBOXENTERNAME, 1, None, uiconst.OKCANCEL, minW=200, minH=110, icon=uiconst.QUESTION)
+        return uix.HybridWnd(format, localization.GetByLabel('UI/Jukebox/EnterName'), 1, None, uiconst.OKCANCEL, minW=200, minH=110, icon=uiconst.QUESTION)
 
 
 
     def PlaylistNameErrorCheck(self, retval):
-        playlistName = unicode(retval[mls.UI_SHARED_JUKEBOXPLAYLISTNAME]).strip().lower()
+        playlistName = unicode(retval[localization.GetByLabel('UI/Jukebox/PlaylistName')]).strip().lower()
         if playlistName in [ self.GetTrackTitle('', n.GetDisplayName()).lower() for n in self.jukeboxSvc.GetPlaylists().values() ]:
-            return mls.UI_SHARED_JUKEBOXALREADYEXISTS
+            return localization.GetByLabel('UI/Jukebox/PlaylistAlreadyExists')
         return ''
 
 
@@ -630,13 +631,12 @@ class Jukebox(uicls.Window, JukeboxSvcWrapper):
                 wiseMessage = wiseMessage[6:]
             if wiseMessage.endswith('_play'):
                 wiseMessage = wiseMessage[:5]
+            mlskey = None
             pos = trackName.rfind('mls://')
             if pos > -1:
                 mlskey = trackName[(pos + 6):]
-            else:
-                mlskey = 'UI_AUDIO_' + wiseMessage.upper()
-            if mls.HasLabel(mlskey):
-                return getattr(mls, mlskey)
+            if localization.IsValidLabel(mlskey):
+                return localization.GetByLabel(mlskey)
             return trackName.lstrip()
 
 
@@ -649,7 +649,7 @@ class Jukebox(uicls.Window, JukeboxSvcWrapper):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         self.jukeboxSvc.UnregisterVolumeObserver(self)
 
 
@@ -660,11 +660,12 @@ class JukeboxMinimized(uicls.Window, JukeboxSvcWrapper):
     __notifyevents__ = ['OnJukeboxChange', 'OnAudioDeactivated']
     default_width = 250
     default_height = 40
+    default_windowID = 'JukeboxMinimized'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         JukeboxSvcWrapper.Startup(self)
-        self.SetCaption(mls.UI_SHARED_JUKEBOX)
+        self.SetCaption(localization.GetByLabel('UI/Jukebox/WindowTitle'))
         self.SetWndIcon('ui_12_64_5', hidden=True)
         self.HideMainIcon()
         self.SetTopparentHeight(0)
@@ -674,15 +675,13 @@ class JukeboxMinimized(uicls.Window, JukeboxSvcWrapper):
         buttonCont = uicls.Container(name='buttonCont', parent=self.sr.main, align=uiconst.TOPLEFT, pos=(1, 1, 100, 50), padding=(0, 0, 0, 0))
         self.DrawButtons(buttonCont)
         self.DrawVolumeSlider(uicls.Container(parent=self.sr.main, align=uiconst.TOPRIGHT, pos=(8, 6, 100, 30)))
-        jukebox = sm.GetService('window').GetWindow('jukebox')
-        if jukebox is not None:
-            jukebox.CloseX()
+        form.jukebox.CloseIfOpen()
         uthread.new(self.SetCorrectSize)
 
 
 
     def OnDblClick(self, *args):
-        sm.GetService('window').GetWindow('jukebox', create=1)
+        form.jukebox.Open()
 
 
 
@@ -698,11 +697,11 @@ class JukeboxMinimized(uicls.Window, JukeboxSvcWrapper):
 
 
     def OnAudioDeactivated(self, *args):
-        self.CloseX()
+        self.CloseByUser()
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         self.jukeboxSvc.UnregisterVolumeObserver(self)
 
 

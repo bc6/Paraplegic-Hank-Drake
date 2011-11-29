@@ -16,6 +16,7 @@ import standingUtil
 import log
 import uicls
 import uiconst
+import localization
 
 class Standing(service.Service):
     __exportedcalls__ = {'GetTransactionWnd': [],
@@ -145,7 +146,7 @@ class Standing(service.Service):
             if self.gotten:
                 break
             self.LogInfo('Waiting while acquiring standings')
-            blue.pyos.synchro.Sleep(1000)
+            blue.pyos.synchro.SleepWallclock(1000)
 
 
 
@@ -226,8 +227,7 @@ class Standing(service.Service):
             bonus = ''
         else:
             effective = (1.0 - (1.0 - standing / 10.0) * (1.0 - bonus[1] / 10.0)) * 10.0
-            bonus = mls.UI_GENERIC_STANDINGBONUS % {'bonus': bonus[0],
-             'value': standing}
+            bonus = localization.GetByLabel('UI/Standings/Common/BonusAdded', bonus=bonus[0], value=standing)
             standing = effective
         return (standing, bonus)
 
@@ -262,15 +262,14 @@ class Standing(service.Service):
             bonus = ''
         else:
             effective = (1.0 - (1.0 - standing / 10.0) * (1.0 - bonus / 10.0)) * 10.0
-            bonusString = mls.UI_GENERIC_UNKNOWN
+            bonusString = localization.GetByLabel('UI/Common/Unknown')
             if bonusType == const.typeDiplomacy:
-                bonusString = mls.UI_GENERIC_STANDINGDIPLOMACY % {'value': relevantSkills[bonusType]}
+                bonusString = localization.GetByLabel('UI/Standings/Common/DiplomacySkill', value=relevantSkills[bonusType])
             elif bonusType == const.typeConnections:
-                bonusString = mls.UI_GENERIC_STANDINGCONNECTIONS % {'value': relevantSkills[bonusType]}
+                bonusString = localization.GetByLabel('UI/Standings/Common/ConnectionsSkill', value=relevantSkills[bonusType])
             elif bonusType == const.typeCriminalConnections:
-                bonusString = mls.UI_GENERIC_STANDINGCRIMINALCONNECTIONS % {'value': relevantSkills[bonusType]}
-            bonus = mls.UI_GENERIC_STANDINGBONUS % {'bonus': bonusString,
-             'value': standing}
+                bonusString = localization.GetByLabel('UI/Standings/Common/CriminalConnectionsSkill', value=relevantSkills[bonusType])
+            bonus = localization.GetByLabel('UI/Standings/Common/BonusAdded', bonus=bonusString, value=standing)
             standing = effective
         ownerinfo = cfg.eveowners.Get(ownerID)
         data = {}
@@ -280,11 +279,7 @@ class Standing(service.Service):
             col = '<color=grey>'
         else:
             col = ''
-        data['label'] = '%s%s %.2f %s (%s)' % (col,
-         label,
-         standing,
-         bonus,
-         uix.GetStanding(round(standing, 0), 1))
+        data['label'] = localization.GetByLabel('UI/Standings/StandingEntry', color=col, label=label, standing=standing, bonus=bonus, standingText=uix.GetStanding(round(standing, 0), 1))
         data['ownerInfo'] = ownerinfo
         data['fromID'] = fromID
         data['toID'] = toID
@@ -354,7 +349,7 @@ class Standing(service.Service):
 
         scrolllist = []
         if not util.IsNPC(whoID):
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_GENERIC_STANDINGYOURVIEWS}))
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Standings/InfoWindow/YourStandings')}))
             scrolllist.extend(starmap(GetEntry, standings))
             nonNeutralStandings = [ standing for (blah, blah, standing,) in standings if standing != 0.0 ]
             if nonNeutralStandings:
@@ -362,16 +357,16 @@ class Standing(service.Service):
                 data = util.KeyVal()
                 data.line = 1
                 data.indent = 36
-                data.text = '%s: %.2f (%s)' % (mls.UI_GENERIC_DERIVEDSTANDING, highest, uix.GetStanding(round(highest, 0), 1))
+                data.text = localization.GetByLabel('UI/Standings/Common/DerivedStanding', highest=highest, standing=uix.GetStanding(round(highest, 0), 1))
                 scrolllist.append(listentry.Get('Divider'))
                 scrolllist.append(listentry.Get('Text', data=data))
                 scrolllist.append(listentry.Get('Divider'))
         else:
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_GENERIC_STANDINGTHEIRVIEWS}))
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Standings/InfoWindow/StandingsWithYou')}))
             scrolllist.extend([ GetEntry(fromID, toID, self.GetStanding(fromID, toID)) for fromID in (toFactionID, toCorpID, toCharID) for toID in (fromFactionID, fromCorpID, fromCharID) if None not in (fromID, toID) if self.GetStanding(fromID, toID) is not None ])
         if util.IsFaction(whoID):
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_GENERIC_STANDINGSWITHOTHEREMPIRES}))
-            factions = sm.RemoteSvc('charMgr').GetFactions()
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Standings/InfoWindow/StandingsOtherEmpires')}))
+            factions = cfg.factions
             for faction in factions:
                 if faction.factionID not in (whoID, const.factionUnknown):
                     toInfo = cfg.eveowners.Get(faction.factionID)
@@ -381,14 +376,8 @@ class Standing(service.Service):
                     fromStandingText = uix.GetStanding(round(fromStanding, 0), 1)
                     toStanding = self.GetStanding(faction.factionID, whoID)
                     toStandingText = uix.GetStanding(round(toStanding, 0), 1)
-                    fromText = '%s &gt; %s %s (%s)' % (fromName,
-                     toName,
-                     fromStanding,
-                     fromStandingText)
-                    toText = '%s &gt; %s %s (%s)' % (toName,
-                     fromName,
-                     toStanding,
-                     toStandingText)
+                    fromText = localization.GetByLabel('UI/Standings/StandingRelationshipText', leftSide=fromName, rightSide=toName, standing=fromStanding, standingText=fromStandingText)
+                    toText = localization.GetByLabel('UI/Standings/StandingRelationshipText', leftSide=toName, rightSide=fromName, standing=toStanding, standingText=toStandingText)
                     data = util.KeyVal()
                     data.toInfo = toInfo
                     data.label = fromText
@@ -484,27 +473,27 @@ class Standing(service.Service):
         chars.sort(SortFunc)
         agents.sort(SortFunc)
         if factions:
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_GENERIC_FACTIONS}))
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Common/Factions')}))
             for each in factions:
                 scrolllist.append(each[2])
 
         if alliances:
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_GENERIC_ALLIANCES}))
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Common/Alliances')}))
             for each in alliances:
                 scrolllist.append(each[2])
 
         if corps:
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_GENERIC_CORPORATIONS}))
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Common/Corporations')}))
             for each in corps:
                 scrolllist.append(each[2])
 
         if chars:
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_GENERIC_CHARACTERS}))
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Common/Characters')}))
             for each in chars:
                 scrolllist.append(each[2])
 
         if agents:
-            scrolllist.append(listentry.Get('Header', {'label': mls.UI_GENERIC_AGENTS}))
+            scrolllist.append(listentry.Get('Header', {'label': localization.GetByLabel('UI/Common/Agents')}))
             for each in agents:
                 scrolllist.append(each[2])
 
@@ -513,13 +502,18 @@ class Standing(service.Service):
             name = cfg.eveowners.Get(whoID).name
             if whoID == session.charid:
                 if positive:
-                    text = mls.UI_GENERIC_EVERYBODYNEGATIVEYOU
+                    text = localization.GetByLabel('UI/Standings/Common/EverybodyNegativeYou')
                 else:
-                    text = mls.UI_GENERIC_EVERYBODYPOSITIVEYOU
+                    text = localization.GetByLabel('UI/Standings/Common/EverybodyPositiveYou')
             elif positive:
-                text = mls.UI_GENERIC_EVERYBODYNEGATIVENAME % {'name': name}
+                if util.IsCharacter(whoID):
+                    text = localization.GetByLabel('UI/Standings/Common/EverybodyNegativeCharacter', id=whoID)
+                else:
+                    text = localization.GetByLabel('UI/Standings/Common/EverybodyNegativeName', name=cfg.eveowners.Get(whoID).name)
+            elif util.IsCharacter(whoID):
+                text = localization.GetByLabel('UI/Standings/Common/EverybodyPositiveCharacter', id=whoID)
             else:
-                text = mls.UI_GENERIC_EVERYBODYPOSITIVENAME % {'name': name}
+                text = localization.GetByLabel('UI/Standings/Common/EverybodyPositiveName', name=cfg.eveowners.Get(whoID).name)
             scrolllist.append(listentry.Get('Text', {'line': 1,
              'text': text}))
         return scrolllist
@@ -529,14 +523,14 @@ class Standing(service.Service):
     def GetTransactionWnd(self, fromID, toID = None):
         self._Standing__Init()
         if fromID != toID:
-            wnd = sm.GetService('window').GetWindow('standingtransactions', decoClass=form.StandingTransactionsWnd, create=1)
+            wnd = form.StandingTransactionsWnd.Open()
             wnd.Load(fromID, toID, 1, onPage=0)
 
 
 
     def GetCompositionWnd(self, fromID, toID):
         self._Standing__Init()
-        wnd = sm.GetService('window').GetWindow('standingcompositions', decoClass=form.StandingCompositionsWnd, create=1)
+        wnd = form.StandingCompositionsWnd.Open()
         wnd.Load(fromID, toID, purge=1)
 
 
@@ -544,42 +538,43 @@ class Standing(service.Service):
 
 class StandingTransactionsWnd(uicls.Window):
     __guid__ = 'form.StandingTransactionsWnd'
+    default_windowID = 'standingtransactions'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.scope = 'station_inflight'
         self.SetWndIcon()
         self.SetTopparentHeight(0)
-        self.SetCaption(mls.UI_GENERIC_STANDINGTRANSACTIONS)
+        self.SetCaption(localization.GetByLabel('UI/Standings/TransactionWindow/WindowTitle'))
         self.SetMinSize([342, 256])
         self.sr.scroll = uicls.Scroll(parent=self.sr.main, padding=(const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding))
-        eventTypes = [[mls.UI_GENERIC_ALL, None]] + util.GetStandingEventTypes()
+        eventTypes = [[localization.GetByLabel('UI/Common/All'), None]] + util.GetStandingEventTypes()
         browserParent = uicls.Container(name='browser', parent=self.sr.main, idx=0, align=uiconst.TOTOP, height=36)
         sidepar = uicls.Container(name='sidepar', parent=browserParent, align=uiconst.TORIGHT, width=54)
         btn = uix.GetBigButton(24, sidepar, 0, 12)
         btn.OnClick = (self.Browse, -1)
-        btn.hint = mls.UI_GENERIC_PREVIOUS
+        btn.hint = localization.GetByLabel('UI/Common/Previous')
         btn.sr.icon.LoadIcon('ui_23_64_1')
         btn.state = uiconst.UI_HIDDEN
         self.sr.backBtn = btn
         btn = uix.GetBigButton(24, sidepar, 24, 12)
         btn.OnClick = (self.Browse, 1)
-        btn.hint = mls.UI_GENERIC_VIEWMORE
+        btn.hint = localization.GetByLabel('UI/Common/ViewMore')
         btn.sr.icon.LoadIcon('ui_23_64_2')
         self.sr.fwdBtn = btn
         self.page = 0
         inpt = uicls.SinglelineEdit(name='fromdate', parent=browserParent, setvalue=self.GetNow(), align=uiconst.TOPLEFT, pos=(8, 16, 92, 0), maxLength=16)
-        uicls.Label(text=mls.UI_GENERIC_DATE, parent=inpt, width=200, autowidth=False, top=-12, fontsize=9, letterspace=2, uppercase=1)
+        uicls.EveHeaderSmall(text=localization.GetByLabel('UI/Common/Date'), parent=inpt, width=200, top=-12)
         inpt.OnReturn = self.OnReturn
         self.sr.fromdate = inpt
         i = 0
         for (optlist, label, config, defval,) in [(eventTypes,
-          mls.UI_GENERIC_STANDINGEVENTTYPE,
+          localization.GetByLabel('UI/Standings/TransactionWindow/EventType'),
           'eventType',
-          mls.UI_GENERIC_ALL)]:
+          localization.GetByLabel('UI/Common/All'))]:
             combo = uicls.Combo(label=label, parent=browserParent, options=optlist, name=config, select=settings.user.ui.Get(config, defval), callback=self.OnComboChange, pos=(inpt.left + inpt.width + 6 + i * 92,
              inpt.top,
              0,
@@ -628,7 +623,7 @@ class StandingTransactionsWnd(uicls.Window):
 
 
     def GetNow(self):
-        return util.FmtDate(blue.os.GetTime(), 'sn')
+        return util.FmtDate(blue.os.GetWallclockTime(), 'sn')
 
 
 
@@ -640,17 +635,24 @@ class StandingTransactionsWnd(uicls.Window):
             self.page = onPage
         try:
             self.sr.scroll.Clear()
-            standing = mls.UI_GENERIC_STANDINGTRANSACTIONS
-            if fromID or toID:
-                standing += ' -'
-            if fromID:
-                standing += ' %s %s' % (mls.UI_GENERIC_FROM, cfg.eveowners.Get(fromID).name)
+            if fromID and toID:
+                if util.IsCharacter(fromID) and util.IsCharacter(toID):
+                    standing = localization.GetByLabel('UI/Standings/TransactionWindow/TitleFromCharacterToCharacter', fromID=fromID, toID=toID)
+                elif util.IsCharacter(fromID):
+                    standing = localization.GetByLabel('UI/Standings/TransactionWindow/TitleFromCharacterToCorp', fromID=fromID, toName=cfg.eveowners.Get(toID).name)
+                elif util.IsCharacter(toID):
+                    standing = localization.GetByLabel('UI/Standings/TransactionWindow/TitleFromCorpToCharacter', fromName=cfg.eveowners.Get(fromID).name, toID=toID)
+                else:
+                    standing = localization.GetByLabel('UI/Standings/TransactionWindow/TitleFromCorpToCorp', fromName=cfg.eveowners.Get(fromID).name, toName=cfg.eveowners.Get(toID).name)
+            elif fromID:
+                if util.IsCharacter(fromID):
+                    standing = localization.GetByLabel('UI/Standings/TransactionWindow/TitleFromCharacterToAny', fromID=fromID)
+                else:
+                    standing = localization.GetByLabel('UI/Standings/TransactionWindow/TitleFromCorpToAny', fromName=cfg.eveowners.Get(fromID).name)
+            elif util.IsCharacter(toID):
+                standing = localization.GetByLabel('UI/Standings/TransactionWindow/TitleFromAnyToCharacter', toID=toID)
             else:
-                standing += ' %s' % mls.UI_GENERIC_FROMANYBODY
-            if toID:
-                standing += ' ' + mls.UI_SHARED_STANDINGTOPERSON % {'person': cfg.eveowners.Get(toID).name}
-            else:
-                standing += ' %s' % mls.UI_GENERIC_TOANYBODY
+                standing = localization.GetByLabel('UI/Standings/TransactionWindow/TitleFromAnyToCorp', toName=cfg.eveowners.Get(toID).name)
             self.SetCaption(standing)
             scrolllist = []
             if not self.sr.Get('data') or purge:
@@ -718,14 +720,14 @@ class StandingTransactionsWnd(uicls.Window):
 
             else:
                 scrolllist.append(listentry.Get('Text', {'line': 1,
-                 'text': mls.UI_GENERIC_NOTRANSACTIONSAVAILABLE}))
-            h = [mls.UI_GENERIC_ID, mls.UI_GENERIC_DATE]
+                 'text': localization.GetByLabel('UI/Standings/TransactionWindow/NoTransactions')}))
+            h = [localization.GetByLabel('UI/Common/ID'), localization.GetByLabel('UI/Common/Date')]
             if fromID is None:
-                h += [mls.UI_GENERIC_FROM]
+                h += [localization.GetByLabel('UI/Common/From')]
             if toID is None:
-                h += [mls.UI_GENERIC_TO]
-            h += [mls.UI_GENERIC_VALUE, mls.UI_GENERIC_REASON]
-            self.sr.scroll.Load(fixedEntryHeight=32, contentList=scrolllist, headers=h, reversesort=1, sortby='ID')
+                h += [localization.GetByLabel('UI/Common/To')]
+            h += [localization.GetByLabel('UI/Common/Value'), localization.GetByLabel('UI/Common/Reason')]
+            self.sr.scroll.Load(fixedEntryHeight=32, contentList=scrolllist, headers=h, reversesort=1, sortby=localization.GetByLabel('UI/Common/ID'))
 
         finally:
             self.loading = 0
@@ -746,7 +748,7 @@ class StandingTransaction(listentry.Text):
 
     def GetMenu(self):
         details = self.sr.details
-        return [(mls.UI_GENERIC_DETAILS, self.ShowTransactionDetails, (details,))]
+        return [(localization.GetByLabel('UI/Common/Details'), self.ShowTransactionDetails, (details,))]
 
 
 
@@ -757,7 +759,7 @@ class StandingTransaction(listentry.Text):
 
     def ShowTransactionDetails(self, details = None, *args):
         details = details if details != None else self.sr.details
-        uix.TextBox(mls.UI_SHARED_TRANSACTIONDETAILS, details)
+        uix.TextBox(localization.GetByLabel('UI/Standings/TransactionWindow/Details'), details)
 
 
 
@@ -766,7 +768,7 @@ class StandingEntry(uicls.SE_BaseClassCore):
     __guid__ = 'listentry.StandingEntry'
 
     def Startup(self, *etc):
-        self.sr.label = uicls.Label(text='', parent=self, left=36, top=0, state=uiconst.UI_DISABLED, color=None, singleline=1, align=uiconst.CENTERLEFT)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=self, left=36, top=0, state=uiconst.UI_DISABLED, color=None, singleline=1, align=uiconst.CENTERLEFT)
         uicls.Line(parent=self, align=uiconst.TOBOTTOM)
         self.sr.iconParent = uicls.Container(parent=self, left=1, top=0, width=32, height=32, align=uiconst.TOPLEFT, state=uiconst.UI_PICKCHILDREN)
         self.sr.infoicon = uicls.InfoIcon(size=16, left=0, top=2, parent=self, idx=0, align=uiconst.TOPRIGHT)
@@ -847,26 +849,26 @@ class StandingEntry(uicls.SE_BaseClassCore):
         m = []
         node = self.sr.node
         addressBookSvc = sm.GetService('addressbook')
-        m.append((mls.UI_CMD_SHOWINFO, self.ShowInfo, (node,)))
+        m.append((localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo, (node,)))
         if self.sr.node.toID != self.sr.node.fromID:
             if util.IsNPC(self.sr.node.fromID) and self.sr.node.toID == eve.session.corpid:
-                m.append((mls.UI_CMD_SHOWCOMP, self.ShowCompositions, (node,)))
+                m.append((localization.GetByLabel('UI/Commands/ShowCompositions'), self.ShowCompositions, (node,)))
             elif self.sr.node.fromID in (eve.session.charid, eve.session.corpid) or util.IsNPC(self.sr.node.fromID) and self.sr.node.toID == eve.session.charid:
-                m.append((mls.UI_CMD_SHOWTRANSACTIONS, self.ShowTransactions, (node,)))
+                m.append((localization.GetByLabel('UI/Commands/ShowTransactions'), self.ShowTransactions, (node,)))
         if self.sr.node.fromID == eve.session.charid:
             if self.sr.node.toID != self.sr.node.fromID:
                 if addressBookSvc.IsInAddressBook(self.sr.node.toID, 'contact'):
-                    m.append((mls.UI_CONTACTS_EDITCONTACT, addressBookSvc.AddToPersonalMulti, (self.sr.node.toID, 'contact', True)))
-                    m.append((mls.UI_CONTACTS_REMOVEFROMCONTACTS, addressBookSvc.DeleteEntryMulti, ([self.sr.node.toID], 'contact')))
+                    m.append((localization.GetByLabel('UI/PeopleAndPlaces/EditContact'), addressBookSvc.AddToPersonalMulti, (self.sr.node.toID, 'contact', True)))
+                    m.append((localization.GetByLabel('UI/PeopleAndPlaces/RemoveContact'), addressBookSvc.DeleteEntryMulti, ([self.sr.node.toID], 'contact')))
                 else:
-                    m.append((mls.UI_CONTACTS_ADDTOCONTACTS, addressBookSvc.AddToPersonalMulti, (self.sr.node.toID, 'contact')))
+                    m.append((localization.GetByLabel('UI/PeopleAndPlaces/AddContact'), addressBookSvc.AddToPersonalMulti, (self.sr.node.toID, 'contact')))
         if self.sr.node.fromID == eve.session.corpid and const.corpRoleDirector & eve.session.corprole == const.corpRoleDirector:
             if self.sr.node.toID != self.sr.node.fromID and not util.IsNPC(self.sr.node.fromID):
                 if addressBookSvc.IsInAddressBook(self.sr.node.toID, 'corpcontact'):
-                    m.append((mls.UI_CONTACTS_EDITCORPCONTACT, addressBookSvc.AddToPersonalMulti, (self.sr.node.toID, 'corpcontact', True)))
-                    m.append((mls.UI_CONTACTS_REMOVECORPCONTACT, addressBookSvc.DeleteEntryMulti, ([self.sr.node.toID], 'corpcontact')))
+                    m.append((localization.GetByLabel('UI/PeopleAndPlaces/EditCorpContact'), addressBookSvc.AddToPersonalMulti, (self.sr.node.toID, 'corpcontact', True)))
+                    m.append((localization.GetByLabel('UI/PeopleAndPlaces/RemoveCorpContact'), addressBookSvc.DeleteEntryMulti, ([self.sr.node.toID], 'corpcontact')))
                 else:
-                    m.append((mls.UI_CONTACTS_ADDTOCONTACTS, addressBookSvc.AddToPersonalMulti, (self.sr.node.toID, 'corpcontact')))
+                    m.append((localization.GetByLabel('UI/PeopleAndPlaces/AddContact'), addressBookSvc.AddToPersonalMulti, (self.sr.node.toID, 'corpcontact')))
         return m
 
 
@@ -883,8 +885,8 @@ class FactionStandingEntry(uicls.SE_BaseClassCore):
     __guid__ = 'listentry.FactionStandingEntry'
 
     def Startup(self, *etc):
-        self.sr.label = uicls.Label(text='', parent=self, left=36, top=0, state=uiconst.UI_DISABLED, singleline=1, align=uiconst.TOPLEFT)
-        self.sr.otherlabel = uicls.Label(text='', parent=self, left=36, top=0, state=uiconst.UI_DISABLED, singleline=1, align=uiconst.BOTTOMLEFT)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=self, left=36, top=0, state=uiconst.UI_DISABLED, singleline=1, align=uiconst.TOPLEFT)
+        self.sr.otherlabel = uicls.EveLabelMedium(text='', parent=self, left=36, top=0, state=uiconst.UI_DISABLED, singleline=1, align=uiconst.BOTTOMLEFT)
         uicls.Line(parent=self, align=uiconst.TOBOTTOM)
         self.sr.iconParent = uicls.Container(parent=self, pos=(1, 0, 32, 32), align=uiconst.TOPLEFT, state=uiconst.UI_PICKCHILDREN)
         self.sr.infoicon = uicls.InfoIcon(size=16, left=0, top=2, parent=self, idx=0, align=uiconst.TOPRIGHT)
@@ -926,11 +928,12 @@ class FactionStandingEntry(uicls.SE_BaseClassCore):
 
 class StandingCompositionsWnd(uicls.Window):
     __guid__ = 'form.StandingCompositionsWnd'
+    default_windowID = 'standingcompositions'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.scope = 'station_inflight'
-        self.SetCaption(mls.UI_GENERIC_STANDINGCOMPOSITION)
+        self.SetCaption(localization.GetByLabel('UI/Standings/CompositionWindow/WindowTitle'))
         self.SetMinSize([342, 256])
         self.SetWndIcon()
         self.SetTopparentHeight(0)
@@ -939,7 +942,7 @@ class StandingCompositionsWnd(uicls.Window):
          const.defaultPadding,
          const.defaultPadding))
         textParent = uicls.Container(name='text', parent=self.sr.main, idx=0, align=uiconst.TOTOP, height=72)
-        self.sr.helpNote = uicls.Label(text=mls.UI_GENERIC_STANDINGTEXT4, parent=textParent, align=uiconst.TOALL, left=6, top=3, fontsize=12, autoheight=False, autowidth=False, state=uiconst.UI_NORMAL)
+        self.sr.helpNote = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Standings/CompositionWindow/NPCToPlayerCorp'), parent=textParent, align=uiconst.TOTOP, left=6, top=3, state=uiconst.UI_NORMAL)
 
 
 
@@ -949,8 +952,15 @@ class StandingCompositionsWnd(uicls.Window):
         self.loading = 1
         try:
             self.sr.scroll.Clear()
-            self.SetCaption(mls.UI_GENERIC_STANDINGCOMPOSITIONOFTO % {'of': cfg.eveowners.Get(fromID).name,
-             'to': cfg.eveowners.Get(toID).name})
+            if util.IsCharacter(fromID) and util.IsCharacter(toID):
+                caption = localization.GetByLabel('UI/Standings/TransactionWindow/TitleFromCharacterToCharacter', fromID=fromID, toID=toID)
+            elif util.IsCharacter(fromID):
+                caption = localization.GetByLabel('UI/Standings/TransactionWindow/TitleFromCharacterToCorp', fromID=fromID, toName=cfg.eveowners.Get(toID).name)
+            elif util.IsCharacter(toID):
+                caption = localization.GetByLabel('UI/Standings/TransactionWindow/TitleFromCorpToCharacter', fromName=cfg.eveowners.Get(fromID).name, toID=toID)
+            else:
+                caption = localization.GetByLabel('UI/Standings/TransactionWindow/TitleFromCorpToCorp', fromName=cfg.eveowners.Get(fromID).name, toName=cfg.eveowners.Get(toID).name)
+            self.SetCaption(caption)
             scrolllist = []
             if not self.sr.Get('data') or purge:
                 self.sr.data = sm.RemoteSvc('standing2').GetStandingCompositions(fromID, toID)
@@ -970,7 +980,7 @@ class StandingCompositionsWnd(uicls.Window):
 
             else:
                 scrolllist.append(listentry.Get('Text', {'line': 1,
-                 'text': mls.UI_GENERIC_NOCOMPINFOAVAILABLE}))
+                 'text': localization.GetByLabel('UI/Standings/CompositionWindow/NoInfo')}))
             self.sr.scroll.Load(contentList=scrolllist)
 
         finally:

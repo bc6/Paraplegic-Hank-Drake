@@ -5,14 +5,15 @@ import util
 import blue
 import uicls
 import uiconst
-import trinity
-import weakref
+import localizationUtil
+import xtriui
 
 class Slider(uicls.Container):
     __guid__ = 'xtriui.Slider'
     default_align = uiconst.RELATIVE
     default_getvaluefunc = None
     default_setlabelfunc = None
+    default_gethintfunc = None
     default_endsliderfunc = None
     default_onsetvaluefunc = None
     default_width = 10
@@ -21,6 +22,7 @@ class Slider(uicls.Container):
     def ApplyAttributes(self, attributes):
         uicls.Container.ApplyAttributes(self, attributes)
         self.SetSliderLabel = attributes.get('setlabelfunc', self.default_setlabelfunc)
+        self.GetSliderHint = attributes.get('gethintfunc', self.GetSliderHint)
         self.GetSliderValue = attributes.get('getvaluefunc', self.default_getvaluefunc)
         self.EndSetSliderValue = attributes.get('endsliderfunc', self.default_endsliderfunc)
         self.OnSetValue = attributes.get('onsetvaluefunc', self.default_onsetvaluefunc)
@@ -30,6 +32,7 @@ class Slider(uicls.Container):
         self.label = None
         self.top = 0
         self.dragging = False
+        self.valueHint = uicls.SliderHint(parent=uicore.layer.hint, align=uiconst.TOPLEFT)
         uicls.Sprite(parent=self, padding=(0, 0, 0, 0), name='handle', state=uiconst.UI_DISABLED, texturePath='res:/UI/Texture/classes/Slider/handle.png', align=uiconst.TOALL)
         uicls.Frame(parent=self.parent, color=(0.5, 0.5, 0.5, 0.3))
 
@@ -110,7 +113,7 @@ class Slider(uicls.Container):
 
 
     def SetLabel(self, label, leftright = 'left'):
-        uicls.Label(text='<%s>%s' % (leftright, label), parent=self.parent, left=4, top=-4, width=self.parent.width, autowidth=False, letterspace=2, fontsize=9, state=uiconst.UI_DISABLED)
+        uicls.EveLabelSmall(text='<%s>%s' % (leftright, label), parent=self.parent, left=4, top=-4, width=self.parent.width, state=uiconst.UI_DISABLED)
 
 
 
@@ -126,9 +129,9 @@ class Slider(uicls.Container):
         self.morphTo = value
         startPos = self.value / (self.maxValue - self.minValue)
         endPos = value / (self.maxValue - self.minValue)
-        (start, ndt,) = (blue.os.GetTime(), 0.0)
+        (start, ndt,) = (blue.os.GetWallclockTime(), 0.0)
         while ndt != 1.0:
-            ndt = min(blue.os.TimeDiffInMs(start) / time, 1.0)
+            ndt = min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / time, 1.0)
             newVal = mathUtil.Lerp(startPos, endPos, ndt)
             self.SlideTo(newVal)
             self.SetValue(newVal)
@@ -194,9 +197,9 @@ class Slider(uicls.Container):
             if self.SetSliderLabel:
                 self.SetSliderLabel(self.label, self.sliderID, self.displayName, self.GetValue())
             elif self.displayName:
-                self.label.text = '%s %.2f' % (self.displayName, self.GetValue())
+                self.label.text = self.displayName
             else:
-                self.label.text = '%.2f' % self.GetValue()
+                self.label.text = localizationUtil.FormatNumeric(self.GetValue(), decimalPlaces=2)
 
 
 
@@ -239,6 +242,42 @@ class Slider(uicls.Container):
                 return 
             self.left = localX
             self.SetValue(localX / float(maxX))
+            self.ShowValueHint()
+
+
+
+    def OnMouseEnter(self, *blah):
+        self.ShowValueHint()
+
+
+
+    def OnMouseExit(self, *blah):
+        self.valueHint.LoadHint(None)
+
+
+
+    def ShowValueHint(self):
+        self.valueHint.LoadHint(self.GetSliderHint(self.sliderID, self.displayName, self.GetValue()))
+        self.valueHint.width = self.valueHint.sr.textobj.textwidth + self.valueHint.sr.textobj.left * 2
+        self.valueHint.left = self.absoluteLeft + self.width / 2 - self.valueHint.width / 2
+        self.valueHint.top = self.absoluteTop - self.valueHint.height - self.valueHint.pointer.height + 4
+
+
+
+    def GetSliderHint(self, idname, dname, value):
+        return localizationUtil.FormatNumeric(value, decimalPlaces=2)
+
+
+
+
+class SliderHint(uicls.Hint):
+    __guid__ = 'uicls.SliderHint'
+    default_name = 'sliderhint'
+
+    def Prepare_(self):
+        uicls.Hint.Prepare_(self)
+        self.pointer = uicls.Sprite(parent=self, name='downwardPointer', pos=(0, -8, 18, 12), align=uiconst.CENTERBOTTOM, state=uiconst.UI_DISABLED, texturePath='res:/UI/Texture/classes/Hint/pointerToBottomCenter.png', color=(1, 1, 1, 1))
+        self.frame.SetRGBA(0, 0, 0, 1)
 
 
 

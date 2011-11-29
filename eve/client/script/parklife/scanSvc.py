@@ -2,6 +2,7 @@ import service
 import util
 import blue
 import functools
+import localization
 import uix
 import uthread
 import uiconst
@@ -210,7 +211,7 @@ class ScanSvc(service.Service):
 
 
 
-    def OnSystemScanStopped(self, probes, results):
+    def OnSystemScanStopped(self, probes, results, absentTargets):
         self.LogInfo('OnSystemScanStopped', probes, results)
         for pID in probes:
             self.UpdateProbeState(pID, const.probeStateIdle, 'OnSystemScanStopped', notify=False)
@@ -234,6 +235,8 @@ class ScanSvc(service.Service):
                 sm.StartService('audio').SendUIEvent(unicode('wise:/msg_scanner_positive_play'))
             else:
                 sm.StartService('audio').SendUIEvent(unicode('wise:/msg_scanner_partial_play'))
+        if absentTargets:
+            self.ClearResults(*absentTargets)
         if not results:
             results = []
         ids = set([ r.id for r in results ])
@@ -292,22 +295,22 @@ class ScanSvc(service.Service):
             raise UserError('ScnProbeRecoverToPod')
         if self.CanClaimProbes():
             sm.RemoteSvc('scanMgr').GetSystemScanMgr().ReconnectToLostProbes()
-            self.lastReconnection = blue.os.GetTime()
+            self.lastReconnection = blue.os.GetSimTime()
             uthread.new(self.Thread_ShowReconnectToProbesAvailable, self.lastReconnection)
         else:
-            seconds = RECONNECT_DELAY_MINUTES * const.MIN - (blue.os.GetTime() - self.lastReconnection)
+            seconds = RECONNECT_DELAY_MINUTES * const.MIN - (blue.os.GetSimTime() - self.lastReconnection)
             raise UserError('ScannerProbeReconnectWait', {'when': (TIMESHRT, seconds)})
 
 
 
     def Thread_ShowReconnectToProbesAvailable(self, lastReconnection):
-        blue.pyos.synchro.Sleep(RECONNECT_DELAY_MINUTES * 60 * 1000)
+        blue.pyos.synchro.SleepSim(RECONNECT_DELAY_MINUTES * 60 * 1000)
         sm.ScatterEvent('OnReconnectToProbesAvailable')
 
 
 
     def CanClaimProbes(self):
-        if self.HasOnlineProbeLauncher() and (self.lastReconnection is None or blue.os.GetTime() - self.lastReconnection > 5 * const.MIN):
+        if self.HasOnlineProbeLauncher() and (self.lastReconnection is None or blue.os.GetSimTime() - self.lastReconnection > 5 * const.MIN):
             return True
         return False
 
@@ -315,9 +318,10 @@ class ScanSvc(service.Service):
 
     def HasOnlineProbeLauncher(self):
         shipItem = sm.GetService('godma').GetStateManager().GetItem(session.shipid)
-        for module in shipItem.modules:
-            if module.groupID == const.groupScanProbeLauncher and module.isOnline:
-                return True
+        if shipItem is not None:
+            for module in shipItem.modules:
+                if module.groupID == const.groupScanProbeLauncher and module.isOnline:
+                    return True
 
         return False
 
@@ -326,7 +330,7 @@ class ScanSvc(service.Service):
     def GetProbeLabel(self, probeID):
         if probeID in self.probeLabels:
             return self.probeLabels[probeID]
-        newlabel = mls.UI_INFLIGHT_PROBE_LABEL % (len(self.probeLabels) + 1)
+        newlabel = localization.GetByLabel('UI/Inflight/Scanner/ProbeLabel', probeIndex=len(self.probeLabels) + 1)
         self.probeLabels[probeID] = newlabel
         return newlabel
 
@@ -396,19 +400,19 @@ class ScanSvc(service.Service):
             menu.append(('CopyID', self._GMCopyID, (probeID,)))
             menu.append(None)
         if self.IsProbeActive(probeID):
-            menu.append((mls.UI_CMD_DEACTIVATE_PROBE, self.SetProbeActiveStateOff_Check, (probeID, probeIDs)))
+            menu.append((localization.GetByLabel('UI/Inflight/Scanner/DeactivateProbe'), self.SetProbeActiveStateOff_Check, (probeID, probeIDs)))
         else:
-            menu.append((mls.UI_CMD_ACTIVATE_PROBE, self.SetProbeActiveStateOn_Check, (probeID, probeIDs)))
+            menu.append((localization.GetByLabel('UI/Inflight/Scanner/ActivateProbe'), self.SetProbeActiveStateOn_Check, (probeID, probeIDs)))
         probes = self.GetProbeData()
         if probeID in probes:
             probe = probes[probeID]
             scanRanges = self.GetScanRangeStepsByTypeID(probe.typeID)
-            menu.append((mls.UI_INFLIGHT_SCANRANGE, [ (util.FmtDist(range), self.SetScanRange_Check, (probeID,
+            menu.append((localization.GetByLabel('UI/Inflight/Scanner/ScanRange'), [ (util.FmtDist(range), self.SetScanRange_Check, (probeID,
                probeIDs,
                range,
                index + 1)) for (index, range,) in enumerate(scanRanges) ]))
-        menu.append((mls.UI_CMD_RECOVER_PROBE, self.RecoverProbe_Check, (probeID, probeIDs)))
-        menu.append((mls.UI_CMD_DESTROYPROBE, self.DestroyProbe_Check, (probeID, probeIDs)))
+        menu.append((localization.GetByLabel('UI/Inflight/Scanner/RecoverProbe'), self.RecoverProbe_Check, (probeID, probeIDs)))
+        menu.append((localization.GetByLabel('UI/Inflight/Scanner/DestroyProbe'), self.DestroyProbe_Check, (probeID, probeIDs)))
         return menu
 
 
@@ -479,7 +483,6 @@ class ScanSvc(service.Service):
             if targetID in self.resultsIgnored:
                 self.resultsIgnored.remove(targetID)
             if targetID in self.resultsCached:
-                result = self.resultsCached[targetID]
                 del self.resultsCached[targetID]
 
         items = [ r for r in self.lastResults if r.id in targets ]

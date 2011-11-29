@@ -1,10 +1,8 @@
 from service import *
 import util
-import uthread
 import blue
-import moniker
-import time
 import dbutil
+import localization
 CACHE_INTERVAL = 300
 SEC = 10000000L
 MIN = SEC * 60L
@@ -259,7 +257,7 @@ class MarketQuote(Service):
         if price > 9223372036854.0:
             raise ValueError('Price can not exceed %s', 9223372036854.0)
         if quantity < 0:
-            raise UserError('RepackageBeforeSelling', {'item': (TYPEID, typeID)})
+            raise UserError('RepackageBeforeSelling', {'item': typeID})
         self.GetMarketProxy().PlaceCharOrder(int(stationID), int(typeID), round(float(price), 2), int(quantity), int(bid), int(orderRange), itemID, int(minVolume), int(duration), useCorp, located)
 
 
@@ -294,7 +292,7 @@ class MarketQuote(Service):
         old = self.GetMarketProxy().GetOldPriceHistory(typeID)
         new = self.GetMarketProxy().GetNewPriceHistory(typeID)
         history = dbutil.RowList((new.header, []))
-        lastTime = blue.os.GetTime(1)
+        lastTime = blue.os.GetWallclockTimeNow()
         midnightToday = lastTime / const.DAY * const.DAY
         lastPrice = 0.0
         for entry in old:
@@ -323,7 +321,7 @@ class MarketQuote(Service):
         if len(new):
             history.extend(new)
         else:
-            history.append(blue.DBRow(history.header, [blue.os.GetTime(1),
+            history.append(blue.DBRow(history.header, [blue.os.GetWallclockTimeNow(),
              lastPrice,
              lastPrice,
              lastPrice,
@@ -335,7 +333,7 @@ class MarketQuote(Service):
 
     def GetAveragePrice(self, typeID, days = 7):
         history = self.GetPriceHistory(typeID)
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         averagePrice = -1.0
         volume = 0
         priceVolume = 0.0
@@ -613,9 +611,9 @@ class MarketQuote(Service):
         elif len(buys) > 0:
             dateIdx = buys[0].__columns__.index('issueDate')
         else:
-            eve.Message('CustomInfo', {'info': mls.UI_MARKET_EXPORTNODATA})
+            eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/Market/MarketWindow/ExportNoData')})
             return 
-        date = util.FmtDate(blue.os.GetTime())
+        date = util.FmtDate(blue.os.GetWallclockTime())
         f = blue.os.CreateInstance('blue.ResFile')
         typeName = cfg.invtypes.Get(typeID).name
         invalidChars = '\\/:*?"<>|'
@@ -623,7 +621,7 @@ class MarketQuote(Service):
             typeName = typeName.replace(i, '')
 
         directory = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '\\EVE\\logs\\Marketlogs\\'
-        filename = '%s-%s-%s.txt' % (cfg.evelocations.Get(session.regionid).name, typeName, util.FmtDate(blue.os.GetTime()).replace(':', ''))
+        filename = '%s-%s-%s.txt' % (cfg.evelocations.Get(session.regionid).name, typeName, util.FmtDate(blue.os.GetWallclockTime()).replace(':', ''))
         if not f.Open(directory + filename, 0):
             f.Create(directory + filename)
         first = 1
@@ -662,8 +660,8 @@ class MarketQuote(Service):
         eve.Message('MarketExportInfo', {'sell': len(sells),
          'buy': len(buys),
          'typename': cfg.invtypes.Get(typeID).name,
-         'filename': '<b>' + filename + '</b>',
-         'directory': '<b>%s</b>' % directory})
+         'filename': localization.GetByLabel('UI/Map/StarMap/lblBoldName', name=filename),
+         'directory': localization.GetByLabel('UI/Map/StarMap/lblBoldName', name=directory)})
 
 
 

@@ -25,13 +25,13 @@ class PerformanceTestResults(dict):
 
     def PunchIn(self, key):
         with lock:
-            self[key] = blue.os.GetTime()
+            self[key] = blue.os.GetWallclockTime()
 
 
 
     def PunchOut(self, key):
         with lock:
-            self[key] = blue.os.TimeDiffInUs(long(self[key]), blue.os.GetTime()) / 1000.0
+            self[key] = blue.os.TimeDiffInUs(long(self[key]), blue.os.GetWallclockTime()) / 1000.0
 
 
 
@@ -105,7 +105,7 @@ class SingleDollTest(BenchmarkTest):
         self.results.PunchIn(spawnKey)
         pdc.Spawn(self.scene, usePrepass=self.usePrepass)
         while pdc.doll.busyUpdating:
-            blue.synchro.Yield()
+            PD.Yield()
 
         self.results.PunchOut(spawnKey)
         while pdc.doll.overrideLod != self.endLOD:
@@ -115,10 +115,10 @@ class SingleDollTest(BenchmarkTest):
             pdc.doll.overrideLod = nextLOD
             pdc.Update()
             while pdc.doll.busyUpdating:
-                blue.synchro.Yield()
+                PD.Yield()
 
             self.results.PunchOut(spawnKey)
-            blue.synchro.Yield()
+            PD.Yield()
 
 
 
@@ -140,6 +140,7 @@ class MultiDollTest(BenchmarkTest):
         self.points = []
         PD.LodQueue.instance = PD.LodQueue()
         PD.PerformanceOptions.maxLodQueueActive = self.maxLodQueueActive
+        PD.PerformanceOptions.maxLodQueueActiveUp = self.maxLodQueueActive
 
 
 
@@ -172,9 +173,9 @@ class MultiDollTest(BenchmarkTest):
         self.SpawnDolls(0, self.maxLOD0)
         self.SpawnDolls(1, self.maxLOD1)
         self.SpawnDolls(2, self.maxLOD2)
-        blue.synchro.Yield()
+        PD.Yield()
         while PD.LodQueue.instance.queue:
-            blue.synchro.Yield()
+            PD.Yield()
 
         if not self.debugMode:
             del self.paperDollCharacters[:]
@@ -211,7 +212,6 @@ class Benchmarker(object):
 
     def ClearCaches(self):
         blue.motherLode.ClearCached()
-        self.factory.yamlCache.clear()
 
 
 
@@ -236,7 +236,7 @@ class Benchmarker(object):
             self.ClearCaches()
         self.test.Execute(callBack=OnTestEnd)
         while self.currentIteration < self.iterations - 1:
-            blue.synchro.Yield()
+            PD.Yield()
 
         self.results.PunchOut(self.test.__class__)
 
@@ -325,6 +325,12 @@ def SetupScene(scene = None, sceneFile = None, usePrepass = False):
                 break
 
         rj = CreateSceneRenderJobInterior(DEFAULT_PREPASS_RENDERJOB_NAME)
+        rj.lightingLUT = blue.resMan.GetResource('res:/Graphics/Shared_Texture/Global/prepassLightLookup.dds')
+        rj.fresnelLUT = blue.resMan.GetResource('res:/Graphics/Shared_Texture/Global/prepassLightLookupFresnel.dds')
+        blue.resMan.Wait()
+        trinity.GetVariableStore().RegisterVariable('LightingLUT', rj.lightingLUT)
+        trinity.GetVariableStore().RegisterVariable('FresnelLUT', rj.fresnelLUT)
+        scene.shadowUpdatesPerFrame = 0
         rj.SetScene(scene)
         rj.CreateBasicRenderSteps()
         rj.EnableSceneUpdate(True)
@@ -347,18 +353,18 @@ def CollectCharacterSelectionPaths():
 
 
 
-def RunCrowdSpawnTest(coldCache = True, iterations = 20, respaths = None, maxLodQueueActive = 1, debugMode = False):
+def RunCrowdSpawnTest(coldCache = True, iterations = 20, respaths = None, maxLodQueueActive = 1, debugMode = False, nrPerLod = None):
 
     def fun():
         results = PerformanceTestResults()
         key = 'Loading Factory'
         results.PunchIn(key)
-        sTime = blue.os.GetTime()
+        sTime = blue.os.GetWallclockTime()
         factory = PD.Factory()
         if respaths:
             factory.clothSimulationActive = True
         factory.WaitUntilLoaded()
-        eTime = blue.os.GetTime()
+        eTime = blue.os.GetWallclockTime()
         results.PunchOut(key)
         scene = SetupScene(usePrepass=True)
         onTestExecution = None
@@ -367,7 +373,10 @@ def RunCrowdSpawnTest(coldCache = True, iterations = 20, respaths = None, maxLod
             bm = Benchmarker(factory, scene, usePrepass=True)
             bm.clearCacheOnEachIteration = coldCache
             bm.iterations = 1 if debugMode else iterations
-            test0 = MultiDollTest(64, 8, 16, maxLodQueueActive=1, resPaths=respaths, debugMode=debugMode)
+            totalDolls = sum(nrPerLod) if nrPerLod else 32
+            lod0Dolls = nrPerLod[0] if nrPerLod else 8
+            lod1Dolls = nrPerLod[1] if nrPerLod else 8
+            test0 = MultiDollTest(totalDolls, lod0Dolls, lod1Dolls, maxLodQueueActive=1, resPaths=respaths, debugMode=debugMode)
             bm.SetTest(test0)
             bm.ExecuteTest(onTestExecution)
             pprint.pprint(bm.GetAnalyzedResults())
@@ -386,10 +395,56 @@ def RunCrowdSpawnTest(coldCache = True, iterations = 20, respaths = None, maxLod
     uthread.schedule(testTasklet)
     try:
         while testTasklet.alive:
-            blue.synchro.Yield()
+            PD.Yield()
 
     except RuntimeError:
-        blue.pyos.BeNice()
+        PD.BeFrameNice()
+
+
+
+def RunIncarnaCrowdTest(coldCache = True, iterations = 20, respaths = None, maxLodQueueActive = 1, debugMode = False):
+
+    def fun():
+        results = PerformanceTestResults()
+        key = 'Loading Factory'
+        results.PunchIn(key)
+        sTime = blue.os.GetWallclockTime()
+        factory = PD.Factory()
+        if respaths:
+            factory.clothSimulationActive = True
+        factory.WaitUntilLoaded()
+        eTime = blue.os.GetWallclockTime()
+        results.PunchOut(key)
+        scene = SetupScene(sceneFile='res:/Graphics/Character/Global/DataUsedForTests/referenceEstablishment.red', usePrepass=True)
+        onTestExecution = None
+        try:
+            import pprint
+            bm = Benchmarker(factory, scene, usePrepass=True)
+            bm.clearCacheOnEachIteration = coldCache
+            bm.iterations = 1 if debugMode else iterations
+            test0 = MultiDollTest(32, 8, 16, maxLodQueueActive=1, resPaths=respaths, debugMode=debugMode)
+            bm.SetTest(test0)
+            bm.ExecuteTest(onTestExecution)
+            pprint.pprint(bm.GetAnalyzedResults())
+
+        finally:
+            if not debugMode:
+                for rj in trinity.device.scheduledRecurring:
+                    if rj.name == DEFAULT_PREPASS_RENDERJOB_NAME:
+                        trinity.device.scheduledRecurring.remove(rj)
+                        break
+
+
+
+
+    testTasklet = uthread.new(fun)
+    uthread.schedule(testTasklet)
+    try:
+        while testTasklet.alive:
+            PD.Yield()
+
+    except RuntimeError:
+        PD.BeFrameNice()
 
 
 
@@ -404,12 +459,12 @@ def RunSymmetricalSingleDollLODTest(coldCache = True, iterations = 20, respaths 
         results = PerformanceTestResults()
         key = 'Loading Factory'
         results.PunchIn(key)
-        sTime = blue.os.GetTime()
+        sTime = blue.os.GetWallclockTime()
         factory = PD.Factory()
         if respaths:
             factory.clothSimulationActive = True
         factory.WaitUntilLoaded()
-        eTime = blue.os.GetTime()
+        eTime = blue.os.GetWallclockTime()
         results.PunchOut(key)
         scene = SetupScene(usePrepass=True)
         onTestExecution = None
@@ -450,10 +505,10 @@ def RunSymmetricalSingleDollLODTest(coldCache = True, iterations = 20, respaths 
     uthread.schedule(testTasklet)
     try:
         while testTasklet.alive:
-            blue.synchro.Yield()
+            PD.Yield()
 
     except RuntimeError:
-        blue.pyos.BeNice()
+        PD.BeFrameNice()
 
 
 

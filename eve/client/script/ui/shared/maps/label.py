@@ -6,6 +6,7 @@ import xtriui
 import blue
 import uicls
 import uiconst
+import localization
 NEUTRAL_COLOR = (1.0, 1.0, 1.0, 0.5)
 HIGHLIGHT_COLOR = (1.0, 1.0, 1.0, 0.5)
 
@@ -18,6 +19,7 @@ class MapLabel(uicls.Bracket):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def Startup(self, name, itemID, typeID, tracker, cloud, mylocation = None):
         self.trackTransform = tracker
         self.sr.cloud = cloud
@@ -93,7 +95,7 @@ class MapLabel(uicls.Bracket):
             m += starmap.GetItemMenu(self.sr.id)
         else:
             m.append((self.name, sm.GetService('info').ShowInfo, (self.sr.typeID, self.sr.id)))
-            m.append((mls.UI_CMD_CENTERONSCREEN, starmap.SetInterest, (self.sr.id, 1)))
+            m.append((localization.GetByLabel('UI/Map/StarMap/CenterOnScreen'), starmap.SetInterest, (self.sr.id, 1)))
         return m
 
 
@@ -102,7 +104,7 @@ class MapLabel(uicls.Bracket):
         lib = uicore.uilib
         camera = sm.GetService('sceneManager').GetRegisteredCamera('starmap')
         if hasattr(camera, 'translationCurve'):
-            targetTrans = camera.translationCurve.GetVectorAt(blue.os.GetTime(1)).z * (1.0 + -lib.dz * 0.001)
+            targetTrans = camera.translationCurve.GetVectorAt(blue.os.GetSimTime()).z * (1.0 + -lib.dz * 0.001)
             if targetTrans < 2.0:
                 targetTrans = 2.0
             if targetTrans > 10000.0:
@@ -151,22 +153,21 @@ class TransformableLabel(object):
         self.transform.mesh = trinity.Tr2Mesh()
         self.transform.mesh.geometryResPath = 'res:/Model/Global/zsprite.gr2'
         self.transform.modifier = 1
-        kwargs = {'fontsize': size,
-         'align': uiconst.TOPLEFT,
-         'autowidth': 1,
-         'autoheight': 1,
-         'state': uiconst.UI_NORMAL,
-         'letterspace': hspace,
-         'uppercase': 1}
-        if not shadow:
-            kwargs['shadow'] = []
-        textObject = uicls.Label(text=('<b>' + text + '</b>'), parent=None, **kwargs)
-        textObject.Render()
-        self.transform.scaling = (textObject.width, textObject.height, 0)
-        tr = trinity.device.CreateTexture(textObject.width, textObject.height, 1, 0, trinity.TRIFMT_A8R8G8B8, trinity.TRIPOOL_MANAGED)
-        surface = tr.GetSurfaceLevel(0)
-        textObject.texture.atlasTexture.CopyToSurface(surface)
-        textObject.Close()
+        measurer = trinity.Tr2FontMeasurer()
+        measurer.limit = 0
+        params = uicore.font.GetParams()
+        params.bold = 1
+        params.fontsize = size
+        params.letterspace = hspace
+        params.color = 4294967295L
+        uicore.font.ResolveFontFamily(params)
+        measurer.AddText(text.upper(), params)
+        height = measurer.asc - measurer.des
+        width = measurer.cursorX
+        measurer.CommitText(0, height)
+        self.transform.scaling = (width, height, 0)
+        tr = trinity.device.CreateTexture(width, height, 1, trinity.TRIUSAGE_DYNAMIC if trinity.device.UsingEXDevice() else 0, trinity.TRIFMT_A8R8G8B8, trinity.TRIPOOL_DEFAULT if trinity.device.UsingEXDevice() else trinity.TRIPOOL_MANAGED)
+        measurer.DrawToTexture(tr)
         area = trinity.Tr2MeshArea()
         self.transform.mesh.transparentAreas.append(area)
         area.effect = effect = trinity.Tr2Effect()

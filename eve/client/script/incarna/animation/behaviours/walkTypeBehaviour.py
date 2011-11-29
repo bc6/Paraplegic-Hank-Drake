@@ -22,8 +22,8 @@ class WalkTypeBehaviour(animation.animationBehavior):
         elif controller.slopeType is const.INCARNA_STEPS_DOWN:
             walkVersion = WALK_DOWN
         if walkVersion is not WALK_FLAT:
-            self.returnToWalkFlatTime = blue.os.GetTime() + WALK_END_DELAY
-        if blue.os.GetTime() < self.returnToWalkFlatTime and walkVersion is WALK_FLAT:
+            self.returnToWalkFlatTime = blue.os.GetWallclockTime() + WALK_END_DELAY
+        if blue.os.GetWallclockTime() < self.returnToWalkFlatTime and walkVersion is WALK_FLAT:
             walkVersion = self.previousWalkVersion
         controller.SetControlParameter('Slope', walkVersion)
         self.previousWalkVersion = walkVersion

@@ -11,22 +11,17 @@ import lg
 import log
 import uicls
 import uiconst
+import localization
+import localizationUtil
 import corputil
 from corputil import *
+HAS_ROLE_OR_TITLE_ICON_ID = 'ui_38_16_193'
+DOES_NOT_HAVE_ROLE_OR_TITLE_ICON_ID = 'ui_38_16_194'
 
 class EditMemberDialog(uicls.Window):
     __guid__ = 'form.EditMemberDialog'
     __notifyevents__ = ['OnRoleEdit']
-
-    def init(self):
-        sm.RegisterNotify(self)
-
-
-
-    def _OnClose(self):
-        sm.UnregisterNotify(self)
-
-
+    default_windowID = 'EditMemberDialog'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -67,24 +62,24 @@ class EditMemberDialog(uicls.Window):
         self.LoadChar(charID)
         self.SetScope('all')
         if not self.member:
-            self.SelfDestruct()
+            self.Close()
             return 
         self.SetTopparentHeight(70)
-        self.SetCaption(mls.UI_SHARED_MEMBERDETAILS)
+        self.SetCaption(localization.GetByLabel('UI/Corporations/EditMemberDialog/EditMemberCaption'))
         self.SetMinSize([310, 300])
         self.sr.main = uiutil.GetChild(self, 'main')
         self.wndCombos = uicls.Container(name='options', parent=self.sr.main, align=uiconst.TOTOP, height=34)
-        viewOptionsList1 = [[mls.UI_CORP_ROLES, VIEW_ROLES], [mls.UI_CORP_GRANTABLEROLES, VIEW_GRANTABLE_ROLES]]
+        viewOptionsList1 = [[localization.GetByLabel('UI/Corporations/Common/Roles'), VIEW_ROLES], [localization.GetByLabel('UI/Corporations/Common/GrantableRoles'), VIEW_GRANTABLE_ROLES]]
         viewOptionsList2 = []
         for roleGrouping in self.roleGroupings.itervalues():
-            viewOptionsList2.append([Tr(roleGrouping.roleGroupName, 'dbo.crpRoleGroups.roleGroupName', roleGrouping.roleGroupID), roleGrouping.roleGroupID])
+            viewOptionsList2.append([localization.GetByMessageID(roleGrouping.roleGroupNameID), roleGrouping.roleGroupID])
 
         i = 0
         for (optlist, label, config, defval,) in [(viewOptionsList1,
-          mls.UI_GENERIC_VIEW,
+          localization.GetByLabel('UI/Common/View'),
           'viewtype',
           1000), (viewOptionsList2,
-          mls.UI_CORP_GROUPTYPE,
+          localization.GetByLabel('UI/Corporations/Common/GroupType'),
           'rolegroup',
           None)]:
             combo = uicls.Combo(label=label, parent=self.wndCombos, options=optlist, name=config, callback=self.OnComboChange, width=146, pos=(const.defaultPadding + i * 152 + 1,
@@ -97,40 +92,40 @@ class EditMemberDialog(uicls.Window):
          const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding))
-        self.sr.standardBtns = uicls.ButtonGroup(btns=[[mls.UI_CMD_OK,
+        self.sr.standardBtns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Common/Buttons/OK'),
           self.OnOK,
           (),
-          81], [mls.UI_CMD_CANCEL,
+          81], [localization.GetByLabel('UI/Common/Buttons/Cancel'),
           self.OnCancel,
           (),
-          81], [mls.UI_CMD_APPLY,
+          81], [localization.GetByLabel('UI/Corporations/EditMemberDialog/Apply'),
           self.OnApply,
           (),
           81]])
         self.sr.main.children.insert(0, self.sr.standardBtns)
-        cap = uicls.CaptionLabel(text='%s' % cfg.eveowners.Get(self.charID).name, parent=self.sr.topParent, align=uiconst.RELATIVE, left=74, top=20)
+        cap = uicls.CaptionLabel(text=cfg.eveowners.Get(self.charID).name, parent=self.sr.topParent, align=uiconst.RELATIVE, left=74, top=20)
         if self.member.title:
-            uicls.CaptionLabel(text=self.member.title, parent=self.sr.topParent, align=uiconst.RELATIVE, left=cap.left, top=cap.top + cap.height, fontsize=14)
-        buttons = uicls.ButtonGroup(btns=[[mls.UI_CMD_GIVESHARES,
+            uicls.EveHeaderLarge(text=self.member.title, parent=self.sr.topParent, align=uiconst.RELATIVE, left=cap.left, top=cap.top + cap.height, bold=True)
+        buttons = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Corporations/EditMemberDialog/GiveShares'),
           self.OnGiveShares,
           (),
           81]])
         self.sr.main.children.insert(1, buttons)
         maintabs = uicls.TabGroup(name='tabparent', parent=self.sr.main, idx=0)
-        maintabs.Startup([[mls.UI_GENERIC_GENERAL,
+        maintabs.Startup([[localization.GetByLabel('UI/Generic/General'),
           self.sr.scroll,
           self,
           'general',
           buttons],
-         [mls.UI_CORP_ROLES,
+         [localization.GetByLabel('UI/Corporations/Common/Roles'),
           self.sr.scroll,
           self,
           'roles'],
-         [mls.UI_CORP_TITLES,
+         [localization.GetByLabel('UI/Corporations/Common/Titles'),
           self.sr.scroll,
           self,
           'titles'],
-         [mls.UI_CORP_ROLESSUMMARY,
+         [localization.GetByLabel('UI/Corporations/EditMemberDialog/RolesSummary'),
           self.sr.scroll,
           self,
           'roles_summary']], 'editmemberdialog')
@@ -160,7 +155,7 @@ class EditMemberDialog(uicls.Window):
         self.userIsCEO = self.corp.UserIsCEO()
         self.member = self.corp.GetMember(self.charID)
         if not self.member:
-            return None
+            return 
         self.divisionalRoles = self.corp.GetDivisionalRoles()
         self.divisions = self.corp.GetDivisionNames()
         self.locationalRoles = self.corp.GetLocationalRoles()
@@ -181,13 +176,13 @@ class EditMemberDialog(uicls.Window):
         self.titleMask = self.member.titleMask
         self.offices = self.corp.GetMyCorporationsOffices()
         self.offices.Fetch(0, len(self.offices))
-        self.bases = [('-', None)]
+        self.bases = [(localization.GetByLabel('UI/Corporations/EditMemberDialog/NoBase'), None)]
         rows = self.offices
         if rows and len(rows):
             stations = []
             for row in rows:
-                stationName = cfg.evelocations.Get(row.stationID).locationName
-                stations.append((stationName.lower(), (stationName, row.stationID)))
+                stationName = localization.GetByLabel('UI/Corporations/EditMemberDialog/CorpMemberBase', station=row.stationID)
+                stations.append((stationName, (stationName, row.stationID)))
 
             stations = uiutil.SortListOfTuples(stations)
             self.bases += stations
@@ -250,39 +245,48 @@ class EditMemberDialog(uicls.Window):
     def OnTabGeneral(self):
         scrolllist = []
         canEditBase = corputil.CanEditBase(self.playerIsCEO, self.userIsCEO, eve.session.corprole & const.corpRoleDirector == const.corpRoleDirector)
+        if not self.title:
+            self.title = ''
         if canEditBase:
             scrolllist.append(listentry.Get('Edit', {'OnReturn': None,
-             'label': mls.UI_CORP_TITLE,
-             'setValue': self.title or '',
+             'label': localization.GetByLabel('UI/Corporations/EditMemberDialog/CorpMemberTitleCaption'),
+             'setValue': self.title,
              'name': 'general_title',
              'lines': 1,
              'maxLength': 100}))
             data = {'options': self.bases,
-             'label': mls.UI_GENERIC_BASE,
+             'label': localization.GetByLabel('UI/Corporations/EditMemberDialog/CorpMemberBaseCaption'),
              'cfgName': 'baseID',
              'setValue': self.baseID,
              'OnChange': self.OnComboChange,
              'name': 'baseID'}
             scrolllist.append(listentry.Get('Combo', data))
         else:
-            scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_CORP_TITLE,
-             'text': self.title or ''}))
-            baseName = ''
-            if self.baseID:
-                base = cfg.evelocations.GetIfExists(self.baseID)
-                if base is not None:
-                    baseName = base.locationName
-            scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_GENERIC_BASE,
-             'text': baseName}))
-        scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_CORP_JOINED,
-         'text': util.FmtDate(self.member.startDateTime, 'ls')}))
+            scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Corporations/EditMemberDialog/CorpMemberTitleCaption'),
+             'text': self.title}))
+            scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Corporations/EditMemberDialog/CorpMemberBaseCaption'),
+             'text': localization.GetByLabel('UI/Corporations/EditMemberDialog/CorpMemberBase', station=self.baseID)}))
+        scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Corporations/EditMemberDialog/CorpMemberJoined'),
+         'text': localizationUtil.FormatDateTime(self.member.startDateTime, dateFormat='short')}))
         scrolllist.append(listentry.Get('Divider'))
-        scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_GENERIC_GENDER,
-         'text': (mls.UI_GENERIC_FEMALE, mls.UI_GENERIC_MALE)[self.memberinfo.gender]}))
-        scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_CORP_DATEOFBIRTH,
-         'text': util.FmtDate(self.memberinfo.createDateTime, 'ls')}))
-        scrolllist.append(listentry.Get('LabelText', {'label': mls.UI_GENERIC_SECURITYSTATUS,
-         'text': str(int(self.security * 1000) / 1000.0)}))
+        scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Corporations/EditMemberDialog/Name'),
+         'text': cfg.eveowners.Get(self.memberinfo.characterID).name}))
+        if self.memberinfo.gender:
+            scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Common/Gender/Gender'),
+             'text': localization.GetByLabel('UI/Common/Gender/Male')}))
+        else:
+            scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Common/Gender/Gender'),
+             'text': localization.GetByLabel('UI/Common/Gender/Female')}))
+        race = sm.GetService('cc').GetRaceDataByID(self.memberinfo.raceID)
+        scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Common/Race'),
+         'text': localization.GetByMessageID(race.raceNameID)}))
+        bloodline = sm.GetService('cc').GetData('bloodlines', ['bloodlineID', self.memberinfo.bloodlineID])
+        scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Common/Bloodline'),
+         'text': localization.GetByMessageID(bloodline.bloodlineNameID)}))
+        scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Corporations/EditMemberDialog/DateOfBirth'),
+         'text': localizationUtil.FormatDateTime(self.memberinfo.createDateTime, dateFormat='short')}))
+        scrolllist.append(listentry.Get('LabelText', {'label': localization.GetByLabel('UI/Corporations/EditMemberDialog/SecurityStatus'),
+         'text': localizationUtil.FormatNumeric(float(self.security), decimalPlaces=2)}))
         self.sr.scroll.Load(fixedEntryHeight=18, contentList=scrolllist)
         if canEditBase:
             self.ddxFunction = self.DDXTabGeneral
@@ -319,7 +323,8 @@ class EditMemberDialog(uicls.Window):
 
     def AddCheckBox(self, role, on, roleVariablesName):
         log.LogInfo('AddCheckBox', role, on, roleVariablesName)
-        data = {'label': '%s - %s' % (role.shortDescription, role.description),
+        label = localization.GetByLabel('UI/Corporations/EditMemberDialog/RoleNameDashRoleDescription', roleName=role.shortDescription, roleDesc=role.description)
+        data = {'label': label,
          'checked': on,
          'cfgname': roleVariablesName,
          'retval': role.roleID,
@@ -391,8 +396,13 @@ class EditMemberDialog(uicls.Window):
             if canEditRole:
                 scrolllist.append(self.AddCheckBox(role, hasRole, roleVariablesName))
             else:
-                scrolllist.append(listentry.Get('LabelText', {'label': '[%s] %s' % ([' ', 'x'][hasRole], role.shortDescription),
+                iconID = HAS_ROLE_OR_TITLE_ICON_ID
+                if not hasRole:
+                    iconID = DOES_NOT_HAVE_ROLE_OR_TITLE_ICON_ID
+                scrolllist.append(listentry.Get('IconLabelText', {'label': role.shortDescription,
                  'text': role.description,
+                 'icon': iconID,
+                 'iconPositioning': listentry.IconLabelText.ICON_POS_IN_FRONT_OF_LABEL,
                  'textpos': 170,
                  'labelAdjust': 165}))
 
@@ -408,12 +418,12 @@ class EditMemberDialog(uicls.Window):
 
     def OnOK(self, *args):
         self.OnApply()
-        self.SelfDestruct()
+        self.Close()
 
 
 
     def OnCancel(self, *args):
-        self.SelfDestruct()
+        self.Close()
 
 
 
@@ -502,23 +512,23 @@ class EditMemberDialog(uicls.Window):
         if self.titleMask == self.member.titleMask:
             titleMask = None
         try:
-            sm.GetService('loading').ProgressWnd(mls.UI_CORP_SAVINGCHANGES, '', 0, 2)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Corporations/EditMemberDialog/SavingChanges'), '', 0, 2)
             if self.charID == eve.session.charid:
                 sm.GetService('sessionMgr').PerformSessionChange('corp.UpdateMember', self.corp.UpdateMember, self.charID, newTitle, divisionID, squadronID, roles, grantableRoles, rolesAtHQ, grantableRolesAtHQ, rolesAtBase, grantableRolesAtBase, rolesAtOther, grantableRolesAtOther, self.baseID, titleMask)
             else:
                 self.corp.UpdateMember(self.charID, newTitle, divisionID, squadronID, roles, grantableRoles, rolesAtHQ, grantableRolesAtHQ, rolesAtBase, grantableRolesAtBase, rolesAtOther, grantableRolesAtOther, self.baseID, titleMask)
-            sm.GetService('loading').ProgressWnd(mls.UI_SHARED_REFRESHINGCHANGE, '', 1, 2)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Corporations/EditMemberDialog/RefreshingChanges'), '', 1, 2)
             self.LoadChar(self.charID)
             self.Load(self.args)
 
         finally:
-            sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_COMPLETED, '', 2, 2)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Corporations/EditMemberDialog/ProgressCompleted'), '', 2, 2)
 
 
 
 
     def OnGiveShares(self, *args):
-        ret = uix.QtyPopup(2147483647, 1, '1', mls.UI_CORP_HOWMANUSHARESGIVETO % {'owner': cfg.eveowners.Get(self.charID).name}, mls.UI_CMD_GIVESHARES)
+        ret = uix.QtyPopup(2147483647, 1, '1', localization.GetByLabel('UI/Corporations/EditMemberDialog/HowManySharesToGive', player=self.charID), localization.GetByLabel('UI/Corporations/EditMemberDialog/GiveShares'))
         if ret is not None:
             amount = ret['qty']
             self.corp.MoveCompanyShares(eve.session.corpid, self.charID, amount)
@@ -536,11 +546,13 @@ class EditMemberDialog(uicls.Window):
             if self.playerIsDirector or self.playerIsCEO:
                 hasTitle = True
             if not self.isCEOorEq or self.playerIsDirector or self.playerIsCEO:
-                strHasTitle = '[ ]'
+                iconID = DOES_NOT_HAVE_ROLE_OR_TITLE_ICON_ID
                 if hasTitle:
-                    strHasTitle = '[X]'
-                scrolllist.append(listentry.Get('LabelText', {'label': title.titleName,
-                 'text': strHasTitle}))
+                    iconID = HAS_ROLE_OR_TITLE_ICON_ID
+                scrolllist.append(listentry.Get('IconLabelText', {'label': title.titleName,
+                 'text': '',
+                 'icon': iconID,
+                 'iconPositioning': listentry.IconLabelText.ICON_POS_REPLACES_TEXT}))
             else:
                 scrolllist.append(self.AddTitleCheckBox(title, hasTitle))
             titleID = titleID << 1
@@ -601,7 +613,7 @@ class EditMemberDialog(uicls.Window):
                         continue
                     roleName = columnName
                     if len(name):
-                        roleName = '%s -<br>%s' % (roleName, name)
+                        roleName = localization.GetByLabel('UI/Corporations/EditMemberDialog/RoleNameAndRole', role=roleName, name=name)
                     rolesToDisplay.append([roleName,
                      hasRole,
                      hasGrantableRole,
@@ -610,7 +622,7 @@ class EditMemberDialog(uicls.Window):
 
             rolesToDisplay.sort(lambda a, b: -(a[0].upper() < b[0].upper()))
             data = {'GetSubContent': self.GetSubContentRoleSummary,
-             'label': '%s [%s]' % (Tr(roleGrouping.roleGroupName, 'dbo.crpRoleGroups.roleGroupName', roleGrouping.roleGroupID), len(rolesToDisplay)),
+             'label': localization.GetByLabel('UI/Corporations/EditMemberDialog/RoleAndNumber', role=localization.GetByMessageID(roleGrouping.roleGroupNameID), numRoles=len(rolesToDisplay)),
              'groupItems': None,
              'id': ('RolesSummary', roleGrouping.roleGroupName),
              'tabs': [],
@@ -628,19 +640,15 @@ class EditMemberDialog(uicls.Window):
         subcontent = []
         for roleToDisplay in nodedata.rolesToDisplay:
             (roleName, hasRole, hasGrantableRole, hasRoleByTitle,) = roleToDisplay
-            desc = ''
+            desc = []
             if hasRole:
-                desc = mls.UI_GENERIC_ROLE
+                desc.append(localization.GetByLabel('UI/Corporations/Common/Role'))
             if hasRoleByTitle:
-                if len(desc):
-                    desc += ',<br>'
-                desc += mls.UI_CORP_ROLEBYTITLE
+                desc.append(localization.GetByLabel('UI/Corporations/EditMemberDialog/RoleByTitle'))
             if hasGrantableRole:
-                if len(desc):
-                    desc += ',<br>'
-                desc += mls.UI_CORP_GRANTABLEROLE
+                desc.append(localization.GetByLabel('UI/Corporations/EditMemberDialog/GrantableRole'))
             subcontent.append(listentry.Get('LabelText', {'label': roleName,
-             'text': desc,
+             'text': localizationUtil.FormatGenericList(desc),
              'textpos': 170}))
 
         return subcontent

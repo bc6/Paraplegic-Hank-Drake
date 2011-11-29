@@ -97,7 +97,8 @@ class Bracket(uicls.Container):
 
 
         def fset(self, value):
-            self.projectBracket.dock = value
+            if not self.destroyed:
+                self.projectBracket.dock = value
 
 
         return property(**locals())
@@ -109,7 +110,7 @@ class Bracket(uicls.Container):
         doc = 'The x-coordinate of the bracket.'
 
         def fget(self):
-            return self.renderObject.displayX
+            return uicore.ReverseScaleDpi(self.renderObject.displayX)
 
 
         fset = uicls.Base.left.fset
@@ -122,7 +123,7 @@ class Bracket(uicls.Container):
         doc = 'The y-coordinate of the bracket.'
 
         def fget(self):
-            return self.renderObject.displayY
+            return uicore.ReverseScaleDpi(self.renderObject.displayY)
 
 
         fset = uicls.Base.top.fset

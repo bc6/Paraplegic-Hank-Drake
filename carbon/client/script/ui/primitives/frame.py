@@ -92,72 +92,10 @@ class Frame(uicls.TexturedBase):
 
         def fset(self, value):
             self._offset = value
+            ro = self.renderObject
+            if ro:
+                ro.offset = value
             self.FlagAlignmentDirty()
-
-
-        return property(**locals())
-
-
-
-    @apply
-    def displayX():
-        fget = uicls.Base.displayX.fget
-
-        def fset(self, value):
-            uicls.Base.displayX.fset(self, value + self.offset)
-
-
-        return property(**locals())
-
-
-
-    @apply
-    def displayY():
-        fget = uicls.Base.displayY.fget
-
-        def fset(self, value):
-            uicls.Base.displayY.fset(self, value + self.offset)
-
-
-        return property(**locals())
-
-
-
-    @apply
-    def displayWidth():
-        fget = uicls.Base.displayWidth.fget
-
-        def fset(self, value):
-            uicls.Base.displayWidth.fset(self, value - self.offset * 2)
-
-
-        return property(**locals())
-
-
-
-    @apply
-    def displayHeight():
-        fget = uicls.Base.displayHeight.fget
-
-        def fset(self, value):
-            uicls.Base.displayHeight.fset(self, value - self.offset * 2)
-
-
-        return property(**locals())
-
-
-
-    @apply
-    def displayRect():
-        fget = uicls.Base.displayRect.fget
-
-        def fset(self, value):
-            (x, y, w, h,) = value
-            offsetValue = (x + self.offset,
-             y + self.offset,
-             w - self.offset * 2,
-             h - self.offset * 2)
-            uicls.Base.displayRect.fset(self, offsetValue)
 
 
         return property(**locals())

@@ -76,7 +76,7 @@ class SlideShow(uicls.Container):
 
     def _HandleWait(self, args):
         if type(args) == int:
-            blue.synchro.Sleep(args)
+            blue.synchro.SleepWallclock(args)
         elif type(args) == str:
             control = self.controls[args]
             if hasattr(control, 'isFinished'):

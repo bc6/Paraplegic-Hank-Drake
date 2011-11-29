@@ -6,6 +6,7 @@ import uicls
 import uthread
 import blue
 from service import ROLE_GML
+import localization
 MAX_DISPLAY_QUALTY = const.planetResourceMaxValue * 255 * 0.5
 
 class ResourceController(uicls.Container):
@@ -130,11 +131,11 @@ class ResourceLegend(uicls.Container):
         adjusterMin = uicls.Icon(iname='leftAdjuster', icon='ui_73_16_185', parent=self.leftSpacer, align=uiconst.TORIGHT, pos=(0,
          0,
          self.ADJUSTER_WIDTH - 2,
-         self.ADJUSTER_WIDTH), state=uiconst.UI_NORMAL, hint=mls.UI_PI_RESOURCE_ADJUST_MIN, color=(1, 1, 1, 0.5))
+         self.ADJUSTER_WIDTH), state=uiconst.UI_NORMAL, hint=localization.GetByLabel('UI/PI/Common/ResourcesMinimumVisibleHint'), color=(1, 1, 1, 0.5))
         adjusterMax = uicls.Icon(name='rightAdjuster', icon='ui_73_16_186', parent=self.rightSpacer, align=uiconst.TOLEFT, pos=(0,
          0,
          self.ADJUSTER_WIDTH - 2,
-         self.ADJUSTER_WIDTH), state=uiconst.UI_NORMAL, hint=mls.UI_PI_RESOURCE_ADJUST_MAX, color=(1, 1, 1, 0.5))
+         self.ADJUSTER_WIDTH), state=uiconst.UI_NORMAL, hint=localization.GetByLabel('UI/PI/Common/ResourcesMaximumVisibleHint'), color=(1, 1, 1, 0.5))
         adjusterMin.OnMouseDown = (self.OnAdjustMouseDown, adjusterMin)
         adjusterMin.OnMouseUp = (self.OnAdjustMouseUp, adjusterMin)
         adjusterMin.OnMouseMove = (self.OnAdjustMouseMove, adjusterMin)
@@ -320,7 +321,7 @@ class ResourceListItem(uicls.Container):
 
     def CreateLayout(self):
         if self.typeID is None:
-            text = mls.UI_INFLIGHT_NOFILTER.upper()
+            text = localization.GetByLabel('UI/PI/Common/NoFilter')
             self.icon = None
             self.loadingIcon = None
         else:
@@ -338,7 +339,7 @@ class ResourceListItem(uicls.Container):
              self.ICON_SIZE,
              self.ICON_SIZE), align=uiconst.CENTER)
         self.container = uicls.Container(parent=self, name='mainContainer', align=uiconst.TOALL, state=uiconst.UI_DISABLED)
-        self.resourceName = uicls.Label(text=text, parent=self, autowidth=1, autoheight=1, left=4 + (self.ICON_SIZE if self.typeID is not None else 0), top=6, fontsize=12, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED)
+        self.resourceName = uicls.EveLabelMedium(text=text, parent=self, left=4 + (self.ICON_SIZE if self.typeID is not None else 0), top=6, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED)
         if self.typeID is not None:
             self.levelBar = uicls.Container(name='levelBar', parent=self, pos=(self.LEVEL_LEFT,
              7,
@@ -407,21 +408,21 @@ class ResourceListItem(uicls.Container):
     def GetMenu(self):
         if self.typeID is None:
             return []
-        ret = [(mls.UI_CMD_SHOWINFO, sm.GetService('info').ShowInfo, [self.typeID])]
+        ret = [(localization.GetByLabel('UI/Commands/ShowInfo'), sm.GetService('info').ShowInfo, [self.typeID])]
         if session.role & ROLE_GML == ROLE_GML:
-            ret.append((mls.UI_CMD_GMEXTRAS, self.GetGMMenu()))
+            ret.append(('GM / WM Extras', self.GetGMMenu()))
         return ret
 
 
 
     def GetGMMenu(self):
         ret = []
-        ret.append((mls.UI_CMD_COPY, self.CopyTypeID))
-        ret.append((mls.UI_PI_CMD_SHOW_RESOURCE_DETAILS_CURRENT, sm.GetService('planetUI').GMShowResource, (self.typeID, 'current')))
-        ret.append((mls.UI_PI_CMD_SHOW_RESOURCE_DETAILS_PLAYER, sm.GetService('planetUI').GMShowResource, (self.typeID, 'player')))
-        ret.append((mls.UI_PI_CMD_SHOW_RESOURCE_DETAILS_BASE, sm.GetService('planetUI').GMShowResource, (self.typeID, 'base')))
-        ret.append((mls.UI_PI_CMD_SHOW_RESOURCE_DETAILS_DEPLETION, sm.GetService('planetUI').GMShowResource, (self.typeID, 'depletion')))
-        ret.append((mls.UI_PI_CMD_SHOW_RESOURCE_DETAILS_NUGGETS, sm.GetService('planetUI').GMShowResource, (self.typeID, 'nuggets')))
+        ret.append(('Copy typeID', self.CopyTypeID))
+        ret.append(('Show resource details: current server version', sm.GetService('planetUI').GMShowResource, (self.typeID, 'current')))
+        ret.append(('Show resource details: current player version', sm.GetService('planetUI').GMShowResource, (self.typeID, 'player')))
+        ret.append(('Show resource details: base layer', sm.GetService('planetUI').GMShowResource, (self.typeID, 'base')))
+        ret.append(('Show resource details: depletion layer', sm.GetService('planetUI').GMShowResource, (self.typeID, 'depletion')))
+        ret.append(('Show resource details: Nugget layer', sm.GetService('planetUI').GMShowResource, (self.typeID, 'nuggets')))
         ret.append(None)
         ret.append(('Create nugget layer', sm.GetService('planetUI').GMCreateNuggetLayer, (self.typeID,)))
         return ret

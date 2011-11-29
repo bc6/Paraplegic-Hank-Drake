@@ -11,6 +11,8 @@ import uicls
 import log
 import math
 import contractutils
+import localization
+import fontConst
 AREA_OF_OPERATIONS_GROUPID = 6
 TIMEZONE_GROUPID = 8
 PRIMARY_LANGUAGE_GROUPID = 10
@@ -39,16 +41,16 @@ class CorpRecruitment(uicls.Container):
             self.applications = form.CorpApplications(name='applications', parent=self, align=uiconst.TOALL, padding=const.defaultPadding * 2)
             self.searchContainer = uicls.Container(parent=self, name='searchContainer', align=uiconst.TOALL, padding=const.defaultPadding * 2)
             tabs = []
-            tabs.append([mls.UI_CMD_SEARCH,
+            tabs.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/RecruitmentAdSearch'),
              self.searchContainer,
              self,
              'search'])
             if not util.IsNPC(session.corpid):
-                tabs.append([mls.UI_GENERIC_MYCORPORATION,
+                tabs.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/MyCorporationTab'),
                  self.corpAdvertContainer,
                  self,
                  'corp'])
-            tabs.append([mls.UI_CORP_APPLICATIONS,
+            tabs.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/CorpApplicationsTab'),
              self.applications,
              self,
              'applications'])
@@ -70,7 +72,7 @@ class CorpRecruitment(uicls.Container):
             if not self.sr.Get('applicationsInited', False):
                 self.sr.applicationsInited = True
                 self.PopulateApplications()
-        sm.GetService('corpui').LoadTop('ui_7_64_8', mls.UI_CORP_RECRUITMENT)
+        sm.GetService('corpui').LoadTop('ui_7_64_8', localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/RecruitmentLabel'))
 
 
 
@@ -163,7 +165,9 @@ class CorpRecruitment(uicls.Container):
         if len(adverts):
             self.corpAdvertsScroll.ShowHint(None)
         else:
-            self.corpAdvertsScroll.ShowHint(cfg.eveowners.Get(session.corpid).ownerName + ' ' + mls.UI_CORP_HAS_NO_ADVERTISEMENTS)
+            corpName = cfg.eveowners.Get(session.corpid).name
+            hint = localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/CorpHasNoRecruitmentAdvertisements', corpName=corpName)
+            self.corpAdvertsScroll.ShowHint(hint)
 
 
 
@@ -193,7 +197,7 @@ class CorpRecruitment(uicls.Container):
         corpSearchButton = uix.GetBigButton(where=corpSearchOptionsContainer, height=28)
         corpSearchButton.name = 'corpSearchButton'
         corpSearchButton.padTop = const.defaultPadding
-        corpSearchButton.SetInCaption(mls.UI_CMD_SEARCH)
+        corpSearchButton.SetInCaption(localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/RecruitmentAdSearch'))
         corpSearchButton.SetAlign(uiconst.TOBOTTOM)
         corpSearchButton.OnClick = self.SearchAdverts
         self.searchDetails = {}
@@ -207,7 +211,7 @@ class CorpRecruitment(uicls.Container):
         timezoneAds = self.advertTypesByGroupID[TIMEZONE_GROUPID]
         timezoneAds.sort(lambda i, j: cmp(i.typeMask, j.typeMask))
         for adType in timezoneAds:
-            text = Tr(adType.typeName, 'corporation.recruitmentTypes.typeName', adType.dataID)
+            text = adType.typeName
             checked = False
             if searchTypes and searchTypes & adType.typeMask:
                 checked = True
@@ -226,14 +230,14 @@ class CorpRecruitment(uicls.Container):
         maxComboWidth = 0
         self.advancedOptionsContainer = uicls.Container(parent=corpSearchOptionsContainer, name='advancedOptionsContainer', align=uiconst.TOPLEFT, top=basicOptionsContainer.top + basicOptionsContainer.height + const.defaultPadding)
         searchAreaLabel = self.CreateGroupLabel(self.advancedOptionsContainer, AREA_OF_OPERATIONS_GROUPID)
-        self.searchAreaCombo = self.CreateGroupCombo(self.advancedOptionsContainer, AREA_OF_OPERATIONS_GROUPID, searchTypes, top=searchAreaLabel.top + searchAreaLabel.height, ignoreReplace=(AREA_NO_SPECIFIC_MASK, mls.UI_GENERIC_ANY, 0))
+        self.searchAreaCombo = self.CreateGroupCombo(self.advancedOptionsContainer, AREA_OF_OPERATIONS_GROUPID, searchTypes, top=searchAreaLabel.top + searchAreaLabel.height, ignoreReplace=(AREA_NO_SPECIFIC_MASK, localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/AnyAreaOfOperations'), 0))
         maxComboWidth = max(self.searchAreaCombo.width, maxComboWidth)
-        searchSizeLabel = uicls.Label(parent=self.advancedOptionsContainer, name='searchSizeLabel', text=mls.UI_CORP_SIZE_OF_CORPORATION, align=uiconst.TOPLEFT, top=self.searchAreaCombo.top + self.searchAreaCombo.height + 3 * const.defaultPadding, uppercase=True)
+        searchSizeLabel = uicls.EveLabelMedium(parent=self.advancedOptionsContainer, name='searchSizeLabel', text=localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/CorporationSize'), align=uiconst.TOPLEFT, top=self.searchAreaCombo.top + self.searchAreaCombo.height + 3 * const.defaultPadding, bold=True)
         searchSizeOptions = []
         selected = 0
         minMembers = settings.char.ui.Get('corporation_recruitment_minmembers', 0)
         maxMembers = settings.char.ui.Get('corporation_recruitment_maxmembers', 1000)
-        for (description, data,) in [(mls.UI_GENERIC_ANY, (0, 6300)),
+        for (description, data,) in [(localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/AnyCorporationSize'), (0, 6300)),
          ('0 - 10', (0, 10)),
          ('10 - 50', (10, 50)),
          ('50 - 100', (50, 100)),
@@ -251,26 +255,12 @@ class CorpRecruitment(uicls.Container):
         self.searchLanguageCombo = self.CreateGroupCombo(self.advancedOptionsContainer, PRIMARY_LANGUAGE_GROUPID, searchTypes, top=searchLanguageLabel.top + searchLanguageLabel.height)
         maxComboWidth = max(self.searchLanguageCombo.width, maxComboWidth)
         self.searchLanguageCombo.width = self.searchSizeCombo.width = self.searchAreaCombo.width = maxComboWidth
-        self.inAllianceCheckbox = uicls.Checkbox(align=uiconst.TOPLEFT, text=mls.UI_CORP_ISINALLIANCE, parent=self.advancedOptionsContainer, checked=settings.char.ui.Get('corporation_recruitment_isinalliance', False), top=self.searchLanguageCombo.top + self.searchLanguageCombo.height + 2 * const.defaultPadding, wrapLabel=False)
+        self.inAllianceCheckbox = uicls.Checkbox(align=uiconst.TOPLEFT, text=localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/CorpIsInAnAlliance'), parent=self.advancedOptionsContainer, checked=settings.char.ui.Get('corporation_recruitment_isinalliance', False), top=self.searchLanguageCombo.top + self.searchLanguageCombo.height + 2 * const.defaultPadding, wrapLabel=False)
         self.advancedOptionsContainer.AutoFitToContent()
         corpSearchOptionsContainer.width = max(corpSearchOptionsContainer.width, self.advancedOptionsContainer.width)
         corpSearchResultsContainer = uicls.Container(parent=self.searchContainer, name='corpSearchResultsContainer', align=uiconst.TOALL, padLeft=const.defaultPadding)
         self.corpSearchResultsScroll = uicls.Scroll(parent=corpSearchResultsContainer)
-        self.corpSearchResultsScroll.ShowHint(mls.UI_CORP_SEARCH_DEFAULT)
-
-
-
-    def ToggleAdvancedSearch(self):
-        if uiutil.IsVisible(self.searchContainer):
-            if uiutil.IsVisible(self.advancedOptionsContainer):
-                self.advancedOptionsContainer.Hide()
-                self.advancedToggleLabel.text = mls.UI_RMR_SHOWMOREOPTIONS
-                self.advancedToggleIcon.sr.icon.LoadTexture('res:/UI/Texture/Shared/expanderDown.png')
-            else:
-                self.advancedOptionsContainer.Show()
-                self.advancedToggleLabel.text = mls.UI_RMR_SHOWLESSOPTIONS
-                self.advancedToggleIcon.sr.icon.LoadTexture('res:/UI/Texture/Shared/expanderUp.png')
-            self.advancedToggleIcon.left = self.advancedToggleLabel.left + self.advancedToggleLabel.width + 1
+        self.corpSearchResultsScroll.ShowHint(localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/SearchDefaultHint'))
 
 
 
@@ -278,14 +268,14 @@ class CorpRecruitment(uicls.Container):
         self.corpAdvertContentContainer.Flush()
         corpAdvertButtonContainer = uicls.Container(parent=self.corpAdvertContentContainer, name='corpAdvertButtonContainer', align=uiconst.TOBOTTOM, padTop=const.defaultPadding)
         if self.HasAccess(session.corpid):
-            buttons = [[mls.UI_CMD_CREATE,
+            buttons = [[localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/CreateRecruitmentAdButtonLabel'),
               self.PopulateCorpAdvertsClick,
               (None,),
               None]]
             buttons = uicls.ButtonGroup(btns=buttons, parent=corpAdvertButtonContainer, line=False)
             corpAdvertButtonContainer.height = buttons.height
             if len(self.GetRecruitmentAds(onlyMyCorpAds=True)) >= const.corporationMaxRecruitmentAds:
-                btn = buttons.GetBtnByLabel(mls.UI_CMD_CREATE)
+                btn = buttons.GetBtnByLabel(localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/CreateRecruitmentAdButtonLabel'))
                 btn.Disable()
         self.corpAdvertsScroll = uicls.Scroll(parent=self.corpAdvertContentContainer)
 
@@ -308,10 +298,10 @@ class CorpRecruitment(uicls.Container):
             recruiters = self.corpSvc.GetRecruiters(advertData.corporationID, advertID)
             daysRemaining = int((advertData.expiryDateTime - advertData.createDateTime) / DAY)
         corpAdvertButtonContainer = uicls.Container(parent=self.corpAdvertContentContainer, name='corpAdvertButtonContainer', align=uiconst.TOBOTTOM)
-        buttons = [[mls.UI_CMD_SUBMIT,
+        buttons = [[localization.GetByLabel('UI/Common/Buttons/Submit'),
           self.UpdateAdvert,
           (advertID,),
-          None], [mls.UI_CMD_CANCEL,
+          None], [localization.GetByLabel('UI/Common/Buttons/Cancel'),
           self.ShowCorpAdverts,
           (None,),
           None]]
@@ -343,7 +333,7 @@ class CorpRecruitment(uicls.Container):
         timezoneAds = self.advertTypesByGroupID[TIMEZONE_GROUPID]
         timezoneAds.sort(lambda i, j: cmp(i.typeMask, j.typeMask))
         for adType in timezoneAds:
-            text = Tr(adType.typeName, 'corporation.recruitmentTypes.typeName', adType.dataID)
+            text = adType.typeName
             checked = False
             if typeData and typeData & adType.typeMask:
                 checked = True
@@ -358,7 +348,11 @@ class CorpRecruitment(uicls.Container):
         timeZoneButtons = uicls.TimezonePicker(parent=advertDetailsRight, align=uiconst.TOPLEFT, height=28, top=advertTimeLabel.top + advertTimeLabel.height + const.defaultPadding, multiSelect=True)
         timeZoneButtons.Startup(tabs, selectedArgs=selected)
         advertDetailsRight.width = max(advertDetailsRight.width, advertTimeLabel.width, timeZoneButtons.width)
-        advertDurationLabel = uicls.Label(parent=advertDetailsRight, name='advertDurationLabel', text=mls.UI_GENERIC_DURATION if not advertID else mls.UI_GENERIC_EXTEND_DURATION, align=uiconst.TOPLEFT, top=timeZoneButtons.top + timeZoneButtons.height + 2 * const.defaultPadding, uppercase=True)
+        if advertID:
+            durationHeader = localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/RecruitmentAdDuration')
+        else:
+            durationHeader = localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/ExtendRecruitmentAdDuration')
+        advertDurationLabel = uicls.EveHeaderMedium(parent=advertDetailsRight, name='advertDurationLabel', text=durationHeader, align=uiconst.TOPLEFT, top=timeZoneButtons.top + timeZoneButtons.height + 2 * const.defaultPadding)
         adLimitExceeded = len(self.GetRecruitmentAds(onlyMyCorpAds=True)) > const.corporationMaxRecruitmentAds
         adDurationExceeded = daysRemaining > const.corporationMaxRecruitmentAdDuration - const.corporationMinRecruitmentAdDuration
         if adLimitExceeded or adDurationExceeded:
@@ -376,11 +370,11 @@ class CorpRecruitment(uicls.Container):
 
         durationEntries = []
         if advertID:
-            durationEntries = [[0, '0 %s' % mls.UI_GENERIC_DAYS, True]]
-        durationEntries += [[const.corporationMinRecruitmentAdDuration, '3 %s (%s)' % (mls.UI_GENERIC_DAYS, contractutils.FmtISKWithDescription(AdvertPrice(3), justDesc=True)), False],
-         [7, '1 %s (%s)' % (mls.UI_GENERIC_WEEK, contractutils.FmtISKWithDescription(AdvertPrice(7), justDesc=True)), False],
-         [14, '2 %s (%s)' % (mls.UI_GENERIC_WEEKS, contractutils.FmtISKWithDescription(AdvertPrice(14), justDesc=True)), False if advertID else True],
-         [const.corporationMaxRecruitmentAdDuration, '1 %s (%s)' % (mls.UI_GENERIC_MONTH, contractutils.FmtISKWithDescription(AdvertPrice(28), justDesc=True)), False]]
+            durationEntries = [[0, localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/RecruitmentAdZeroDurationOption'), True]]
+        durationEntries += [[const.corporationMinRecruitmentAdDuration, localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/RecruitmentAdDurationOptionWithPrice', adDuration=3 * DAY, adPrice=contractutils.FmtISKWithDescription(AdvertPrice(3), justDesc=True)), False],
+         [7, localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/RecruitmentAdDurationOptionWithPrice', adDuration=7 * DAY, adPrice=contractutils.FmtISKWithDescription(AdvertPrice(7), justDesc=True)), False],
+         [14, localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/RecruitmentAdDurationOptionWithPrice', adDuration=14 * DAY, adPrice=contractutils.FmtISKWithDescription(AdvertPrice(14), justDesc=True)), False if advertID else True],
+         [const.corporationMaxRecruitmentAdDuration, localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/RecruitmentAdDurationOptionWithPrice', adDuration=28 * DAY, adPrice=contractutils.FmtISKWithDescription(AdvertPrice(28), justDesc=True)), False]]
         top = 0
         maxDurExtension = const.corporationMaxRecruitmentAdDuration - daysRemaining
         for (value, label, checked,) in durationEntries:
@@ -402,23 +396,25 @@ class CorpRecruitment(uicls.Container):
         advertDetailsLeft.width = advertDetailsRight.width = advertDetailsCenter.width = width
         advertDetailsLeft.left = advertDetailsCenter.left - advertDetailsCenter.width - const.defaultPadding * 3
         advertDetailsRight.left = advertDetailsCenter.left + advertDetailsCenter.width + const.defaultPadding * 3
+        parentWindow = uiutil.GetWindowAbove(self)
+        parentWindow.SetMinSize((max(parentWindow.minsize[0], width * 3 + const.defaultPadding * 12), parentWindow.minsize[1]))
         self.corpMembers = self.corpSvc.GetMemberIDs()
         self.contactsList = []
         contactsContainer = uicls.Container(parent=corpAdvertEditContainer, name='contactsContainer', height=230, align=uiconst.TOBOTTOM, padBottom=const.defaultPadding * 2)
-        channelOptions = [(mls.UI_GENERIC_NONE, 0)]
+        channelOptions = [(localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/NoneRecruitmentChannelSelection'), 0)]
         selected = None
         lsc = sm.GetService('LSC')
         for channel in lsc.GetChannels():
             if channel.channelID and type(channel.channelID) is int and (channel.channelID < 0 or channel.channelID > 2100000000) and lsc.IsOperator(channel.channelID, session.charid):
                 channelOptions.append((channel.displayName, channel.channelID))
 
-        advertChannelLabel = uicls.Label(parent=contactsContainer, name='advertChannelLabel', align=uiconst.BOTTOMLEFT, text=mls.UI_CORP_RECRUITMENT_CHANNEL)
+        advertChannelLabel = uicls.EveLabelMedium(parent=contactsContainer, name='advertChannelLabel', align=uiconst.BOTTOMLEFT, text=localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/RecruitmentChannelHeader'))
         if advertData:
             selected = advertData.channelID
         self.advertChannelCombo = uicls.Combo(parent=contactsContainer, options=channelOptions, name='advertChannelCombo', select=selected, adjustWidth=True, align=uiconst.BOTTOMLEFT, left=advertChannelLabel.width + const.defaultPadding)
         advertContactSelectionContainer = uicls.Container(parent=contactsContainer, name='advertContactSelectionContainer', align=uiconst.TOLEFT, width=175, padTop=const.defaultPadding, padBottom=self.advertChannelCombo.height + const.defaultPadding * 2)
-        self.contactsFilter = uicls.SinglelineEdit(parent=advertContactSelectionContainer, name='contactsFilter', align=uiconst.TOTOP, maxLength=10, OnInsert=self.FilterOnInsert, hinttext=mls.UI_GENERIC_FILTER)
-        advertAddContactButton = uicls.Button(parent=advertContactSelectionContainer, name='advertAddContactButton', align=uiconst.CENTERBOTTOM, func=self.AddContactClick, label=mls.UI_GENERIC_ADD)
+        self.contactsFilter = uicls.SinglelineEdit(parent=advertContactSelectionContainer, name='contactsFilter', align=uiconst.TOTOP, maxLength=10, OnInsert=self.FilterOnInsert, hinttext=localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/FilterRecruiterCandidates'))
+        advertAddContactButton = uicls.Button(parent=advertContactSelectionContainer, name='advertAddContactButton', align=uiconst.CENTERBOTTOM, func=self.AddContactClick, label=localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/AddRecruiterToAd'))
         scrollList = []
         cfg.eveowners.Prime(self.corpMembers)
         for member in self.corpMembers:
@@ -448,20 +444,20 @@ class CorpRecruitment(uicls.Container):
 
         corpAdvertDetailsContainer.height = max(corpAdvertDetailsContainer.height, contactsContainer.height)
         contactsContainer.height = corpAdvertDetailsContainer.height
-        tabs = [[mls.UI_GENERIC_DETAILS,
+        tabs = [[localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/AdEditDetails'),
           corpAdvertDetailsContainer,
           self,
-          'details'], [mls.UI_CORP_RECRUITERS,
+          'details'], [localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/AdRecruiters'),
           contactsContainer,
           self,
           'recruiters']]
         tabGroup = uicls.TabGroup(name='corpAdEditTabGroup', parent=corpAdvertEditContainer, align=uiconst.TOBOTTOM, padTop=const.defaultPadding)
         tabGroup.Startup(tabs)
-        corpTitleLabel = uicls.Label(parent=corpAdvertEditContainer, align=uiconst.TOPLEFT, name='corpTitleLabel', uppercase=True, text=mls.UI_GENERIC_TITLE)
+        corpTitleLabel = uicls.EveLabelMedium(parent=corpAdvertEditContainer, align=uiconst.TOPLEFT, name='corpTitleLabel', text=localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/AdEditTitle'))
         self.corpTitleEdit = uicls.SinglelineEdit(parent=corpAdvertEditContainer, name='corpTitleEdit', align=uiconst.TOTOP, top=corpTitleLabel.top + corpTitleLabel.height, maxLength=40)
         if advertData:
             self.corpTitleEdit.SetValue(advertData.title)
-        corpMessageLabel = uicls.Label(parent=corpAdvertEditContainer, align=uiconst.TOPLEFT, name='corpMessageLabel', top=self.corpTitleEdit.top + self.corpTitleEdit.height + const.defaultPadding, uppercase=True, text=mls.UI_GENERIC_MESSAGE)
+        corpMessageLabel = uicls.EveLabelMedium(parent=corpAdvertEditContainer, align=uiconst.TOPLEFT, name='corpMessageLabel', top=self.corpTitleEdit.top + self.corpTitleEdit.height + const.defaultPadding, text=localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/AdEditMessage'))
         self.corpMessageEdit = uicls.EditPlainText(parent=corpAdvertEditContainer, align=uiconst.TOALL, name='corpMessageEdit', top=corpMessageLabel.height + const.defaultPadding, maxLength=1000)
         if advertData:
             self.corpMessageEdit.SetValue(advertData.description)
@@ -529,7 +525,7 @@ class CorpRecruitment(uicls.Container):
 
 
     def CreateGroupLabel(self, parent, groupID, top = 0):
-        label = uicls.Label(parent=parent, name='groupLabel_' + self.advertGroups[groupID].groupName, align=uiconst.TOPLEFT, uppercase=True, text=Tr(self.advertGroups[groupID].groupName, 'corporation.recruitmentGroups.groupName', self.advertGroups[groupID].dataID), top=top, hint=self.advertGroups[groupID].description, state=uiconst.UI_NORMAL)
+        label = uicls.EveLabelMedium(parent=parent, name='groupLabel_' + self.advertGroups[groupID].groupName, align=uiconst.TOPLEFT, text=self.advertGroups[groupID].groupName, top=top, hint=self.advertGroups[groupID].description, state=uiconst.UI_NORMAL, bold=True)
         return label
 
 
@@ -543,7 +539,7 @@ class CorpRecruitment(uicls.Container):
         selected = None
         firstEntry = None
         for adType in self.advertTypesByGroupID[groupID]:
-            text = Tr(adType.typeName, 'corporation.recruitmentTypes.typeName', adType.dataID)
+            text = adType.typeName
             checked = False
             if typeData and typeData & adType.typeMask:
                 checked = True
@@ -568,7 +564,7 @@ class CorpRecruitment(uicls.Container):
         selected = None
         for adType in self.advertTypesByGroupID[groupID]:
             if not ignoreReplace or ignoreReplace and ignoreReplace[0] != adType.typeMask:
-                options.append((Tr(adType.typeName, 'corporation.recruitmentTypes.typeName', adType.dataID), adType.typeMask))
+                options.append((adType.typeName, adType.typeMask))
                 if typeData and typeData & adType.typeMask:
                     selected = adType.typeMask
 
@@ -679,7 +675,7 @@ class CorpRecruitment(uicls.Container):
         if results:
             self.corpSearchResultsScroll.SetHint(None)
         else:
-            self.corpSearchResultsScroll.SetHint(mls.UI_CORP_SEARCH_DEFAULT)
+            self.corpSearchResultsScroll.SetHint(localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/SearchDefaultHint'))
 
 
 
@@ -720,13 +716,13 @@ class CorpRecruitment(uicls.Container):
         m = []
         if entry.sr.node.advert:
             if util.IsCorporation(entry.sr.node.corporationID):
-                m += [(mls.UI_GENERIC_CORPORATION, sm.GetService('menu').GetMenuFormItemIDTypeID(entry.sr.node.corporationID, const.typeCorporation))]
+                m += [(localization.GetByLabel('UI/Common/Corporation'), sm.GetService('menu').GetMenuFormItemIDTypeID(entry.sr.node.corporationID, const.typeCorporation))]
             if util.IsAlliance(entry.sr.node.allianceID):
-                m += [(mls.UI_GENERIC_ALLIANCE, sm.GetService('menu').GetMenuFormItemIDTypeID(entry.sr.node.allianceID, const.typeAlliance))]
+                m += [(localization.GetByLabel('UI/Common/Alliance'), sm.GetService('menu').GetMenuFormItemIDTypeID(entry.sr.node.allianceID, const.typeAlliance))]
             if m:
                 m += [None]
             if self.HasAccess(entry.sr.node.corporationID):
-                if entry.sr.node.advert.expiryDateTime > blue.os.GetTime():
+                if entry.sr.node.advert.expiryDateTime > blue.os.GetWallclockTime():
                     pass
             return m
 
@@ -738,7 +734,7 @@ class CorpRecruitment(uicls.Container):
             log.LogInfo('OnCorporationRecruitmentAdChanged self is None or self.destroyed')
             return 
         if self.corpAdvertContainer.IsHidden():
-            self.sr.tabs.BlinkPanelByName(mls.UI_GENERIC_MYCORPORATION)
+            self.sr.tabs.BlinkPanelByName(localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/MyCorporationTab'))
         self.ShowCorpAdverts()
 
 
@@ -782,9 +778,9 @@ class RecruitmentEntry(uicls.SE_BaseClassCore):
         self.corpInfoContainer.Flush()
         self.percentageContainer.Flush()
         corpLogo = uiutil.GetLogoIcon(itemID=self.corporationID, parent=self.corpInfoContainer, align=uiconst.CENTERLEFT, name='corpLogo', state=uiconst.UI_DISABLED, size=32, ignoreSize=True)
-        corpNameLabel = uicls.Label(parent=self.corpInfoContainer, name='corpNameLabel', align=uiconst.TOPLEFT, top=const.defaultPadding, left=corpLogo.width + const.defaultPadding, text=cfg.eveowners.Get(self.corporationID).ownerName, fontsize=12, bold=True)
-        corpAllianceLabel = uicls.Label(parent=self.corpInfoContainer, name='corpAllianceLabel', align=uiconst.TOPLEFT, top=corpNameLabel.top + corpNameLabel.height, left=corpNameLabel.left, text=getattr(cfg.eveowners.GetIfExists(data.allianceID), 'name', ''), fontsize=12)
-        adTitleLabel = uicls.Label(parent=self.corpInfoContainer, align=uiconst.TOPLEFT, fontsize=12, top=const.defaultPadding, state=uiconst.UI_HIDDEN)
+        corpNameLabel = uicls.EveLabelMedium(parent=self.corpInfoContainer, name='corpNameLabel', align=uiconst.TOPLEFT, top=const.defaultPadding, left=corpLogo.width + const.defaultPadding, text=cfg.eveowners.Get(self.corporationID).ownerName, bold=True)
+        corpAllianceLabel = uicls.EveLabelMedium(parent=self.corpInfoContainer, name='corpAllianceLabel', align=uiconst.TOPLEFT, top=corpNameLabel.top + corpNameLabel.height, left=corpNameLabel.left, text=getattr(cfg.eveowners.GetIfExists(data.allianceID), 'name', ''))
+        adTitleLabel = uicls.EveLabelMedium(parent=self.corpInfoContainer, align=uiconst.TOPLEFT, top=const.defaultPadding, state=uiconst.UI_HIDDEN, userEditable=True)
         if data.corpView:
             adTitleLabel.SetText(data.advert.title)
             adTitleLabel.left = corpNameLabel.left
@@ -792,17 +788,17 @@ class RecruitmentEntry(uicls.SE_BaseClassCore):
             adTitleLabel.Show()
             corpAllianceLabel.left = corpNameLabel.left + corpNameLabel.width
             corpAllianceLabel.top = corpNameLabel.top
-            expireTime = data.advert.expiryDateTime - blue.os.GetTime()
+            expireTime = data.advert.expiryDateTime - blue.os.GetWallclockTime()
             if expireTime > 0:
-                expirationString = mls.UI_GENERIC_EXPIRESIN + ' ' + util.FmtTimeInterval(expireTime, 'hour')
+                expirationString = localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/AdExpiresIn', adDuration=expireTime)
             else:
-                expirationString = mls.UI_GENERIC_EXPIRED
-            expiryLabel = uicls.Label(parent=self.percentageContainer, align=uiconst.CENTERRIGHT, left=const.defaultPadding * 2, text=expirationString)
+                expirationString = localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/AdExpired')
+            expiryLabel = uicls.EveLabelMedium(parent=self.percentageContainer, align=uiconst.CENTERRIGHT, left=const.defaultPadding * 2, text=expirationString)
             if expireTime < DAY:
                 expiryLabel.color = util.Color.RED
             self.percentageContainer.width = expiryLabel.width
         else:
-            percentageLabel = uicls.Label(parent=self.percentageContainer, align=uiconst.CENTERLEFT, fontsize=13, text='%s%%' % data.percentage)
+            percentageLabel = uicls.EveLabelMedium(parent=self.percentageContainer, align=uiconst.CENTERLEFT, text='%s%%' % data.percentage)
             percentageBarBack = uicls.Fill(parent=self.percentageContainer, align=uiconst.CENTERRIGHT, color=(0, 0, 0, 1), width=60, height=8)
             if data.percentage >= 75:
                 color = util.Color.GREEN
@@ -866,31 +862,35 @@ class RecruitmentEntry(uicls.SE_BaseClassCore):
 
     def GenerateExpandedText(self):
         node = self.sr.node
-        text = node.advert.description
-        if len(text):
-            text += '<br><br>'
-        text += '%s %s' % (node.memberCount, mls.UI_GENERIC_MEMBERS) + '<br><br>'
+        text = [node.advert.description]
+        if len(text[0]):
+            text.append('<br><br>')
+        text.append(localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/CorporationMemberCount', memberCount=node.memberCount))
+        text.append('<br><br>')
         for groupID in [LOOKING_FOR_GROUPID, PRIMARY_LANGUAGE_GROUPID]:
             typeList = ''
             for adType in self.advertTypesByGroupID[groupID]:
                 if node.advert.typeMask & adType.typeMask:
                     if len(typeList):
                         typeList += ', '
-                    typeList += Tr(adType.typeName, 'corporation.recruitmentTypes.typeName', adType.dataID)
+                    typeList += adType.typeName
 
             if len(typeList):
-                text += '<b>'
-                text += Tr(self.advertGroups[groupID].groupName, 'corporation.recruitmentGroups.groupName', self.advertGroups[groupID].dataID)
-                text += '</b><br>'
-                text += typeList
-                text += '<br><br>'
+                text.append('<b>')
+                text.append(self.advertGroups[groupID].groupName)
+                text.append('</b><br>')
+                text.append(typeList)
+                text.append('<br><br>')
 
         if node.channelID and node.corpView:
             channel = sm.GetService('LSC').GetChannelInfo(node.channelID)
             if channel:
                 channelName = channel.info.displayName
-                text += '<b>' + mls.UI_CORP_RECRUITMENT_CHANNEL + '</b><br>' + channelName
-                text += '<br>'
+                text.append('<b>')
+                text.append(localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/RecruitmentChannelHeader'))
+                text.append('</b><br>')
+                text.append(channelName)
+                text.append('<br>')
         return text
 
 
@@ -899,13 +899,11 @@ class RecruitmentEntry(uicls.SE_BaseClassCore):
 class RecruitmentEntryExpanded(uicls.SE_BaseClassCore):
     __guid__ = 'listentry.RecruitmentEntryExpanded'
     BUTTONGROUP_HEIGHT = 32
-    FONT_SIZE = 12
-    LETTERSPACE = 0
 
     def Startup(self, *args):
         self.corpSvc = sm.GetService('corp')
         self.lscSvc = sm.GetService('LSC')
-        self.expandedTextLabel = uicls.Label(parent=self, name='expandedTextLabel', align=uiconst.TOTOP, width=self.width - const.defaultPadding, fontsize=self.FONT_SIZE, linespace=self.FONT_SIZE, letterspace=self.LETTERSPACE, padLeft=16)
+        self.expandedTextLabel = uicls.EveLabelMedium(parent=self, name='expandedTextLabel', align=uiconst.TOTOP, width=self.width - const.defaultPadding, padLeft=16)
         self.recruitersContainer = uicls.Container(parent=self, name='recruitersContainer', align=uiconst.TOTOP, width=self.expandedTextLabel.width, padLeft=self.expandedTextLabel.padLeft)
         uicls.Line(parent=self, align=uiconst.TOBOTTOM, color=(1, 1, 1, 0.2))
         self.buttonContainer = uicls.Container(parent=self, name='buttonContainer', align=uiconst.TOBOTTOM)
@@ -916,7 +914,7 @@ class RecruitmentEntryExpanded(uicls.SE_BaseClassCore):
         self.expandedTextLabel.SetText(node.text)
         self.recruitersContainer.Flush()
         self.recruitersContainer.height = 0
-        recruitersLabel = uicls.Label(parent=self.recruitersContainer, name='recruitersLabel', align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL, text=mls.UI_CORP_RECRUITERS, bold=True)
+        recruitersLabel = uicls.EveLabelMedium(parent=self.recruitersContainer, name='recruitersLabel', align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL, text=localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/AdRecruiters'), bold=True)
         recruitersLabel.OnClick = self.ToggleRecruiters
         icon = 'res:/UI/Texture/Shared/triangleUp.png' if node.showRecruiters else 'res:/UI/Texture/Shared/triangleDown.png'
         recruitersToggleIcon = uicls.Sprite(parent=self.recruitersContainer, name='recruitersToggleIcon', state=uiconst.UI_NORMAL, texturePath=icon, align=uiconst.TOPLEFT, pos=(recruitersLabel.left + recruitersLabel.width + 1,
@@ -934,42 +932,46 @@ class RecruitmentEntryExpanded(uicls.SE_BaseClassCore):
                     online = sm.GetService('onlineStatus').GetOnlineStatus(recruiter)
                     onlineStatus = xtriui.SquareDiode(parent=container, align=uiconst.CENTERLEFT, pos=(0, 0, 12, 12), state=uiconst.UI_NORMAL)
                     onlineStatus.SetRGB(float(not online) * 0.75, float(online) * 0.75, 0.0)
-                    onlineStatus.hint = [mls.UI_GENERIC_OFFLINE, mls.UI_GENERIC_ONLINE][online]
+                    if online:
+                        hint = localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/RecruiterIsOnline')
+                    else:
+                        hint = localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/RecruiterIsOffline')
+                    onlineStatus.hint = hint
                     logoContainer = uicls.Container(parent=container, name='logoContainer', align=uiconst.CENTERLEFT, pos=(onlineStatus.left + onlineStatus.width + const.defaultPadding,
                      0,
                      32,
                      32), state=uiconst.UI_DISABLED)
                     uiutil.GetOwnerLogo(logoContainer, recruiter, size=32, orderIfMissing=True)
                     charinfo = cfg.eveowners.Get(recruiter)
-                    menuList = [(mls.UI_CMD_SHOWINFO, sm.GetService('info').ShowInfo, (charinfo.typeID, recruiter))]
+                    menuList = [(localization.GetByLabel('UI/Commands/ShowInfo'), sm.GetService('info').ShowInfo, (charinfo.typeID, recruiter))]
                     menuList += sm.GetService('menu').GetMenuFormItemIDTypeID(recruiter, cfg.invtypes.Get(charinfo.typeID))
                     container.GetMenu = lambda : menuList
-                    nameLabel = uicls.Label(parent=container, name='nameLabel', text=cfg.eveowners.Get(recruiter).name, align=uiconst.CENTERLEFT, left=logoContainer.left + logoContainer.width + const.defaultPadding, state=uiconst.UI_DISABLED)
+                    nameLabel = uicls.EveLabelMedium(parent=container, name='nameLabel', text=cfg.eveowners.Get(recruiter).name, align=uiconst.CENTERLEFT, left=logoContainer.left + logoContainer.width + const.defaultPadding, state=uiconst.UI_DISABLED)
                     container.width = nameLabel.left + nameLabel.width
                     self.recruitersContainer.height += container.height
 
             else:
-                uicls.Label(parent=self.recruitersContainer, align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL, top=top, text=mls.UI_CORP_NO_RECRUITER)
+                uicls.EveLabelMedium(parent=self.recruitersContainer, align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL, top=top, text=localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/NoRecruiterAssigned'))
         self.buttonContainer.Flush()
         buttons = []
         if node.channelID:
             if not self.lscSvc.IsJoined(node.channelID):
-                buttons.append([mls.UI_CMD_JOINCHANNEL,
+                buttons.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/JoinCorporationRecruitmentChannel'),
                  self.JoinChannel,
                  (None,),
                  None])
         if session.corpid == node.corporationID:
             if node.corpView and const.corpRolePersonnelManager & session.corprole == const.corpRolePersonnelManager:
-                buttons.append([mls.UI_CMD_EDIT,
+                buttons.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/AdEdit'),
                  self.EditRecruitmentAd,
                  (None,),
                  None])
-                buttons.append([mls.UI_CMD_REMOVE,
+                buttons.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/AdRemove'),
                  self.DeleteRecruitmentAd,
                  (None,),
                  None])
         else:
-            buttons.append([mls.UI_CMD_APPLYTOJOIN,
+            buttons.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/ApplyToJoinCorporation'),
              self.Apply,
              (None,),
              None])
@@ -992,7 +994,7 @@ class RecruitmentEntryExpanded(uicls.SE_BaseClassCore):
 
 
     def GetDynamicHeight(node, width):
-        height = uicore.font.GetTextHeight(node.text, width=width, fontsize=listentry.RecruitmentEntryExpanded.FONT_SIZE, linespace=listentry.RecruitmentEntryExpanded.FONT_SIZE, letterspace=listentry.RecruitmentEntryExpanded.LETTERSPACE)
+        height = uicore.font.GetTextHeight(node.text, width=width, fontsize=fontConst.EVE_MEDIUM_FONTSIZE, linespace=fontConst.EVE_MEDIUM_FONTSIZE, letterspace=0)
         height += 16
         if node.showRecruiters:
             if node.recruiters:
@@ -1044,8 +1046,8 @@ class ContactContainer(uicls.Container):
          40,
          40))
         self.iconContainer.Hide()
-        self.contactNameLabel = uicls.Label(parent=self, align=uiconst.CENTERLEFT)
-        self.removeContactButton = uicls.Button(parent=self, align=uiconst.CENTERRIGHT, left=const.defaultPadding, hint=mls.UI_CMD_REMOVE, func=self.RemoveClick, color=util.Color.RED, iconSize=16, icon='ui_73_16_45')
+        self.contactNameLabel = uicls.EveLabelMedium(parent=self, align=uiconst.CENTERLEFT)
+        self.removeContactButton = uicls.Button(parent=self, align=uiconst.CENTERRIGHT, left=const.defaultPadding, hint=localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/AdRemove'), func=self.RemoveClick, color=util.Color.RED, iconSize=16, icon='ui_73_16_45')
         uicls.Fill(parent=self, color=(0, 0, 0, 0.5))
         uicls.Frame(parent=self, color=(1, 1, 1, 0.15), idx=0)
         self.Clear()
@@ -1056,7 +1058,7 @@ class ContactContainer(uicls.Container):
         self.iconContainer.Flush()
         self.charID = None
         self.contactNameLabel.left = const.defaultPadding
-        self.contactNameLabel.SetText(mls.UI_CORP_NO_RECRUITER)
+        self.contactNameLabel.SetText(localization.GetByLabel('UI/Corporations/CorporationWindow/Recruitment/NoRecruiterAssigned'))
         self.removeContactButton.Hide()
         self.iconContainer.Hide()
 
@@ -1133,7 +1135,7 @@ class TimezonePicker(uicls.FlatButtonGroup):
              self.sr.buttonParent.top + self.sr.buttonParent.height,
              1,
              5))
-            label = uicls.Label(parent=self, text=button.sr.label.text, align=uiconst.TOPLEFT, left=line.left, top=line.top + line.height)
+            label = uicls.EveLabelMedium(parent=self, text=button.localizedLabel, align=uiconst.TOPLEFT, left=line.left, top=line.top + line.height)
             label.left -= label.textwidth / 2
 
         baseOffset = self.sr.buttonParent.GetAbsolutePosition()[0] - self.GetAbsolutePosition()[0]
@@ -1142,7 +1144,7 @@ class TimezonePicker(uicls.FlatButtonGroup):
          self.sr.buttonParent.top + self.sr.buttonParent.height,
          1,
          5))
-        label = uicls.Label(parent=self, text=self.buttons[0].sr.label.text, align=uiconst.TOPLEFT, left=line.left, top=line.top + line.height)
+        label = uicls.EveLabelMedium(parent=self, text=self.buttons[0].localizedLabel, align=uiconst.TOPLEFT, left=line.left, top=line.top + line.height)
         label.left -= label.textwidth / 2
 
 

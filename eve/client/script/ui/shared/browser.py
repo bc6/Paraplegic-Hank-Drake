@@ -11,6 +11,7 @@ import util
 import xtriui
 import uiconst
 import uicls
+import localization
 
 class VirtualBrowser(uicls.Window):
     __guid__ = 'form.VirtualBrowser'
@@ -23,31 +24,36 @@ class VirtualBrowser(uicls.Window):
         self.statustext = ''
         self.views = []
         self.activeView = 0
-        self.SetCaption('%s 2.0' % mls.UI_SHARED_EVEBROWSER)
+        self.SetCaption('%s 2.0' % localization.GetByLabel('UI/Shared/EveBrowser'))
         self.SetWndIcon(None)
         self.SetTopparentHeight(0)
         bottom = uicls.Container(name='__bottom', parent=self.sr.main, align=uiconst.TOBOTTOM, height=12)
         self.sr.progress = uicls.Container(parent=bottom, align=uiconst.TOPLEFT, height=10, width=68, left=const.defaultPadding, top=-2, state=uiconst.UI_HIDDEN)
         uicls.Fill(parent=self.sr.progress, align=uiconst.RELATIVE, height=6, width=0, left=2, top=2, color=(1.0, 1.0, 1.0, 0.7))
-        uicls.Label(text='', parent=self.sr.progress, width=100, autowidth=False, left=72, top=-1, state=uiconst.UI_NORMAL)
+        uicls.EveLabelMedium(text='', parent=self.sr.progress, width=100, left=72, top=-1, state=uiconst.UI_NORMAL)
         uicls.Frame(parent=self.sr.progress, color=(1.0, 1.0, 1.0, 0.5))
-        cbox = uicls.Checkbox(text=mls.UI_GENERIC_TRUSTEDSITE, callback=self.OnTrustedSitesClick, align=uiconst.TOPRIGHT, pos=(6, -4, 0, 0))
+        cbox = uicls.Checkbox(text=localization.GetByLabel('UI/Browser/TrustedSite'), callback=self.OnTrustedSitesClick, align=uiconst.TOPRIGHT, pos=(6, -4, 0, 0))
         cbox.data = {}
         bottom.children.append(cbox)
-        cbox.SetLabelText(mls.UI_GENERIC_TRUSTEDSITE)
+        cbox.SetLabelText(localization.GetByLabel('UI/Browser/TrustedSite'))
         self.sr.trustedSiteCb = cbox
         self.sr.bottomParent = bottom
-        self.sr.hint = uicls.Label(text='', parent=bottom, fontsize=10, left=8, top=-2, align=uiconst.TOALL, state=uiconst.UI_DISABLED, uppercase=1, autowidth=False, autoheight=False)
+        self.sr.hint = uicls.EveHeaderSmall(text='', parent=bottom, padLeft=8, padTop=-2, align=uiconst.TOALL, state=uiconst.UI_DISABLED)
         topparent = uicls.Container(name='topparent', parent=self.sr.main, align=uiconst.TOTOP, height=16, top=const.defaultPadding, idx=0)
         standardButtonsParent = uicls.Container(name='standardButtonsParent', parent=topparent, align=uiconst.TORIGHT, padRight=4, idx=0)
         self.sr.stdTopParent = topparent
-        for each in ['back',
-         'forward',
-         'home',
-         'reload']:
-            button = uicls.ImageButton(parent=standardButtonsParent, name=each, width=20, height=20, align=uiconst.RELATIVE, top=-2, left=standardButtonsParent.width, idleIcon='res:/UI/Texture/classes/Browser/%sIdle.png' % each, mouseoverIcon='res:/UI/Texture/classes/Browser/%sMouseOver.png' % each, mousedownIcon='res:/UI/Texture/classes/Browser/%sIdle.png' % each, onclick=getattr(self, each.capitalize(), None), hint=getattr(mls, 'UI_SHARED_BROWSER' + each.upper(), ''))
-            button.flag = each
-            setattr(self.sr, '%sBtn' % each, button)
+        labels = {'back': 'UI/Browser/Back',
+         'forward': 'UI/Browser/Forward',
+         'home': 'UI/Browser/Home',
+         'reload': 'UI/Browser/Reload'}
+        for (key, value,) in labels.iteritems():
+            if localization.IsValidLabel(value):
+                thehint = localization.GetByLabel(value)
+            else:
+                thehint = ''
+            button = uicls.ImageButton(parent=standardButtonsParent, name=key, width=20, height=20, align=uiconst.RELATIVE, top=-2, left=standardButtonsParent.width, idleIcon='res:/UI/Texture/classes/Browser/%sIdle.png' % key, mouseoverIcon='res:/UI/Texture/classes/Browser/%sMouseOver.png' % key, mousedownIcon='res:/UI/Texture/classes/Browser/%sIdle.png' % key, onclick=getattr(self, key.capitalize(), None), hint=thehint)
+            button.flag = key
+            setattr(self.sr, '%sBtn' % key, button)
             standardButtonsParent.width += 20
 
         self.sr.standardButtonsParent = standardButtonsParent
@@ -68,31 +74,31 @@ class VirtualBrowser(uicls.Window):
         uicls.Line(parent=mp, align=uiconst.TOBOTTOM)
         push = uicls.Container(name='push', parent=mp, align=uiconst.TOLEFT, state=uiconst.UI_NORMAL, width=const.defaultPadding)
         uicls.Line(parent=push, align=uiconst.TORIGHT)
-        for (name, GetMenu,) in [(mls.UI_SHARED_BROWSERVIEW, lambda : [(mls.UI_CMD_NEWVIEW, self.NewView, (None,)),
-           (mls.UI_CMD_CLOSEVIEW, self.CloseView, ()),
+        for (name, GetMenu,) in [(localization.GetByLabel('UI/Browser/View'), lambda : [(localization.GetByLabel('UI/Browser/NewView'), self.NewView, (None,)),
+           (localization.GetByLabel('UI/Browser/CloseView'), self.CloseView, ()),
            None,
-           (mls.UI_SHARED_BROWSERRELOAD, self.Reload, ()),
-           (mls.UI_CMD_VIEWSOURCE, self.DocumentSource, ())]), (mls.UI_CMD_BROWSERBOOKMARKS, self.GetBookmarkMenu), (mls.UI_CMD_OPTIONS, lambda : [(mls.UI_CMD_GENERALSETTINGS, self.EditGeneralSettings, ()), None, (mls.UI_CMD_TRUSTEDSITES, self.EditSites, ('trusted',))])]:
-            opt = xtriui.StandardMenu(name='menuoption', parent=mp, align=uiconst.TOLEFT, state=uiconst.UI_NORMAL)
+           (localization.GetByLabel('UI/Browser/Reload'), self.Reload, ()),
+           (localization.GetByLabel('UI/Browser/ViewSource'), self.DocumentSource, ())]), (localization.GetByLabel('UI/Browser/Bookmarks'), self.GetBookmarkMenu), (localization.GetByLabel('UI/Browser/Options'), lambda : [(localization.GetByLabel('UI/Browser/GeneralSettings'), self.EditGeneralSettings, ()), None, (localization.GetByLabel('UI/Browser/TrustedSites'), self.EditSites, ('trusted',))])]:
+            opt = uicls.WindowDropDownMenu(name='menuoption', parent=mp, align=uiconst.TOLEFT, state=uiconst.UI_NORMAL)
             opt.Setup(name, GetMenu)
 
         self.sr.menuParent = mp
         lp = uicls.Container(name='languageParent', align=uiconst.TORIGHT, width=4, height=0, parent=mp)
         i = 0
         for (name, hint, iconNo, callback,) in [('de',
-          mls.UI_GENERIC_LANGGERMAN,
+          localization.GetByLabel('UI/Browser/LanguageGerman'),
           'ui_22_32_35',
           self.ChangeLang),
          ('fr',
-          mls.UI_GENERIC_LANGFRENCH,
+          localization.GetByLabel('UI/Browser/LanguageFrench'),
           'ui_22_32_34',
           self.ChangeLang),
          ('en',
-          mls.UI_GENERIC_LANGENGLISH,
+          localization.GetByLabel('UI/Browser/LanguageEnglish'),
           'ui_22_32_37',
           self.ChangeLang),
          ('es',
-          mls.UI_GENERIC_LANGSPANISH,
+          localization.GetByLabel('UI/Browser/LanguageSpanish'),
           'ui_22_32_38',
           self.ChangeLang)]:
             btn = uicls.Icon(parent=lp, icon=iconNo, name=name, hint=hint, width=16, height=16, left=i * 17, top=-1, align=uiconst.RELATIVE, ignoreSize=True)
@@ -195,7 +201,7 @@ class VirtualBrowser(uicls.Window):
 
 
     def GetBookmarkMenu(self):
-        m = [(mls.UI_CMD_ADDREMOVE, self.EditBookmarks), None]
+        m = [(localization.GetByLabel('UI/Browser/AddRemove'), self.EditBookmarks), None]
         for (name, url,) in sm.GetService('sites').GetBookmarks():
             if url.find(':/') == -1:
                 url = 'http://' + url
@@ -207,20 +213,20 @@ class VirtualBrowser(uicls.Window):
 
     def EditGeneralSettings(self):
         if not self.destroyed:
-            wnd = sm.GetService('window').GetWindow('BrowserGeneralSettings', create=1, decoClass=form.BrowserGeneralSettings)
+            wnd = form.BrowserGeneralSettings.Open()
             wnd.ShowModal()
 
 
 
     def EditBookmarks(self):
         if not self.destroyed:
-            wnd = sm.GetService('window').GetWindow('EditBookmarks', create=1, name=self.sr.wndCaption.text, url=self.sr.urlinput.GetValue())
+            wnd = uicls.EditBookmarksWindow.Open(url=self.sr.urlinput.GetValue())
             wnd.ShowModal()
 
 
 
     def EditSites(self, initialUrl):
-        sm.GetService('window').GetWindow('WebsiteTrustManagementWindow', decoClass=form.WebsiteTrustManagementWindow, create=1, initialUrl=initialUrl)
+        uicls.WebsiteTrustManagementWindow.Open(initialUrl=initialUrl)
 
 
 
@@ -246,7 +252,7 @@ class VirtualBrowser(uicls.Window):
 
 
     def GetTabMenu(self, tab):
-        return [(mls.UI_CMD_CLOSEVIEW, self.CloseView, (tab.sr.args,))]
+        return [(localization.GetByLabel('UI/Browser/CloseView'), self.CloseView, (tab.sr.args,))]
 
 
 
@@ -282,7 +288,7 @@ class VirtualBrowser(uicls.Window):
         self.sr.browser.sr.window = self
         self.sr.browser.GetMenu = self.GetMenu
         c = len(self.views)
-        self.views.append(['%s %s' % (mls.UI_SHARED_BROWSERVIEW, c + 1),
+        self.views.append(['%s %s' % (localization.GetByLabel('UI/Browser/View'), c + 1),
          None,
          [],
          self.sr.browser])
@@ -351,9 +357,9 @@ class VirtualBrowser(uicls.Window):
     def GetMenu(self):
         m = []
         if self.sr.urlinput.GetValue():
-            m.append((mls.UI_CMD_SETASHOMEPAGE, self.SetHomePage))
-            m.append((mls.UI_CMD_BOOKMARK, self.EditBookmarks))
-            m.append((mls.UI_CMD_VIEWSOURCE, self.DocumentSource))
+            m.append((localization.GetByLabel('UI/Browser/SetAsHomepage'), self.SetHomePage))
+            m.append((localization.GetByLabel('UI/Browser/Bookmark'), self.EditBookmarks))
+            m.append((localization.GetByLabel('UI/Browser/ViewSource'), self.DocumentSource))
         return m
 
 
@@ -372,7 +378,7 @@ class VirtualBrowser(uicls.Window):
                 if type(txt) != types.UnicodeType:
                     txt = unicode(txt, 'utf-8', 'replace')
                 txt = txt.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')
-                (response, supress,) = sm.GetService('gameui').MessageBox(txt, title=mls.UI_SHARED_BROWSERHTMLSOURCEOF % self.sr.urlinput.GetValue(), buttons=uiconst.OK, icon=uiconst.INFO)
+                (response, supress,) = sm.GetService('gameui').MessageBox(txt, title=localization.GetByLabel('UI/Browser/HTMLSourceOf', url=self.sr.urlinput.GetValue()), buttons=uiconst.OK, icon=uiconst.INFO)
 
 
 
@@ -382,7 +388,7 @@ class VirtualBrowser(uicls.Window):
         h = history[i]
         scrollTo = self.sr.browser.sr.positions.get(h[1], None)
         self.sr.browser._GoTo(h[0], h[1], h[2], scrollTo)
-        self.views[self.activeView][0] = self.sr.browser.title or '%s %s' % (mls.UI_SHARED_BROWSERVIEW, self.activeView + 1)
+        self.views[self.activeView][0] = self.sr.browser.title or '%s %s' % (localization.GetByLabel('UI/Browser/View'), self.activeView + 1)
         if len(self.sr.tabsParent.children):
             tab = self.sr.tabsParent.children[0].GetVisible(1)
             if tab:
@@ -420,7 +426,7 @@ class VirtualBrowser(uicls.Window):
                          scrollTo))
                         self.views[activeView][2] = history
                         self.views[activeView][1] = len(self.views[self.activeView][2]) - 1
-                    self.views[activeView][0] = browser.title or '%s %s' % (mls.UI_SHARED_BROWSERVIEW, activeView + 1)
+                    self.views[activeView][0] = browser.title or '%s %s' % (localization.GetByLabel('UI/Browser/View'), activeView + 1)
                     if len(self.sr.tabsParent.children):
                         tab = self.sr.tabsParent.children[0].sr.tabs[activeView]
                         if tab:
@@ -480,13 +486,13 @@ class VirtualBrowser(uicls.Window):
             historyIdx = historyIdx or 0
             if historyIdx and lenHistory > 1:
                 self.sr.backBtn.Enable()
-                self.sr.backBtn.hint = '%s %s' % (mls.UI_SHARED_BROWSERBACKTO, history[(historyIdx - 1)][0])
+                self.sr.backBtn.hint = '%s %s' % (localization.GetByLabel('UI/Browser/BackTo'), history[(historyIdx - 1)][0])
             else:
                 self.sr.backBtn.Disable()
                 self.sr.backBtn.hint = ''
             if historyIdx < lenHistory - 1:
                 self.sr.forwardBtn.Enable()
-                self.sr.forwardBtn.hint = '%s %s' % (mls.UI_SHARED_BROWSERFORWARDTO, history[(historyIdx + 1)][0])
+                self.sr.forwardBtn.hint = '%s %s' % (localization.GetByLabel('UI/Browser/ForwardTo'), history[(historyIdx + 1)][0])
             else:
                 self.sr.forwardBtn.Disable()
                 self.sr.forwardBtn.hint = ''
@@ -503,13 +509,13 @@ class VirtualBrowser(uicls.Window):
             self.sr.forwardBtn.hint = ''
         home = settings.user.ui.Get('HomePage2', browserutil.DefaultHomepage())
         if home:
-            self.sr.homeBtn.hint = '%s: %s' % (mls.UI_SHARED_BROWSERFORWARDTO, home)
+            self.sr.homeBtn.hint = '%s: %s' % (localization.GetByLabel('UI/Browser/ForwardTo'), home)
             self.sr.homeBtn.Enable()
         else:
-            self.sr.homeBtn.hint = mls.UI_SHARED_BROWSERNOHOMEPAGE
+            self.sr.homeBtn.hint = localization.GetByLabel('UI/Browser/NoHomepage')
             self.sr.homeBtn.Disable()
         if self.sr.urlinput.GetValue():
-            self.sr.reloadBtn.hint = mls.UI_GENERIC_RELOAD
+            self.sr.reloadBtn.hint = localization.GetByLabel('UI/Browser/Reload')
             self.sr.reloadBtn.Enable()
         else:
             self.sr.reloadBtn.hint = ''
@@ -554,38 +560,6 @@ class VirtualBrowser(uicls.Window):
     def OnSessionChanged(self, isRemote, sess, change):
         if not self.destroyed:
             self.sr.browser.SessionChanged()
-
-
-
-
-class StandardMenu(uicls.Container):
-    __guid__ = 'xtriui.StandardMenu'
-
-    def Setup(self, name, GetMenu):
-        self.name = name
-        self.GetMenu = GetMenu
-        uicls.Line(parent=self, align=uiconst.TORIGHT)
-        self.sr.label = uicls.Label(text=name, parent=self, left=5, top=2, fontsize=9, letterspace=2, state=uiconst.UI_DISABLED, uppercase=1)
-        self.expandOnLeft = 1
-        self.height = 10
-        self.sr.hilite = uicls.Fill(parent=self, state=uiconst.UI_HIDDEN, padding=(1, 1, 1, 1))
-        self.width = self.sr.label.width + 10
-        self.cursor = 1
-
-
-
-    def OnMouseEnter(self):
-        self.sr.hilite.state = uiconst.UI_DISABLED
-
-
-
-    def OnMouseExit(self):
-        self.sr.hilite.state = uiconst.UI_HIDDEN
-
-
-
-    def GetMenuPosition(self, *args):
-        return (self.absoluteLeft, self.absoluteBottom + 2)
 
 
 

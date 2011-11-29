@@ -32,7 +32,7 @@ class CoreCharControl(uicls.LayerCore):
     def OnKillFocus(self, *args):
         nav = sm.GetService('navigation')
         nav.controlLayer = None
-        nav.hasControl = False
+        nav.hasFocus = False
         nav.RecreatePlayerMovement()
 
 
@@ -40,7 +40,7 @@ class CoreCharControl(uicls.LayerCore):
     def OnSetFocus(self, *args):
         nav = sm.GetService('navigation')
         nav.controlLayer = self
-        nav.hasControl = True
+        nav.hasFocus = True
         nav.RecreatePlayerMovement()
 
 

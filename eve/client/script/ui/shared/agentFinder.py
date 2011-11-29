@@ -1,5 +1,7 @@
 import blue
 import listentry
+import localization
+import localizationUtil
 import math
 import standingUtil
 import types
@@ -31,11 +33,12 @@ FACTIONIDBYRACEID = {const.raceCaldari: const.factionCaldariState,
 class AgentFinderWnd(uicls.Window):
     __guid__ = 'form.AgentFinderWnd'
     __notifyevents__ = ['OnSessionChanged']
+    default_windowID = 'AgentFinderWnd'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         sm.RegisterNotify(self)
-        self.SetCaption(mls.UI_SHARED_AGENTFINDER)
+        self.SetCaption(localization.GetByLabel('UI/AgentFinder/AgentFinder'))
         self.SetMinSize([SMALL_WIDTH, HEIGHT])
         self.SetTopparentHeight(0)
         self.agentsList = []
@@ -74,7 +77,7 @@ class AgentFinderWnd(uicls.Window):
         self.leftCont = uicls.Container(name='leftCont', parent=self.sr.main, align=uiconst.TOLEFT, width=SEARCH_WIDTH, clipChildren=True)
         self.rightCont = uicls.Container(name='rightCont', parent=self.sr.main, align=uiconst.TOALL)
         topCont = uicls.Container(name='topCont', parent=self.rightCont, align=uiconst.TOTOP, height=90)
-        uicls.Label(text=mls.UI_SHARED_AGENTLEVEL, parent=topCont, align=uiconst.CENTERTOP, top=4, uppercase=True)
+        uicls.EveLabelMedium(text=localization.GetByLabel('UI/AgentFinder/AgentLevel'), parent=topCont, align=uiconst.CENTERTOP, top=4)
         self.sliderCont = uicls.Container(name='sliderCont', parent=topCont, align=uiconst.TOTOP, pos=(0, 28, 0, 20), padding=(SLIDER_PADDING,
          0,
          SLIDER_PADDING,
@@ -92,12 +95,13 @@ class AgentFinderWnd(uicls.Window):
          0), state=uiconst.UI_NORMAL)
         self.prevBtn = uicls.BrowseButton(parent=browseCont, prev=True, state=uiconst.UI_NORMAL, func=self.BrowseAgents)
         self.nextBtn = uicls.BrowseButton(parent=browseCont, prev=False, state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT, func=self.BrowseAgents)
-        self.pageNumText = uicls.Label(text='', parent=browseCont, align=uiconst.CENTERTOP, state=uiconst.UI_HIDDEN)
+        self.pageNumText = uicls.EveLabelMedium(text='', parent=browseCont, align=uiconst.CENTERTOP, state=uiconst.UI_HIDDEN)
         self.noAgentsCont = uicls.Container(name='noAgentsCont', parent=self.rightCont, align=uiconst.TOALL, padding=(const.defaultPadding * 3,
          const.defaultPadding,
          const.defaultPadding * 3,
          const.defaultPadding), state=uiconst.UI_HIDDEN)
-        self.noAgentsOrLoadingText = uicls.CaptionLabel(text='', parent=self.noAgentsCont)
+        self.noAgentsOrLoadingText = uicls.EveCaptionMedium(text='', parent=self.noAgentsCont, align=uiconst.TOTOP, width=self.noAgentsCont.width)
+        self.noAgentsOrLoadingText.SetAlpha(0.5)
         self.mainCont = uicls.GridContainer(name='mainCont', parent=self.rightCont, align=uiconst.TOALL, padding=(const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding,
@@ -106,7 +110,7 @@ class AgentFinderWnd(uicls.Window):
         self.mainCont.columns = AGENT_COLUMNS
         self.expanderCont = uicls.Container(parent=topCont, align=uiconst.BOTTOMLEFT, height=16, width=60, top=8, state=uiconst.UI_NORMAL, left=6)
         self.expanderIcon = uicls.Icon(parent=self.expanderCont, idx=0, size=16, state=uiconst.UI_DISABLED, icon='ui_1_16_100')
-        l = uicls.Label(text=mls.UI_SHARED_FILTEROPTIONS, parent=self.expanderCont, left=16)
+        l = uicls.EveLabelMedium(text=localization.GetByLabel('UI/AgentFinder/FilterOptions'), parent=self.expanderCont, left=16)
         self.expanderCont.SetOpacity(NORMAL_ALPHA)
         self.expanderCont.width = l.width + 16
         self.expanderCont.OnClick = self.OnChangeSize
@@ -157,25 +161,25 @@ class AgentFinderWnd(uicls.Window):
         top = 16
         factionOptions = self.GetFactions()
         self.factionID = settings.user.ui.Get('agentFinderFaction', self.bestFactionStanding)
-        self.factionCombo = uicls.Combo(label=mls.UI_GENERIC_FACTION, parent=topCont, select=self.factionID, top=top, left=8, options=factionOptions, callback=self.OnFactionChange, adjustWidth=True)
+        self.factionCombo = uicls.Combo(label=localization.GetByLabel('UI/Common/Faction'), parent=topCont, select=self.factionID, top=top, left=8, options=factionOptions, callback=self.OnFactionChange, adjustWidth=True)
         combos.append(self.factionCombo)
         top += 48
-        self.corpCombo = uicls.Combo(label=mls.UI_GENERIC_CORPORATION, parent=topCont, select=self.corporationID, top=top, left=8, options=self.GetCorporations(), callback=self.OnCorporationChange, adjustWidth=True)
+        self.corpCombo = uicls.Combo(label=localization.GetByLabel('UI/Common/Corporation'), parent=topCont, select=self.corporationID, top=top, left=8, options=self.GetCorporations(), callback=self.OnCorporationChange, adjustWidth=True)
         combos.append(self.corpCombo)
         top += 48
-        self.divisionCombo = uicls.Combo(label=mls.UI_SHARED_AGENTTYPE, parent=topCont, select=self.divisionID, top=top, left=8, options=self.GetDivisions(), callback=self.OnDivisionChange, adjustWidth=True)
+        self.divisionCombo = uicls.Combo(label=localization.GetByLabel('UI/AgentFinder/AgentType'), parent=topCont, select=self.divisionID, top=top, left=8, options=self.GetDivisions(), callback=self.OnDivisionChange, adjustWidth=True)
         combos.append(self.divisionCombo)
         top += 48
-        self.regionCombo = uicls.Combo(label=mls.UI_GENERIC_REGION, parent=topCont, select=self.regionID, top=top, left=8, options=self.GetRegions(), callback=self.OnRegionChange, adjustWidth=True)
+        self.regionCombo = uicls.Combo(label=localization.GetByLabel('UI/Common/LocationTypes/Region'), parent=topCont, select=self.regionID, top=top, left=8, options=self.GetRegions(), callback=self.OnRegionChange, adjustWidth=True)
         combos.append(self.regionCombo)
         top += 48
-        self.locationCombo = uicls.Combo(label=mls.UI_GENERIC_SOLARSYSTEM, parent=topCont, select=self.locationID, top=top, left=8, options=self.GetSolarsystems(), callback=self.OnLocationChange, adjustWidth=True)
+        self.locationCombo = uicls.Combo(label=localization.GetByLabel('UI/Common/LocationTypes/SolarSystem'), parent=topCont, select=self.locationID, top=top, left=8, options=self.GetSolarsystems(), callback=self.OnLocationChange, adjustWidth=True)
         combos.append(self.locationCombo)
         top += 48
-        self.secStatusCombo = uicls.Combo(label=mls.UI_GENERIC_SECURITYSTATUS, parent=topCont, select=self.secStatus, top=top, left=8, options=self.GetSecurityStatus(), callback=self.OnSecStatusChange, adjustWidth=True)
+        self.secStatusCombo = uicls.Combo(label=localization.GetByLabel('UI/Medical/Clone/SecurityStatus'), parent=topCont, select=self.secStatus, top=top, left=8, options=self.GetSecurityStatus(), callback=self.OnSecStatusChange, adjustWidth=True)
         combos.append(self.secStatusCombo)
         top += 32
-        self.showOnlyAvail = uicls.Checkbox(text=mls.UI_MARKET_SHOWONLYAVAIL, parent=topCont, checked=showAvail, top=top, callback=self.OnShowAvailChange, left=6, align=uiconst.TOPLEFT, width=SEARCH_WIDTH - 30)
+        self.showOnlyAvail = uicls.Checkbox(text=localization.GetByLabel('UI/AgentFinder/ShowOnlyAvailable'), parent=topCont, checked=showAvail, top=top, callback=self.OnShowAvailChange, left=6, align=uiconst.TOPLEFT, width=SEARCH_WIDTH - 30)
         comboWidth = max(self.factionCombo.width, self.corpCombo.width, self.divisionCombo, self.locationCombo, self.secStatusCombo)
         maxWidth = min(comboWidth, SEARCH_WIDTH - 30)
         for combo in combos:
@@ -208,7 +212,8 @@ class AgentFinderWnd(uicls.Window):
             setattr(self.sr, labelName, label)
             uicls.Line(name='scaleBase', parent=cont, align=uiconst.TOBOTTOM, color=LINE_COLOR)
             if i == 1:
-                firstLabel = uicls.Label(text=i, parent=textcontLeft, left=-4, state=uiconst.UI_NORMAL, fontsize=18, top=-4)
+                labelTxt = localizationUtil.FormatNumeric(i, decimalPlaces=0)
+                firstLabel = uicls.Label(text=labelTxt, parent=textcontLeft, left=-4, state=uiconst.UI_NORMAL, fontsize=18, top=-4)
                 labelName = 'label%s' % i
                 setattr(self, labelName, firstLabel)
                 firstLabel.SetAlpha(NORMAL_ALPHA)
@@ -225,7 +230,7 @@ class AgentFinderWnd(uicls.Window):
                 textcontLeft.OnMouseExit = (self.OnAdjusterMouseExit, prevLabel)
             textcontRight.OnMouseEnter = (self.OnAdjusterMouseEnter, label)
             textcontRight.OnMouseExit = (self.OnAdjusterMouseExit, label)
-            label.text = i + 1
+            label.text = localizationUtil.FormatNumeric(i + 1, decimalPlaces=0)
             uicls.Line(name='rightTick', parent=cont, align=uiconst.TORIGHT, color=LINE_COLOR)
 
         self.leftSpacer = uicls.Container(parent=self.sliderAdjusterCont, name='leftSpacer', align=uiconst.TOLEFT, pos=(-ADJUSTER_WIDTH / 2,
@@ -299,7 +304,7 @@ class AgentFinderWnd(uicls.Window):
         self.mainCont.state = uiconst.UI_HIDDEN
         self.prevBtn.Disable()
         self.nextBtn.Disable()
-        self.noAgentsOrLoadingText.text = '%s...' % mls.UI_GENERIC_LOADING
+        self.noAgentsOrLoadingText.text = localization.GetByLabel('UI/AgentFinder/Loading')
 
 
 
@@ -386,7 +391,7 @@ class AgentFinderWnd(uicls.Window):
         self.totalAgents = len(self.agentsList)
         self.pos = 0
         if self.totalAgents == 0:
-            self.noAgentsOrLoadingText.text = mls.UI_SHARED_NOAGENTSFOUND
+            self.noAgentsOrLoadingText.text = localization.GetByLabel('UI/AgentFinder/NoAgentsFound')
             self.DisplayBrowse()
         else:
             self.HideLoading()
@@ -503,7 +508,7 @@ class AgentFinderWnd(uicls.Window):
             factionStandingList.sort(key=lambda x: x.standing)
             self.bestFactionStanding = factionStandingList[-1].factionID
         options.sort()
-        options.insert(0, [mls.UI_GENERIC_ANY, -1])
+        options.insert(0, [localization.GetByLabel('UI/Common/Any'), -1])
         return options
 
 
@@ -533,7 +538,7 @@ class AgentFinderWnd(uicls.Window):
             self.bestCorpStanding = max(self.bestCorpStanding, 1)
         else:
             self.bestCorpStanding = min(self.bestCorpStanding, 5)
-        options.insert(0, [mls.UI_GENERIC_ANY, -1])
+        options.insert(0, [localization.GetByLabel('UI/Common/Any'), -1])
         return options
 
 
@@ -547,12 +552,12 @@ class AgentFinderWnd(uicls.Window):
 
         for agentTypeID in self.agentTypeIDs:
             if agentTypeID == const.agentTypeStorylineMissionAgent:
-                options.append([mls.UI_SHARED_STORYLINE, agentTypeID])
+                options.append([localization.GetByLabel('UI/Agents/Storyline'), agentTypeID])
             elif agentTypeID == const.agentTypeFactionalWarfareAgent:
-                options.append([mls.UI_FACWAR_FACTIONALWARFARE, agentTypeID])
+                options.append([localization.GetByLabel('UI/Agents/FactionalWarfare'), agentTypeID])
 
         options.sort()
-        options.insert(0, [mls.UI_GENERIC_ANY, -1])
+        options.insert(0, [localization.GetByLabel('UI/Common/Any'), -1])
         return options
 
 
@@ -564,7 +569,7 @@ class AgentFinderWnd(uicls.Window):
                 options.append([cfg.evelocations.Get(regionID).name, regionID])
 
         options.sort()
-        options.insert(0, [mls.UI_GENERIC_ANY, -1])
+        options.insert(0, [localization.GetByLabel('UI/Common/Any'), -1])
         return options
 
 
@@ -581,16 +586,16 @@ class AgentFinderWnd(uicls.Window):
                 options.append([cfg.evelocations.Get(solarsystemID).name, solarsystemID])
 
         options.sort()
-        options.insert(0, [mls.UI_GENERIC_ANY, -1])
+        options.insert(0, [localization.GetByLabel('UI/Common/Any'), -1])
         return options
 
 
 
     def GetSecurityStatus(self):
-        options = [(mls.UI_GENERIC_ANY, -1),
-         (mls.UI_GENERIC_HIGHSEC, const.securityClassHighSec),
-         (mls.UI_GENERIC_LOWSEC, const.securityClassLowSec),
-         (mls.UI_GENERIC_NULLSEC, const.securityClassZeroSec)]
+        options = [(localization.GetByLabel('UI/Common/Any'), -1),
+         (localization.GetByLabel('UI/Common/HighSec'), const.securityClassHighSec),
+         (localization.GetByLabel('UI/Common/LowSec'), const.securityClassLowSec),
+         (localization.GetByLabel('UI/Common/NullSec'), const.securityClassZeroSec)]
         return options
 
 
@@ -641,34 +646,34 @@ class AgentFinderWnd(uicls.Window):
             station = sm.StartService('ui').GetStation(stationID)
             stationName = cfg.evelocations.Get(stationID).name
             stationTypeID = station.stationTypeID
+            infoLinkTypeID = stationTypeID
+            infoLinkSystemID = stationID
             locationLink = '<url=showinfo:%d//%d>%s</url>' % (stationTypeID, stationID, solarSystemName)
         else:
+            infoLinkTypeID = const.typeSolarSystem
+            infoLinkSystemID = solarSystemID
             locationLink = '<url=showinfo:%d//%d>%s</url>' % (const.typeSolarSystem, solarSystemID, solarSystemName)
         sec = sm.GetService('map').GetSecurityStatus(solarSystemID)
         (secStatus, color,) = util.FmtSystemSecStatus(sec, True)
-        color = util.Color.RGBtoHex(color.r, color.g, color.b)
-        secStatus = '<color=%s>%s</color>' % (color, secStatus)
+        color = int(util.Color.RGBtoHex(color.r, color.g, color.b), 16)
+        startSystemInfoTag = '<url=showinfo:%d//%d>' % (infoLinkTypeID, infoLinkSystemID)
+        endUrlTag = '</url>'
+        startColorTag = '<color=%s>' % color
+        endColorTag = '</color>'
         if jumps != 999:
-            if jumps == 1:
-                numJumpsTxt = '%s %s' % (jumps, mls.UI_GENERIC_JUMP)
-            else:
-                numJumpsTxt = '%s %s' % (jumps, mls.UI_GENERIC_JUMPS)
+            locationLabel = localization.GetByLabel('UI/AgentFinder/LocationText', startSystemInfoTag=startSystemInfoTag, system=solarSystemID, endSystemInfoTag=endUrlTag, startColorTag=startColorTag, secStatus=sec, endColorTag=endColorTag, jumps=jumps)
         else:
-            numJumpsTxt = mls.UI_GENERIC_UNREACHABLE
-        locationLabel = '%s %s (%s)' % (locationLink, secStatus, numJumpsTxt)
+            locationLabel = localization.GetByLabel('UI/AgentFinder/LocationTextUnreachable', startSystemInfoTag=startSystemInfoTag, system=solarSystemID, endSystemInfoTag=endUrlTag, startColorTag=startColorTag, secStatus=sec, endColorTag=endColorTag)
         levelAndTypeLabel = ''
+        agentDivision = sm.GetService('agents').GetDivisions()[divisionID].divisionName.replace('&', '&amp;')
         if agentID in sm.GetService('agents').GetTutorialAgentIDs():
-            levelAndTypeLabel = mls.CHAR_TUTORIAL_AGENT
+            levelAndTypeLabel = localization.GetByLabel('UI/AgentFinder/TutorialAgentDivision', divisionName=agentDivision)
         elif agentTypeID == const.agentTypeEpicArcAgent:
-            levelAndTypeLabel = mls.CHAR_EPICARC_AGENT
+            levelAndTypeLabel = localization.GetByLabel('UI/AgentFinder/EpicArcAgentDivision', divisionName=agentDivision)
         elif agentTypeID not in (const.agentTypeGenericStorylineMissionAgent, const.agentTypeStorylineMissionAgent):
-            levelAndTypeLabel = '%s %s' % (mls.UI_GENERIC_LEVEL, uiutil.GetLevel(agentLevel))
-        else:
-            t = {const.agentTypeGenericStorylineMissionAgent: mls.UI_SHARED_STORYLINE,
-             const.agentTypeStorylineMissionAgent: mls.UI_SHARED_STORYLINE}.get(agentTypeID, None)
-            if t:
-                levelAndTypeLabel = t
-        levelAndTypeLabel += ' - %s' % sm.GetService('agents').GetDivisions()[divisionID].divisionName.replace('&', '&amp;')
+            levelAndTypeLabel = localization.GetByLabel('UI/AgentFinder/LevelAgentDivision', agentLevel=uiutil.GetLevel(agentLevel), divisionName=agentDivision)
+        elif agentTypeID in (const.agentTypeGenericStorylineMissionAgent, const.agentTypeStorylineMissionAgent):
+            levelAndTypeLabel = localization.GetByLabel('UI/AgentFinder/StorylineAgentDivision', divisionName=agentDivision)
         leftCont = uicls.Container(name='leftCont', parent=agentCont, align=uiconst.TOLEFT, width=64)
         infoCont = uicls.Container(name='infoCont', parent=agentCont, align=uiconst.TOALL, clipChildren=True, padLeft=const.defaultPadding)
         icon = uicls.Icon(parent=leftCont, align=uiconst.TOPLEFT, size=64, ignoreSize=True)
@@ -679,26 +684,29 @@ class AgentFinderWnd(uicls.Window):
         icon.GetMenu = (self.GetAgentMenu, icon)
         icon.LoadIconByTypeID(typeID, itemID=agentID, ignoreSize=True)
         if session.stationid:
-            hint = mls.UI_CMD_STARTCONVERSATION
+            hint = localization.GetByLabel('UI/Chat/StartConversation')
         else:
-            hint = mls.UI_CMD_SHOWINFO
+            hint = localization.GetByLabel('UI/Common/ShowInfo')
         icon.hint = hint
         top = 0
-        nameText = '<url=showinfo:%d//%d><color=-2039584>%s</color></url>' % (const.typeCharacterAmarr, agentID, nameLabel)
-        name = uicls.Label(text=nameText, parent=infoCont, top=top, state=uiconst.UI_NORMAL, bold=True)
+        startAgentInfoTag = '<url=showinfo:%d//%d>' % (cfg.eveowners.Get(agentID).typeID, agentID)
+        startInfoColorTag = '<color=-2039584>'
+        nameText = localization.GetByLabel('UI/AgentFinder/AgentNameWithInfoLink', startAgentInfoTag=startAgentInfoTag, startColorTag=startInfoColorTag, agentName=nameLabel, endColorTag=endColorTag, endAgentInfoTag=endUrlTag)
+        name = uicls.EveLabelMedium(text=nameText, parent=infoCont, top=top, state=uiconst.UI_NORMAL)
         name.GetMenu = (self.GetAgentMenu, icon)
-        name.hint = mls.UI_CMD_SHOWINFO
+        name.hint = localization.GetByLabel('UI/Common/ShowInfo')
         top += 16
-        corpText = '<url=showinfo:%d//%d><color=-2039584>%s</color></url>' % (const.typeCorporation, corporationID, corpLabel)
-        corp = uicls.Label(text=corpText, parent=infoCont, top=top, state=uiconst.UI_NORMAL, bold=True)
+        startCorpInfoTag = '<url=showinfo:%d//%d>' % (const.typeCorporation, corporationID)
+        corpText = localization.GetByLabel('UI/AgentFinder/CorpNameWithInfoLink', startCorporationInfoTag=startCorpInfoTag, startColorTag=startInfoColorTag, corpName=corpLabel, endColorTag=endColorTag, endCorporationInfoTag=endUrlTag)
+        corp = uicls.EveLabelMedium(text=corpText, parent=infoCont, top=top, state=uiconst.UI_NORMAL, bold=True)
         corp.typeID = const.typeCorporation
         corp.itemID = corporationID
         corp.OnClick = (self.ShowInfo, corp, True)
-        corp.hint = mls.UI_CMD_SHOWINFO
+        corp.hint = localization.GetByLabel('UI/Common/ShowInfo')
         top += 16
-        levelAndType = uicls.Label(text=levelAndTypeLabel, parent=infoCont, top=top)
+        levelAndType = uicls.EveLabelMedium(text=levelAndTypeLabel, parent=infoCont, top=top)
         top += 16
-        location = uicls.Label(text=locationLabel, parent=infoCont, top=top, state=uiconst.UI_NORMAL)
+        location = uicls.EveLabelMedium(text=locationLabel, parent=infoCont, top=top, state=uiconst.UI_NORMAL)
         if not isAvailable:
             for item in infoCont.children:
                 item.SetAlpha(0.4)
@@ -710,7 +718,7 @@ class AgentFinderWnd(uicls.Window):
     def GetAgentMenu(self, icon, *args):
         m = []
         m = sm.GetService('menu').CharacterMenu(icon.itemID)
-        m.append((mls.UI_CMD_SHOWINFO, self.ShowInfo, (icon, True)))
+        m.append((localization.GetByLabel('UI/Commands/ShowInfo'), self.ShowInfo, (icon, True)))
         return m
 
 
@@ -730,8 +738,7 @@ class AgentFinderWnd(uicls.Window):
             self.pageNumText.state = uiconst.UI_HIDDEN
         else:
             self.pageNumText.state = uiconst.UI_DISABLED
-            self.pageNumText.text = mls.UI_TUTORIAL_PAGEOF % {'num': pageNo,
-             'total': self.numPages}
+            self.pageNumText.text = localization.GetByLabel('UI/AgentFinder/PageNoOf', pageNumber=pageNo, totalPages=self.numPages)
         if self.pos == 0:
             self.prevBtn.Disable()
         else:

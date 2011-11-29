@@ -8,6 +8,7 @@ import skillUtil
 import sys
 import uix
 import uiconst
+import localization
 
 class SkillQueueService(service.Service):
     __exportedcalls__ = {}
@@ -265,7 +266,7 @@ class SkillQueueService(service.Service):
 
 
     def GetTrainingEndTimeOfQueue(self):
-        return blue.os.GetTime() + self.GetTrainingLengthOfQueue()
+        return blue.os.GetWallclockTime() + self.GetTrainingLengthOfQueue()
 
 
 
@@ -447,7 +448,7 @@ class SkillQueueService(service.Service):
         else:
             (skillTrainingEnd, spHi, spm,) = (skillObject.skillTrainingEnd, skillObject.spHi, skillObject.spm)
             if skillTrainingEnd is not None and spHi is not None:
-                secs = (skillTrainingEnd - blue.os.GetTime()) / SEC
+                secs = (skillTrainingEnd - blue.os.GetWallclockTime()) / SEC
                 return min(spHi - secs / 60.0 * spm, spHi)
             return skillObject.skillPoints
 
@@ -503,7 +504,7 @@ class SkillQueueService(service.Service):
                     eve.Message('SkillQueueStarted')
                 else:
                     self.AddSkillToQueue(skillID, toSkillLevel, 0)
-                    text = '%s (%s)' % (cfg.invtypes.Get(skillID).typeName, mls.UI_SHARED_SKILLS_SKILLLEVEL % {'num': toSkillLevel})
+                    text = localization.GetByLabel('UI/SkillQueue/Skills/SkillNameAndLevel', skill=skillID, amount=toSkillLevel)
                     if inTraining:
                         eve.Message('AddedToQueue', {'skillname': text})
                     else:
@@ -524,11 +525,11 @@ class SkillQueueService(service.Service):
     def AddSkillToEnd(self, skillID, current, nextLevel = None):
         queueLength = self.GetNumberOfSkillsInQueue()
         if queueLength >= const.skillQueueMaxSkills:
-            eve.Message('CustomNotify', {'notify': mls.UI_SHARED_SQ_QUEUEISFULL})
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/SkillQueue/QueueIsFull')})
             return 
         totalTime = self.GetTrainingLengthOfQueue()
         if totalTime > const.skillQueueTime:
-            eve.Message('CustomNotify', {'notify': mls.UI_SHARED_SQ_QUEUEISFULL})
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/SkillQueue/QueueIsFull')})
             return 
         if nextLevel is None:
             queue = self.GetServerQueue()
@@ -536,7 +537,7 @@ class SkillQueueService(service.Service):
         self.AddSkillToQueue(skillID, nextLevel)
         try:
             sm.StartService('godma').GetSkillHandler().AddToEndOfSkillQueue(skillID, nextLevel)
-            text = '%s (%s)' % (cfg.invtypes.Get(skillID).typeName, mls.UI_SHARED_SKILLS_SKILLLEVEL % {'num': nextLevel})
+            text = localization.GetByLabel('UI/SkillQueue/Skills/SkillNameAndLevel', skill=skillID, amount=nextLevel)
             if sm.StartService('skills').SkillInTraining():
                 eve.Message('AddedToQueue', {'skillname': text})
             else:
@@ -571,10 +572,7 @@ class SkillQueueService(service.Service):
 
 
     def IsQueueWndOpen(self):
-        wnd = sm.StartService('window').GetWindow('trainingqueue', create=0, decoClass=form.SkillQueue)
-        if wnd:
-            return True
-        return False
+        return form.SkillQueue.IsOpen()
 
 
 
@@ -584,7 +582,7 @@ class SkillQueueService(service.Service):
             return m
         skillLevel = skill.skillLevel
         if skillLevel is not None:
-            sqWnd = sm.StartService('window').GetWindow('trainingqueue', create=0, decoClass=form.SkillQueue)
+            sqWnd = form.SkillQueue.GetIfOpen()
             if skillLevel < 5:
                 queue = self.GetQueue()
                 nextLevel = self.FindNextLevel(skill.typeID, skill.skillLevel, queue)
@@ -592,50 +590,50 @@ class SkillQueueService(service.Service):
                     (trainingTime, totalTime,) = self.GetTrainingLengthOfSkill(skill.typeID, skill.skillLevel + 1, 0)
                     takesText = ''
                     if trainingTime <= 0:
-                        takesText = mls.UI_SHARED_COMPLETIONIMMINENT
+                        takesText = localization.GetByLabel('UI/SkillQueue/Skills/CompletionImminent')
                     else:
-                        takesText = mls.UI_GENERIC_TAKES2 % {'time': util.FmtDate(long(trainingTime), 'ss')}
+                        takesText = localization.GetByLabel('UI/SkillQueue/Skills/SkillTimeLeft', timeLeft=long(trainingTime))
                     if sqWnd:
                         if nextLevel < 6 and self.FindInQueue(skill.typeID, skill.skillLevel + 1) is None:
-                            m.append(('%s (%s)' % (mls.UI_SHARED_SQ_ADDTOFRONT, takesText), sqWnd.AddSkillsThroughOtherEntry, (skill.typeID,
+                            trainText = localization.GetByLabel('UI/SkillQueue/AddSkillMenu/AddToFrontOfQueueTime', takes=takesText)
+                            m.append((trainText, sqWnd.AddSkillsThroughOtherEntry, (skill.typeID,
                               0,
                               queue,
                               nextLevel,
                               1)))
                     else:
-                        trainText = mls.UI_SHARED_SQ_TRAINNOW % {'num': skill.skillLevel + 1}
-                        m.append(('%s (%s)' % (trainText, takesText), self.TrainSkillNow, (skill.typeID, skill.skillLevel + 1)))
+                        trainText = localization.GetByLabel('UI/SkillQueue/AddSkillMenu/TrainNowWithTime', skillLevel=skill.skillLevel + 1, takes=takesText)
+                        m.append((trainText, self.TrainSkillNow, (skill.typeID, skill.skillLevel + 1)))
                 if nextLevel < 6:
                     if sqWnd:
-                        label = '%s (%s)' % (mls.UI_SHARED_SQ_ADDTOEND, mls.UI_SHARED_CERTLEVEL % {'level': nextLevel})
+                        label = localization.GetByLabel('UI/SkillQueue/AddSkillMenu/AddToEndOfQueue', nextLevel=nextLevel)
                         m.append((label, sqWnd.AddSkillsThroughOtherEntry, (skill.typeID,
                           -1,
                           queue,
                           nextLevel,
                           1)))
                     else:
-                        label = mls.UI_SHARED_SQ_TRAINAFTER % {'num': nextLevel}
+                        label = localization.GetByLabel('UI/SkillQueue/AddSkillMenu/TrainAfterQueue', nextLevel=nextLevel)
                         m.append((label, self.AddSkillToEnd, (skill.typeID, skill.skillLevel, nextLevel)))
                 if sm.GetService('skills').GetFreeSkillPoints() > 0:
                     diff = skill.spHi + 0.5 - skill.skillPoints
-                    m.append((mls.UI_GENERIC_APPLYSKILLPOINTS, self.UseFreeSkillPoints, (skill.name, skill.typeID, diff)))
+                    m.append((localization.GetByLabel('UI/SkillQueue/AddSkillMenu/ApplySkillPoints'), self.UseFreeSkillPoints, (skill.typeID, diff)))
             if skill.flagID == const.flagSkillInTraining:
-                m.append((mls.UI_CMD_ABORTTRAINING, sm.StartService('skills').AbortTrain, (skill,)))
+                m.append((localization.GetByLabel('UI/SkillQueue/AddSkillMenu/AbortTraining'), sm.StartService('skills').AbortTrain, (skill,)))
         if m:
             m.append(None)
         return m
 
 
 
-    def UseFreeSkillPoints(self, skillName, skillTypeID, diff):
+    def UseFreeSkillPoints(self, skillTypeID, diff):
         if sm.StartService('skills').SkillInTraining():
             eve.Message('CannotApplyFreePointsWhileQueueActive')
             return 
         freeSkillPoints = sm.StartService('skills').GetFreeSkillPoints()
-        text = mls.UI_GENERIC_ENTERNUMBEROFSKILLPOINTS % {'skillname': skillName}
-        text += '<br><br>'
-        text += '%s: %s' % (mls.UI_GENERIC_SKILLPOINTSNEEDED, util.FmtAmt(diff))
-        ret = uix.QtyPopup(maxvalue=freeSkillPoints, caption=mls.UI_GENERIC_APPLYSKILLPOINTS, label=text)
+        text = localization.GetByLabel('UI/SkillQueue/AddSkillMenu/UseSkillPointsWindow', skill=skillTypeID, skillPoints=int(diff))
+        caption = localization.GetByLabel('UI/SkillQueue/AddSkillMenu/ApplySkillPoints')
+        ret = uix.QtyPopup(maxvalue=freeSkillPoints, caption=caption, label=text)
         if ret is None:
             return 
         sp = int(ret.get('qty', ''))

@@ -1,17 +1,61 @@
 import blue
 import uix
 import uiconst
-import uthread
 import util
 import uicls
 import listentry
 import service
-import menu
 import contractscommon as cc
-from contractutils import GetContractIcon, GetContractTitle, GetContractTimeLeftText, FmtISKWithDescription, GetContractTypeText, GetCurrentBid, CutAt
-SECURITY_TEXT = {const.securityClassZeroSec: '<color=0xffdd0000>%s</color>' % mls.UI_GENERIC_NULLSEC,
- const.securityClassLowSec: '<color=0xffbbbb00>%s</color>' % mls.UI_GENERIC_LOWSEC,
- const.securityClassHighSec: '<color=0xff00bb00>%s</color>' % mls.UI_GENERIC_HIGHSEC}
+from contractutils import GetContractIcon, GetContractTitle, GetContractTimeLeftText, FmtISKWithDescription, GetContractTypeText, GetCurrentBid
+import localization
+import localizationUtil
+TOPMARGIN = 8
+BOTTOMMARGIN = 8
+TEXTMARGIN = 4
+
+class ContractStartPageEntry(uicls.SE_BaseClassCore):
+    __guid__ = 'listentry.ContractStartPageEntry'
+
+    def Startup(self, *etc):
+        uicls.Line(parent=self, align=uiconst.TOBOTTOM)
+        self.icon = uicls.Icon(parent=self, top=TOPMARGIN, size=32, ignoreSize=True, left=4)
+        self.header = uicls.EveLabelLarge(parent=self, left=50, top=TOPMARGIN, state=uiconst.UI_NORMAL)
+        self.text = uicls.EveLabelMedium(parent=self, left=50, state=uiconst.UI_NORMAL)
+
+
+
+    def Load(self, node):
+        if node.isSmall:
+            self.header.state = uiconst.UI_HIDDEN
+            self.header.text = ''
+            self.text.top = TOPMARGIN
+            self.text.text = node.header + '<br>' + node.text
+            self.icon.SetSize(16, 16)
+            self.icon.LoadIcon(node.icon, ignoreSize=True)
+        else:
+            self.header.state = uiconst.UI_NORMAL
+            self.header.text = node.header
+            self.text.top = self.header.top + self.header.textheight + TEXTMARGIN
+            self.text.text = node.text
+            self.icon.SetSize(32, 32)
+            self.icon.LoadIcon(node.icon, ignoreSize=True)
+
+
+
+    def GetDynamicHeight(node, width):
+        if node.isSmall:
+            if node.header:
+                (textWidth, textHeight,) = uicls.EveLabelMedium.MeasureTextSize(node.header + '<br>' + node.text)
+            else:
+                (textWidth, textHeight,) = uicls.EveLabelMedium.MeasureTextSize(node.text)
+            return max(32, TOPMARGIN + textHeight + BOTTOMMARGIN)
+        else:
+            (headerWidth, headerHeight,) = uicls.EveLabelLarge.MeasureTextSize(node.header)
+            (textWidth, textHeight,) = uicls.EveLabelMedium.MeasureTextSize(node.text)
+            return max(48, TOPMARGIN + headerHeight + TEXTMARGIN + textHeight + BOTTOMMARGIN)
+
+
+
 
 class ContractEntry(uicls.SE_BaseClassCore):
     __guid__ = 'listentry.ContractEntry'
@@ -27,42 +71,42 @@ class ContractEntry(uicls.SE_BaseClassCore):
         m = []
         c = self.sr.node.contract
         node = self.sr.node
-        m.append((mls.UI_CONTRACTS_VIEWCONTRACT, self.ViewContract, (node,)))
+        m.append((localization.GetByLabel('UI/Contracts/ContractEntry/ViewContract'), self.ViewContract, (node,)))
         if c.startSolarSystemID and c.startSolarSystemID != eve.session.solarsystemid2:
-            m.append((mls.UI_CMD_SHOWROUTE, self.ShowRoute, (node,)))
+            m.append((localization.GetByLabel('UI/Generic/ShowRoute'), self.ShowRoute, (node,)))
         if c.startStationID:
             typeID = sm.GetService('ui').GetStation(c.startStationID).stationTypeID
-            m += [(mls.UI_CONTRACTS_PICKUPSTATION, ('isDynamic', sm.GetService('menu').CelestialMenu, (c.startStationID,
+            m += [(localization.GetByLabel('UI/Contracts/ContractEntry/PickupStation'), ('isDynamic', sm.GetService('menu').CelestialMenu, (c.startStationID,
                 None,
                 None,
                 0,
                 typeID)))]
         if c.endStationID and c.endStationID != c.startStationID:
             typeID = sm.GetService('ui').GetStation(c.endStationID).stationTypeID
-            m += [(mls.UI_CONTRACTS_DROPOFFSTATION, ('isDynamic', sm.GetService('menu').CelestialMenu, (c.endStationID,
+            m += [(localization.GetByLabel('UI/Contracts/ContractEntry/DropOffStation'), ('isDynamic', sm.GetService('menu').CelestialMenu, (c.endStationID,
                 None,
                 None,
                 0,
                 typeID)))]
-        if c.type == const.conTypeAuction and c.issuerID != eve.session.charid and c.status == const.conStatusOutstanding and c.dateExpired > blue.os.GetTime():
-            m.append((mls.UI_CONTRACTS_PLACEBID, self.PlaceBid, (node,)))
+        if c.type == const.conTypeAuction and c.issuerID != eve.session.charid and c.status == const.conStatusOutstanding and c.dateExpired > blue.os.GetWallclockTime():
+            m.append((localization.GetByLabel('UI/Contracts/ContractEntry/PlaceBid'), self.PlaceBid, (node,)))
         if self.sr.node.Get('canDismiss', False):
-            m.append((mls.UI_CONTRACTS_DISMISS, self.Dismiss, (node,)))
+            m.append((localization.GetByLabel('UI/Contracts/ContractEntry/Dismiss'), self.Dismiss, (node,)))
         if self.sr.node.Get('canGetItems', False):
-            m.append((mls.UI_CONTRACTS_GETITEMS, self.GetItems, (node,)))
+            m.append((localization.GetByLabel('UI/Contracts/ContractEntry/GetItems'), self.GetItems, (node,)))
         if self.sr.node.Get('canGetMoney', False):
-            m.append((mls.UI_CONTRACTS_GETMONEY, self.GetMoney, (node,)))
+            m.append((localization.GetByLabel('UI/Contracts/ContractEntry/GetMoney'), self.GetMoney, (node,)))
         if self.sr.node.Get('canIgnore', True) and c.issuerID != eve.session.charid:
-            m.append((mls.UI_CONTRACTS_IGNOREFROMTHIS, self.AddIgnore, (node,)))
+            m.append((localization.GetByLabel('UI/Contracts/ContractEntry/IgnoreFromThisIssuer'), self.AddIgnore, (node,)))
         typeID = self.sr.node.Get('typeID', None)
         if typeID and self.sr.node.contract.type != const.conTypeCourier:
             m.append(None)
-            m.append((mls.UI_CMD_SHOWINFO, sm.GetService('info').ShowInfo, (typeID,)))
+            m.append((localization.GetByLabel('UI/Commands/ShowInfo'), sm.GetService('info').ShowInfo, (typeID,)))
             if cfg.invtypes.Get(typeID).marketGroupID is not None:
-                m.append((mls.UI_CMD_VIEWMARKETDETAILS, sm.GetService('marketutils').ShowMarketDetails, (typeID, None)))
+                m.append((localization.GetByLabel('UI/Inventory/ItemActions/ViewTypesMarketDetails'), sm.GetService('marketutils').ShowMarketDetails, (typeID, None)))
         m.append(None)
         if c.issuerID == eve.session.charid:
-            m.append((mls.UI_CONTRACTS_DELETE, self.Delete, (node,)))
+            m.append((localization.GetByLabel('UI/Contracts/ContractEntry/Delete'), self.Delete, (node,)))
         if session.role & service.ROLE_GML > 0:
             m.append(('GM - contractID: %s' % node.contract.contractID, blue.pyos.SetClipboardData, (str(node.contract.contractID),)))
             m.append(('GM - issuerID: %s' % node.contract.issuerID, blue.pyos.SetClipboardData, (str(node.contract.issuerID),)))
@@ -87,10 +131,8 @@ class ContractEntry(uicls.SE_BaseClassCore):
 
 
     def ShowRoute(self, node = None, *args):
-        node = node if node != None else self.sr.node
-        sm.GetService('map').OpenStarMap()
-        sm.GetService('starmap').SetInterest(node.contract.startRegionID)
-        sm.GetService('starmap').DrawRouteTo(node.contract.startSolarSystemID)
+        data = node.contract if node != None else self.sr.node.contract
+        sm.GetService('viewState').ActivateView('starmap', interestID=data.startRegionID, drawRoute=(session.solarsystemid2, data.startSolarSystemID))
 
 
 
@@ -192,7 +234,7 @@ class ContractEntrySmall(ContractEntry):
     __guid__ = 'listentry.ContractEntrySmall'
 
     def Startup(self, *etc):
-        self.sr.label = uicls.Label(text='', parent=self, left=5, state=uiconst.UI_DISABLED, color=None, singleline=1, align=uiconst.CENTERLEFT)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=self, left=5, state=uiconst.UI_DISABLED, color=None, singleline=1, align=uiconst.CENTERLEFT)
         self.sr.line = uicls.Container(name='lineparent', align=uiconst.TOBOTTOM, parent=self, height=1)
         uicls.Line(parent=self.sr.line, align=uiconst.TOALL)
         self.sr.selection = uicls.Fill(parent=self, padTop=1, padBottom=1, color=(1.0, 1.0, 1.0, 0.25))
@@ -207,10 +249,14 @@ class ContractEntrySmall(ContractEntry):
         items = node.contractItems
         issuerID = [c.issuerID, c.issuerCorpID][(not not c.forCorp)]
         fromName = cfg.eveowners.Get(issuerID).ownerName
-        toID = [c.acceptorID, c.assigneeID][(not c.acceptorID)]
-        toName = cfg.eveowners.Get(toID).ownerName
+        if c.acceptorID:
+            toID = c.acceptorID
+        else:
+            toID = c.assigneeID
         if toID == 0:
-            toName = mls.UI_CONTRACTS_NONE
+            toName = localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen')
+        else:
+            toName = cfg.eveowners.Get(toID).ownerName
         name = GetContractTitle(c, items)
         if not node.Get('callerdefined', False):
             node.label = '%s<t>%s<t>%s<t>%s%s' % (name,
@@ -226,51 +272,64 @@ class ContractEntrySmall(ContractEntry):
         self.sr.node.name = name
         self.hint = ''
         loc = ''
+        jmps = None
+        hintList = []
         if c.startSolarSystemID > 0:
             n = int(sm.GetService('pathfinder').GetJumpCountFromCurrent(c.startSolarSystemID))
             if c.startStationID == eve.session.stationid:
-                jmps = mls.UI_GENERIC_CURRENTSTATION
+                jmps = localization.GetByLabel('UI/Generic/CurrentStation')
             elif c.startSolarSystemID == eve.session.solarsystemid2:
-                jmps = mls.UI_GENERIC_CURRENTSYSTEM
+                jmps = localization.GetByLabel('UI/Generic/CurrentSystem')
             elif n == 1:
-                jmps = mls.UI_CONTRACTS_1_JUMP_AWAY
-            else:
-                jmps = mls.UI_CONTRACTS_NUM_JUMPS_AWAY % {'numJumps': n}
-            loc = '%s (%s)' % (cfg.evelocations.Get(c.startSolarSystemID).name, jmps)
-        self.hint += '<b>%s:</b><t>%s<br>' % (mls.UI_CONTRACTS_CONTRACTTYPE, GetContractTypeText(c.type))
+                jmps = localization.GetByLabel('UI/Contracts/OneJumpAway')
+            jmps = localization.GetByLabel('UI/Contracts/ContractEntry/NumJumpsAway', numJumps=n)
+        hintLine = localization.GetByLabel('UI/Contracts/ContractEntry/ContractTypeWithType', contractType=GetContractTypeText(c.type))
+        hintList.append(hintLine)
         if c.title != '':
-            self.hint += '<b>%s:</b><t>%s<br>' % (mls.UI_CONTRACTS_ISSUERDESC, c.title)
-        self.hint += '<b>%s:</b><t>%s<br>' % (mls.UI_CONTRACTS_LOCATION, loc)
+            hintLine = localization.GetByLabel('UI/Contracts/ContractEntry/IssuerDescriptionWithDescription', description=c.title)
+            hintList.append(hintLine)
+        if jmps:
+            hintLine = localization.GetByLabel('UI/Contracts/ContractEntry/ContractLocation', location=c.startSolarSystemID, numJumpsInfo=jmps)
+        else:
+            labelText = localization.GetByLabel('UI/Contracts/ContractEntry/MenuLocation')
+            hintLine = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=labelText)
+        hintList.append(hintLine)
         if c.type in [const.conTypeAuction, const.conTypeItemExchange] and len(items) > 0:
-            strItems = '<b>%s:</b><t>  ' % mls.UI_CONTRACTS_ITEMS
-            itemsReq = '<b>%s:</b><t>  ' % mls.UI_CONTRACTS_REQUIREDITEMS
+            itemList = []
+            itemReqList = []
             numItems = 0
             numItemsReq = 0
             for e in items:
                 if e.inCrate:
-                    strItems += cfg.invtypes.Get(e.itemTypeID).name + ' x ' + str(max(1, e.quantity)) + ', '
+                    itemInfo = cfg.FormatConvert(TYPEIDANDQUANTITY, e.itemTypeID, max(1, e.quantity))
+                    itemList.append(itemInfo)
                     numItems += 1
                 else:
-                    itemsReq += cfg.invtypes.Get(e.itemTypeID).name + ' x ' + str(max(1, e.quantity)) + ', '
+                    itemReqInfo = cfg.FormatConvert(TYPEIDANDQUANTITY, e.itemTypeID, max(1, e.quantity))
+                    itemReqList.append(itemReqInfo)
                     numItemsReq += 1
 
-            if numItems >= 2:
-                strItems += mls.UI_GENERIC_MORE + '...'
-            else:
-                strItems = strItems[:-2]
-            if numItemsReq >= 2:
-                itemsReq += mls.UI_GENERIC_MORE + '...'
-            else:
-                itemsReq = itemsReq[:-2]
-            if numItems == 0:
-                strItems += '(%s)' % mls.UI_GENERIC_NONE
-            self.hint += '%s<br>' % strItems
-            if numItemsReq > 0:
-                self.hint += '%s<br>' % itemsReq
-            if numItems >= 2 or numItemsReq >= 2:
-                self.hint += '%s<br>' % mls.UI_CONTRACTS_OPENFORITEMS
+            if len(itemList) >= 2:
+                itemList.append(localization.GetByLabel('UI/Common/MoreWithTrailing'))
+            if len(itemReqList) >= 2:
+                itemReqList.append(localization.GetByLabel('UI/Common/MoreWithTrailing'))
+            if len(itemList) == 0:
+                itemList.append(localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen'))
+            itemsString = localizationUtil.FormatGenericList(itemList)
+            strItems = localization.GetByLabel('UI/Contracts/ContractEntry/ItemsWithItemList', itemsString=itemsString)
+            hintList.append(strItems)
+            if len(itemReqList) > 0:
+                reqItemsString = localizationUtil.FormatGenericList(itemReqList)
+                itemsReq = localization.GetByLabel('UI/Contracts/ContractEntry/ItemsRequiredWithItemList', reqItemsString=reqItemsString)
+                hintList.append(itemsReq)
+            if len(itemList) >= 2 or len(itemReqList) >= 2:
+                hintList.append(localization.GetByLabel('UI/Contracts/ContractEntry/OpenForItems'))
             if c.assigneeID > 0:
-                self.hint += '<b>%s</b>' % mls.UI_CONTRACTS_THISISAPRIVATECONTRACT
+                labelText = localization.GetByLabel('UI/Contracts/ContractEntry/PrivateContract')
+                string = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=labelText)
+                hintList.append(string)
+        newHint = '<br>'.join(hintList)
+        self.hint = newHint
 
 
 
@@ -360,7 +419,7 @@ class ContractItemSelect(listentry.Item):
     def GetMenu(self):
         m = []
         if self.sr.node.quantity > 1:
-            m.append((mls.UI_GENERIC_SPLITSTACK, self.SplitStack))
+            m.append((localization.GetByLabel('UI/Generic/SplitStack'), self.SplitStack))
         m.extend(sm.GetService('menu').GetMenuFormItemIDTypeID(self.sr.node.itemID, self.sr.node.typeID))
         return m
 
@@ -368,7 +427,7 @@ class ContractItemSelect(listentry.Item):
 
     def SplitStack(self):
         maxQty = self.sr.node.quantity
-        msg = mls.UI_GENERIC_HOWMANYITEMS
+        msg = localization.GetByLabel('UI/Common/HowManyItems')
         ret = uix.QtyPopup(int(maxQty), 1, 1, msg)
         if ret:
             sm.GetService('contracts').SplitStack(self.sr.node.stationID, self.sr.node.itemID, ret['qty'], self.sr.node.forCorp, self.sr.node.flag)
@@ -395,7 +454,7 @@ class ContractEntrySearch(ContractEntry):
         self.sr.techIcon = uicls.Icon(parent=self.sr.contractIconParent, pos=(2, 2, 16, 16), align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL)
         self.sr.icon = uicls.Icon(parent=self.sr.contractIconParent, pos=(2, 2, 32, 32), ignoreSize=True, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED)
         subPar = uicls.Container(parent=self.sr.contractParent, name='contractLabelClipper', state=uiconst.UI_DISABLED, align=uiconst.TOALL, clipChildren=True, padLeft=2)
-        self.sr.contractLabel = uicls.Label(parent=subPar, left=self.labelMargin, align=uiconst.TOTOP, autowidth=False, padRight=const.defaultPadding)
+        self.sr.contractLabel = uicls.EveLabelMedium(parent=subPar, left=self.labelMargin, align=uiconst.TOTOP, padRight=const.defaultPadding)
 
 
 
@@ -439,11 +498,11 @@ class ContractEntrySearch(ContractEntry):
             group = cfg.invtypes.Get(item.itemTypeID).Group()
             if group.categoryID == const.categoryBlueprint:
                 if item.copy:
-                    label += ' (%s)' % mls.UI_GENERIC_COPY.lower()
+                    label += ' (%s)' % localization.GetByLabel('UI/Generic/Copy').lower()
                 else:
-                    label += ' (%s)' % mls.UI_GENERIC_ORIGINAL.lower()
+                    label += ' (%s)' % localization.GetByLabel('UI/Generic/Original').lower()
         if c.type == const.conTypeAuction:
-            label += ' (%s)' % mls.UI_CONTRACTS_AUCTION.lower()
+            label += ' (%s)' % localization.GetByLabel('UI/Contracts/Auction').lower()
         self.sr.contractLabel.SetText(label)
         if c.type in [const.conTypeAuction, const.conTypeItemExchange] and len(node.contractItems) == 1:
             typeID = node.contractItems[0].itemTypeID
@@ -456,15 +515,15 @@ class ContractEntrySearch(ContractEntry):
         numJumpsTxt = ''
         if numJumps == 0:
             if c.startStationID == session.stationid:
-                numJumpsTxt = mls.UI_GENERIC_CURRENTSTATION
+                numJumpsTxt = localization.GetByLabel('UI/Generic/CurrentStation')
             elif c.startSolarSystemID == session.solarsystemid2:
-                numJumpsTxt = mls.UI_GENERIC_CURRENTSYSTEM
+                numJumpsTxt = localization.GetByLabel('UI/Generic/CurrentSystem')
         elif numJumps == 1:
-            numJumpsTxt = mls.UI_CONTRACTS_1_JUMP_AWAY
+            numJumpsTxt = localization.GetByLabel('UI/Contracts/OneJumpAway')
         else:
-            numJumpsTxt = mls.UI_CONTRACTS_NUM_JUMPS_AWAY % {'numJumps': numJumps}
+            numJumpsTxt = localization.GetByLabel('UI/Contracts/ContractEntry/NumJumpsAway', numJumps=numJumps)
         if int(node.numJumps) > cc.NUMJUMPS_UNREACHABLE:
-            numJumpsTxt = '<color=0xffff6666>%s</color>' % mls.UI_GENERIC_UNREACHABLE.upper()
+            numJumpsTxt = '<color=0xffff6666>%s</color>' % localization.GetByLabel('UI/Generic/Unreachable').upper()
         self.sr.jumpsLabel.SetText(numJumpsTxt)
         self.sr.timeLeftLabel.SetText(GetContractTimeLeftText(c))
         self.SetHint(node, label)
@@ -475,7 +534,7 @@ class ContractEntrySearch(ContractEntry):
 
     def MakeTextLabel(self, name):
         subPar = uicls.Container(name='%sParent' % name, parent=self, state=uiconst.UI_PICKCHILDREN, align=uiconst.TOLEFT, clipChildren=False)
-        label = uicls.Label(parent=subPar, name='%sLabel' % name, left=self.labelMargin, align=uiconst.TOLEFT, padTop=2)
+        label = uicls.EveLabelMedium(parent=subPar, name='%sLabel' % name, left=self.labelMargin, align=uiconst.TOLEFT, padTop=2)
         subPar.sr.label = label
         setattr(self.sr, '%sLabel' % name, label)
 
@@ -493,7 +552,7 @@ class ContractEntrySearch(ContractEntry):
 
     def GetMenu(self):
         m = ContractEntry.GetMenu(self)
-        m += [(mls.UI_CONTRACTS_FINDRELATED, ('isDynamic', sm.GetService('contracts').GetRelatedMenu, (self.sr.node.contract, self.sr.node.Get('typeID', None), False)))]
+        m += [(localization.GetByLabel('UI/Contracts/ContractEntry/FindRelated'), ('isDynamic', sm.GetService('contracts').GetRelatedMenu, (self.sr.node.contract, self.sr.node.Get('typeID', None), False)))]
         return m
 
 
@@ -501,44 +560,55 @@ class ContractEntrySearch(ContractEntry):
     def SetHint(self, node, label):
         self.sr.node = node
         c = node.contract
-        loc = '%s - %s (%s)' % (cfg.evelocations.Get(c.startSolarSystemID).name, cfg.evelocations.Get(c.startRegionID).name, node.numJumps)
-        self.hint = ''
-        self.hint += '<b>%s</b><br>' % label
-        self.hint += '<b>%s:</b><t>%s<br>' % (mls.UI_CONTRACTS_CONTRACTTYPE, GetContractTypeText(c.type))
-        self.hint += '<b>%s:</b><t>%s<br>' % (mls.UI_CONTRACTS_LOCATION, loc)
-        issuerID = c.issuerCorpID if c.forCorp else c.issuerID
+        hintList = []
+        boldLabel = localization.GetByLabel('UI/Contracts/ContractsService/BoldGenericLabel', labelText=label)
+        hintList.append(boldLabel)
+        hintLine = localization.GetByLabel('UI/Contracts/ContractEntry/ContractTypeWithType', contractType=GetContractTypeText(c.type))
+        hintList.append(hintLine)
+        hintLine = localization.GetByLabel('UI/Contracts/ContractEntry/ContractLocation', location=c.startSolarSystemID, numJumpsInfo=node.numJumps)
+        hintList.append(hintLine)
+        if c.forCorp:
+            issuerID = c.issuerCorpID
+        else:
+            issuerID = c.issuerID
         issuer = cfg.eveowners.Get(issuerID)
-        self.hint += '<b>%s:</b><t>%s<br>' % (mls.UI_CONTRACTS_ISSUER, issuer.name)
+        hintLine = localization.GetByLabel('UI/Contracts/ContractEntry/IssuerWithName', issuerName=issuer.name)
+        hintList.append(hintLine)
         if c.type in [const.conTypeAuction, const.conTypeItemExchange] and len(node.contractItems) > 0:
-            items = '<b>%s:</b><t>  ' % mls.UI_CONTRACTS_ITEMS
-            itemsReq = '<b>%s:</b><t>  ' % mls.UI_CONTRACTS_REQUIREDITEMS
+            itemList = []
+            itemReqList = []
             numItems = 0
             numItemsReq = 0
             for e in node.contractItems:
                 if e.inCrate:
-                    items += cfg.invtypes.Get(e.itemTypeID).name + ' x ' + str(max(1, e.quantity)) + ', '
+                    itemInfo = cfg.FormatConvert(TYPEIDANDQUANTITY, e.itemTypeID, max(1, e.quantity))
+                    itemList.append(itemInfo)
                     numItems += 1
                 else:
-                    itemsReq += cfg.invtypes.Get(e.itemTypeID).name + ' x ' + str(max(1, e.quantity)) + ', '
+                    itemReqInfo = cfg.FormatConvert(TYPEIDANDQUANTITY, e.itemTypeID, max(1, e.quantity))
+                    itemReqList.append(itemReqInfo)
                     numItemsReq += 1
 
-            if numItems >= 2:
-                items += mls.UI_GENERIC_MORE + '...'
-            else:
-                items = items[:-2]
-            if numItemsReq >= 2:
-                itemsReq += mls.UI_GENERIC_MORE + '...'
-            else:
-                itemsReq = itemsReq[:-2]
-            if numItems == 0:
-                items += '(%s)' % mls.UI_GENERIC_NONE
-            self.hint += '%s<br>' % items
-            if numItemsReq > 0:
-                self.hint += '%s<br>' % itemsReq
-            if numItems >= 2 or numItemsReq >= 2:
-                self.hint += '%s<br>' % mls.UI_CONTRACTS_OPENFORITEMS
+            if len(itemList) >= 2:
+                itemList.append(localization.GetByLabel('UI/Common/MoreWithTrailing'))
+            if len(itemReqList) >= 2:
+                itemReqList.append(localization.GetByLabel('UI/Common/MoreWithTrailing'))
+            if len(itemList) == 0:
+                itemList.append(localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen'))
+            itemsString = localizationUtil.FormatGenericList(itemList)
+            strItems = localization.GetByLabel('UI/Contracts/ContractEntry/ItemsWithItemList', itemsString=itemsString)
+            hintList.append(strItems)
+            if len(itemReqList) > 0:
+                reqItemsString = localizationUtil.FormatGenericList(itemReqList)
+                itemsReq = localization.GetByLabel('UI/Contracts/ContractEntry/ItemsRequiredWithItemList', reqItemsString=reqItemsString)
+                hintList.append(itemsReq)
+            if len(itemList) >= 2 or len(itemReqList) >= 2:
+                hintList.append(localization.GetByLabel('UI/Contracts/ContractEntry/OpenForItems'))
         if c.title != '':
-            self.hint += '<b>%s:</b><t>%s<br>' % (mls.UI_CONTRACTS_ISSUERDESC, c.title)
+            hintLine = localization.GetByLabel('UI/Contracts/ContractEntry/IssuerDescriptionWithDescription', description=c.title)
+            hintList.append(hintLine)
+        newHint = '<br>'.join(hintList)
+        self.hint = newHint
 
 
 
@@ -584,15 +654,15 @@ class ContractEntrySearchItemExchange(ContractEntrySearch):
         else:
             txt = '<color=white>%s</color>' % FmtISKWithDescription(p, True)
         self.sr.priceLabel.SetText(txt)
-        if mls.UI_CONTRACTS_WANTTOBUY not in self.sr.contractLabel.text:
+        if localization.GetByLabel('UI/Contracts/ContractEntry/WantToBuy') not in self.sr.contractLabel.text:
             if len([ e for e in node.contractItems if not e.inCrate ]) >= 1:
-                self.sr.priceLabel.text += '<br>[%s]' % mls.GENERIC_ITEMS
+                self.sr.priceLabel.text += '<br>[%s]' % localization.GetByLabel('UI/Generic/Items')
         if c.type == const.conTypeAuction:
             self.sr.priceLabel.text = '<color=white>%s</color>' % FmtISKWithDescription(GetCurrentBid(c, node.bids), True)
             if c.collateral:
                 self.sr.priceLabel.text += '<br>(%s)' % FmtISKWithDescription(c.collateral, True)
             else:
-                self.sr.priceLabel.text += '<br>(%s)' % mls.UI_CONTRACTS_NOBUYOUT
+                self.sr.priceLabel.text += '<br>(%s)' % localization.GetByLabel('UI/Contracts/ContractEntry/NoBuyoutPrice')
         self.sr.issuerLabel.text = node.issuer
         self.sr.createdLabel.text = '%s' % util.FmtDate(node.dateIssued, 'ss')
 
@@ -621,7 +691,7 @@ class ContractEntrySearchAuction(ContractEntrySearch):
         p = c.price
         self.sr.locationLabel.text = self.GetLocationText(c.startSolarSystemID, c.startRegionID)
         self.sr.currentBidLabel.text = '<color=white>%s</color>' % FmtISKWithDescription(GetCurrentBid(c, node.bids), True)
-        self.sr.buyoutLabel.text = '%s' % ['<color=0xff999999>' + mls.UI_CONTRACTS_NONE + '</color>', '<color=white>' + FmtISKWithDescription(c.collateral, True) + '</color>'][(c.collateral > 0)]
+        self.sr.buyoutLabel.text = '%s' % ['<color=0xff999999>' + localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen') + '</color>', '<color=white>' + FmtISKWithDescription(c.collateral, True) + '</color>'][(c.collateral > 0)]
         self.sr.bidsLabel.text = '%s' % node.searchresult.numBids
         self.sr.issuerLabel.text = node.issuer
         self.sr.createdLabel.text = '%s' % util.FmtDate(node.dateIssued, 'ss')
@@ -653,16 +723,16 @@ class ContractEntrySearchCourier(ContractEntrySearch):
         self.sr.toLabel.text = '<color=0xFFFFA600>%s</color>' % self.GetLocationText(c.endSolarSystemID, None)
         routeLength = node.routeLength
         self.sr.volumeLabel.text = '%s m\xb3' % util.FmtAmt(c.volume, showFraction=0 if c.volume > 10 else 2)
-        self.sr.rewardLabel.text = '<color=white>%s</color>' % [mls.UI_CONTRACTS_NONE, FmtISKWithDescription(c.reward, True)][(c.reward > 0)]
-        self.sr.collateralLabel.text = '<color=white>%s</color>' % [mls.UI_CONTRACTS_NONE, FmtISKWithDescription(c.collateral, True)][(c.collateral > 0)]
+        self.sr.rewardLabel.text = '<color=white>%s</color>' % [localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen'), FmtISKWithDescription(c.reward, True)][(c.reward > 0)]
+        self.sr.collateralLabel.text = '<color=white>%s</color>' % [localization.GetByLabel('UI/Contracts/ContractEntry/NoneParen'), FmtISKWithDescription(c.collateral, True)][(c.collateral > 0)]
         if int(routeLength) > cc.NUMJUMPS_UNREACHABLE:
-            numJumpsTxt = '<color=0xffff6666>%s</color>' % mls.UI_GENERIC_UNREACHABLE.upper()
+            numJumpsTxt = '<color=0xffff6666>%s</color>' % localization.GetByLabel('UI/Generic/Unreachable').upper()
         elif routeLength == 0:
-            numJumpsTxt = mls.UI_CONTRACTS_SAMESYSTEM
+            numJumpsTxt = localization.GetByLabel('UI/Contracts/ContractEntry/SameSystem')
         elif routeLength == 1:
-            numJumpsTxt = mls.UI_CONTRACTS_NEXTSYSTEM
+            numJumpsTxt = localization.GetByLabel('UI/Contracts/ContractEntry/NextSystem')
         else:
-            numJumpsTxt = mls.UI_CONTRACTS_NUM_JUMPS % {'numJumps': routeLength}
+            numJumpsTxt = localization.GetByLabel('UI/Contracts/ContractEntry/NumJumps', numJumps=routeLength)
         self.sr.routeLabel.text = '<color=white>%s</color>' % numJumpsTxt
         self.sr.issuerLabel.text = node.issuer
         self.sr.createdLabel.text = '%s' % util.FmtDate(node.dateIssued, 'ss')

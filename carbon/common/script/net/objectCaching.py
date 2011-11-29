@@ -1,4 +1,5 @@
 import blue
+import bluepy
 import uthread
 import types
 import util
@@ -55,7 +56,7 @@ class CoreObjectCachingSvc(service.Service):
         if macho.mode == 'server':
             self.__dependencies__.append('DB2')
         service.Service.__init__(self)
-        self.runid = blue.os.GetTime()
+        self.runid = blue.os.GetWallclockTime()
         self.lastChange = {}
         self.cachedObjects = {}
         self.cachedMethodCalls = {}
@@ -84,7 +85,7 @@ class CoreObjectCachingSvc(service.Service):
                         if iv.compressed:
                             l += ' (compressed)'
                     li.append([iv.objectID,
-                     util.FmtDate(iv.version[0]),
+                     util.FmtDateEng(iv.version[0]),
                      iv.version[1],
                      iv.shared,
                      iv.nodeID,
@@ -123,12 +124,13 @@ class CoreObjectCachingSvc(service.Service):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def LoadCache(self, ipaddress):
         ipaddress = ipaddress.lower().split(':')[0]
-        self.cachePath = blue.os.cachepath + 'MachoNet/%s/%d/' % (ipaddress, macho.version)
-        paths = [blue.os.cachepath,
-         blue.os.cachepath + 'MachoNet/',
-         blue.os.cachepath + 'MachoNet/%s' % ipaddress,
+        self.cachePath = blue.os.ResolvePathForWriting(u'cache:/MachoNet/%s/%d/' % (ipaddress, macho.version))
+        paths = [blue.os.ResolvePath(u'cache:/'),
+         blue.os.ResolvePathForWriting(u'cache:/MachoNet/'),
+         blue.os.ResolvePathForWriting(u'cache:/MachoNet/%s' % ipaddress),
          self.cachePath,
          self.cachePath + 'CachedMethodCalls',
          self.cachePath + 'MethodCallCachingDetails',
@@ -152,7 +154,7 @@ class CoreObjectCachingSvc(service.Service):
         directory = self.cachePath + 'CachedObjects'
         blue.pyos.SpyDirectory(directory, self._CoreObjectCachingSvc__OnCachedObjectsChanged)
         try:
-            self.LoadDirectory(blue.os.rootpath + 'bulkdata', 'cachedObjects')
+            self.LoadDirectory(blue.os.resolvePath(u'app:/') + 'bulkdata', 'cachedObjects')
         except Exception as e:
             self.LogWarn(e)
             sys.exc_clear()
@@ -181,6 +183,7 @@ class CoreObjectCachingSvc(service.Service):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def LoadDirectory(self, directory, storeName, updateOnly = False):
         self.LogInfo('objectCaching loading directory', directory, 'into', storeName, ['', '(updateOnly)'][updateOnly])
         for filename in os.listdir(directory):
@@ -241,7 +244,7 @@ class CoreObjectCachingSvc(service.Service):
 
     def __CacheIsDirty(self, what, key):
         if macho.mode == 'client':
-            ret = blue.os.GetTime()
+            ret = blue.os.GetWallclockTime()
             shouldFlush = len(self.lastChange) == 0
             self.lastChange[(what, key)] = ret
             filename = self.cachePath + what + '/%s.cache' % self.KeyToFileName(key)
@@ -255,7 +258,6 @@ class CoreObjectCachingSvc(service.Service):
     def __FlushCache(self, yieldFirst):
         if yieldFirst:
             blue.pyos.synchro.Yield()
-        rot = blue.os.CreateInstance('blue.Rot')
         while self.lastChange:
             (flushWhat, lastChange,) = self.lastChange.items()[0]
             del self.lastChange[flushWhat]
@@ -566,6 +568,17 @@ class CoreObjectCachingSvc(service.Service):
 
 
 
+    def ReturnCachedResults(self, cachable, versionCheck, throwOK, cachedResultRecord, cacheKey, cacheDetails):
+        base.CachedMethodCalled(cacheKey, cacheDetails)
+        return (cachable,
+         versionCheck,
+         throwOK,
+         cachedResultRecord,
+         cacheKey,
+         cacheDetails)
+
+
+
     def PerformCachedMethodCall(self, serviceOrObject, serviceOrObjectName, method, args, remoteVersion = None):
         details = self._CoreObjectCachingSvc__GetMethodCallCachingDetails(serviceOrObject, serviceOrObjectName, method)
         if details is not None:
@@ -578,49 +591,29 @@ class CoreObjectCachingSvc(service.Service):
                     if sm.services['machoNet'].GetTransportOfNode(self.cachedMethodCalls[k]['rret'].result.__nodeID__) is None:
                         del self.cachedMethodCalls[k]
                         self.LogInfo('ObjectCaching ', serviceOrObjectName, '::', method, '(', args, ') says cachable, but on dead server so go for it')
-                        return (1,
-                         0,
-                         0,
-                         None,
-                         k,
-                         details)
+                        return self.ReturnCachedResults(1, 0, 0, None, k, details)
                 versionCheck = self._CoreObjectCachingSvc__ShouldVersionCheck(details, self.cachedMethodCalls[k])
                 if remoteVersion is None or remoteVersion == 1 or self._CoreObjectCachingSvc__OlderVersion(remoteVersion, self.cachedMethodCalls[k]['version']):
                     throwOK = 0
                 else:
                     throwOK = 1
-                self.cachedMethodCalls[k]['used'] = blue.os.GetTime()
+                self.cachedMethodCalls[k]['used'] = blue.os.GetWallclockTime()
                 if versionCheck:
                     self.LogInfo('ObjectCaching ', serviceOrObjectName, '::', method, '(', args, ') returning a cached result that requires version checking.')
                 else:
                     self.LogInfo('ObjectCaching ', serviceOrObjectName, '::', method, '(', args, ') returning a cached result')
-                return (1,
-                 versionCheck,
-                 throwOK,
-                 self.cachedMethodCalls[k],
-                 k,
-                 details)
+                return self.ReturnCachedResults(1, versionCheck, throwOK, self.cachedMethodCalls[k], k, details)
             else:
                 if remoteVersion is not None and remoteVersion != 1 and self._CoreObjectCachingSvc__GetVersionCheckType(details) == 'never':
                     self.LogInfo('ObjectCaching ', serviceOrObjectName, '::', method, '(', args, ') the caller seems to know the result, and we can live with that')
-                    return (1,
-                     0,
-                     1,
-                     None,
-                     k,
-                     details)
+                    return self.ReturnCachedResult(1, 0, 1, None, k, details)
                 if remoteVersion is not None and remoteVersion != 1:
                     self.LogInfo('ObjectCaching ', serviceOrObjectName, '::', method, '(', args, ') is cachable, but not cached.  remoteVersion=', remoteVersion, ', details=', details, ', vc type=', self._CoreObjectCachingSvc__GetVersionCheckType(details))
                 else:
                     self.LogInfo('ObjectCaching ', serviceOrObjectName, '::', method, '(', args, ') is cachable, but not cached.')
-                return (1,
-                 0,
-                 0,
-                 None,
-                 k,
-                 details)
+                return self.ReturnCachedResults(1, 0, 0, None, k, details)
         else:
-            return (0, 0, 0, None, None, None)
+            return self.ReturnCachedResults(0, 0, 0, None, None, None)
 
 
     if hasattr(objectCaching, 'cacheSessionVariables'):
@@ -636,6 +629,7 @@ class CoreObjectCachingSvc(service.Service):
             details = cmcr.details
         else:
             details = self.methodCallCachingDetails[(serviceOrObjectName, method)]
+        base.CachedMethodCalled(k, cmcr.details)
         if self._CoreObjectCachingSvc__GetVersionCheckType(details) is not None:
             si = []
             if details.get('sessionInfo', None):
@@ -686,7 +680,7 @@ class CoreObjectCachingSvc(service.Service):
                 self.LogWarn('ObjectCaching unable to update validity period for cache key', cacheKey, 'key not valid')
             else:
                 self.LogInfo('ObjectCaching resetting validity period for cache key', cacheKey)
-                cacheEntry['version'][0] = blue.os.GetTime()
+                cacheEntry['version'][0] = blue.os.GetWallclockTime()
         except Exception as e:
             log.LogException('ObjectCaching unknown exception while resetting validity period')
 
@@ -694,7 +688,7 @@ class CoreObjectCachingSvc(service.Service):
 
     def __ShouldVersionCheck(self, details, info):
         vc = self._CoreObjectCachingSvc__GetVersionCheckType(details)
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         if type(vc) in types.StringTypes:
             if vc == 'never':
                 return 0

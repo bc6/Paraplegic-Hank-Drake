@@ -8,10 +8,11 @@ import types
 
 class SettingSection:
 
-    def __init__(self, name, filepath, autoStoreInterval):
+    def __init__(self, name, filepath, autoStoreInterval, service):
         self._SettingSection__name = name
         self._SettingSection__filepath = filepath
         self._SettingSection__dirty = False
+        self._SettingSection__service = service
         self.datastore = {}
         data = None
         try:
@@ -26,7 +27,7 @@ class SettingSection:
                     self.CreateGroup(k)
 
             except:
-                log.LogException('Error loading settings data file-- %s' % str(self))
+                self._SettingSection__service.LogError('Error loading settings data file--', str(self))
         self.timeoutTimer = base.AutoTimer(autoStoreInterval * 1000, self.WriteToDisk)
 
 
@@ -111,7 +112,7 @@ class SettingSection:
             self.CreateGroup(groupName)
         if settingName in self.datastore[groupName]:
             value = self.datastore[groupName][settingName][1]
-            self.datastore[groupName][settingName] = (blue.os.GetTime(), value)
+            self.datastore[groupName][settingName] = (blue.os.GetWallclockTime(), value)
             return value
         else:
             n = settingName
@@ -135,7 +136,7 @@ class SettingSection:
     def Set(self, groupName, settingName, value):
         if groupName not in self.datastore:
             self.CreateGroup(groupName)
-        self.datastore[groupName][settingName] = (blue.os.GetTime(), value)
+        self.datastore[groupName][settingName] = (blue.os.GetWallclockTime(), value)
         self.FlagDirty()
 
 
@@ -174,8 +175,8 @@ class SettingSection:
                     os.chmod(fn, 438)
                 k = blue.marshal.Save(self.datastore)
                 blue.win32.AtomicFileWrite(fn, k)
-            except Exception:
-                log.LogException()
+            except Exception as e:
+                self._SettingSection__service.LogError('Failed writing to disk', str(self), '-', repr(e))
 
 
 
@@ -193,7 +194,7 @@ class SettingSection:
 
 
     def FlushOldEntries(self):
-        lastModified = blue.os.GetTime() - WEEK * 6
+        lastModified = blue.os.GetWallclockTime() - WEEK * 6
         for (k, v,) in self.datastore.iteritems():
             for key in v.keys():
                 if v[key][0] <= lastModified:

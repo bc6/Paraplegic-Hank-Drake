@@ -7,6 +7,7 @@ import const
 import blue
 import blue.heapq as heapq
 from PlanetResources import builder
+import localization
 LINK_MAX_UPGRADE = 10
 LINK_UPGRADE_BASECOST = 0.1
 NETWORK_UPDATE_DELAY = 15 * const.SEC
@@ -93,9 +94,9 @@ def GetExpeditedTransferTime(linkBandwidth, commodities):
 
 def GetGenericPinName(typeID, itemID):
     if isinstance(itemID, tuple):
-        return '%s (%s)' % (cfg.invtypes.Get(typeID).name, mls.UI_GENERIC_NEW)
+        return localization.GetByLabel('UI/PI/Common/PinNameNew', pinName=cfg.invtypes.Get(typeID).name)
     else:
-        return '%s %s' % (cfg.invtypes.Get(typeID).name, ItemIDToPinDesignator(itemID))
+        return localization.GetByLabel('UI/PI/Common/PinNameAndID', pinName=cfg.invtypes.Get(typeID).name, pinID=ItemIDToPinDesignator(itemID))
 
 
 
@@ -120,7 +121,7 @@ def GetBandwidth(commodityVolume, cycleTime):
 def GetRouteValidationInfo(sourcePin, destPin, commodity):
     if destPin.IsStorage():
         if sourcePin.IsStorage():
-            return (False, mls.UI_PI_CANNOTROUTESTORAGETOSTORAGE, None)
+            return (False, localization.GetByLabel('UI/PI/Common/CannotRouteStorageToStorage'), None)
         else:
             return (True, '', sourcePin.GetCycleTime())
     elif destPin.IsProcessor():
@@ -131,13 +132,13 @@ def GetRouteValidationInfo(sourcePin, destPin, commodity):
                 cycleTime = sourcePin.GetCycleTime()
             return (True, '', cycleTime)
         else:
-            return (False, mls.UI_PI_COMMODITYCANNOTBEUSED, None)
+            return (False, localization.GetByLabel('UI/PI/Common/CommodityCannotBeUsed'), None)
     elif destPin.IsExtractor():
-        return (False, mls.UI_PI_CANNOTROUTETOEXTRACTORS, None)
+        return (False, localization.GetByLabel('UI/PI/Common/CannotRouteToExtractors'), None)
 
 
 
-def CanPutTypeInCargoLink(typeID):
+def CanPutTypeInCustomsOffice(typeID):
     typeObj = cfg.invtypes.Get(typeID)
     groupID = typeObj.groupID
     categoryID = typeObj.Group().categoryID
@@ -288,7 +289,7 @@ exports = {'planetCommon.GetUsageParametersForLinkType': GetUsageParametersForLi
  'planetCommon.GetGenericPinName': GetGenericPinName,
  'planetCommon.GetBandwidth': GetBandwidth,
  'planetCommon.GetRouteValidationInfo': GetRouteValidationInfo,
- 'planetCommon.CanPutTypeInCargoLink': CanPutTypeInCargoLink,
+ 'planetCommon.CanPutTypeInCustomsOffice': CanPutTypeInCustomsOffice,
  'planetCommon.GetPinEntityType': GetPinEntityType,
  'planetCommon.GetPowerOutput': GetPowerOutput,
  'planetCommon.GetCPUOutput': GetCPUOutput,

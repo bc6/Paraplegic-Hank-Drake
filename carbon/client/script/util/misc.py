@@ -63,7 +63,7 @@ def ResFile(respath, mode = 'rb', bufsize = -1):
 def ResFileToCache(respath):
     try:
         filename = respath[(respath.rfind('/') + 1):]
-        targetName = blue.os.cachepath + '/Temp/' + filename
+        targetName = blue.os.ResolvePath(u'cache:/Temp/') + filename
         if not os.path.exists(targetName):
             resFile = blue.ResFile()
             resFile.Open(respath)
@@ -80,8 +80,7 @@ def ResFileToCache(respath):
 
 
 def BlueFile(bluefilename, mode = 'r', bufsize = -1):
-    rot = blue.os.CreateInstance('blue.Rot')
-    filename = rot.PathToFilename(bluefilename)
+    filename = blue.rot.PathToFilename(bluefilename)
     try:
         f = file(filename, mode, bufsize)
     except IOError:
@@ -243,7 +242,7 @@ class Despammer:
         while True:
             try:
                 (args, kw,) = ch.receive()
-                blue.pyos.synchro.Sleep(self._delay)
+                blue.pyos.synchro.SleepWallclock(self._delay)
                 while ch.balance != 0:
                     (args, kw,) = ch.receive()
 

@@ -16,8 +16,79 @@ import types
 import audioConst
 import base
 import service
+import localization
 HAIRDARKNESS = 'hari_darkness'
 HAIRSATURATION = 'hari_saturation'
+GROUPNAMES = {ccConst.SKINGROUP: 'UI/Login/CharacterCreation/AssetMenu/Groups/Complexion',
+ ccConst.HAIRGROUP: 'UI/Login/CharacterCreation/AssetMenu/Groups/Hair',
+ ccConst.EYESGROUP: 'UI/Login/CharacterCreation/AssetMenu/Groups/Eyes',
+ ccConst.MAKEUPGROUP: 'UI/Login/CharacterCreation/AssetMenu/Groups/Makeup',
+ ccConst.SKINDETAILSGROUP: 'UI/Login/CharacterCreation/AssetMenu/Groups/SkinDetails',
+ ccConst.CLOTHESGROUP: 'UI/Login/CharacterCreation/AssetMenu/Groups/Clothes',
+ ccConst.BODYGROUP: 'UI/Login/CharacterCreation/AssetMenu/Groups/Shape',
+ ccConst.BACKGROUNDGROUP: 'UI/Login/CharacterCreation/AssetMenu/Groups/Backgrounds',
+ ccConst.POSESGROUP: 'UI/Login/CharacterCreation/AssetMenu/Groups/Poses',
+ ccConst.LIGHTSGROUP: 'UI/Login/CharacterCreation/AssetMenu/Groups/Lights',
+ ccConst.PIERCINGGROUP: 'UI/Login/CharacterCreation/AssetMenu/Groups/Piercings',
+ ccConst.TATTOOGROUP: 'UI/Login/CharacterCreation/AssetMenu/Groups/Tattoos',
+ ccConst.SCARSGROUP: 'UI/Login/CharacterCreation/AssetMenu/Groups/Scars'}
+maleModifierDisplayNames = {ccConst.eyes: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Eyes',
+ ccConst.eyeshadow: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/EyeDetails',
+ ccConst.eyeliner: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/LashThickness',
+ ccConst.lipstick: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/LipTone',
+ ccConst.blush: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/CheekColor',
+ ccConst.hair: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/HairStyle',
+ ccConst.eyebrows: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Eyebrows',
+ ccConst.beard: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/FacialHair',
+ ccConst.skintone: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/SkinTone',
+ ccConst.skinaging: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Aging',
+ ccConst.scarring: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Scarring',
+ ccConst.freckles: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Freckles',
+ ccConst.glasses: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Clothing/Glasses',
+ ccConst.muscle: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Muscularity',
+ ccConst.weight: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Weight',
+ ccConst.topmiddle: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Clothing/TopMiddleLayer',
+ ccConst.topouter: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Clothing/TopOuterLayer',
+ ccConst.bottomouter: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Clothing/BottomOuterLayer',
+ ccConst.outer: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Clothing/OuterLayer',
+ ccConst.feet: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Clothing/FeetLayer',
+ ccConst.p_earslow: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Piercings/EarsLow',
+ ccConst.p_earshigh: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Piercings/EarsHigh',
+ ccConst.p_nose: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Piercings/Nose',
+ ccConst.p_nostril: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Piercings/Nostril',
+ ccConst.p_brow: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Piercings/Eyebrows',
+ ccConst.p_lips: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Piercings/Lips',
+ ccConst.p_chin: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Piercings/Chin',
+ ccConst.t_head: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Tattoos/Head',
+ ccConst.s_head: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Scars/Head'}
+femaleModifierDisplayNames = {ccConst.eyes: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Eyes',
+ ccConst.eyeshadow: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/EyeShadow',
+ ccConst.eyeliner: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Eyeliner',
+ ccConst.lipstick: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Lipstick',
+ ccConst.blush: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Blush',
+ ccConst.hair: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/HairStyle',
+ ccConst.eyebrows: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Eyebrows',
+ ccConst.skintone: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/SkinTone',
+ ccConst.skinaging: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Aging',
+ ccConst.scarring: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Scarring',
+ ccConst.freckles: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Freckles',
+ ccConst.glasses: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Clothing/Glasses',
+ ccConst.muscle: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Muscularity',
+ ccConst.weight: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Weight',
+ ccConst.topmiddle: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Clothing/TopMiddleLayer',
+ ccConst.topouter: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Clothing/TopOuterLayer',
+ ccConst.bottomouter: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Clothing/BottomOuterLayer',
+ ccConst.outer: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Clothing/OuterLayer',
+ ccConst.feet: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Clothing/FeetLayer',
+ ccConst.p_earslow: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Piercings/EarsLow',
+ ccConst.p_earshigh: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Piercings/EarsHigh',
+ ccConst.p_nose: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Piercings/Nose',
+ ccConst.p_nostril: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Piercings/Nostril',
+ ccConst.p_brow: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Piercings/Eyebrows',
+ ccConst.p_lips: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Piercings/Lips',
+ ccConst.p_chin: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Piercings/Chin',
+ ccConst.t_head: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Tattoos/Head',
+ ccConst.s_head: 'UI/Login/CharacterCreation/AssetMenu/ModifierNames/Scars/Head'}
 
 class CharCreationAssetMenu(uicls.Container):
     __guid__ = 'uicls.CharCreationAssetMenu'
@@ -27,9 +98,9 @@ class CharCreationAssetMenu(uicls.Container):
         self.name = attributes.menuType or 'CharCreationAssetMenu'
         sm.GetService('cc').LogInfo('CharCreationAssetMenu::ApplyAttributes:: name = ', self.name)
         if attributes.genderID == 0:
-            modifierNames = ccConst.femaleModifierDisplayNames
+            modifierNames = femaleModifierDisplayNames
         else:
-            modifierNames = ccConst.maleModifierDisplayNames
+            modifierNames = maleModifierDisplayNames
         self.sr.mainCont = uicls.Container(parent=self, name='mainAssetMenuCont', align=uiconst.TOTOP, state=uiconst.UI_PICKCHILDREN, height=self.height)
         self.sr.mainCont.clipChildren = 1
         self.togglerIdx = None
@@ -42,19 +113,19 @@ class CharCreationAssetMenu(uicls.Container):
             else:
                 padTop = 4
                 padBottom = 16
-            self.sr.menuToggler = uicls.CharCreationMenuToggler(parent=self.sr.mainCont, caption=mls.UI_CHARCREA_BODYMOD, padTop=padTop, padBottom=padBottom, menuType=attributes.menuType, func=self.ToggleMenu, idx=idx)
+            self.sr.menuToggler = uicls.CharCreationMenuToggler(parent=self.sr.mainCont, caption=localization.GetByLabel('UI/Login/CharacterCreation/AssetMenu/BodyModifications'), padTop=padTop, padBottom=padBottom, menuType=attributes.menuType, func=self.ToggleMenu, idx=idx)
         for (groupID, modifiers,) in attributes.groups:
             if type(groupID) == types.IntType:
-                caption = ccConst.GROUPNAMES.get(groupID, mls.UI_CHARCREA_MISSINGCAPTION)
+                caption = localization.GetByLabel(GROUPNAMES.get(groupID, 'UI/Login/CharacterCreation/AssetMenu/MissingCaption'))
             else:
-                caption = modifierNames.get(groupID, groupID)
+                caption = localization.GetByLabel(modifierNames.get(groupID, 'UI/Login/CharacterCreation/AssetMenu/MissingCaption'))
             group = uicls.CharCreationAssetPicker(parent=self.sr.mainCont, modifier=groupID, caption=caption, padTop=4, padBottom=4, genderID=attributes.genderID, bloodlineID=attributes.bloodlineID, charID=attributes.charID, isSubmenu=False, groupID=groupID)
             for modifier in modifiers:
                 if type(modifier) is not types.IntType:
                     (itemTypes, activeIndex,) = uicore.layer.charactercreation.GetAvailableStyles(modifier)
                     if not itemTypes:
                         continue
-                caption = modifierNames.get(modifier, modifier)
+                caption = localization.GetByLabel(modifierNames.get(modifier, 'UI/Login/CharacterCreation/AssetMenu/MissingCaption'))
                 picker = uicls.CharCreationAssetPicker(parent=self.sr.mainCont, modifier=modifier, caption=caption, padTop=-2, padBottom=4, genderID=attributes.genderID, bloodlineID=attributes.bloodlineID, isSubmenu=True, groupID=groupID)
 
 
@@ -171,13 +242,13 @@ class CCColorPalette(uicls.Container):
         charSvc = sm.GetService('character')
         sliders = []
         if info.genderID == ccConst.GENDERID_FEMALE:
-            facialHairText = mls.UI_CHARCREA_EYEBROWSCOLOR
+            facialHairText = localization.GetByLabel('UI/Login/CharacterCreation/AssetMenu/EyebrowsColor')
         else:
-            facialHairText = mls.UI_CHARCREA_FACIALHAIRCOLOR
+            facialHairText = localization.GetByLabel('UI/Login/CharacterCreation/AssetMenu/FacialHairColor')
         if ccUtil.HasUserDefinedWeight(self.modifier):
-            sliders += [('intensity', mls.UI_CHARCREA_OPACITY, charSvc.GetWeightByCategory(info.charID, self.modifier))]
+            sliders += [('intensity', localization.GetByLabel('UI/Login/CharacterCreation/AssetMenu/MakeupOpacity'), charSvc.GetWeightByCategory(info.charID, self.modifier))]
         if info.genderID == ccConst.GENDERID_FEMALE and ccUtil.HasUserDefinedSpecularity(self.modifier):
-            sliders += [('specularity', mls.UI_CHARCREA_GLOSS, charSvc.GetColorSpecularityByCategory(info.charID, self.modifier))]
+            sliders += [('specularity', localization.GetByLabel('UI/Login/CharacterCreation/AssetMenu/LipGloss'), charSvc.GetColorSpecularityByCategory(info.charID, self.modifier))]
         if self.modifier == ccConst.hair:
             sliders += [(HAIRDARKNESS, facialHairText, charSvc.GetHairDarkness(info.charID))]
         self.Flush()
@@ -191,7 +262,7 @@ class CCColorPalette(uicls.Container):
             slider.modifier = self.modifier
             slider.sliderType = referenceName
             self.sr.Set(referenceName, slider)
-            label = uicls.CCLabel(parent=slider, uppercase=1, shadow=None, fontsize=9, letterspace=2, text=label, width=slider.width, autowidth=0, autoheight=1, color=ccConst.COLOR50)
+            label = uicls.CCLabel(parent=slider, uppercase=1, shadowOffset=(0, 0), fontsize=9, letterspace=2, text=label, width=slider.width, color=ccConst.COLOR50)
             label.top = -label.textheight - 1
             sliderOffset += slider.height + label.textheight + 3
 
@@ -324,18 +395,18 @@ class CCColorPalette(uicls.Container):
                 each.Close()
 
         if self.modifier == ccConst.hair:
-            CAPTION1 = mls.UI_CHARCREA_ROOTCOLOR
-            CAPTION2 = mls.UI_CHARCREA_HAIRCOLOR
+            firstColourCaption = localization.GetByLabel('UI/Login/CharacterCreation/AssetMenu/HairRootColor')
+            secondColourCaption = localization.GetByLabel('UI/Login/CharacterCreation/AssetMenu/HairColor')
         else:
-            CAPTION1 = mls.UI_CHARCREA_COLOR
-            CAPTION2 = mls.UI_SYSMENU_SECONDARYCOLOR
+            firstColourCaption = localization.GetByLabel('UI/Login/CharacterCreation/AssetMenu/NonHairColor')
+            secondColourCaption = localization.GetByLabel('UI/Login/CharacterCreation/AssetMenu/NonHairSecondaryColor')
         numColorAreas = self.GetNumColorAreas()
         self.currentNumColorAreas = numColorAreas
         if numColorAreas is not None:
             if numColorAreas < 2:
                 secondary = []
                 if self.modifier == ccConst.hair:
-                    CAPTION1 = mls.UI_CHARCREA_HAIRCOLOR
+                    firstColourCaption = localization.GetByLabel('UI/Login/CharacterCreation/AssetMenu/HairColor')
             if numColorAreas < 1:
                 primary = []
         if not (primary or secondary):
@@ -364,12 +435,12 @@ class CCColorPalette(uicls.Container):
 
         top = 0
         colorHeight = 0
-        for (colors, caption,) in ((primary, CAPTION1), (secondary, CAPTION2)):
+        for (colors, caption,) in ((primary, firstColourCaption), (secondary, secondColourCaption)):
             if not colors:
                 continue
             left = self.SIDEMARGIN
             top += 4
-            label = uicls.CCLabel(parent=self, uppercase=1, shadow=None, fontsize=9, letterspace=2, text=caption, top=top, left=left, autowidth=1, autoheight=1, color=ccConst.COLOR50, idx=0)
+            label = uicls.CCLabel(parent=self, uppercase=1, shadowOffset=(0, 0), fontsize=9, letterspace=2, text=caption, top=top, left=left, color=ccConst.COLOR50, idx=0)
             top += label.textheight + 3
             for data in colors:
                 (colorName, displayColor, colorValue,) = data
@@ -503,7 +574,7 @@ class CharCreationAssetPicker(uicls.Container):
         self.sr.captionParent.OnMouseEnter = self.OnCaptionEnter
         self.sr.captionParent.OnMouseExit = self.OnCaptionExit
         self.sr.captionParent.modifier = attributes.modifier
-        self.sr.caption = uicls.CCLabel(parent=self.sr.captionParent, align=uiconst.CENTERLEFT, autowidth=1, autoheight=1, left=10, letterspace=3, shadow=None, text=attributes.caption, uppercase=1, color=ccConst.COLOR, fontsize=13)
+        self.sr.caption = uicls.CCLabel(parent=self.sr.captionParent, align=uiconst.CENTERLEFT, left=10, letterspace=3, shadowOffset=(0, 0), text=attributes.caption, uppercase=1, color=ccConst.COLOR, fontsize=13)
         self.sr.caption.SetAlpha(0.5)
         self.sr.expanderIcon = uicls.Icon(name='expanderIcon', icon=[ccConst.ICON_EXPANDED, ccConst.ICON_EXPANDEDSINGLE][attributes.isSubmenu], parent=self.sr.captionParent, state=uiconst.UI_DISABLED, align=uiconst.CENTERRIGHT, color=ccConst.COLOR50)
         if attributes.isSubmenu:
@@ -511,7 +582,7 @@ class CharCreationAssetPicker(uicls.Container):
             self.sr.caption.fontsize = 12
             bevelAlpha = 0.1
         else:
-            randomButton = uicls.Transform(parent=self.sr.colorPaletteParent, pos=(0, 0, 22, 22), state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT, hint='%s %s' % (mls.UI_CHARCREA_RANDOMIZE, attributes.caption), idx=0)
+            randomButton = uicls.Transform(parent=self.sr.colorPaletteParent, pos=(0, 0, 22, 22), state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT, hint=localization.GetByLabel('UI/Login/CharacterCreation/AssetMenu/RandomizeGroup'), idx=0)
             randomButton.OnClick = (self.RandomizeGroup, randomButton)
             randomButton.OnMouseEnter = (self.OnGenericMouseEnter, randomButton)
             randomButton.OnMouseExit = (self.OnGenericMouseExit, randomButton)
@@ -529,7 +600,7 @@ class CharCreationAssetPicker(uicls.Container):
         frame.SetPadding(-12, -5, -12, -15)
         self.sr.mainParent = uicls.Container(parent=self, align=uiconst.TOALL, name='mainParent')
         if attributes.modifier in ccConst.REMOVEABLE:
-            self.sr.removeParent = uicls.Container(parent=self.sr.mainParent, align=uiconst.TOPRIGHT, name='removeParent', pickRadius=-1, state=uiconst.UI_HIDDEN, hint=mls.UI_GENERIC_REMOVE, pos=(2, 2, 20, 20), opacity=0.75, idx=0)
+            self.sr.removeParent = uicls.Container(parent=self.sr.mainParent, align=uiconst.TOPRIGHT, name='removeParent', pickRadius=-1, state=uiconst.UI_HIDDEN, hint=localization.GetByLabel('UI/Login/CharacterCreation/AssetMenu/RemoveCharacterPart'), pos=(2, 2, 20, 20), opacity=0.75, idx=0)
             self.sr.removeParent.OnClick = (self.RemoveAsset, self.sr.removeParent)
             self.sr.removeParent.OnMouseEnter = (self.OnGenericMouseEnter, self.sr.removeParent)
             self.sr.removeParent.OnMouseExit = (self.OnGenericMouseExit, self.sr.removeParent)
@@ -567,10 +638,6 @@ class CharCreationAssetPicker(uicls.Container):
                 self.FULLHEIGHT = 150
                 if modifier == ccConst.eyeshadow:
                     self.FULLHEIGHT = 180
-                if attributes.genderID == 0:
-                    genderText = 'female'
-                else:
-                    genderText = 'male'
                 (itemTypes, activeIndex,) = uicore.layer.charactercreation.GetAvailableStyles(modifier)
                 svc = sm.GetService('character')
                 assetData = []
@@ -578,9 +645,13 @@ class CharCreationAssetPicker(uicls.Container):
                 for itemType in itemTypes:
                     if itemType[2] is not None:
                         numSpecialItems += 1
+                        if attributes.genderID == 0:
+                            genderText = 'Female'
+                        else:
+                            genderText = 'Male'
                         assetResPath = cfg.paperdollResources.Get(itemType[0]).resPath
-                        assetResPath = assetResPath.replace('res:/Graphics/Character/Modular/', '').replace('/', '_').replace('.type', '')
-                        path = 'res:/UI/Asset/mannequin/%s.png' % assetResPath
+                        assetResPath = assetResPath.replace('/', '_').replace('.type', '')
+                        path = 'res:/UI/Asset/mannequin/%s_%s.png' % (genderText, assetResPath)
                     else:
                         path = 'res:/UI/Asset/%s_g%s_b%s.png' % ('_'.join(list(itemType[1])).replace('/', '_'), info.genderID, info.bloodlineID)
                     assetData.append((path, itemType, ''))
@@ -675,7 +746,7 @@ class CharCreationAssetPicker(uicls.Container):
         self.sr.tuckParent.padLeft = 4
         self.sr.tuckParent.padBottom = 4
         for (name, icon,) in (('left', ccConst.ICON_BACK), ('right', ccConst.ICON_NEXT)):
-            btn = uicls.Container(name='%sBtn' % name, parent=self.sr.tuckParent, align=uiconst.TOLEFT, width=12, state=uiconst.UI_NORMAL, hint=hint or mls.UI_CHARCREA_BROWSETUCK)
+            btn = uicls.Container(name='%sBtn' % name, parent=self.sr.tuckParent, align=uiconst.TOLEFT, width=12, state=uiconst.UI_NORMAL, hint=hint or localization.GetByLabel('UI/Login/CharacterCreation/AssetMenu/BrowseTuckOptions'))
             btn.sr.icon = uicls.Icon(name='%sIcon' % name, icon=icon, parent=btn, state=uiconst.UI_DISABLED, align=uiconst.CENTER, color=ccConst.COLOR50)
             btn.OnMouseEnter = (self.OnGenericMouseEnter, btn)
             btn.OnMouseExit = (self.OnGenericMouseExit, btn)
@@ -686,7 +757,7 @@ class CharCreationAssetPicker(uicls.Container):
             else:
                 btn.OnClick = (self.OnTuckBrowse, btn)
 
-        self.sr.tuckParent.sr.label = uicls.CCLabel(parent=self.sr.tuckParent, autowidth=1, autoheight=1, color=ccConst.COLOR50, align=uiconst.CENTERLEFT, left=32)
+        self.sr.tuckParent.sr.label = uicls.CCLabel(parent=self.sr.tuckParent, color=ccConst.COLOR50, align=uiconst.CENTERLEFT, left=32)
 
 
 
@@ -749,7 +820,7 @@ class CharCreationAssetPicker(uicls.Container):
             assetData.append(('res:/UI/Asset/%s_g%s_b%s.png' % ('_'.join(list(itemType[1])).replace('/', '_'), info.genderID, info.bloodlineID), itemType, ''))
 
         subPar = uicls.Container(parent=self.sr.assetParent, align=uiconst.TOTOP, height=92)
-        removeParent = uicls.Container(parent=subPar, align=uiconst.TOPRIGHT, name='removeParent', pickRadius=-1, state=uiconst.UI_NORMAL, hint=mls.UI_GENERIC_REMOVE, pos=(2, 2, 20, 20), opacity=0.75, idx=0)
+        removeParent = uicls.Container(parent=subPar, align=uiconst.TOPRIGHT, name='removeParent', pickRadius=-1, state=uiconst.UI_NORMAL, hint=localization.GetByLabel('UI/Login/CharacterCreation/AssetMenu/RemoveCharacterPart'), pos=(2, 2, 20, 20), opacity=0.75, idx=0)
         removeParent.OnMouseEnter = (self.OnGenericMouseEnter, removeParent)
         removeParent.OnMouseExit = (self.OnGenericMouseExit, removeParent)
         removeParent.modifier = ccConst.eyebrows
@@ -767,7 +838,7 @@ class CharCreationAssetPicker(uicls.Container):
                 assetData.append(('res:/UI/Asset/%s_g%s_b%s.png' % ('_'.join(list(itemType[1])).replace('/', '_'), info.genderID, info.bloodlineID), itemType, ''))
 
             subPar = uicls.Container(parent=self.sr.assetParent, align=uiconst.TOTOP, height=92)
-            removeParent = uicls.Container(parent=subPar, align=uiconst.TOPRIGHT, name='removeParent', pickRadius=-1, state=uiconst.UI_NORMAL, hint=mls.UI_GENERIC_REMOVE, pos=(2, 2, 20, 20), opacity=0.75, idx=0)
+            removeParent = uicls.Container(parent=subPar, align=uiconst.TOPRIGHT, name='removeParent', pickRadius=-1, state=uiconst.UI_NORMAL, hint=localization.GetByLabel('UI/Login/CharacterCreation/AssetMenu/RemoveCharacterPart'), pos=(2, 2, 20, 20), opacity=0.75, idx=0)
             removeParent.OnMouseEnter = (self.OnGenericMouseEnter, removeParent)
             removeParent.OnMouseExit = (self.OnGenericMouseExit, removeParent)
             removeParent.modifier = ccConst.beard
@@ -787,7 +858,7 @@ class CharCreationAssetPicker(uicls.Container):
         for sModifier in (ccConst.muscle, ccConst.weight):
             slider = uicls.BitSlider(parent=self.sr.assetParent, name=sModifier + '_slider', align=uiconst.CENTERLEFT, OnSetValue=self.OnSetSliderValue, sliderWidth=sliderWidth, left=left, top=7)
             left += sliderWidth + 10
-            label = uicls.CCLabel(parent=slider, text=ccConst.maleModifierDisplayNames.get(sModifier, sModifier), top=-18, autowidth=1, autoheight=1, color=ccConst.COLOR50)
+            label = uicls.CCLabel(parent=slider, text=localization.GetByLabel(maleModifierDisplayNames.get(sModifier, 'UI/Login/CharacterCreation/AssetMenu/MissingCaption')), top=-18, color=ccConst.COLOR50)
             slider.modifier = sModifier
 
 
@@ -847,8 +918,8 @@ class CharCreationAssetPicker(uicls.Container):
         self.sr.browser.SetActiveDataFromValue(currentLight, focusOnSlot=True, doCallbacks=False, doYield=False)
         setvalue = uicore.layer.charactercreation.GetLightIntensity()
         intensitySlider = uicls.BitSlider(parent=self.sr.assetParent, name='Intensity_slider', align=uiconst.CENTERBOTTOM, setvalue=setvalue, OnSetValue=self.OnSetLightIntensity, sliderWidth=64, idx=0, top=6)
-        label = uicls.CCLabel(parent=intensitySlider, text='Intensity', top=-16, autowidth=1, autoheight=1, color=ccConst.COLOR50)
-        self.PrepareTuckControls(browseFunction=self.BrowseLightColors, hint=mls.UI_CHARCREA_BROWSELIGHTCOLORS)
+        label = uicls.CCLabel(parent=intensitySlider, text='Intensity', top=-16, color=ccConst.COLOR50)
+        self.PrepareTuckControls(browseFunction=self.BrowseLightColors, hint=localization.GetByLabel('UI/Login/CharacterCreation/AssetMenu/BrowseLightColors'))
         self.sr.tuckParent.sr.label.text = '%s/%s' % (currentIndex + 1, len(lightingColorList))
         uthread.new(uicore.effect.CombineEffects, self.sr.tuckParent, opacity=1.0, height=16, time=125.0)
 
@@ -920,7 +991,7 @@ class CharCreationAssetPicker(uicls.Container):
             bitAmount = len(itemTypes)
             slider = uicls.BitSlider(parent=self.sr.assetParent, name=sModifier + '_slider', align=uiconst.CENTERLEFT, OnSetValue=self.OnSetSliderValue, bitAmount=bitAmount, sliderWidth=sliderWidth, left=130, top=top)
             top += 32
-            label = uicls.CCLabel(parent=slider, text=ccConst.maleModifierDisplayNames.get(sModifier, sModifier), top=-18, autowidth=1, autoheight=1, color=ccConst.COLOR50)
+            label = uicls.CCLabel(parent=slider, text=localization.GetByLabel(maleModifierDisplayNames.get(sModifier, 'UI/Login/CharacterCreation/AssetMenu/MissingCaption')), top=-18, color=ccConst.COLOR50)
             slider.modifier = sModifier
 
 
@@ -1043,6 +1114,8 @@ class CharCreationAssetPicker(uicls.Container):
 
                 else:
                     activeMod = charSvc.GetModifierByCategory(info.charID, modifier)
+                    if activeMod and activeMod.name in ccConst.invisibleModifiers:
+                        activeMod = None
                     if not activeMod and modifier in uicore.layer.charactercreation.clothesStorage:
                         activeMod = uicore.layer.charactercreation.clothesStorage.get(modifier, None)
                 if activeMod:
@@ -1128,7 +1201,7 @@ class CharCreationAssetPicker(uicls.Container):
         if self._expanded:
             return 
         self._expanded = True
-        self._expandTime = blue.os.GetTime()
+        self._expandTime = blue.os.GetWallclockTime()
         self.sr.caption.SetAlpha(1.0)
         self.sr.expanderIcon.SetAlpha(1.0)
         self.CheckIfOversize()
@@ -1159,7 +1232,7 @@ class CharCreationAssetPicker(uicls.Container):
 
 
     def ExpandColorPalette(self, initing = False, *args):
-        blue.pyos.synchro.Sleep(500)
+        blue.pyos.synchro.SleepWallclock(500)
         maxPaletteWidth = int(uicore.desktop.width / 8)
         if hasattr(self, 'sr'):
             if self.sr.colorPalette is None:
@@ -1371,7 +1444,7 @@ class CharCreationMenuToggler(uicls.Container):
         self.sr.captionParent.OnMouseEnter = self.OnCaptionEnter
         self.sr.captionParent.OnMouseExit = self.OnCaptionExit
         self.menuType = attributes.menuType
-        self.sr.caption = uicls.CCLabel(parent=self.sr.captionParent, align=uiconst.CENTERLEFT, autowidth=1, autoheight=1, left=10, letterspace=3, shadow=None, text=attributes.caption, uppercase=1, color=ccConst.COLOR, fontsize=13)
+        self.sr.caption = uicls.CCLabel(parent=self.sr.captionParent, align=uiconst.CENTERLEFT, left=10, letterspace=3, shadowOffset=(0, 0), text=attributes.caption, uppercase=1, color=ccConst.COLOR, fontsize=13)
         if self.menuType != 'tattooMenu':
             self.sr.caption.SetAlpha(0.5)
         self.keepColor = 0
@@ -1397,7 +1470,7 @@ class CharCreationMenuToggler(uicls.Container):
 
 
     def OnCaptionEnter(self, *args):
-        uicore.layer.charactercreation.SetHintText(None, hintText=mls.UI_CHARCREA_BODYMODHELP)
+        uicore.layer.charactercreation.SetHintText(None, localization.GetByLabel('UI/Login/CharacterCreation/AssetMenu/BodyModHelp'))
         sm.StartService('audio').SendUIEvent(unicode('wise:/ui_icc_menu_mouse_over_play'))
         if not self.keepColor:
             self.sr.caption.SetAlpha(1.0)

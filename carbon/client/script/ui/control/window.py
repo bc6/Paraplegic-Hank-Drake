@@ -5,11 +5,17 @@ import types
 import log
 import sys
 import base
+import mathUtil
 import uicls
 import uiutil
 import uiconst
 import trinity
+import localization
 POSOVERLAPSHIFT = 11
+CORNER_GROUPS = ('topright',
+ 'topleft',
+ 'bottomright',
+ 'bottomleft')
 
 class WindowCore(uicls.Area):
     __guid__ = 'uicls.WindowCore'
@@ -28,27 +34,122 @@ class WindowCore(uicls.Area):
     default_args = ()
     default_caption = None
     default_align = uiconst.RELATIVE
+    default_showBottomLine = True
+    default_openMinimized = False
+    default_windowGroupingActive = True
+
+    @classmethod
+    def Reload(cls, instance):
+        attributes = instance.attributesBunch
+        state = instance.state
+        if instance.isDialog:
+            instance.Close()
+            return 
+        attributes.openMinimized = instance.IsMinimized()
+        attributes.skipCornerAligmentCheck = False
+        instance.Close()
+        wnd = cls.Open(**attributes)
+        wnd.SetState(state)
+
+
+
+    def __init__(self, **kw):
+        uicls.Area.__init__(self, **kw)
+        notifyevents = getattr(self, '__notifyevents__', None)
+        if not notifyevents:
+            notifyevents = ['OnUIRefresh']
+        elif 'OnUIRefresh' not in notifyevents:
+            notifyevents.append('OnUIRefresh')
+        self.__notifyevents__ = notifyevents
+        sm.RegisterNotify(self)
+
+
+
+    @apply
+    def displayRect():
+        doc = '\n            displayRect is a tuple of (displayX,displayY,displayWidth,displayHeight).\n            Prefer this over setting x, y, width and height separately if all are\n            being set.\n            '
+
+        def fget(self):
+            return (self._displayX,
+             self._displayY,
+             self._displayWidth,
+             self._displayHeight)
+
+
+
+        def fset(self, value):
+            (displayX, displayY, displayWidth, displayHeight,) = value
+            self._displayX = int(round(displayX))
+            self._displayY = int(round(displayY))
+            self._displayWidth = int(round(displayWidth))
+            self._displayHeight = int(round(displayHeight))
+            ro = self.renderObject
+            if ro:
+                ro.displayX = self._displayX
+                ro.displayY = self._displayY
+                ro.displayWidth = self._displayWidth
+                ro.displayHeight = self._displayHeight
+
+
+        return property(**locals())
+
+
+
+    def OnUIRefresh(self):
+        self.Reload(self)
+
+
+
+    def AutoFit(self):
+        for each in uicore.desktop.children[:]:
+            if each.name == 'debug':
+                each.Close()
+
+        data = []
+
+        def CrawlAutoFit(obj, data, lvl = 0):
+            if not obj.display:
+                return 
+            if obj.align != uiconst.TOALL:
+                data.append((obj.align, obj.GetAbsolute()))
+            if hasattr(obj, 'children'):
+                for each in obj.children:
+                    CrawlAutoFit(each, data, lvl + 1)
+
+
+
+        for each in self.children:
+            CrawlAutoFit(each, data)
+
+        for (align, pos,) in data:
+            if align in (uiconst.TOPLEFT,):
+                uicls.Fill(parent=uicore.desktop, name='debug', idx=0, align=uiconst.TOPLEFT, pos=pos)
+
+
+
 
     def ApplyAttributes(self, attributes):
         self.startingup = True
         self.ResetAttributes()
         self._CheckCallableDefaults()
+        self.attributesBunch = attributes
         self.windowID = attributes.get('windowID', self.default_windowID)
-        self.windowPrefsID = attributes.get('windowPrefsID') or self.windowID
         uicore.registry.RegisterWindow(self)
         (left, top, width, height,) = self.GetDefaultSizeAndPosition()
         attributes['left'] = left
         attributes['top'] = top
         if self.windowID:
             try:
-                self.name = str(self.windowID)
+                attributes.name = str(self.windowID)
             except Exception as e:
-                self.name = repr(self.windowID)
+                attributes.name = repr(self.windowID)
         self.stackID = attributes.get('stackID', self.default_stackID)
         self.minsize = attributes.get('minSize', self.minsize)
         self.maxsize = attributes.get('maxSize', self.maxsize)
+        self.windowGroupingActive = attributes.get('windowGroupingActive', self.default_windowGroupingActive)
+        self.showBottomLine = attributes.get('showBottomLine', self.default_showBottomLine)
         uicls.Area.ApplyAttributes(self, attributes)
-        self.InitializeSize()
+        self.InitializeSize(useDefaultPos=attributes.get('useDefaultPos', False))
         self.Prepare_()
 
 
@@ -56,12 +157,13 @@ class WindowCore(uicls.Area):
     def PostApplyAttributes(self, attributes):
         self.RegisterPositionAndSize('width')
         self.RegisterPositionAndSize('height')
-        self.InitializeStacking(attributes.get('showIfInStack', True))
-        self.InitializeStatesAndPosition()
-        self.startingup = False
+        self.InitializeStatesAndPosition(skipCornerAligmentCheck=attributes.get('skipCornerAligmentCheck', False), showIfInStack=attributes.get('showIfInStack', True), useDefaultPos=attributes.get('useDefaultPos', False))
         caption = attributes.get('caption', self.default_caption)
         if caption is not None:
             self.SetCaption(caption)
+        if attributes.get('openMinimized', self.default_openMinimized):
+            self.Minimize(animate=False)
+        self.startingup = False
 
 
 
@@ -95,17 +197,17 @@ class WindowCore(uicls.Area):
             self.sr.headerButtons.Close()
         self.sr.headerButtons = uicls.Container(name='headerButtons', state=uiconst.UI_PICKCHILDREN, align=uiconst.TOPRIGHT, parent=self, pos=(5, 0, 0, 16), idx=0)
         if self.sr.stack:
-            closehint = mls.UI_GENERIC_CLOSEWINDOWSTACK
-            minimizehint = mls.UI_CMD_MINIMIZEWINDOWSTACK
+            closehint = localization.GetByLabel('/Carbon/UI/Controls/Window/CloseWindowStack')
+            minimizehint = localization.GetByLabel('/Carbon/UI/Controls/Window/MinimizeWindowStack')
         else:
-            closehint = mls.UI_GENERIC_CLOSE
-            minimizehint = mls.UI_CMD_MINIMIZE
+            closehint = localization.GetByLabel('/Carbon/UI/Common/Close')
+            minimizehint = localization.GetByLabel('/Carbon/UI/Controls/Window/Minimize')
         w = 0
         for (icon, name, hint, showflag, clickfunc, menufunc,) in [(102,
           'close',
           closehint,
           self._killable,
-          self._CloseClick,
+          self.CloseByUser,
           False), (103,
           'minimize',
           minimizehint,
@@ -245,7 +347,6 @@ class WindowCore(uicls.Area):
         self.sr.buttonParent = None
         self.sr.loadingParent = None
         self.sr.headerIcon = None
-        self.sr.snapIndicator = None
         self.sr.headerLine = None
         self.sr.headerButtonsTimer = None
         self.sr.resizers = None
@@ -277,28 +378,31 @@ class WindowCore(uicls.Area):
 
 
     def GetStackID(self):
-        if self.windowPrefsID:
+        if self.windowID:
             all = settings.user.windows.Get('stacksWindows', {})
-            if self.windowPrefsID in all:
-                return all[self.windowPrefsID]
-            return all.get(self.windowPrefsID, self.stackID)
+            if self.windowID in all:
+                return all[self.windowID]
+            return all.get(self.windowID, self.stackID)
 
 
 
     def RegisterStackID(self, stack = None):
-        if self.windowPrefsID:
+        if self.windowID:
             all = settings.user.windows.Get('stacksWindows', {})
             if stack:
-                all[self.windowPrefsID] = stack.windowID
+                all[self.windowID] = stack.windowID
             else:
-                all[self.windowPrefsID] = None
+                all[self.windowID] = None
             settings.user.windows.Set('stacksWindows', all)
 
 
 
-    def InitializeSize(self):
+    def InitializeSize(self, useDefaultPos = False):
         d = uicore.desktop
-        (left, top, width, height, dw, dh,) = self.GetRegisteredPositionAndSize()
+        if useDefaultPos:
+            (left, top, width, height,) = self.GetDefaultSizeAndPosition()
+        else:
+            (left, top, width, height, dw, dh,) = self.GetRegisteredPositionAndSize()
         (maxWidth, maxHeight,) = (self.GetMaxWidth(), self.GetMaxHeight())
         (minWidth, minHeight,) = (self.GetMinWidth(), self.GetMinHeight())
         if self._fixedWidth:
@@ -312,242 +416,300 @@ class WindowCore(uicls.Area):
 
 
 
-    def InitializeStacking(self, setFocus = True):
-        if getattr(self, 'isModal', 0):
-            return 
-        (left, top, width, height, dw, dh,) = self.GetRegisteredPositionAndSize()
-        if self._stackable:
-            stackID = self.GetStackID()
-            stackIsOpen = bool(uicore.registry.GetWindow(stackID))
-            if stackID is not None and not isinstance(self, self.GetStackClass()):
-                stack = uicore.registry.GetStack(stackID, self.GetStackClass())
-                if stack is not None:
-                    self.left = max(0, min(uicore.desktop.width - self.width, left))
-                    self.top = max(0, min(uicore.desktop.height - self.height, top))
-                    stack.InsertWnd(self, not stackIsOpen, setFocus, 1)
-
-
-
     def GetStackClass(self):
         return uicls.WindowStackCore
 
 
 
-    def InitializeStatesAndPosition(self, expandIfCollapsed = False, skipCornerAligmentCheck = False):
-        if not self.sr.stack:
-            collapsed = self.GetRegisteredState('collapsed')
-            if not expandIfCollapsed and collapsed:
-                self.Collapse(True)
-            else:
-                self.Expand(True)
-                focus = uicore.registry.GetFocus()
-                if not (focus and (isinstance(focus, uicls.EditCore) or isinstance(focus, uicls.SinglelineEditCore))):
-                    uthread.new(uicore.registry.SetFocus, self)
-            if skipCornerAligmentCheck or not self.TryAlignToCornerGroup():
-                d = uicore.desktop
-                (left, top, width, height, dw, dh,) = self.GetRegisteredPositionAndSize()
-                self.left = max(0, min(d.width - self.width, left))
-                self.top = max(0, min(d.height - self.height, top))
-                self.CheckWndPos()
-            self.state = uiconst.UI_NORMAL
+    def InitializeStatesAndPosition(self, skipCornerAligmentCheck = False, showIfInStack = True, useDefaultPos = False, **kwds):
+        self.startingup = 1
+        log.LogInfo('Window.InitializeStatesAndPosition', self.windowID)
+        self.state = uiconst.UI_NORMAL
+        if not isinstance(self, uicls.WindowStackCore):
+            stack = None
+            stackIsOpen = False
+            stackID = self.GetStackID()
+            if self._stackable and stackID:
+                stack = uicore.registry.GetWindow(stackID)
+                if stack:
+                    log.LogInfo('Window.InitializeStatesAndPosition, windowStack already created', self.windowID)
+                    stack.InsertWnd(self, False, showIfInStack, 1)
+            if not stack:
+                collapsed = self.GetRegisteredState('collapsed')
+                if collapsed:
+                    self.Collapse()
+                cornerAligned = None
+                if not skipCornerAligmentCheck:
+                    cornerAligned = self.TryAlignToCornerGroup()
+                if not cornerAligned:
+                    if useDefaultPos:
+                        (left, top, width, height,) = self.GetDefaultSizeAndPosition()
+                    else:
+                        (left, top, width, height, dw, dh,) = self.GetRegisteredPositionAndSize()
+                    self.left = max(0, min(uicore.desktop.width - self.width, left))
+                    self.top = max(0, min(uicore.desktop.height - self.height, top))
+                    (leftpush, rightpush,) = self.GetSideOffset()
+                    if self.left in (0, 16):
+                        self.left += leftpush
+                    elif self.left + self.width in (uicore.desktop.width, uicore.desktop.width - 16):
+                        self.left -= rightpush
+                    self.CheckWndPos()
+                if stackID is not None and not isinstance(self, self.GetStackClass()):
+                    self.state = uiconst.UI_HIDDEN
+                    log.LogInfo('Window.InitializeStatesAndPosition creating new stack while initializing', self.windowID)
+                    stack = uicore.registry.GetStack(stackID, self.GetStackClass())
+                    if stack:
+                        stack.InsertWnd(self, True, showIfInStack, 1)
         locked = self.GetRegisteredState('locked')
         if locked:
-            self.Lock()
-        else:
-            self.Unlock()
+            self.Lock(initing=True)
+        focus = uicore.registry.GetFocus()
+        if not (focus and (isinstance(focus, uicls.EditCore) or isinstance(focus, uicls.SinglelineEditCore))):
+            uthread.new(uicore.registry.SetFocus, self)
         self._SetOpen(True)
+        self.startingup = 0
 
 
 
-    def TryAlignToCornerGroup(self):
-        cornerAlignment = self.GetCornerAlignment()
-        if cornerAlignment:
-            windowGroups = self.GetWindowGroups(checking=1, cornerCheck=1)
-            (corner, wndChainImIn,) = cornerAlignment
-            wndChainImIn = list(wndChainImIn)
-            if corner in windowGroups:
-                if self.windowID in wndChainImIn:
-                    myIdxInChain = wndChainImIn.index(self.windowID)
+    def CheckRealignCornerGroup(self):
+        if settings.user.ui.Get('skipWindowGrouping', 0) or not self.windowGroupingActive:
+            return 
+        myCornerAlignment = self.GetCornerAlignment()
+        log.LogInfo('Window.CheckRealignCornerGroup for', self.windowID, myCornerAlignment)
+        if not myCornerAlignment:
+            return 
+        (cornerName, windowIDs,) = myCornerAlignment
+        return self.RefreshCornerGroupAlignment(cornerName)
+
+
+
+    @classmethod
+    def RefreshCornerGroupAlignment(cls, cornerName):
+        if settings.user.ui.Get('skipWindowGrouping', 0):
+            return 
+        cornerSettings = cls.GetCornerAlignmentSettings(cls)
+        if cornerName not in cornerSettings or cornerName not in CORNER_GROUPS:
+            return 
+        windowIDs = cornerSettings[cornerName]
+        if 'bottom' in cornerName:
+            windowIDs = windowIDs[:]
+            windowIDs.reverse()
+        log.LogInfo('Window.RefreshCornerGroupAlignment', cornerName, windowIDs)
+        (leftpush, rightpush,) = cls.GetSideOffset(cls)
+        (oX, oY,) = cls.GetCornerAlignmentOffset(cornerName)
+        affected = []
+        heightCount = oY
+        for windowID in windowIDs:
+            wnd = uicls.Window.GetIfOpen(windowID=windowID)
+            if not wnd or wnd.IsMinimized() or wnd.InStack() or wnd.state == uiconst.UI_HIDDEN or getattr(wnd, 'isImplanted', False):
+                if wnd:
+                    log.LogInfo('Window.RefreshCornerGroupAlignment window in group didnt qualify', wnd.windowID, 'minimized:', wnd.IsMinimized(), 'instack:', wnd.InStack(), 'hidden:', wnd.state == uiconst.UI_HIDDEN)
                 else:
-                    myIdxInChain = max(0, len(wndChainImIn) - 1)
-                wndsInCorner = list(windowGroups[corner])
-                if corner in ('topright', 'topleft'):
-                    side = 'bottom'
-                    cside = 'top'
-                else:
-                    side = 'top'
-                    cside = 'bottom'
-                    wndsInCorner.reverse()
-                prevWndName = wndsInCorner[max(0, min(len(wndsInCorner) - 1, myIdxInChain - 1))]
-                prevWnd = uicore.registry.GetWindow(prevWndName)
-                if prevWnd and prevWnd != self and prevWnd.windowID in wndChainImIn:
-                    prevWndIdxInChain = wndChainImIn.index(prevWnd.windowID)
-                    if prevWndIdxInChain >= myIdxInChain:
-                        side = cside
-                    prevWnd.AttachWindow(self, side, 0)
-                    return True
-                maxRange = len(wndChainImIn)
-                rnge = [ i for i in xrange(myIdxInChain, maxRange) ]
-                if myIdxInChain > 0:
-                    rnge += [ abs(i - myIdxInChain) - 1 for i in xrange(0, myIdxInChain) ]
-                for idx in rnge:
-                    checkWnd = uicore.registry.GetWindow(wndChainImIn[idx])
-                    if checkWnd and checkWnd != self:
-                        checkWnd.AttachWindow(self, side, 0)
-                        return True
-
-            elif 'top' in corner:
-                self.top = 16
-            elif 'bottom' in corner:
-                self.top = uicore.desktop.height - self.height - 16
-            if 'left' in corner:
-                self.left = 16
-            elif 'right' in corner:
-                self.left = uicore.desktop.width - self.width - 16
-        return False
-
-
-
-    def CheckCorners(self):
-        windowGroups = self.GetWindowGroups(checking=1, cornerCheck=1)
-        current = self.GetCurrentCornerAlignment_()
-        for cornerKey in windowGroups:
-            wndNames = list(windowGroups[cornerKey])
-            if 'bottom' in cornerKey:
-                wndNames.reverse()
-            i = 0
-            for wndName in wndNames:
-                for currentCornerKey in current:
-                    if cornerKey == currentCornerKey:
-                        continue
-                    inCurrentCorner = current[currentCornerKey]
-                    if wndName in inCurrentCorner:
-                        inCurrentCorner.remove(wndName)
-
-                if cornerKey not in ('topright', 'topleft', 'bottomright', 'bottomleft'):
+                    log.LogInfo('Window.RefreshCornerGroupAlignment window in group not found', windowID)
+                continue
+            if wnd:
+                if getattr(wnd, '_dragging', False) or getattr(wnd, '_scaling', False):
+                    log.LogInfo('Window.RefreshCornerGroupAlignment window in group begin dragged or scaled', windowID)
                     continue
-                if cornerKey not in current:
-                    current[cornerKey] = []
-                if wndName not in current[cornerKey]:
-                    current[cornerKey].insert(i, wndName)
-                i += 1
+            log.LogInfo('Window.RefreshCornerGroupAlignment aligning window', wnd.windowID, oY)
+            if 'right' in cornerName:
+                wnd.left = uicore.desktop.width - wnd.width - oX - rightpush
+            else:
+                wnd.left = oX + leftpush
+            if 'bottom' in cornerName:
+                wnd.top = uicore.desktop.height - wnd.height - oY
+            else:
+                wnd.top = oY
+            oY += wnd.height
+            affected.append(wnd)
+
+        return affected
 
 
-        settings.user.windows.Set('windowCornerGroups_1', current)
+
+    def TryAlignToCornerGroup(self, stack = None):
+        if settings.user.ui.Get('skipWindowGrouping', 0) or not self.windowGroupingActive:
+            return 
+        myCornerAlignment = self.GetCornerAlignment()
+        if not myCornerAlignment:
+            return False
+        log.LogInfo('Window.TryAlignToCornerGroup', self.windowID, myCornerAlignment)
+        (cornerName, windowIDs,) = myCornerAlignment
+        self.RefreshCornerGroupAlignment(cornerName)
+        return True
 
 
 
     def GetCornerAlignment(self):
-        if self.windowPrefsID:
-            current = self.GetCurrentCornerAlignment_()
-            for cornerKey in current:
-                if cornerKey and self.windowPrefsID in current[cornerKey]:
-                    return (cornerKey, current[cornerKey])
+        windowID = self.windowID
+        if windowID:
+            current = self.GetCornerAlignmentSettings()
+            for (cornerKey, windowIDs,) in current.iteritems():
+                if windowID in windowIDs:
+                    return (cornerKey, windowIDs)
 
 
 
 
-    def GetCurrentCornerAlignment_(self):
+    @classmethod
+    def GetCornerAlignmentOffset(cls, corner):
+        current = cls.GetCornerAlignmentSettings(cls)
+        for (cornerKey, data,) in current.iteritems():
+            if corner + '_offset' == cornerKey:
+                return data
+
+        return (16, 16)
+
+
+
+    @classmethod
+    def GetCornerAlignmentSettings(cls, *args):
         return settings.user.windows.Get('windowCornerGroups_1', {})
 
 
 
-    def GetWindowGroups(self, refresh = 0, checking = 0, cornerCheck = 0):
-        d = uicore.desktop
-        all = uicore.registry.GetValidWindows(1, floatingOnly=True)
-        knownGroups = {}
-        for wnd in all:
-            if wnd.sr.stack is not None:
-                continue
-            if cornerCheck:
-                wndGroup = wnd.FindConnectingWindows(wnd, 'top', fullSideOnly=True)[1:] + wnd.FindConnectingWindows(wnd, 'bottom', fullSideOnly=True)
-            else:
-                wndGroup = wnd.FindConnectingWindows(wnd)
-            (l, t, r, b,) = self.GetBoundries(wndGroup)
-            sorted = uiutil.SortListOfTuples([ ((_wnd.top, _wnd.left), _wnd) for _wnd in wndGroup ])
-            groupNames = tuple([ _wnd.windowID or _wnd.name for _wnd in sorted if getattr(_wnd, 'registerCornerAlignment', 1) ])
-            if t in (0, 16):
-                side = 'top'
-            elif b in (0, 16):
-                side = 'bottom'
-            else:
-                side = ''
-            if l in (0, 16):
-                side += 'left'
-            elif r in (0, 16):
-                side += 'right'
-            if checking:
-                if side in knownGroups:
-                    if groupNames != knownGroups[side]:
-                        knownGroups[side] += groupNames
-                else:
-                    knownGroups[side] = groupNames
-            elif side:
-                knownGroups[(groupNames, side)] = (l,
-                 t,
-                 r,
-                 b,
-                 d.width,
-                 d.height)
-            else:
-                knownGroups[(groupNames, 'left')] = (l,
-                 t,
-                 r,
-                 b,
-                 d.width,
-                 d.height)
-                knownGroups[(groupNames, 'top')] = (l,
-                 t,
-                 r,
-                 b,
-                 d.width,
-                 d.height)
+    def GetSideOffset(self):
+        return (0, 0)
 
-        return knownGroups
+
+
+    def CheckIfInCornerGroup(self):
+        if not self.windowID:
+            return 
+        if settings.user.ui.Get('skipWindowGrouping', 0) or not self.windowGroupingActive:
+            return 
+        log.LogInfo('Window.CheckIfInCornerGroup', self.windowID)
+        topWindows = self.FindConnectingWindows('top', fullSideOnly=True)
+        topWindows.reverse()
+        bottomWindows = self.FindConnectingWindows('bottom', fullSideOnly=True)
+        windowsAlignedTo = topWindows + bottomWindows[1:]
+        cornerKey = ''
+        cornerXOffset = 0
+        corneryOffset = 0
+        (l, t, r, b,) = self.GetBoundries(windowsAlignedTo)
+        (leftOffset, rightOffset,) = self.GetSideOffset()
+        if l in (leftOffset, leftOffset + 16):
+            cornerKey = 'left'
+            cornerXOffset = l - leftOffset
+        elif r in (rightOffset, rightOffset + 16):
+            cornerKey = 'right'
+            cornerXOffset = r - rightOffset
+        if t in (0, 16):
+            cornerKey = 'top' + cornerKey
+            cornerYOffset = t
+        elif b in (0, 16):
+            cornerKey = 'bottom' + cornerKey
+            cornerYOffset = b
+        log.LogInfo('Window.CheckIfInCornerGroup', self.windowID, 'in corner', cornerKey)
+        allCorners = self.GetCornerAlignmentSettings()
+        if cornerKey in CORNER_GROUPS and len(windowsAlignedTo) > 1:
+            if cornerKey not in allCorners:
+                allCorners[cornerKey] = []
+            startIndex = None
+            for _cornerKey in CORNER_GROUPS:
+                windowIDs = allCorners.get(_cornerKey, [])
+                for each in windowsAlignedTo:
+                    if each.windowID in windowIDs:
+                        if _cornerKey == cornerKey and startIndex is None:
+                            startIndex = windowIDs.index(each.windowID)
+                        windowIDs.remove(each.windowID)
+                        log.LogInfo('Window.CheckIfInCornerGroup, clearing', each.windowID)
+                    isStack = isinstance(each, uicls.WindowStackCore)
+                    if isStack:
+                        for stackedWindow in each.GetWindows():
+                            while stackedWindow.windowID in windowIDs:
+                                windowIDs.remove(stackedWindow.windowID)
+                                log.LogInfo('Window.CheckIfInCornerGroup, clearing stackedWindow', each.windowID)
+
+
+
+
+            currentlyInCorner = allCorners[cornerKey]
+            startIndex = startIndex or 0
+            for each in windowsAlignedTo:
+                currentlyInCorner.insert(startIndex, each.windowID)
+                startIndex += 1
+                isStack = isinstance(each, uicls.WindowStackCore)
+                if isStack:
+                    for stackedWindow in each.GetWindows():
+                        if stackedWindow.windowID:
+                            currentlyInCorner.insert(startIndex, stackedWindow.windowID)
+                            startIndex += 1
+
+
+            log.LogInfo('Window.CheckIfInCornerGroup, registering cornerOffset', cornerKey + '_offset', (cornerXOffset, cornerYOffset))
+            allCorners[cornerKey + '_offset'] = (cornerXOffset, cornerYOffset)
+        else:
+            for cornerKey in CORNER_GROUPS:
+                if cornerKey in allCorners:
+                    windowIDs = allCorners[cornerKey]
+                    for each in windowsAlignedTo:
+                        if each.windowID in windowIDs:
+                            windowIDs.remove(each.windowID)
+                        isStack = isinstance(each, uicls.WindowStackCore)
+                        if isStack:
+                            for stackedWindow in each.GetWindows():
+                                while stackedWindow.windowID in windowIDs:
+                                    windowIDs.remove(stackedWindow.windowID)
+
+
+
+
+        settings.user.windows.Set('windowCornerGroups_1', allCorners)
+        log.LogInfo('Window.CheckIfInCornerGroup result:')
+        for (cornerName, windowIDs,) in allCorners.iteritems():
+            log.LogInfo('cornerName', cornerName)
+            for windowID in windowIDs:
+                log.LogInfo('    windowID', windowID)
+
+
 
 
 
     def RegisterState(self, statename):
-        if self.windowPrefsID is None:
+        if self.windowID is None:
             return 
         val = getattr(self, statename, 'notset')
         if val == 'notset':
             return 
         all = settings.user.windows.Get('%sWindows' % statename[1:], {})
-        all[self.windowPrefsID] = val
+        all[self.windowID] = val
         settings.user.windows.Set('%sWindows' % statename[1:], all)
 
 
 
     def GetRegisteredState(self, statename):
-        if self.windowPrefsID is None:
+        if self.windowID is None:
             return 0
         all = settings.user.windows.Get('%sWindows' % statename, {})
-        if self.windowPrefsID in all:
-            return all[self.windowPrefsID]
+        if self.windowID in all:
+            return all[self.windowID]
         if hasattr(self, 'default_%s' % statename):
             return getattr(self, 'default_%s' % statename)
 
 
 
     def RegisterPositionAndSize(self, key = None):
-        if self.windowPrefsID is None:
+        if self.windowID is None:
             return 
         if self._changing or self.IsMinimized():
             return 
-        stackID = self.GetStackID()
+        if type(self.windowID) == tuple:
+            (windowID, subWindowID,) = self.windowID
+        else:
+            windowID = self.windowID
         if self.sr.stack:
             (l, t,) = (self.sr.stack.left, self.sr.stack.top)
             (w, h,) = (self.sr.stack.width, self.sr.stack.height)
             (cl, ct, cw, ch, cdw, cdh,) = self.sr.stack.GetRegisteredPositionAndSize()
-        elif stackID:
+        elif self.GetStackID():
             return 
         if self.GetAlign() != uiconst.RELATIVE:
             return 
         (l, t,) = (self.left, self.top)
         (w, h,) = (self.width, self.height)
-        (cl, ct, cw, ch, cdw, cdh,) = self.GetRegisteredPositionAndSize()
         if key is not None:
+            (cl, ct, cw, ch, cdw, cdh,) = self.GetRegisteredPositionAndSize()
             if key == 'left':
                 (t, w, h,) = (ct, cw, ch)
             elif key == 'top':
@@ -557,10 +719,16 @@ class WindowCore(uicls.Area):
             elif key == 'height':
                 (l, t, w,) = (cl, ct, cw)
         if self.IsCollapsed():
+            (cl, ct, cw, ch, cdw, cdh,) = self.GetRegisteredPositionAndSize()
             h = ch
         (dw, dh,) = (uicore.desktop.width, uicore.desktop.height)
+        (leftOffset, rightOffset,) = self.GetSideOffset()
+        if l in (leftOffset, leftOffset + 16):
+            l -= leftOffset
+        elif l + w in (dw - rightOffset, dw - rightOffset - 16):
+            l += rightOffset
         all = settings.user.windows.Get('windowSizesAndPositions_1', {})
-        all[self.windowPrefsID] = (l,
+        all[windowID] = (l,
          t,
          w,
          h,
@@ -571,76 +739,6 @@ class WindowCore(uicls.Area):
             for each in self.sr.content.children:
                 each.RegisterPositionAndSize()
 
-
-
-
-    def GetRegisteredPositionAndSize(self):
-        (left, top, width, height,) = self.GetDefaultSizeAndPosition()
-        (cdw, cdh,) = (uicore.desktop.width, uicore.desktop.height)
-        usingDefault = 1
-        if self.windowPrefsID:
-            all = settings.user.windows.Get('windowSizesAndPositions_1', {})
-            if self.windowPrefsID in all:
-                (left, top, width, height, cdw, cdh,) = all[self.windowPrefsID]
-                usingDefault = 0
-        if usingDefault:
-            pushleft = self.GetDefaultLeftOffset(width=width, align=uiconst.CENTER, left=left)
-            if pushleft < 0:
-                left = max(0, left + pushleft)
-            elif pushleft > 0:
-                left = min(left + pushleft, uicore.desktop.width - width)
-        (dw, dh,) = (uicore.desktop.width, uicore.desktop.height)
-        if cdw != dw:
-            wDiff = dw - cdw
-            if left + width in (cdw, cdw - 16):
-                left += wDiff
-            elif left not in (0, 16):
-                oldCenterX = (cdw - width) / 2
-                xPortion = oldCenterX / float(cdw)
-                newCenterX = int(xPortion * dw)
-                cxDiff = newCenterX - oldCenterX
-                left += cxDiff
-        if cdh != dh:
-            hDiff = dh - cdh
-            if top in (0, 16):
-                pass
-            elif top + height in (cdh, cdh - 16):
-                top += hDiff
-            oldCenterY = (cdh - height) / 2
-            yPortion = oldCenterY / float(cdh)
-            newCenterY = int(yPortion * dh)
-            cyDiff = newCenterY - oldCenterY
-            top += cyDiff
-        return (left,
-         top,
-         width,
-         height,
-         dw,
-         dh)
-
-
-
-    def GetDefaultSizeAndPosition(self):
-        dw = uicore.desktop.width
-        dh = uicore.desktop.height
-        width = self.default_width
-        height = self.default_height
-        if self.default_left == '__center__':
-            l = (dw - width) / 2
-        elif self.default_left == '__right__':
-            l = dw - width
-        else:
-            l = self.default_left
-        if self.default_top == '__center__':
-            t = (dh - height) / 2
-        elif self.default_top == '__bottom__':
-            t = dh - height
-        else:
-            t = self.default_top
-        return (l,
-         t,
-         width,
-         height)
 
 
 
@@ -672,53 +770,17 @@ class WindowCore(uicls.Area):
 
 
 
-    def _CloseClick(self, *args):
-        self._SetOpen(False)
-        self.SelfDestruct(checkOthers=1)
-
-
-
-    def SelfDestruct(self, checkStack = 1, checkOthers = 0, checkOutmost = 1, *args):
+    def Close(self, setClosed = False, *args, **kwds):
+        if setClosed:
+            self._SetOpen(False)
         sm.ScatterEvent('OnWindowClosed', self.windowID, self.GetCaption(), self.__guid__)
         if self._ret:
-            self.SetModalResult(uiconst.ID_CLOSE, 'SelfDestruct')
+            self.SetModalResult(uiconst.ID_CLOSE, 'Close')
             return 
-        alignedWindows = []
-        if checkOthers:
-            if checkOutmost:
-                self.CheckIfOutmost()
-            shift = uicore.uilib.Key(uiconst.VK_SHIFT)
-            ctrl = uicore.uilib.Key(uiconst.VK_CONTROL)
-            if shift or ctrl:
-                if shift:
-                    alignedWindows = self.FindConnectingWindows(self)
-                else:
-                    alignedWindows = self.FindConnectingWindows(self, 'bottom')
-        stack = self.sr.stack
-        if getattr(self, 'OnClose_', None):
-            self.OnClose_(self)
-            if self.destroyed:
-                return 
-            self.OnClose_ = None
         self.state = uiconst.UI_HIDDEN
-        if self is not None and not self.destroyed:
-            uicore.registry.CheckMoveActiveState(self)
-            self.Close()
-        if checkStack and stack is not None and not stack.destroyed:
-            stack.Check(checknone=1)
-        for each in alignedWindows:
-            if each == self:
-                continue
-            if not each.destroyed and each._killable:
-                each.SelfDestruct(checkOthers=1)
-
-
-
-
-    def _OnClose(self, *args):
-        uicls.Area._OnClose(self)
-        if not hasattr(self, 'sr'):
-            return 
+        self.CheckRealignCornerGroup()
+        uicore.registry.CheckMoveActiveState(self)
+        uicls.Area.Close(self)
         if self._ret:
             self.SetModalResult(uiconst.ID_CLOSE, '_OnClose')
             return 
@@ -729,62 +791,22 @@ class WindowCore(uicls.Area):
         if self.sr.modalParent is not None and not self.sr.modalParent.destroyed:
             self.sr.modalParent.Close()
         uicore.registry.UnregisterWindow(self)
-        self.OnScale_ = None
-        self.OnStartScale_ = None
-        self.OnEndScale_ = None
-        self.OnMouseDown_ = None
-        self.OnStartMinimize_ = None
-        self.OnEndMinimize_ = None
-        self.OnStartMaximize_ = None
-        self.OnEndMaximize_ = None
-        self.OnDropData = None
-        self.Confirm = None
-        self.OnClose_ = None
-        self.OnResize_ = None
-        self.OnCollapsed = None
-        self.OnExpanded = None
+        stack = self.GetStack()
+        if stack is not None and not stack.destroyed:
+            stack.Check(checknone=1)
 
 
 
-    def CheckIfOutmost(self):
-        if not self or self.destroyed:
-            return 
-        if self.GetAlign() == uiconst.RELATIVE:
-            dh = self.parent.height
-            wnds = self.FindConnectingWindows(self, 'top') + self.FindConnectingWindows(self, 'bottom')
-            if not wnds:
-                return 
-            (gl, gt, gw, gh,) = self.GetGroupAbsolute(wnds)
-            ok = []
-            for each in wnds:
-                if each not in ok and each != self:
-                    ok.append((each.top, each))
-
-            wnds = uiutil.SortListOfTuples(ok)
-            if gt in (0, 16):
-                top = gt
-                for wnd in wnds:
-                    wnd.top = top
-                    top += wnd.height
-
-            elif gt + gh in (dh, dh - 16):
-                bottom = gt + gh
-                wnds.reverse()
-                for wnd in wnds:
-                    bottom -= wnd.height
-                    wnd.top = bottom
-
+    def CloseByUser(self, *args):
+        self.Close(setClosed=True)
 
 
 
     def ShowHeaderButtons(self, refresh = False, *args):
-        if refresh:
-            if self.sr.headerButtons:
-                self.sr.headerButtons.Close()
-                self.sr.headerButtons = None
-            else:
-                return 
-        if self.sr.stack or self.GetAlign() != uiconst.RELATIVE or uicore.uilib.leftbtn:
+        if refresh and self.sr.headerButtons:
+            self.sr.headerButtons.Close()
+            self.sr.headerButtons = None
+        if self.sr.stack or self.GetAlign() != uiconst.TOPLEFT or uicore.uilib.leftbtn:
             return 
         if self.sr.headerParent and self.sr.headerParent.state == uiconst.UI_HIDDEN:
             return 
@@ -796,16 +818,16 @@ class WindowCore(uicls.Area):
                 self.sr.captionParent.padRight = w + 6
             if self.sr.loadingIndicator:
                 self.sr.loadingIndicator.left = w
-        self.sr.headerButtonsTimer = base.AutoTimer(1000, self.CloseHeaderButtons)
+            self.sr.headerButtons.Show()
+            self.sr.headerButtonsTimer = base.AutoTimer(1000, self.CloseHeaderButtons)
 
 
 
     def CloseHeaderButtons(self, *args):
-        if not uicore.uilib.leftbtn and (uicore.uilib.mouseOver is self or uiutil.IsUnder(uicore.uilib.mouseOver, self)):
+        if uicore.uilib.mouseOver is self or uiutil.IsUnder(uicore.uilib.mouseOver, self):
             return 
         if self.sr.headerButtons:
-            self.sr.headerButtons.Close()
-            self.sr.headerButtons = None
+            self.sr.headerButtons.Hide()
         self.sr.headerButtonsTimer = None
         if self.sr.captionParent:
             self.sr.captionParent.padRight = 6
@@ -848,26 +870,27 @@ class WindowCore(uicls.Area):
 
 
     def Blink(self):
+        stack = self.sr.stack
         if self.state == uiconst.UI_HIDDEN and self.sr.tab and hasattr(self.sr.tab, 'Blink'):
             self.sr.tab.Blink(1)
         if self.state == uiconst.UI_HIDDEN and self.sr.minimizedBtn and hasattr(self.sr.minimizedBtn, 'SetBlink'):
             self.sr.minimizedBtn.SetBlink(1)
-        elif self.sr.stack is not None and (self.sr.stack.state != uiconst.UI_NORMAL or self.state != uiconst.UI_NORMAL):
-            if self.sr.stack.sr.minimizedBtn and hasattr(self.sr.stack.sr.minimizedBtn, 'SetBlink'):
-                self.sr.stack.sr.minimizedBtn.SetBlink(1)
+        elif stack is not None and (stack.state != uiconst.UI_NORMAL or self.state != uiconst.UI_NORMAL):
+            if stack.sr.minimizedBtn and hasattr(stack.sr.minimizedBtn, 'SetBlink'):
+                stack.sr.minimizedBtn.SetBlink(1)
 
 
 
     def GetMenu(self, *args):
         menu = []
         if self._killable:
-            menu.append((mls.UI_CMD_CLOSE, self._CloseClick))
+            menu.append((localization.GetByLabel('/Carbon/UI/Common/Close'), self.CloseByUser))
         if not self.sr.stack and self._minimizable:
             if not getattr(self, 'isModal', 0):
                 if self.state == uiconst.UI_NORMAL:
-                    menu.append((mls.UI_CMD_MINIMIZE, self.ToggleVis))
+                    menu.append((localization.GetByLabel('/Carbon/UI/Controls/Window/Minimize'), self.ToggleVis))
                 else:
-                    menu.append((mls.UI_CMD_MAXIMIZE, self.ToggleVis))
+                    menu.append((localization.GetByLabel('/Carbon/UI/Controls/Window/Maximize'), self.ToggleVis))
         return menu
 
 
@@ -881,7 +904,7 @@ class WindowCore(uicls.Area):
                 self.sr.loadingParent.state = uiconst.UI_DISABLED
             if self.sr.loadingIndicator and hasattr(self.sr.loadingIndicator, 'Play'):
                 if not (self.sr.stack or self.GetAlign() != uiconst.RELATIVE):
-                    self.sr.loadingIndicator.sr.hint = mls.UI_GENERIC_LOADING
+                    self.sr.loadingIndicator.sr.hint = localization.GetByLabel('/Carbon/UI/Controls/Window/Loading')
                     self.sr.loadingIndicator.Play()
         if not self.destroyed and self._requesthideload:
             self.HideLoad()
@@ -936,7 +959,7 @@ class WindowCore(uicls.Area):
             if self.top + self.height > uicore.desktop.height:
                 self.top = 0
         else:
-            cameraOffset = self.GetDefaultLeftOffset(self.width, align=uiconst.CENTER, left=0)
+            cameraOffset = self.__class__.GetDefaultLeftOffset(self.width, align=uiconst.CENTER, left=0)
             self.left = (uicore.desktop.width - self.width) / 2 + cameraOffset
             self.top = (uicore.desktop.height - self.height) / 2
 
@@ -953,7 +976,11 @@ class WindowCore(uicls.Area):
 
 
 
-    def SetButtons(self, buttons, okLabel = None, okFunc = None, cancelLabel = None, cancelFunc = None, defaultBtn = None):
+    def SetButtons(self, buttons, okLabel = None, okFunc = None, cancelLabel = None, cancelFunc = None, defaultBtn = None, okModalResult = None):
+        if okLabel is None:
+            okLabel = localization.GetByLabel('UI/Common/Buttons/OK')
+        if cancelLabel is None:
+            cancelLabel = localization.GetByLabel('UI/Common/Buttons/Cancel')
         if self.sr.buttonParent is None:
             self.sr.buttonParent = self.Split(uiconst.SPLITBOTTOM, 24, line=0)
         self.sr.buttonParent.Flush()
@@ -964,15 +991,18 @@ class WindowCore(uicls.Area):
         cancelFunc = cancelFunc or self.ButtonResult
         btns = []
         if buttons in (uiconst.YESNO, uiconst.YESNOCANCEL):
-            btns.append(self.GetButtonData('YES', defaultBtn))
-            btns.append(self.GetButtonData('NO', defaultBtn))
+            yesLabel = localization.GetByLabel('UI/Common/Buttons/Yes')
+            noLabel = localization.GetByLabel('UI/Common/Buttons/No')
+            btns.append(self.GetButtonData('YES', defaultBtn, yesLabel))
+            btns.append(self.GetButtonData('NO', defaultBtn, noLabel))
         if buttons in (uiconst.OKCANCEL, uiconst.YESNOCANCEL):
             btns.append(self.GetButtonData('CANCEL', defaultBtn, cancelLabel, cancelFunc))
         if buttons in (uiconst.OKCLOSE, uiconst.CLOSE):
-            btns.append(self.GetButtonData('CLOSE', defaultBtn, None, self._CloseClick))
+            closeLabel = localization.GetByLabel('UI/Common/Buttons/Close')
+            btns.append(self.GetButtonData('CLOSE', defaultBtn, closeLabel, self.CloseByUser))
         if buttons in (uiconst.OK, uiconst.OKCANCEL, uiconst.OKCLOSE) or not btns:
-            btns.insert(0, self.GetButtonData('OK', defaultBtn, okLabel, okFunc))
-        bg = uicls.ButtonGroup(parent=self.sr.buttonParent.sr.content, buttons=btns, buttonClass=getattr(self, '_buttonClass', uicls.WindowButton))
+            btns.insert(0, self.GetButtonData('OK', defaultBtn, okLabel, okFunc, okModalResult))
+        bg = uicls.ButtonGroup(parent=self.sr.buttonParent.sr.content, btns=btns, buttonClass=getattr(self, '_buttonClass', uicls.Button), line=self.showBottomLine)
         self.sr.buttonParent.height = bg.height + 8
         self.sr.buttonParent.state = uiconst.UI_PICKCHILDREN
 
@@ -983,8 +1013,9 @@ class WindowCore(uicls.Area):
 
 
 
-    def GetButtonData(self, btnStringID, defaultBtnID, label = None, func = None):
-        btnID = getattr(uiconst, 'ID_%s' % btnStringID, -1)
+    def GetButtonData(self, btnStringID, defaultBtnID, label = None, func = None, btnID = None):
+        if btnID is None:
+            btnID = getattr(uiconst, 'ID_%s' % btnStringID, -1)
         bd = uiutil.Bunch()
         bd.label = label or btnStringID
         bd.func = func or self.ButtonResult
@@ -992,17 +1023,23 @@ class WindowCore(uicls.Area):
         bd.btn_modalresult = btnID
         bd.btn_default = bool(btnID == defaultBtnID)
         bd.btn_cancel = bool(btnStringID in ('CANCEL', 'CLOSE'))
-        return bd
+        bdList = [bd.label,
+         bd.func,
+         bd.args,
+         0,
+         bd.btn_modalresult,
+         bd.btn_default,
+         bd.btn_cancel]
+        return bdList
 
 
 
-    def SetModalResult(self, result, caller = None, close = True):
+    def SetModalResult(self, result, caller = None):
         if self._ret:
             uicore.registry.RemoveModalWindow(self)
             self._ret.send(result)
             self._ret = None
-        if close:
-            self.SelfDestruct()
+            self.Close()
 
 
 
@@ -1081,24 +1118,26 @@ class WindowCore(uicls.Area):
 
 
 
-    def Lock(self):
+    def Lock(self, initing = False):
         if self.IsLocked():
             return 
         self._prelockdata = (self._stackable, self._resizeable)
         self.MakeUnstackable()
         self.MakeUnResizeable()
         self._SetLocked(True)
-        self.ShowHeaderButtons(1)
+        if not initing:
+            self.ShowHeaderButtons(1)
 
 
 
-    def Unlock(self):
+    def Unlock(self, initing = False):
         if self._prelockdata:
             (self._stackable, self._resizeable,) = self._prelockdata
             self._prelockdata = None
         self.Prepare_ScaleAreas_()
         self._SetLocked(False)
-        self.ShowHeaderButtons(1)
+        if not initing:
+            self.ShowHeaderButtons(1)
 
 
 
@@ -1147,18 +1186,17 @@ class WindowCore(uicls.Area):
 
 
 
-    def SetCaption(self, caption, delete = 1):
-        self._caption = (self._caption, '')[delete] + caption
+    def SetCaption(self, caption, *args, **kwds):
+        self._caption = caption
         if self.sr.caption is None:
             return 
         self.sr.caption.text = self._caption
         if self.sr.headerParent:
             self.sr.headerParent.height = max(16, self.sr.caption.textheight + 4)
-        if delete:
-            if self.sr.minimizedBtn and hasattr(self.sr.minimizedBtn, 'SetLabel'):
-                self.sr.minimizedBtn.SetLabel(self._caption)
-            if self.sr.tab and hasattr(self.sr.tab, 'SetLabel'):
-                self.sr.tab.SetLabel(self._caption)
+        if self.sr.minimizedBtn and hasattr(self.sr.minimizedBtn, 'SetLabel'):
+            self.sr.minimizedBtn.SetLabel(self._caption)
+        if self.sr.tab and hasattr(self.sr.tab, 'SetLabel'):
+            self.sr.tab.SetLabel(self._caption)
 
 
 
@@ -1194,11 +1232,9 @@ class WindowCore(uicls.Area):
 
 
 
-    def Maximize(self, silent = 0, expandIfCollapsed = True):
-        if self is None or self.destroyed:
+    def Maximize(self, *args, **kwds):
+        if self.destroyed:
             return 
-        if self.sr.stack:
-            return self.sr.stack.Maximize(silent, expandIfCollapsed)
         self._changing = True
         if self.sr.minimizedBtn:
             self.sr.minimizedBtn.Close()
@@ -1211,13 +1247,25 @@ class WindowCore(uicls.Area):
             self._changing = False
             return 
         self.OnStartMaximize_(self)
-        if expandIfCollapsed and self.IsCollapsed():
+        if self.IsCollapsed():
             self.Expand(0)
         self.SetOrder(0)
         self._SetMinimized(False)
         self.state = uiconst.UI_NORMAL
+        if isinstance(self, uicls.WindowStackCore):
+            self.TryAlignToCornerGroup()
+        else:
+            self.InitializeSize()
+            self.InitializeStatesAndPosition()
+        kick = [ w for w in self.Find('trinity.Tr2Sprite2dContainer') + self.Find('trinity.Tr2Sprite2d') if hasattr(w, '_OnResize') ]
+        for each in kick:
+            if hasattr(each, '_OnResize'):
+                each._OnResize()
+
+        uicore.registry.SetFocus(self)
         self.OnEndMaximize_(self)
         self._changing = False
+        sm.ScatterEvent('OnWindowMaximized', self)
 
 
     Show = Maximize
@@ -1228,22 +1276,19 @@ class WindowCore(uicls.Area):
 
 
 
-    def Minimize(self, *args):
+    def Minimize(self, animate = True):
         if self.sr.stack:
-            return self.sr.stack.Minimize()
-        shift = uicore.uilib.Key(uiconst.VK_SHIFT)
-        ctrl = uicore.uilib.Key(uiconst.VK_CONTROL)
-        if shift or ctrl:
+            return self.sr.stack.Minimize(animate=animate)
+        self._Minimize(animate=animate)
+        affected = self.CheckRealignCornerGroup()
+        if affected:
+            shift = uicore.uilib.Key(uiconst.VK_SHIFT)
             if shift:
-                alignedWindows = self.FindConnectingWindows(self)
-            else:
-                alignedWindows = self.FindConnectingWindows(self, 'bottom')
-            for each in alignedWindows:
-                if each == self:
-                    continue
-                self._Minimize(each)
+                for each in affected:
+                    if each is self or each.IsMinimized():
+                        continue
+                    each._Minimize(animate=animate)
 
-        self._Minimize(self)
 
 
 
@@ -1279,57 +1324,65 @@ class WindowCore(uicls.Area):
 
 
 
-    def _Minimize(self, wnd):
-        if not wnd or wnd.destroyed or wnd.IsMinimized() or wnd.sr.minimizedBtn:
+    def _Minimize(self, animate = True):
+        if self.destroyed or self.IsMinimized() or self.sr.minimizedBtn:
             return 
-        wnd.OnStartMinimize_(wnd)
-        wnd._changing = True
-        uicore.registry.CheckMoveActiveState(wnd)
-        btn = uicls.WindowMinimizeButton(parent=uicore.layer.main, name='windowBtn', align=uiconst.BOTTOMLEFT, state=uiconst.UI_NORMAL, pos=(0, 0, 100, 18), idx=0)
-        btn.Startup(wnd)
-        wnd.sr.minimizedBtn = btn
+        self.OnStartMinimize_(self)
+        self._changing = True
+        uicore.registry.CheckMoveActiveState(self)
+        btn = uicls.WindowMinimizeButton(parent=uicore.layer.abovemain, wnd=self, name='windowButton_%s' % repr(self.windowID), align=uiconst.BOTTOMLEFT, state=uiconst.UI_NORMAL, pos=(0, 0, 100, 18), idx=0)
+        self.sr.minimizedBtn = btn
         self.ArrangeMinimizedButtons()
-        if wnd.destroyed:
+        if animate and not self.IsHidden():
+            myPos = self.GetAbsolute()
+            uthread.new(self._DisplayMinimizing, btn, myPos)
+        if self.destroyed:
             return 
-        wnd._SetMinimized(True)
-        wnd.state = uiconst.UI_HIDDEN
-        wnd.OnEndMinimize_(wnd)
-        wnd._changing = False
+        self._SetMinimized(True)
+        self.state = uiconst.UI_HIDDEN
+        self.OnEndMinimize_(self)
+        self._changing = False
+        sm.ScatterEvent('OnWindowMinimized', self)
+
+
+
+    def _DisplayMinimizing(self, button, myPos):
+        (l, t, w, h,) = self.GetAbsolute()
+        frame = uicls.Frame(parent=self.parent, align=uiconst.TOPLEFT, pos=myPos)
+        (fl, ft, fw, fh,) = myPos
+        (tl, tt, tw, th,) = button.GetAbsolute()
+        fromVec = trinity.TriVector(float(fl), float(ft), 0.0)
+        toVec = trinity.TriVector(float(tl), float(tt), 0.0)
+        dist = (fromVec - toVec).Length()
+        try:
+            start = blue.os.GetWallclockTime()
+            time = max(50, min(100.0, dist * 0.33))
+            ndt = 0.0
+            while ndt != 1.0:
+                ndt = min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / time, 1.0)
+                frame.top = int(mathUtil.Lerp(ft, tt, ndt))
+                frame.left = int(mathUtil.Lerp(fl, tl, ndt))
+                frame.width = int(mathUtil.Lerp(fw, tw, ndt))
+                portion = frame.width / float(fw)
+                frame.height = int(fh * portion)
+                blue.pyos.synchro.Yield()
+
+
+        finally:
+            if frame is not None and not frame.destroyed:
+                frame.Close()
+
 
 
 
     def ArrangeMinimizedButtons(self):
         if not self.parent:
             return 
-        l = 0
-        for each in self.parent.children:
+        l = 140
+        for each in uicore.layer.abovemain.children:
             if isinstance(each, uicls.WindowMinimizeButton):
                 each.left = l
                 l += each.width
-
-
-
-
-    def CheckShiftUpwards(self, heightDiff = None):
-        if self.GetAlign() == uiconst.RELATIVE:
-            (pl, pt, pw, ph,) = self.parent.GetAbsolute()
-            bottomwnds = self.FindConnectingWindows(self, 'bottom')
-            topwnds = self.FindConnectingWindows(self, 'top')
-            (bl, bt, bw, bh,) = self.GetGroupAbsolute(bottomwnds + topwnds)
-            if bt in (0, 16):
-                wnds = bottomwnds
-                direction = 1
-            elif bt + bh in (ph, ph - 16):
-                wnds = topwnds
-                direction = -1
-            else:
-                return 
-            h = heightDiff or self.height
-            if len(wnds) > 1:
-                for wnd in wnds[1:]:
-                    if wnd == self:
-                        continue
-                    wnd.top += h * direction
 
 
 
@@ -1346,10 +1399,11 @@ class WindowCore(uicls.Area):
 
     def OnMouseDown(self, *args):
         self.OnMouseDown_(self)
+        self.CloseHeaderButtons()
         if not self.IsLocked():
             self._dragging = True
-            ctrlDragWindows = self.FindConnectingWindows(self, 'bottom')
-            shiftDragWindows = self.FindConnectingWindows(self)
+            ctrlDragWindows = self.FindConnectingWindows('bottom')
+            shiftDragWindows = self.FindConnectingWindows()
             self.PrepareWindowsForMove(shiftDragWindows)
             uthread.new(self.BeginDrag, ctrlDragWindows, shiftDragWindows)
         self.SetOrder(0)
@@ -1384,9 +1438,9 @@ class WindowCore(uicls.Area):
         if self.destroyed or not self._dragging or self._draginited:
             return 
         if ctrlDragWindows is None:
-            ctrlDragWindows = self.FindConnectingWindows(self, 'bottom')
+            ctrlDragWindows = self.FindConnectingWindows('bottom')
         if shiftDragWindows is None:
-            shiftDragWindows = self.FindConnectingWindows(self)
+            shiftDragWindows = self.FindConnectingWindows()
             self.PrepareWindowsForMove(shiftDragWindows)
         snapGrid = None
         snapGroup = None
@@ -1394,7 +1448,7 @@ class WindowCore(uicls.Area):
         (allGrid, myGrid, shiftGrid, ctrlGrid,) = self.CreateSnapGrid(shiftDragWindows, ctrlDragWindows)
         (myRect, shiftRect, ctrlRect,) = self.GetDragClipRects(shiftDragWindows, ctrlDragWindows)
         self._draginited = 1
-        while self and not self.destroyed and self._dragging and uicore.uilib.leftbtn and self.GetAlign() == uiconst.RELATIVE:
+        while not self.destroyed and self._dragging and uicore.uilib.leftbtn and self.GetAlign() == uiconst.RELATIVE:
             self.state = uiconst.UI_DISABLED
             shift = uicore.uilib.Key(uiconst.VK_SHIFT)
             ctrl = uicore.uilib.Key(uiconst.VK_CONTROL)
@@ -1450,6 +1504,7 @@ class WindowCore(uicls.Area):
             self.state = uiconst.UI_NORMAL
         if not self.destroyed:
             self._draginited = 0
+        self.CheckIfInCornerGroup()
 
 
 
@@ -1470,51 +1525,19 @@ class WindowCore(uicls.Area):
 
 
 
-    def Debug_ShowSnapGrid(self, grid):
-        self.CleanupParent('axeindicator')
-        if grid and self.parent:
-            (hAxes, vAxes,) = grid
-            (pl, pt, pw, ph,) = self.parent.GetAbsolute()
-            for y in hAxes:
-                uicls.Fill(parent=self.parent, name='axeindicator', pos=(0,
-                 y,
-                 pw,
-                 1), align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, color=(0.0, 1.0, 0.0, 1.0))
-
-            for x in vAxes:
-                uicls.Fill(parent=self.parent, name='axeindicator', pos=(x,
-                 0,
-                 1,
-                 ph), align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, color=(0.0, 1.0, 0.0, 1.0))
-
-
-
-
-    def Debug_UpdateMinMaxScalingRect(self, minMax):
-        scalingRect = uiutil.FindChild(self.parent, 'scalingRect')
-        if scalingRect is None:
-            scalingRect = uicls.Frame(parent=self.parent, color=(0.0, 0.0, 1.0, 1.0), align=uiconst.TOPLEFT, name='scalingRect')
-        if minMax is None:
-            scalingRect.state = uiconst.UI_HIDDEN
-            return 
-        (l, t, r, b,) = minMax
-        scalingRect.left = l
-        scalingRect.top = t
-        scalingRect.width = r - l
-        scalingRect.height = b - t
-        scalingRect.state = uiconst.UI_DISABLED
-        scalingRect.SetOrder(0)
-
-
-
     def CreateSnapGrid(self, shiftGroup = None, ctrlGroup = None):
+        (leftOffset, rightOffset,) = self.GetSideOffset()
         allWnds = self.GetOtherWindows()
         desk = uicore.desktop
         hAxes = [0,
          desk.height,
          16,
          desk.height - 16]
-        vAxes = [0, desk.width, desk.width - 16]
+        vAxes = [0,
+         leftOffset,
+         leftOffset + 16,
+         desk.width - rightOffset,
+         desk.width - 16 - rightOffset]
         hAxesWithOutMe = hAxes[:]
         vAxesWithOutMe = vAxes[:]
         hAxesWithOutShiftGroup = hAxes[:]
@@ -1554,101 +1577,6 @@ class WindowCore(uicls.Area):
             minusShiftGroup.append(val)
         if ctrlgroup and wnd not in ctrlgroup and val not in minusCtrlGroup:
             minusCtrlGroup.append(val)
-
-
-
-    def AttachWindow(self, wnd, side, chain = 1, chainOrder = None):
-        alignedWindows = self.FindConnectingWindows(self, side)
-        removeFrom = None
-        if wnd in alignedWindows:
-            removeFrom = alignedWindows
-        elif side in ('top', 'bottom'):
-            removeFrom = self.FindConnectingWindows(self, 'top') + self.FindConnectingWindows(self, 'bottom')
-        elif side in ('left', 'right'):
-            removeFrom = self.FindConnectingWindows(self, 'left') + self.FindConnectingWindows(self, 'right')
-
-        def FilterWnds(wnds, side):
-            valid = []
-            done = []
-            for w in wnds:
-                if w not in done:
-                    if side in ('top', 'bottom'):
-                        valid.append((w.top, w))
-                    else:
-                        valid.append((w.left, w))
-                    done.append(w)
-
-            return uiutil.SortListOfTuples(valid)
-
-
-        removeFrom = FilterWnds(removeFrom, side)
-        (pgl, pgt, pgw, pgh,) = self.GetGroupAbsolute(removeFrom)
-        if removeFrom and wnd in removeFrom:
-            idx = removeFrom.index(wnd)
-            for awnd in removeFrom[(idx + 1):]:
-                if side in ('bottom', 'top'):
-                    awnd.top -= wnd.height
-                if side in ('left', 'right'):
-                    awnd.left -= wnd.width
-
-            wnd.state = uiconst.UI_HIDDEN
-            alignedWindows = self.FindConnectingWindows(self, side)
-        wnd.state = uiconst.UI_NORMAL
-        if chain:
-            attachTo = alignedWindows[-1]
-        else:
-            attachTo = alignedWindows[0]
-            if attachTo != self:
-                return 
-        if side == 'bottom':
-            wnd.left = attachTo.left
-            wnd.top = attachTo.top + attachTo.height
-        elif side == 'left':
-            wnd.left = attachTo.left - attachTo.width
-            wnd.top = attachTo.top
-        elif side == 'right':
-            wnd.left = attachTo.left + attachTo.width
-            wnd.top = attachTo.top
-        elif side == 'top':
-            wnd.left = attachTo.left
-            wnd.top = attachTo.top - wnd.height
-        if not chain:
-            for awnd in alignedWindows[1:]:
-                if awnd == wnd:
-                    continue
-                if side == 'bottom':
-                    awnd.top += wnd.height
-                elif side == 'left':
-                    awnd.left -= wnd.width
-                elif side == 'right':
-                    awnd.left += wnd.width
-                elif side == 'top':
-                    awnd.top -= wnd.height
-
-        if side in ('top', 'bottom'):
-            alignedWindows = self.FindConnectingWindows(self, 'top') + self.FindConnectingWindows(self, 'bottom')
-        elif side in ('left', 'right'):
-            alignedWindows = self.FindConnectingWindows(self, 'left') + self.FindConnectingWindows(self, 'right')
-        (gl, gt, gw, gh,) = self.GetGroupAbsolute(alignedWindows)
-        diffY = 0
-        diffX = 0
-        (pl, pt, pw, ph,) = self.parent.GetAbsolute()
-        if gt < 0:
-            diffY = abs(gt)
-        elif gt + gh > ph:
-            diffY = ph - (gt + gh)
-        if gl < 0:
-            diffX = abs(gl)
-        elif gl + gw > pw:
-            diffX = pw - (gl + gw)
-        done = []
-        for wnd in alignedWindows:
-            if wnd in done:
-                continue
-            wnd.top += diffY
-            wnd.left += diffX
-            done.append(wnd)
-
 
 
 
@@ -1778,15 +1706,6 @@ class WindowCore(uicls.Area):
 
 
 
-    def IndicateScaleSnap(self, wnd, side, offsetX = 0, offsetY = 0):
-        indicator = uiutil.FindChild(wnd, side)
-        if indicator:
-            indicator.children[0].state = uiconst.UI_DISABLED
-            indicator.children[0].left = offsetX
-            indicator.children[0].top = offsetY
-
-
-
     def IndicateStackable(self, over):
         if not over or not self.IsStackable():
             if self.sr.stackIndicator:
@@ -1888,6 +1807,19 @@ class WindowCore(uicls.Area):
             if bSnap is not None:
                 uiutil.GetChild(snapIndicator, 'sBottom').state = uiconst.UI_DISABLED
             snapIndicator.state = uiconst.UI_DISABLED
+        (leftOffset, rightOffset,) = self.GetSideOffset()
+        cornerSnap = ''
+        if tSnap in (0, 16):
+            cornerSnap = 'top'
+        elif bSnap in (uicore.desktop.height, uicore.desktop.height - 16):
+            cornerSnap = 'bottom'
+        if cornerSnap:
+            if lSnap in (leftOffset, leftOffset + 16):
+                cornerSnap = cornerSnap + 'left'
+            elif rSnap in (uicore.desktop.width, uicore.desktop.width - 16):
+                cornerSnap = cornerSnap + 'right'
+        if cornerSnap in CORNER_GROUPS:
+            pass
         if doSnap:
             scaleX = float(w) / gw
             scaleY = float(h) / gh
@@ -1903,64 +1835,19 @@ class WindowCore(uicls.Area):
             for wnd in snapGroup:
                 if wnd._fixedHeight and wnd.height != wnd._fixedHeight:
                     diff = wnd.height - wnd._fixedHeight
-                    bottomAlignedWindows = self.FindConnectingWindows(wnd, 'bottom')
+                    bottomAlignedWindows = wnd.FindConnectingWindows('bottom')
                     wnd.height -= diff
                     for each in bottomAlignedWindows[1:]:
                         each.top -= diff
 
                 if wnd._fixedWidth and wnd.width != wnd._fixedWidth:
                     diff = wnd.width - wnd._fixedWidth
-                    rightAlignedWindows = self.FindConnectingWindows(wnd, 'right')
+                    rightAlignedWindows = wnd.FindConnectingWindows('right')
                     wnd.width -= diff
                     for each in rightAlignedWindows[1:]:
                         each.left -= diff
 
 
-
-
-
-    def FindWindowsImAlignedTo(self, side = None):
-        validWnds = self.GetOtherWindows()
-        (l, t, w, h,) = self.GetAbsolute()
-        if side:
-            wnds = []
-            for wnd in validWnds:
-                (wl, wt, ww, wh,) = wnd.GetAbsolute()
-                if side == 'left':
-                    if wl == l:
-                        wnds.append((wnd, 'left'))
-                    elif wl + ww == l:
-                        wnds.append((wnd, 'right'))
-                elif side == 'right':
-                    if wl + ww == l + w:
-                        wnds.append((wnd, 'right'))
-                    elif wl == l + w:
-                        wnds.append((wnd, 'left'))
-
-            return wnds
-        wnds = []
-        myCorners = [(l, t),
-         (l + w, t),
-         (l, t + h),
-         (l + w, t + h)]
-        for wnd in validWnds:
-            (wl, wt, ww, wh,) = wnd.GetAbsolute()
-            wndCorners = ((wl, wt),
-             (wl + ww, wt),
-             (wl, wt + wh),
-             (wl + ww, wt + wh))
-            for c in wndCorners:
-                if c in myCorners:
-                    if wnd not in wnds:
-                        wnds.append(wnd)
-                    for c2 in wndCorners:
-                        if c2 not in myCorners:
-                            myCorners.append(c2)
-
-                    break
-
-
-        return wnds
 
 
 
@@ -2001,11 +1888,11 @@ class WindowCore(uicls.Area):
     def OnMouseUp(self, *args):
         self.ClearStackIndication()
         self.CleanupParent('snapIndicator')
+        self.ShowHeaderButtons()
         uicore.uilib.UnclipCursor()
         self._dragging = 0
         self._draginited = 0
         self.RegisterPositionAndSize()
-        self.CheckCorners()
 
 
 
@@ -2028,7 +1915,7 @@ class WindowCore(uicls.Area):
 
 
     def ResetToggleState(self):
-        uicore.toggleState = None
+        uicore.registry.toggleState = None
 
 
 
@@ -2046,46 +1933,23 @@ class WindowCore(uicls.Area):
 
 
 
-    def Collapse(self, forceCollapse = False, checkchain = 1, *args):
-        if not self.parent or not self._collapseable or not forceCollapse and self.IsCollapsed():
+    def Collapse(self, *args, **kwds):
+        if not self.parent or not self._collapseable or self.IsCollapsed():
             return 
         if self.sr.stack:
-            return self.sr.stack.Collapse(forceCollapse, checkchain, *args)
-        bottomAlignedWindows = self.FindConnectingWindows(self, 'bottom')
-        allAlignedWindows = self.FindConnectingWindows(self)
-        (gl, gt, gw, gh,) = self.GetGroupAbsolute(allAlignedWindows)
+            return self.sr.stack.Collapse()
         ch = self.GetCollapsedHeight()
         heightDiff = self.height - ch
         self._SetCollapsed(True)
         self._LockHeight(ch)
-        alignedToBottom = False
-        alignedToTop = False
-        (pl, pt, pw, ph,) = self.parent.GetAbsolute()
-        if gt in (0, 16):
-            alignedToTop = True
-        elif gt + gh in (ph, ph - 16):
-            alignedToBottom = True
-        if alignedToBottom:
-            topAlignedWindows = self.FindConnectingWindows(self, 'top')
-            for wnd in topAlignedWindows:
-                wnd.top += heightDiff
-
-        else:
-            for wnd in bottomAlignedWindows:
-                if wnd == self:
-                    continue
-                wnd.top -= heightDiff
-
-        shift = uicore.uilib.Key(uiconst.VK_SHIFT)
-        ctrl = uicore.uilib.Key(uiconst.VK_CONTROL)
-        if checkchain and (shift or ctrl):
+        affected = self.CheckRealignCornerGroup()
+        if affected:
+            shift = uicore.uilib.Key(uiconst.VK_SHIFT)
             if shift:
-                affected = self.FindConnectingWindows(self)
-            elif ctrl:
-                affected = bottomAlignedWindows
-            for each in affected:
-                if each != self:
-                    each.Collapse(checkchain=0)
+                for each in affected:
+                    if each is self:
+                        continue
+                    each.Collapse()
 
         if self.sr.headerLine:
             self.sr.headerLine.state = uiconst.UI_HIDDEN
@@ -2109,58 +1973,24 @@ class WindowCore(uicls.Area):
 
 
 
-    def Expand(self, checkchain = 1, *args):
-        if not self.parent:
+    def Expand(self, *args):
+        if not self.parent or not self.IsCollapsed():
             return 
         if self.sr.stack:
-            return self.sr.stack.Expand(checkchain, *args)
+            return self.sr.stack.Expand(*args)
         self.UnlockHeight()
-        bottomAlignedWindows = self.FindConnectingWindows(self, 'bottom')
-        (gl, gt, gw, gh,) = self.GetGroupAbsolute(bottomAlignedWindows)
-        (pl, pt, pw, ph,) = self.parent.GetAbsolute()
-        alignedToBottom = False
-        if gt + gh in (ph, ph - 16):
-            alignedToBottom = True
         (left, top, width, height, dw, dh,) = self.GetRegisteredPositionAndSize()
-        _h = height
         height = max(height, self.GetMinHeight())
-        heightDiff = height - self.height
         self._SetCollapsed(False)
         self.height = height
-        if alignedToBottom:
-            topAlignedWindows = self.FindConnectingWindows(self, 'top')
-            for wnd in topAlignedWindows:
-                wnd.top -= heightDiff
-
-        else:
-            overshot = 0
-            for wnd in bottomAlignedWindows:
-                if wnd == self:
-                    continue
-                wnd.top += heightDiff
-                if wnd.top + wnd.height > uicore.desktop.height:
-                    overshot = wnd.top + wnd.height - uicore.desktop.height
-
-            if overshot:
-                myMinH = self.GetMinHeight()
-                shrinkTo = max(myMinH, self.height - overshot)
-                diff = self.height - shrinkTo
-                self.height = shrinkTo
-                for wnd in bottomAlignedWindows:
-                    if wnd == self:
-                        continue
-                    wnd.top -= diff
-
-        shift = uicore.uilib.Key(uiconst.VK_SHIFT)
-        ctrl = uicore.uilib.Key(uiconst.VK_CONTROL)
-        if checkchain and (shift or ctrl):
+        affected = self.CheckRealignCornerGroup()
+        if affected:
+            shift = uicore.uilib.Key(uiconst.VK_SHIFT)
             if shift:
-                affected = self.FindConnectingWindows(self)
-            elif ctrl:
-                affected = bottomAlignedWindows
-            for each in affected:
-                if each != self:
-                    each.Expand(0)
+                for each in affected:
+                    if each is self:
+                        continue
+                    each.Expand()
 
         if self.sr.headerLine:
             self.sr.headerLine.state = uiconst.UI_DISABLED
@@ -2197,7 +2027,7 @@ class WindowCore(uicls.Area):
                 for wnd in drop.sr.content.children[:]:
                     self.InsertWnd(wnd, 0, 1)
 
-                drop.SelfDestruct()
+                drop.Close()
             return 
         if self.state != uiconst.UI_HIDDEN:
             wnds = [(self, 0)]
@@ -2248,26 +2078,8 @@ class WindowCore(uicls.Area):
 
     def SetHeight(self, height):
         if self.GetAlign() == uiconst.RELATIVE and height != self.height:
-            (pl, pt, pw, ph,) = self.parent.GetAbsolute()
-            height = max(self.GetMinHeight(), height)
-            diff = self.height - height
-            if self.top + self.height in (ph, ph - 16):
-                wnds = self.FindConnectingWindows(self, 'top')
-                if len(wnds) > 1:
-                    for wnd in wnds[1:]:
-                        wnd.top += diff
-
-                self.top += diff
-            else:
-                wnds = self.FindConnectingWindows(self, 'bottom')
-                (bl, bt, br, bb,) = self.GetGroupRect(wnds)
-                if bb < ph:
-                    maxDiff = min(ph - bb, diff)
-                    if len(wnds) > 1:
-                        for wnd in wnds[1:]:
-                            wnd.top -= maxDiff
-
             self.height = height
+            self.CheckRealignCornerGroup()
 
 
 
@@ -2298,56 +2110,6 @@ class WindowCore(uicls.Area):
         if self._fixedHeight:
             return self._fixedHeight
         return self.maxsize[1] or sys.maxint
-
-
-
-    def SortScaleWindows(self, sides):
-        wnds = []
-        for side in sides:
-            wnds += self.FindConnectingWindows(self, side, getParallelSides=1)
-
-        self.PrepareWindowsForMove(wnds)
-        (ml, mt, mw, mh,) = self.GetAbsolute()
-        scaleWidthMeH = []
-        scaleWidthMeV = []
-        onLeft = []
-        onRight = []
-        onBottom = []
-        onTop = []
-        all = [self]
-        scaleAbove = []
-        for wnd in wnds:
-            if wnd == self or wnd in all:
-                continue
-            (l, t, w, h,) = wnd.GetAbsolute()
-            if l == ml and w == mw:
-                scaleWidthMeH.append(wnd)
-            elif l >= ml + mw:
-                onRight.append(wnd)
-            elif l + w <= ml:
-                onLeft.append(wnd)
-            elif 'right' in sides:
-                onRight.append(wnd)
-            elif 'left' in sides:
-                onLeft.append(wnd)
-            if t == mt and h == mh:
-                scaleWidthMeV.append(wnd)
-            elif t >= mt + mh:
-                onBottom.append(wnd)
-            elif t + h == mt and 'top' in sides:
-                scaleAbove.append(wnd)
-            elif t == mt and 'top' in sides:
-                onTop.append(wnd)
-            all.append(wnd)
-
-        return (scaleWidthMeH,
-         scaleWidthMeV,
-         scaleAbove,
-         onLeft,
-         onRight,
-         onTop,
-         onBottom,
-         all)
 
 
 
@@ -2389,10 +2151,10 @@ class WindowCore(uicls.Area):
 
 
 
-    def FindConnectingWindows(self, fromWnd, fromSide = None, wnds = None, validWnds = None, getParallelSides = 0, fullSideOnly = 0):
+    def FindConnectingWindows(self, fromSide = None, wnds = None, validWnds = None, getParallelSides = 0, fullSideOnly = 0):
         if validWnds is None:
             validWnds = self.GetOtherWindows(useMe=True, checkAlign=True)
-        (l, t, w, h,) = fromWnd.GetAbsolute()
+        (l, t, w, h,) = self.GetAbsolute()
         fromWndCorners = [(l, t),
          (l + w, t),
          (l + w, t + h),
@@ -2423,8 +2185,8 @@ class WindowCore(uicls.Area):
              (2, 1),
              (3, 0)]
         wnds = wnds or []
-        if fromWnd not in wnds:
-            wnds.append(fromWnd)
+        if self not in wnds:
+            wnds.append(self)
         for wnd in validWnds:
             if wnd in wnds:
                 continue
@@ -2440,9 +2202,9 @@ class WindowCore(uicls.Area):
                 if c1Pos == c2Pos:
                     if not fullSideOnly or m == 1:
                         if getParallelSides:
-                            self.FindConnectingWindows(wnd, None, wnds, validWnds, getParallelSides, fullSideOnly)
+                            wnd.FindConnectingWindows(None, wnds, validWnds, getParallelSides, fullSideOnly)
                         else:
-                            self.FindConnectingWindows(wnd, fromSide, wnds, validWnds, getParallelSides, fullSideOnly)
+                            wnd.FindConnectingWindows(fromSide, wnds, validWnds, getParallelSides, fullSideOnly)
                         break
                     m += 1
 
@@ -2593,7 +2355,7 @@ class WindowCore(uicls.Area):
 
 
     def StartScale(self, sender, btn, *args):
-        if btn == uiconst.MOUSELEFT:
+        if btn == uiconst.MOUSELEFT and self.IsResizeable():
             self.scaleSides = self.GetSidesFromScalerName(sender.name)
             self.sortedScaleWindows = self.SortScaleWindows(self.scaleSides)
             self.minmaxScale = self.FindMinMaxScaling(self.scaleSides)
@@ -2601,6 +2363,56 @@ class WindowCore(uicls.Area):
             self.OnStartScale_(self)
             self._scaling = True
             uthread.new(self.OnScale, sender)
+
+
+
+    def SortScaleWindows(self, sides):
+        wnds = []
+        for side in sides:
+            wnds += self.FindConnectingWindows(side, getParallelSides=1)
+
+        self.PrepareWindowsForMove(wnds)
+        (ml, mt, mw, mh,) = self.GetAbsolute()
+        scaleWidthMeH = []
+        scaleWidthMeV = []
+        onLeft = []
+        onRight = []
+        onBottom = []
+        onTop = []
+        all = [self]
+        scaleAbove = []
+        for wnd in wnds:
+            if wnd == self or wnd in all:
+                continue
+            (l, t, w, h,) = wnd.GetAbsolute()
+            if l == ml and w == mw:
+                scaleWidthMeH.append(wnd)
+            elif l >= ml + mw:
+                onRight.append(wnd)
+            elif l + w <= ml:
+                onLeft.append(wnd)
+            elif 'right' in sides:
+                onRight.append(wnd)
+            elif 'left' in sides:
+                onLeft.append(wnd)
+            if t == mt and h == mh:
+                scaleWidthMeV.append(wnd)
+            elif t >= mt + mh:
+                onBottom.append(wnd)
+            elif t + h == mt and 'top' in sides:
+                scaleAbove.append(wnd)
+            elif t == mt and 'top' in sides:
+                onTop.append(wnd)
+            all.append(wnd)
+
+        return (scaleWidthMeH,
+         scaleWidthMeV,
+         scaleAbove,
+         onLeft,
+         onRight,
+         onTop,
+         onBottom,
+         all)
 
 
 
@@ -2676,53 +2488,7 @@ class WindowCore(uicls.Area):
             self.ShowSnapEdges_Scaling(snapGrid)
             self.OnScale_(self)
             uicls.Area._OnResize(self)
-            blue.pyos.synchro.Sleep(1)
-
-
-
-
-    def AdjustScaleWindowsAfterSnapping(self):
-        shift = uicore.uilib.Key(uiconst.VK_SHIFT)
-        if not shift:
-            return 
-        (scaleH, scaleV, scaleAbove, followL, followR, followT, followB, all,) = self.sortedScaleWindows
-        (spdl, spdt, spdw, spdh,) = self.preDragAbs
-        (l, t, w, h,) = self.GetAbsolute()
-        dl = l - spdl
-        dt = t - spdt
-        dw = w - spdw
-        dh = h - spdh
-        for wnd in scaleH:
-            (wpdl, wpdt, wpdw, wpdh,) = wnd.preDragAbs
-            wnd.left = wpdl + dl
-            if wnd.IsResizeable():
-                wnd.width = wnd._fixedWidth or wpdw + dw
-
-        if 'right' in self.scaleSides:
-            for wnd in followR:
-                (wpdl, wpdt, wpdw, wpdh,) = wnd.preDragAbs
-                wnd.left = wpdl + dw
-
-        elif 'left' in self.scaleSides:
-            for wnd in followL:
-                (wpdl, wpdt, wpdw, wpdh,) = wnd.preDragAbs
-                wnd.left = wpdl + dl
-
-        for wnd in scaleV:
-            (wpdl, wpdt, wpdw, wpdh,) = wnd.preDragAbs
-            if wnd.IsResizeable():
-                wnd.height = wnd._fixedHeight or wpdh + dh
-            wnd.top = wpdt + dt
-
-        if 'bottom' in self.scaleSides:
-            for wnd in followB:
-                (wpdl, wpdt, wpdw, wpdh,) = wnd.preDragAbs
-                wnd.top = wpdt + dh
-
-        elif 'top' in self.scaleSides:
-            for wnd in followT:
-                (wpdl, wpdt, wpdw, wpdh,) = wnd.preDragAbs
-                wnd.top = wpdt + dt
+            blue.pyos.synchro.SleepWallclock(1)
 
 
 
@@ -2734,61 +2500,17 @@ class WindowCore(uicls.Area):
         if self.destroyed:
             return 
         if self.snapGrid:
-            if uicore.uilib.Key(uiconst.VK_SHIFT):
-                snapGrid = self.snapGrid[2]
-            else:
-                snapGrid = self.snapGrid[1]
+            snapGrid = self.snapGrid[1]
             self.ShowSnapEdges_Scaling(snapGrid, showSnap=False, doSnap=True)
-            self.AdjustScaleWindowsAfterSnapping()
         self.RegisterPositionAndSize()
-        self.CheckCorners()
+        self.CheckIfInCornerGroup()
+        self.ShowHeaderButtons()
         self.OnEndScale_(self)
-
-
-
-    def GetBoundries(self, wnds):
-        d = uicore.desktop
-        (dw, dh,) = (d.width, d.height)
-        (l, t, r, b,) = self.GetGroupRect(wnds)
-        return (l,
-         t,
-         dw - r,
-         dh - b)
-
-
-
-    def GetGroupRect(self, group, getAbsolute = 0):
-        if not len(group):
-            return (0, 0, 0, 0)
-        (l, t, w, h,) = group[0].GetAbsolute()
-        r = l + w
-        b = t + h
-        for wnd in group[1:]:
-            (wl, wt, ww, wh,) = wnd.GetAbsolute()
-            l = min(l, wl)
-            t = min(t, wt)
-            r = max(r, wl + ww)
-            b = max(b, wt + wh)
-
-        if getAbsolute:
-            return (l,
-             t,
-             r - l,
-             b - t)
-        return (l,
-         t,
-         r,
-         b)
 
 
 
     def GetGroupAbsolute(self, group):
         return self.GetGroupRect(group, 1)
-
-
-
-    def GetDefaultLeftOffset(self, *args, **kw):
-        return 0
 
 
 
@@ -2842,11 +2564,6 @@ class WindowCore(uicls.Area):
 
 
 
-    def OnClose_(self, *args):
-        pass
-
-
-
     def UpdateCaption_(self, *args):
         pass
 
@@ -2871,15 +2588,248 @@ class WindowCore(uicls.Area):
         pass
 
 
-    l = locals()
-    all = l.keys()
-    all.sort()
-    o = 'Overwriteables:\n'
-    for each in all:
-        if each.endswith('_') and not each.endswith('__'):
-            o += each + '\n'
 
-    __doc__ = o
+    def GetIntersectingWindows(self):
+        all = uicore.registry.GetWindows()
+        (ml, mt, mw, mh,) = self.GetAbsolute()
+        intersecting = []
+        for otherWindow in all:
+            if otherWindow is self:
+                continue
+            if otherWindow.GetStack():
+                continue
+            if otherWindow.IsHidden():
+                continue
+            (ol, ot, ow, oh,) = otherWindow.GetAbsolute()
+            if not (ml <= ol < ml + mw or ml < ol + ow <= ml + mw or ml >= ol and ol + ow > ml + mw):
+                continue
+            if not (mt <= ot < mt + mh or mt < ot + oh <= mt + mh or mt >= ot and ot + oh > mt + mh):
+                continue
+            intersecting.append(otherWindow)
+
+        return intersecting
+
+
+
+    @classmethod
+    def GetIfOpen(cls, windowID = None):
+        if windowID:
+            checkForWindowID = windowID
+        else:
+            checkForWindowID = cls.default_windowID
+        if checkForWindowID:
+            wnd = uicore.registry.GetWindow(checkForWindowID)
+            return wnd
+
+
+
+    @classmethod
+    def CloseIfOpen(cls, windowID = None):
+        wnd = cls.GetIfOpen(windowID)
+        if wnd:
+            wnd.Close()
+
+
+
+    @classmethod
+    def Open(cls, *args, **kwds):
+        wnd = cls.GetIfOpen(windowID=kwds.get('windowID', None))
+        if wnd:
+            wnd.Maximize()
+            return wnd
+        newWindow = cls(**kwds)
+        return newWindow
+
+
+
+    @classmethod
+    def ToggleOpenClose(cls, *args, **kwds):
+        wnd = cls.GetIfOpen(windowID=kwds.get('windowID', None))
+        if wnd:
+            if wnd.IsMinimized():
+                wnd.Maximize()
+                return wnd
+            wnd.Close()
+        else:
+            return cls.Open(*args, **kwds)
+
+
+
+    @classmethod
+    def IsOpen(cls, windowID = None):
+        wnd = cls.GetIfOpen(windowID)
+        return bool(wnd)
+
+
+
+    @classmethod
+    def GetRegisteredOrDefaultStackID(cls, windowID = None):
+        windowID = windowID or cls.default_windowID
+        if windowID:
+            all = settings.user.windows.Get('stacksWindows', {})
+            if windowID in all:
+                return all[windowID]
+            return all.get(windowID, cls.default_stackID)
+
+
+
+    def GetRegisteredPositionAndSize(self):
+        return self.GetRegisteredPositionAndSizeByClass(self.windowID)
+
+
+
+    @classmethod
+    def GetRegisteredPositionAndSizeByClass(cls, windowID = None):
+        windowID = windowID or cls.default_windowID
+        if type(windowID) == tuple:
+            (windowID, subWindowID,) = windowID
+        all = settings.user.windows.Get('windowSizesAndPositions_1', {})
+        usingDefault = 1
+        if windowID and windowID in all:
+            (left, top, width, height, cdw, cdh,) = all[windowID]
+            usingDefault = 0
+        else:
+            (cdw, cdh,) = (uicore.desktop.width, uicore.desktop.height)
+        if usingDefault:
+            (left, top, width, height,) = cls.GetDefaultSizeAndPosition()
+            pushleft = cls.GetDefaultLeftOffset(width=width, align=uiconst.CENTER, left=left)
+            if pushleft < 0:
+                left = max(0, left + pushleft)
+            elif pushleft > 0:
+                left = min(left + pushleft, uicore.desktop.width - width)
+        (dw, dh,) = (uicore.desktop.width, uicore.desktop.height)
+        if cdw != dw:
+            wDiff = dw - cdw
+            if left + width in (cdw, cdw - 16):
+                left += wDiff
+            elif left not in (0, 16):
+                oldCenterX = (cdw - width) / 2
+                xPortion = oldCenterX / float(cdw)
+                newCenterX = int(xPortion * dw)
+                cxDiff = newCenterX - oldCenterX
+                left += cxDiff
+        if cdh != dh:
+            hDiff = dh - cdh
+            if top in (0, 16):
+                pass
+            elif top + height in (cdh, cdh - 16):
+                top += hDiff
+            oldCenterY = (cdh - height) / 2
+            yPortion = oldCenterY / float(cdh)
+            newCenterY = int(yPortion * dh)
+            cyDiff = newCenterY - oldCenterY
+            top += cyDiff
+        return (left,
+         top,
+         width,
+         height,
+         dw,
+         dh)
+
+
+
+    @classmethod
+    def GetBoundries(cls, wnds, dw = None, dh = None):
+        d = uicore.desktop
+        dw = dw or d.width
+        dh = dh or d.height
+        (l, t, r, b,) = cls.GetGroupRect(wnds)
+        return (l,
+         t,
+         dw - r,
+         dh - b)
+
+
+
+    @classmethod
+    def GetGroupRect(cls, group, getAbsolute = 0):
+        if not len(group):
+            return (0, 0, 0, 0)
+        (l, t, w, h,) = group[0].GetAbsolute()
+        r = l + w
+        b = t + h
+        for wnd in group[1:]:
+            (wl, wt, ww, wh,) = wnd.GetAbsolute()
+            l = min(l, wl)
+            t = min(t, wt)
+            r = max(r, wl + ww)
+            b = max(b, wt + wh)
+
+        if getAbsolute:
+            return (l,
+             t,
+             r - l,
+             b - t)
+        return (l,
+         t,
+         r,
+         b)
+
+
+
+    @classmethod
+    def GetDefaultSizeAndPosition(cls):
+        dw = uicore.desktop.width
+        dh = uicore.desktop.height
+        if callable(cls.default_width):
+            width = cls.default_width()
+        else:
+            width = cls.default_width
+        if callable(cls.default_height):
+            height = cls.default_height()
+        else:
+            height = cls.default_height
+        if cls.default_left == '__center__':
+            l = (dw - width) / 2
+        elif cls.default_left == '__right__':
+            l = dw - width
+        elif callable(cls.default_left):
+            l = cls.default_left()
+        else:
+            l = cls.default_left
+        if cls.default_top == '__center__':
+            t = (dh - height) / 2
+        elif cls.default_top == '__bottom__':
+            t = dh - height
+        elif callable(cls.default_top):
+            t = cls.default_top()
+        else:
+            t = cls.default_top
+        return (l,
+         t,
+         width,
+         height)
+
+
+
+    @classmethod
+    def GetDefaultLeftOffset(cls, *args, **kw):
+        return 0
+
+
+
+    @classmethod
+    def GetSettingsVersion(cls):
+        return 'CORE'
+
+
+
+    @classmethod
+    def ValidateSettings(cls):
+        version = cls.GetSettingsVersion()
+        if settings.user.windows.Get('__version__', None) != version:
+            cls.ResetAllWindowSettings()
+
+
+
+    @classmethod
+    def ResetAllWindowSettings(cls):
+        settings.user.Remove('windows')
+        version = cls.GetSettingsVersion()
+        log.LogInfo('Starting new window settings with', version, 'as version')
+        settings.user.windows.Set('__version__', version)
+
+
 
 exports = {'uicls.WindowCoreReady': True}
 

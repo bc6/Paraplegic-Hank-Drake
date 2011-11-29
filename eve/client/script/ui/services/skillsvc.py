@@ -7,6 +7,7 @@ import util
 import xtriui
 import skillUtil
 import uiconst
+import localization
 
 class SkillsSvc(service.Service):
     __guid__ = 'svc.skills'
@@ -93,7 +94,7 @@ class SkillsSvc(service.Service):
         if oldNotification == 1:
             if len(skillTypeIDs) == 1:
                 skill = self.GetMySkillsFromTypeID(skillTypeIDs[0])
-                skillLevel = skill.skillLevel if skill is not None else mls.UI_GENERIC_UNKNOWN
+                skillLevel = skill.skillLevel if skill is not None else localization.GetByLabel('UI/Common/Unknown')
                 eve.Message('SkillTrained', {'name': cfg.invtypes.Get(skillTypeIDs[0]).name,
                  'lvl': skillLevel})
             else:
@@ -219,6 +220,16 @@ class SkillsSvc(service.Service):
 
 
 
+    def GetSkillGroupsIDs(self, advanced = False):
+        groupIDs = []
+        skillGroups = self.GetSkillGroups(advanced)
+        for (groups, skills, untrained, intraining, inqueue, points,) in skillGroups:
+            groupIDs.append(groups[0])
+
+        return groupIDs
+
+
+
     def GetMySkillsFromTypeID(self, typeID):
         return self.MySkills(byTypeID=True).get(typeID, None)
 
@@ -227,7 +238,7 @@ class SkillsSvc(service.Service):
     def GetMyGodmaItem(self):
         ret = sm.GetService('godma').GetItem(eve.session.charid)
         while ret is None:
-            blue.pyos.synchro.Sleep(500)
+            blue.pyos.synchro.SleepWallclock(500)
             ret = sm.GetService('godma').GetItem(eve.session.charid)
 
         return ret
@@ -300,9 +311,9 @@ class SkillsSvc(service.Service):
                 certButton = uiutil.GetChild(wnd, 'characterSheetMenuCertificatesBtn')
                 if certButton:
                     certButton.Blink()
-            blue.pyos.synchro.Sleep(500)
-            wnd.sr.skilltabs.ShowPanelByName(mls.UI_GENERIC_HISTORY)
-            blue.pyos.synchro.Sleep(500)
+            blue.pyos.synchro.SleepWallclock(500)
+            wnd.sr.skilltabs.ShowPanelByName(localization.GetByLabel('UI/Common/History'))
+            blue.pyos.synchro.SleepWallclock(500)
             skillIDsCopy = skillIDs[:]
             for node in wnd.sr.scroll.GetNodes():
                 if node.id in skillIDsCopy:
@@ -318,23 +329,20 @@ class SkillsSvc(service.Service):
         skillText = ''
         if len(skillTypeIDs) == 1:
             skill = sm.StartService('skills').GetMySkillsFromTypeID(skillTypeIDs[0])
-            skillLevel = skill.skillLevel if skill is not None else mls.UI_GENERIC_UNKNOWN
-            skillText = '%s - %s' % (cfg.invtypes.Get(skillTypeIDs[0]).name, mls.UI_SHARED_SKILLS_SKILLLEVEL % {'num': skillLevel})
+            skillLevel = skill.skillLevel if skill is not None else localization.GetByLabel('UI/Generic/Unkown')
+            skillText = localization.GetByLabel('UI/SkillQueue/Skills/SkillNameAndLevel', skill=skillTypeIDs[0], amount=skillLevel)
         else:
-            skillText = mls.UI_SHARED_SKILLS_NUMSKILLS % {'num': len(skillTypeIDs)}
+            skillText = localization.GetByLabel('UI/SkillQueue/Skills/NumberOfSkills', amount=len(skillTypeIDs))
         certText = ''
         if len(certAvailable) > 0:
-            if len(certAvailable) == 1:
-                certText = mls.UI_SHARED_SKILLS_CERTAVAILABLE
-            else:
-                certText = mls.UI_SHARED_SKILLS_CERTSAVAILABLE % {'num': len(certAvailable)}
+            certText = localization.GetByLabel('UI/SkillQueue/CertificatesAvailable', certsAvailable=len(certAvailable))
         if not sm.StartService('skillqueue').IsRunning():
-            blue.pyos.synchro.Sleep(1000)
+            blue.pyos.synchro.SleepWallclock(1000)
         queue = sm.StartService('skillqueue').GetServerQueue()
         queueText = ''
         if len(queue) == 0:
-            queueText = '<color=red>%s</color>' % mls.UI_SHARED_SKILLS_NOSKILLSINQUEUE
-        data.headerText = mls.UI_GENERIC_SKILLTRAININGCOMPLETE
+            queueText = localization.GetByLabel('UI/SkillQueue/NoSkillsInQueue')
+        data.headerText = localization.GetByLabel('UI/Generic/SkillTrainingComplete')
         data.text1 = skillText
         data.text2 = certText
         data.text3 = queueText
@@ -401,18 +409,16 @@ class SkillsSvc(service.Service):
             return 
         if skillPointsNow <= 0:
             return 
-        ahidden = sm.GetService('neocom').GetAHidden() or settings.user.windows.Get('neoalign', 'left') != 'left'
-        BIG = settings.user.windows.Get('neowidth', 1) and not ahidden
-        left = [[36, 2], [132, 2]][BIG][ahidden] + 14
+        (leftSide, rightSide,) = sm.GetService('neocom').GetSideOffset()
         data = util.KeyVal()
-        data.headerText = mls.UI_GENERIC_SKILLPOINTSAPPLIED
-        data.text1 = mls.UI_GENERIC_UNALLOCATEDSKILLPOINTSINCHARSHEET
+        data.headerText = localization.GetByLabel('UI/Generic/SkillPointsApplied')
+        data.text1 = localization.GetByLabel('UI/SkillQueue/UnallocatedSkillPoints')
         data.text2 = None
         data.iconNum = 'ui_94_64_8'
         data.time = time
         icon = uiutil.FindChild(uicore.layer.abovemain, 'newmail')
         if not icon:
-            icon = xtriui.PopupNotification(name='skillpointsapplied', parent=None, align=uiconst.TOPLEFT, pos=(left,
+            icon = xtriui.PopupNotification(name='skillpointsapplied', parent=None, align=uiconst.TOPLEFT, pos=(leftSide,
              60,
              230,
              60), idx=0)
@@ -426,7 +432,7 @@ class SkillsSvc(service.Service):
 
 
     def ShowSkillPointsNotification_thread(self):
-        blue.pyos.synchro.Sleep(5000)
+        blue.pyos.synchro.SleepWallclock(5000)
         self.ShowSkillPointsNotification()
 
 

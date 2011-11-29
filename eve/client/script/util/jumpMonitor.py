@@ -1,5 +1,4 @@
 from service import *
-import log
 import sys
 import blue
 import base
@@ -12,12 +11,13 @@ class jumpMonitor(Service):
     __guid__ = 'svc.jumpMonitor'
     __displayname__ = 'Jump Monitoring Service'
     __exportedcalls__ = {}
-    __dependencies__ = ['machoNet']
+    __dependencies__ = []
     __notifyevents__ = ['OnSessionChanged',
      'DoBallsAdded',
      'OnChannelsJoined',
      'DoSessionChanging',
-     'OnSessionMutated']
+     'OnSessionMutated',
+     'OnClientConfigValsChanged']
 
     def __init__(self):
         Service.__init__(self)
@@ -26,6 +26,7 @@ class jumpMonitor(Service):
 
     def Run(self, memStream = None):
         Service.Run(self, memStream)
+        self.useJumpMonitor = False
         self.jumping = False
         self.jumpStartTime = 0
         self.jumpType = None
@@ -41,33 +42,38 @@ class jumpMonitor(Service):
 
 
 
+    def OnClientConfigValsChanged(self, configVals):
+        self.useJumpMonitor = bool(configVals.get('useClientSideJumpMonitor'))
+
+
+
     def OnSessionMutated(self, isremote, session, change):
-        if not sm.GetService('machoNet').GetClientConfigVals().get('useClientSideJumpMonitor'):
+        if not self.useJumpMonitor:
             return 
         try:
             if type(session) == types.TupleType:
                 if len(session) == 1 and session[0] >= const.minFakeItem:
-                    self.jumpStartTime = blue.os.GetTime(1)
+                    self.jumpStartTime = blue.os.GetWallclockTime()
                     self.jumpType = 'wormhole %s' % session[0]
                     self.checkBallpark = True
                 elif len(session) == 2 and util.IsStargate(session[0]) and util.IsStargate(session[1]):
-                    self.jumpStartTime = blue.os.GetTime(1)
+                    self.jumpStartTime = blue.os.GetWallclockTime()
                     self.jumpType = 'stargate %d->%d' % (session[0], session[1])
                     self.checkBallpark = True
                 elif len(session) == 2 and util.IsPlayerItem(session[0]) and util.IsSolarSystem(session[1]):
-                    self.jumpStartTime = blue.os.GetTime(1)
+                    self.jumpStartTime = blue.os.GetWallclockTime()
                     self.jumpType = 'pos cyno array:%d' % (session[0],)
                     self.checkBallpark = True
                 elif len(session) == 3 and util.IsPlayerItem(session[0]) and util.IsPlayerItem(session[1]) and util.IsSolarSystem(session[2]):
-                    self.jumpStartTime = blue.os.GetTime(1)
+                    self.jumpStartTime = blue.os.GetWallclockTime()
                     self.jumpType = 'bridge src:%s dst:%d in:%d' % (session[0], session[1], session[2])
                     self.checkBallpark = True
                 elif len(session) == 3 and util.IsCharacter(session[0]) and util.IsSolarSystem(session[2]):
-                    self.jumpStartTime = blue.os.GetTime(1)
+                    self.jumpStartTime = blue.os.GetWallclockTime()
                     self.jumpType = 'cyno char:%s cyno:%d' % (session[0], session[1])
                     self.checkBallpark = True
                 elif len(session) == 4 and util.IsCharacter(session[0]) and util.IsPlayerItem(session[1]) and util.IsSolarSystem(session[3]):
-                    self.jumpStartTime = blue.os.GetTime(1)
+                    self.jumpStartTime = blue.os.GetWallclockTime()
                     self.jumpType = 'ship bridge char:%s-%s cyno:%d' % (session[0], session[1], session[2])
                     self.checkBallpark = True
         except:
@@ -76,7 +82,7 @@ class jumpMonitor(Service):
 
 
     def DoSessionChanging(self, isremote, session, change):
-        if not sm.GetService('machoNet').GetClientConfigVals().get('useClientSideJumpMonitor'):
+        if not self.useJumpMonitor:
             return 
         if 'locationid' not in change or change['locationid'][0] is None:
             return 
@@ -94,15 +100,15 @@ class jumpMonitor(Service):
             reportingString += ' new jump: %s:%s ' % change['solarsystemid2']
             uthread.new(sm.ProxySvc('clientStatLogger').LogString, reportingString)
         if 'shipid' in change and change['shipid'][0] and not change['shipid'][1]:
-            self.jumpStartTime = blue.os.GetTime(1)
+            self.jumpStartTime = blue.os.GetWallclockTime()
             self.jumpType = 'podkill'
             self.checkBallpark = False
         elif 'stationid' in change and change['stationid'][0] and change['stationid'][1]:
-            self.jumpStartTime = blue.os.GetTime(1)
+            self.jumpStartTime = blue.os.GetWallclockTime()
             self.jumpType = 'clonejump'
             self.checkBallpark = False
         if self.jumpType is None:
-            self.jumpStartTime = blue.os.GetTime(1)
+            self.jumpStartTime = blue.os.GetWallclockTime()
             self.jumpType = '/tr'
             self.checkBallpark = not ('stationid' in change and change['stationid'][1])
         self.jumpOrigin = session.locationid
@@ -121,7 +127,7 @@ class jumpMonitor(Service):
     def CheckJumpCompleted(self):
         if self.jumping and self.sessionChanged and self.localLoaded and (self.ballparkLoaded or not self.checkBallpark):
             self.CheckJumpCompletedTimer = None
-            self.jumpEndTime = blue.os.GetTime(1)
+            self.jumpEndTime = blue.os.GetWallclockTime()
             self.jumping = False
             reportingString = 'JumpMonitor: %s->%s type[%s] start:%d,local:%d,sess:%d,ballpark:%d\n' % (self.jumpOrigin,
              self.jumpDestination,
@@ -132,7 +138,7 @@ class jumpMonitor(Service):
              self.ballparkLoadedEnd)
             sm.ProxySvc('clientStatLogger').LogString(reportingString)
             self.jumpType = None
-        elif self.jumping and blue.os.TimeDiffInMs(self.jumpStartTime) > MAXALLOWEDJUMPTIMEINMS:
+        elif self.jumping and blue.os.TimeDiffInMs(self.jumpStartTime, blue.os.GetWallclockTime()) > MAXALLOWEDJUMPTIMEINMS:
             reportingString = 'JumpMonitor: INCOMPLETE %s->%s type[%s] start:%d,local:%d,sess:%d,ballpark:%d\n' % (self.jumpOrigin,
              self.jumpDestination,
              self.jumpType,
@@ -143,7 +149,7 @@ class jumpMonitor(Service):
             sm.ProxySvc('clientStatLogger').LogString(reportingString)
             self.jumpType = None
             self.CheckJumpCompletedTimer = None
-            self.jumpEndTime = blue.os.GetTime(1)
+            self.jumpEndTime = blue.os.GetWallclockTime()
             self.jumping = False
 
 
@@ -151,7 +157,7 @@ class jumpMonitor(Service):
     def OnSessionChanged(self, isRemote, session, change):
         if self.jumping and not self.sessionChanged and ('locationid' in change or 'solarsystemid' in change or 'solarsystemid2' in change):
             self.sessionChanged = True
-            self.sessionChangedEnd = blue.os.GetTime(1)
+            self.sessionChangedEnd = blue.os.GetWallclockTime()
             uthread.new(self.CheckJumpCompleted)
 
 
@@ -159,7 +165,7 @@ class jumpMonitor(Service):
     def DoBallsAdded(self, *args, **kw):
         if self.jumping and not self.ballparkLoaded:
             self.ballparkLoaded = True
-            self.ballparkLoadedEnd = blue.os.GetTime(1)
+            self.ballparkLoadedEnd = blue.os.GetWallclockTime()
             uthread.new(self.CheckJumpCompleted)
 
 
@@ -170,7 +176,7 @@ class jumpMonitor(Service):
                 local = [ chan for chan in channelIDs if type(chan) == types.TupleType if type(chan[0]) == types.TupleType if 'solarsystemid2' == chan[0][0] ]
                 if local:
                     self.localLoaded = True
-                    self.localLoadedEnd = blue.os.GetTime(1)
+                    self.localLoadedEnd = blue.os.GetWallclockTime()
                     uthread.new(self.CheckJumpCompleted)
             except:
                 pass

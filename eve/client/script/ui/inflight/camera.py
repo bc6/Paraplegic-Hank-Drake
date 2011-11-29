@@ -13,7 +13,6 @@ import uthread
 import form
 import state
 import destiny
-import draw
 import math
 import hint
 import log
@@ -23,6 +22,7 @@ import uthread
 import geo2
 import uiconst
 import uicls
+import localization
 from math import sin, cos, tan, pi
 from foo import Vector3
 from mapcommon import ZOOM_MIN_STARMAP, ZOOM_MAX_STARMAP, ZOOM_NEAR_SYSTEMMAP, ZOOM_FAR_SYSTEMMAP
@@ -99,7 +99,8 @@ class CameraMgr(service.Service):
         camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
         blue.synchro.Yield()
         self.boundingBoxCache = {}
-        camera.translationFromParent.z = self.CheckTranslationFromParent(camera.translationFromParent.z)
+        if camera is not None:
+            camera.translationFromParent.z = self.CheckTranslationFromParent(camera.translationFromParent.z)
 
 
 
@@ -140,9 +141,6 @@ class CameraMgr(service.Service):
         self.ssbracketsLoaded = False
         self.rangeNumberShader = None
         self.viewlevels = ['default', 'systemmap', 'starmap']
-        self.translatedViewLevels = {'default': mls.UI_CMD_INFLIGHT,
-         'systemmap': mls.UI_GENERIC_SOLARSYSTEMMAP,
-         'starmap': mls.UI_GENERIC_STARMAP}
         self.mmUniverse = (-100.0, -20000.0)
         self.mmRegion = (-100.0, -20000.0)
         self.mmConstellation = (-100.0, -20000.0)
@@ -182,6 +180,8 @@ class CameraMgr(service.Service):
         cameraInterest = self.GetCameraInterest()
         scene = sm.GetService('sceneManager').GetRegisteredScene('default')
         camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
+        if camera is None:
+            return 
         if itemID is None:
             camera.interest = None
             cameraInterest.translationCurve = None
@@ -227,6 +227,8 @@ class CameraMgr(service.Service):
             tracker = trinity.EveSO2ModelCenterPos()
             tracker.parent = item.model
         camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
+        if camera is None:
+            return 
         if tracker:
             cameraParent.translationCurve = tracker
         else:
@@ -250,17 +252,18 @@ class CameraMgr(service.Service):
             return 
         obs = sm.GetService('target').IsObserving()
         scene = sm.GetService('sceneManager').GetRegisteredScene2('default')
-        if itemID != eve.session.shipid:
-            if scene.dustfield is not None:
-                scene.dustfield.display = 0
-            if item.mode == destiny.DSTBALL_WARP:
-                return 
-            if not (ignoreDist or obs) and item.surfaceDist > 100000.0:
-                uicore.Say(mls.UI_MENUHINT_CHECKLOOKATDISTNOT)
-                return 
-        elif scene.dustfield is not None:
-            scene.dustfield.display = 1
-        uthread.pool('MenuSvc>LookAt', self._LookAt, item, itemID, setZ, resetCamera)
+        if scene:
+            if itemID != eve.session.shipid:
+                if scene.dustfield is not None:
+                    scene.dustfield.display = 0
+                if item.mode == destiny.DSTBALL_WARP:
+                    return 
+                if not (ignoreDist or obs) and item.surfaceDist > 100000.0:
+                    uicore.Say(localization.GetByLabel('UI/Camera/OutsideLookingRange'))
+                    return 
+            elif scene.dustfield is not None:
+                scene.dustfield.display = 1
+            uthread.pool('MenuSvc>LookAt', self._LookAt, item, itemID, setZ, resetCamera)
 
 
 
@@ -271,6 +274,8 @@ class CameraMgr(service.Service):
             return 
         scene = sm.GetService('sceneManager').GetRegisteredScene('default')
         camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
+        if camera is None:
+            return 
         camera.interest = None
         self.GetCameraInterest().translationCurve = None
         cameraParent = self.GetCameraParent()
@@ -280,7 +285,7 @@ class CameraMgr(service.Service):
         self.lookingAt = itemID
         item.LookAtMe()
         if cameraParent.translationCurve:
-            startPos = cameraParent.translationCurve.GetVectorAt(blue.os.GetTime())
+            startPos = cameraParent.translationCurve.GetVectorAt(blue.os.GetSimTime())
             cameraParent.translationCurve = None
         else:
             startPos = camera.parent.translation.CopyTo()
@@ -296,7 +301,7 @@ class CameraMgr(service.Service):
         else:
             startTrZ = camera.translationFromParent.z
             endTrZ = self.CheckTranslationFromParent(1.0) * 2
-        start = blue.os.GetTime()
+        start = blue.os.GetWallclockTime()
         ndt = 0.0
         time = 500.0
         tracker = None
@@ -316,11 +321,11 @@ class CameraMgr(service.Service):
             tempTF.translationCurve = tracker
             scene.models.append(tempTF)
         while ndt != 1.0:
-            ndt = max(0.0, min(blue.os.TimeDiffInMs(start) / time, 1.0))
+            ndt = max(0.0, min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / time, 1.0))
             if tracker:
                 endPos = tracker.value.CopyTo()
             elif getattr(item.model, 'translationCurve', None) is not None:
-                endPos = item.model.translationCurve.GetVectorAt(blue.os.GetTime())
+                endPos = item.model.translationCurve.GetVectorAt(blue.os.GetSimTime())
             else:
                 endPos = item.model.translation.CopyTo()
             endPos.Scale(scene.globalScale)
@@ -361,14 +366,16 @@ class CameraMgr(service.Service):
         cameraParent = self.GetCameraParent(source)
         if cameraParent is None:
             return 
-        start = blue.os.GetTime()
+        start = blue.os.GetWallclockTime()
         ndt = 0.0
         fovBeg = None
         camera = sm.GetService('sceneManager').GetRegisteredCamera(source)
+        if camera is None:
+            return 
         if fovEnd is not None:
             fovBeg = camera.fieldOfView
         while ndt != 1.0:
-            ndt = max(0.0, min(blue.os.TimeDiffInMs(start) / time, 1.0))
+            ndt = max(0.0, min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / time, 1.0))
             if posbeg and posend:
                 cameraParent.translation.x = mathUtil.Lerp(posbeg.x, posend.x, ndt)
                 cameraParent.translation.y = mathUtil.Lerp(posbeg.y, posend.y, ndt)
@@ -445,6 +452,8 @@ class CameraMgr(service.Service):
 
     def GetTranslationFromParentForItem(self, itemID, fov = None):
         camera = sm.GetService('sceneManager').GetRegisteredCamera('default')
+        if camera is None:
+            return 
         if fov is None:
             fov = camera.fieldOfView
         ballpark = sm.GetService('michelle').GetBallpark()
@@ -532,6 +541,8 @@ class CameraMgr(service.Service):
             return 
         self.freeLook = freeLook
         camera = sm.GetService('sceneManager').GetRegisteredCamera(None, defaultOnActiveCamera=True)
+        if camera is None:
+            return 
         cmdSvc = uicore.cmd
         if freeLook:
             playerPos = self.GetMyPos()
@@ -542,7 +553,7 @@ class CameraMgr(service.Service):
             cameraParent.translationCurve = self.camBall
             cameraParent.rotationCurve = self.camBall
             cameraParent.useCurves = 1
-            cameraParent.Update(blue.os.GetTime())
+            cameraParent.Update(blue.os.GetSimTime())
             self.axisLines = trinity.Tr2LineSet()
             self.axisLines.effect = trinity.Tr2Effect()
             self.axisLines.effect.effectFilePath = 'res:/Graphics/Effect/Managed/Utility/LinesWithZ.fx'
@@ -616,6 +627,8 @@ class CameraMgr(service.Service):
 
 
     def BuildGridAndAxes(self):
+        if self.axisLines is None:
+            return 
         self.axisLines.ClearLines()
         self.axisLines.SubmitChanges()
         if self.IsDrawingAxis():
@@ -681,26 +694,27 @@ class CameraMgr(service.Service):
 
 
     def _UpdateFreelookCamera(self):
-        lastTime = blue.os.GetTime()
+        lastTime = blue.os.GetSimTime()
         while self.IsFreeLook():
             camera = sm.GetService('sceneManager').GetRegisteredCamera(None, defaultOnActiveCamera=True)
-            delta = blue.os.TimeDiffInMs(lastTime)
-            keyDown = uicore.uilib.Key
-            if keyDown(uiconst.VK_CONTROL) and not keyDown(uiconst.VK_MENU) and not keyDown(uiconst.VK_SHIFT):
-                if keyDown(uiconst.VK_W):
-                    self._ChangeCamPos(camera.viewVec * delta)
-                if keyDown(uiconst.VK_S):
-                    self._ChangeCamPos(-camera.viewVec * delta)
-                if keyDown(uiconst.VK_A):
-                    self._ChangeCamPos(-camera.rightVec * delta)
-                if keyDown(uiconst.VK_D):
-                    self._ChangeCamPos(camera.rightVec * delta)
-                if keyDown(uiconst.VK_R):
-                    self._ChangeCamPos(camera.upVec * delta)
-                if keyDown(uiconst.VK_F):
-                    self._ChangeCamPos(-camera.upVec * delta)
-            self.axisLines.localTransform = geo2.MatrixTranslation(camera.parent.translation.x, camera.parent.translation.y, camera.parent.translation.z)
-            lastTime = blue.os.GetTime()
+            if camera is not None:
+                delta = blue.os.TimeDiffInMs(lastTime, blue.os.GetSimTime())
+                keyDown = uicore.uilib.Key
+                if keyDown(uiconst.VK_CONTROL) and not keyDown(uiconst.VK_MENU) and not keyDown(uiconst.VK_SHIFT):
+                    if keyDown(uiconst.VK_W):
+                        self._ChangeCamPos(camera.viewVec * delta)
+                    if keyDown(uiconst.VK_S):
+                        self._ChangeCamPos(-camera.viewVec * delta)
+                    if keyDown(uiconst.VK_A):
+                        self._ChangeCamPos(-camera.rightVec * delta)
+                    if keyDown(uiconst.VK_D):
+                        self._ChangeCamPos(camera.rightVec * delta)
+                    if keyDown(uiconst.VK_R):
+                        self._ChangeCamPos(camera.upVec * delta)
+                    if keyDown(uiconst.VK_F):
+                        self._ChangeCamPos(-camera.upVec * delta)
+                self.axisLines.localTransform = geo2.MatrixTranslation(camera.parent.translation.x, camera.parent.translation.y, camera.parent.translation.z)
+            lastTime = blue.os.GetSimTime()
             blue.synchro.Yield()
 
 

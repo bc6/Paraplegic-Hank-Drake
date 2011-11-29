@@ -33,7 +33,7 @@ class SafeThread(object):
         blue.pyos.synchro.Yield()
         try:
             while self._SafeThread__killLoop == False:
-                now = blue.os.GetTime()
+                now = blue.os.GetWallclockTime()
                 if self._SafeThread__debugging:
                     try:
                         if ClockThis(self.uniqueIDstring + '::SafeThreadLoop', self.SafeThreadLoop, now) == self.KILL_ME:
@@ -76,7 +76,7 @@ class SafeThread(object):
                         self._SafeThread__active = False
                         self._SafeThread__killLoop = True
                         raise e
-                blue.pyos.synchro.Sleep(self._SafeThread__sleepTime)
+                blue.pyos.synchro.SleepWallclock(self._SafeThread__sleepTime)
 
             self._SafeThread__thread = None
             self._SafeThread__active = False
@@ -135,7 +135,7 @@ class SafeThread(object):
 
     def __WaitForRestart(self):
         while self._SafeThread__active == True or self._SafeThread__killLoop == False or self._SafeThread__thread is not None:
-            blue.pyos.synchro.SleepUntil(blue.os.GetTime(1) + 100 * const.MSEC)
+            blue.pyos.synchro.SleepUntilWallclock(blue.os.GetWallclockTimeNow() + 100 * const.MSEC)
 
 
 
@@ -147,8 +147,8 @@ class SafeThread(object):
 
 
 def SleepAndCallAtTime(launchTime, function, *args, **kwargs):
-    if blue.os.GetTime(1) < launchTime:
-        blue.pyos.synchro.SleepUntil(launchTime)
+    if blue.os.GetWallclockTimeNow() < launchTime:
+        blue.pyos.synchro.SleepUntilWallclock(launchTime)
     else:
         blue.pyos.synchro.Yield()
     function(*args, **kwargs)
@@ -156,7 +156,7 @@ def SleepAndCallAtTime(launchTime, function, *args, **kwargs):
 
 
 def DoMethodLater(waitDuration, launchFunction, *args, **kwargs):
-    launchTime = blue.os.GetTime() + waitDuration
+    launchTime = blue.os.GetWallclockTime() + waitDuration
     uthread.worker(('doMethodLater-' + launchFunction.__name__), SleepAndCallAtTime, launchTime, launchFunction, *args, **kwargs)
 
 

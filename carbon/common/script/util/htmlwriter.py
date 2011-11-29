@@ -13,6 +13,8 @@ from datetime import datetime
 import types
 import functools
 import iocp
+from uuid import uuid4
+import localization
 reserved = {';': '%3B',
  '/': '%2F',
  '?': '%3F',
@@ -67,6 +69,7 @@ def Canonicalize(text):
 
 def HTMLEncode(text):
     t = ''
+    text = unicode(text)
     for i in range(len(text)):
         tord = ord(text[i])
         if tord == 38:
@@ -99,7 +102,7 @@ def Link(url, title, args = None, props = '', target = None, bolConfirm = 0):
             onClick = ''
         if args:
             realArgs = args
-            if type(args) == type([]):
+            if isinstance(args, list):
                 realArgs = {}
                 for a in args:
                     realArgs.update(a)
@@ -109,7 +112,7 @@ def Link(url, title, args = None, props = '', target = None, bolConfirm = 0):
                 url = stuff[0]
             url += '?'
             for (k, v,) in realArgs.iteritems():
-                if type(v) == type([]):
+                if isinstance(v, list):
                     for i in v:
                         url += unicode(k) + '=' + unicode(i) + '&'
 
@@ -235,6 +238,80 @@ def JsonFunction(func):
 
 
     return Wrapper
+
+
+
+def HtmlFunction(func):
+
+    @functools.wraps(func)
+    def Wrapper(*args, **kwargs):
+        args[0].Write(func(*args, **kwargs))
+
+
+    return Wrapper
+
+
+
+def XmlFunction(func):
+
+    @functools.wraps(func)
+    def Wrapper(*args, **kwargs):
+        args[0].response.AddHeader('Content-type', 'text/xml')
+        args[0].response.AddHeader('Content-Disposition', 'attachment; filename=' + 'file.xml')
+        args[0].response.AddHeader('Cache-Control', 'no-cache, must-revalidate, max_age=0, no-store , private')
+        args[0].response.WriteBinary(func(*args, **kwargs))
+        args[0].response.Flush()
+
+
+    return Wrapper
+
+
+
+def StaticImage(func):
+
+    @functools.wraps(func)
+    def Wrapper(*args, **kwargs):
+        fileName = func(*args, **kwargs)
+        fileName = '%swwwroot/%s' % (blue.os.ResolvePath(u'script:/').replace('eve/server', 'carbon/common'), fileName)
+        args[0].response.AddHeader('Content-type', 'image/%s' % fileName.split('.')[-1])
+        with file(fileName, 'rb') as f:
+            args[0].response.WriteBinary(f.read())
+            args[0].response.Flush()
+
+
+    return Wrapper
+
+
+
+def ZipFunction(func):
+
+    @functools.wraps(func)
+    def Wrapper(*args, **kwargs):
+        args[0].response.AddHeader('Content-type', 'application/octet-stream')
+        args[0].response.AddHeader('Content-Disposition', 'attachment; filename=file.zip')
+        args[0].response.AddHeader('Cache-Control', 'no-cache, must-revalidate, max_age=0, no-store , private')
+        args[0].response.WriteBinary(func(*args, **kwargs))
+        args[0].response.Flush()
+
+
+    return Wrapper
+
+
+
+def GenerateCSRFToken(request):
+    if not hasattr(request.session, 'CSRFToken'):
+        request.session.CSRFToken = str(uuid4())
+    return request.session.CSRFToken
+
+
+
+def CSRFFormField(request):
+    return '<input type="hidden" name="csrf_token" value="%s" />' % GenerateCSRFToken(request)
+
+
+
+def WaitingMessage(waitingMessage):
+    return '<input type="hidden" name="__waiting_message__" value="%s" />' % waitingMessage
 
 
 
@@ -368,15 +445,63 @@ def RemoveHtmlTag(tagName = 'font', stringWithTags = None):
 
 
 
-def GetA(innerText, href, ctrlID = None, className = None, style = None, onClick = None, title = None, rel = None, rev = None):
+def _GetElementBegin(elementName, attributes):
+    return '<%s%s>' % (elementName, attributes)
+
+
+
+def _GetElementEnd(elementName):
+    return '</%s>' % elementName
+
+
+
+def _GetElement(ctrlName, ctrlValue, ctrlID = None, className = None, style = None):
+    controlID = CheckValue('id', ctrlID)
+    controlName = CheckValue('id', ctrlID)
+    className = CheckValue('class', className)
+    style = CheckValue('style', style)
+    return '\n'.join([_GetElementBegin(ctrlName, '%s%s%s%s' % (controlID,
+      controlName,
+      className,
+      style)), ctrlValue, _GetElementEnd(ctrlName)])
+
+
+
+def _GetElements(elements = None, ctrlName = 'div', ctrlID = None, className = None, style = None, title = None, dataBind = None):
+    ctrlID = CheckValue('id', ctrlID)
+    className = CheckValue('class', className)
+    style = CheckValue('style', style)
+    title = CheckValue('title', title)
+    dataBind = CheckValue('data-bind', dataBind)
+    res = UnicodeMemStream()
+    res.Write(_GetElementBegin(ctrlName, '%s%s%s%s%s' % (ctrlID,
+     className,
+     style,
+     title,
+     dataBind)))
+    if isinstance(elements, list):
+        if elements and len(elements) > 0:
+            for n in elements:
+                res.Write(unicode(n))
+
+    elif elements is not None:
+        res.Write(unicode(elements))
+    res.Write(_GetElementEnd(ctrlName))
+    res.Seek(0)
+    return res.Read()
+
+
+
+def GetA(innerText, href, ctrlID = None, className = None, style = None, onClick = None, title = None, rel = None, rev = None, target = None):
     ctrlID = CheckValue('id', ctrlID)
     className = CheckValue('class', className)
     style = CheckValue('style', style)
     onClick = CheckValue('onclick', onClick)
-    title = CheckValue('title', title)
+    title = CheckValue('title', HTMLEncode(title) if title is not None and len(title) > 0 else '')
     rel = CheckValue('rel', rel)
     rev = CheckValue('rev', rev)
-    return '<a href="%s"%s%s%s%s%s%s%s>%s</a>' % (href,
+    target = CheckValue('target', target)
+    return '<a href="%s"%s%s%s%s%s%s%s%s>%s</a>' % (href,
      ctrlID,
      className,
      style,
@@ -384,7 +509,89 @@ def GetA(innerText, href, ctrlID = None, className = None, style = None, onClick
      title,
      rel,
      rev,
+     target,
      innerText)
+
+
+
+def GetInput(ctrlID, labelCaption, className = None, minLength = None, width = None, value = None, title = ''):
+    minLength = CheckValue('minlength', minLength)
+    if width:
+        width = ' style="width:%spx"' % width
+    else:
+        width = ''
+    className = CheckValue('class', className)
+    value = CheckValue('value', value)
+    title = CheckValue('title', title)
+    res = []
+    if labelCaption is not None:
+        res.append('<label class="form-label" for="%s">%s</label>' % (ctrlID, labelCaption))
+    res.append('<input id="%s" name="%s"%s%s%s%s%s/>' % (ctrlID,
+     ctrlID,
+     className,
+     minLength,
+     width,
+     value,
+     title))
+    return '\n'.join(res)
+
+
+
+def GetSelect(elements, controlID, labelCaption = None, elementClass = None, selectedValue = None):
+    elementClass = CheckValue('class', elementClass)
+    if controlID:
+        controlID = ' id="%s" name="%s"' % (controlID, controlID)
+    opt0 = lambda row: (' selected="selected"' if row[0] == selectedValue else '')
+    opt1 = lambda row: '<option value="%s"%s>%s</option>\n' % (row[0], CheckValue('selected', row[2]) if len(row) > 2 else opt0(row), row[1])
+    res = []
+    if labelCaption is not None:
+        res.append('<label class="form-label" for="%s">%s</label>' % (controlID, labelCaption))
+    res.append(_GetElementBegin('select', '%s%s' % (controlID, elementClass)))
+    res.append(''.join(map(opt1, elements.items() if isinstance(elements, dict) else elements)))
+    res.append(_GetElementEnd('select'))
+    return ''.join(res)
+
+
+
+def GetSpan(elements, ctrlID = None, className = None, style = None, title = None, dataBind = None):
+    return _GetElements(elements, 'span', ctrlID, className, style, title, dataBind)
+
+
+
+def GetImage(src, ctrlID = None, className = None, style = None, title = None, rel = None):
+    ctrlID = CheckValue('id', ctrlID)
+    className = CheckValue('class', className)
+    style = CheckValue('style', style)
+    title = CheckValue('title', title)
+    rel = CheckValue('rel', rel)
+    return '<img src="%s" %s%s%s%s%s/>' % (src,
+     ctrlID,
+     className,
+     style,
+     title,
+     rel)
+
+
+
+def GetTextArea(ctrlID, labelCaption, className, cols, rows, innerHtml = None):
+    className = CheckValue('class', className)
+    cols = CheckValue('cols', cols)
+    rows = CheckValue('rows', rows)
+    ctrlFor = CheckValue('for', ctrlID)
+    ctrlID2 = CheckValue('id', ctrlID)
+    ctrlName = CheckValue('name', ctrlID)
+    if innerHtml is None:
+        innerHtml = ''
+    lines = []
+    if labelCaption:
+        lines.append('<label class="form-label"%(ctrlID)s>%(labelCaption)s</label>' % {'ctrlID': ctrlFor,
+         'labelCaption': labelCaption})
+    lines += [_GetElementBegin('textarea', '%(ctrlID)s%(className)s%(cols)s%(rows)s%(ctrlName)s' % {'ctrlID': ctrlID2,
+      'className': className,
+      'cols': cols,
+      'rows': rows,
+      'ctrlName': ctrlName}), innerHtml, _GetElementEnd('textarea')]
+    return ''.join(lines)
 
 
 
@@ -413,30 +620,32 @@ def GetTable(header = None, lines = None, className = 'tablesorter', enableEdit 
 
     if enableDelete or enableEdit:
         headerIndexControl.append(len(header))
-    res.Write('\n    <script type="text/javascript">\n        $(document).ready(function() {\n            $("#%s").tablesorter(' % id)
-    if header is not None and serverOrder is True:
-        res.Write('{\n                headers: {')
-        t_res = []
-        for n in xrange(len(header)):
-            t_res.append('%i: {sorter: false}' % n)
+    if header is not None and len(header) > 0:
+        res.Write('\n        <script type="text/javascript">\n            $(document).ready(function() {\n                $("#%s").tablesorter(' % id)
+        if header is not None and serverOrder is True:
+            res.Write('{\n                    headers: {')
+            t_res = []
+            for n in xrange(len(header)):
+                t_res.append('%i: {sorter: false}' % n)
 
-        res.Write(', '.join(t_res))
-        res.Write('}\n}')
-    elif header is not None and len(headerIndexControl) > 0:
-        res.Write('{\n                headers: {')
-        t_res = []
-        for n in headerIndexControl:
-            t_res.append('%i: {sorter: false}' % n)
+            res.Write(', '.join(t_res))
+            res.Write('}\n}')
+        elif header is not None and len(headerIndexControl) > 0:
+            res.Write('{\n                    headers: {')
+            t_res = []
+            for n in headerIndexControl:
+                t_res.append('%i: {sorter: false}' % n)
 
-        res.Write(', '.join(t_res))
-        res.Write('}\n}')
-    res.Write(');\n    });\n    </script>')
+            res.Write(', '.join(t_res))
+            res.Write('}\n}')
+        res.Write(');\n        });\n        </script>')
     ctrlID = ' id="%s"' % id
     invertText = '<li><a class="csp-invert button buttongray">Invert</a></li>' if invertSelection else ''
     filterBar = '\n        <div class="csp-tool-strip">\n            <a class="button buttongray excel" onclick="exportToExcel(\'%(ctrlID)s\');">Excel</a>\n            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\n            <input type="text" size="25" maxlength="30" value="" id="filter_%(ctrlID)s" name="filter_%(ctrlID)s"/>\n        </div>\n    ' % {'ctrlID': id}
     toolbar = '\n        <div class="csp-tool">\n            <div style="float:left;">\n                %(leftbar)s\n            </div>\n            <div style="float:right;">\n                <div class="csp-tool-strip">\n                    <ul>\n                        %(customActions)s\n                        %(sep1)s\n                        %(paging)s\n                        %(sep2)s\n                        %(invert)s\n                    </ul>\n                </div>\n            </div>\n            <div style="clear:both;"></div>\n        </div>\n        '
     res.Write('<div>')
-    res.Write('\n        <script type="text/javascript">\n            $(function() {\n                var $%(ctrlID)s = $("#%(ctrlID)s")\n                $("#filter_%(ctrlID)s").keyup(function() {\n                  $.uiTableFilter( $%(ctrlID)s, this.value );\n                });\n                $(".csp-invert").click(function(){\n                    $.each($("#%(ctrlID)s input").not(":disabled"), function(idx,val) {\n                        if ($(val).is(":visible")) {\n                            val.checked = !val.checked;\n                        }\n                    });\n                });\n            });\n        </script>\n    ' % {'ctrlID': id})
+    if useFilter or invertSelection:
+        res.Write('\n            <script type="text/javascript">\n                $(function() {\n                    var $%(ctrlID)s = $("#%(ctrlID)s")\n                    $("#filter_%(ctrlID)s").keyup(function() {\n                      $.uiTableFilter( $%(ctrlID)s, this.value );\n                    });\n                    $(".csp-invert").click(function(){\n                        $.each($("#%(ctrlID)s input").not(":disabled"), function(idx,val) {\n                            if ($(val).is(":visible")) {\n                                val.checked = !val.checked;\n                            }\n                        });\n                    });\n                });\n            </script>\n        ' % {'ctrlID': id})
     if useFilter or paging is not None or len(customActions2) > 0:
         res.Write(toolbar % {'leftbar': filterBar if useFilter else '',
          'invert': invertText,
@@ -528,6 +737,46 @@ def GetTable(header = None, lines = None, className = 'tablesorter', enableEdit 
     res.Write('</div>')
     res.Seek(0)
     return res.Read()
+
+
+
+def GetMessageEnglishByID(messageID, defaultValue):
+    if prefs.clusterMode in ('LIVE', 'TEST'):
+        return localization.GetByMessageID(messageID) or defaultValue
+    if messageID is not None and messageID != '':
+        message = localization.Message.Get(messageID)
+        if message is not None:
+            messageEnglishText = message.GetTextEntry('en-us')
+            if messageEnglishText is not None:
+                return messageEnglishText.text
+    return defaultValue
+
+
+
+def GetLocalizationInput(ctrlID, value, messageID, width, labelCaption = None):
+    htmlInput = GetInput(ctrlID=ctrlID, labelCaption=labelCaption, value=GetMessageEnglishByID(messageID, value), className='', width=width)
+    if prefs.clusterMode in ('LIVE', 'TEST'):
+        return htmlInput
+    messageIDText = messageID if messageID else ''
+    return ''.join([htmlInput, GetImage(src='/localization/localizationbrowser.py?action=MessageStateImage&messageID=%s' % messageIDText, title=messageID, className='a-tip localization-status', rel='/localization/localizationbrowser.py?action=MessageStateHtml&messageID=%s' % messageIDText)])
+
+
+
+def GetLocalizationTextArea(ctrlID, innerHtml, messageID, cols, rows, labelCaption = None):
+    textArea = GetTextArea(ctrlID=ctrlID, labelCaption=labelCaption, innerHtml=GetMessageEnglishByID(messageID, innerHtml), className='', cols=cols, rows=rows)
+    if prefs.clusterMode in ('LIVE', 'TEST'):
+        return textArea
+    messageIDText = messageID if messageID else ''
+    return ''.join([textArea, GetImage(src='/localization/localizationbrowser.py?action=MessageStateImage&messageID=%s' % messageIDText, title=messageID, className='a-tip localization-status', rel='/localization/localizationbrowser.py?action=MessageStateHtml&messageID=%s' % messageIDText)])
+
+
+
+def GetLocalizationLabel(labelText, messageID):
+    msgSpan = GetSpan([GetMessageEnglishByID(messageID, labelText)], className='')
+    if prefs.clusterMode in ('LIVE', 'TEST'):
+        return msgSpan
+    messageIDText = messageID if messageID else ''
+    return ''.join([msgSpan, GetImage(src='/localization/localizationbrowser.py?action=MessageStateImage&messageID=%s' % messageIDText, title=messageID, className='a-tip localization-status', rel='/localization/localizationbrowser.py?action=MessageStateHtml&messageID=%s' % messageIDText)])
 
 
 
@@ -1001,6 +1250,14 @@ exports = {'htmlwriter.UnpackModalDialogueResult': UnpackModalDialogueResult,
  'htmlwriter.OutlineDictTable': OutlineDictTable,
  'htmlwriter.RemoveHtmlTag': RemoveHtmlTag,
  'htmlwriter.GetA': GetA,
+ 'htmlwriter.GetInput': GetInput,
+ 'htmlwriter.GetSelect': GetSelect,
+ 'htmlwriter.GetMessageEnglishByID': GetMessageEnglishByID,
+ 'htmlwriter.GetLocalizationInput': GetLocalizationInput,
+ 'htmlwriter.GetLocalizationTextArea': GetLocalizationTextArea,
+ 'htmlwriter.GetLocalizationLabel': GetLocalizationLabel,
+ 'htmlwriter.GetTextArea': GetTextArea,
+ 'htmlwriter.GetSpan': GetSpan,
  'htmlwriter.GetTable': GetTable,
  'htmlwriter.OutlineTable': OutlineTable,
  'htmlwriter.OutlinePropertyTable': OutlinePropertyTable,
@@ -1015,7 +1272,22 @@ exports = {'htmlwriter.UnpackModalDialogueResult': UnpackModalDialogueResult,
  'htmlwriter.SplitMIMEArgs': SplitMIMEArgs,
  'htmlwriter.PythonizeArgs': PythonizeArgs,
  'htmlwriter.UnicodeMemStream': UnicodeMemStream,
- 'htmlwriter.JsonFunction': JsonFunction}
+ 'htmlwriter.JsonFunction': JsonFunction,
+ 'htmlwriter.HtmlFunction': HtmlFunction,
+ 'htmlwriter.XmlFunction': XmlFunction,
+ 'htmlwriter.ZipFunction': ZipFunction,
+ 'htmlwriter.StaticImage': StaticImage,
+ 'htmlwriter.GenerateCSRFToken': GenerateCSRFToken,
+ 'htmlwriter.CSRFFormField': CSRFFormField,
+ 'htmlwriter.WaitingMessage': WaitingMessage}
+
+class CSRFException(Exception):
+
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, **kwargs)
+
+
+
 
 class HtmlWriter():
     __guid__ = 'htmlwriter.HtmlWriter'
@@ -1026,6 +1298,7 @@ class HtmlWriter():
         from base import GetServiceSession
         self.session = GetServiceSession('HtmlWriter')
         self.ajaxDefaultURL = None
+        self.ajaxCSRF = False
 
 
 
@@ -1046,7 +1319,7 @@ class HtmlWriter():
         self.inserts['icon'] = self.EspIcon('none.gif', 32)
         self.inserts['stylesheet'] = '/lib/std.css'
         self.start = blue.os.GetCycles()[0]
-        self.inserts['bottom_left'] = util.FmtDate(blue.os.GetTime())
+        self.inserts['bottom_left'] = util.FmtDate(blue.os.GetWallclockTime())
         self.inserts['navigation'] = ''
         self.inserts['jscript'] = ''
         self.inserts['head'] = ''
@@ -1064,11 +1337,44 @@ class HtmlWriter():
 
 
 
+    def CSRFFormField(self):
+        return '<input type="hidden" name="csrf_token" value="%s" />' % GenerateCSRFToken(self.request)
+
+
+
+    def CSRF(self):
+        self.ajaxCSRF = True
+
+
+
+    def ValidateCSRF(self):
+        csrf_token = self.request.form['csrf_token'] if self.request.form is not None and 'csrf_token' in self.request.form else ''
+        if csrf_token is None or len(csrf_token) == 0 or csrf_token != GenerateCSRFToken(self.request):
+            return False
+        return True
+
+
+
     def toJavascriptDict(self, d = {}):
         map_fun = lambda x: ('%s' % x if x.startswith('function') or x.startswith('[') else "'%s'" % x)
         map_outer = lambda x: ('%s: %s' % (x, self.toJavascriptDict(d[x])) if isinstance(d[x], types.DictType) else '%s: %s' % (x, str(d[x]).lower()))
         map_key = lambda x: ('%s: %s' % (x, map_fun(d[x])) if isinstance(d[x], types.StringType) else map_outer(x))
         return ''.join(['{', ', '.join(map(map_key, d.keys())), '}'])
+
+
+
+    def GetLocalizationInput(self, ctrlID, value, messageID, width, labelCaption = None):
+        return GetLocalizationInput(ctrlID, value, messageID, width, labelCaption)
+
+
+
+    def GetLocalizationTextArea(self, ctrlID, innerHtml, messageID, cols, rows, labelCaption = None):
+        return GetLocalizationTextArea(ctrlID, innerHtml, messageID, cols, rows, labelCaption)
+
+
+
+    def GetLocalizationLabel(self, labelText, messageID):
+        return GetLocalizationLabel(labelText, messageID)
 
 
 
@@ -1213,53 +1519,6 @@ class HtmlWriter():
 
 
 
-    def __GetElementBegin(self, elementName, attributes):
-        return '<%s%s>' % (elementName, attributes)
-
-
-
-    def __GetElementEnd(self, elementName):
-        return '</%s>' % elementName
-
-
-
-    def __GetElement(self, ctrlName, ctrlValue, ctrlID = None, className = None, style = None):
-        controlID = CheckValue('id', ctrlID)
-        controlName = CheckValue('id', ctrlID)
-        className = CheckValue('class', className)
-        style = CheckValue('style', style)
-        return '\n'.join([self._HtmlWriter__GetElementBegin(ctrlName, '%s%s%s%s' % (controlID,
-          controlName,
-          className,
-          style)), ctrlValue, self._HtmlWriter__GetElementEnd(ctrlName)])
-
-
-
-    def __GetElements(self, elements = None, ctrlName = 'div', ctrlID = None, className = None, style = None, title = None, dataBind = None):
-        ctrlID = CheckValue('id', ctrlID)
-        className = CheckValue('class', className)
-        style = CheckValue('style', style)
-        title = CheckValue('title', title)
-        dataBind = CheckValue('data-bind', dataBind)
-        res = UnicodeMemStream()
-        res.Write(self._HtmlWriter__GetElementBegin(ctrlName, '%s%s%s%s%s' % (ctrlID,
-         className,
-         style,
-         title,
-         dataBind)))
-        if isinstance(elements, list):
-            if elements and len(elements) > 0:
-                for n in elements:
-                    res.Write(unicode(n))
-
-        elif elements is not None:
-            res.Write(unicode(elements))
-        res.Write(self._HtmlWriter__GetElementEnd(ctrlName))
-        res.Seek(0)
-        return res.Read()
-
-
-
     def GetStyleButton(self, href, innerText, cssClass = 'buttonblack'):
         res = UnicodeMemStream()
         if cssClass is not None:
@@ -1272,16 +1531,18 @@ class HtmlWriter():
 
 
 
-    def GetImage(self, src, ctrlID = None, className = None, style = None, title = None):
+    def GetImage(self, src, ctrlID = None, className = None, style = None, title = None, rel = None):
         ctrlID = CheckValue('id', ctrlID)
         className = CheckValue('class', className)
         style = CheckValue('style', style)
         title = CheckValue('title', title)
-        return '<img src="%s" %s%s%s%s/>' % (src,
+        rel = CheckValue('rel', rel)
+        return '<img src="%s" %s%s%s%s%s/>' % (src,
          ctrlID,
          className,
          style,
-         title)
+         title,
+         rel)
 
 
 
@@ -1338,17 +1599,30 @@ class HtmlWriter():
 
 
 
-    def GetForm(self, ctrlID, formMethod, fileName, formAction, elements, multiPart = False):
+    def GetWaitingMessage(self, message):
+        return WaitingMessage(message)
+
+
+
+    def GetForm(self, ctrlID, formMethod, fileName, formAction, elements, multiPart = False, waitingMessage = None):
         self.EnableFormValidation(ctrlID)
         encType = ' enctype="multipart/form-data"' if multiPart else ''
         formAction = '%(fileName)s?action=%(formAction)s' % {'fileName': fileName,
          'formAction': formAction}
         res = []
-        res.append(self._HtmlWriter__GetElementBegin('form', ' id="%s" action="%s" method="%s"' % (ctrlID, formAction, formMethod)))
+        formMethod = str(formMethod).upper()
+        res.append(_GetElementBegin('form', ' id="%s" action="%s" method="%s"%s' % (ctrlID,
+         formAction,
+         formMethod,
+         encType)))
+        if formMethod not in ('GET', 'HEAD', 'OPTIONS', 'TRACE'):
+            res.append(self.CSRFFormField())
+        if waitingMessage is not None:
+            res.append(self.GetWaitingMessage(waitingMessage))
         for n in elements:
             res.append(n)
 
-        res.append(self._HtmlWriter__GetElementEnd('form'))
+        res.append(_GetElementEnd('form'))
         return ''.join(res)
 
 
@@ -1535,29 +1809,34 @@ class HtmlWriter():
 
     def GetFieldset(self, ctrlID = None, elements = [], label = None):
         res = []
-        res.append(self._HtmlWriter__GetElementBegin('fieldset', ''))
+        res.append(_GetElementBegin('fieldset', ''))
         if label:
             res.append('<legend>%s</legend>' % label)
         for n in elements:
             res.append(n)
 
-        res.append(self._HtmlWriter__GetElementEnd('fieldset'))
+        res.append(_GetElementEnd('fieldset'))
         return '\n'.join(res)
 
 
 
-    def GetSimpleForm(self, formMethod = 'post', fileName = '', formAction = '', elements = None):
+    def GetSimpleForm(self, formMethod = 'post', fileName = '', formAction = '', elements = None, waitingMessage = None):
         ctrlID = 'form_%s' % str(random.randint(1, 1000))
         self.EnableFormValidation(ctrlID)
         formAction = '%(fileName)s?action=%(formAction)s' % {'fileName': fileName,
          'formAction': formAction}
         res = []
-        res.append(self._HtmlWriter__GetElementBegin('form', ' id="%s" action="%s" method="%s"' % (ctrlID, formAction, formMethod)))
-        res.append(self._HtmlWriter__GetElementBegin('div', ''))
+        formMethod = str(formMethod).upper()
+        res.append(_GetElementBegin('form', ' id="%s" action="%s" method="%s"' % (ctrlID, formAction, str(formMethod).upper())))
+        if formMethod not in ('GET', 'HEAD', 'OPTIONS', 'TRACE'):
+            res.append(self.CSRFFormField())
+        if waitingMessage is not None:
+            res.append(self.GetWaitingMessage(waitingMessage))
+        res.append(_GetElementBegin('div', ''))
         for n in elements:
             res.append(self.GetP([n]))
 
-        res.append(self._HtmlWriter__GetElementEnd('form'))
+        res.append(_GetElementEnd('form'))
         return '\n'.join(res)
 
 
@@ -1584,47 +1863,47 @@ class HtmlWriter():
 
 
     def GetDiv(self, elements, ctrlID = None, className = None, style = None, title = None, dataBind = None):
-        return self._HtmlWriter__GetElements(elements, 'div', ctrlID, className, style, title, dataBind)
+        return _GetElements(elements, 'div', ctrlID, className, style, title, dataBind)
 
 
 
     def GetSpan(self, elements, ctrlID = None, className = None, style = None, title = None, dataBind = None):
-        return self._HtmlWriter__GetElements(elements, 'span', ctrlID, className, style, title, dataBind)
+        return GetSpan(elements, ctrlID, className, style, title, dataBind)
 
 
 
     def GetP(self, elements, ctrlID = None, className = None, style = None):
-        return self._HtmlWriter__GetElements(elements, 'p', ctrlID, className, style)
+        return _GetElements(elements, 'p', ctrlID, className, style)
 
 
 
     def GetUl(self, elements, ctrlID = None, className = None, style = None):
-        return self._HtmlWriter__GetElements(elements, 'ul', ctrlID, className, style)
+        return _GetElements(elements, 'ul', ctrlID, className, style)
 
 
 
     def GetLi(self, elements, ctrlID = None, className = None, style = None):
-        return self._HtmlWriter__GetElements(elements, 'li', ctrlID, className, style)
+        return _GetElements(elements, 'li', ctrlID, className, style)
 
 
 
-    def GetA(self, innerText, href, ctrlID = None, className = None, style = None, onClick = None, title = None, rel = None, rev = None):
-        return GetA(innerText, href, ctrlID, className, style, onClick, title, rel, rev)
+    def GetA(self, innerText, href, ctrlID = None, className = None, style = None, onClick = None, title = None, rel = None, rev = None, target = None):
+        return GetA(innerText, href, ctrlID, className, style, onClick, title, rel, rev, target)
 
 
 
     def GetH1(self, innerText, ctrlID = None, className = None, style = None):
-        return self._HtmlWriter__GetElement(ctrlName='h1', ctrlValue=innerText, ctrlID=ctrlID, className=className, style=style)
+        return _GetElement(ctrlName='h1', ctrlValue=innerText, ctrlID=ctrlID, className=className, style=style)
 
 
 
     def GetH2(self, innerText, ctrlID = None, className = None, style = None):
-        return self._HtmlWriter__GetElement(ctrlName='h2', ctrlValue=innerText, ctrlID=ctrlID, className=className, style=style)
+        return _GetElement(ctrlName='h2', ctrlValue=innerText, ctrlID=ctrlID, className=className, style=style)
 
 
 
     def GetH3(self, innerText, ctrlID = None, className = None, style = None):
-        return self._HtmlWriter__GetElement(ctrlName='h3', ctrlValue=innerText, ctrlID=ctrlID, className=className, style=style)
+        return _GetElement(ctrlName='h3', ctrlValue=innerText, ctrlID=ctrlID, className=className, style=style)
 
 
 
@@ -1647,41 +1926,12 @@ class HtmlWriter():
 
 
     def GetInput(self, ctrlID, labelCaption, className = None, minLength = None, width = None, value = None, title = ''):
-        minLength = CheckValue('minlength', minLength)
-        if width:
-            width = ' style="width:%spx"' % width
-        else:
-            width = ''
-        className = CheckValue('class', className)
-        value = CheckValue('value', value)
-        title = CheckValue('title', title)
-        res = []
-        if labelCaption is not None:
-            res.append('<label class="form-label" for="%s">%s</label>' % (ctrlID, labelCaption))
-        res.append('<input id="%s" name="%s"%s%s%s%s%s/>' % (ctrlID,
-         ctrlID,
-         className,
-         minLength,
-         width,
-         value,
-         title))
-        return '\n'.join(res)
+        return GetInput(ctrlID, labelCaption, className, minLength, width, value, title)
 
 
 
     def GetSelect(self, elements, controlID, labelCaption = None, elementClass = None, selectedValue = None):
-        elementClass = CheckValue('class', elementClass)
-        if controlID:
-            controlID = ' id="%s" name="%s"' % (controlID, controlID)
-        opt0 = lambda row: (' selected="selected"' if row[0] == selectedValue else '')
-        opt1 = lambda row: '<option value="%s"%s>%s</option>\n' % (row[0], CheckValue('selected', row[2]) if len(row) > 2 else opt0(row), row[1])
-        res = []
-        if labelCaption is not None:
-            res.append('<label class="form-label" for="%s">%s</label>' % (controlID, labelCaption))
-        res.append(self._HtmlWriter__GetElementBegin('select', '%s%s' % (controlID, elementClass)))
-        res.append(''.join(map(opt1, elements.items() if isinstance(elements, dict) else elements)))
-        res.append(self._HtmlWriter__GetElementEnd('select'))
-        return ''.join(res)
+        return GetSelect(elements, controlID, labelCaption, elementClass, selectedValue)
 
 
 
@@ -1712,24 +1962,7 @@ class HtmlWriter():
 
 
     def GetTextArea(self, ctrlID, labelCaption, className, cols, rows, innerHtml = None):
-        className = CheckValue('class', className)
-        cols = CheckValue('cols', cols)
-        rows = CheckValue('rows', rows)
-        ctrlFor = CheckValue('for', ctrlID)
-        ctrlID2 = CheckValue('id', ctrlID)
-        ctrlName = CheckValue('name', ctrlID)
-        if innerHtml is None:
-            innerHtml = ''
-        lines = []
-        if labelCaption:
-            lines.append('<label class="form-label"%(ctrlID)s>%(labelCaption)s</label>' % {'ctrlID': ctrlFor,
-             'labelCaption': labelCaption})
-        lines += [self._HtmlWriter__GetElementBegin('textarea', '%(ctrlID)s%(className)s%(cols)s%(rows)s%(ctrlName)s' % {'ctrlID': ctrlID2,
-          'className': className,
-          'cols': cols,
-          'rows': rows,
-          'ctrlName': ctrlName}), innerHtml, self._HtmlWriter__GetElementEnd('textarea')]
-        return ''.join(lines)
+        return GetTextArea(ctrlID, labelCaption, className, cols, rows, innerHtml)
 
 
 
@@ -1785,10 +2018,11 @@ class HtmlWriter():
 
 
     def Write(self, html):
-        if not self.inserts.has_key(self.redirect):
-            self.inserts[self.redirect] = html
-        else:
-            self.inserts[self.redirect] = self.inserts[self.redirect] + html
+        if html is not None:
+            if not self.inserts.has_key(self.redirect):
+                self.inserts[self.redirect] = html
+            else:
+                self.inserts[self.redirect] = self.inserts[self.redirect] + html
 
 
 
@@ -1948,13 +2182,13 @@ class HtmlWriter():
 
 
 
-    def WriteForm(self, ctrlID, formMethod, fileName, formAction, elements):
-        self.Write(self.GetForm(ctrlID, formMethod, fileName, formAction, elements))
+    def WriteForm(self, ctrlID, formMethod, fileName, formAction, elements, waitingMessage = None):
+        self.Write(self.GetForm(ctrlID, formMethod, fileName, formAction, elements, waitingMessage))
 
 
 
-    def WriteSimpleForm(self, formMethod = 'post', fileName = '', formAction = '', elements = []):
-        self.Write(self.GetSimpleForm(formMethod, fileName, formAction, elements))
+    def WriteSimpleForm(self, formMethod = 'post', fileName = '', formAction = '', elements = [], waitingMessage = None):
+        self.Write(self.GetSimpleForm(formMethod, fileName, formAction, elements, waitingMessage))
 
 
 
@@ -2010,7 +2244,7 @@ class HtmlWriter():
 
 
     def WriteNotice(self, title, text):
-        self.Write('<table width=420 class=NoticeTable cellpadding=5 cellspacing=0><tr><td valign=top width=24><img src="/img/msg_infoicon.gif"></td><td><b>%s</b><br>%s</td></tr></table>' % (title, text))
+        self.Write('<br>' + self.GetMessage(title, '<br>' + text, 'tip'))
 
 
 
@@ -2138,7 +2372,7 @@ class HtmlWriter():
         dt = (stop - self.start) / float(hz) * 1000.0
         self.inserts['bottom_left'] = '%s (%.1f ms) %s' % (self.inserts['bottom_left'], dt, self.AppBottomLeft())
         trackID = 1 if prefs.clusterMode == 'LOCAL' else prefs.GetValue('webTrackID', -1)
-        trackUrl = prefs.GetValue('trackUrl', 'http://10.1.5.131/piwik/')
+        trackUrl = prefs.GetValue('trackUrl', 'http://esp-staging-ws/piwik/')
         if not trackUrl.endswith('/'):
             trackUrl += '/'
         if trackID > -1:
@@ -2314,7 +2548,7 @@ class HtmlWriter():
 
     def MakeBSDIdentity(self, schemaName, tableName, columnName, keyID, keyID2 = 0, keyID3 = 0, callbackFunc = ''):
         res = util.KeyVal(schemaName=schemaName, tableName=tableName, columnName=columnName, keyID=keyID, keyID2=keyID2, keyID3=keyID3, callbackFunc=callbackFunc)
-        res.tableID = self.BSD.TableID(schemaName, tableName)
+        res.tableID = self.cache.TableID(schemaName, tableName)
         if res.tableID is None:
             raise RuntimeError('Unknown Schema Name or Table Name!')
         if res.columnName not in self.BSD.GetColumnData(res.schemaName, res.tableName).Index('columnName'):
@@ -2490,9 +2724,9 @@ class HtmlWriter():
         opt1 = lambda row: '<option value="%s" %s >%s</option>\n' % (row[0], ['', 'selected'][row[2]], row[1])
         attrTxt = 'class="%(elementClass)s" onchange="OnChangeAjax(%(dataID)s, \'%(attr)s\', this.value, \'%(url)s\', \'%(action)s\', null)" title="%(title)s" ' % args
         return ''.join(['<label class="form-label" for="%s">%s</label>' % (ctrlID, labelCaption),
-         self._HtmlWriter__GetElementBegin('select', '%s %s' % (ctrlID, attrTxt)),
+         _GetElementBegin('select', '%s %s' % (ctrlID, attrTxt)),
          ''.join(map(opt1, elements)),
-         self._HtmlWriter__GetElementEnd('select')])
+         _GetElementEnd('select')])
 
 
 
@@ -2633,12 +2867,18 @@ class HtmlWriter():
             preargs = exported[1:]
         else:
             preargs = exported
-        params = {}
-        for each in preargs:
-            if request.QueryString(each) is not None:
-                params[each] = request.QueryString(each)
-            elif request.Form(each) is not None:
-                params[each] = request.Form(each)
+        if preargs == ['**']:
+            params = request.QueryStrings()
+            for (k, v,) in request.FormItems().items():
+                params[k] = v
+
+        else:
+            params = {}
+            for each in preargs:
+                if request.QueryString(each) is not None:
+                    params[each] = request.QueryString(each)
+                elif request.Form(each) is not None:
+                    params[each] = request.Form(each)
 
         return ((), params)
 
@@ -2675,6 +2915,12 @@ class HtmlWriterEx(HtmlWriter):
     def HandleAction(self, action, request, response):
         self.request = request
         self.response = response
+        if self.ajaxCSRF and str(request.method).upper() in ('GET', 'HEAD', 'OPTIONS', 'TRACE'):
+            response.cookie['csrftoken'] = GenerateCSRFToken(request)
+        if prefs.clusterMode != 'LOCAL' and prefs.clusterMode != 'MASTER':
+            if str(request.method).upper() == 'POST' and not self.ValidateCSRF():
+                if 'x-csrftoken' not in request.header or request.header['x-csrftoken'] != GenerateCSRFToken(request):
+                    raise CSRFException('CSRF Token not valid')
         if action is None:
             action = self.__defaultaction__
         argstuple = self.GetActionArgs(request, action)
@@ -2950,7 +3196,7 @@ class HtmlWriterEx(HtmlWriter):
                 s.Write('    <td class="mbForum" align=left valign=middle width="10">&nbsp</td>\n')
                 s.Write('    <td class="mbForum" align=left valign=middle><A href="?action=WebTopics&channelID=%s">%s</A><br>%s</td>\n' % (d['channelID'], d['channelName'], d['description']))
                 s.Write('    <td class="mbForum" align=center valign=middle Width="10%%">%s</td>\n' % d['numPosts'])
-                s.Write('    <td class="mbForum" align=center valign=middle Width="10%%"><nobr>%s</nobr><br>by: <A href="javascript:pop(\'mb_pop.py?action=character&characterID=%s\',\'mb_popChar\',300,400);">%s</A></td>\n' % (util.FmtDate(d['lastPost'], 'ss'), d['lastAuthor'], d['lastAuthorName']))
+                s.Write('    <td class="mbForum" align=center valign=middle Width="10%%"><nobr>%s</nobr><br>by: <A href="javascript:pop(\'mb_pop.py?action=character&characterID=%s\',\'mb_popChar\',300,400);">%s</A></td>\n' % (util.FmtDateEng(d['lastPost'], 'ss'), d['lastAuthor'], d['lastAuthorName']))
                 s.Write('    <td class="mbForum" align=left valign=middle width="10">&nbsp</td>\n')
                 s.Write('</tr>\n')
 
@@ -2993,7 +3239,7 @@ class HtmlWriterEx(HtmlWriter):
                 s.Write('    <td class="mbForum" align=center valign=middle><A href="charpop.py?characterID=%s">%s</A></td>\n' % (d['sc_authorID'], d['authorName']))
                 s.Write('    <td class="mbForum" align=center valign=middle>%s</td>\n' % replies)
                 s.Write('    <td class="mbForum" align=center valign=middle>%s</td>\n' % d['sc_reads'])
-                s.Write('    <td class="mbForum" align=center valign=middle Width="10%%"><nobr>%s</nobr><br>by: <A href="javascript:pop(\'mb_pop.py?action=character&characterID=%s\',\'mb_popChar\',300,400);">%s</A></td>\n' % (util.FmtDate(d['sc_modified'], 'ss'), d['sc_lastauthorID'], d['lastAuthorName']))
+                s.Write('    <td class="mbForum" align=center valign=middle Width="10%%"><nobr>%s</nobr><br>by: <A href="javascript:pop(\'mb_pop.py?action=character&characterID=%s\',\'mb_popChar\',300,400);">%s</A></td>\n' % (util.FmtDateEng(d['sc_modified'], 'ss'), d['sc_lastauthorID'], d['lastAuthorName']))
                 s.Write('</tr>\n')
 
         s.Write('</table>\n')
@@ -3037,7 +3283,7 @@ class HtmlWriterEx(HtmlWriter):
                  d['authorID'],
                  d['authorName']))
                 s.Write('    <td class="%s" align=left valign=top >Posted - %s %s<hr noshade size="1">%s</td>\n' % (mbClass,
-                 util.FmtDate(d['created'], 'ss'),
+                 util.FmtDateEng(d['created'], 'ss'),
                  Edit,
                  self.MessageBoardFormat(d['text'])))
                 s.Write('</tr>\n')
@@ -3244,14 +3490,31 @@ class HtmlWriterEx(HtmlWriter):
 class Form():
     __guid__ = 'htmlwriter.Form'
 
-    def __init__(self, url = '', action = '', method = 'GET', target = '', formName = 'NeedAName', encType = ''):
+    def __init__(self, url = '', action = '', method = 'GET', target = '', formName = 'NeedAName', encType = '', request = None, waitingMessage = None):
         self.url = url
         self.formName = formName
         self.action = action
-        self.method = method
+        self.method = str(method).upper()
         self.target = target
         self.elements = []
         self.encType = encType
+        self.request = request
+        self.waitingMessage = waitingMessage
+
+
+
+    def AddLocalizationInput(self, ctrlID, value, messageID, width, labelCaption = None):
+        self.elements.append([ctrlID if labelCaption is None else labelCaption, GetLocalizationInput(ctrlID, value, messageID, width), ''])
+
+
+
+    def AddLocalizationTextArea(self, ctrlID, innerHtml, messageID, cols, rows, labelCaption = None):
+        self.elements.append([ctrlID if labelCaption is None else labelCaption, GetLocalizationTextArea(ctrlID, innerHtml, messageID, cols, rows), ''])
+
+
+
+    def AddLocalizationLabel(self, label, labelText, messageID):
+        self.elements.append([label, GetLocalizationLabel(labelText, messageID), ''])
 
 
 
@@ -3631,11 +3894,13 @@ class Form():
             inLineJavaScript = 'onClick="return confirm(\'Are you sure?\')"'
         if onClick != 0:
             inLineJavaScript = 'onClick="%s"' % onClick
-        self.elements.append(['', '<input type="submit" id="%s" name="%s" value="%s"  %s>\n<input type="hidden" name="action" value="%s">' % (name,
-          name,
-          nm,
-          inLineJavaScript,
-          action), error])
+        value = '<input type="submit" id="%s" name="%s" value="%s"  %s>' % (name,
+         name,
+         nm,
+         inLineJavaScript)
+        if action:
+            value += '\n<input type="hidden" name="action" value="%s">' % (action,)
+        self.elements.append(['', value, error])
         return self.Generate(style)
 
 
@@ -3658,8 +3923,15 @@ class Form():
         encType = ''
         if self.encType != '':
             encType = 'enctype="%s"' % self.encType
-        if self.url is None and self.action is None:
+        if not (self.url or self.action):
             self.s.Write('<form name="%s" method="%s" %s>\n' % (self.formName, self.method, target))
+        elif not self.action:
+            self.s.Write('<form name="%s" id="%s" action="%s" method="%s" %s %s>\n' % (self.formName,
+             self.formName,
+             self.url,
+             self.method,
+             target,
+             encType))
         else:
             stuff = self.url.split('#')
             if len(stuff) > 1:
@@ -3678,6 +3950,10 @@ class Form():
                  self.method,
                  target,
                  encType))
+        if self.request is not None and self.method not in ('GET', 'HEAD', 'OPTIONS', 'TRACE'):
+            self.s.Write(CSRFFormField(self.request))
+        if self.waitingMessage is not None:
+            self.s.Write(WaitingMessage(self.waitingMessage))
         if style != 2:
             self.s.Write('<table Border=0>\n')
         if style == 1:

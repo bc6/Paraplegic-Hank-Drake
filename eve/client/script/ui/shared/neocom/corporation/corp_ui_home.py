@@ -5,14 +5,17 @@ import uiutil
 import form
 import listentry
 import log
+import moniker
 import uicls
 import uiconst
+import localization
+import localizationUtil
 
 class CorpUIHome(uicls.Container):
     __guid__ = 'form.CorpUIHome'
     __nonpersistvars__ = []
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         if self.sr.Get('offices', None) is not None:
             self.sr.offices.RemoveListener(self)
 
@@ -39,12 +42,12 @@ class CorpUIHome(uicls.Container):
         self.LoadLogo(eve.session.corpid)
         bulletinParent = uicls.Container(name='bulletinParent', parent=self.mainContainer, align=uiconst.TOALL, pos=(0, 0, 0, 0))
         detailsParent = uicls.Container(name='detailsParent', parent=self.mainContainer, align=uiconst.TOALL, pos=(0, 0, 0, 0))
-        tabs = [[mls.UI_CORP_DETAILS,
+        tabs = [[localization.GetByLabel('UI/Common/Details'),
           detailsParent,
           self,
           'details']]
         if not util.IsNPC(session.corpid):
-            tabs.insert(0, [mls.UI_CORP_BULLETINS,
+            tabs.insert(0, [localization.GetByLabel('UI/Corporations/CorpUIHome/Bulletins'),
              bulletinParent,
              self,
              'bulletin'])
@@ -53,37 +56,37 @@ class CorpUIHome(uicls.Container):
         btns = []
         if const.corpRoleChatManager & eve.session.corprole == const.corpRoleChatManager:
             btns.append(['corporationAddBulletinsBtn',
-             mls.UI_CORP_ADDBULLETIN,
+             localization.GetByLabel('UI/Corporations/CorpUIHome/AddBulletin'),
              self.AddBulletin,
              None,
              None])
             uicls.ButtonGroup(btns=btns, parent=bulletinParent, line=1, unisize=1, forcedButtonNames=True)
         if not util.IsNPC(session.corpid):
-            uicls.Container(name='push', parent=bulletinParent, align=uiconst.TOLEFT, width=const.defaultPadding)
-            self.messageArea = uicls.Edit(parent=bulletinParent, readonly=1, hideBackground=1)
-            self.messageArea.AllowResizeUpdates(1)
+            self.messageArea = uicls.Scroll(parent=bulletinParent, padding=const.defaultPadding)
+            self.messageArea.HideBackground()
+            self.messageArea.RemoveActiveFrame()
             self.LoadBulletins()
         btns = []
         if getattr(self, 'canEditCorp', False):
             btns.append(['corporationEditDetailsBtn',
-             mls.UI_CMD_EDITDETAILS,
+             localization.GetByLabel('UI/Corporations/CorpUIHome/EditDetails'),
              self.EditDetails,
              None,
              None])
         if sm.GetService('corp').UserIsCEO():
             btns.append(['corporationDividendsBtn',
-             mls.UI_CMD_DIVIDENDS,
+             localization.GetByLabel('UI/Corporations/CorpUIHome/Dividends'),
              self.PayoutDividendForm,
              None,
              None])
             btns.append(['corporationDivisionsBtn',
-             mls.UI_CMD_DIVISIONS,
+             localization.GetByLabel('UI/Corporations/CorpUIHome/Divisions'),
              self.DivisionsForm,
              None,
              None])
         else:
             btns.append(['corporationCreateNewCorpBtn',
-             mls.UI_CMD_CREATENEWCORP,
+             localization.GetByLabel('UI/Corporations/CorpUIHome/CreateNewCorp'),
              self.CreateCorpForm,
              None,
              None])
@@ -92,19 +95,19 @@ class CorpUIHome(uicls.Container):
                 (canLeave, error, errorDetails,) = corpSvc.CanLeaveCurrentCorporation()
                 if not canLeave and error == 'CrpCantQuitNotInStasis':
                     btns.append(['corporationRemoveRoles',
-                     mls.UI_CMD_REMOVEALLROLES2,
+                     localization.GetByLabel('UI/Corporations/CorpUIHome/PrepareQuitCorporation'),
                      self.RemoveAllRoles,
                      None,
                      None])
                 else:
                     btns.append(['corporationResign',
-                     mls.UI_CMD_QUITCORP2,
+                     localization.GetByLabel('UI/Corporations/CorpUIHome/QuitCorp'),
                      self.ResignFromCorp,
                      None,
                      None])
                 if corpSvc.UserBlocksRoles():
                     btns.append(['corporationUnblockRoles',
-                     mls.UI_CMD_ALLOWROLES,
+                     localization.GetByLabel('UI/Corporations/Common/AllowCorpRoles'),
                      self.AllowRoles,
                      None,
                      None])
@@ -118,8 +121,8 @@ class CorpUIHome(uicls.Container):
 
 
     def LoadBulletins(self):
-        txt = sm.GetService('corp').GetFormattedBulletins()
-        self.messageArea.LoadHTML(txt)
+        scrollEntries = sm.GetService('corp').GetBulletinEntries()
+        self.messageArea.LoadContent(contentList=scrollEntries, noContentHint=localization.GetByLabel('UI/Corporations/BaseCorporationUI/NoBulletins'))
 
 
 
@@ -133,7 +136,7 @@ class CorpUIHome(uicls.Container):
         loc = getattr(self, 'captionContainer', None)
         if loc is not None:
             uix.Flush(loc)
-            caption = uicls.CaptionLabel(text='%s' % cfg.eveowners.Get(eve.session.corpid).ownerName, parent=loc, align=uiconst.RELATIVE)
+            caption = uicls.CaptionLabel(text=localization.GetByLabel('UI/Corporations/CorpUIHome/CorpNamePlaceholder', corpName=cfg.eveowners.Get(eve.session.corpid).ownerName), parent=loc, align=uiconst.RELATIVE)
             caption.left = 0
             infoicon = uicls.InfoIcon(typeID=const.typeCorporation, itemID=corporationID, parent=loc, size=16, left=caption.width + 4, top=3, state=uiconst.UI_NORMAL)
 
@@ -144,7 +147,7 @@ class CorpUIHome(uicls.Container):
             eve.Message('OnlyCEOOrEquivCanEditCorp')
             return None
         else:
-            wnd = sm.GetService('window').GetWindow('editcorpdetails', 1, decoClass=form.EditCorpDetails)
+            wnd = form.EditCorpDetails.Open()
             if wnd.ShowModal() == uiconst.ID_OK:
                 return wnd.result
             return None
@@ -173,7 +176,7 @@ class CorpUIHome(uicls.Container):
              {'type': 'push',
               'frame': 1},
              {'type': 'text',
-              'text': mls.UI_CORP_HINT37,
+              'text': localization.GetByLabel('UI/Corporations/CorpUIHome/HintSelectDividend'),
               'frame': 1},
              {'type': 'push',
               'frame': 1},
@@ -183,7 +186,7 @@ class CorpUIHome(uicls.Container):
             payShareholders = 0
             payMembers = 1
             format.append({'type': 'text',
-             'text': mls.UI_CORP_HINT38,
+             'text': localization.GetByLabel('UI/Corporations/CorpUIHome/PayDividendTo'),
              'frame': 1})
             format.append({'type': 'checkbox',
              'required': 1,
@@ -192,7 +195,7 @@ class CorpUIHome(uicls.Container):
              'setvalue': 1,
              'key': payShareholders,
              'label': '',
-             'text': mls.UI_CORP_SHAREHOLDERS,
+             'text': localization.GetByLabel('UI/Corporations/CorpUIHome/Shareholders'),
              'frame': 1})
             format.append({'type': 'checkbox',
              'required': 1,
@@ -201,7 +204,7 @@ class CorpUIHome(uicls.Container):
              'setvalue': 0,
              'key': payMembers,
              'label': '',
-             'text': mls.UI_CORP_MEMBERS,
+             'text': localization.GetByLabel('UI/Corporations/CorpUIHome/Members'),
              'frame': 1})
             format.append({'type': 'push',
              'frame': 1})
@@ -209,21 +212,21 @@ class CorpUIHome(uicls.Container):
             format.append({'type': 'push',
              'frame': 1})
             format.append({'type': 'text',
-             'text': mls.UI_CORP_HINT39,
+             'text': localization.GetByLabel('UI/Corporations/CorpUIHome/EnterTotalAmount'),
              'frame': 1})
             format.append({'type': 'text',
-             'text': mls.UI_CORP_HINT40,
+             'text': localization.GetByLabel('UI/Corporations/CorpUIHome/AmountWillBeDivided'),
              'frame': 1})
             format.append({'type': 'edit',
              'key': 'payoutAmount',
              'setvalue': 1,
-             'label': mls.UI_GENERIC_AMOUNT,
+             'label': localization.GetByLabel('UI/Corporations/CorpUIHome/Amount'),
              'frame': 1,
              'floatonly': [1, maxAmount]})
             format.append({'type': 'push',
              'frame': 1})
             format.append({'type': 'bbline'})
-            retval = uix.HybridWnd(format, mls.UI_CORP_HINT41, 1, None, None, None, 340, 256, ignoreCurrent=0)
+            retval = uix.HybridWnd(format, localization.GetByLabel('UI/Corporations/CorpUIHome/PayDividend'), 1, None, None, None, 340, 256, ignoreCurrent=0)
             if retval is not None:
                 payShareholders = [1, 0][retval['OdividendType']]
                 payoutAmount = retval['payoutAmount']
@@ -237,7 +240,7 @@ class CorpUIHome(uicls.Container):
 
     def DivisionsForm(self, *args):
         if not sm.GetService('corp').UserIsCEO():
-            eve.Message('CrpAccessDenied', {'reason': mls.UI_CORP_HINT42})
+            eve.Message(localization.GetByLabel('UI/Messages/CorpAccessOnlyCEOEditDivisionNames'))
             return 
         divisions = sm.GetService('corp').GetDivisionNames()
         format = [{'type': 'btline'},
@@ -245,32 +248,30 @@ class CorpUIHome(uicls.Container):
           'frame': 1},
          {'type': 'text',
           'frame': 1,
-          'text': mls.UI_CORP_HINT43},
+          'text': localization.GetByLabel('UI/Corporations/CorpUIHome/AssignNames')},
          {'type': 'push',
           'frame': 1}]
         labelWidth = 160
         for i in xrange(1, 8):
             key = 'division%s' % i
-            label = '%s (%s):' % (mls.UI_CORP_DIVISIONNAME, i)
             format.append({'type': 'edit',
              'setvalue': divisions[i],
-             'label': label,
+             'label': localization.GetByLabel('UI/Corporations/CorpUIHome/DivisionName', index=i),
              'key': key,
              'frame': 1,
              'labelwidth': labelWidth,
              'maxlength': 50})
 
         format.append({'type': 'labeltext',
-         'label': '%s (1):' % mls.UI_CORP_WALLETDIVISIONNAME,
-         'text': mls.UI_CORP_MASTERWALLET,
+         'label': localization.GetByLabel('UI/Corporations/CorpUIHome/WalletDivisionName', index=1),
+         'text': localization.GetByLabel('UI/Corporations/Common/CorporateDivisionMasterWallet'),
          'frame': 1,
          'labelwidth': labelWidth})
         for i in xrange(9, 15):
             key = 'division%s' % i
-            label = '%s (%s):' % (mls.UI_CORP_WALLETDIVISIONNAME, i - 7)
             format.append({'type': 'edit',
              'setvalue': divisions[i],
-             'label': label,
+             'label': localization.GetByLabel('UI/Corporations/CorpUIHome/WalletDivisionName', index=i - 7),
              'key': key,
              'frame': 1,
              'labelwidth': labelWidth,
@@ -281,7 +282,7 @@ class CorpUIHome(uicls.Container):
         format.append({'type': 'btline'})
         format.append({'type': 'errorcheck',
          'errorcheck': self.ApplyDivisionNames})
-        wnd = uix.HybridWnd(format, mls.UI_CORP_DIVISIONNAMES, 0, minW=450, ignoreCurrent=0)
+        wnd = uix.HybridWnd(format, localization.GetByLabel('UI/Corporations/CorpUIHome/DivisionNamesCaption'), 0, minW=450, ignoreCurrent=0)
         if wnd:
             wnd.Maximize()
 
@@ -310,7 +311,7 @@ class CorpUIHome(uicls.Container):
 
 
     def CreateCorpForm(self, *args):
-        wnd = sm.GetService('window').GetWindow('createcorp')
+        wnd = form.CreateCorp.GetIfOpen()
         if wnd is not None:
             wnd.Maximize()
         else:
@@ -336,7 +337,7 @@ class CorpUIHome(uicls.Container):
             eve.Message('CEOCannotCreateCorporation')
             eve.session.ResetSessionChangeTimer('Failed criteria for creating a corporation')
             return 
-        wnd = sm.GetService('window').GetWindow('createcorporation', 1, decoClass=form.CreateCorp)
+        form.CreateCorp.Open()
 
 
 
@@ -367,7 +368,7 @@ class CorpUIHome(uicls.Container):
         sm.GetService('corpui').ShowLoad()
         try:
             data = {'GetSubContent': self.GetSubContentDetails,
-             'label': mls.UI_GENERIC_DETAILS,
+             'label': localization.GetByLabel('UI/Common/Details'),
              'groupItems': None,
              'id': ('corporation', 'details'),
              'tabs': [],
@@ -388,54 +389,56 @@ class CorpUIHome(uicls.Container):
         founderdone = 0
         if cfg.invtypes.Get(cfg.eveowners.Get(corpinfo.ceoID).typeID).groupID == const.groupCharacter:
             if corpinfo.creatorID == corpinfo.ceoID:
-                ceoLabel = mls.UI_INFOWND_CEOANDFOUNDER
+                ceoLabel = localization.GetByLabel('UI/Corporations/CorpUIHome/CeoAndFounder')
                 founderdone = 1
             else:
-                ceoLabel = mls.UI_GENERIC_CEO
+                ceoLabel = localization.GetByLabel('UI/Corporations/Common/CEO')
             scrolllist.append(listentry.Get('LabelTextTop', {'line': 1,
              'label': ceoLabel,
-             'text': cfg.eveowners.Get(corpinfo.ceoID).name,
+             'text': localization.GetByLabel('UI/Corporations/CorpUIHome/PlayerNamePlaceholder', player=corpinfo.ceoID),
              'typeID': const.typeCharacterAmarr,
              'itemID': corpinfo.ceoID}))
         if not founderdone and cfg.invtypes.Get(cfg.eveowners.Get(corpinfo.creatorID).typeID).groupID == const.groupCharacter:
             scrolllist.append(listentry.Get('LabelTextTop', {'line': 1,
-             'label': mls.UI_INFOWND_FOUNDER,
-             'text': cfg.eveowners.Get(corpinfo.creatorID).name,
+             'label': localization.GetByLabel('UI/Corporations/Common/Founder'),
+             'text': localization.GetByLabel('UI/Corporations/CorpUIHome/PlayerNamePlaceholder', player=corpinfo.creatorID),
              'typeID': const.typeCharacterAmarr,
              'itemID': corpinfo.creatorID}))
         if corpinfo.stationID:
             station = sm.RemoteSvc('stationSvc').GetStation(corpinfo.stationID)
             row = util.Row(['stationID', 'typeID'], [corpinfo.stationID, station.stationTypeID])
             jumps = sm.GetService('pathfinder').GetJumpCountFromCurrent(station.solarSystemID)
-            locationName = cfg.evelocations.Get(station.stationID).locationName
-            text = '%s - %s' % (locationName, uix.Plural(jumps, 'UI_SHARED_NUM_JUMP') % {'num': jumps})
             scrolllist.append(listentry.Get('LabelTextTop', {'line': 1,
-             'label': mls.UI_CORP_HEADQUARTERS,
-             'text': text,
+             'label': localization.GetByLabel('UI/Corporations/CorpUIHome/Headquarters'),
+             'text': localization.GetByLabel('UI/Corporations/CorpUIHome/StationAndJumps', station=station.stationID, jumpCount=jumps, jumps=jumps),
              'typeID': station.stationTypeID,
              'itemID': corpinfo.stationID,
              'station': row,
              'GetMenu': lambda itemID = corpinfo.stationID, typeID = station.stationTypeID: sm.StartService('menu').CelestialMenu(itemID, typeID=typeID)}))
-        for each in [('tickerName', mls.UI_GENERIC_TICKERNAME),
-         ('shares', mls.UI_GENERIC_SHARES),
-         ('memberCount', mls.UI_GENERIC_MEMBERCOUNT),
-         ('taxRate', mls.UI_GENERIC_TAXRATE)]:
-            if each[0] == 'memberCount' and util.IsNPC(eve.session.corpid):
-                continue
-            val = getattr(corpinfo, each[0], 0.0)
-            if each[0] == 'taxRate':
-                val = '%s %%' % (val * 100)
-            scrolllist.append(listentry.Get('LabelTextTop', {'line': 1,
-             'label': each[1],
-             'text': val}))
-
-        if corpinfo.url:
-            scrolllist.append(listentry.Get('LabelTextTop', {'line': 1,
-             'label': mls.UI_GENERIC_URL,
-             'text': '<url=%s>%s</url>' % (corpinfo.url, corpinfo.url)}))
         scrolllist.append(listentry.Get('LabelTextTop', {'line': 1,
-         'label': mls.UI_CORP_MEMBERSHIP_APPLICATIONS,
-         'text': [mls.UI_SHARED_DISABLED, mls.UI_SHARED_ENABLED][corpinfo.isRecruiting]}))
+         'label': localization.GetByLabel('UI/Corporations/CorpUIHome/TickerName'),
+         'text': localization.GetByLabel('UI/Corporations/CorpUIHome/TickerNamePlaceholder', ticker=corpinfo.tickerName)}))
+        scrolllist.append(listentry.Get('LabelTextTop', {'line': 1,
+         'label': localization.GetByLabel('UI/Corporations/CorpUIHome/Shares'),
+         'text': localizationUtil.FormatNumeric(value=corpinfo.shares)}))
+        if not util.IsNPC(eve.session.corpid):
+            scrolllist.append(listentry.Get('LabelTextTop', {'line': 1,
+             'label': localization.GetByLabel('UI/Corporations/CorpUIHome/MemberCount'),
+             'text': localizationUtil.FormatNumeric(value=corpinfo.memberCount)}))
+        scrolllist.append(listentry.Get('LabelTextTop', {'line': 1,
+         'label': localization.GetByLabel('UI/Corporations/CorpUIHome/TaxRate'),
+         'text': localization.GetByLabel('UI/Corporations/CorpUIHome/TaxRatePlaceholder', tax=int(corpinfo.taxRate * 100))}))
+        if corpinfo.url:
+            linkTag = '<url=%s>' % corpinfo.url
+            scrolllist.append(listentry.Get('LabelTextTop', {'line': 1,
+             'label': localization.GetByLabel('UI/Corporations/CorpUIHome/URL'),
+             'text': localization.GetByLabel('UI/Corporations/CorpUIHome/URLPlaceholder', linkTag=linkTag, url=corpinfo.url)}))
+        enabledDisabledText = localization.GetByLabel('UI/Corporations/CorpUIHome/Enabled')
+        if not corpinfo.isRecruiting:
+            enabledDisabledText = localization.GetByLabel('UI/Corporations/CorpUIHome/Disabled')
+        scrolllist.append(listentry.Get('LabelTextTop', {'line': 1,
+         'label': localization.GetByLabel('UI/Corporations/CorpUIHome/MembershipApplication'),
+         'text': enabledDisabledText}))
         return scrolllist
 
 
@@ -444,7 +447,7 @@ class CorpUIHome(uicls.Container):
         sm.GetService('corpui').ShowLoad()
         try:
             data = {'GetSubContent': self.GetSubContentMyCorporationsOffices,
-             'label': mls.UI_CORP_OFFICES,
+             'label': localization.GetByLabel('UI/Corporations/Common/Offices'),
              'groupItems': None,
              'id': ('corporation', 'offices'),
              'tabs': [],
@@ -485,23 +488,37 @@ class CorpUIHome(uicls.Container):
                 solarSystemID = sm.GetService('ui').GetStation(row.stationID).solarSystemID
                 jumps = sm.GetService('pathfinder').GetJumpCountFromCurrent(solarSystemID)
                 locationName = cfg.evelocations.Get(row.stationID).locationName
-                label = '%s - %s' % (locationName, uix.Plural(jumps, 'UI_SHARED_NUM_JUMP') % {'num': jumps})
-                subcontent.append((locationName.lower(), listentry.Get('Generic', {'label': label,
+                subcontent.append((locationName.lower(), listentry.Get('Generic', {'label': localization.GetByLabel('UI/Corporations/CorpUIHome/StationAndJumps', station=row.stationID, jumpCount=jumps, jumps=jumps),
                   'station': row,
-                  'GetMenu': self.GetMenu,
+                  'GetMenu': self.GetMenuForCorpOffice,
                   'typeID': row.typeID,
                   'itemID': row.stationID})))
 
         if not len(subcontent):
-            subcontent.append(listentry.Get('Generic', {'label': mls.UI_CORP_HINT44}))
+            subcontent.append(listentry.Get('Generic', {'label': localization.GetByLabel('UI/Corporations/CorpUIHome/CorpHasNoOffices')}))
         else:
             subcontent = uiutil.SortListOfTuples(subcontent)
         return subcontent
 
 
 
+    def GetMenuForCorpOffice(self, entry):
+        station = entry.sr.node.station
+        ret = sm.GetService('menu').CelestialMenu(station.stationID, typeID=station.typeID)
+        ret.append([localization.GetByLabel('UI/Station/Hangar/UnrentOffice'), self.UnrentOffice, [station.stationID]])
+        return ret
+
+
+
+    def UnrentOffice(self, stationID):
+        if eve.Message('crpUnrentOffice', {}, uiconst.YESNO) != uiconst.ID_YES:
+            return 
+        corpStationMgr = moniker.GetCorpStationManagerEx(stationID)
+        corpStationMgr.CancelRentOfOffice()
+
+
+
     def GetMenu(self, entry):
-        log.LogInfo('WQWQQWQW')
         station = entry.sr.node.station
         return sm.GetService('menu').CelestialMenu(station.stationID, typeID=station.typeID)
 
@@ -511,7 +528,7 @@ class CorpUIHome(uicls.Container):
         sm.GetService('corpui').ShowLoad()
         try:
             data = {'GetSubContent': self.GetSubContentMyCorporationsStations,
-             'label': mls.UI_GENERIC_STATIONS,
+             'label': localization.GetByLabel('UI/Corporations/CorpUIHome/Stations'),
              'groupItems': None,
              'id': ('corporation', 'stations'),
              'tabs': [],
@@ -533,16 +550,14 @@ class CorpUIHome(uicls.Container):
             for row in rows:
                 solarSystemID = sm.GetService('ui').GetStation(row.stationID).solarSystemID
                 jumps = sm.GetService('pathfinder').GetJumpCountFromCurrent(solarSystemID)
-                locationName = cfg.evelocations.Get(row.stationID).locationName
-                label = '%s - %s' % (locationName, uix.Plural(jumps, 'UI_SHARED_NUM_JUMP') % {'num': jumps})
-                subcontent.append(listentry.Get('Generic', {'label': label,
+                subcontent.append(listentry.Get('Generic', {'label': localization.GetByLabel('UI/Corporations/CorpUIHome/StationAndJumps', station=row.stationID, jumpCount=jumps, jumps=jumps),
                  'station': row,
                  'GetMenu': self.GetMenu,
                  'typeID': row.typeID,
                  'itemID': row.stationID}))
 
         if not len(subcontent):
-            subcontent.append(listentry.Get('Generic', {'label': mls.UI_CORP_HINT45}))
+            subcontent.append(listentry.Get('Generic', {'label': localization.GetByLabel('UI/Corporations/CorpUIHome/CorpHasNoStations')}))
         return subcontent
 
 
@@ -579,8 +594,35 @@ class CorpUIHome(uicls.Container):
 
 
 
+class BulletinEntry(uicls.SE_BaseClassCore):
+    __guid__ = 'listentry.BulletinEntry'
+
+    def Startup(self, *args):
+        uicls.Line(parent=self, align=uiconst.TOBOTTOM)
+        self.text = uicls.EveLabelMedium(parent=self, align=uiconst.TOTOP, state=uiconst.UI_NORMAL, padding=const.defaultPadding)
+        self.postedBy = uicls.EveLabelMedium(parent=self, align=uiconst.BOTTOMRIGHT, state=uiconst.UI_NORMAL, singleline=True, top=const.defaultPadding, left=const.defaultPadding)
+
+
+
+    def Load(self, node):
+        self.text.text = node.text
+        self.postedBy.text = node.postedBy
+
+
+
+    def GetDynamicHeight(node, width):
+        (textWidth, textHeight,) = uicls.EveLabelMedium.MeasureTextSize(text=node.text, width=width - const.defaultPadding * 2)
+        height = textHeight + const.defaultPadding * 2
+        (postedWidth, postedHeight,) = uicls.EveLabelMedium.MeasureTextSize(text=node.postedBy, singleline=True)
+        height += postedHeight + const.defaultPadding
+        return height
+
+
+
+
 class EditCorpBulletin(uicls.Window):
     __guid__ = 'form.EditCorpBulletin'
+    default_windowID = 'EditCorpBulletin'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -593,7 +635,7 @@ class EditCorpBulletin(uicls.Window):
         self.isAlliance = isAlliance
         self.SetMinSize([420, 300])
         self.SetWndIcon('ui_7_64_6')
-        self.SetCaption(mls.UI_CORP_EDITBULLETINCAPTION)
+        self.SetCaption(localization.GetByLabel('UI/Corporations/EditCorpBulletin/EditBulletinCaption'))
         self.SetTopparentHeight(45)
         main = uiutil.FindChild(self, 'main')
         main.left = main.top = main.width = main.height = const.defaultPadding
@@ -602,15 +644,15 @@ class EditCorpBulletin(uicls.Window):
         titleInput = uicls.SinglelineEdit(name='titleInput', parent=self.sr.topParent, align=uiconst.TOBOTTOM, maxLength=100)
         titleInput.OnDropData = self.OnDropData
         self.sr.titleInput = titleInput
-        l = uicls.Label(text=mls.UI_GENERIC_TITLE, parent=titleInput, width=64, height=12, left=48, top=4, fontsize=9, letterspace=2, state=uiconst.UI_DISABLED, uppercase=1)
+        l = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Corporations/EditCorpBulletin/BulletinTitle'), parent=titleInput, width=64, height=12, left=48, top=4, state=uiconst.UI_DISABLED)
         l.left = -l.textwidth - 6
         uicls.Container(parent=main, height=const.defaultPadding, align=uiconst.TOTOP, name='push')
         self.sr.messageEdit = uicls.EditPlainText(setvalue='', parent=main, maxLength=2000, showattributepanel=1)
         self.sr.bottom = uicls.Container(name='bottom', parent=self.sr.maincontainer, align=uiconst.TOBOTTOM, height=24, idx=0)
-        uicls.ButtonGroup(btns=[[mls.UI_CMD_SUBMIT,
+        uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Common/Buttons/Submit'),
           self.ClickSend,
           None,
-          None], [mls.UI_CMD_CANCEL,
+          None], [localization.GetByLabel('UI/Common/Buttons/Cancel'),
           self.OnCancel,
           None,
           None]], parent=self.sr.bottom, line=False)
@@ -623,11 +665,11 @@ class EditCorpBulletin(uicls.Window):
 
 
     def OnCancel(self, *args):
-        self.SelfDestruct()
+        self.Close()
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         self.messageEdit = None
 
 
@@ -652,7 +694,7 @@ class EditCorpBulletin(uicls.Window):
             sm.GetService('corp').UpdateBulletin(self.bulletinID, title, body, self.isAlliance, self.editDateTime)
         if not self or self.destroyed:
             return 
-        self.SelfDestruct()
+        self.Close()
 
 
 

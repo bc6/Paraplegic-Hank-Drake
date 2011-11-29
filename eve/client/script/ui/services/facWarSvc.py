@@ -2,8 +2,8 @@ import uiconst
 import service
 import blue
 import util
-import uix
 import uiutil
+import localization
 
 class FactionalWarfare(service.Service):
     __exportedcalls__ = {'IsEnemyFaction': [],
@@ -41,6 +41,7 @@ class FactionalWarfare(service.Service):
         self.topStats = None
         self.statusBySystemID = {}
         self.remoteFacWarMgr = None
+        self.FWSystems = None
 
 
 
@@ -105,7 +106,6 @@ class FactionalWarfare(service.Service):
             return 
         enemyFactions = self.GetEnemies(session.warfactionid)
         enemySystems = [ util.KeyVal(solarSystemID=k, occupierID=v['occupierID'], numJumps=0) for (k, v,) in self.GetFacWarSystems().iteritems() if v['occupierID'] in enemyFactions ]
-        systemsPerNumJumps = {}
         for s in enemySystems:
             s.numJumps = int(sm.GetService('pathfinder').GetJumpCountFromCurrent(s.solarSystemID))
             blue.pyos.BeNice()
@@ -147,7 +147,9 @@ class FactionalWarfare(service.Service):
 
 
     def GetFacWarSystems(self):
-        return self.facWarMgr.GetFacWarSystems()
+        if self.FWSystems is None:
+            self.FWSystems = self.facWarMgr.GetFWSystems()
+        return self.FWSystems
 
 
 
@@ -167,12 +169,14 @@ class FactionalWarfare(service.Service):
     def JoinFactionAsCharacter(self, factionID, warfactionid):
         MIN_STANDING = 0.5
         if warfactionid:
-            eve.Message('CustomInfo', {'info': mls.UI_FACWAR_ALREADY_IN_MILITIA})
+            alreadyInMilitiaLabel = localization.GetByLabel('UI/FactionWarfare/AlreadyInMilitia')
+            eve.Message('CustomInfo', {'info': alreadyInMilitiaLabel})
             return 
+        ownerName = cfg.eveowners.Get(factionID).name
         standing = sm.StartService('standing').GetStanding(factionID, eve.session.charid)
         if standing < MIN_STANDING and not sm.GetService('corp').UserIsCEO():
             itemID = None
-            inv = eve.GetInventoryFromId(const.containerHangar)
+            inv = sm.GetService('invCache').GetInventory(const.containerHangar)
             items = inv.List()
             for item in items:
                 if item.typeID == const.typeLetterOfRecommendation:
@@ -180,13 +184,15 @@ class FactionalWarfare(service.Service):
                     break
 
             if itemID:
-                ret = eve.Message('JoinFacWarRecommendation', {'factionName': cfg.eveowners.Get(factionID).name,
+                ret = eve.Message('JoinFacWarRecommendation', {'factionName': ownerName,
                  'standing': MIN_STANDING}, uiconst.YESNO)
                 if ret == uiconst.ID_YES:
                     sm.StartService('sessionMgr').PerformSessionChange('corp.joinmilitia', self.facWarMgr.JoinFactionAsCharacterRecommendationLetter, factionID, itemID)
                 return 
-        ret = eve.Message('CustomQuestion', {'header': mls.UI_FACWAR_CONFIRM_JOIN_HEADER,
-         'question': mls.UI_FACWAR_CONFIRM_JOINPLAYER % {'factionName': cfg.eveowners.Get(factionID).name}}, uiconst.YESNO)
+        headerLabel = localization.GetByLabel('UI/FactionWarfare/JoinConfirmationHeader')
+        bodyLabel = localization.GetByLabel('UI/FactionWarfare/JoinConfirmationQuestionPlayer', factionName=ownerName)
+        ret = eve.Message('CustomQuestion', {'header': headerLabel,
+         'question': bodyLabel}, uiconst.YESNO)
         if ret == uiconst.ID_YES:
             sm.GetService('sessionMgr').PerformSessionChange('corp.joinmilitia', self.facWarMgr.JoinFactionAsCharacter, factionID)
             invalidate = [('facWarMgr', 'GetMyCharacterRankInfo', ()), ('facWarMgr', 'GetMyCharacterRankOverview', ()), ('corporationSvc', 'GetEmploymentRecord', (session.charid,))]
@@ -195,11 +201,15 @@ class FactionalWarfare(service.Service):
 
 
     def JoinFactionAsCorporation(self, factionID, warfactionid):
+        ownerName = cfg.eveowners.Get(factionID).name
+        headerLabel = localization.GetByLabel('UI/FactionWarfare/JoinConfirmationHeader')
+        bodyLabel = localization.GetByLabel('UI/FactionWarfare/JoinConfirmationQuestionCorp', factionName=ownerName)
         if warfactionid:
-            eve.Message('CustomInfo', {'info': mls.UI_FACWAR_ALREADY_IN_MILITIA})
+            alreadyInMilitiaLabel = localization.GetByLabel('UI/FactionWarfare/AlreadyInMilitia')
+            eve.Message('CustomInfo', {'info': alreadyInMilitiaLabel})
             return 
-        ret = eve.Message('CustomQuestion', {'header': mls.UI_FACWAR_CONFIRM_JOIN_HEADER,
-         'question': mls.UI_FACWAR_CONFIRM_JOINCORP % {'factionName': cfg.eveowners.Get(factionID).name}}, uiconst.YESNO)
+        ret = eve.Message('CustomQuestion', {'header': headerLabel,
+         'question': bodyLabel}, uiconst.YESNO)
         if ret == uiconst.ID_YES:
             self.facWarMgr.JoinFactionAsCorporation(factionID)
             sm.ScatterEvent('OnJoinMilitia')
@@ -266,7 +276,7 @@ class FactionalWarfare(service.Service):
 
     def DoOnRankChange(self, oldrank, newrank):
         messageID = 'RankGained' if newrank > oldrank else 'RankLost'
-        (rankLabel, rankDescription,) = uix.GetRankLabel(session.warfactionid, newrank)
+        (rankLabel, rankDescription,) = self.GetRankLabel(session.warfactionid, newrank)
         try:
             eve.Message(messageID, {'rank': rankLabel})
         except:
@@ -421,12 +431,12 @@ class FactionalWarfare(service.Service):
     def CheckStationElegibleForMilitia(self, station = None):
         if eve.session.warfactionid:
             return eve.session.warfactionid
-        if station is None and not eve.session.stationid:
+        if station is None and not session.stationid2:
             return False
         ownerID = None
         if station:
             ownerID = station.ownerID
-        elif eve.session.stationid:
+        elif session.stationid2:
             ownerID = eve.stationItem.ownerID
         if ownerID:
             check = self.CheckOwnerInFaction(ownerID)
@@ -436,4 +446,58 @@ class FactionalWarfare(service.Service):
 
 
 
+    def GetRankLabel(self, factionID, rank):
+        rank = min(9, rank)
+        (rankLabel, rankDescription,) = ('', '')
+        if rank < 0:
+            rankLabel = localization.GetByLabel('UI/FactionWarfare/Ranks/NoRank')
+            rankDescription = ''
+        else:
+            (rankPath, descPath,) = RankLabelsByFactionID.get((factionID, rank), ('UI/FactionWarfare/Ranks/NoRank', 'UI/FactionWarfare/Ranks/NoRank'))
+            rankLabel = localization.GetByLabel(rankPath)
+            rankDescription = localization.GetByLabel(descPath)
+        return (rankLabel, rankDescription)
+
+
+
+RankLabelsByFactionID = {(const.factionCaldariState, 0): ('UI/FactionWarfare/Ranks/RankCaldari0', 'UI/FactionWarfare/Ranks/RankDescriptionCaldari0'),
+ (const.factionCaldariState, 1): ('UI/FactionWarfare/Ranks/RankCaldari1', 'UI/FactionWarfare/Ranks/RankDescriptionCaldari1'),
+ (const.factionCaldariState, 2): ('UI/FactionWarfare/Ranks/RankCaldari2', 'UI/FactionWarfare/Ranks/RankDescriptionCaldari2'),
+ (const.factionCaldariState, 3): ('UI/FactionWarfare/Ranks/RankCaldari3', 'UI/FactionWarfare/Ranks/RankDescriptionCaldari3'),
+ (const.factionCaldariState, 4): ('UI/FactionWarfare/Ranks/RankCaldari4', 'UI/FactionWarfare/Ranks/RankDescriptionCaldari4'),
+ (const.factionCaldariState, 5): ('UI/FactionWarfare/Ranks/RankCaldari5', 'UI/FactionWarfare/Ranks/RankDescriptionCaldari5'),
+ (const.factionCaldariState, 6): ('UI/FactionWarfare/Ranks/RankCaldari6', 'UI/FactionWarfare/Ranks/RankDescriptionCaldari6'),
+ (const.factionCaldariState, 7): ('UI/FactionWarfare/Ranks/RankCaldari7', 'UI/FactionWarfare/Ranks/RankDescriptionCaldari7'),
+ (const.factionCaldariState, 8): ('UI/FactionWarfare/Ranks/RankCaldari8', 'UI/FactionWarfare/Ranks/RankDescriptionCaldari8'),
+ (const.factionCaldariState, 9): ('UI/FactionWarfare/Ranks/RankCaldari9', 'UI/FactionWarfare/Ranks/RankDescriptionCaldari9'),
+ (const.factionMinmatarRepublic, 0): ('UI/FactionWarfare/Ranks/RankMinmatar0', 'UI/FactionWarfare/Ranks/RankDescriptionMinmatar0'),
+ (const.factionMinmatarRepublic, 1): ('UI/FactionWarfare/Ranks/RankMinmatar1', 'UI/FactionWarfare/Ranks/RankDescriptionMinmatar1'),
+ (const.factionMinmatarRepublic, 2): ('UI/FactionWarfare/Ranks/RankMinmatar2', 'UI/FactionWarfare/Ranks/RankDescriptionMinmatar2'),
+ (const.factionMinmatarRepublic, 3): ('UI/FactionWarfare/Ranks/RankMinmatar3', 'UI/FactionWarfare/Ranks/RankDescriptionMinmatar3'),
+ (const.factionMinmatarRepublic, 4): ('UI/FactionWarfare/Ranks/RankMinmatar4', 'UI/FactionWarfare/Ranks/RankDescriptionMinmatar4'),
+ (const.factionMinmatarRepublic, 5): ('UI/FactionWarfare/Ranks/RankMinmatar5', 'UI/FactionWarfare/Ranks/RankDescriptionMinmatar5'),
+ (const.factionMinmatarRepublic, 6): ('UI/FactionWarfare/Ranks/RankMinmatar6', 'UI/FactionWarfare/Ranks/RankDescriptionMinmatar6'),
+ (const.factionMinmatarRepublic, 7): ('UI/FactionWarfare/Ranks/RankMinmatar7', 'UI/FactionWarfare/Ranks/RankDescriptionMinmatar7'),
+ (const.factionMinmatarRepublic, 8): ('UI/FactionWarfare/Ranks/RankMinmatar8', 'UI/FactionWarfare/Ranks/RankDescriptionMinmatar8'),
+ (const.factionMinmatarRepublic, 9): ('UI/FactionWarfare/Ranks/RankMinmatar9', 'UI/FactionWarfare/Ranks/RankDescriptionMinmatar9'),
+ (const.factionAmarrEmpire, 0): ('UI/FactionWarfare/Ranks/RankAmarr0', 'UI/FactionWarfare/Ranks/RankDescriptionAmarr0'),
+ (const.factionAmarrEmpire, 1): ('UI/FactionWarfare/Ranks/RankAmarr1', 'UI/FactionWarfare/Ranks/RankDescriptionAmarr1'),
+ (const.factionAmarrEmpire, 2): ('UI/FactionWarfare/Ranks/RankAmarr2', 'UI/FactionWarfare/Ranks/RankDescriptionAmarr2'),
+ (const.factionAmarrEmpire, 3): ('UI/FactionWarfare/Ranks/RankAmarr3', 'UI/FactionWarfare/Ranks/RankDescriptionAmarr3'),
+ (const.factionAmarrEmpire, 4): ('UI/FactionWarfare/Ranks/RankAmarr4', 'UI/FactionWarfare/Ranks/RankDescriptionAmarr4'),
+ (const.factionAmarrEmpire, 5): ('UI/FactionWarfare/Ranks/RankAmarr5', 'UI/FactionWarfare/Ranks/RankDescriptionAmarr5'),
+ (const.factionAmarrEmpire, 6): ('UI/FactionWarfare/Ranks/RankAmarr6', 'UI/FactionWarfare/Ranks/RankDescriptionAmarr6'),
+ (const.factionAmarrEmpire, 7): ('UI/FactionWarfare/Ranks/RankAmarr7', 'UI/FactionWarfare/Ranks/RankDescriptionAmarr7'),
+ (const.factionAmarrEmpire, 8): ('UI/FactionWarfare/Ranks/RankAmarr8', 'UI/FactionWarfare/Ranks/RankDescriptionAmarr8'),
+ (const.factionAmarrEmpire, 9): ('UI/FactionWarfare/Ranks/RankAmarr9', 'UI/FactionWarfare/Ranks/RankDescriptionAmarr9'),
+ (const.factionGallenteFederation, 0): ('UI/FactionWarfare/Ranks/RankGallente0', 'UI/FactionWarfare/Ranks/RankDescriptionGallente0'),
+ (const.factionGallenteFederation, 1): ('UI/FactionWarfare/Ranks/RankGallente1', 'UI/FactionWarfare/Ranks/RankDescriptionGallente1'),
+ (const.factionGallenteFederation, 2): ('UI/FactionWarfare/Ranks/RankGallente2', 'UI/FactionWarfare/Ranks/RankDescriptionGallente2'),
+ (const.factionGallenteFederation, 3): ('UI/FactionWarfare/Ranks/RankGallente3', 'UI/FactionWarfare/Ranks/RankDescriptionGallente3'),
+ (const.factionGallenteFederation, 4): ('UI/FactionWarfare/Ranks/RankGallente4', 'UI/FactionWarfare/Ranks/RankDescriptionGallente4'),
+ (const.factionGallenteFederation, 5): ('UI/FactionWarfare/Ranks/RankGallente5', 'UI/FactionWarfare/Ranks/RankDescriptionGallente5'),
+ (const.factionGallenteFederation, 6): ('UI/FactionWarfare/Ranks/RankGallente6', 'UI/FactionWarfare/Ranks/RankDescriptionGallente6'),
+ (const.factionGallenteFederation, 7): ('UI/FactionWarfare/Ranks/RankGallente7', 'UI/FactionWarfare/Ranks/RankDescriptionGallente7'),
+ (const.factionGallenteFederation, 8): ('UI/FactionWarfare/Ranks/RankGallente8', 'UI/FactionWarfare/Ranks/RankDescriptionGallente8'),
+ (const.factionGallenteFederation, 9): ('UI/FactionWarfare/Ranks/RankGallente9', 'UI/FactionWarfare/Ranks/RankDescriptionGallente9')}
 

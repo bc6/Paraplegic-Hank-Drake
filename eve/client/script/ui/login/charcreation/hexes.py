@@ -3,6 +3,7 @@ import uicls
 import random
 import uthread
 import math
+import localization
 import uix
 import util
 import ccConst
@@ -64,10 +65,10 @@ class CCRacePicker(uicls.Container):
                  int(0.5 * (self.padding + self.hexHeight)),
                  0,
                  self.hexHeight), align=uiconst.TOTOP)
-                raceInfo = sm.GetService('cc').GetRaceDataByID()[info.raceID]
-                raceName = Tr(raceInfo.raceName, 'character.races.raceName', raceInfo.dataID)
-                text = '%s<br><b>%s</b>' % (mls.UI_CHARCREA_RACE, raceName)
-                raceText = uicls.CCLabel(parent=raceTextCont, fontsize=12, align=uiconst.CENTERLEFT, text=text, letterspace=1, top=0, pos=(0, 0, 150, 0), autoheight=1, autowidth=0, left=left, bold=0, color=ccConst.COLOR50)
+                raceInfo = sm.GetService('cc').GetRaceDataByID(info.raceID)
+                raceName = localization.GetByMessageID(raceInfo.raceNameID)
+                text = localization.GetByLabel('UI/CharacterCreation/RaceAndRaceName', raceName=raceName)
+                raceText = uicls.CCLabel(parent=raceTextCont, fontsize=12, align=uiconst.CENTERLEFT, text=text, letterspace=1, top=0, pos=(0, 0, 150, 0), left=left, bold=0, color=ccConst.COLOR50)
                 if info.bloodlineID:
                     bloodline = sm.GetService('cc').GetBloodlineDataByID()[info.bloodlineID]
                     if bloodline and bloodline.raceID == info.raceID:
@@ -75,17 +76,20 @@ class CCRacePicker(uicls.Container):
                          int(0.5 * (self.padding + self.hexHeight)),
                          0,
                          self.hexHeight), align=uiconst.TOTOP)
-                        bloodlineName = Tr(bloodline.bloodlineName, 'character.bloodlines.bloodlineName', bloodline.dataID)
-                        text = '%s<br><b>%s</b>' % (mls.UI_CHARCREA_BLOODLINE, bloodlineName)
-                        bloodlineText = uicls.CCLabel(parent=bloodlineTextCont, fontsize=12, align=uiconst.CENTERLEFT, text=text, letterspace=1, autoheight=1, autowidth=1, left=left, bold=0, color=ccConst.COLOR50)
+                        bloodlineName = localization.GetByMessageID(bloodline.bloodlineNameID)
+                        text = localization.GetByLabel('UI/CharacterCreation/BloodlineAndBloodlineName', bloodlineName=bloodlineName)
+                        bloodlineText = uicls.CCLabel(parent=bloodlineTextCont, fontsize=12, align=uiconst.CENTERLEFT, text=text, letterspace=1, left=left, bold=0, color=ccConst.COLOR50)
             if self.genderID is not None:
-                genderText = [mls.UI_GENERIC_FEMALE, mls.UI_GENERIC_MALE][self.genderID]
-                text = '%s<br><b>%s</b>' % (mls.UI_GENERIC_GENDER, genderText)
+                if self.genderID:
+                    genderText = localization.GetByLabel('UI/Common/Gender/Male')
+                else:
+                    genderText = localization.GetByLabel('UI/Common/Gender/Female')
+                text = localization.GetByLabel('UI/CharacterCreation/GenderAndGenderName', genderName=genderText)
                 genderTextCont = uicls.Container(name='genderTextCont', parent=self.sr.genderCont, text=text, pos=(0,
                  int(0.5 * (self.padding + self.hexHeight)),
                  0,
                  self.hexHeight), align=uiconst.TOTOP)
-                genderText = uicls.CCLabel(parent=genderTextCont, fontsize=12, align=uiconst.CENTERLEFT, text=text, letterspace=1, autoheight=1, autowidth=1, left=left, bold=0, color=ccConst.COLOR50)
+                genderText = uicls.CCLabel(parent=genderTextCont, fontsize=12, align=uiconst.CENTERLEFT, text=text, letterspace=1, left=left, bold=0, color=ccConst.COLOR50)
 
 
 
@@ -102,28 +106,6 @@ class CCRacePicker(uicls.Container):
 
 
 
-    def SetText(self, *args):
-        info = uicore.layer.charactercreation.GetInfo()
-        text = ''
-        if info.raceID:
-            raceInfo = sm.GetService('cc').GetRaceDataByID()[info.raceID]
-            raceName = Tr(raceInfo.raceName, 'character.races.raceName', raceInfo.dataID)
-            text += '%s: %s' % (mls.UI_CHARCREA_RACE, raceName)
-            if info.bloodlineID:
-                bloodline = sm.GetService('cc').GetBloodlineDataByID()[info.bloodlineID]
-                if bloodline and bloodline.raceID == info.raceID:
-                    bloodlineName = Tr(bloodline.bloodlineName, 'character.bloodlines.bloodlineName', bloodline.dataID)
-                    text += '     %s: %s' % (mls.UI_CHARCREA_BLOODLINE, bloodlineName)
-        if info.genderID is not None:
-            genderText = [mls.UI_GENERIC_FEMALE, mls.UI_GENERIC_MALE][info.genderID]
-            text += '    %s: %s' % (mls.UI_GENERIC_GENDER, genderText)
-        if hasattr(self, 'selectionText'):
-            self.selectionText.text = text
-        elif hasattr(self.parent, 'selectionText'):
-            self.parent.selectionText.text = text
-
-
-
     def AddRaceHex(self, offsetMap, width, height, raceInfo, state = uiconst.UI_NORMAL, hexClassString = 'CCHexButtonRace2', *args):
         self.raceConts = {}
         isClickable = self.clickable and 'race' not in self.disabledHex
@@ -133,7 +115,7 @@ class CCRacePicker(uicls.Container):
             hex = hexClass(name='raceHex', parent=self.sr.raceBloodlineCont, align=uiconst.TOPLEFT, state=state, pos=(left,
              top,
              width,
-             height), pickRadius=int(height / 2.0), info=race, id=race.raceID, hexName=Tr(race.raceName, 'character.races.raceName', race.dataID), func=self.OnRaceClicked, iconNum=int(math.log(race.raceID, 2)), clickable=isClickable)
+             height), pickRadius=int(height / 2.0), info=race, id=race.raceID, hexName=localization.GetByMessageID(race.raceNameID), func=self.OnRaceClicked, iconNum=int(math.log(race.raceID, 2)), clickable=isClickable)
             self.raceConts[race.raceID] = hex
 
 
@@ -160,7 +142,7 @@ class CCRacePicker(uicls.Container):
             hex = hexClass(name='bloodlineHex', parent=self.sr.bloodlineCont, align=uiconst.TOPLEFT, state=state, pos=(left,
              top,
              width,
-             height), pickRadius=int(height / 2.0), info=bloodline, id=bloodline.bloodlineID, hexName=Tr(bloodline.bloodlineName, 'character.bloodlines.bloodlineName', bloodline.dataID), func=self.OnBloodlineClicked, iconNum=bloodline.bloodlineID - 1, clickable=isClickable)
+             height), pickRadius=int(height / 2.0), info=bloodline, id=bloodline.bloodlineID, hexName=localization.GetByMessageID(bloodline.bloodlineNameID), func=self.OnBloodlineClicked, iconNum=bloodline.bloodlineID - 1, clickable=isClickable)
             self.bloodlineConts[bloodline.bloodlineID] = hex
 
 
@@ -209,7 +191,7 @@ class CCRacePicker(uicls.Container):
         containerList.sort(key=operator.attrgetter(attribute))
         for cont in containerList:
             cont.state = uiconst.UI_NORMAL
-            blue.pyos.synchro.Sleep(time)
+            blue.pyos.synchro.SleepWallclock(time)
 
 
 
@@ -229,7 +211,7 @@ class CCRacePicker(uicls.Container):
         self.RearrangeInfo(self.raceID, 'raceID', self.currentRaceInfo)
         self.currentBloodlineInfo = sm.GetService('cc').GetBloodlineDataByRaceID().get(self.raceID, [])[:]
         self.RearrangeInfo(self.bloodlineID, 'bloodlineID', self.currentBloodlineInfo)
-        self.currentGenderInfo = [util.KeyVal(genderID=0, text=mls.UI_GENERIC_FEMALE), util.KeyVal(genderID=1, text=mls.UI_GENERIC_MALE)]
+        self.currentGenderInfo = [util.KeyVal(genderID=0, text=localization.GetByLabel('UI/Common/Gender/Female')), util.KeyVal(genderID=1, text=localization.GetByLabel('UI/Common/Gender/Male'))]
         self.RearrangeInfo(self.genderID, 'genderID', self.currentGenderInfo)
 
 
@@ -325,7 +307,7 @@ class CCRacePicker(uicls.Container):
 
 
     def SwitchGender(self, newGenderID, *args):
-        uicore.layer.charactercreation.FadeToBlack(why=mls.UI_GENERIC_LOADING)
+        uicore.layer.charactercreation.FadeToBlack(why=localization.GetByLabel('UI/Common/Loading'))
         sm.GetService('character').StopEditing()
         self.genderID = newGenderID
         self.sr.genderCont.Flush()
@@ -344,7 +326,7 @@ class CCRacePicker(uicls.Container):
 
 
     def SwitchBloodline(self, newBloodlineID, *args):
-        uicore.layer.charactercreation.FadeToBlack(why=mls.UI_GENERIC_LOADING)
+        uicore.layer.charactercreation.FadeToBlack(why=localization.GetByLabel('UI/Common/Loading'))
         sm.GetService('character').StopEditing()
         self.bloodlineID = newBloodlineID
         self.sr.bloodlineCont.Flush()
@@ -359,12 +341,13 @@ class CCRacePicker(uicls.Container):
         while doll.busyUpdating:
             blue.synchro.Yield()
 
-        uicore.layer.charactercreation.StartEditMode(mode='sculpt', resetAll=True)
         step = uicore.layer.charactercreation.sr.step
         if hasattr(step, 'GoToAssetMode'):
             uthread.new(step.GoToAssetMode, 0, 1)
             if step.sr.tattooMenu and not step.sr.tattooMenu.destroyed:
                 step.sr.tattooMenu.Close()
+        else:
+            uicore.layer.charactercreation.StartEditMode(mode='sculpt', resetAll=True)
         if hasattr(step, 'LoadFaceMode'):
             uthread.new(step.LoadFaceMode)
         uicore.layer.charactercreation.FadeFromBlack()
@@ -475,7 +458,7 @@ class CCRacePicker(uicls.Container):
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         uicore.event.UnregisterForTriuiEvents(self.sr.cookie)
 
 

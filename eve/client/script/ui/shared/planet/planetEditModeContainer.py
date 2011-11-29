@@ -7,6 +7,7 @@ import listentry
 import planetCommon
 import blue
 import uiutil
+import localization
 ICON_SIZE = 24
 
 class PlanetEditModeContainer(uicls.Container):
@@ -65,7 +66,7 @@ class PlanetEditModeContainer(uicls.Container):
             iconButton.OnMouseExit = (self.OnBuildIconButtonMouseExit, buildEntry)
             if commandPin:
                 iconButton.OnClick = (self.OnBuildIconButtonClicked, buildEntry)
-            buildEntry.heading = uicls.Label(parent=header, text='<b>' + cfg.invgroups.Get(groupID).name + '</b>', state=uiconst.UI_NORMAL, hilightable=1, uppercase=1, pos=(ICON_SIZE + 4,
+            buildEntry.heading = uicls.EveHeaderMedium(parent=header, text='<b>' + cfg.invgroups.Get(groupID).name + '</b>', state=uiconst.UI_NORMAL, hilightable=1, pos=(ICON_SIZE + 4,
              6,
              200,
              ICON_SIZE), color=color)
@@ -137,7 +138,7 @@ class PlanetEditModeContainer(uicls.Container):
     def LoadStructureScroll(self, buildEntry, groupEnabled, color):
         scrolllist = []
         if buildEntry.groupID == const.groupPlanetaryLinks:
-            data = util.KeyVal(label=mls.UI_PI_CMD_CREATELINK, createLink=True, hideLines=1, fontColor=(self.COLOR_DISABLED, self.COLOR_ENABLED)[groupEnabled], OnClick=self.OnBuildEntryClicked, ignoreRightClick=True)
+            data = util.KeyVal(label=localization.GetByLabel('UI/PI/Common/CreateLink'), createLink=True, hideLines=1, fontColor=(self.COLOR_DISABLED, self.COLOR_ENABLED)[groupEnabled], OnClick=self.OnBuildEntryClicked, ignoreRightClick=True)
             scrolllist.append(('', listentry.Get('Generic', data=data)))
         else:
             for typeID in self.GetStructuresForGroup(buildEntry.groupID):
@@ -165,23 +166,29 @@ class PlanetEditModeContainer(uicls.Container):
 
     def IsBuildEntryEnabled(self, groupID, structureTypeID, groupEnabled):
         if groupID == const.groupCommandPins:
+            planetID = sm.GetService('planetUI').planetID
+            planetSolarSystemID = sm.GetService('map').GetPlanetInfo(planetID).solarSystemID
+            if session.solarsystemid != planetSolarSystemID:
+                return (False, localization.GetByLabel('UI/PI/Common/CannotBuildLocation'))
             planetRows = sm.GetService('planetSvc').GetMyPlanets()
             if len(planetRows) > 0:
                 deploymentSkill = sm.GetService('skills').HasSkill(const.typeInterplanetaryConsolidation)
                 if deploymentSkill is None or deploymentSkill.skillLevel < len(planetRows):
-                    hint = mls.UI_PI_CANTBUILDCOLONIESATMAX
                     if not deploymentSkill or deploymentSkill.skillLevel < 5:
-                        hint += mls.UI_PI_TRAINSKILLTOINCREASE % {'skillName': cfg.invtypes.Get(const.typeInterplanetaryConsolidation).name}
+                        hint = localization.GetByLabel('UI/PI/Common/CannotBuildMaxColoniesTrain', skillName=cfg.invtypes.Get(const.typeInterplanetaryConsolidation).name)
+                    else:
+                        hint = localization.GetByLabel('UI/PI/Common/CannotBuildMaxColonies')
                     return (False, hint)
             skillsRequired = sm.GetService('info').GetRequiredSkills(structureTypeID)
             for (skillTypeID, level,) in skillsRequired:
                 myLevel = sm.GetService('skills').HasSkill(skillTypeID)
                 if myLevel is None or myLevel.skillLevel < level:
-                    return (False, mls.UI_PI_CANTBUILDNEEDSKILL % {'skillName': cfg.invtypes.Get(skillTypeID).name,
-                      'skillLevel': int(level)})
+                    hint = localization.GetByLabel('UI/PI/Common/CannotBuildSkillNeeded', skillName=cfg.invtypes.Get(skillTypeID).name, skillLevel=int(level))
+                    return (False, hint)
 
             if session.shipid is None:
-                return (False, mls.UI_PI_CANTBUILDNOTFOUNDINCARGO % {'ccName': cfg.invtypes.Get(structureTypeID).name})
+                hint = localization.GetByLabel('UI/PI/Common/CannotBuildNoCommandCenter', typeName=cfg.invtypes.Get(structureTypeID).name)
+                return (False, hint)
             inv = sm.GetService('invCache').GetInventoryFromId(session.shipid)
             commandCenterID = None
             if inv:
@@ -193,13 +200,10 @@ class PlanetEditModeContainer(uicls.Container):
                         break
 
             if commandCenterID is None:
-                return (False, mls.UI_PI_CANTBUILDNOTFOUNDINCARGO % {'ccName': cfg.invtypes.Get(structureTypeID).name})
-            planetID = sm.GetService('planetUI').planetID
-            planetSolarSystemID = sm.GetService('map').GetPlanetInfo(planetID).solarSystemID
-            if session.solarsystemid != planetSolarSystemID:
-                return (False, mls.UI_PI_CANTBUILDNOTINSOLARSYSTEM)
+                hint = localization.GetByLabel('UI/PI/Common/CannotBuildNoCommandCenter', typeName=cfg.invtypes.Get(structureTypeID).name)
+                return (False, hint)
         elif not groupEnabled:
-            return (False, mls.UI_PI_CANTBUILDNOCOMMANDCENTER)
+            return (False, localization.GetByLabel('UI/PI/Common/CannotBuildNoCommandCenterBuilt'))
         return (True, '')
 
 
@@ -234,7 +238,7 @@ class PlanetEditModeContainer(uicls.Container):
         self.buildContainer.Flush()
         self.activeBuildEntry = None
         self.CreateLayout()
-        blue.pyos.synchro.Sleep(300)
+        blue.pyos.synchro.SleepWallclock(300)
         if not self or self.destroyed:
             return 
         uicore.effect.MorphUI(self.buildContainer, 'opacity', 1.0, time=250.0, newthread=False, float=True)

@@ -12,8 +12,6 @@ class LoadingWndCore(uicls.Window):
     MINHEIGHT = 80
 
     def _Initialize(self, *args, **kw):
-        self.name = 'progresswindow'
-        self.prefsID = 'progresswindow'
         self.abortbtn = None
         self.abortbtnpar = None
         self.sr.loading_caption = None
@@ -46,18 +44,18 @@ class LoadingWndCore(uicls.Window):
             progressbar = uicls.Fill(parent=fr.sr.content, align=uiconst.RELATIVE, pos=(1, 1, 0, 8))
             self.sr.progressBar = progressbar
             self.sr.progressBarParent = fr
-            self.sr.progressText = uicls.Label(parent=par, autowidth=0, pos=(0, 12, 300, 0), fontsize=9, uppercase=1, letterspace=2, align=uiconst.BOTTOMLEFT)
+            self.sr.progressText = uicls.Label(parent=par, pos=(0, 12, 300, 0), fontsize=9, uppercase=1, letterspace=2, align=uiconst.BOTTOMLEFT)
             self.sr.progressParent = par
 
 
 
     def Prepare_Caption_(self):
         if self.sr.loading_caption is None:
-            self.sr.loading_caption = uicls.Label(align=uiconst.CENTERTOP, fontsize=22, parent=self.sr.content, letterspace=0, pos=(0, 12, 280, 0), autowidth=0, autoheight=1)
+            self.sr.loading_caption = uicls.Label(align=uiconst.CENTERTOP, fontsize=22, parent=self.sr.content, letterspace=0, pos=(0, 12, 280, 0))
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         if self.abortbtn:
             self.abortbtn.Close()
         self.abortbtn = None
@@ -72,7 +70,7 @@ class LoadingWndCore(uicls.Window):
             if func is None:
                 return 
             self.abortbtnpar = uicls.Container(parent=self.sr.main, align=uiconst.TOBOTTOM, pos=(0, 0, 0, 30), state=uiconst.UI_PICKCHILDREN)
-            self.abortbtn = uicls.WindowButton(func=func, args=args, align=uiconst.CENTER)
+            self.abortbtn = uicls.Button(func=func, args=args, align=uiconst.CENTER)
         if func is None:
             self.abortbtnpar.state = uiconst.UI_HIDDEN
         else:
@@ -133,7 +131,7 @@ class LoadingWndCore(uicls.Window):
             newheight += self.abortbtnpar.height
         if self.height != newheight:
             uicore.effect.MorphUI(self, 'height', newheight, 125.0)
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
             self.height = newheight
 
 
@@ -189,7 +187,7 @@ class LoadingWndCore(uicls.Window):
     def _SetCaption(self, title):
         self.Prepare_Caption_()
         if self.sr.loading_caption and self.sr.get('loading_title', None) != title:
-            self.sr.loading_caption.text = '<center>' + title
+            self.sr.loading_caption.text = ['<center>', title]
             self.sr.loading_title = title
 
 
@@ -201,7 +199,7 @@ class LoadingWndCore(uicls.Window):
 
 
     def DelayHide(self):
-        blue.pyos.synchro.Sleep(750)
+        blue.pyos.synchro.SleepWallclock(750)
         if not getattr(self, 'stophide', 0):
             uicore.layer.loading.state = uiconst.UI_HIDDEN
             if self and not self.destroyed and self.sr.progressBar:
@@ -210,7 +208,7 @@ class LoadingWndCore(uicls.Window):
 
 
     def SanityDelayHide(self):
-        blue.pyos.synchro.Sleep(5000)
+        blue.pyos.synchro.SleepWallclock(5000)
         if not getattr(self, 'stophide', 0):
             uicore.layer.loading.state = uiconst.UI_HIDDEN
             if self and not self.destroyed and self.sr.progressBar:

@@ -1,42 +1,27 @@
 from __future__ import with_statement
 import uix
-import uiutil
 import uiconst
+import uiutil
 import uthread
 import blue
 import form
-import michelle
-import xtriui
 import util
-import types
-import traceback
 import log
 import moniker
 import trinity
-import audio2
 import sys
 import service
-import os
-import errno
 import antiaddiction
-import dbg
 import urllib2
 import appUtils
-import nodemanager
 import audioConst
-import locks
-import paperDoll
-import geo2
 import const
-import uicls
-import entities
-import bluepy
 import ccUtil
+import viewstate
 from sceneManager import SCENE_TYPE_SPACE
-from sceneManager import SCENE_TYPE_INTERIOR
-from sceneManager import SCENE_TYPE_CHARACTER_CREATION
 from service import SERVICE_RUNNING
-globals().update(service.consts)
+import localization
+import localizationUtil
 SEC = 10000000L
 MIN = SEC * 60L
 HOUR = MIN * 60L
@@ -49,11 +34,6 @@ class GameUI(service.Service):
      'Say': [],
      'GetShipAccess': [],
      'GetEntityAccess': [],
-     'GoCharacterSelection': [],
-     'GoCharacterCreation': [],
-     'GoIntro': [],
-     'GoWorldSpace': [],
-     'GetLanguages': [],
      'GetCurrentScope': []}
     __startupdependencies__ = ['device', 'settings']
     __dependencies__ = ['michelle', 'machoNet', 'inv']
@@ -70,7 +50,8 @@ class GameUI(service.Service):
      'OnNewState',
      'OnClusterShutdownInitiated',
      'OnClusterShutdownCancelled',
-     'OnJumpQueueMessage']
+     'OnJumpQueueMessage',
+     'ProcessActiveShipChanged']
 
     def Run(self, ms):
         service.Service.Run(self, ms)
@@ -100,23 +81,8 @@ class GameUI(service.Service):
          ('l_abovemain', None, None),
          ('l_loading', None, None),
          ('l_dragging', None, None),
-         ('l_tabs', None, None),
          ('l_main', None, None),
-         ('l_exclusive', None, [('l_login', form.LoginII, None),
-           ('l_intro', form.Intro, None),
-           ('l_charsel', form.CharSelection, None),
-           ('l_newneocom', None, None),
-           ('l_charactercreation', uicls.CharacterCreationLayer, None),
-           ('l_neocom', None, None),
-           ('l_station', form.StationLayer, None),
-           ('l_inflight', form.SpaceLayer, [('l_shipui', form.ShipUI, None),
-             ('l_bracket', None, None),
-             ('l_target', None, None),
-             ('l_tactical', None, None)]),
-           ('l_charControl', uicls.CharControl, None)]),
-         ('l_map', None, None),
-         ('l_systemmap', None, None),
-         ('l_planet', None, None)]
+         ('l_viewstate', None, None)]
         self.shipAccess = None
         self.state = SERVICE_RUNNING
         uthread.worker('gameui::ShutdownTimer', self._GameUI__ShutdownTimer)
@@ -151,16 +117,11 @@ class GameUI(service.Service):
         self.LogInfo('Received OnDisconnect with reason=', reason, ' and msg=', msg)
         if reason in (0, 1):
             self.LogWarn('GameUI::OnDisconnect', reason, msg)
-            if settings.user.ui.Get('rebootOnDisconnect', 1):
-                appUtils.Reboot('connection lost')
-            elif msg and reason == 0:
-                uthread.new(eve.Message, 'GPSTransportClosed', {'what': msg})
-            uicore.LoadLayers(self.uiLayerList)
-            self.GoLogin(step=2, connectionLost=reason == 0)
+            appUtils.Reboot('connection lost')
 
 
 
-    def OnConnectionRefused(self, msg):
+    def OnConnectionRefused(self):
         sm.GetService('loading').CleanUp()
 
 
@@ -171,6 +132,9 @@ class GameUI(service.Service):
 
 
     def OnServerMessage_thread(self, msg):
+        if isinstance(msg, tuple) and len(msg) == 2:
+            (label, kwargs,) = msg
+            msg = localization.GetByLabel(label, **kwargs)
         eve.Message('ServerMessage', {'msg': msg})
 
 
@@ -188,7 +152,7 @@ class GameUI(service.Service):
 
     def OnClusterShutdownCancelled(self, msg):
         self.shutdownTime = None
-        self.Say(mls.UI_SHARED_CLUSTERSHUTDOWNDELAYED)
+        self.Say(localization.GetByLabel('UI/Shared/ClusterShutdownDelayed'))
         eve.Message('CluShutdownCancelled', {'explanation': msg})
 
 
@@ -196,12 +160,13 @@ class GameUI(service.Service):
     def __ShutdownTimer(self):
         while self.state == SERVICE_RUNNING:
             try:
-                if self.shutdownTime and self.shutdownTime - blue.os.GetTime() < 5 * MIN:
-                    self.Say(mls.UI_SHARED_CLUSTERSHUTDOWN + ' ' + util.FmtTimeInterval(self.shutdownTime - blue.os.GetTime(), 'sec'))
+                if self.shutdownTime and self.shutdownTime - blue.os.GetWallclockTime() < 5 * MIN:
+                    timeLeft = max(0L, self.shutdownTime - blue.os.GetWallclockTime())
+                    self.Say(localization.GetByLabel('UI/Shared/ClusterShutdownInSeconds', timeLeft=timeLeft))
             except:
                 log.LogException()
                 sys.exc_clear()
-            blue.pyos.synchro.Sleep(5000)
+            blue.pyos.synchro.SleepWallclock(5000)
 
 
 
@@ -209,12 +174,12 @@ class GameUI(service.Service):
     def __SessionTimeoutTimer(self):
         while self.state == SERVICE_RUNNING:
             try:
-                if eve.session.maxSessionTime and eve.session.maxSessionTime - blue.os.GetTime() < 15 * MIN:
-                    self.Say(mls.UI_SHARED_MAXSESSIONTIMEEXPIRING + ' ' + util.FmtTimeInterval(eve.session.maxSessionTime - blue.os.GetTime(), 'sec'))
+                if eve.session.maxSessionTime and eve.session.maxSessionTime - blue.os.GetWallclockTime() < 15 * MIN:
+                    self.Say(localization.GetByLabel('UI/Shared/MaxSessionTimeExpiring', timeLeft=eve.session.maxSessionTime - blue.os.GetWallclockTime()))
             except:
                 log.LogException()
                 sys.exc_clear()
-            blue.pyos.synchro.Sleep(5000)
+            blue.pyos.synchro.SleepWallclock(5000)
 
 
 
@@ -228,14 +193,14 @@ class GameUI(service.Service):
 
     def TransitionCleanup(self, session, change):
         uicore.layer.menu.Flush()
-        for each in sm.GetService('window').GetWindows()[:]:
+        for each in uicore.registry.GetWindows()[:]:
             if hasattr(each, 'content') and getattr(each.content, '__guid__', None) == 'form.InflightCargoView' and each.id != session.shipid:
-                if hasattr(each, 'SelfDestruct'):
-                    each.SelfDestruct()
+                if hasattr(each, 'Close'):
+                    each.Close()
                 else:
-                    each.CloseX()
+                    each.CloseByUser()
             if each.name.startswith('infowindow') and 'shipid' in change and each.sr.itemID in change['shipid']:
-                each.SelfDestruct()
+                each.Close()
 
 
 
@@ -255,7 +220,6 @@ class GameUI(service.Service):
 
 
     def Stop(self, ms = None):
-        self.settings.SaveSettings()
         service.Service.Stop(self, ms)
 
 
@@ -271,8 +235,6 @@ class GameUI(service.Service):
 
 
     def DoSessionChanging(self, isRemote, session, change):
-        if 'map' in sm.services and sm.GetService('map').IsOpen() and not session.charid:
-            sm.GetService('map').Close()
         self.TransitionCleanup(session, change)
         if 'charid' in change and change['charid'][0] or 'userid' in change and change['userid'][0]:
             self.shipAccess = None
@@ -308,17 +270,12 @@ class GameUI(service.Service):
 
         if not ok:
             return 
+        viewSvc = sm.GetService('viewState')
         if 'userid' in change:
             sm.GetService('window').LoadUIColors()
+            sm.GetService('tactical')
         if 'userid' in change or 'charid' in change:
             self.settings.LoadSettings()
-        if 'solarsystemid' in change:
-            sm.GetService('FxSequencer').ClearAll()
-            self.CacheCameraTranslation(inflight=bool(change['solarsystemid'][0]))
-            self.michelle.RemoveBallpark()
-        if 'worldspaceid' in change and change['worldspaceid'][1] is None:
-            self.LogWarn('GameUI::OnSessionChanged, Leaving a worldspace', isRemote, session, change)
-            uthread.pool('GameUI :: LeaveWorldSpace', self.LeaveWorldSpace, change)
         if 'shipid' in change and session.sessionChangeReason == 'selfdestruct':
             session.sessionChangeReason = 'board'
         if session.charid is None:
@@ -332,20 +289,49 @@ class GameUI(service.Service):
             if settings.public.generic.Get('showintro2', None) is None:
                 settings.public.generic.Set('showintro2', prefs.GetValue('showintro2', 1))
             if settings.public.generic.Get('showintro2', 1):
-                uthread.pool('GameUI :: GoIntro', self.GoIntro)
+                uthread.pool('GameUI::ActivateView::intro', viewSvc.ActivateView, 'intro')
             else:
-                uthread.pool('GameUI :: GoCharacterSelection', self.GoCharacterSelection)
+                characters = sm.GetService('cc').GetCharactersToSelect(False)
+                if characters:
+                    uthread.pool('GameUI::ActivateView::charsel', viewSvc.ActivateView, 'charsel')
+                else:
+                    uthread.pool('GameUI::GoCharacterCreation', self.GoCharacterCreation)
         elif session.stationid is not None:
             if 'stationid' in change:
                 self.LogNotice('GameUI::OnSessionChanged, Heading for station', isRemote, session, change)
-                uthread.pool('GameUI::ActivateView::station', self.GoWorldSpace, change)
+                activateViewFunc = viewSvc.ActivateView if viewSvc.IsViewActive('charactercreation') else viewSvc.ChangePrimaryView
+                view = settings.user.ui.Get('defaultDockingView', 'station')
+                if view == 'station' and not prefs.GetValue('loadstationenv2', 1):
+                    self.LogInfo('Docking into hangar because we have disabled the station environments')
+                    view = 'hangar'
+                uthread.pool('GameUI::ActivateView::station', activateViewFunc, view, change=change)
         elif session.worldspaceid is not None:
             if 'worldspaceid' in change:
                 self.LogWarn('GameUI::OnSessionChanged, Heading for worldspace', isRemote, session, change)
-                uthread.pool('GameUI :: GoWorldSpace', self.GoWorldSpace, change)
+                activateViewFunc = viewSvc.ActivateView if viewSvc.IsViewActive('charactercreation') else viewSvc.ChangePrimaryView
+                uthread.pool('GameUI::ActivateView::station', activateViewFunc, 'station', change=change)
         elif session.solarsystemid is not None:
-            self.LogNotice('GameUI::OnSessionChanged, Heading for inflight', isRemote, session, change)
-            uthread.pool('GameUI :: GoInflight', self.GoInflight, change)
+            if 'solarsystemid' in change:
+                (oldSolarSystemID, newSolarSystemID,) = change['solarsystemid']
+                if oldSolarSystemID:
+                    sm.GetService('FxSequencer').ClearAll()
+                    self.LogInfo('Cleared effects')
+                self.LogNotice('GameUI::OnSessionChanged, Heading for inflight', isRemote, session, change)
+                uthread.pool('GameUI::ChangePrimaryView::inflight', viewSvc.ChangePrimaryView, 'inflight', change=change)
+            elif 'shipid' in change and change['shipid'][1] is not None:
+                michelle = sm.GetService('michelle')
+                bp = michelle.GetBallpark()
+                if bp:
+                    if change['shipid'][0]:
+                        self.KillCargoView(change['shipid'][0])
+                    uthread.new(sm.GetService('target').ClearTargets)
+                    if session.shipid in bp.balls:
+                        self.LogInfo('Changing ego:', bp.ego, '->', session.shipid)
+                        bp.ego = session.shipid
+                        self.OnNewState(bp, localization.GetByLabel('UI/Inflight/BoardingShip'))
+                    else:
+                        self.LogInfo('Postponing ego:', bp.ego, '->', session.shipid)
+                    self.wannaBeEgo = session.shipid
         else:
             self.LogWarn('GameUI::OnSessionChanged, Lame Teardown of the client, it should get propper OnDisconnect event', isRemote, session, change)
             self.ScopeCheck()
@@ -355,13 +341,13 @@ class GameUI(service.Service):
     def KillCargoView(self, id_, guidsToKill = None):
         if guidsToKill is None:
             guidsToKill = ('form.DockedCargoView', 'form.InflightCargoView', 'form.LootCargoView', 'form.DroneBay', 'form.CorpHangar', 'form.ShipCorpHangars', 'form.CorpHangarArray', 'form.SpecialCargoBay', 'form.PlanetInventory')
-        for each in sm.GetService('window').GetWindows()[:]:
+        for each in uicore.registry.GetWindows()[:]:
             if getattr(each, '__guid__', None) in guidsToKill and getattr(each, 'itemID', None) == id_:
                 if not each.destroyed:
-                    if hasattr(each, 'SelfDestruct'):
-                        each.SelfDestruct()
+                    if hasattr(each, 'Close'):
+                        each.Close()
                     else:
-                        each.CloseX()
+                        each.CloseByUser()
 
 
 
@@ -369,81 +355,30 @@ class GameUI(service.Service):
     def ScopeCheck(self, scope = []):
         scope += ['all']
         self.currentScope = scope
-        for each in sm.GetService('window').GetWindows()[:]:
+        for each in uicore.registry.GetWindows()[:]:
             if getattr(each, 'content', None) and hasattr(each.content, 'scope') and each.content.scope:
                 if each.content.scope not in scope:
                     if each is not None and not each.destroyed:
-                        if hasattr(each, 'SelfDestruct'):
-                            self.LogInfo('ScopeCheck::SelfDestruct', each.name, 'scope', scope)
-                            each.SelfDestruct()
+                        if hasattr(each, 'Close'):
+                            self.LogInfo('ScopeCheck::Close', each.name, 'scope', scope)
+                            each.Close()
                         else:
                             self.LogInfo('ScopeCheck::Close', each.name, 'scope', scope)
-                            each.CloseX()
+                            each.CloseByUser()
             elif hasattr(each, 'scope') and each.scope not in scope:
                 if each is not None and not each.destroyed:
-                    if hasattr(each, 'SelfDestruct'):
-                        self.LogInfo('ScopeCheck::SelfDestruct2', each.name, 'scope', scope)
-                        each.SelfDestruct()
+                    if hasattr(each, 'Close'):
+                        self.LogInfo('ScopeCheck::Close2', each.name, 'scope', scope)
+                        each.Close()
                     else:
                         self.LogInfo('ScopeCheck::Close2', each.name, 'scope', scope)
-                        each.CloseX()
+                        each.CloseByUser()
 
 
 
 
     def GetCurrentScope(self):
         return self.currentScope
-
-
-
-    def ShowExclusive(self, layerName = 'exclusive'):
-        for layer in (uicore.layer.exclusive, uicore.layer.maps):
-            if layerName and layer.name == 'l_' + layerName:
-                layer.state = uiconst.UI_PICKCHILDREN
-            else:
-                layer.state = uiconst.UI_HIDDEN
-
-
-
-
-    def ResetExclusive(self):
-        self.ShowExclusive()
-
-
-
-    def OpenExclusive(self, layerName, checkScope = 0):
-        for _layerName in ['login',
-         'charsel',
-         'charactercreation',
-         'intro',
-         'inflight',
-         'station',
-         'ccreate',
-         'charcontrol']:
-            if layerName == _layerName:
-                continue
-            layer = uicore.layer.Get(_layerName)
-            if layer:
-                layer.CloseView()
-
-        if layerName == 'charactercreation':
-            uicore.layer.main.state = uiconst.UI_HIDDEN
-            uicore.layer.neocom.state = uiconst.UI_HIDDEN
-            uicore.layer.tabs.state = uiconst.UI_HIDDEN
-        elif not eve.hiddenUIState:
-            uicore.layer.main.state = uiconst.UI_PICKCHILDREN
-            uicore.layer.neocom.state = uiconst.UI_PICKCHILDREN
-            uicore.layer.tabs.state = uiconst.UI_PICKCHILDREN
-        layer = uicore.layer.Get(layerName)
-        layer.OpenView()
-        if checkScope:
-            if layerName == 'charcontrol':
-                scope = ['station']
-            else:
-                scope = [layerName]
-            if layerName in ('station', 'inflight', 'charcontrol'):
-                scope.append('station_inflight')
-            self.ScopeCheck(scope)
 
 
 
@@ -465,6 +400,8 @@ class GameUI(service.Service):
         trinity.device.scene = None
         if blue.win32.IsTransgaming():
             sm.StartService('cider')
+        self.SetupViewStates()
+        sm.GetService('device').SetupUIScaling()
         sceneManager = sm.StartService('sceneManager')
         sceneManager.SetSceneType(SCENE_TYPE_SPACE)
         sceneManager.Initialize(trinity.device.scene, trinity.EveSpaceScene(), None)
@@ -482,16 +419,23 @@ class GameUI(service.Service):
         sm.StartService('incursion')
         sm.StartService('cameraClient')
         sm.StartService('moonScan')
+        if blue.win32:
+            try:
+                blue.win32.WTSRegisterSessionNotification(trinity.device.GetWindow(), 0)
+                uicore.uilib.SessionChangeHandler = self.OnWindowsUserSessionChange
+            except:
+                sys.exc_clear()
+                uicore.uilib.SessionChangeHandler = None
         rebootReason = settings.public.generic.Get('rebootReason', None)
-        rebootTime = settings.public.generic.Get('rebootTime', blue.os.GetTime())
-        if rebootReason == 'connection lost' and blue.os.GetTime() - rebootTime < MIN:
-            self.GoLogin(step=2, connectionLost=1)
+        rebootTime = settings.public.generic.Get('rebootTime', blue.os.GetWallclockTime())
+        if rebootReason == 'connection lost' and blue.os.GetWallclockTime() - rebootTime < MIN:
+            sm.GetService('viewState').ActivateView('login', connectionLost=True)
         else:
             pr = sm.GetService('webtools').GetVars()
             if pr:
                 sm.GetService('webtools').GoSlimLogin()
             else:
-                self.GoLogin()
+                sm.GetService('viewState').ActivateView('login')
                 if self.startErrorMessage:
                     eve.Message(self.startErrorMessage)
                     self.startErrorMessage = None
@@ -499,81 +443,74 @@ class GameUI(service.Service):
 
 
 
-    def GetLanguages(self):
-        if eve.session.userid:
-            if not self.languages:
-                self.languages = []
-                for row in sm.RemoteSvc('languageSvc').GetLanguages():
-                    if boot.region == 'optic' and row.languageID != 'ZH' or boot.region != 'optic' and row.languageID == 'ZH':
-                        continue
-                    self.languages.append([row.languageID, row.languageName, row.translatedName])
-
-            return self.languages
-        else:
-            return []
-
-
-
-    def GetLanguageIDs(self):
-        return [ languageID for (languageID, languageName, translatedName,) in self.GetLanguages() ]
+    def SetupViewStates(self):
+        viewSvc = sm.GetService('viewState')
+        viewSvc.Initialize(uicore.layer.viewstate)
+        viewSvc.AddView('login', viewstate.LoginView())
+        viewSvc.AddView('intro', viewstate.IntroView())
+        viewSvc.AddView('charsel', viewstate.CharacterSelectorView())
+        viewSvc.AddView('inflight', viewstate.SpaceView())
+        viewSvc.AddView('station', viewstate.CQView())
+        viewSvc.AddView('hangar', viewstate.HangarView())
+        viewSvc.AddView('starmap', viewstate.StarMapView(), viewType=viewstate.ViewType.Secondary)
+        viewSvc.AddView('systemmap', viewstate.SystemMapView(), viewType=viewstate.ViewType.Secondary)
+        viewSvc.AddView('planet', viewstate.PlanetView(), viewType=viewstate.ViewType.Secondary)
+        viewSvc.AddView('charactercreation', viewstate.CharacterCustomizationView(), viewType=viewstate.ViewType.Secondary)
+        viewSvc.AddTransition(None, 'login')
+        viewSvc.AddTransitions(('login',), ('intro', 'charsel', 'charactercreation'), viewstate.FadeToBlackTransition(fadeTimeMS=250))
+        viewSvc.AddTransitions(('intro',), ('charsel', 'charactercreation'), viewstate.FadeToBlackLiteTransition(fadeTimeMS=250))
+        viewSvc.AddTransitions(('charsel',), ('inflight', 'charactercreation', 'hangar'), viewstate.FadeToBlackTransition(fadeTimeMS=250))
+        viewSvc.AddTransitions(('charactercreation',), ('hangar', 'charsel'), viewstate.FadeToBlackTransition(fadeTimeMS=250, allowReopen=False))
+        viewSvc.AddTransitions(('inflight', 'hangar', 'starmap', 'systemmap', 'planet'), ('hangar', 'starmap', 'systemmap', 'planet', 'inflight'), viewstate.FadeToBlackLiteTransition(fadeTimeMS=100))
+        viewSvc.AddTransition('inflight', 'inflight', viewstate.SpaceToSpaceTransition(fadeTimeMS=100))
+        viewSvc.AddTransition('starmap', 'starmap')
+        viewSvc.AddTransitions(('station',), ('hangar', 'starmap', 'systemmap', 'planet'), viewstate.FadeToBlackLiteTransition(fadeTimeMS=100))
+        viewSvc.AddTransitions(('inflight', 'starmap', 'systemmap', 'planet', 'charsel', 'hangar', 'charactercreation', 'station'), ('station',), viewstate.FadeToCQTransition(fadeTimeMS=200))
+        viewSvc.AddTransitions(('station', 'hangar', 'starmap', 'systemmap'), ('charactercreation',), viewstate.FadeToBlackTransition(fadeTimeMS=200))
+        viewSvc.AddTransition('charactercreation', 'station', viewstate.FadeFromCharRecustomToCQTransition(fadeTimeMS=250))
+        viewSvc.AddTransition('station', 'inflight', viewstate.FadeFromCQToSpaceTransition(fadeTimeMS=250))
+        viewSvc.AddOverlay('neocom', None)
+        viewSvc.AddOverlay('shipui', form.ShipUI)
+        viewSvc.AddOverlay('target', None)
+        viewSvc.AddOverlay('stationEntityBrackets', None)
 
 
 
     def SetLanguage(self, key):
         if boot.region == 'optic' and not eve.session.role & service.ROLEMASK_ELEVATEDPLAYER:
             key = 'ZH'
-        if key in self.GetLanguageIDs():
-            sm.RemoteSvc('authentication').SetLanguageID(key)
-            mls.LoadTranslations(key)
+        convertedKey = localizationUtil.ConvertToLanguageSet('MLS', 'languageID', key)
+        if convertedKey in localization.GetLanguages() and key != prefs.languageID:
+            if session.userid is not None:
+                sm.RemoteSvc('authentication').SetLanguageID(key)
+            else:
+                session.__dict__['languageID'] = key
             prefs.languageID = key
+            localization.LoadSecondaryLanguage(key)
+            sm.ChainEvent('ProcessUIRefresh')
+            sm.ScatterEvent('OnUIRefresh')
 
 
 
     def HasActiveOverlay(self):
-        return sm.IsServiceRunning('map') and sm.GetService('map').IsOpen() or sm.IsServiceRunning('planetUI') and sm.GetService('planetUI').IsOpen()
+        return sm.IsServiceRunning('viewState') and sm.GetService('viewState').IsCurrentViewSecondary()
 
 
 
     def GoLogin(self, step = 1, connectionLost = 0, *args):
         blue.statistics.SetTimelineSectionName('login')
-        sm.GetService('loading').GoBlack()
         if self.sceneManager.scene1 is not None:
-            self.sceneManager.scene1.display = 0
-        self.OpenExclusive('login')
+            self.sceneManager.scene1.display = False
         login = uicore.layer.login
         if connectionLost:
             uthread.new(eve.Message, 'ConnectionLost', {'what': ''})
 
 
 
-    def GoIntro(self, *args):
-        blue.statistics.SetTimelineSectionName('intro')
-        sm.GetService('loading').ProgressWnd(mls.UI_LOGIN_ENTERINGINTRO, '', 1, 2)
-        self.OpenExclusive('intro', 1)
-        sm.GetService('loading').ProgressWnd(mls.UI_LOGIN_ENTERINGINTRO, '', 2, 2)
-
-
-
-    def GoCharacterSelection(self, force = 0, *args):
-        blue.statistics.SetTimelineSectionName('charSel')
-        self.sceneManager.SetSceneType(SCENE_TYPE_SPACE)
-        c = sm.GetService('cc').GetCharactersToSelect(force)
-        if c:
-            sm.StartService('menu')
-            sm.StartService('tutorial')
-            sm.GetService('loading').ProgressWnd(mls.UI_CHARSEL_ENTERINGCHARSEL, '', 1, 2)
-            self.OpenExclusive('charsel', 1)
-            sm.GetService('loading').ProgressWnd(mls.UI_CHARSEL_ENTERINGCHARSEL, '', 2, 2)
-        else:
-            uthread.pool('GameUI :: GoCharacterCreation', self.GoCharacterCreation, 0)
-
-
-
     def GoCharacterCreationCurrentCharacter(self, *args):
         if None in (session.charid, session.genderID, session.bloodlineID):
             return 
-        ccLayer = uicore.layer.Get('charactercreation')
-        if ccLayer is not None and ccLayer.isopen:
+        if sm.GetService('viewState').IsViewActive('charactercreation'):
             return 
         stationSvc = sm.GetService('station')
         dollState = stationSvc.GetPaperdollStateCache()
@@ -586,31 +523,14 @@ class GameUI(service.Service):
         if msg is not None:
             message = eve.Message(msg, {'charName': cfg.eveowners.Get(session.charid).ownerName}, uiconst.YESNO, default=uiconst.ID_NO, suppress=uiconst.ID_NO)
         if message == uiconst.ID_YES:
-            self.GoCharacterCreation(0, session.charid, session.genderID, session.bloodlineID, fromCharSel=0, dollState=dollState)
+            self.GoCharacterCreation(session.charid, session.genderID, session.bloodlineID, dollState=dollState)
             stationSvc.ClearPaperdollStateCache()
         elif message == uiconst.ID_NO:
-            self.GoCharacterCreation(0, session.charid, session.genderID, session.bloodlineID, fromCharSel=0, dollState=None)
+            self.GoCharacterCreation(session.charid, session.genderID, session.bloodlineID, dollState=const.paperdollStateNoRecustomization)
 
 
 
-    def GoCharacterCreation(self, canReturnToCharsel = 1, charID = None, gender = None, bloodlineID = None, fromCharSel = 1, askUseLowShader = 1, dollState = None, *args):
-        if charID is not None:
-            if session.worldspaceid == session.stationid2:
-                player = sm.GetService('entityClient').GetPlayerEntity()
-                if player is not None:
-                    pos = player.GetComponent('position')
-                    if pos is not None:
-                        self.cachedPlayerPos = pos.position
-                        self.cachedPlayerRot = pos.rotation
-            change = {'worldspaceid': [session.worldspaceid, None]}
-            sm.GetService('entityClient').ProcessSessionChange(False, session, change)
-            self.OnSessionChanged(False, session, change)
-        factory = sm.GetService('character').factory
-        factory.compressTextures = False
-        factory.allowTextureCache = False
-        clothSimulation = sm.GetService('device').GetAppFeatureState('CharacterCreation.clothSimulation', True)
-        factory.clothSimulationActive = clothSimulation
-        blue.statistics.SetTimelineSectionName('charCreation')
+    def GoCharacterCreation(self, charID = None, gender = None, bloodlineID = None, askUseLowShader = True, dollState = None, *args):
         if sm.GetService('station').exitingstation:
             return 
         if askUseLowShader:
@@ -624,181 +544,7 @@ class GameUI(service.Service):
                 msg = eve.Message('AskUseLowShader', {}, uiconst.YESNO, default=uiconst.ID_NO)
             if msg != uiconst.ID_YES:
                 return 
-        sm.GetService('loading').FadeToBlack()
-        if charID:
-            text = mls.UI_CHARCREA_ENTERINGCHARRECUST
-        else:
-            text = mls.UI_CHARCREA_ENTERINGCHARCREA
-        sm.GetService('loading').ProgressWnd(text, '', 1, 2)
-        self.OpenExclusive('charactercreation')
-        self.sceneManager.SetSceneType(SCENE_TYPE_CHARACTER_CREATION)
-        sm.GetService('cc').GoCharacterCreation(charID, gender, bloodlineID, dollState=dollState)
-        sm.GetService('loading').FadeFromBlack()
-        sm.GetService('loading').ProgressWnd(text, '', 2, 2)
-
-
-
-    def GoWorldSpace(self, change):
-        view = util.GetCurrentView()
-        self.LogInfo('Going to ', view)
-        if view == 'station':
-            factory = sm.GetService('paperDollClient').dollFactory
-            factory.compressTextures = True
-            factory.allowTextureCache = True
-            clothSimulation = sm.GetService('device').GetAppFeatureState('Interior.clothSimulation', False)
-            factory.clothSimulationActive = clothSimulation
-            if not self.HasActiveOverlay():
-                self.OpenExclusive('charcontrol', 1)
-            if change['worldspaceid'][0] is None:
-                eve.SynchronizeClock()
-                sm.GetService('wallet')
-        if uicore.layer.shipui.isopen:
-            uicore.layer.shipui.CloseView()
-        if view == 'hangar':
-            sm.GetService('entityClient').UnloadEntityScene(session.worldspaceid)
-            if not self.HasActiveOverlay():
-                self.OpenExclusive('station', 1)
-            if uicore.layer.shipui.isopen:
-                uicore.layer.shipui.CloseView()
-        if util.IsStation(session.stationid):
-            self._GoStation(change)
-        if hasattr(self, 'cachedPlayerPos') and session.worldspaceid == session.stationid2 and view == 'station':
-            pos = sm.GetService('entityClient').GetPlayerEntity(True).GetComponent('position')
-            pos.position = self.cachedPlayerPos or pos.position
-            pos.rotation = self.cachedPlayerRot or pos.rotation
-            self.cachedPlayerPos = None
-            self.cachedPlayerRot = None
-        sm.GetService('neocom').ShowToggleHangarCQButton()
-        uthread.new(sm.GetService('loading').FadeFromBlack, 3000)
-        sm.GetService('loading').ProgressWnd()
-        self.DoWindowIdentification()
-        sm.ScatterEvent('OnClientReady', 'worldspace')
-        if not self.HasActiveOverlay():
-            if view == 'station':
-                if not uix.GetWorldspaceNav(create=0):
-                    if '/thinclient' not in blue.pyos.GetArg():
-                        uix.GetWorldspaceNav()
-                uicore.registry.SetFocus(uicore.GetLayer('charcontrol'))
-            elif view == 'hangar':
-                uix.GetStationNav()
-
-
-
-    def LeaveWorldSpace(self, change):
-        uicore.layer.charcontrol.CloseView()
-        wsClient = sm.GetService('worldSpaceClient')
-        wsClient.TearDownWorldSpaceRendering()
-        uicore.uilib.scenePickFunction = None
-
-
-
-    def _GoStation(self, change):
-        if 'stationid' in change:
-            sm.GetService('loading').ProgressWnd(mls.UI_STATION_ENTERINGSTATION, '', 1, 5)
-            sm.GetService('michelle').RemoveBallpark()
-            sm.GetService('loading').ProgressWnd(mls.UI_STATION_ENTERINGSTATION, mls.UI_STATION_CLEARINGCURRENTSTATE, 2, 5)
-            tostation = change['stationid'][1]
-            sm.GetService('loading').ProgressWnd(mls.UI_STATION_ENTERINGSTATION, cfg.evelocations.Get(tostation).name, 3, 5)
-            if tostation is not None:
-                sm.GetService('loading').ProgressWnd(mls.UI_STATION_ENTERINGSTATION, mls.UI_STATION_SETUPSTATION + ': ' + cfg.evelocations.Get(tostation).name, 4, 5)
-                sm.GetService('station').CleanUp()
-                sm.GetService('station').StopAllStationServices()
-                sm.GetService('station').Setup()
-                view = util.GetCurrentView()
-                if view == 'hangar':
-                    self.LeaveWorldSpace(change)
-                    sm.GetService('station').SetupHangarScene()
-                else:
-                    sm.GetService('entitySpawnClient').SpawnClientSidePlayer(change)
-                    sm.GetService('station').SetupCaptainsQuartersScene()
-                    if settings.user.ui.Get('doIntroTutorial%s' % session.charid, 0):
-                        tutID = uix.tutorialTutorials
-                    else:
-                        tutID = uix.tutorialWorldspaceNavigation
-                    uthread.new(self.OpenStationTutorial_thread, tutID)
-                if 'shipid' in change and change['shipid'][1] is None:
-                    uthread.new(sm.GetService('charactersheet').LoadGeneralInfo)
-            elif tostation is None:
-                sm.GetService('station').CleanUp()
-            sm.GetService('loading').ProgressWnd(mls.UI_STATION_ENTERINGSTATION, mls.UI_GENERIC_DONE, 5, 5)
-            sm.GetService('loading').FadeFromBlack()
-        else:
-            sm.GetService('station').CheckSession(change)
-
-
-
-    def OpenStationTutorial_thread(self, tutID):
-        blue.pyos.synchro.Sleep(5000)
-        sm.GetService('tutorial').OpenTutorialSequence_Check(tutID)
-
-
-
-    def GoInflight(self, change):
-        blue.statistics.SetTimelineSectionName('inFlight')
-        self.sceneManager.SetSceneType(SCENE_TYPE_SPACE)
-        eve.SynchronizeClock()
-        try:
-            sm.StartServiceAndWaitForRunningState('wreck')
-        except:
-            log.LogException()
-            sys.exc_clear()
-        sm.StartService('standing')
-        sm.StartService('tactical')
-        sm.StartService('pathfinder')
-        sm.StartService('map')
-        sm.StartService('wallet')
-        sm.StartService('space')
-        sm.StartService('state')
-        sm.StartService('bracket')
-        sm.StartService('target')
-        sm.StartService('fleet')
-        sm.StartService('surveyScan')
-        sm.StartService('autoPilot')
-        sm.StartService('info')
-        sm.StartService('neocom')
-        sm.StartService('corp')
-        sm.StartService('alliance')
-        sm.StartService('skillqueue')
-        sm.StartService('notepad')
-        sm.StartService('dungeonTracking')
-        sm.StartService('transmission')
-        sm.StartService('clonejump')
-        sm.StartService('assets')
-        sm.StartService('charactersheet')
-        sm.StartService('trigger')
-        sm.StartService('contracts')
-        sm.StartService('certificates')
-        sm.StartService('billboard')
-        sm.StartService('sov')
-        sm.StartService('turret')
-        if eve.session.role & service.ROLE_CONTENT:
-            sm.StartService('scenario')
-        sm.StartServiceAndWaitForRunningState('camera')
-        self.OpenExclusive('inflight', 1)
-        michelle = sm.GetService('michelle')
-        bp = michelle.GetBallpark()
-        if bp is None:
-            self.LogInfo('Adding new ballpark')
-            bp = michelle.AddBallpark(session.solarsystemid)
-        elif 'solarsystemid' in change:
-            bp = michelle.AddBallpark(session.solarsystemid)
-        elif 'shipid' in change and change['shipid'][1] is not None:
-            if change['shipid'][0]:
-                self.KillCargoView(change['shipid'][0])
-            uthread.new(sm.GetService('target').ClearTargets)
-            if session.shipid in bp.balls:
-                self.LogInfo('Changing ego: ', bp.ego, '->', session.shipid)
-                bp.ego = session.shipid
-                self.OnNewState(bp, mls.UI_INFLIGHT_BOARDINGSHIP)
-            else:
-                self.LogInfo('Postponing ego: ', bp.ego, '->', session.shipid)
-            self.wannaBeEgo = session.shipid
-        self.cachedPlayerPos = None
-        self.cachedPlayerRot = None
-        self.DoWindowIdentification()
-        sm.ScatterEvent('OnClientReady', 'inflight')
-        if not sm.GetService('map').IsOpen() and not sm.GetService('planetUI').IsOpen():
-            uix.GetInflightNav()
+        sm.GetService('viewState').ActivateView('charactercreation', charID=charID, gender=gender, bloodlineID=bloodlineID, dollState=dollState)
 
 
 
@@ -807,8 +553,7 @@ class GameUI(service.Service):
             return 
         if buttons is None:
             buttons = uiconst.ID_OK
-        sm.GetService('window').ResetToDefaults('MessageBox')
-        msgbox = sm.GetService('window').GetWindow('MessageBox', create=1, prefsName='modal', ignoreCurrent=1)
+        msgbox = form.MessageBox.Open(useDefaultPos=True)
         msgbox.state = uiconst.UI_HIDDEN
         msgbox.isModal = modal
         msgbox.blockconfirmonreturn = blockconfirmonreturn
@@ -826,8 +571,7 @@ class GameUI(service.Service):
             return 
         if buttons is None:
             buttons = uiconst.ID_OK
-        sm.GetService('window').ResetToDefaults('RadioButtonMessageBox')
-        msgbox = sm.GetService('window').GetWindow('RadioButtonMessageBox', create=1, prefsName='modal', ignoreCurrent=1)
+        msgbox = form.RadioButtonMessageBox.Open(useDefaultPos=True)
         msgbox.isModal = modal
         msgbox.blockconfirmonreturn = blockconfirmonreturn
         msgbox.Execute(text, title, buttons, radioOptions, icon, suppText, customicon, height, width=width, default=default, modal=modal)
@@ -875,7 +619,7 @@ class GameUI(service.Service):
             self.LogInfo('Post-ego change: ', bp.ego, '->', self.wannaBeEgo)
             bp.ego = self.wannaBeEgo
             self.wannaBeEgo = -1
-            self.OnNewState(bp, mls.UI_INFLIGHT_BOARDINGSHIP)
+            self.OnNewState(bp, localization.GetByLabel('UI/Inflight/BoardingShip'))
 
 
 
@@ -927,14 +671,14 @@ class GameUI(service.Service):
 
 
     def _CloseInvWindow(self, invID):
-        for each in sm.GetService('window').GetWindows()[:]:
-            if each.name in ['shipCargo_%s' % eve.session.shipid, 'drones_%s' % eve.session.shipid]:
+        for each in uicore.registry.GetWindows()[:]:
+            if each.windowID in ['shipCargo_%s' % eve.session.shipid, 'drones_%s' % eve.session.shipid]:
                 continue
             if hasattr(each, 'id') and each.id == invID:
-                if hasattr(each, 'SelfDestruct'):
-                    each.SelfDestruct()
+                if hasattr(each, 'Close'):
+                    each.Close()
                 else:
-                    each.CloseX()
+                    each.CloseByUser()
 
 
 
@@ -975,24 +719,19 @@ class GameUI(service.Service):
 
     def _NewState(self, bp, hint):
         if hint:
-            sm.GetService('loading').ProgressWnd(hint, mls.UI_INFLIGHT_CHECKINGNAVSYSTEMS, 5, 6)
+            sm.GetService('loading').ProgressWnd(hint, localization.GetByLabel('UI/Shared/CheckingNavigationSystems'), 5, 6)
         else:
-            sm.GetService('loading').ProgressWnd(mls.UI_STATION_ENTERINGSPACE, mls.UI_INFLIGHT_CHECKINGNAVSYSTEMS, 5, 6)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Inflight/EnteringSpace'), localization.GetByLabel('UI/Shared/CheckingNavigationSystems'), 5, 6)
         blue.pyos.synchro.Yield()
-        shipui = uicore.layer.shipui
         if bp and bp.balls.get(bp.ego, None):
             sm.GetService('camera').LookAt(bp.ego, self.GetCachedCameraTranslation((eve.session.shipid, 1)))
-            if shipui.isopen:
-                shipui.form.Init(bp.balls.get(bp.ego, None))
-            else:
-                shipui.OpenView()
-        else:
-            shipui.CloseView()
-        uthread.new(sm.GetService('loading').FadeFromBlack, 2500)
+            if session.solarsystemid:
+                uicore.layer.shipui.OnOpenView()
+                uicore.layer.shipui.Init(bp.balls.get(bp.ego, None))
         if hint:
-            sm.GetService('loading').ProgressWnd(hint, mls.UI_INFLIGHT_CHECKINGNAVSYSTEMS, 6, 6)
+            sm.GetService('loading').ProgressWnd(hint, localization.GetByLabel('UI/Shared/CheckingNavigationSystems'), 6, 6)
         else:
-            sm.GetService('loading').ProgressWnd(mls.UI_STATION_ENTERINGSPACE, mls.UI_INFLIGHT_CHECKINGNAVSYSTEMS, 6, 6)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Inflight/EnteringSpace'), localization.GetByLabel('UI/Shared/CheckingNavigationSystems'), 6, 6)
         blue.pyos.synchro.Yield()
 
 
@@ -1007,14 +746,23 @@ class GameUI(service.Service):
 
 
 
+    def OnWindowsUserSessionChange(self, wp, lp):
+        audio = sm.GetService('audio')
+        if wp == 1:
+            sm.GetService('vivox').OnSessionReconnect()
+            if audio.IsActivated() and audio.GetMasterVolume() > 0.0:
+                audio.SetMasterVolume(audio.GetMasterVolume(), persist=True)
+        elif wp == 2:
+            sm.GetService('vivox').OnSessionDisconnect()
+            if audio.IsActivated() and audio.GetMasterVolume() > 0.0:
+                audio.SetMasterVolume(0.0, persist=False)
 
-def GetCurrentView():
-    view = settings.user.ui.Get('defaultDockingView', 'station')
-    if view == 'station' and not prefs.GetValue('loadstationenv', 1):
-        view = 'hangar'
-    settings.user.ui.Set('defaultDockingView', view)
-    return view
 
 
-exports = util.AutoExports('util', {'GetCurrentView': GetCurrentView})
+    def ProcessActiveShipChanged(self, shipID, oldShipID):
+        if oldShipID:
+            self.KillCargoView(oldShipID)
+
+
+
 

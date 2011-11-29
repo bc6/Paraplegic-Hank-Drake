@@ -1,14 +1,12 @@
 import uix
-import xtriui
 import uthread
 import form
 import blue
-import moniker
-import draw
 import util
 import uicls
 import uiconst
 import log
+import localization
 
 class SpyHangar(form.VirtualInvWindow):
     __guid__ = 'form.SpyHangar'
@@ -29,15 +27,14 @@ class SpyHangar(form.VirtualInvWindow):
         self.id = id_
         self.itemID = id_
         self.ownerID = ownerID
-        name = cfg.eveowners.Get(ownerID).name
-        self.displayName = mls.UI_SHARED_HANGAR_NAME % {'name': name}
+        self.displayName = localization.GetByLabel('UI/Station/Hangar/HangarNameWithOwner', charID=ownerID)
         form.VirtualInvWindow.Startup(self)
         self.state = uiconst.UI_NORMAL
 
 
 
     def DoGetShell(self):
-        return eve.GetInventoryFromId(self.id)
+        return sm.GetService('invCache').GetInventoryFromId(self.id)
 
 
 
@@ -55,17 +52,11 @@ class SpyHangar(form.VirtualInvWindow):
 class ItemHangar(form.VirtualInvWindow):
     __guid__ = 'form.ItemHangar'
     __notifyevents__ = ['OnSessionChanged', 'OnPostCfgDataChanged', 'OnItemNameChange']
-    default_left = 135
-
-    def default_top(self):
-        dh = uicore.desktop.height
-        return dh - self.default_height - 256
-
-
+    default_windowID = 'hangarFloor'
 
     def ApplyAttributes(self, attributes):
         form.VirtualInvWindow.ApplyAttributes(self, attributes)
-        self.displayName = mls.UI_GENERIC_ITEMS
+        self.displayName = localization.GetByLabel('UI/Station/Items')
         self.scope = 'station'
         self.indexID = 'Items'
         self.locationFlag = const.flagHangar
@@ -87,7 +78,7 @@ class ItemHangar(form.VirtualInvWindow):
 
 
     def DoGetShell(self):
-        return eve.GetInventory(const.containerHangar)
+        return sm.GetService('invCache').GetInventory(const.containerHangar)
 
 
 
@@ -115,10 +106,11 @@ class ItemHangar(form.VirtualInvWindow):
 class ShipHangar(form.VirtualInvWindow):
     __guid__ = 'form.ShipHangar'
     __notifyevents__ = ['OnSessionChanged', 'OnPostCfgDataChanged', 'OnItemNameChange']
+    default_windowID = 'shipHangar'
 
     def ApplyAttributes(self, attributes):
         form.VirtualInvWindow.ApplyAttributes(self, attributes)
-        self.displayName = mls.UI_GENERIC_SHIPS
+        self.displayName = localization.GetByLabel('UI/Station/Ships')
         self.scope = 'station'
         self.locationFlag = const.flagHangar
         sm.RegisterNotify(self)
@@ -139,7 +131,7 @@ class ShipHangar(form.VirtualInvWindow):
 
 
     def DoGetShell(self):
-        return eve.GetInventory(const.containerHangar)
+        return sm.GetService('invCache').GetInventory(const.containerHangar)
 
 
 
@@ -162,9 +154,11 @@ class ShipHangar(form.VirtualInvWindow):
 class CorpHangar(form.VirtualInvWindow):
     __guid__ = 'form.CorpHangar'
     __notifyevents__ = ['OnSessionChanged',
+     'OnOfficeRentalChanged',
      'OnPostCfgDataChanged',
      'DoBallRemove',
      'DoBallClear']
+    default_windowID = 'corpHangar'
 
     def ApplyAttributes(self, attributes):
         form.VirtualInvWindow.ApplyAttributes(self, attributes)
@@ -173,9 +167,10 @@ class CorpHangar(form.VirtualInvWindow):
         hasCapacity = attributes.hasCapacity or False
         locationFlag = attributes.locationFlag
         isOffice = attributes.isOffice or True
+        self.closing = False
         self.hasCapacity = hasCapacity
         self.scope = 'station'
-        self.displayName = mls.UI_GENERIC_CORPHANGAR
+        self.displayName = localization.GetByLabel('UI/Station/CorpHangar')
         self.allHangars = None
         self.hangars = None
         self.oneWay = 1
@@ -189,6 +184,8 @@ class CorpHangar(form.VirtualInvWindow):
          const.flagCorpSAG6: (const.corpRoleHangarCanQuery6, const.corpRoleHangarCanTake6),
          const.flagCorpSAG7: (const.corpRoleHangarCanQuery7, const.corpRoleHangarCanTake7)}
         self.flagsList = self.rolesByFlag.keys()
+        self.corpClient = sm.GetService('corp')
+        self.officeItem = self.corpClient.GetOffice()
         self.Startup(officeID, name, hasCapacity, locationFlag, isOffice)
 
 
@@ -196,7 +193,14 @@ class CorpHangar(form.VirtualInvWindow):
     def OnSessionChanged(self, isRemote, session, change):
         if change.has_key('stationid'):
             if self is not None and not self.destroyed:
-                uthread.new(self.SelfDestruct)
+                self.closing = True
+                uthread.new(self.Close)
+
+
+
+    def OnOfficeRentalChanged(self, corporationID, officeID, folderID):
+        if officeID is None:
+            self.Close()
 
 
 
@@ -211,12 +215,19 @@ class CorpHangar(form.VirtualInvWindow):
                 if sm.GetService('corp').DoesCharactersCorpOwnThisStation():
                     self.allHangars = 1
             if not hasCapacity and isOffice:
-                btns = [[[mls.UI_CMD_MEMBERHANGARS, mls.UI_CMD_ALLHANGARS][(not not self.allHangars)],
-                  self.ShowHangars,
-                  None,
-                  None]]
+                btns = []
+                if self.allHangars:
+                    btns.append([localization.GetByLabel('UI/Station/Hangar/AllHangars'),
+                     self.ShowHangars,
+                     None,
+                     None])
+                else:
+                    btns.append([localization.GetByLabel('UI/Station/Hangar/MemberHangars'),
+                     self.ShowHangars,
+                     None,
+                     None])
                 if eve.session.corprole & const.corpRoleDirector == const.corpRoleDirector:
-                    btns.append([mls.UI_CMD_UNRENTOFFICE,
+                    btns.append([localization.GetByLabel('UI/Station/Hangar/UnrentOffice'),
                      self.UnrentOffice,
                      None,
                      None])
@@ -226,45 +237,45 @@ class CorpHangar(form.VirtualInvWindow):
         divisions = sm.GetService('corp').GetDivisionNames()
         scrollIdx = self.sr.scroll.parent.children.index(self.sr.scroll)
         maintabs = uicls.TabGroup(name='tabparent', parent=self.sr.main, idx=0)
-        maintabs.Startup([['%s1' % mls.UI_GENERIC_DIVISION,
+        maintabs.Startup([['%s1' % localization.GetByLabel('UI/Generic/Division'),
           self.sr.scroll,
           self,
           'division1',
           self.sr.scroll],
-         ['%s2' % mls.UI_GENERIC_DIVISION,
+         ['%s2' % localization.GetByLabel('UI/Generic/Division'),
           self.sr.scroll,
           self,
           'division2',
           self.sr.scroll],
-         ['%s3' % mls.UI_GENERIC_DIVISION,
+         ['%s3' % localization.GetByLabel('UI/Generic/Division'),
           self.sr.scroll,
           self,
           'division3',
           self.sr.scroll],
-         ['%s4' % mls.UI_GENERIC_DIVISION,
+         ['%s4' % localization.GetByLabel('UI/Generic/Division'),
           self.sr.scroll,
           self,
           'division4',
           self.sr.scroll]], 'corphangarpanel', autoselecttab=0)
         subtabs = uicls.TabGroup(name='tabparent', parent=self.sr.main, idx=0)
-        subtabs.Startup([['%s5' % mls.UI_GENERIC_DIVISION,
+        subtabs.Startup([['%s5' % localization.GetByLabel('UI/Generic/Division'),
           self.sr.scroll,
           self,
           'division5',
-          self.sr.scroll], ['%s6' % mls.UI_GENERIC_DIVISION,
+          self.sr.scroll], ['%s6' % localization.GetByLabel('UI/Generic/Division'),
           self.sr.scroll,
           self,
           'division6',
-          self.sr.scroll], ['%s7' % mls.UI_GENERIC_DIVISION,
+          self.sr.scroll], ['%s7' % localization.GetByLabel('UI/Generic/Division'),
           self.sr.scroll,
           self,
           'division7',
           self.sr.scroll]], 'corphangarpanel', autoselecttab=0)
         for i in xrange(1, 5):
-            maintabs.sr.Get('%s%s_tab' % (mls.UI_GENERIC_DIVISION, i), None).OnDropData = getattr(self, 'DropInDivision%s' % i, None)
+            maintabs.sr.Get('%s%s_tab' % (localization.GetByLabel('UI/Generic/Division'), i), None).OnDropData = getattr(self, 'DropInDivision%s' % i, None)
 
         for i in xrange(5, 8):
-            subtabs.sr.Get('%s%s_tab' % (mls.UI_GENERIC_DIVISION, i), None).OnDropData = getattr(self, 'DropInDivision%s' % i, None)
+            subtabs.sr.Get('%s%s_tab' % (localization.GetByLabel('UI/Generic/Division'), i), None).OnDropData = getattr(self, 'DropInDivision%s' % i, None)
 
         self.sr.maintabs = maintabs
         self.sr.subtabs = subtabs
@@ -290,10 +301,10 @@ class CorpHangar(form.VirtualInvWindow):
 
     def SetDivisionalHangarNames(self, divisions):
         for i in xrange(1, 5):
-            self.sr.maintabs.sr.Get('%s%s_tab' % (mls.UI_GENERIC_DIVISION, i), None).SetLabel(divisions[i])
+            self.sr.maintabs.sr.Get('%s%s_tab' % (localization.GetByLabel('UI/Generic/Division'), i), None).SetLabel(divisions[i])
 
         for i in xrange(5, 8):
-            self.sr.subtabs.sr.Get('%s%s_tab' % (mls.UI_GENERIC_DIVISION, i), None).SetLabel(divisions[i])
+            self.sr.subtabs.sr.Get('%s%s_tab' % (localization.GetByLabel('UI/Generic/Division'), i), None).SetLabel(divisions[i])
 
 
 
@@ -345,7 +356,7 @@ class CorpHangar(form.VirtualInvWindow):
         if len(itemlist) == 1:
             qty = itemlist[0].stacksize
             if uicore.uilib.Key(uiconst.VK_SHIFT) and qty > 1:
-                ret = uix.QtyPopup(qty, 1, 1, None, mls.UI_GENERIC_DIVIDESTACK)
+                ret = uix.QtyPopup(qty, 1, 1, None, localization.GetByLabel('UI/Inventory/ItemActions/DivideItemStack'))
                 if ret is None:
                     return 
                 qty = ret['qty']
@@ -388,7 +399,7 @@ class CorpHangar(form.VirtualInvWindow):
             self.SetHint()
             return res
         else:
-            self.noAccessMsg = mls.UI_STATION_HINT1
+            self.noAccessMsg = localization.GetByLabel('UI/Station/Hangar/InsufficientRightsHint')
             self.SetHint(self.noAccessMsg)
             return []
 
@@ -404,7 +415,13 @@ class CorpHangar(form.VirtualInvWindow):
 
 
     def GetCaption(self, compact = 0):
+        if self.closing:
+            return 'CorpHangar'
         hint = ''
+        hintMessageList = {'FULLACCESS': localization.GetByLabel('UI/Generic/FullAccess'),
+         'READONLY': localization.GetByLabel('UI/Generic/ReadOnly'),
+         'CANTAKENOTVIEW': localization.GetByLabel('UI/Station/Hangar/CanTakeNotView'),
+         'ACCESSDENIED': localization.GetByLabel('UI/Generic/AccessDenied')}
         if self.rolesByFlag.has_key(self.locationFlag):
             roles = self.rolesByFlag[self.locationFlag]
             role = eve.session.corprole
@@ -420,12 +437,12 @@ class CorpHangar(form.VirtualInvWindow):
                 canQuery = True
                 canTake = True
             if canQuery and canTake:
-                hint = '- %s' % mls.UI_SHARED_FULLACCESS
+                hint = hintMessageList['FULLACCESS']
             elif canQuery:
-                hint = '- %s' % mls.UI_GENERIC_READONLY
+                hint = hintMessageList['READONLY']
             elif canTake:
-                hint = ' - %s' % mls.UI_STATION_CANTAKENOTVIEW
-            hint = ' - %s' % mls.UI_GENERIC_ACCESSDENIED
+                hint = hintMessageList['CANTAKENOTVIEW']
+            hint = hintMessageList['ACCESSDENIED']
         displayName = self.displayName
         if compact:
             displayName = displayName[0]
@@ -433,14 +450,11 @@ class CorpHangar(form.VirtualInvWindow):
             if self.quickFilterInput:
                 total = self.totalCount
                 total = total or '0'
-                return '%s [%s/%s] %s' % (displayName,
-                 len(filter(None, self.items)),
-                 total,
-                 hint)
+                return localization.GetByLabel('UI/Station/Hangar/HangarFilteredTitle', hangarName=displayName, itemCount=len(filter(None, self.items)), totalItems=total, hintMessage=hint)
             else:
-                return '%s [%s] %s' % (displayName, len(filter(None, self.items)), hint)
+                return localization.GetByLabel('UI/Station/Hangar/HangarTitle', hangarName=displayName, itemCount=len(filter(None, self.items)), hintMessage=hint)
         else:
-            return '%s %s' % (displayName, hint)
+            return localization.GetByLabel('UI/Station/Hangar/HangarTitleNoAccess', hangarName=displayName, hintMessage=hint)
 
 
 
@@ -462,26 +476,26 @@ class CorpHangar(form.VirtualInvWindow):
                 for ownerid in owners:
                     owner = cfg.eveowners.Get(ownerid)
                     if ownerid in corpMemberIDs:
-                        hangars[(ownerid, ownerid)] = '%s - %s' % (owner.name, mls.UI_STATION_MEMBERSHANGAR)
+                        hangars[(ownerid, ownerid)] = localization.GetByLabel('UI/Station/Hangar/MembersHangarLabel', charID=ownerid)
                     elif owner.typeID == const.typeCorporation:
-                        hangars[(ownerid, ownerid)] = '%s - %s' % (owner.name, mls.UI_STATION_OFFICEJUNK)
+                        hangars[(ownerid, ownerid)] = localization.GetByLabel('UI/Station/Hangar/OfficeJunkHangarLabel', corpName=owner.name)
                     else:
-                        hangars[(ownerid, ownerid)] = '%s - %s' % (owner.name, mls.UI_STATION_GUESTHANGAR)
+                        hangars[(ownerid, ownerid)] = localization.GetByLabel('UI/Station/Hangar/GuestHangarLabel', charID=ownerid)
 
                 bListedOutOfficeFolder = 0
                 for each in offices:
                     if each.corporationID == eve.session.corpid:
                         continue
                     if bListedOutOfficeFolder == 0:
-                        folder = eve.GetInventoryFromId(each.officeFolderID)
+                        folder = sm.GetService('invCache').GetInventoryFromId(each.officeFolderID)
                         folder.List()
                         bListedOutOfficeFolder = 1
-                    hangars[(each.itemID, each.corporationID)] = '%s - %s' % (cfg.eveowners.Get(each.corporationID).name, mls.UI_GENERIC_OFFICE)
+                    hangars[(each.itemID, each.corporationID)] = localization.GetByLabel('UI/Station/Hangar/CorporationOffice', corpName=cfg.eveowners.Get(each.corporationID).name)
 
             else:
                 cfg.eveowners.Prime(corpMemberIDs)
                 for charID in corpMemberIDs:
-                    hangars[(charID, charID)] = '%s - %s' % (cfg.eveowners.Get(charID).name, mls.UI_STATION_MEMBERSHANGAR)
+                    hangars[(charID, charID)] = localization.GetByLabel('UI/Station/Hangar/MembersHangarLabel', charID=charID)
 
 
         finally:
@@ -493,9 +507,9 @@ class CorpHangar(form.VirtualInvWindow):
     def ShowHangars(self, *etc):
         try:
             if session.corprole & const.corpRoleSecurityOfficer != const.corpRoleSecurityOfficer:
-                raise UserError('CrpAccessDenied', {'reason': mls.UI_CORP_ACCESSDENIED13})
+                raise UserError('CrpAccessDenied', {'reason': localization.GetByLabel('UI/Corporations/AccessDeniedNotSecurityOfficer')})
             while self.hangars is None:
-                blue.pyos.synchro.Sleep(500)
+                blue.pyos.synchro.SleepWallclock(500)
 
             memberHangars = []
             for each in self.hangars.iteritems():
@@ -505,20 +519,12 @@ class CorpHangar(form.VirtualInvWindow):
                     continue
                 memberHangars.append((hangarName, hangarOwnerTuple))
 
-            ret = uix.ListWnd(memberHangars, 'generic', mls.UI_STATION_SELECTHANGAR, None, 1)
+            ret = uix.ListWnd(memberHangars, 'generic', localization.GetByLabel('UI/Station/Hangar/SelectHangar'), None, 1)
             if ret:
                 if ret[1][0] == ret[1][1]:
-                    wnd = sm.GetService('window').GetWindow('corpMember_%s' % ret[0])
-                    if wnd is not None and not wnd.destroyed:
-                        wnd.Maximize()
-                    else:
-                        sm.GetService('window').GetWindow('corpMember_%s' % ret[0], create=1, maximize=1, decoClass=CorpMemberHangar, id_=ret[1][0], ownerID=ret[1][1])
+                    CorpMemberHangar.Open(windowID='corpMember_%s' % ret[0], id_=ret[1][0], ownerID=ret[1][1])
                 else:
-                    wnd = sm.GetService('window').GetWindow('spyHangar_%s_%s' % (ret[1][0], ret[1][1]))
-                    if wnd is not None and not wnd.destroyed:
-                        wnd.Maximize()
-                    else:
-                        sm.GetService('window').GetWindow('spyHangar_%s_%s' % (ret[1][0], ret[1][1]), create=1, maximize=1, decoClass=SpyHangar, id_=ret[1][0], ownerID=ret[1][1])
+                    SpyHangar.Open(windowID='spyHangar_%s_%s' % (ret[1][0], ret[1][1]), id_=ret[1][0], ownerID=ret[1][1])
 
         finally:
             pass
@@ -545,7 +551,7 @@ class CorpHangar(form.VirtualInvWindow):
         if not self or self.destroyed:
             return 
         if slimItem.itemID == self.id:
-            uthread.new(self.CloseX)
+            uthread.new(self.CloseByUser)
 
 
 
@@ -553,7 +559,7 @@ class CorpHangar(form.VirtualInvWindow):
         if not self or self.destroyed:
             return 
         if eve.session.shipid != self.id:
-            uthread.new(self.CloseX)
+            uthread.new(self.CloseByUser)
 
 
 
@@ -568,7 +574,7 @@ class CorpHangar(form.VirtualInvWindow):
 
 
     def GetShell(self):
-        return eve.GetInventoryFromId(self.id)
+        return sm.GetService('invCache').GetInventoryFromId(self.id)
 
 
 
@@ -602,8 +608,19 @@ class CorpHangarArray(CorpHangar):
 class ShipCorpHangars(CorpHangar):
     __guid__ = 'form.ShipCorpHangars'
 
+    def DoBallRemove(self, ball, slimItem, terminal):
+        if slimItem.itemID == self.id and self.id != util.GetActiveShip():
+            self.closing = True
+            uthread.new(self.CloseByUser)
+
+
+
+    def OnSessionChanged(self, isRemote, session, change):
+        pass
+
+
+
     def ApplyAttributes(self, attributes):
-        self.scope = 'station_inflight'
         attributes.hasCapacity = True
         form.CorpHangar.ApplyAttributes(self, attributes)
 
@@ -612,7 +629,8 @@ class ShipCorpHangars(CorpHangar):
     def Startup(self, officeID, name = '', hasCapacity = 0, locationFlag = None, isOffice = False):
         CorpHangar.Startup(self, officeID, hasCapacity, locationFlag, isOffice=False)
         self.corpID = self.GetCorpIDOfShipHangar()
-        if self.id != session.shipid:
+        self.scope = 'station_inflight'
+        if self.id != util.GetActiveShip():
             self.scope = ['station', 'inflight'][(eve.session.stationid is None)]
 
 
@@ -657,19 +675,19 @@ class ShipCorpHangars(CorpHangar):
 
 
     def IsMine(self, rec):
-        return rec.locationID == self.id and rec.ownerID in (self.ownerID, self.corpID) and rec.flagID == self.locationFlag and self.CheckRoles(rec.flagID)
+        return rec.locationID == self.id and rec.flagID == self.locationFlag and self.CheckRoles(rec.flagID)
 
 
 
     def SetDivisionalHangarNames(self, divisions):
         if self.GetCorpIDOfShipHangar() != session.corpid:
-            divisions = {1: mls.UI_CORP_DIVISION_FIRSTDIVISION,
-             2: mls.UI_CORP_DIVISION_SECONDDIVISION,
-             3: mls.UI_CORP_DIVISION_THIRDDIVISION,
-             4: mls.UI_CORP_DIVISION_FOURTHDIVISION,
-             5: mls.UI_CORP_DIVISION_FIFTHDIVISION,
-             6: mls.UI_CORP_DIVISION_SIXTHDIVISION,
-             7: mls.UI_CORP_DIVISION_SEVENTHDIVISION}
+            divisions = {1: localization.GetByLabel('UI/Station/Hangar/FirstDivision'),
+             2: localization.GetByLabel('UI/Station/Hangar/SecondDivision'),
+             3: localization.GetByLabel('UI/Station/Hangar/ThirdDivision'),
+             4: localization.GetByLabel('UI/Station/Hangar/FourthDivision'),
+             5: localization.GetByLabel('UI/Station/Hangar/FifthDivision'),
+             6: localization.GetByLabel('UI/Station/Hangar/SixthDivision'),
+             7: localization.GetByLabel('UI/Station/Hangar/SeventhDivision')}
         CorpHangar.SetDivisionalHangarNames(self, divisions)
 
 
@@ -694,8 +712,7 @@ class CorpMemberHangar(form.VirtualInvWindow):
     def Startup(self, id_, ownerID):
         self.id = id_
         self.ownerID = ownerID
-        name = cfg.eveowners.Get(ownerID).name
-        self.displayName = mls.UI_SHARED_HANGAR_NAME % {'name': name}
+        self.displayName = localization.GetByLabel('UI/Station/Hangar/HangarNameWithOwner', charID=ownerID)
         form.VirtualInvWindow.Startup(self)
         self.state = uiconst.UI_NORMAL
         sm.GetService('invCache').InvalidateLocationCache((const.containerHangar, self.ownerID))
@@ -709,7 +726,7 @@ class CorpMemberHangar(form.VirtualInvWindow):
 
 
     def DoGetShell(self):
-        return eve.GetInventory(const.containerHangar, self.id)
+        return sm.GetService('invCache').GetInventory(const.containerHangar, self.id)
 
 
 
@@ -726,6 +743,7 @@ class CorpMemberHangar(form.VirtualInvWindow):
 
 class CorpMarketHangar(form.VirtualInvWindow):
     __guid__ = 'form.CorpMarketHangar'
+    default_windowID = 'CorpMarketHangar'
 
     def ApplyAttributes(self, attributes):
         form.VirtualInvWindow.ApplyAttributes(self, attributes)
@@ -734,14 +752,14 @@ class CorpMarketHangar(form.VirtualInvWindow):
         self.oneWay = 1
         self.indexID = 'Items'
         name = cfg.eveowners.Get(eve.session.corpid).ownerName
-        self.displayName = mls.UI_STATION_DELIVERIES_NAME % {'name': name}
+        self.displayName = localization.GetByLabel('UI/Station/Hangar/CorporationsMarketHangarTitle', corpName=name)
         self.locationFlag = const.flagCorpMarket
         self.Startup()
 
 
 
     def DoGetShell(self):
-        return eve.GetInventory(const.containerCorpMarket, eve.session.corpid)
+        return sm.GetService('invCache').GetInventory(const.containerCorpMarket, eve.session.corpid)
 
 
 

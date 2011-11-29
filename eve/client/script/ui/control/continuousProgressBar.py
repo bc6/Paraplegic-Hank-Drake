@@ -81,11 +81,11 @@ class ContinuousProgressBar(uicls.Container):
             (current, end,) = (1.0, negVal)
         else:
             (current, end,) = (negVal, 1.0)
-        (start, ndt,) = (blue.os.GetTime(), 0.0)
+        (start, ndt,) = (blue.os.GetWallclockTime(), 0.0)
         while ndt != 1.0:
             if not self or self.destroyed or not self.knightRiding:
                 break
-            ndt = min(blue.os.TimeDiffInMs(start) / self.fadeTime, 1.0)
+            ndt = min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / self.fadeTime, 1.0)
             lerpVal = mathUtil.Lerp(current, end, ndt) * math.pi
             for (index, box,) in enumerate(self.boxes):
                 box.opacity = min(1.0, max(0.0, math.sin(lerpVal + math.pi * (index / numBoxes)) * 3 - 2))

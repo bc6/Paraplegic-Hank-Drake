@@ -20,8 +20,8 @@ class _GaugeBase(uicls.Container):
         self.markers = {}
         self.busy = False
         self.queuedSetValue = None
-        self.label = uicls.Label(text=labelTxt.upper(), parent=self, align=uiconst.RELATIVE, autowidth=1, autoheight=1, letterspace=1, fontsize=10, state=uiconst.UI_DISABLED)
-        self.subText = uicls.Label(text=subTxt, parent=self, align=uiconst.RELATIVE, autowidth=1, autoheight=1, letterspace=1, fontsize=10, top=self.height - 10, state=uiconst.UI_DISABLED)
+        self.label = uicls.EveHeaderSmall(text=labelTxt, parent=self, align=uiconst.RELATIVE, state=uiconst.UI_DISABLED)
+        self.subText = uicls.EveLabelSmall(text=subTxt, parent=self, align=uiconst.RELATIVE, top=self.height - 10, state=uiconst.UI_DISABLED)
         self.gaugeCont = uicls.Container(parent=self, name='gaugeCont', pos=(0,
          12,
          self.width,

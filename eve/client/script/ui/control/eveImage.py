@@ -8,6 +8,7 @@ import util
 import xtriui
 import htmlwriter
 import log
+import localization
 
 class Image(uicls.ImageCore):
     __guid__ = 'uicls.Image'
@@ -129,7 +130,7 @@ class Image(uicls.ImageCore):
             parts = self.attrs.src.split(':', 1)
             if len(parts) == 2:
                 if parts[0] not in self.IMAGE_TYPES:
-                    m += [(mls.UI_CMD_RELOADIMAGE, self.Reload)]
+                    m += [(localization.GetByLabel('UI/Common/ReloadImage'), self.Reload)]
             if getattr(self.attrs, 'a', None):
                 m += uicls.BaseLink().GetLinkMenu(self, self.attrs.a.href)
         return m
@@ -144,7 +145,6 @@ class Image(uicls.ImageCore):
         size = int(max(attrs.size, 64))
         charID = int(attrs.src[9:])
         if sm.GetService('photo').GetPortrait(charID, size, sprite, orderIfMissing, callback=True):
-            sprite.rectWidth = sprite.rectHeight = size
             self.picloaded = 1
 
 
@@ -179,7 +179,9 @@ class Image(uicls.ImageCore):
             showTechLevel = kw.get('showTechLevel', 0)
         if typeID:
             if bumped:
-                icon = uicls.DraggableIcon(parent=self, typeID=typeID, isCopy=True if isCopy == 1 else False)
+                if hasattr(self, 'icon') and self.icon:
+                    self.icon.Close()
+                self.icon = uicls.DraggableIcon(parent=self, typeID=typeID, isCopy=True if isCopy == 1 else False, state=uiconst.UI_DISABLED)
                 if showFitting:
                     powerEffect = None
                     powerIcon = None
@@ -193,15 +195,15 @@ class Image(uicls.ImageCore):
                             break
 
                     if powerIcon:
-                        c = uicls.Container(name='powericon', align=uiconst.BOTTOMRIGHT, parent=icon, width=attrs.width / 4, height=attrs.width / 4, idx=0)
+                        c = uicls.Container(name='powericon', align=uiconst.BOTTOMRIGHT, parent=self.icon, width=attrs.width / 4, height=attrs.width / 4, idx=0)
                         uicls.Line(parent=c, align=uiconst.TOLEFT, color=(1.0, 1.0, 1.0, 0.5))
                         uicls.Line(parent=c, align=uiconst.TOTOP, color=(1.0, 1.0, 1.0, 0.5))
                         uicls.Fill(parent=c, padRight=2, padBottom=2, color=(0.0, 0.0, 0.0, 1.0))
-                        pwrIcon = uicls.Icon(icon='ui_8_64_%s' % powerIcon, parent=c, align=uiconst.TOALL, idx=0, hint=mls.UI_GENERIC_FITTOSLOT % {'slot': powerEffect.displayName}, ignoreSize=True)
+                        pwrIcon = uicls.Icon(icon='ui_8_64_%s' % powerIcon, parent=c, align=uiconst.TOALL, idx=0, hint=localization.GetByLabel('UI/Common/FitsToSlot', slotType=powerEffect.displayName), ignoreSize=True)
                 if showTechLevel:
                     techSprite = uix.GetTechLevelIcon(None, 0, typeID)
                     if techSprite:
-                        c = uicls.Container(name='techIcon', align=uiconst.TOPLEFT, parent=icon, width=16, height=16, idx=0)
+                        c = uicls.Container(name='techIcon', align=uiconst.TOPLEFT, parent=self.icon, width=16, height=16, idx=0)
                         c.children.append(techSprite)
             else:
                 uicls.Icon(parent=self, align=uiconst.TOALL, state=uiconst.UI_DISABLED, pos=(0, 0, 0, 0), typeID=typeID, size=attrs.width, isCopy=isCopy)

@@ -7,11 +7,11 @@ import blue
 import util
 import sys
 import listentry
-import draw
 import log
 import uiconst
 import uicls
 import weakref
+import localization
 
 class ListWindow(uicls.Window):
     __guid__ = 'form.ListWindow'
@@ -22,6 +22,8 @@ class ListWindow(uicls.Window):
      'minChoices',
      'maxChoices']
     default_minSize = (128, 240)
+    default_width = 256
+    default_height = 128
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -51,7 +53,7 @@ class ListWindow(uicls.Window):
         self.scroll.sr.iconMargin = iconMargin
         self.scroll.multiSelect = self.maxChoices > 1
         self.MakeUnMinimizable()
-        self.SetCaption(caption or mls.UI_GENERIC_PICKONE)
+        self.SetCaption(caption or localization.GetByLabel('UI/Control/ListWindow/PickOne'))
         if not lstDataIsGrouped:
             self.GenerateList(lst, self.ordered, scrollHeaders)
         else:
@@ -80,7 +82,7 @@ class ListWindow(uicls.Window):
         if getattr(self, 'isModal', None):
             self.SetModalResult(uiconst.ID_CANCEL)
         else:
-            self.SelfDestruct()
+            self.Close()
 
 
 
@@ -120,14 +122,13 @@ class ListWindow(uicls.Window):
         try:
             if checkNumber:
                 if self.maxChoices and len(result) > self.maxChoices:
-                    return mls.UI_GENERIC_PICKERROR1 % {'num': self.maxChoices,
-                     'choice': uix.Plural(self.maxChoices, 'UI_GENERIC_CHOICE')}
+                    return localization.GetByLabel('UI/Control/ListWindow/SelectTooManyError', num=self.maxChoices)
                 if len(result) < self.minChoices:
                     if self.minChoices == self.maxChoices:
-                        label = mls.UI_GENERIC_PICKERROR2B
+                        label = localization.GetByLabel('UI/Control/ListWindow/MustSelectError', num=self.minChoices)
                     else:
-                        label = mls.UI_GENERIC_PICKERROR2A
-                    return label % {'num': self.minChoices}
+                        label = localization.GetByLabel('UI/Control/ListWindow/SelectTooFewError', num=self.minChoices)
+                    return label
         except ValueError as e:
             log.LogException()
             sys.exc_clear()
@@ -152,7 +153,7 @@ class ListWindow(uicls.Window):
         ep = uiutil.GetChild(self, 'errorParent')
         uix.Flush(ep)
         if error:
-            t = uicls.Label(text='<center>' + error, top=-3, parent=ep, width=self.minsize[0] - 32, autowidth=False, state=uiconst.UI_DISABLED, color=(1.0, 0.0, 0.0, 1.0), align=uiconst.CENTER)
+            t = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Control/ListWindow/DisplayError', errorMessage=error), top=-3, parent=ep, width=self.minsize[0] - 32, state=uiconst.UI_DISABLED, color=(1.0, 0.0, 0.0, 1.0), align=uiconst.CENTER)
             ep.state = uiconst.UI_DISABLED
             ep.height = t.height + 8
         else:
@@ -169,7 +170,7 @@ class ListWindow(uicls.Window):
         hp = uiutil.GetChild(self, 'hintparent')
         uix.Flush(hp)
         if hint:
-            t = uicls.Label(text=hint, parent=hp, top=-3, width=self.minsize[0] - 32, autowidth=False, state=uiconst.UI_DISABLED, align=uiconst.CENTER)
+            t = uicls.EveLabelMedium(text=hint, parent=hp, top=-3, width=self.minsize[0] - 32, state=uiconst.UI_DISABLED, align=uiconst.CENTER)
             hp.state = uiconst.UI_DISABLED
             hp.height = t.height + 8
         else:

@@ -15,10 +15,11 @@ ROLE_HEALSELF = 4194304L
 ROLE_HEALOTHERS = 8388608L
 ROLE_NEWSREPORTER = 16777216L
 ROLE_SPAWN = 8589934592L
+ROLE_BATTLESERVER = 17179869184L
 ROLE_WIKIEDITOR = 68719476736L
 ROLE_TRANSFER = 137438953472L
 ROLE_GMS = 274877906944L
-service.ROLEMASK_ELEVATEDPLAYER = service.ROLEMASK_ELEVATEDPLAYER & ~ROLE_NEWSREPORTER
+service.ROLEMASK_ELEVATEDPLAYER = service.ROLEMASK_ELEVATEDPLAYER & ~(ROLE_NEWSREPORTER | ROLE_DUST)
 exports = {}
 consts = {}
 for i in globals().items():
@@ -32,9 +33,9 @@ def _MachoResolveAdditional(self, sess):
         mn = sm.services['machoNet']
         if not sess.role & service.ROLE_SERVICE:
             if self.__machoresolve__ == 'station':
-                if not sess.stationid:
+                if not sess.stationid2:
                     return 'You must be located at a station to use this service'
-                return mn.GetNodeFromAddress('station', sess.stationid)
+                return mn.GetNodeFromAddress('station', sess.stationid2)
             if self.__machoresolve__ == 'solarsystem':
                 if not sess.solarsystemid:
                     return 'You must be located in a solar system to use this service'
@@ -52,6 +53,8 @@ def _MachoResolveAdditional(self, sess):
                     return mn.GetNodeFromAddress(const.cluster.SERVICE_BEYONCE, sess.solarsystemid)
                 if session.stationid:
                     return mn.GetNodeFromAddress('station', sess.stationid)
+                if session.worldspaceid:
+                    return mn.GetNodeFromAddress(const.cluster.SERVICE_WORLDSPACE, sess.worldspaceid)
                 raise RuntimeError('machoresolving a location bound service with without a location session')
             elif self.__machoresolve__ in ('character',):
                 if sess.charid is None:

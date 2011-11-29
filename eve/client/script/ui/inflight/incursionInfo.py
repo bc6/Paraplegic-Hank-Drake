@@ -4,14 +4,15 @@ import blue
 import base
 import util
 import trinity
+import localization
 SEVERITY_HQ = 1
 SEVERITY_ASSAULT = 2
 SEVERITY_VANGUARD = 3
 SEVERITY_STAGING = 4
-SEVERITY = {SEVERITY_STAGING: util.KeyVal(icon='ui_94_64_6', hint=mls.UI_SHARED_INCURSION_HUD_HINT_STAGING, subTitle=mls.UI_INCURSION_SUBTITLE_STAGING),
- SEVERITY_VANGUARD: util.KeyVal(icon='ui_94_64_13', hint=mls.UI_SHARED_INCURSION_HUD_HINT_VANGUARD, subTitle=mls.UI_INCURSION_SUBTITLE_VANGUARD),
- SEVERITY_ASSAULT: util.KeyVal(icon='ui_94_64_14', hint=mls.UI_SHARED_INCURSION_HUD_HINT_ASSAULT, subTitle=mls.UI_INCURSION_SUBTITLE_ASSAULT),
- SEVERITY_HQ: util.KeyVal(icon='ui_94_64_15', hint=mls.UI_SHARED_INCURSION_HUD_HINT_HQ, subTitle=mls.UI_INCURSION_SUBTITLE_HQ)}
+SEVERITY = {SEVERITY_STAGING: util.KeyVal(icon='ui_94_64_6', hint='UI/Incursion/HUD/StagingClassHint', subTitle='UI/Incursion/HUD/SubtitleStaging'),
+ SEVERITY_VANGUARD: util.KeyVal(icon='ui_94_64_13', hint='UI/Incursion/HUD/VanguardClassHint', subTitle='UI/Incursion/HUD/SubtitleVanguard'),
+ SEVERITY_ASSAULT: util.KeyVal(icon='ui_94_64_14', hint='UI/Incursion/HUD/AssaultClassHint', subTitle='UI/Incursion/HUD/SubtitleAssault'),
+ SEVERITY_HQ: util.KeyVal(icon='ui_94_64_15', hint='UI/Incursion/HUD/HeadquarterClassHint', subTitle='UI/Incursion/HUD/SubtitleHeadquarters')}
 ARROWS = ('ui_77_32_41', 'ui_77_32_42')
 EFFECT_SPACING = 16
 COLOR_ENABLED = (1, 1, 1, 0.75)
@@ -26,7 +27,7 @@ class IncursionBossIcon(uicls.Sprite):
     default_height = 10
 
     def SetBossSpawned(self, hasSawned):
-        self.SetHint(mls.UI_SHARED_INCURSION_REPORT_HINT_HAS_BOSS if hasSawned else mls.UI_INCURSION_HINT_HAS_NO_BOSS)
+        self.SetHint(localization.GetByLabel('UI/Incursion/HUD/IncursionBossReportHint') if hasSawned else localization.GetByLabel('UI/Incursion/HUD/NoIncursionBossHint'))
         self.color.SetRGB(*(COLOR_ENABLED if hasSawned else COLOR_DISABLED))
 
 
@@ -51,23 +52,23 @@ class IncursionInfoContainer(uicls.NeocomContainer):
         hasBoss = attributes.get('hasBoss', False)
         info = SEVERITY[severity]
         topContainer = uicls.Container(parent=self.content, name='topContainer', height=54, align=uiconst.TOTOP)
-        self.title = uicls.Label(name='title', text='<url=localsvc:service=journal&method=ShowIncursionTab&constellationID=%d&open=1>%s</url>' % (session.constellationid, mls.UI_SHARED_INCURSION_HUD_TITLE), parent=topContainer, left=46, fontsize=14, align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL, letterspace=2, uppercase=True)
-        self.subTitle = uicls.Label(name='subtitle', text='<b>%s</b>' % info.subTitle, parent=topContainer, top=18, left=46, fontsize=13, align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL, bold=True, letterspace=2, uppercase=True)
-        self.severityIcon = uicls.Icon(name='severityIcon', parent=topContainer, icon=info.icon, hint=info.hint, align=uiconst.RELATIVE, color=COLOR_ENABLED, pos=(-4, -4, 48, 48), ignoreSize=True, size=48, state=uiconst.UI_NORMAL)
+        self.title = uicls.EveHeaderLarge(name='title', text='<url=localsvc:service=journal&method=ShowIncursionTab&constellationID=%d&open=1>%s</url>' % (session.constellationid, localization.GetByLabel('UI/Incursion/HUD/IncursionProfileTitle')), parent=topContainer, left=46, align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL)
+        self.subTitle = uicls.EveHeaderMedium(name='subtitle', text=localization.GetByLabel(info.subTitle), parent=topContainer, top=18, left=46, align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL, bold=True)
+        self.severityIcon = uicls.Icon(name='severityIcon', parent=topContainer, icon=info.icon, hint=localization.GetByLabel(info.hint), align=uiconst.RELATIVE, color=COLOR_ENABLED, pos=(-4, -4, 48, 48), ignoreSize=True, size=48, state=uiconst.UI_NORMAL)
         self.bossIcon = uicls.IncursionBossIcon(parent=topContainer, align=uiconst.TOPRIGHT, left=18, top=2)
         self.bossIcon.SetBossSpawned(hasBoss)
-        self.influenceTitle = uicls.Label(name='influenceBarLabel', text=mls.UI_SHARED_INCURSION_HUD_INFLUENCE_TITLE, parent=topContainer, align=uiconst.BOTTOMLEFT, state=uiconst.UI_NORMAL)
+        self.influenceTitle = uicls.EveLabelMedium(name='influenceBarLabel', text=localization.GetByLabel('UI/Incursion/Common/HUDInfluenceTitle'), parent=topContainer, align=uiconst.BOTTOMLEFT, state=uiconst.UI_NORMAL)
         self.influenceBar = uicls.SystemInfluenceBar(parent=self.content)
         bottomContainer = uicls.Container(parent=self.content, name='systemEffectCont', align=uiconst.TOTOP, height=48)
-        uicls.Label(name='systemEffectsLabel', text=mls.UI_SHARED_INCURSION_HUD_SYSTEMEFFECT_TITLE, parent=bottomContainer, align=uiconst.TOPLEFT, autowidth=True, autoheight=True, state=uiconst.UI_NORMAL, top=2)
+        uicls.EveLabelMedium(name='systemEffectsLabel', text=localization.GetByLabel('UI/Incursion/HUD/SystemEffectsTitle'), parent=bottomContainer, align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL, top=2)
         iconParams = {'align': uiconst.RELATIVE,
          'top': 16,
          'parent': bottomContainer,
          'color': COLOR_ENABLED}
-        self.effects = [uicls.Icon(name='effectIcon_cyno', icon='ui_77_32_45', hint=mls.UI_SHARED_INCURSION_SYSTEM_EFFECT_CYNO, **iconParams),
-         uicls.Icon(name='effectIcon_tax', icon='ui_77_32_46', hint=mls.UI_SHARED_INCURSION_SYSTEM_EFFECT_TAX, left=(32 + EFFECT_SPACING), **iconParams),
-         uicls.Icon(name='effectIcon_tank', icon='ui_77_32_43', hint=mls.UI_SHARED_INCURSION_SYSTEM_EFFECT_TANK, left=(64 + EFFECT_SPACING * 2), **iconParams),
-         uicls.Icon(name='effectIcon_damage', icon='ui_77_32_44', hint=mls.UI_SHARED_INCURSION_SYSTEM_EFFECT_DAMAGE, left=(96 + EFFECT_SPACING * 3), **iconParams)]
+        self.effects = [uicls.Icon(name='effectIcon_cyno', icon='ui_77_32_45', hint=localization.GetByLabel('UI/Incursion/HUD/SystemEffectCynoHint'), **iconParams),
+         uicls.Icon(name='effectIcon_tax', icon='ui_77_32_46', hint=localization.GetByLabel('UI/Incursion/HUD/SystemEffectTaxHint'), left=(32 + EFFECT_SPACING), **iconParams),
+         uicls.Icon(name='effectIcon_tank', icon='ui_77_32_43', hint=localization.GetByLabel('UI/Incursion/HUD/SystemEffectTankingHint'), left=(64 + EFFECT_SPACING * 2), **iconParams),
+         uicls.Icon(name='effectIcon_damage', icon='ui_77_32_44', hint=localization.GetByLabel('UI/Incursion/HUD/SystemEffectDamageHint'), left=(96 + EFFECT_SPACING * 3), **iconParams)]
         self.SetInfluence(influence, None, animate=False)
         self.bottomContainer = bottomContainer
         self.topContainer = topContainer
@@ -188,7 +189,7 @@ class SystemInfluenceBar(uicls.Container):
 
 
     def SetInfluence(self, influence, positiveProgress, animate = True):
-        self.SetHint(mls.UI_INCURSION_INFLUENCE_BAR_HINT % {'influence': int(round((1.0 - influence) * 100))})
+        self.SetHint(localization.GetByLabel('UI/Incursion/HUD/InfluenceBarHint', influence=int(round((1.0 - influence) * 100))))
         if animate:
             self.targetInfluence = influence
             self.animationTimer = base.AutoTimer(100, self.Animation_Thread, positiveProgress)
@@ -221,10 +222,10 @@ class SystemInfluenceBar(uicls.Container):
             self.redArrows.SetTextureSlice(self.LEFT_SLICE)
             self.redArrows.state = uiconst.UI_DISABLED
         while count > 0:
-            start = blue.os.GetTime()
+            start = blue.os.GetWallclockTime()
             lastDelta = delta = 0.0
             while delta < 2.0:
-                delta = max(0.0, min(blue.os.TimeDiffInMs(start) / 1000.0, 2.0))
+                delta = max(0.0, min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / 1000.0, 2.0))
                 dt = delta - lastDelta
                 if self.targetInfluence > self.influence:
                     self.influence = min(self.influence + 0.25 * dt, self.targetInfluence)

@@ -8,6 +8,8 @@ import os
 import listentry
 import ctypes
 import uicls
+import localization
+import localizationUtil
 
 class FileDialogEntry(listentry.Generic):
     __guid__ = 'listentry.FileDialog'
@@ -44,19 +46,16 @@ class FileDialog(uicls.Window):
         self.SetWndIcon(None)
         self.SetTopparentHeight(0)
         self.MakeUnResizeable()
-        if selectionType == uix.SEL_FILES:
-            caption = [mls.UI_GENERIC_SELECTFILE, mls.UI_GENERIC_SELECTFILES][multiSelect]
-        elif selectionType == uix.SEL_FOLDERS:
-            caption = [mls.UI_GENERIC_SELECTFOLDER, mls.UI_GENERIC_SELECTFOLDERS][multiSelect]
-        elif selectionType == uix.SEL_BOTH:
-            caption = [mls.UI_GENERIC_SELECTFILEFOLDER, mls.UI_GENERIC_SELECTFILESFOLDERS][multiSelect]
+        if not multiSelect:
+            caption = {uix.SEL_FILES: localization.GetByLabel('UI/Control/FileDialog/SelectFile'),
+             uix.SEL_FOLDERS: localization.GetByLabel('UI/Control/FileDialog/SelectFolder'),
+             uix.SEL_BOTH: localization.GetByLabel('UI/Control/FileDialog/SelectFileOrfolder')}.get(selectionType)
+        else:
+            caption = {uix.SEL_FILES: localization.GetByLabel('UI/Control/FileDialog/SelectFiles'),
+             uix.SEL_FOLDERS: localization.GetByLabel('UI/Control/FileDialog/SelectFolders'),
+             uix.SEL_BOTH: localization.GetByLabel('UI/Control/FileDialog/SelectFilesOrFolders')}.get(selectionType)
         if fileExtensions:
-            fileExtensionTxt = ' ['
-            for f in fileExtensions:
-                fileExtensionTxt += '.%s/' % f
-
-            fileExtensionTxt = fileExtensionTxt[:-1] + ']'
-            caption += fileExtensionTxt
+            caption = localization.GetByLabel('UI/Control/FileDialog/CaptionWithFileExtensions', caption=caption, fileExtensions=localizationUtil.FormatGenericList(fileExtensions))
         self.SetCaption(caption)
         self.selectionType = selectionType
         if fileExtensions:
@@ -65,16 +64,16 @@ class FileDialog(uicls.Window):
             self.fileExtensions = None
         topCont = uicls.Container(name='topCont', parent=self.sr.main, align=uiconst.TOTOP, pos=(0, 0, 0, 40), padding=(0, 20, 0, 0))
         icon = uicls.Icon(icon='ui_22_32_29', parent=self.sr.main, pos=(3, 16, 28, 28), ignoreSize=1)
-        self.sr.pathEdit = uicls.SinglelineEdit(name='currentLocationEdit', parent=topCont, pos=(38, 0, 290, 0), label=mls.UI_GENERIC_LOCATION)
+        self.sr.pathEdit = uicls.SinglelineEdit(name='currentLocationEdit', parent=topCont, pos=(38, 0, 290, 0), label=localization.GetByLabel('UI/Common/Location'))
         self.sr.pathEdit.OnReturn = self.OnPathEnteredIntoEdit
         options = self.GetAvailableDrives()
-        self.sr.driveSelectCombo = uicls.Combo(parent=self.sr.main, label=mls.UI_GENERIC_DRIVE, options=options, name='driveSelectCombo', select=None, callback=self.OnDriveSelected, pos=(340, 22, 0, 0), width=50, align=uiconst.TOPLEFT)
+        self.sr.driveSelectCombo = uicls.Combo(parent=self.sr.main, label=localization.GetByLabel('UI/Control/FileDialog/Drive'), options=options, name='driveSelectCombo', select=None, callback=self.OnDriveSelected, pos=(340, 22, 0, 0), width=50, align=uiconst.TOPLEFT)
         if not options:
             self.sr.driveSelectCombo.state = uiconst.UI_HIDDEN
-        btns = [[mls.UI_CMD_OK,
+        btns = [[localization.GetByLabel('UI/Common/Buttons/OK'),
           self.OnOK,
           (),
-          81], [mls.UI_CMD_CANCEL,
+          81], [localization.GetByLabel('UI/Common/Buttons/Cancel'),
           self.OnCancel,
           (),
           81]]
@@ -86,7 +85,7 @@ class FileDialog(uicls.Window):
         self.sr.scroll.OnSelectionChange = self.VerifySelectedEnties
         self.sr.scroll.Sort = lambda *args, **kw: None
         if path is None or not os.path.isdir(path):
-            path = settings.user.ui.Get('fileDialogLastPath', blue.os.rootpath)
+            path = settings.user.ui.Get('fileDialogLastPath', blue.os.ResolvePath(u'app:/'))
         self.LoadDirToScroll(path)
 
 
@@ -152,7 +151,7 @@ class FileDialog(uicls.Window):
 
 
     def OnCancel(self):
-        self.SelfDestruct()
+        self.Close()
 
 
 
@@ -195,7 +194,7 @@ class FileDialog(uicls.Window):
 
 
     def SetOKButtonState(self, enabled):
-        btn = self.sr.standardBtns.GetBtnByLabel(mls.UI_CMD_OK)
+        btn = self.sr.standardBtns.GetBtnByLabel(localization.GetByLabel('UI/Common/Buttons/OK'))
         if enabled:
             btn.Enable()
         else:
@@ -244,7 +243,7 @@ class FileDialog(uicls.Window):
             scrolllist.append((sortBy, listentry.Get('FileDialog', data=data)))
 
         scrolllist = uiutil.SortListOfTuples(scrolllist)
-        self.sr.scroll.Load(contentList=scrolllist, headers=['', mls.UI_GENERIC_NAME])
+        self.sr.scroll.Load(contentList=scrolllist, headers=['', localization.GetByLabel('UI/Common/Name')])
         self.sr.pathEdit.SetValue(path)
 
 

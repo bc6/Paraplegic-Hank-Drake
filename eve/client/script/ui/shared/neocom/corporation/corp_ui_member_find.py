@@ -1,13 +1,13 @@
 import blue
 import uthread
 import util
-import xtriui
 import uix
 import form
 import listentry
 import lg
 import uiconst
 import uicls
+import localization
 LOGICAL_OPERATOR_OR = 1
 LOGICAL_OPERATOR_AND = 2
 OPERATOR_EQUAL = 1
@@ -37,7 +37,7 @@ class TwoButtons(uicls.SE_BaseClassCore):
         uicls.Line(parent=self, align=uiconst.TOBOTTOM)
         self.sr.button1 = uicls.Button(parent=self, label='', align=uiconst.CENTERRIGHT, left=2)
         self.sr.button2 = uicls.Button(parent=self, label='', align=uiconst.CENTERRIGHT)
-        self.sr.label = uicls.Label(name='label', text='', parent=self, align=uiconst.CENTERLEFT, left=8, state=uiconst.UI_DISABLED)
+        self.sr.label = uicls.EveLabelMedium(name='label', text='', parent=self, align=uiconst.CENTERLEFT, left=8, state=uiconst.UI_DISABLED)
 
 
 
@@ -45,9 +45,9 @@ class TwoButtons(uicls.SE_BaseClassCore):
         self.sr.node = node
         self.sr.label.text = self.sr.node.label
         self.sr.button1.OnClick = lambda *args: self.sr.node.OnClick1(*(self.sr.node.Get('args1', (None,)), (self.sr.button1,)))
-        self.sr.button1.SetLabel('<center>%s' % self.sr.node.caption1)
+        self.sr.button1.SetLabel(self.sr.node.caption1)
         self.sr.button2.OnClick = lambda *args: self.sr.node.OnClick2(*(self.sr.node.Get('args2', (None,)), (self.sr.button2,)))
-        self.sr.button2.SetLabel('<center>%s' % self.sr.node.caption2)
+        self.sr.button2.SetLabel(self.sr.node.caption2)
         self.sr.button2.left = self.sr.button1.left + self.sr.button1.width + 2
 
 
@@ -66,33 +66,33 @@ class CorpQueryMembersForm():
         self.offices.Fetch(0, len(self.offices))
         self.currentlyEditing = None
         self.lpfnQueryCompleted = None
-        self.logical_operators = {mls.OR: LOGICAL_OPERATOR_OR,
-         mls.AND: LOGICAL_OPERATOR_AND}
-        self.propertyList = [[mls.UI_CORP_ROLE, 'roles'],
-         [mls.UI_CORP_ROLEATHQ, 'rolesAtHQ'],
-         [mls.UI_CORP_ROLEATBASE, 'rolesAtBase'],
-         [mls.UI_CORP_ROLEATOTHER, 'rolesAtOther'],
-         [mls.UI_CORP_GRANTABLEROLE, 'grantableRoles'],
-         [mls.UI_CORP_GRANTABLEROLEATHQ, 'grantableRolesAtHQ'],
-         [mls.UI_CORP_GRANTABLEROLEATBASE, 'grantableRolesAtBase'],
-         [mls.UI_CORP_GRANTABLEROLEATOTHER, 'grantableRolesAtOther'],
-         [mls.UI_GENERIC_BASE, 'baseID'],
-         [mls.UI_CORP_STARTDATE, 'startDateTime'],
-         [mls.UI_GENERIC_NAME, 'characterID'],
-         [mls.UI_GENERIC_TITLE, 'titleMask']]
-        self.optionsRoles = [[mls.UI_CORP_SEARCH_ROLES_INCLUDE, OPERATOR_HAS_BIT], [mls.UI_CORP_SEARCH_ROLES_NOT_INCLUDE, OPERATOR_NOT_HAS_BIT]]
-        self.optionsLocation = [['=', OPERATOR_EQUAL], ['!=', OPERATOR_NOT_EQUAL]]
-        self.optionsDateTime = [['=', OPERATOR_EQUAL],
-         ['&gt;', OPERATOR_GREATER],
-         ['&gt;=', OPERATOR_GREATER_OR_EQUAL],
-         ['&lt;', OPERATOR_LESS],
-         ['&lt;=', OPERATOR_LESS_OR_EQUAL],
-         ['!=', OPERATOR_NOT_EQUAL]]
-        self.optionsStr = [[mls.UI_CORP_SEARCH_CONTAINS, OPERATOR_STR_CONTAINS],
-         [mls.UI_CORP_SEARCH_LIKE, OPERATOR_STR_LIKE],
-         [mls.UI_CORP_SEARCH_STARTS_WITH, OPERATOR_STR_STARTS_WITH],
-         [mls.UI_CORP_SEARCH_ENDS_WITH, OPERATOR_STR_ENDS_WITH],
-         [mls.UI_CORP_SEARCH_IS, OPERATOR_STR_IS]]
+        self.logicalOperators = {localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/LogicalOR'): LOGICAL_OPERATOR_OR,
+         localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/LogicalAND'): LOGICAL_OPERATOR_AND}
+        self.propertyList = [[localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Role'), 'roles'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/RoleAtHQ'), 'rolesAtHQ'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/RoleAtBase'), 'rolesAtBase'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/RoleAtOther'), 'rolesAtOther'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/GrantableRole'), 'grantableRoles'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/GrantableRoleAtHQ'), 'grantableRolesAtHQ'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/GrantableRoleAtBase'), 'grantableRolesAtBase'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/GrantableRoleAtOther'), 'grantableRolesAtOther'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Base'), 'baseID'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/StartDate'), 'startDateTime'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Name'), 'characterID'],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Title'), 'titleMask']]
+        self.optionsRoles = [[localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/RolesInclude'), OPERATOR_HAS_BIT], [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/RolesNotInclude'), OPERATOR_NOT_HAS_BIT]]
+        self.optionsLocation = [[localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/AlgebraicEqualSign'), OPERATOR_EQUAL], [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/AlgebraicNotEqualSign'), OPERATOR_NOT_EQUAL]]
+        self.optionsDateTime = [[localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/AlgebraicEqualSign'), OPERATOR_EQUAL],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/AlgebraicGreaterThanSign'), OPERATOR_GREATER],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/AlgebraicGreaterThanOrEqualSign'), OPERATOR_GREATER_OR_EQUAL],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/AlgebraicLessThanSign'), OPERATOR_LESS],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/AlgebraicLessThanOrEqualSign'), OPERATOR_LESS_OR_EQUAL],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/AlgebraicNotEqualSign'), OPERATOR_NOT_EQUAL]]
+        self.optionsStr = [[localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/ContainsRelation'), OPERATOR_STR_CONTAINS],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/LikeRelation'), OPERATOR_STR_LIKE],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/StartsWithRelation'), OPERATOR_STR_STARTS_WITH],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/EndsWithRelation'), OPERATOR_STR_ENDS_WITH],
+         [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/IsRelation'), OPERATOR_STR_IS]]
         self.optionsByProperty = {'roles': self.optionsRoles,
          'rolesAtHQ': self.optionsRoles,
          'rolesAtBase': self.optionsRoles,
@@ -133,7 +133,7 @@ class CorpQueryMembersForm():
         self.scrollQuery = uicls.Scroll(name='queryinput', parent=wndForm, height=100, align=uiconst.TOTOP)
         uicls.Container(name='push', parent=wndForm, align=uiconst.TOTOP, height=const.defaultPadding)
         self.wndSearchBuilderToolbar = uicls.Container(name='searchtoolbar', parent=wndForm, align=uiconst.TOTOP, height=18)
-        optionsList = [[mls.UI_CORP_SEARCH_OR, LOGICAL_OPERATOR_OR], [mls.UI_CORP_SEARCH_AND, LOGICAL_OPERATOR_AND]]
+        optionsList = [[localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/LogicalOR'), LOGICAL_OPERATOR_OR], [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/LogicalAND'), LOGICAL_OPERATOR_AND]]
         combo = uicls.Combo(label='', parent=self.wndSearchBuilderToolbar, options=optionsList, name='join_operator', callback=self.OnComboChange, width=50, pos=(1, 0, 0, 0), align=uiconst.TOLEFT)
         self.comboJoinOperator = combo
         self.comboJoinOperator.state = uiconst.UI_HIDDEN
@@ -152,21 +152,21 @@ class CorpQueryMembersForm():
         self.wndInputFieldArea = wndInputControlArea
         self.ShowAppropriateInputField()
         wndOptionsBar = uicls.Container(name='options', parent=wndForm, align=uiconst.TOTOP, height=40)
-        self.addEditButton = uicls.Button(parent=wndOptionsBar, label=mls.UI_CMD_ADD, func=self.AddSearchTerm, btn_default=0, align=uiconst.TOPRIGHT)
-        self.saveEditButton = uicls.Button(parent=wndOptionsBar, label=mls.UI_CMD_SAVE, pos=(self.addEditButton.width + 6,
+        self.addEditButton = uicls.Button(parent=wndOptionsBar, label=localization.GetByLabel('UI/Commands/AddItem'), func=self.AddSearchTerm, btn_default=0, align=uiconst.TOPRIGHT)
+        self.saveEditButton = uicls.Button(parent=wndOptionsBar, label=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Save'), pos=(self.addEditButton.width + 6,
          0,
          0,
          0), func=self.SaveEditedSearchTerm, btn_default=0, align=uiconst.TOPRIGHT)
-        self.cancelEditButton = uicls.Button(parent=wndOptionsBar, label=mls.UI_CMD_CANCEL, pos=(self.saveEditButton.left + self.saveEditButton.width + 6,
+        self.cancelEditButton = uicls.Button(parent=wndOptionsBar, label=localization.GetByLabel('UI/Commands/Cancel'), pos=(self.saveEditButton.left + self.saveEditButton.width + 6,
          0,
          0,
          0), func=self.CancelEditedSearchTerm, btn_default=0, align=uiconst.TOPRIGHT)
         self.saveEditButton.state = uiconst.UI_HIDDEN
         self.cancelEditButton.state = uiconst.UI_HIDDEN
-        uicls.Checkbox(text=mls.UI_CORP_SEARCHTITLES, parent=wndOptionsBar, configName='FMBQsearchTitles', retval=None, checked=settings.user.ui.Get('FMBQsearchTitles', 0), groupname=None, callback=self.CheckBoxChange, align=uiconst.TOPLEFT, pos=(0, 4, 400, 0))
-        uicls.Checkbox(text=mls.UI_CORP_HINT48, parent=wndOptionsBar, configName='FMBQincludeImplied', retval=None, checked=settings.user.ui.Get('FMBQincludeImplied', 0), groupname=None, callback=self.CheckBoxChange, align=uiconst.TOPLEFT, pos=(0, 20, 400, 0))
+        uicls.Checkbox(text=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/SearchTitles'), parent=wndOptionsBar, configName='FMBQsearchTitles', retval=None, checked=settings.user.ui.Get('FMBQsearchTitles', 0), groupname=None, callback=self.CheckBoxChange, align=uiconst.TOPLEFT, pos=(0, 4, 400, 0))
+        uicls.Checkbox(text=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/IncludeImpliedRoles'), parent=wndOptionsBar, configName='FMBQincludeImplied', retval=None, checked=settings.user.ui.Get('FMBQincludeImplied', 0), groupname=None, callback=self.CheckBoxChange, align=uiconst.TOPLEFT, pos=(0, 20, 400, 0))
         wndButtonBar = uicls.Container(name='execute', parent=wndForm, align=uiconst.TOTOP, height=16)
-        button = uicls.Button(parent=wndButtonBar, label=mls.UI_CMD_EXECUTEQUERY, func=self.ExecuteQuery, btn_default=0, align=uiconst.CENTER)
+        button = uicls.Button(parent=wndButtonBar, label=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/ExecuteQuery'), func=self.ExecuteQuery, btn_default=0, align=uiconst.CENTER)
         wndButtonBar.height = button.height
         return wndForm
 
@@ -237,7 +237,7 @@ class CorpQueryMembersForm():
              0,
              0), align=uiconst.TOLEFT)
         elif requestedControlType == 'date_picker':
-            nowSecs = blue.os.GetTime()
+            nowSecs = blue.os.GetWallclockTime()
             (year, month, wd, day, hour, min, sec, ms,) = util.GetTimeParts(nowSecs)
             now = [year, month, day]
             requestedControl = uix.GetDatePicker(self.wndInputFieldArea, setval=now, left=6, top=-2, idx=None)
@@ -281,49 +281,65 @@ class CorpQueryMembersForm():
 
 
     def MakeLabel(self, joinOperator, property, operator, value):
-        label = ''
+        localizedJoinOperator = None
+        localizedProperty = None
+        localizedOperator = None
+        localizedValue = None
         if joinOperator:
-            for (k, v,) in self.logical_operators.iteritems():
+            for (k, v,) in self.logicalOperators.iteritems():
                 if v == joinOperator:
-                    label += k + ' '
+                    localizedJoinOperator = k
                     break
 
         currentControlType = self.controlsByProperty[property]
         for (display_text, field_name,) in self.propertyList:
             if property == field_name:
-                label += display_text + ' '
+                localizedProperty = display_text
                 break
 
         if operator:
             for (k, v,) in self.optionsByProperty[property]:
                 if v == operator:
-                    label += k + ' '
+                    localizedOperator = k
                     break
 
         if value:
             if currentControlType in ('role_picker', 'role_picker_locational'):
                 for role in self.roles:
                     if role.roleID == value:
-                        label += role.shortDescription
+                        localizedValue = role.shortDescription
                         break
 
             elif currentControlType == 'title_picker':
                 for title in self.titles:
                     if title.titleID == value:
-                        label += title.titleName
+                        localizedValue = title.titleName
                         break
 
             elif currentControlType == 'location_picker':
-                if value is None:
-                    label += 'None'
-                else:
-                    label += cfg.evelocations.Get(value).locationName
+                localizedValue = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/SearchQueryLocation', location=value)
             elif currentControlType == 'date_picker':
-                label += util.FmtDate(value, 'ls')
+                localizedValue = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/SearchQueryDate', date=value)
             elif currentControlType == 'edit_control':
-                label += value or ''
+                localizedValue = value
             else:
                 raise RuntimeError('UnexpectedControlTypeRequested')
+        if joinOperator and operator and value:
+            label = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/FullSearchLabel', joinOperator=localizedJoinOperator, property=localizedProperty, operator=localizedOperator, value=localizedValue)
+        elif joinOperator and operator:
+            label = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/JoinOperatorSearchLabel', joinOperator=localizedJoinOperator, property=localizedProperty, operator=localizedOperator)
+        elif joinOperator and value:
+            label = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/JoinValueSearchLabel', joinOperator=localizedJoinOperator, property=localizedProperty, value=localizedValue)
+        elif operator and value:
+            label = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/OperatorValueSearchLabel', property=localizedProperty, operator=localizedOperator, value=localizedValue)
+        elif operator:
+            label = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/OperatorSearchLabel', property=localizedProperty, operator=localizedOperator)
+        elif value:
+            label = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/ValueSearchLabel', property=localizedProperty, value=localizedValue)
+        elif joinOperator:
+            label = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/JoinSearchLabel', joinOperator=localizedJoinOperator)
+        else:
+            label = localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/DefaultSearchLabel', property=localizedProperty)
         return label
 
 
@@ -347,11 +363,11 @@ class CorpQueryMembersForm():
             self.LogInfo('operator: ', operator)
             self.LogInfo('value: ', value)
             if not value:
-                raise UserError('CustomInfo', {'info': mls.UI_SHARED_PLEASETYPESOMETHINGINFO})
+                raise UserError('CustomInfo', {'info': localization.GetByLabel('UI/Shared/PleaseTypeSomething')})
             label = self.MakeLabel(joinOperator, property, operator, value)
             params = {'label': label,
-             'caption1': mls.UI_CMD_EDIT,
-             'caption2': mls.UI_CMD_REMOVE,
+             'caption1': localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Edit'),
+             'caption2': localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/Remove'),
              'OnClick1': self.OnClickEdit,
              'OnClick2': self.OnClickRemove,
              'args1': label,
@@ -529,8 +545,8 @@ class CorpFindMembersInRole(uicls.Container):
             uicls.Line(parent=showHide, align=uiconst.TOTOP, top=15, color=(0.0, 0.0, 0.0, 0.25))
             uicls.Line(parent=showHide, align=uiconst.TOTOP)
             self.sr.showHide = showHide
-            uicls.Label(text=mls.UI_GENERIC_QUERY, parent=showHide, left=8, top=3, fontsize=9, letterspace=2, uppercase=1, state=uiconst.UI_NORMAL)
-            a = uicls.Label(text='', parent=showHide, left=18, top=3, fontsize=9, letterspace=2, uppercase=1, state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
+            uicls.EveHeaderSmall(text=localization.GetByLabel('UI/Corporations/BaseCorporationUI/Query'), parent=showHide, left=8, top=3, state=uiconst.UI_NORMAL)
+            a = uicls.EveHeaderSmall(text='', parent=showHide, left=18, top=3, state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
             a.OnClick = self.ShowHideQuery
             a.GetMenu = None
             self.sr.ml = a
@@ -547,20 +563,20 @@ class CorpFindMembersInRole(uicls.Container):
             wndOutputTypeArea = uicls.Container(name='output_type', parent=wndForm, align=uiconst.TOTOP, height=24)
             uicls.Container(name='push', parent=wndOutputTypeArea, align=uiconst.TOTOP, height=6)
             label = uicls.Container(name='text', parent=wndOutputTypeArea, align=uiconst.TOLEFT, width=150)
-            uicls.Label(text='%s:' % mls.UI_CORP_HINT49, parent=label, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
-            optlist = [[mls.UI_CORP_SIMPLELIST, form.CorpMembersViewSimple], [mls.UI_CORP_RMLIST, form.CorpMembersViewRoleManagement], [mls.UI_CORP_TMLIST, form.CorpMembersViewTaskManagement]]
+            uicls.EveLabelMedium(text=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/ShowResultsUsingLabel'), parent=label, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+            optlist = [[localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/SimpleList'), form.CorpMembersViewSimple], [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/RoleManagementList'), form.CorpMembersViewRoleManagement], [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/TaskManagementList'), form.CorpMembersViewTaskManagement]]
             countcombo = uicls.Combo(label='', parent=wndOutputTypeArea, options=optlist, name='resultViewType', callback=self.OnComboChange, width=146, align=uiconst.TOLEFT)
             self.sr.outputTypeCombo = countcombo
             self.sr.outputWindowContainer = None
             viewClass = self.sr.outputTypeCombo.GetValue()
             self.SwitchToView(viewClass)
-        sm.GetService('corpui').LoadTop('07_11', mls.UI_CORP_FINDMEMBERINROLE)
+        sm.GetService('corpui').LoadTop('07_11', localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/FindMemberInRole'))
 
 
 
-    def OnClose_(self, *args):
-        if self.sr.outputWindow and hasattr(self.sr.outputWindow, 'OnClose_'):
-            self.sr.outputWindow.OnClose_(args)
+    def _OnClose(self, *args):
+        if self.sr.outputWindow and hasattr(self.sr.outputWindow, '_OnClose'):
+            self.sr.outputWindow._OnClose(args)
 
 
 
@@ -576,7 +592,7 @@ class CorpFindMembersInRole(uicls.Container):
             self.sr.showHideExp.texturePath = 'res:/UI/Texture/Shared/expanderUp.png'
         else:
             self.sr.showHideExp.texturePath = 'res:/UI/Texture/Shared/expanderDown.png'
-        self.sr.ml.text = [mls.UI_CMD_SHOWQUERY, mls.UI_CMD_HIDEQUERY][advanced]
+        self.sr.ml.text = [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/ShowQuery'), localization.GetByLabel('UI/Corporations/CorporationWindow/Members/FindMemberInRole/HideQuery')][advanced]
         self.sr.wndQueryForm.state = [uiconst.UI_HIDDEN, uiconst.UI_NORMAL][advanced]
 
 
@@ -597,8 +613,8 @@ class CorpFindMembersInRole(uicls.Container):
                     self.sr.outputWindowContainer = uicls.Container(name='outputWindow', parent=self.sr.wndForm, align=uiconst.TOALL, pos=(0, 0, 0, 0))
                 elif self.sr.outputWindow and hasattr(self.sr.outputWindow, 'OnTabDeselect'):
                     self.sr.outputWindow.OnTabDeselect()
-                if self.sr.outputWindow and hasattr(self.sr.outputWindow, 'OnClose_'):
-                    self.sr.outputWindow.OnClose_(self)
+                if self.sr.outputWindow and hasattr(self.sr.outputWindow, '_OnClose'):
+                    self.sr.outputWindow._OnClose(self)
                 self.sr.outputWindowContainer.Flush()
                 self.sr.outputWindow = viewClass(parent=self.sr.outputWindowContainer)
                 self.sr.outputWindow.CreateWindow()

@@ -108,7 +108,7 @@ class EcuPin(planet.BasePin):
         if lastRunTime is not None:
             self.lastRunTime = lastRunTime
         else:
-            self.lastRunTime = blue.os.GetTime()
+            self.lastRunTime = blue.os.GetWallclockTime()
         if installTime is not None:
             self.installTime = installTime
         else:
@@ -186,7 +186,7 @@ class EcuPin(planet.BasePin):
     def GetTimeToExpiry(self):
         if self.activityState <= planet.STATE_IDLE:
             return 0
-        return self.expiryTime - blue.os.GetTime()
+        return self.expiryTime - blue.os.GetWallclockTime()
 
 
 

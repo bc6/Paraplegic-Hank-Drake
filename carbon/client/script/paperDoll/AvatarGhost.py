@@ -1,5 +1,6 @@
 import trinity
 import blue
+from paperDoll import Yield
 
 class AvatarGhost(object):
     __guid__ = 'paperDoll.AvatarGhost'
@@ -45,7 +46,7 @@ class AvatarGhost(object):
         effect.PopulateParameters()
         effect.RebuildCachedData()
         while effect.effectResource.isLoading:
-            blue.synchro.Yield()
+            Yield()
 
         fx = []
         index = 0

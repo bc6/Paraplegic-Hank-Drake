@@ -15,6 +15,7 @@ import lg
 import destiny
 import uicls
 import uiconst
+import localization
 ICONSIZE = 32
 CELLCOLOR = (0.9375, 0.3515625, 0.1953125)
 groups = ('hardpoints', 'systems', 'structure')
@@ -40,7 +41,15 @@ class ShipUI(uicls.LayerCore):
      'OnRelinquishStructureControl',
      'OnWeaponGroupsChanged',
      'OnRefreshModuleBanks',
-     'OnUIColorsChanged']
+     'OnUIColorsChanged',
+     'OnUIRefresh',
+     'OnUIScalingChange']
+
+    def ApplyAttributes(self, attributes):
+        uicls.LayerCore.ApplyAttributes(self, attributes)
+        self.ResetSelf()
+
+
 
     def OnUIColorsChanged(self, *args):
         if self.sr.wnd:
@@ -53,6 +62,17 @@ class ShipUI(uicls.LayerCore):
 
     def OnSetDevice(self):
         self.UpdatePosition()
+
+
+
+    def OnUIScalingChange(self, *args):
+        self.UpdatePosition()
+
+
+
+    def OnUIRefresh(self):
+        self.CloseView(recreate=False)
+        self.OpenView()
 
 
 
@@ -107,9 +127,11 @@ class ShipUI(uicls.LayerCore):
         self.assumingdelay = None
         self.checkingoverloadrackstate = 0
         self.totalSlaves = 0
-        self.timerNames = {'propulsion': mls.UI_INFLIGHT_SCRAMBLING,
-         'electronic': mls.UI_INFLIGHT_JAMMING,
-         'unknown': mls.UI_INFLIGHT_MISCELLANEOUS}
+        self.timerNames = {'propulsion': localization.GetByLabel('UI/Inflight/Scrambling'),
+         'electronic': localization.GetByLabel('UI/Inflight/Jamming'),
+         'unknown': localization.GetByLabel('UI/Inflight/Miscellaneous')}
+        self.updatingGauges = False
+        self.Flush()
 
 
 
@@ -152,7 +174,7 @@ class ShipUI(uicls.LayerCore):
         if settings.user.ui.Get('shipuialigntop', 0):
             self.sr.indicationContainer.top = 200
         else:
-            self.sr.indicationContainer.top = -50
+            self.sr.indicationContainer.top = -62
         self.sr.timers.top = uicore.desktop.height - self.sr.timers.height - 205
         self.sr.timers.left = (uicore.desktop.width - self.sr.timers.width) / 2
 
@@ -224,7 +246,7 @@ class ShipUI(uicls.LayerCore):
             (maxRight, minLeft,) = self.GetShipuiOffsetMinMax()
             grabLocation = uicore.uilib.x - self.grab[0]
             wnd.left = max(minLeft, min(maxRight, grabLocation))
-            blue.pyos.synchro.Sleep(1)
+            blue.pyos.synchro.SleepWallclock(1)
 
 
 
@@ -263,20 +285,20 @@ class ShipUI(uicls.LayerCore):
         self.sr.expandbtnleft.OnMouseDown = (self.OnExpandDown, self.sr.expandbtnleft)
         self.sr.expandbtnleft.OnMouseUp = (self.OnExpandUp, self.sr.expandbtnleft)
         self.sr.expandbtnleft.side = -1
-        self.sr.expandbtnleft.hint = [mls.UI_INFLIGHT_SHOWBUTTONS, mls.UI_INFLIGHT_HIDEBUTTONS][mExpanded]
+        self.sr.expandbtnleft.hint = [localization.GetByLabel('UI/Inflight/ShowButtons'), localization.GetByLabel('UI/Inflight/HideButtons')][mExpanded]
         self.sr.expandbtnright = uiutil.GetChild(self.sr.wnd, 'expandBtnRight')
         self.sr.expandbtnright.OnClick = (self.ClickExpand, self.sr.expandbtnright)
         self.sr.expandbtnright.side = 1
         self.sr.expandbtnright.OnMouseDown = (self.OnExpandDown, self.sr.expandbtnright)
         self.sr.expandbtnright.OnMouseUp = (self.OnExpandUp, self.sr.expandbtnright)
-        self.sr.expandbtnright.hint = [mls.UI_INFLIGHT_SHOWMODULES, mls.UI_INFLIGHT_HIDEMODULES][mExpanded]
+        self.sr.expandbtnright.hint = [localization.GetByLabel('UI/Inflight/ShowModules'), localization.GetByLabel('UI/Inflight/HideModules')][mExpanded]
         options = uiutil.GetChild(self.sr.wnd, 'optionsBtn')
         options.SetAlpha(0.8)
         options.OnMouseEnter = self.OptionsBtnMouseEnter
         options.OnMouseExit = self.OptionsBtnMouseExit
         options.GetMenu = self.GetOptionMenu
         options.expandOnLeft = 1
-        options.hint = mls.UI_GENERIC_OPTIONS
+        options.hint = localization.GetByLabel('UI/Inflight/Options')
         self.options = options
         underMain = uiutil.GetChild(self.sr.wnd, 'underMain')
         for (typeName, deg,) in [('low', -22.5), ('med', -90.0), ('hi', -157.5)]:
@@ -302,7 +324,6 @@ class ShipUI(uicls.LayerCore):
         self.shieldGauge.textureSecondary.rotation = 1.0
         self.sr.wnd.state = uiconst.UI_PICKCHILDREN
         self.cookie = sm.GetService('inv').Register(self)
-        sm.RegisterNotify(self)
         self.UpdatePosition()
         if ball is not None:
             self.Init(ball)
@@ -347,7 +368,7 @@ class ShipUI(uicls.LayerCore):
         for (left, group,) in [(20, ('shield', 'armor', 'structure'))]:
             top = 0
             for refName in group:
-                t = uicls.Label(text='Xg', parent=self.sr.gaugeReadout, left=left, top=top, state=uiconst.UI_DISABLED, fontsize=9, linespace=9, letterspace=1, uppercase=1)
+                t = uicls.EveLabelSmall(text='Xg', parent=self.sr.gaugeReadout, left=left, top=top, state=uiconst.UI_DISABLED)
                 self.sr.gaugeReadout.sr.Set(refName, t)
                 left -= 10
                 top += t.textheight
@@ -369,14 +390,14 @@ class ShipUI(uicls.LayerCore):
 
 
     def OnAssumeStructureControl(self, *args):
-        now = blue.os.GetTime()
+        now = blue.os.GetSimTime()
         self.assumingdelay = now
         uthread.new(self.DelayedOnAssumeStructureControl, now)
 
 
 
     def DelayedOnAssumeStructureControl(self, issueTime):
-        blue.pyos.synchro.Sleep(250)
+        blue.pyos.synchro.SleepSim(250)
         if self.assumingdelay is None:
             return 
         issuedAt = self.assumingdelay
@@ -470,37 +491,36 @@ class ShipUI(uicls.LayerCore):
         m = []
         if not eve.rookieState:
             showPassive = settings.user.ui.Get('showPassiveModules', 1)
-            m += [([mls.UI_INFLIGHT_SHOWPASSIVEMODULES, mls.UI_INFLIGHT_HIDEPASSIVEMODULES][showPassive], self.ToggleShowPassive)]
+            m += [([localization.GetByLabel('UI/Inflight/ShowPassiveModules'), localization.GetByLabel('UI/Inflight/HidePassiveModules')][showPassive], self.ToggleShowPassive)]
             showEmpty = settings.user.ui.Get('showEmptySlots', 0)
-            m += [([mls.UI_INFLIGHT_SHOWEMPTYSLOTS, mls.UI_INFLIGHT_HIDEEMPTYSLOTS][showEmpty], self.ToggleShowEmpty)]
+            m += [([localization.GetByLabel('UI/Inflight/ShowEmptySlots'), localization.GetByLabel('UI/Inflight/HideEmptySlots')][showEmpty], self.ToggleShowEmpty)]
             lockModules = settings.user.ui.Get('lockModules', 0)
-            m += [([mls.UI_INFLIGHT_LOCKMODULES, mls.UI_INFLIGHT_UNLOCKMODULES][lockModules], self.ToggleLockModules)]
+            m += [([localization.GetByLabel('UI/Inflight/LockModules'), localization.GetByLabel('UI/Inflight/UnlockModules')][lockModules], self.ToggleLockModules)]
             lockOverload = settings.user.ui.Get('lockOverload', 0)
-            m += [([mls.UI_CMD_LOCKOVERLOADSTATE, mls.UI_CMD_UNLOCKOVERLOADSTATUS][lockOverload], self.ToggleOverloadLock)]
+            m += [([localization.GetByLabel('UI/Inflight/LockOverloadState'), localization.GetByLabel('UI/Inflight/UnlockOverloadStatus')][lockOverload], self.ToggleOverloadLock)]
         showReadout = settings.user.ui.Get('showReadout', 0)
         readoutType = settings.user.ui.Get('readoutType', 1)
-        m += [([mls.UI_INFLIGHT_SHOWREADOUT, mls.UI_INFLIGHT_HIDEREADOUT][showReadout], self.ToggleReadout)]
-        m += [([mls.UI_INFLIGHT_PERCENTAGEREADOUT, mls.UI_INFLIGHT_ABSOLUTEREADOUT][readoutType], self.ToggleReadoutType)]
+        m += [([localization.GetByLabel('UI/Inflight/ShowReadout'), localization.GetByLabel('UI/Inflight/HideReadOut')][showReadout], self.ToggleReadout)]
+        m += [([localization.GetByLabel('UI/Inflight/PercentageReadout'), localization.GetByLabel('UI/Inflight/AbsolutReadout')][readoutType], self.ToggleReadoutType)]
         showZoomBtns = settings.user.ui.Get('showZoomBtns', 0)
-        m += [([mls.UI_INFLIGHT_SHOWZOOMBTNS, mls.UI_INFLIGHT_HIDEZOOMBTNS][showZoomBtns], self.ToggleShowZoomBtns)]
+        m += [([localization.GetByLabel('UI/Inflight/ShowZoomButtons'), localization.GetByLabel('UI/Inflight/HideZoomButtons')][showZoomBtns], self.ToggleShowZoomBtns)]
         showCycleTimer = settings.user.ui.Get('showCycleTimer', 1)
         if showCycleTimer:
-            cycleText = mls.UI_SHARED_ACTIVATIONTIMEROFF
+            cycleText = localization.GetByLabel('UI/Inflight/ActivationTimerOff')
         else:
-            cycleText = mls.UI_SHARED_ACTIVATIONTIMERON
+            cycleText = localization.GetByLabel('UI/Inflight/ShowActivationTimers')
         m += [(cycleText, self.ToggleCycleTimer)]
         m += [None]
-        m += [(mls.UI_GENERIC_NOTIFYSETTINGS, self.ShowNotifySettingsWindow)]
+        m += [(localization.GetByLabel('UI/Inflight/NotifyAudioAlert'), self.ShowNotifySettingsWindow)]
         m += [None]
         alignTop = settings.user.ui.Get('shipuialigntop', 0)
-        m += [([mls.UI_CMD_ALIGNTOP, mls.UI_CMD_ALIGNBOTTOM][alignTop], self.ToggleAlign)]
+        m += [([localization.GetByLabel('UI/Inflight/AlignTop'), localization.GetByLabel('UI/Inflight/AlignBottom')][alignTop], self.ToggleAlign)]
         return m
 
 
 
     def ShowNotifySettingsWindow(self):
-        window = sm.GetService('window').GetWindow('NotifySettingsWindow', create=1)
-        window.Maximize()
+        form.NotifySettingsWindow.Open()
 
 
 
@@ -570,40 +590,40 @@ class ShipUI(uicls.LayerCore):
                 return 
         timer = uicls.Container(name='%s' % timerID, parent=self.sr.timers, height=17, align=uiconst.TOBOTTOM, top=30)
         timer.endTime = startTime + duration
-        uicls.Label(text=label, parent=timer, left=124, top=-1, fontsize=9, letterspace=2, linespace=8, color=(1.0, 1.0, 1.0, 0.5), uppercase=1, state=uiconst.UI_NORMAL)
+        uicls.EveLabelSmall(text=label, parent=timer, left=124, lineSpaceing=-0.2, color=(1.0, 1.0, 1.0, 0.5), state=uiconst.UI_NORMAL)
         fpar = uicls.Container(parent=timer, align=uiconst.TOTOP, height=13)
         uicls.Frame(parent=fpar, color=(1.0, 1.0, 1.0, 0.5))
-        t = uicls.Label(text='', parent=fpar, left=5, top=1, fontsize=9, letterspace=1, uppercase=1, state=uiconst.UI_NORMAL)
+        t = uicls.EveLabelSmall(text='', parent=fpar, left=5, top=0, state=uiconst.UI_NORMAL)
         p = uicls.Fill(parent=fpar, align=uiconst.RELATIVE, width=118, height=11, left=1, top=1, color=(1.0, 1.0, 1.0, 0.25))
         duration = float(duration)
-        totalTime = float(startTime + duration * 10000 - blue.os.GetTime()) / SEC
+        totalTime = float(startTime + duration * 10000 - blue.os.GetSimTime()) / SEC
         while 1 and not timer.destroyed:
-            now = blue.os.GetTime()
+            now = blue.os.GetSimTime()
             dt = blue.os.TimeDiffInMs(startTime, now)
             timeLeft = (duration - dt) / 1000.0
             timer.timeLeft = timeLeft
             if timer.destroyed or dt > duration:
-                t.text = mls.UI_GENERIC_DONE
+                t.text = localization.GetByLabel('UI/Commands/Done')
                 p.width = 0
                 break
-            t.text = '%.3f %s' % (timeLeft, uix.Plural(timeLeft, 'UI_GENERIC_SECONDSHORT'))
+            t.text = localization.GetByLabel('UI/Inflight/TimeLeft', timeleft=timeLeft)
             p.width = max(0, min(118, int(118 * (timeLeft / totalTime))))
             blue.pyos.synchro.Yield()
 
         if not timer.destroyed:
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
             if not t.destroyed:
                 t.text = ''
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
             if not t.destroyed:
-                t.text = mls.UI_GENERIC_DONE
-            blue.pyos.synchro.Sleep(250)
+                t.text = localization.GetByLabel('UI/Commands/Done')
+            blue.pyos.synchro.SleepWallclock(250)
             if not t.destroyed:
                 t.text = ''
-            blue.pyos.synchro.Sleep(250)
+            blue.pyos.synchro.SleepWallclock(250)
             if not t.destroyed:
-                t.text = mls.UI_GENERIC_DONE
-            blue.pyos.synchro.Sleep(250)
+                t.text = localization.GetByLabel('UI/Commands/Done')
+            blue.pyos.synchro.SleepWallclock(250)
             if not t.destroyed:
                 t.text = ''
             if not timer.destroyed:
@@ -656,7 +676,7 @@ class ShipUI(uicls.LayerCore):
                 self.sr.expandbtnright.LoadTexture('res:/UI/Texture/classes/ShipUI/expandBtnLeft.png')
             else:
                 self.sr.expandbtnright.LoadTexture('res:/UI/Texture/classes/ShipUI/expandBtnRight.png')
-            self.sr.expandbtnright.hint = [mls.UI_INFLIGHT_SHOWMODULES, mls.UI_INFLIGHT_HIDEMODULES][on]
+            self.sr.expandbtnright.hint = [localization.GetByLabel('UI/Inflight/ShowModules'), localization.GetByLabel('UI/Inflight/HideModules')][on]
         else:
             return 
         if self.sr.Get('expandbtnleft', None):
@@ -665,7 +685,7 @@ class ShipUI(uicls.LayerCore):
                 self.sr.expandbtnleft.LoadTexture('res:/UI/Texture/classes/ShipUI/expandBtnRight.png')
             else:
                 self.sr.expandbtnleft.LoadTexture('res:/UI/Texture/classes/ShipUI/expandBtnLeft.png')
-            self.sr.expandbtnleft.hint = [mls.UI_INFLIGHT_SHOWBUTTONS, mls.UI_INFLIGHT_HIDEBUTTONS][on]
+            self.sr.expandbtnleft.hint = [localization.GetByLabel('UI/Inflight/ShowButtons'), localization.GetByLabel('UI/Inflight/HideButtons')][on]
 
 
 
@@ -683,35 +703,35 @@ class ShipUI(uicls.LayerCore):
         ystep = int(ICONSIZE * 1.06)
         xstep = int(ICONSIZE * 1.3)
         step = 20
-        buttons = [(mls.UI_GENERIC_CARGO,
+        buttons = [(localization.GetByLabel('UI/Generic/Cargo'),
           'inFlightCargoBtn',
           self.Cargo,
           'ui_44_32_10',
           100,
           -1.0,
           'OpenCargoHoldOfActiveShip'),
-         (mls.UI_CMD_RESETCAMERA,
+         (localization.GetByLabel('UI/Inflight/ResetCamera'),
           'inFlightResetCameaBtn',
           self.ResetCamera,
           'ui_44_32_46',
           128,
           0.5,
           ''),
-         (mls.UI_GENERIC_SCANNER,
+         (localization.GetByLabel('UI/Generic/Scanner'),
           'inFlightScannerBtn',
           self.Scanner,
           'ui_44_32_41',
           100,
           0.0,
           'OpenScanner'),
-         (mls.UI_GENERIC_TACTICAL,
+         (localization.GetByLabel('UI/Generic/Tactical'),
           'inFlightTacticalBtn',
           self.Tactical,
           'ui_44_32_42',
           128,
           -0.5,
           'CmdToggleTacticalOverlay'),
-         (mls.UI_GENERIC_AUTOPILOT,
+         (localization.GetByLabel('UI/Generic/Autopilot'),
           'inFlightAutopilotBtn',
           self.Autopilot,
           'ui_44_32_12',
@@ -720,13 +740,13 @@ class ShipUI(uicls.LayerCore):
           'CmdToggleAutopilot')]
         showZoomBtns = settings.user.ui.Get('showZoomBtns', 0)
         if showZoomBtns:
-            buttons += [(mls.UI_CMD_ZOOMIN,
+            buttons += [(localization.GetByLabel('UI/Inflight/ZoomIn'),
               'inFlightZoomInBtn',
               self.ZoomIn,
               '44_43',
               128,
               1.5,
-              'CmdZoomIn'), (mls.UI_CMD_ZOOMOUT,
+              'CmdZoomIn'), (localization.GetByLabel('UI/Inflight/ZoomOut'),
               'inFlightZoomOutBtn',
               self.ZoomOut,
               '44_44',
@@ -741,17 +761,18 @@ class ShipUI(uicls.LayerCore):
              BTNSIZE,
              BTNSIZE), name=guiID, func=func, cmdName=cmdName)
             self.sr.Set(btnName.replace(' ', '').lower(), slot)
-            if btnName == mls.UI_GENERIC_TACTICAL:
+            if btnName == localization.GetByLabel('UI/Generic/Tactical'):
                 self.sr.tacticalBtn = slot
                 tActive = settings.user.overview.Get('viewTactical', 0)
                 uiutil.GetChild(self.sr.tacticalBtn, 'busy').state = [uiconst.UI_HIDDEN, uiconst.UI_DISABLED][tActive]
-                self.sr.tacticalBtn.hint = [mls.UI_CMD_SHOWTACTICALOVERLEY, mls.UI_CMD_HIDETACTICALOVERLEY][tActive]
-            elif btnName == mls.UI_GENERIC_AUTOPILOT:
+                self.sr.tacticalBtn.hint = [localization.GetByLabel('UI/Inflight/ShowTacticalOverlay'), localization.GetByLabel('UI/Inflight/HideTacticalOverview')][tActive]
+            elif btnName == localization.GetByLabel('UI/Generic/Autopilot'):
                 self.sr.autopilotBtn = slot
                 apActive = sm.GetService('autoPilot').GetState()
                 uiutil.GetChild(self.sr.autopilotBtn, 'busy').state = [uiconst.UI_HIDDEN, uiconst.UI_DISABLED][apActive]
-                self.sr.autopilotBtn.hint = [mls.UI_CMD_ACTIVATEAUTOPILOT, mls.UI_CMD_DEACTIVATEAUTOPILOT][apActive]
-            elif btnName == mls.UI_GENERIC_CARGO:
+                hint = [localization.GetByLabel('UI/Inflight/ActivateAutopilot'), localization.GetByLabel('UI/Inflight/DeactivateAutopilot')][apActive]
+                self.sr.autopilotBtn.hint = hint
+            elif btnName == localization.GetByLabel('UI/Generic/Cargo'):
                 slot.OnDropData = self.DropInCargo
 
         self.sr.hudButtons = par
@@ -762,7 +783,7 @@ class ShipUI(uicls.LayerCore):
         if cmdName:
             shortcut = uicore.cmd.GetShortcutStringByFuncName(cmdName)
             if shortcut:
-                return ' [%s]' % shortcut
+                return localization.GetByLabel('UI/Inflight/ShortcutFormatter', shortcut=shortcut)
         return ''
 
 
@@ -785,9 +806,9 @@ class ShipUI(uicls.LayerCore):
         if len(inv) > 0 and sm.GetService('consider').ConfirmTakeFromContainer(inv[0].rec.locationID):
             if sm.GetService('consider').ConfirmTakeIllicitGoods([ i.item for i in inv ]):
                 if len(inv) > 1:
-                    eve.GetInventoryFromId(eve.session.shipid).MultiAdd([ node.itemID for node in inv ], inv[0].rec.locationID, flag=const.flagCargo)
+                    sm.GetService('invCache').GetInventoryFromId(eve.session.shipid).MultiAdd([ node.itemID for node in inv ], inv[0].rec.locationID, flag=const.flagCargo)
                 else:
-                    eve.GetInventoryFromId(eve.session.shipid).Add(inv[0].itemID, inv[0].rec.locationID, flag=const.flagCargo)
+                    sm.GetService('invCache').GetInventoryFromId(eve.session.shipid).Add(inv[0].itemID, inv[0].rec.locationID, flag=const.flagCargo)
         if len(bms) > 0:
             uthread.new(self.AddBookmarks, [ node.bm.bookmarkID for node in bms ])
 
@@ -795,7 +816,7 @@ class ShipUI(uicls.LayerCore):
 
     def AddBookmarks(self, bookmarkIDs):
         isMove = not uicore.uilib.Key(uiconst.VK_SHIFT)
-        eve.GetInventoryFromId(eve.session.shipid).AddBookmarks(bookmarkIDs, const.flagCargo, isMove)
+        sm.GetService('invCache').GetInventoryFromId(eve.session.shipid).AddBookmarks(bookmarkIDs, const.flagCargo, isMove)
 
 
 
@@ -803,7 +824,7 @@ class ShipUI(uicls.LayerCore):
         sm.GetService('tactical').ToggleOnOff()
         tActive = settings.user.overview.Get('viewTactical', 0)
         uiutil.GetChild(self.sr.tacticalBtn, 'busy').state = [uiconst.UI_HIDDEN, uiconst.UI_DISABLED][tActive]
-        self.sr.tacticalBtn.hint = [mls.UI_CMD_SHOWTACTICALOVERLEY, mls.UI_CMD_HIDETACTICALOVERLEY][tActive]
+        self.sr.tacticalBtn.hint = [localization.GetByLabel('UI/Inflight/ShowTacticalOverlay'), localization.GetByLabel('UI/Inflight/HideTacticalOverview')][tActive]
         self.sr.tacticalBtn.hint += self._GetShortcutForCommand(self.sr.tacticalBtn.cmdName)
 
 
@@ -835,14 +856,14 @@ class ShipUI(uicls.LayerCore):
 
     def ToggleCargo(self):
         if eve.session.shipid:
-            wnd = sm.GetService('window').GetWindow('shipCargo_%s' % eve.session.shipid)
+            wnd = uicls.Window.GetIfOpen(windowID='shipCargo_%s' % eve.session.shipid)
             if wnd:
                 if wnd.IsMinimized():
                     wnd.Maximize()
                 elif wnd.IsCollapsed():
                     wnd.Expand()
                 else:
-                    wnd.CloseX()
+                    wnd.CloseByUser()
             else:
                 shipName = cfg.evelocations.Get(eve.session.shipid).name
                 sm.GetService('cmd').OpenCargoHoldOfActiveShip()
@@ -856,16 +877,16 @@ class ShipUI(uicls.LayerCore):
 
     def ToggleScanner(self):
         if eve.session.solarsystemid:
-            wnd = sm.GetService('window').GetWindow('scanner', showIfInStack=False)
+            wnd = form.Scanner.GetIfOpen()
             if wnd is not None and not wnd.destroyed:
                 if wnd.IsMinimized():
                     wnd.Maximize()
                 elif wnd.IsCollapsed():
                     wnd.Expand()
                 else:
-                    wnd.CloseX()
+                    wnd.CloseByUser()
             else:
-                sm.GetService('window').GetWindow('scanner', create=1, decoClass=form.Scanner)
+                form.Scanner.Open()
 
 
 
@@ -930,7 +951,7 @@ class ShipUI(uicls.LayerCore):
                 slot.sr.slotPos = (r, i)
                 self.sr.slotsByFlag[slotFlag] = slot
                 self.sr.slotsByOrder[(r, i)] = slot
-                slot.sr.shortcutHint = uicls.Label(text='<center>-', parent=slot, width=64, autowidth=False, color=(1.0, 1.0, 1.0, 0.25), shadow=[], state=uiconst.UI_DISABLED, fontsize=9, letterspace=1, linespace=8, idx=0)
+                slot.sr.shortcutHint = uicls.EveLabelSmall(text='<center>-', parent=slot, width=64, color=(1.0, 1.0, 1.0, 0.25), shadowOffset=(0, 0), state=uiconst.UI_DISABLED, linespace=8, idx=0)
                 slot.sr.shortcutHint.top = 30
                 if self.assumingcontrol:
                     slot.sr.shortcutHint.top -= 4
@@ -1145,7 +1166,7 @@ class ShipUI(uicls.LayerCore):
             btn.activationID = None
             btn.active = False
             btn.children[0].LoadTexture('res:/UI/Texture/classes/ShipUI/overloadBtn%sOff.png' % each)
-            btn.hint = mls.UI_CMD_OVERLOADRACK
+            btn.hint = localization.GetByLabel('UI/Inflight/OverloadRack')
             btn.state = uiconst.UI_DISABLED
             if btn.powerEffectID in modulesByRack:
                 btn.activationID = modulesByRack[btn.powerEffectID][0].itemID
@@ -1154,7 +1175,7 @@ class ShipUI(uicls.LayerCore):
                 if not sumInactive:
                     btn.children[0].LoadTexture('res:/UI/Texture/classes/ShipUI/overloadBtn%sOn.png' % each)
                     btn.active = True
-                    btn.hint = mls.UI_CMD_STOPOVERLOADRACK
+                    btn.hint = localization.GetByLabel('UI/Inflight/StopOverloadingRack')
             btn.state = uiconst.UI_NORMAL
 
         if self.checkingoverloadrackstate == 2:
@@ -1168,6 +1189,8 @@ class ShipUI(uicls.LayerCore):
         if self.destroyed:
             return 
         icon = uiutil.GetChild(self.sr.slotsContainer, 'groupAllIcon')
+        if icon is None:
+            return 
         dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
         for (typeID, qty,) in dogmaLocation.GetGroupableTypes(session.shipid).iteritems():
             if qty > 1:
@@ -1179,12 +1202,12 @@ class ShipUI(uicls.LayerCore):
         icon.state = uiconst.UI_NORMAL
         if dogmaLocation.CanGroupAll(session.shipid):
             icon.LoadIcon('ui_73_16_252')
-            hint = mls.UI_CMD_GROUPALLWEAPONS
+            hint = localization.GetByLabel('UI/Inflight/GroupAllWeapons')
         else:
             icon.LoadIcon('ui_73_16_251')
-            hint = mls.UI_CMD_UNGROUPALLWEAPONS
+            hint = localization.GetByLabel('UI/Inflight/UngroupAllWeapons')
         if settings.user.ui.Get('lockModules', False):
-            hint = hint + ' (%s)' % mls.UI_GENERIC_LOCKED
+            hint = localization.GetByLabel('UI/Inflight/Locked', unit=hint)
         icon.hint = hint
         if getattr(self, 'updateGroupAllButtonThread', None):
             self.updateGroupAllButtonThread.kill()
@@ -1259,7 +1282,7 @@ class ShipUI(uicls.LayerCore):
                     if slot and slot.sr.module is None and slotFlag not in self.passiveFiltered:
                         slot.showAsEmpty = 1
                         if self.assumingcontrol:
-                            slot.hint = mls.UI_INFLIGHT_EMPTYSTRUCTURECONTROLSLOT
+                            slot.hint = localization.GetByLabel('UI/Inflight/EmptyStructureControlSlot')
                             slot.state = uiconst.UI_NORMAL
                         else:
                             if gidx == 0:
@@ -1267,7 +1290,7 @@ class ShipUI(uicls.LayerCore):
                                     ignoredSlots += 1
                                     slot.ignored = 1
                                     continue
-                            slot.hint = [mls.UI_INFLIGHT_EMPTYHIGHSLOT, mls.UI_INFLIGHT_EMPTYMEDIUMSLOT, mls.UI_INFLIGHT_EMPTYLOWSLOT][gidx]
+                            slot.hint = [localization.GetByLabel('UI/Inflight/EmptyHighSlot'), localization.GetByLabel('UI/Inflight/EmptyMediumSlot'), localization.GetByLabel('UI/Inflight/EmptyLowSlot')][gidx]
                             slot.state = uiconst.UI_NORMAL
                             iconpath = ['ui_8_64_11',
                              'ui_8_64_10',
@@ -1440,7 +1463,7 @@ class ShipUI(uicls.LayerCore):
         if slaves:
             swapSlots = 1
         if not areTurrets:
-            eve.Message('CustomNotify', {'notify': mls.UI_SHARED_WEAPONLINK_NOTTHISTYPE})
+            eve.Message('CustomNotify', {'notify': localization.GetByLabel('UI/Inflight/WeaponGroupingRule')})
             return 
         weaponLinked = dogmaLocation.LinkWeapons(session.shipid, master[1], slave[1], merge=merge)
         if weaponLinked and swapSlots:
@@ -1504,14 +1527,14 @@ class ShipUI(uicls.LayerCore):
 
     def OnAutoPilotOn(self):
         uiutil.GetChild(self.sr.autopilotBtn, 'busy').state = uiconst.UI_DISABLED
-        self.sr.autopilotBtn.hint = mls.UI_CMD_DEACTIVATEAUTOPILOT
+        self.sr.autopilotBtn.hint = localization.GetByLabel('UI/Inflight/DeactivateAutopilot')
         self.sr.autopilotBtn.hint += self._GetShortcutForCommand(self.sr.autopilotBtn.cmdName)
 
 
 
     def OnAutoPilotOff(self):
         uiutil.GetChild(self.sr.autopilotBtn, 'busy').state = uiconst.UI_HIDDEN
-        self.sr.autopilotBtn.hint = mls.UI_CMD_ACTIVATEAUTOPILOT
+        self.sr.autopilotBtn.hint = localization.GetByLabel('UI/Inflight/ActivateAutopilot')
         self.sr.autopilotBtn.hint += self._GetShortcutForCommand(self.sr.autopilotBtn.cmdName)
 
 
@@ -1520,15 +1543,15 @@ class ShipUI(uicls.LayerCore):
         activeIndicator = uiutil.GetChild(self.sr.tacticalBtn, 'busy')
         if isOn:
             activeIndicator.state = uiconst.UI_DISABLED
-            self.sr.tacticalBtn.sr.hint = mls.UI_CMD_HIDETACTICALOVERLEY
+            self.sr.tacticalBtn.sr.hint = localization.GetByLabel('UI/Inflight/HideTacticalOverview')
         else:
             activeIndicator.state = uiconst.UI_HIDDEN
-            self.sr.tacticalBtn.sr.hint = mls.UI_CMD_SHOWTACTICALOVERLEY
+            self.sr.tacticalBtn.sr.hint = localization.GetByLabel('UI/Inflight/ShowTacticalOverlay')
 
 
 
     def OnCloseView(self):
-        sm.UnregisterNotify(self)
+        self.ResetSelf()
         settings.user.ui.Set('selected_shipuicateg', self.sr.selectedcateg)
         if getattr(self, 'cookie', None):
             sm.GetService('inv').Unregister(self.cookie)
@@ -1544,8 +1567,8 @@ class ShipUI(uicls.LayerCore):
     def OnInvChange(self, item, change):
         if const.ixFlag in change:
             if cfg.IsShipFittingFlag(item.flagID) or cfg.IsShipFittingFlag(change[const.ixFlag]):
-                uicore.layer.shipui.CloseView()
-                uicore.layer.shipui.OpenView()
+                self.CloseView(recreate=False)
+                self.OpenView()
 
 
 
@@ -1661,7 +1684,7 @@ class ShipUI(uicls.LayerCore):
                 sortList = uiutil.SortListOfTuples(sortList)
                 (sourceBallID, moduleID, targetBallID, jammingType, startTime, duration,) = sortList[-1]
                 bracketName = sm.GetService('bracket').GetBracketName(sourceBallID)
-                self.ShowTimer(jammingType, startTime, duration, '%s<br>%s' % (bracketName, self.timerNames.get(jammingType, mls.UI_INFLIGHT_NAMELESS)))
+                self.ShowTimer(jammingType, startTime, duration, localization.GetByLabel('UI/Inflight/JamInfo', bracketName=bracketName, jammingType=self.timerNames.get(jammingType, localization.GetByLabel('UI/Inflight/Nameless'))))
             else:
                 self.KillTimer(jammingType)
 
@@ -1673,10 +1696,9 @@ class ShipUI(uicls.LayerCore):
         if not bp:
             return 
         slimItem = bp.slimItems[shipID]
-        wndName = '%s %s' % (uix.GetSlimItemName(slimItem), mls.UI_INFLIGHT_SCANRESULT)
-        wnd = sm.GetService('window').GetWindow(wndName, create=1, decoClass=form.ShipScan, maximize=1, shipID=shipID, windowPrefsID='shipScan')
-        if wnd:
-            wnd.LoadResult(capacitorCharge, capacitorCapacity, hardwareList)
+        wndName = localization.GetByLabel('UI/Inflight/ScanWindowName', itemName=uix.GetSlimItemName(slimItem), title=localization.GetByLabel('UI/Inflight/ScanResult'))
+        form.ShipScan.CloseIfOpen(windowID=('shipscan', shipID))
+        form.ShipScan.Open(windowID=('shipscan', shipID), caption=wndName, shipID=shipID, results=(capacitorCharge, capacitorCapacity, hardwareList))
 
 
 
@@ -1685,8 +1707,8 @@ class ShipUI(uicls.LayerCore):
         if not bp:
             return 
         slimItem = bp.slimItems[shipID]
-        wndName = 'cargoscanner %s' % uix.GetSlimItemName(slimItem)
-        wnd = sm.GetService('window').GetWindow(wndName, create=1, decoClass=form.CargoScan, maximize=1, shipID=shipID, cargoList=cargoList, windowPrefsID='cargoScan')
+        windowID = 'cargoscanner %s' % uix.GetSlimItemName(slimItem)
+        wnd = form.CargoScan.Open(windowID=windowID, shipID=shipID, cargoList=cargoList)
         if wnd:
             wnd.LoadResult(cargoList)
 
@@ -1736,7 +1758,6 @@ class ShipUI(uicls.LayerCore):
         if self.initing:
             return 
         if eve.session.shipid is None:
-            self.CloseView()
             return 
         self.initing = 1
         self.initedshipid = eve.session.shipid
@@ -1749,12 +1770,10 @@ class ShipUI(uicls.LayerCore):
         dogmaLocation.LoadItem(eve.session.shipid)
         self.InitSpeed()
         uthread.new(self.UpdateGauges)
-        if not (eve.rookieState and eve.rookieState < 21) and not sm.GetService('planetUI').IsOpen():
+        if not (eve.rookieState and eve.rookieState < 21) and not sm.GetService('viewState').IsViewActive('planet'):
             self.state = uiconst.UI_PICKCHILDREN
         self.InitSlots()
         self.initing = 0
-        if not sm.GetService('map').IsOpen() and not sm.GetService('planetUI').IsOpen():
-            uix.GetInflightNav()
         self.invReady = 1
 
 
@@ -1766,17 +1785,17 @@ class ShipUI(uicls.LayerCore):
             newBtn = uiutil.GetChild(self.sr.wnd, btnname)
             newBtn.OnClick = (self.ClickSpeedBtn, newBtn)
             if btnname == 'maxspeedButton':
-                newBtn.hint = mls.UI_INFLIGHT_SETFULLSPEED + ' (' + self.FormatSpeed(self.ball.maxVelocity) + ')'
+                newBtn.hint = localization.GetByLabel('UI/Inflight/SetFullSpeed', maxSpeed=self.FormatSpeed(self.ball.maxVelocity))
                 newBtn.OnMouseEnter = self.CheckSpeedHint
             else:
-                newBtn.hint = mls.UI_INFLIGHT_STOPTHESHIP
+                newBtn.hint = localization.GetByLabel('UI/Inflight/StopTheShip')
             self.sr.Set(btnname, newBtn)
 
         self.sr.speedGauge = uiutil.GetChild(self.sr.wnd, 'speedNeedle')
         self.sr.speedGaugeParent = uiutil.GetChild(self.sr.wnd, 'speedGaugeParent')
         self.sr.speedGaugeParent.OnClick = self.ClickSpeedoMeter
         self.sr.speedGaugeParent.OnMouseMove = self.CheckSpeedHint
-        self.sr.speedStatus = uicls.Label(text='', parent=self.sr.speedGaugeParent.parent.parent, left=0, top=127, color=(0.0, 0.0, 0.0, 1.0), width=100, autowidth=False, letterspace=1, fontsize=9, state=uiconst.UI_DISABLED, uppercase=1, idx=0, shadow=None, align=uiconst.CENTERTOP)
+        self.sr.speedStatus = uicls.EveLabelSmall(text='', parent=self.sr.speedGaugeParent.parent.parent, left=0, top=127, color=(0.0, 0.0, 0.0, 1.0), width=100, state=uiconst.UI_DISABLED, idx=0, shadowOffset=(0, 0), align=uiconst.CENTERTOP)
         self.speedInited = 1
         uthread.new(self.SetSpeed, self.ball.speedFraction, initing=1)
         self.sr.speedtimer = base.AutoTimer(133, self.UpdateSpeed)
@@ -1796,13 +1815,13 @@ class ShipUI(uicls.LayerCore):
                 if ownBall and rbp is not None and ownBall.mode == destiny.DSTBALL_STOP:
                     if not sm.GetService('autoPilot').GetState():
                         direction = trinity.TriVector(0.0, 0.0, 1.0)
-                        currentDirection = self.ball.GetQuaternionAt(blue.os.GetTime())
+                        currentDirection = self.ball.GetQuaternionAt(blue.os.GetSimTime())
                         direction.TransformQuaternion(currentDirection)
                         rbp.GotoDirection(direction.x, direction.y, direction.z)
             if rbp is not None:
                 rbp.SetSpeedFraction(1.0)
-                sm.GetService('logger').AddText('%s %s' % (mls.UI_INFLIGHT_SPEEDCHANGEDTO, self.FormatSpeed(self.ball.maxVelocity)), 'notify')
-                sm.GetService('gameui').Say('%s %s' % (mls.UI_INFLIGHT_SPEEDCHANGEDTO, self.FormatSpeed(self.ball.maxVelocity)))
+                sm.GetService('logger').AddText(localization.GetByLabel('UI/Inflight/SpeedChangedTo', speed=self.FormatSpeed(self.ball.maxVelocity)), 'notify')
+                sm.GetService('gameui').Say(localization.GetByLabel('UI/Inflight/SpeedChangedTo', speed=self.FormatSpeed(self.ball.maxVelocity)))
                 self.wantedspeed = 1.0
             else:
                 self.wantedspeed = None
@@ -1842,26 +1861,26 @@ class ShipUI(uicls.LayerCore):
         if mo == self.sr.speedGaugeParent:
             portion = self.GetSpeedPortion()
             parent = self.sr.speedGaugeParent
-            speed = self.ball.GetVectorDotAt(blue.os.GetTime()).Length()
+            speed = self.ball.GetVectorDotAt(blue.os.GetSimTime()).Length()
             if self.ball.mode == destiny.DSTBALL_WARP:
-                hint = '%s: %s/%s' % (mls.UI_INFLIGHT_CURRENTSPEED, util.FmtDist(speed, 2), mls.UI_GENERIC_SECONDVERYSHORT)
-                hint += '<br>%s' % mls.UI_INFLIGHT_CANNOTCHANGESPEEDWHILEWARPING
+                hint = localization.GetByLabel('UI/Inflight/ShowWarpSpeed', speed=util.FmtDist(speed, 2))
+                hint += '<br>' + localization.GetByLabel('UI/Inflight/CanNotChangeSpeedWhileWarping')
             else:
                 fmtSpeed = self.FormatSpeed(speed)
-                hint = '%s: %s' % (mls.UI_INFLIGHT_CURRENTSPEED, fmtSpeed)
-                hint += '<br>%s %s' % (mls.UI_INFLIGHT_CLICKTOSETSPEEDTO, self.FormatSpeed(portion * self.ball.maxVelocity))
+                hint = localization.GetByLabel('UI/Inflight/CurrentSpeed', speed=fmtSpeed)
+                hint += '<br>' + localization.GetByLabel('UI/Inflight/ClickToSetSpeedTo', speed=self.FormatSpeed(portion * self.ball.maxVelocity))
             parent.hint = hint
             uicore.UpdateHint(parent)
         elif ms and not ms.destroyed and mo == ms:
-            ms.hint = mls.UI_INFLIGHT_SETFULLSPEED + ' (' + self.FormatSpeed(self.ball.maxVelocity) + ')'
+            ms.hint = localization.GetByLabel('UI/Inflight/SetFullSpeed', maxSpeed=self.FormatSpeed(self.ball.maxVelocity))
             uicore.UpdateHint(ms)
 
 
 
     def FormatSpeed(self, speed):
         if speed < 100:
-            return '%.1f %s' % (speed, mls.UI_GENERIC_MPERS)
-        return '%i %s' % (long(speed), mls.UI_GENERIC_MPERS)
+            return localization.GetByLabel('UI/Inflight/MetersPerSecond', speed=round(speed, 1))
+        return localization.GetByLabel('UI/Inflight/MetersPerSecond', speed=int(speed))
 
 
 
@@ -1920,8 +1939,7 @@ class ShipUI(uicls.LayerCore):
 
 
     def OnMouseEnter(self, *args):
-        if uix.GetInflightNav(0):
-            uix.GetInflightNav(0).HideTargetingCursor()
+        uicore.layer.inflight.HideTargetingCursor()
 
 
 
@@ -1943,9 +1961,9 @@ class ShipUI(uicls.LayerCore):
 
 
     def UpdateGauges(self):
-        if getattr(self, 'updatingGauges', 0) or not self or self.destroyed:
+        if getattr(self, 'updatingGauges', False) or not self or self.destroyed:
             return 
-        self.updatingGauges = 1
+        self.updatingGauges = True
         ship = sm.GetService('godma').GetItem(eve.session.shipid)
         if not ship:
             self.sr.gaugetimer = None
@@ -1959,15 +1977,15 @@ class ShipUI(uicls.LayerCore):
             self.InitCapacitor(maxcap)
         self.SetPower(ship.charge, float(maxcap))
         structure = max(0.0, min(1.0, float('%.2f' % (1.0 - ship.damage / ship.hp))))
-        lastStructure = getattr(self, 'lastStructure', 0.0)
+        lastStructure = getattr(self, 'lastStructure', structure)
         armor = 0.0
         if ship.armorHP != 0:
             armor = max(0.0, min(1.0, float('%.2f' % (1.0 - ship.armorDamage / ship.armorHP))))
-        lastArmor = getattr(self, 'lastArmor', 0.0)
+        lastArmor = getattr(self, 'lastArmor', armor)
         shield = 0.0
         if ship.shieldCapacity != 0:
             shield = max(0.0, min(1.0, float('%.2f' % (ship.shieldCharge / ship.shieldCapacity))))
-        lastShield = getattr(self, 'lastShield', 0.0)
+        lastShield = getattr(self, 'lastShield', shield)
         lastLowHeat = getattr(self, 'lastLowHeat', 0.0)
         lastMedHeat = getattr(self, 'lastMedHeat', 0.0)
         lastHiHeat = getattr(self, 'lastHiHeat', 0.0)
@@ -1975,18 +1993,10 @@ class ShipUI(uicls.LayerCore):
         heatMed = ship.heatMed / ship.heatCapacityMed
         heatHi = ship.heatHi / ship.heatCapacityHi
         try:
-            self.structureGauge.hint = mls.UI_INFLIGHT_STRUCTURESTATUS % {'portion': structure * 100,
-             'left': max(0, ship.hp - ship.damage),
-             'max': ship.hp}
-            self.armorGauge.hint = mls.UI_INFLIGHT_ARMORSTATUS % {'portion': armor * 100,
-             'left': max(0, ship.armorHP - ship.armorDamage),
-             'max': ship.armorHP}
-            self.shieldGauge.hint = mls.UI_INFLIGHT_SHIELDSTATUS % {'portion': shield * 100,
-             'left': ship.shieldCharge,
-             'max': ship.shieldCapacity}
-            self.sr.heatPick.hint = mls.UI_INFLIGHT_HEATSTATUS % {'low': heatLow * 100,
-             'med': heatMed * 100,
-             'high': heatHi * 100}
+            self.structureGauge.hint = localization.GetByLabel('UI/Inflight/StructureStatus', portion=int(structure * 100), left=int(max(0, ship.hp - ship.damage)), max=int(ship.hp))
+            self.armorGauge.hint = localization.GetByLabel('UI/Inflight/ArmorStatus', portion=int(armor * 100), left=int(max(0, ship.armorHP - ship.armorDamage)), max=int(ship.armorHP))
+            self.shieldGauge.hint = localization.GetByLabel('UI/Inflight/ShieldStatus', portion=int(shield * 100), left=int(ship.shieldCharge), max=int(ship.shieldCapacity))
+            self.sr.heatPick.hint = localization.GetByLabel('UI/Inflight/HeatStatus', low=heatLow * 100, med=heatMed * 100, high=heatHi * 100)
             mo = uicore.uilib.mouseOver
             if mo in (self.structureGauge,
              self.armorGauge,
@@ -1995,13 +2005,13 @@ class ShipUI(uicls.LayerCore):
                 uicore.UpdateHint(mo)
             if self.sr.gaugeReadout and self.sr.gaugeReadout.state != uiconst.UI_HIDDEN:
                 if settings.user.ui.Get('readoutType', 1):
-                    self.sr.gaugeReadout.sr.Get('shield').text = '%s: %s%%' % (mls.UI_GENERIC_SHIELD, util.FmtAmt(shield * 100, showFraction=0))
-                    self.sr.gaugeReadout.sr.Get('armor').text = '%s: %s%%' % (mls.UI_GENERIC_ARMOR, util.FmtAmt(armor * 100, showFraction=0))
-                    self.sr.gaugeReadout.sr.Get('structure').text = '%s: %s%%' % (mls.UI_GENERIC_STRUCTURE, util.FmtAmt(structure * 100, showFraction=0))
+                    self.sr.gaugeReadout.sr.Get('shield').text = localization.GetByLabel('UI/Inflight/ShieldGauge', shield=util.FmtAmt(shield * 100, showFraction=0))
+                    self.sr.gaugeReadout.sr.Get('armor').text = localization.GetByLabel('UI/Inflight/ArmorGauge', armor=util.FmtAmt(armor * 100, showFraction=0))
+                    self.sr.gaugeReadout.sr.Get('structure').text = localization.GetByLabel('UI/Inflight/StructureGauge', structure=util.FmtAmt(structure * 100, showFraction=0))
                 else:
-                    self.sr.gaugeReadout.sr.Get('shield').text = '%s: %s/%s' % (mls.UI_GENERIC_SHIELD, util.FmtAmt(ship.shieldCharge, showFraction=1), util.FmtAmt(ship.shieldCapacity, showFraction=1))
-                    self.sr.gaugeReadout.sr.Get('armor').text = '%s: %s/%s' % (mls.UI_GENERIC_ARMOR, util.FmtAmt(max(0, ship.armorHP - ship.armorDamage), showFraction=1), util.FmtAmt(ship.armorHP, showFraction=1))
-                    self.sr.gaugeReadout.sr.Get('structure').text = '%s: %s/%s' % (mls.UI_GENERIC_STRUCTURE, util.FmtAmt(max(0, ship.hp - ship.damage), showFraction=1), util.FmtAmt(ship.hp, showFraction=1))
+                    self.sr.gaugeReadout.sr.Get('shield').text = localization.GetByLabel('UI/Inflight/ShieldGaugeAbsolute', shield=util.FmtAmt(ship.shieldCharge, showFraction=1), total=util.FmtAmt(ship.shieldCapacity, showFraction=1))
+                    self.sr.gaugeReadout.sr.Get('armor').text = localization.GetByLabel('UI/Inflight/ArmorGaugeAbsolute', armor=util.FmtAmt(max(0, ship.armorHP - ship.armorDamage), showFraction=1), total=util.FmtAmt(ship.armorHP, showFraction=1))
+                    self.sr.gaugeReadout.sr.Get('structure').text = localization.GetByLabel('UI/Inflight/StructureGaugeAbsolute', structure=util.FmtAmt(max(0, ship.hp - ship.damage), showFraction=1), total=util.FmtAmt(ship.hp, showFraction=1))
             props = [(lastStructure,
               structure,
               self.structureGauge,
@@ -2036,9 +2046,9 @@ class ShipUI(uicls.LayerCore):
             log.LogWarn(e)
             sys.exc_clear()
             return 
-        (start, ndt,) = (blue.os.GetTime(), 0.0)
+        (start, ndt,) = (blue.os.GetSimTime(), 0.0)
         while ndt != 1.0:
-            ndt = max(ndt, min(blue.os.TimeDiffInMs(start) / 500.0, 1.0))
+            ndt = max(ndt, min(blue.os.TimeDiffInMs(start, blue.os.GetSimTime()) / 500.0, 1.0))
             for (lastval, newval, gauge, text, gaugeflag,) in props:
                 lerped = mathUtil.Lerp(lastval, newval, ndt)
                 if text:
@@ -2065,7 +2075,7 @@ class ShipUI(uicls.LayerCore):
         self.lastHiHeat = heatHi
         if not self.sr.gaugetimer and hasattr(self, 'UpdateGauges'):
             self.sr.gaugetimer = base.AutoTimer(500, self.UpdateGauges)
-        self.updatingGauges = 0
+        self.updatingGauges = False
 
 
 
@@ -2095,7 +2105,7 @@ class ShipUI(uicls.LayerCore):
             self.updatingspeed = 0
             return 
         if self.ball and self.ball.ballpark and self.sr.speedGauge and not self.sr.speedGauge.destroyed:
-            speed = self.ball.GetVectorDotAt(blue.os.GetTime()).Length()
+            speed = self.ball.GetVectorDotAt(blue.os.GetSimTime()).Length()
             try:
                 realSpeed = max(0.0, min(1.0, speed / self.ball.maxVelocity))
             except:
@@ -2113,7 +2123,7 @@ class ShipUI(uicls.LayerCore):
                 self.updatingspeed = 0
                 return 
             if self.ball.mode == destiny.DSTBALL_WARP:
-                fmtSpeed = '<center>(%s)' % mls.UI_INFLIGHT_WARPING
+                fmtSpeed = localization.GetByLabel('UI/Inflight/WarpSpeedNotification', warpingMessage=localization.GetByLabel('UI/Inflight/Scanner/Warping'))
             else:
                 fmtSpeed = '<center>' + self.FormatSpeed(speed)
             if self.sr.speedStatus.text != fmtSpeed:
@@ -2156,14 +2166,14 @@ class ShipUI(uicls.LayerCore):
                 if ownBall and rbp is not None and ownBall.mode == destiny.DSTBALL_STOP:
                     if not sm.GetService('autoPilot').GetState():
                         direction = trinity.TriVector(0.0, 0.0, 1.0)
-                        currentDirection = self.ball.GetQuaternionAt(blue.os.GetTime())
+                        currentDirection = self.ball.GetQuaternionAt(blue.os.GetSimTime())
                         direction.TransformQuaternion(currentDirection)
                         rbp.GotoDirection(direction.x, direction.y, direction.z)
             if rbp is not None:
                 rbp.SetSpeedFraction(min(1.0, speed))
                 if not initing and self.ball:
-                    sm.GetService('logger').AddText('%s %s' % (mls.UI_INFLIGHT_SPEEDCHANGEDTO, self.FormatSpeed(speed * self.ball.maxVelocity)), 'notify')
-                    sm.GetService('gameui').Say('%s %s' % (mls.UI_INFLIGHT_SPEEDCHANGEDTO, self.FormatSpeed(speed * self.ball.maxVelocity)))
+                    sm.GetService('logger').AddText(localization.GetByLabel('UI/Inflight/SpeedChangedTo', speed=self.FormatSpeed(speed * self.ball.maxVelocity)), 'notify')
+                    sm.GetService('gameui').Say(localization.GetByLabel('UI/Inflight/SpeedChangedTo', speed=self.FormatSpeed(speed * self.ball.maxVelocity)))
         if not initing:
             self.wantedspeed = max(speed, 0.0)
         if not self.sr.speedtimer:
@@ -2178,9 +2188,7 @@ class ShipUI(uicls.LayerCore):
             portion = self.capacity * max(0.0, min(1.0, maxcap and float(load / maxcap) or maxcap))
             if portion:
                 if self.sr.powercore and not self.sr.powercore.destroyed:
-                    self.sr.powercore.hint = mls.UI_INFLIGHT_CAPACITORSTATUS % {'portion': portion / self.capacity * 100,
-                     'left': portion,
-                     'max': self.capacity}
+                    self.sr.powercore.hint = localization.GetByLabel('UI/Inflight/CapacitorStatus', portion=int(round(portion / self.capacity * 100)), left=int(portion), max=int(self.capacity))
         proportion = max(0.0, min(1.0, round(maxcap and load / maxcap or maxcap, 2)))
         if self.lastsetcapacitor == proportion:
             return 
@@ -2299,7 +2307,7 @@ class Slot(uicls.Container):
             elif decoClass in ('xtriui.InvItem', 'listentry.InvItem'):
                 item = node.rec
                 if item.flagID == const.flagCargo and item.categoryID == const.categoryModule:
-                    eve.GetInventoryFromId(eve.session.shipid).Add(item.itemID, item.locationID, qty=None, flag=flag1)
+                    sm.GetService('invCache').GetInventoryFromId(eve.session.shipid).Add(item.itemID, item.locationID, qty=None, flag=flag1)
                 break
 
 
@@ -2324,12 +2332,13 @@ class SpaceLayer(uicls.LayerCore):
 
 class NotifySettingsWindow(uicls.Window):
     __guid__ = 'form.NotifySettingsWindow'
+    default_windowID = 'NotifySettingsWindow'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.SetWndIcon(None)
         self.SetTopparentHeight(0)
-        self.SetCaption(mls.UI_GENERIC_NOTIFYSETTINGS)
+        self.SetCaption(localization.GetByLabel('UI/Inflight/NotifyAudioAlert'))
         self.SetMinSize([320, 120])
         self.MakeUnResizeable()
         self.SetupUi()
@@ -2337,17 +2346,17 @@ class NotifySettingsWindow(uicls.Window):
 
 
     def SetupUi(self):
-        notifydata = [{'checkboxLabel': mls.UI_GENERIC_NOTIFY_SHIELD,
+        notifydata = [{'checkboxLabel': localization.GetByLabel('UI/Inflight/NotifyShield'),
           'checkboxName': 'shieldNotification',
           'checkboxSetting': 'shieldNotificationEnabled',
           'checkboxDefault': 1,
           'sliderName': 'shield',
-          'sliderSetting': ('shieldThreshold', ('user', 'notifications'), const.defaultShieldThreshold)}, {'checkboxLabel': mls.UI_GENERIC_NOTIFY_ARMOUR,
+          'sliderSetting': ('shieldThreshold', ('user', 'notifications'), const.defaultShieldThreshold)}, {'checkboxLabel': localization.GetByLabel('UI/Inflight/NotifyArmor'),
           'checkboxName': 'armourNotification',
           'checkboxSetting': 'armourNotificationEnabled',
           'checkboxDefault': 1,
           'sliderName': 'armour',
-          'sliderSetting': ('armourThreshold', ('user', 'notifications'), const.defaultArmourThreshold)}, {'checkboxLabel': mls.UI_GENERIC_NOTIFY_HULL,
+          'sliderSetting': ('armourThreshold', ('user', 'notifications'), const.defaultArmourThreshold)}, {'checkboxLabel': localization.GetByLabel('UI/Inflight/NotifyHull'),
           'checkboxName': 'hullNotification',
           'checkboxDefault': 1,
           'checkboxSetting': 'hullNotificationEnabled',
@@ -2370,10 +2379,10 @@ class NotifySettingsWindow(uicls.Window):
              0,
              10))
             slider = xtriui.Slider(parent=par)
-            lbl = uicls.Label(text='', parent=_par, align=uiconst.TOTOP, name='label', state=uiconst.UI_PICKCHILDREN, width=labelWidth, left=const.defaultPadding, top=1 + const.defaultPadding, fontsize=9, letterspace=2, tabs=[labelWidth - 22], uppercase=1, autowidth=False)
+            lbl = uicls.EveLabelSmall(text='', parent=_par, align=uiconst.TOTOP, name='label', state=uiconst.UI_PICKCHILDREN, width=labelWidth, left=const.defaultPadding, top=1 + const.defaultPadding, tabs=[labelWidth - 22])
             lbl._tabMargin = 2
             slider.label = lbl
-            slider.Startup(each['sliderName'], 0.0, 1.0, each['sliderSetting'], mls.UI_GENERIC_THRESHOLD)
+            slider.Startup(each['sliderName'], 0.0, 1.0, each['sliderSetting'], localization.GetByLabel('UI/Inflight/Threshold'))
 
 
 
@@ -2456,7 +2465,7 @@ class ShipSlot(uicls.Container):
             elif decoClass in ('xtriui.InvItem', 'listentry.InvItem'):
                 item = node.rec
                 if item.flagID == const.flagCargo and item.categoryID == const.categoryModule:
-                    eve.GetInventoryFromId(eve.session.shipid).Add(item.itemID, item.locationID, qty=None, flag=flag1)
+                    sm.GetService('invCache').GetInventoryFromId(eve.session.shipid).Add(item.itemID, item.locationID, qty=None, flag=flag1)
                 break
 
 

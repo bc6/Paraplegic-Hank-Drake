@@ -68,7 +68,7 @@ class SovereigntyClaimMarker(spaceObject.LargeCollidableStructure):
             self.posState = pos.STRUCTURE_ANCHORED
         slimItem = self.ballpark.slimItems[self.id]
         posState = getattr(slimItem, 'posState', None)
-        posTime = getattr(slimItem, 'posTimestamp', blue.os.GetTime())
+        posTime = getattr(slimItem, 'posTimestamp', blue.os.GetWallclockTime())
         posDelay = getattr(slimItem, 'posDelayTime', 0)
         self.HandleStateChange(posState, posTime, posDelay)
         self.Display(1)
@@ -77,7 +77,7 @@ class SovereigntyClaimMarker(spaceObject.LargeCollidableStructure):
 
     def OnSlimItemUpdated(self, slimItem):
         posState = getattr(slimItem, 'posState', None)
-        posTime = getattr(slimItem, 'posTimestamp', blue.os.GetTime())
+        posTime = getattr(slimItem, 'posTimestamp', blue.os.GetWallclockTime())
         posDelay = getattr(slimItem, 'posDelayTime', 0)
         if posState is None:
             return 
@@ -99,10 +99,10 @@ class SovereigntyClaimMarker(spaceObject.LargeCollidableStructure):
         playForward = None
         if forwarding:
             if posTime is None:
-                posTime = blue.os.GetTime()
+                posTime = blue.os.GetWallclockTime()
                 posDelay = 0
             transData = self.transitionTo[(self.posState, posState)]
-            timeSinceStartMs = blue.os.TimeDiffInMs(long(posTime))
+            timeSinceStartMs = blue.os.TimeDiffInMs(long(posTime), blue.os.GetWallclockTime())
             playForward = transData.playForward
             if timeSinceStartMs > const.MIN / const.MSEC:
                 self.ChangeModel(self.stateModels[transData.forwardTo], 100)
@@ -116,7 +116,7 @@ class SovereigntyClaimMarker(spaceObject.LargeCollidableStructure):
                 self.LoadStaticModelIn(transData.staticModel, transData.forwardTo, 100)
         else:
             self.ChangeModel(self.stateModels[posState], 100)
-        blue.pyos.synchro.Sleep(200)
+        blue.pyos.synchro.SleepWallclock(200)
         if transState in self.programerTransisitons:
             eventData = self.programerTransisitons[transState]
             eventData.function(*eventData.args)
@@ -159,7 +159,7 @@ class SovereigntyClaimMarker(spaceObject.LargeCollidableStructure):
 
 
     def _LoadStaticModelIn(self, fileName, posState, delay = 0):
-        blue.pyos.synchro.Sleep(delay)
+        blue.pyos.synchro.SleepWallclock(delay)
         if self.ballpark is None or self.id not in self.ballpark.slimItems:
             return 
         self.ChangeModel(fileName, 100)
@@ -296,7 +296,7 @@ class SovereigntyClaimMarker(spaceObject.LargeCollidableStructure):
 
     def _StartCurvesIn(self, curves, playForward, delay, scale, startTime):
         if delay > 0:
-            blue.pyos.synchro.Sleep(int(delay))
+            blue.pyos.synchro.SleepSim(int(delay))
         if playForward:
             for each in curves:
                 each.scale = scale
@@ -385,7 +385,7 @@ class SovereigntyClaimMarker(spaceObject.LargeCollidableStructure):
 
     def DelayedRemove(self, model, delay):
         model.name = model.name + '_removing'
-        blue.pyos.synchro.Sleep(delay)
+        blue.pyos.synchro.SleepWallclock(delay)
         model.display = False
         self.RemoveAndClearModel(model)
 

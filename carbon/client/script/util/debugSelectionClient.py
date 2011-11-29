@@ -6,19 +6,15 @@ import uiconst
 import uicls
 import log
 
-class DebugSelectionWindow(uicls.WindowCore):
+class DebugSelectionWindow(uicls.Window):
     __guid__ = 'uicls.DebugSelectionWindow'
     default_windowID = 'DebugSelectionWindow'
-    ENTRY_FONTSIZE = 11
-    HEADER_FONTSIZE = 12
-    ENTRY_FONT = 'res:/UI/Fonts/arial.ttf'
-    HEADER_FONT = 'res:/UI/Fonts/arialbd.ttf'
-    ENTRY_LETTERSPACE = 1
+    default_width = 420
+    default_height = 110
 
     def ApplyAttributes(self, attributes):
         super(uicls.DebugSelectionWindow, self).ApplyAttributes(attributes)
-        self.SetMinSize([40, 110])
-        self.SetSize(420, 110)
+        self.SetMinSize([40, self.default_height])
         self.SetCaption('Debug Selection')
         self.sr.content.SetPadding(5, 5, 5, 5)
         self.debugSelectionClient = sm.GetService('debugSelectionClient')
@@ -27,14 +23,15 @@ class DebugSelectionWindow(uicls.WindowCore):
         topContainer = uicls.Container(parent=self.sr.content, align=uiconst.CENTER, height=25)
         bottomContainer = uicls.Container(parent=self.sr.content, align=uiconst.CENTERBOTTOM, height=25)
         width = 0
-        width += uicls.ButtonCore(parent=topContainer, align=uiconst.TOLEFT, label='Select Player', padding=(2, 0, 2, 0), func=self._SelectPlayer).width
-        width += uicls.ButtonCore(parent=topContainer, align=uiconst.TOLEFT, label='Select Selected', padding=(2, 0, 2, 0), func=self._SelectSelected).width
-        width += uicls.ButtonCore(parent=topContainer, align=uiconst.TOLEFT, label='Clear Selection', padding=(2, 0, 2, 0), func=self._ClearSelection).width
+        width += uicls.Button(parent=topContainer, align=uiconst.TOLEFT, label='Select Player', padding=(2, 0, 2, 0), func=self._SelectPlayer).width + 4
+        width += uicls.Button(parent=topContainer, align=uiconst.TOLEFT, label='Select Target', padding=(2, 0, 2, 0), func=self._SelectSelected).width
+        width += uicls.Button(parent=topContainer, align=uiconst.TOLEFT, label='Clear Selection', padding=(2, 0, 2, 0), func=self._ClearSelection).width + 4
         topContainer.width = width
         width = 0
-        width += uicls.ButtonCore(parent=bottomContainer, align=uiconst.TOLEFT, label='Select Previous', padding=(2, 0, 2, 0), func=self._SelectPrevious).width
-        width += uicls.ButtonCore(parent=bottomContainer, align=uiconst.TOLEFT, label='Select Next', padding=(2, 0, 2, 0), func=self._SelectNext).width
+        width += uicls.Button(parent=bottomContainer, align=uiconst.TOLEFT, label='Select Previous', padding=(2, 0, 2, 0), func=self._SelectPrevious).width + 4
+        width += uicls.Button(parent=bottomContainer, align=uiconst.TOLEFT, label='Select Next', padding=(2, 0, 2, 0), func=self._SelectNext).width + 4
         bottomContainer.width = width
+        self.SetMinSize([max(bottomContainer.width, topContainer.width) + 10, self.default_height])
         self._UpdateSelectionEntity(self.debugSelectionClient.GetSelectedID(), ' ')
 
 
@@ -124,9 +121,13 @@ class debugSelectionClient(service.Service):
 
     def SelectSelected(self):
         if boot.appname == 'WOD':
-            self._SetEntityID(sm.GetService('selection').GetSelectedEntID())
+            entityID = sm.GetService('selection').GetSelectedEntID()
         else:
-            self._SetEntityID(sm.GetService('selectionClient').GetSelectedEntityID())
+            entityID = sm.GetService('selectionClient').GetSelectedEntityID()
+        if entityID == 0:
+            self.ClearSelection()
+        else:
+            self._SetEntityID(entityID)
 
 
 

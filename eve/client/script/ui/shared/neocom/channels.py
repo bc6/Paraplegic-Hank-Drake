@@ -10,10 +10,13 @@ import util
 import types
 import service
 import chat
-import draw
 import uiutil
 import uiconst
 import uicls
+import localization
+import fontConst
+import localizationUtil
+from collections import defaultdict
 
 class ChannelsSvc(service.Service):
     __exportedcalls__ = {'Show': [],
@@ -34,7 +37,7 @@ class ChannelsSvc(service.Service):
     def Stop(self, memStream = None):
         wnd = self.GetWnd()
         if wnd and not wnd.destroyed:
-            wnd.SelfDestruct()
+            wnd.Close()
 
 
 
@@ -54,7 +57,8 @@ class ChannelsSvc(service.Service):
     def GetWnd(self, create = 0):
         if create:
             sm.GetService('tutorial').OpenTutorialSequence_Check(uix.advchannelsTutorial)
-        return sm.GetService('window').GetWindow('channels', create, decoClass=form.Channels)
+            return form.Channels.Open()
+        return form.Channels.GetIfOpen()
 
 
 
@@ -100,7 +104,7 @@ class ChannelField(listentry.Generic):
 
     def Startup(self, *args):
         listentry.Generic.Startup(self, *args)
-        self.joinleaveBtn = uicls.Button(parent=self, label=mls.UI_CMD_JOIN, func=self.JoinLeaveChannelFromBtn, idx=0, left=2, align=uiconst.CENTERRIGHT)
+        self.joinleaveBtn = uicls.Button(parent=self, label=localization.GetByLabel('UI/Chat/ChannelWindow/Join'), func=self.JoinLeaveChannelFromBtn, idx=0, left=2, align=uiconst.CENTERRIGHT)
 
 
 
@@ -109,9 +113,9 @@ class ChannelField(listentry.Generic):
         if type(self.sr.node.channel.channelID) == types.IntType or self.sr.node.channel.channelID[0][0] in ('global', 'regionid', 'constellationid') or self.sr.node.channel.channelID[0][0] == 'corpid' and self.sr.node.channel.channelID[0][1] != session.corpid:
             self.joinleaveBtn.state = uiconst.UI_NORMAL
             if self.sr.node.isJoined:
-                self.joinleaveBtn.SetLabel(mls.UI_CMD_LEAVE)
+                self.joinleaveBtn.SetLabel(localization.GetByLabel('UI/Chat/ChannelWindow/Leave'))
             else:
-                self.joinleaveBtn.SetLabel(mls.UI_CMD_JOIN)
+                self.joinleaveBtn.SetLabel(localization.GetByLabel('UI/Chat/ChannelWindow/Join'))
         else:
             self.joinleaveBtn.state = uiconst.UI_HIDDEN
 
@@ -119,9 +123,13 @@ class ChannelField(listentry.Generic):
 
     def GetHeight(self, *args):
         (node, width,) = args
-        btnHeight = uix.GetTextHeight(mls.UI_CMD_LEAVE + mls.UI_CMD_JOIN, autoWidth=1, singleLine=1, fontsize=10, hspace=1, uppercase=1) + 9
-        node.height = btnHeight + 2
-        return node.height
+        btnHeight1 = uix.GetTextHeight(localization.GetByLabel('UI/Chat/ChannelWindow/Leave'), singleLine=1, fontsize=fontConst.EVE_SMALL_FONTSIZE, hspace=1, uppercase=1)
+        btnHeight2 = uix.GetTextHeight(localization.GetByLabel('UI/Chat/ChannelWindow/Join'), singleLine=1, fontsize=fontConst.EVE_SMALL_FONTSIZE, hspace=1, uppercase=1)
+        if btnHeight1 > btnHeight2:
+            node.height = btnHeight1
+        else:
+            node.height = btnHeight2
+        return node.height + 11
 
 
 
@@ -140,15 +148,15 @@ class ChannelField(listentry.Generic):
         menu = []
         if type(self.sr.node.channel.channelID) == types.IntType or self.sr.node.channel.channelID[0][0] in ('global', 'regionid', 'constellationid'):
             if sm.GetService('LSC').IsJoined(channelID):
-                menu.append((mls.UI_CMD_LEAVECHANNEL, self.JoinLeaveChannel, (channelID,)))
+                menu.append((localization.GetByLabel('UI/Chat/ChannelWindow/LeaveChannel'), self.JoinLeaveChannel, (channelID,)))
             else:
-                menu.append((mls.UI_CMD_JOINCHANNEL, self.JoinLeaveChannel, (channelID,)))
+                menu.append((localization.GetByLabel('UI/Chat/ChannelWindow/JoinChannel'), self.JoinLeaveChannel, (channelID,)))
         if sm.GetService('LSC').IsOwner(self.sr.node.channel) or type(channelID) != types.IntType and getattr(channelID, 'ownerID', 0) > 100000000 and sm.GetService('LSC').IsCreator(channelID):
-            menu.append((mls.UI_CMD_DELETECHANNEL, self.DeleteChannel))
+            menu.append((localization.GetByLabel('UI/Chat/ChannelWindow/DeleteChannel'), self.DeleteChannel))
         elif sm.GetService('LSC').IsForgettable(channelID):
-            menu.append((mls.UI_CMD_FORGETCHANNEL, self.ForgetChannel))
+            menu.append((localization.GetByLabel('UI/Chat/ChannelWindow/ForgetChannel'), self.ForgetChannel))
         if type(channelID) == types.IntType and sm.GetService('LSC').IsOperator(channelID):
-            menu.append((mls.UI_CMD_SETTINGS, self.Settings))
+            menu.append((localization.GetByLabel('UI/Chat/Settings'), self.Settings))
         if len(menu):
             return menu
 
@@ -210,28 +218,32 @@ class MailboxField(listentry.Generic):
     def Startup(self, *args):
         listentry.Generic.Startup(self, *args)
         if sm.StartService('LSC').IsCreator(self.sr.node.channel.channelID):
-            self.joinleaveBtn = uicls.Button(parent=self, label=mls.UI_CMD_DELETE, func=self.DeleteChannel, idx=0, left=2, align=uiconst.CENTERRIGHT)
+            self.joinleaveBtn = uicls.Button(parent=self, label=localization.GetByLabel('UI/Chat/ChannelWindow/Delete'), func=self.DeleteChannel, idx=0, left=2, align=uiconst.CENTERRIGHT)
         else:
-            self.joinleaveBtn = uicls.Button(parent=self, label=mls.UI_CMD_SUBSCRIBE, func=self.JoinLeaveChannelFromBtn, idx=0, left=2, align=uiconst.CENTERRIGHT)
+            self.joinleaveBtn = uicls.Button(parent=self, label=localization.GetByLabel('UI/Chat/ChannelWindow/Subscribe'), func=self.JoinLeaveChannelFromBtn, idx=0, left=2, align=uiconst.CENTERRIGHT)
 
 
 
     def Load(self, node):
         listentry.Generic.Load(self, node)
         if sm.StartService('LSC').IsCreator(self.sr.node.channel.channelID):
-            self.joinleaveBtn.SetLabel(mls.UI_CMD_DELETE)
+            self.joinleaveBtn.SetLabel(localization.GetByLabel('UI/Chat/ChannelWindow/Delete'))
         elif sm.StartService('LSC').IsJoined(self.sr.node.channel.channelID):
-            self.joinleaveBtn.SetLabel(mls.UI_CMD_UNSUBSCRIBE)
+            self.joinleaveBtn.SetLabel(localization.GetByLabel('UI/Chat/ChannelWindow/Unsubscribe'))
         else:
-            self.joinleaveBtn.SetLabel(mls.UI_CMD_SUBSCRIBE)
+            self.joinleaveBtn.SetLabel(localization.GetByLabel('UI/Chat/ChannelWindow/Subscribe'))
 
 
 
     def GetHeight(self, *args):
         (node, width,) = args
-        btnHeight = uix.GetTextHeight(mls.UI_CMD_UNSUBSCRIBE + mls.UI_CMD_SUBSCRIBE, autoWidth=1, singleLine=1, fontsize=10, hspace=1, uppercase=1) + 9
-        node.height = btnHeight + 2
-        return node.height
+        btnHeight1 = uix.GetTextHeight(localization.GetByLabel('UI/Chat/ChannelWindow/Unsubscribe'), singleLine=1, fontsize=fontConst.EVE_SMALL_FONTSIZE, hspace=1, uppercase=1)
+        btnHeight2 = uix.GetTextHeight(localization.GetByLabel('UI/Chat/ChannelWindow/Subscribe'), singleLine=1, fontsize=fontConst.EVE_SMALL_FONTSIZE, hspace=1, uppercase=1)
+        if btnHeight1 > btnHeight2:
+            node.height = btnHeight1
+        else:
+            node.height = btnHeight2
+        return node.height + 11
 
 
 
@@ -241,15 +253,17 @@ class MailboxField(listentry.Generic):
         menu = []
         if not sm.StartService('LSC').IsCreator(channelID):
             if sm.StartService('LSC').IsJoined(channelID):
-                menu.append((mls.UI_CMD_UNSUBSCRIBEFROMLIST, self.JoinLeaveChannel, (channelID,)))
+                label = localization.GetByLabel('UI/Chat/ChannelWindow/UnsubscribeFromList')
+                menu.append((label, self.JoinLeaveChannel, (channelID,)))
             else:
-                menu.append((mls.UI_CMD_SUBSCRIBETOLIST, self.JoinLeaveChannel, (channelID,)))
+                label = localization.GetByLabel('UI/Chat/ChannelWindow/SubscribeToList')
+                menu.append((label, self.JoinLeaveChannel, (channelID,)))
         if sm.GetService('LSC').IsCreator(channelID):
-            menu.append((mls.UI_CMD_DELETELIST, self.DeleteChannel))
+            menu.append((localization.GetByLabel('UI/Chat/ChannelWindow/DeleteList'), self.DeleteChannel))
         elif sm.GetService('LSC').IsForgettable(channelID):
-            menu.append((mls.UI_CMD_FORGETLIST, self.ForgetChannel))
+            menu.append((localization.GetByLabel('UI/Chat/ChannelWindow/ForgetList'), self.ForgetChannel))
         if type(channelID) == types.IntType and sm.GetService('LSC').IsOperator(channelID):
-            menu.append((mls.UI_CMD_SETTINGS, self.Settings))
+            menu.append((localization.GetByLabel('UI/Chat/Settings'), self.Settings))
         if len(menu):
             return menu
 
@@ -314,21 +328,22 @@ class MailboxField(listentry.Generic):
 class Channels(uicls.Window):
     __guid__ = 'form.Channels'
     __neocommenuitem__ = (('Channel window', '51_10'), 'Startup', service.ROLE_GML)
+    default_windowID = 'channels'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.loadingShowcontent = 0
         self.SetScope('station_inflight')
         self.SetMinSize([400, 250])
-        self.SetCaption(mls.UI_SHARED_CHANNELS)
+        self.SetCaption(localization.GetByLabel('UI/Chat/ChannelWindow/Channels'))
         self.SetWndIcon('ui_9_64_2')
         self.SetTopparentHeight(70)
-        self.sr.inpt = inpt = uicls.SinglelineEdit(name='input', parent=self.sr.topParent, maxLength=60, left=74, top=20, width=86, label=mls.UI_SHARED_CHANNELNAME)
-        joinBtn = uicls.Button(parent=self.sr.topParent, label=mls.UI_CMD_JOIN, pos=(inpt.left,
+        self.sr.inpt = inpt = uicls.SinglelineEdit(name='input', parent=self.sr.topParent, maxLength=60, left=74, top=20, width=86, label=localization.GetByLabel('UI/Chat/ChannelWindow/Channels'))
+        joinBtn = uicls.Button(parent=self.sr.topParent, label=localization.GetByLabel('UI/Chat/ChannelWindow/Join'), pos=(inpt.left,
          inpt.top + inpt.height + 4,
          0,
          0), func=self.JoinChannelFromBtn, args='self', btn_default=1)
-        createBtn = uicls.Button(parent=self.sr.topParent, label=mls.UI_CMD_CREATE, pos=(joinBtn.left + joinBtn.width + 2,
+        createBtn = uicls.Button(parent=self.sr.topParent, label=localization.GetByLabel('UI/Chat/ChannelWindow/Create'), pos=(joinBtn.left + joinBtn.width + 2,
          joinBtn.top,
          0,
          0), func=self.CreateChannelFromBtn, args='self')
@@ -345,46 +360,66 @@ class Channels(uicls.Window):
 
 
 
+    def GetNameFromMessageIDWithReplacement(self, messageID):
+        if messageID == const.CHAT_SYSTEM_CHANNEL:
+            return localization.GetByLabel('UI/Chat/SystemChannels')
+        else:
+            return localization.GetByMessageID(messageID)
+
+
+
     def ShowContent_thread(self, reload = 1):
         if getattr(self, 'loadingShowcontent', 0):
             return 
         self.loadingShowcontent = 1
         try:
             channels = sm.GetService('LSC').GetChannels(reload)
-            what = mls.UI_SHARED_CHANNELS
-            scrolllist = []
-            tree = {mls.UI_GENERIC_OTHER: {}}
-            for channel in channels:
-                if channel.displayName is None or getattr(channel, 'temporary', 0):
-                    continue
-                path = channel.displayName.split('\\')
-                if len(path) > 1:
-                    l = tree
-                    for i in range(len(path)):
-                        p = path[i].capitalize()
-                        if i == len(path) - 1:
-                            l[p] = channel
-                        elif p not in l:
-                            l[p] = {}
-                            l = l[p]
-                        else:
-                            l = l[p]
+            myChannels = localization.GetByLabel('UI/Chat/ChannelWindow/MyChannels')
+            playerChannels = localization.GetByLabel('UI/Chat/ChannelWindow/PlayerChannels')
+            tree = defaultdict(dict)
+            groupNames = set([ row.groupMessageID for row in channels if row.groupMessageID if not row.temporary ])
+            for groupMessageID in groupNames:
+                tree[self.GetNameFromMessageIDWithReplacement(groupMessageID)] = {}
 
-                elif channel.ownerID == const.ownerSystem:
-                    tree[mls.UI_GENERIC_OTHER][channel.displayName] = channel
-                elif channel.ownerID == eve.session.charid:
-                    if '%s %s' % (mls.UI_GENERIC_MY, what) not in tree:
-                        tree['%s %s' % (mls.UI_GENERIC_MY, what)] = {}
-                    tree[('%s %s' % (mls.UI_GENERIC_MY, what))][channel.displayName] = channel
+            for channel in channels:
+                if channel.temporary:
+                    continue
+                if channel.groupMessageID:
+                    groupName = self.GetNameFromMessageIDWithReplacement(channel.groupMessageID)
+                    groupName = uiutil.StripTags(groupName, stripOnly=['localized'])
+                    channelGroup = tree[groupName]
+                    if channel.channelMessageID == const.CHAT_SYSTEM_CHANNEL:
+                        if channel.displayName is not None:
+                            channelName = localization.GetByLabel('UI/Chat/ChannelWindow/ChannelWithForienDisplay2', msg=localization.GetByLabel('UI/Chat/SystemChannels'), displayName=channel.displayName)
+                        else:
+                            channelName = localization.GetByLabel('UI/Chat/SystemChannels')
+                        channelGroup[channelName] = channel
+                    elif isinstance(channel.channelMessageID, unicode):
+                        channelGroup[channel.channelMessageID] = channel
+                    else:
+                        if channel.displayName is not None:
+                            channelName = localization.GetByLabel('UI/Chat/ChannelWindow/ChannelWithForienDisplay', msgID=channel.channelMessageID, displayName=channel.displayName)
+                        else:
+                            channelName = localization.GetByMessageID(channel.channelMessageID)
+                        channelGroup[channelName] = channel
                 else:
-                    if '%s %s' % (mls.UI_GENERIC_PLAYER, what) not in tree:
-                        tree['%s %s' % (mls.UI_GENERIC_PLAYER, what)] = {}
-                    tree[('%s %s' % (mls.UI_GENERIC_PLAYER, what))][channel.displayName] = channel
+                    channelGroup = None
+                    if channel.ownerID == const.ownerSystem:
+                        channelGroup = tree[otherChannels]
+                        channelName = self.GetNameFromMessageIDWithReplacement(channel.channelMessageID)
+                    elif channel.ownerID == eve.session.charid:
+                        channelGroup = tree[myChannels]
+                        channelName = channel.displayName
+                    else:
+                        channelGroup = tree[playerChannels]
+                        channelName = channel.displayName
+                    if channelGroup is not None:
+                        channelGroup[channelName] = channel
 
             if not self or self.destroyed:
                 return 
             scrolllist = self._Channels__BuildTreeList(tree)
-            h = [mls.UI_GENERIC_NAME, mls.UI_CORP_MEMBERS]
+            h = [localization.GetByLabel('UI/Chat/ChannelWindow/Name'), localization.GetByLabel('UI/Chat/ChannelWindow/Members')]
             self.sr.scroll.Load(fixedEntryHeight=24, contentList=scrolllist, headers=h)
 
         finally:
@@ -397,15 +432,15 @@ class Channels(uicls.Window):
     def __BuildTreeList(self, tree, indent = 0):
         ret = []
         lscSvc = None
-        h = [mls.UI_GENERIC_NAME, mls.UI_CORP_MEMBERS]
+        h = [localization.GetByLabel('UI/Chat/ChannelWindow/Name'), localization.GetByLabel('UI/Chat/ChannelWindow/Members')]
         guid = 'ChannelField'
         lscSvc = sm.StartService('LSC')
         for (k, v,) in tree.iteritems():
-            if type(v) == types.DictType:
-                group = uicore.registry.GetListGroup(('CHANNELSchannels', k))
+            if isinstance(v, dict):
                 data = {'GetSubContent': self._Channels__GetSubContent,
                  'RefreshScroll': self.RefreshMine,
-                 'label': '    ' * indent + k,
+                 'label': k,
+                 'sublevel': indent,
                  'id': ('CHANNELSchannels', k),
                  'groupItems': (indent, v),
                  'headers': h,
@@ -414,13 +449,18 @@ class Channels(uicls.Window):
                  'state': 'locked',
                  'allowCopy': 0,
                  'showicon': 'ui_22_32_32',
-                 'posttext': ' [%s]' % len(v),
+                 'posttext': localization.GetByLabel('UI/Chat/NumChannels', numChannels=len(v)),
                  'allowGuids': ['listentry.Group', 'listentry.%s' % guid]}
                 ret.append((k, listentry.Get('Group', data)))
             else:
                 data = util.KeyVal()
                 data.channel = v
-                data.label = '    ' * indent + '%s<t>%s' % (v.displayName.split('\\')[-1], v.estimatedMemberCount or '')
+                if v.estimatedMemberCount:
+                    emc = localizationUtil.FormatNumeric(v.estimatedMemberCount)
+                    data.label = '%s<t>%s' % (k, emc)
+                else:
+                    data.label = '%s<t>' % (k,)
+                data.sublevel = indent
                 data.isJoined = lscSvc.IsJoined(v.channelID)
                 ret.append((v.displayName, listentry.Get(guid, data=data)))
 
@@ -464,8 +504,9 @@ class Channels(uicls.Window):
         try:
             channelID = sm.GetService('LSC').GetChannelIDFromName(name)
             if channelID is not None:
-                wnd = sm.GetService('window').GetWindow('chatchannel_%s' % channelID, create=0, maximize=1)
+                wnd = uicls.Window.GetIfOpen('chatchannel_%s' % channelID)
                 if wnd:
+                    wnd.Maximize()
                     eve.Message('LSCChannelIsJoined', {'displayName': name})
                     return 
             btn.Disable()

@@ -2,6 +2,7 @@ import blue
 import const
 import form
 import listentry
+import localization
 import service
 import uix
 import uiutil
@@ -13,31 +14,20 @@ import weakref
 import math
 import log
 
-class LPStoreLabel(uicls.Label):
+class LPStoreLabel(uicls.EveLabelMedium):
     __guid__ = 'lpstore.LPStoreLabel'
-    default_fontsize = 12
-    default_autoheight = True
-    default_letterspace = 0
     default_align = uiconst.TOTOP
 
 
-class LPStoreEntryLabel(uicls.Label):
+class LPStoreEntryLabel(uicls.EveLabelMedium):
     __guid__ = 'lpstore.LPStoreEntryLabel'
-    default_fontsize = 12
-    default_letterspace = 0
-    default_autowidth = True
-    default_autoheight = True
     default_align = uiconst.CENTERRIGHT
     default_singleline = False
 
 
-class LPStoreHeaderLabel(uicls.Label):
+class LPStoreHeaderLabel(uicls.EveLabelSmall):
     __guid__ = 'lpstore.LPStoreHeaderLabel'
-    default_fontsize = 10
-    default_letterspace = 2
     default_align = uiconst.TOTOP
-    default_uppercase = True
-    default_autoheight = True
 
 
 class LPStoreButton(uicls.Container):
@@ -61,25 +51,31 @@ def GetItemText(typeID, qty, checkIsBlueprint = True):
         invgroup = invtype.Group()
         if invgroup.categoryID == const.categoryBlueprint:
             isBlueprint = True
-    name = cfg.invtypes.Get(typeID).name
     if isBlueprint:
-        txt = '%s<br><b>(%s)</b>' % (name, mls.UI_GENERIC_RUNCOPY % {'n': qty})
+        if qty == 1:
+            runText = localization.GetByLabel('UI/Agents/Items/BlueprintInfoSingleRun')
+        else:
+            runText = localization.GetByLabel('UI/Agents/Items/BlueprintInfoMultirun', runsRemaining=qty)
+        txt = '%s <br> <b>(%s, %s)</b>' % (cfg.invtypes.Get(typeID).name, runText, localization.GetByLabel('UI/Agents/Items/BlueprintInfoCopy'))
     else:
-        txt = '%i x %s' % (qty, name)
+        txt = localization.GetByLabel('UI/LPStore/RewardItem', quantity=qty, rewardItem=typeID)
     return txt
 
 
 
 class LPStoreSvc(service.Service):
     __guid__ = 'svc.lpstore'
-    __notifyevents__ = ['OnAccountChange', 'ProcessSessionChange', 'OnLPChange']
+    __notifyevents__ = ['OnAccountChange',
+     'ProcessSessionChange',
+     'OnLPChange',
+     'OnUIRefresh']
     __dependencies__ = ['settings']
     settingsVersion = 4
 
     def Run(self, *etc):
         service.Service.Run(self, *etc)
         self.cache = uiutil.Bunch()
-        self.defaultPreset = mls.UI_LPSTORE_PRESETAFFORDABLE
+        self.defaultPreset = localization.GetByLabel('UI/LPStore/PresetAffordable')
 
 
 
@@ -119,7 +115,8 @@ class LPStoreSvc(service.Service):
         exchangeRate = self.GetConcordLPExchangeRate()
         myConcordLP = self.GetMyConcordLPs()
         corporationLPs = self.GetMyLPs(corpID)
-        wnd = sm.GetService('window').GetWindow('lpExchangeDialog', decoClass=form.LPExhangeDialog, create=True, ignoreCurrent=True, currentFromCorpLPs=myConcordLP, currentToCorpLPs=corporationLPs, exchangeRate=exchangeRate, toCorpID=corpID)
+        form.LPExhangeDialog.CloseIfOpen(windowID='LPExhangeDialog_%s' % corpID)
+        wnd = form.LPExhangeDialog.Open(windowID='LPExhangeDialog_%s' % corpID, currentFromCorpLPs=myConcordLP, currentToCorpLPs=corporationLPs, exchangeRate=exchangeRate, toCorpID=corpID)
 
 
 
@@ -164,7 +161,7 @@ class LPStoreSvc(service.Service):
 
     def ChangeFilters(self, newFilters):
         self.currentFilters = newFilters
-        self.currentPreset = mls.UI_LPSTORE_PRESETNONE
+        self.currentPreset = localization.GetByLabel('UI/LPStore/PresetNone')
         self._PersistFilters()
         sm.ScatterEvent('OnLPStoreCurrentPresetChange')
         sm.ScatterEvent('OnLPStoreFilterChange')
@@ -182,8 +179,8 @@ class LPStoreSvc(service.Service):
 
     def GetPresets(self):
         ret = self._GetDefaultPresets() + self.userPresets
-        if self.currentPreset == mls.UI_LPSTORE_PRESETNONE:
-            ret.insert(0, uiutil.Bunch(label=mls.UI_LPSTORE_PRESETNONE, filters=None, editable=False))
+        if self.currentPreset == localization.GetByLabel('UI/LPStore/PresetNone'):
+            ret.insert(0, uiutil.Bunch(label=localization.GetByLabel('UI/LPStore/PresetNone'), filters=None, editable=False))
         return ret
 
 
@@ -238,7 +235,7 @@ class LPStoreSvc(service.Service):
             return 
         self.userPresets = [ uiutil.Bunch(**d) for d in self._GetSetting('lpStoreFilterPresets', []) ]
         self.currentPreset = self._GetSetting('lpStoreCurrentPreset', self.defaultPreset)
-        if self.currentPreset == mls.UI_LPSTORE_PRESETNONE:
+        if self.currentPreset == localization.GetByLabel('UI/LPStore/PresetNone'):
             self.currentFilters = settings.user.ui.Get('lpStoreCurrentFilters', self._GetPresetFilters(self.defaultPreset))
         else:
             self.currentFilters = self._GetPresetFilters(self.currentPreset)
@@ -247,7 +244,7 @@ class LPStoreSvc(service.Service):
 
 
     def _GetPresetFilters(self, label):
-        if label == mls.UI_LPSTORE_PRESETNONE:
+        if label == localization.GetByLabel('UI/LPStore/PresetNone'):
             return self.currentFilters
         for preset in self.GetPresets():
             if preset.label == label:
@@ -267,7 +264,7 @@ class LPStoreSvc(service.Service):
 
     def _PersistFilters(self):
         self._SetSetting('lpStoreCurrentPreset', self.currentPreset)
-        if self.currentPreset == mls.UI_LPSTORE_PRESETNONE:
+        if self.currentPreset == localization.GetByLabel('UI/LPStore/PresetNone'):
             self._SetSetting('lpStoreCurrentFilters', self.currentFilters)
         self.settings.SaveSettings()
 
@@ -277,7 +274,7 @@ class LPStoreSvc(service.Service):
         affordableFilters = {'reqNotInHangar': True,
          'dynamicMaxLP': True,
          'dynamicMaxISK': True}
-        return [uiutil.Bunch(label=mls.UI_LPSTORE_PRESETAFFORDABLE, filters=affordableFilters, editable=False), uiutil.Bunch(label=mls.UI_LPSTORE_PRESETALL, filters={}, editable=False)]
+        return [uiutil.Bunch(label=localization.GetByLabel('UI/LPStore/PresetAffordable'), filters=affordableFilters, editable=False), uiutil.Bunch(label=localization.GetByLabel('UI/LPStore/PresetAll'), filters={}, editable=False)]
 
 
 
@@ -296,11 +293,11 @@ class LPStoreSvc(service.Service):
             offer = GetItemText(data.typeID, data.qty).replace('<br>', ' ')
             price = ''
             if data.lpCost > 0:
-                price = '* %s %s<br>' % (util.FmtAmt(data.lpCost), ' ' + mls.UI_GENERIC_LP)
+                price = localization.GetByLabel('UI/LPStore/PriceInLPPoints', lpPrice=util.FmtAmt(data.lpCost)) + '<br>'
             if data.iskCost > 0:
-                price += '* %s<br>' % util.FmtISK(data.iskCost)
+                price += localization.GetByLabel('UI/LPStore/OfferItems', itemText=util.FmtISK(data.iskCost)) + '<br>'
             for item in data.reqItems:
-                price += '* %s<br>' % GetItemText(item[0], item[1])
+                price += localization.GetByLabel('UI/LPStore/OfferItems', itemText=GetItemText(item[0], item[1])) + '<br>'
 
             if eve.Message('ConfirmAcceptLPOffer', {'offer': offer,
              'price': price}, uiconst.OKCANCEL, uiconst.ID_OK) != uiconst.ID_OK:
@@ -324,7 +321,7 @@ class LPStoreSvc(service.Service):
     def HaveItem(self, typeID, qty):
         if self.cache.hangarInv is None:
             hi = {}
-            inv = eve.GetInventory(const.containerHangar).List()
+            inv = sm.GetService('invCache').GetInventory(const.containerHangar).List()
             for item in inv:
                 if not item.singleton:
                     hi[item.typeID] = max(hi.get(item.typeID, 0), item.stacksize)
@@ -356,10 +353,17 @@ class LPStoreSvc(service.Service):
         self.cache.corpID = corpID
         self._InitPresets()
         self.cache.hangarInv = None
-        wnd = sm.GetService('window').GetWindow('lpstore', create=True, decoClass=form.LPStore)
-        wnd.Maximize()
-        wnd.state = uiconst.UI_NORMAL
-        wnd.RefreshIfNotAlready()
+        wnd = form.LPStore.ToggleOpenClose()
+        if wnd:
+            wnd.RefreshIfNotAlready()
+
+
+
+    def OnUIRefresh(self):
+        wnd = form.LPStore.GetIfOpen()
+        if wnd:
+            wnd.Close()
+            self.OpenLPStore(self.cache.corpID)
 
 
 
@@ -371,7 +375,7 @@ class LPStoreSvc(service.Service):
 
 
     def __DirtyWindow(self):
-        blue.pyos.synchro.Sleep(1000)
+        blue.pyos.synchro.SleepWallclock(1000)
         if self.cache.offers:
             self._RefreshOfferSortValues()
         w = self._GetWnd()
@@ -382,7 +386,7 @@ class LPStoreSvc(service.Service):
 
 
     def _GetWnd(self):
-        return sm.GetService('window').GetWindow('lpstore')
+        return form.LPStore.GetIfOpen()
 
 
 
@@ -393,11 +397,11 @@ class LPStoreSvc(service.Service):
 
 
     def ProcessSessionChange(self, isremote, session, change):
-        if 'stationid' in change:
+        if 'stationid2' in change:
             self.cache.clear()
             w = self._GetWnd()
             if w:
-                w.SelfDestruct()
+                w.Close()
 
 
 
@@ -408,8 +412,8 @@ class LPStoreSvc(service.Service):
         if self.cache.concordLps is not None:
             del self.cache.concordLps
         self.DirtyWindow()
-        if eve.session.stationid and currentLPs == 0:
-            sm.GetService('station').LoadLobby()
+        if session.stationid2 and currentLPs == 0:
+            sm.GetService('station').ReloadLobby()
 
 
 
@@ -430,11 +434,11 @@ class LPStoreSvc(service.Service):
             return lpsvc.HaveLPs(lpCost) and lpsvc.HaveISK(iskCost) and not [ 1 for (typeID, qty,) in reqItems if not lpsvc.HaveItem(typeID, qty) ]
 
 
-        for (label, sortval,) in [(mls.UI_LPSTORE_REWARD, cfg.invtypes.Get(data.typeID).name),
-         (mls.UI_LPSTORE_LPCOST, lpCost),
-         (mls.UI_LPSTORE_ISKCOST, iskCost),
-         (mls.UI_LPSTORE_REQUIREDITEMS, ReqItemsSortVal()),
-         (mls.UI_LPSTORE_ACCEPT, not CanAccept())]:
+        for (label, sortval,) in [(localization.GetByLabel('UI/LPStore/Reward'), cfg.invtypes.Get(data.typeID).name),
+         (localization.GetByLabel('UI/LPStore/LPCost'), lpCost),
+         (localization.GetByLabel('UI/LPStore/ISKCost'), iskCost),
+         (localization.GetByLabel('UI/LPStore/RequiredItems'), ReqItemsSortVal()),
+         (localization.GetByLabel('UI/LPStore/Accept'), not CanAccept())]:
             data.Set('sort_%s' % label, sortval)
 
 
@@ -458,18 +462,18 @@ class LPOfferEntry(uicls.SE_BaseClassCore):
         self.sr.rewardInfoIcon = uicls.InfoIcon(parent=self.sr.rewardIconParent, align=uiconst.TOPRIGHT, left=10, top=10)
         self.sr.icon = uicls.Icon(parent=self.sr.rewardIconParent, size=self.iconSize, ignoreSize=True, align=uiconst.CENTER, state=uiconst.UI_DISABLED)
         subPar = uicls.Container(parent=self.sr.rewardParent, name='rewardLabelClipper', state=uiconst.UI_DISABLED, align=uiconst.TOALL, clipChildren=True)
-        self.sr.rewardLabel = LPStoreEntryLabel(parent=subPar, left=self.labelMargin, align=uiconst.CENTERLEFT, autowidth=False)
+        self.sr.rewardLabel = LPStoreEntryLabel(parent=subPar, left=self.labelMargin, align=uiconst.CENTERLEFT)
         subPar = uicls.Container(name='lpCostParent', parent=self, state=uiconst.UI_PICKCHILDREN, align=uiconst.TOLEFT, clipChildren=True)
-        self.sr.noLPsIcon = uicls.Icon(name='noLPsIcon', parent=subPar, icon='ui_38_16_194', hint=mls.UI_LPSTORE_DONTHAVELPSHINT, size=16, left=2, align=uiconst.CENTERLEFT)
+        self.sr.noLPsIcon = uicls.Icon(name='noLPsIcon', parent=subPar, icon='ui_38_16_194', hint=localization.GetByLabel('UI/LPStore/HintInsufficientLPs'), size=16, left=2, align=uiconst.CENTERLEFT)
         self.sr.lpCostLabel = LPStoreEntryLabel(parent=subPar, name='lpCostLabel', left=self.labelMargin)
         subPar = uicls.Container(name='iskCostParent', parent=self, state=uiconst.UI_PICKCHILDREN, align=uiconst.TOLEFT, clipChildren=True)
-        self.sr.noISKIcon = uicls.Icon(name='noISKIcon', parent=subPar, icon='ui_38_16_194', hint=mls.UI_LPSTORE_DONTHAVEISKHINT, size=16, left=2, align=uiconst.CENTERLEFT)
+        self.sr.noISKIcon = uicls.Icon(name='noISKIcon', parent=subPar, icon='ui_38_16_194', hint=localization.GetByLabel('UI/LPStore/HintInsufficientISK'), size=16, left=2, align=uiconst.CENTERLEFT)
         self.sr.iskCostLabel = LPStoreEntryLabel(parent=subPar, name='iskCostLabel', align=uiconst.CENTERRIGHT, left=self.labelMargin)
         subPar = uicls.Container(name='reqItemsParent', parent=self, state=uiconst.UI_PICKCHILDREN, align=uiconst.TOLEFT, clipChildren=True)
         self.sr.reqItems = uicls.Container(name='reqItems', parent=subPar, align=uiconst.CENTERLEFT)
         subPar = uicls.Container(name='acceptParent', parent=self, state=uiconst.UI_PICKCHILDREN, align=uiconst.TOLEFT, clipChildren=True)
-        self.sr.acceptBtn = uicls.Button(name='acceptBtn', parent=subPar, label=mls.UI_LPSTORE_ACCEPT, align=uiconst.CENTER)
-        self.sr.cannotAcceptIcon = uicls.Icon(parent=subPar, icon='ui_38_16_194', name='cannotAcceptIcon', size=16, hint=mls.UI_LPSTORE_CANNOTACCEPTHINT, align=uiconst.CENTER)
+        self.sr.acceptBtn = uicls.Button(name='acceptBtn', parent=subPar, label=localization.GetByLabel('UI/LPStore/Accept'), align=uiconst.CENTER)
+        self.sr.cannotAcceptIcon = uicls.Icon(parent=subPar, icon='ui_38_16_194', name='cannotAcceptIcon', size=16, hint=localization.GetByLabel('UI/LPStore/HintCannotAccept'), align=uiconst.CENTER)
 
 
 
@@ -497,7 +501,7 @@ class LPOfferEntry(uicls.SE_BaseClassCore):
          abstractInfo)
         if lpCost >= 0:
             self.sr.rewardLabel.SetText(GetItemText(data.typeID, data.Get('qty', 1)))
-            self.sr.lpCostLabel.SetText('%s %s' % (str(util.FmtAmt(lpCost)), mls.UI_GENERIC_LP))
+            self.sr.lpCostLabel.SetText(localization.GetByLabel('UI/LPStore/AmountLP', lpAmount=str(util.FmtAmt(lpCost))))
         else:
             self.sr.lpCostLabel.SetText('-')
             self.sr.rewardLabel.SetText(GetItemText(data.typeID, lpCost * -1))
@@ -507,7 +511,7 @@ class LPOfferEntry(uicls.SE_BaseClassCore):
             self.sr.noLPsIcon.state = uiconst.UI_NORMAL
             anyMiss.add(True)
         iskCost = data.Get('iskCost', 0)
-        self.sr.iskCostLabel.text = str(util.FmtISK(iskCost))
+        self.sr.iskCostLabel.text = util.FmtISK(iskCost)
         if sm.GetService('lpstore').HaveISK(iskCost):
             self.sr.noISKIcon.state = uiconst.UI_HIDDEN
         else:
@@ -543,11 +547,7 @@ class LPOfferEntry(uicls.SE_BaseClassCore):
             self.sr.acceptBtn.state = uiconst.UI_NORMAL
             self.sr.cannotAcceptIcon.state = uiconst.UI_HIDDEN
         self.sr.icon.color.a = self.sr.rewardLabel.color.a = alpha
-        self.hint = '%s<br><b>%s:</b>%s<br><b>%s:</b>%s' % (self.sr.rewardLabel.text,
-         mls.UI_LPSTORE_LPCOST,
-         self.sr.lpCostLabel.text,
-         mls.UI_LPSTORE_ISKCOST,
-         self.sr.iskCostLabel.text)
+        self.hint = localization.GetByLabel('UI/LPStore/HintRewardCost', rewardLabel=self.sr.rewardLabel.text, lpCost=localization.GetByLabel('UI/LPStore/LPCost'), lpCostLabel=self.sr.lpCostLabel.text, iskCost=localization.GetByLabel('UI/LPStore/ISKCost'), iskCostLabel=self.sr.iskCostLabel.text)
 
 
 
@@ -568,11 +568,11 @@ class LPOfferEntry(uicls.SE_BaseClassCore):
 
     def GetColumnWidth(_self, node, column):
         if not hasattr(listentry.LPOffer, 'columnWidths'):
-            listentry.LPOffer.columnWidths = {mls.UI_LPSTORE_REWARD: 200,
-             mls.UI_LPSTORE_LPCOST: 80,
-             mls.UI_LPSTORE_ISKCOST: 115,
-             mls.UI_LPSTORE_REQUIREDITEMS: 200,
-             mls.UI_LPSTORE_ACCEPT: 80}
+            listentry.LPOffer.columnWidths = {localization.GetByLabel('UI/LPStore/Reward'): 200,
+             localization.GetByLabel('UI/LPStore/LPCost'): 80,
+             localization.GetByLabel('UI/LPStore/ISKCost'): 115,
+             localization.GetByLabel('UI/LPStore/RequiredItems'): 200,
+             localization.GetByLabel('UI/LPStore/Accept'): 80}
         return listentry.LPOffer.columnWidths[column]
 
 
@@ -588,7 +588,7 @@ class RequiredItem(uicls.Container):
     def ApplyAttributes(self, attributes):
         uicls.Container.ApplyAttributes(self, attributes)
         par = uicls.Container(name='cannotParent', parent=self, state=uiconst.UI_PICKCHILDREN, width=18, align=uiconst.TOLEFT)
-        self.sr.cannotIcon = uicls.Icon(icon='ui_38_16_194', parent=par, hint=mls.UI_LPSTORE_DONTHAVEITEMHINT, align=uiconst.CENTER, name='cannotIcon')
+        self.sr.cannotIcon = uicls.Icon(icon='ui_38_16_194', parent=par, hint=localization.GetByLabel('UI/LPStore/HintRequiredItemsMissing'), align=uiconst.CENTER, name='cannotIcon')
         par = uicls.Container(name='infoParent', state=uiconst.UI_PICKCHILDREN, parent=self, align=uiconst.TORIGHT, width=18)
         self.sr.infoIcon = uicls.InfoIcon(name='infoIcon', parent=par, align=uiconst.CENTER)
         par = uicls.Container(parent=self, name='labelClipper', clipChildren=True, align=uiconst.TOALL, state=uiconst.UI_PICKCHILDREN)
@@ -600,12 +600,13 @@ class RequiredItem(uicls.Container):
 class LPStoreWindow(uicls.Window):
     __guid__ = 'form.LPStore'
     __notifyevents__ = ['OnLPStoreFilterChange', 'OnLPStoreCurrentPresetChange', 'OnLPStorePresetsChange']
+    default_windowID = 'lpstore'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.SetWndIcon('ui_70_64_11', size=128)
         self.SetMainIconSize(64)
-        self.SetCaption(mls.UI_LPSTORE_LPSTORE)
+        self.SetCaption(localization.GetByLabel('UI/LPStore/WindowTitle'))
         self.SetTopparentHeight(61)
         self.SetMinSize((685, 300))
         self.ConstructHeader()
@@ -613,17 +614,22 @@ class LPStoreWindow(uicls.Window):
 
 
 
+    def OnUIRefresh(self):
+        pass
+
+
+
     def ConstructHeader(self):
         self.sr.topParent.state = uiconst.UI_PICKCHILDREN
         top = uicls.Container(parent=self.sr.topParent, name='top', align=uiconst.TOTOP, margin=2, height=36)
-        self.sr.corpLabel = uicls.Label(parent=top, name='corpLabel', align=uiconst.TOPRIGHT, fontsize=18, left=10, autowidth=True, autoheight=True, state=uiconst.UI_NORMAL)
-        self.sr.corpLPsLabel = uicls.Label(parent=top, name='corpLPsLabel', align=uiconst.TOPRIGHT, fontsize=12, left=10, top=22, uppercase=True, autowidth=True, autoheight=True, state=uiconst.UI_NORMAL)
+        self.sr.corpLabel = uicls.Label(parent=top, name='corpLabel', align=uiconst.TOPRIGHT, fontsize=18, left=10, state=uiconst.UI_NORMAL)
+        self.sr.corpLPsLabel = uicls.EveLabelMedium(parent=top, name='corpLPsLabel', align=uiconst.TOPRIGHT, left=10, top=22, state=uiconst.UI_NORMAL)
         xchangeRate = sm.GetService('lpstore').GetConcordLPExchangeRate()
-        self.sr.exchangeButton = uicls.Button(parent=self.sr.topParent, name='exchangeBtn', align=uiconst.TOPRIGHT, top=40, left=5, label=mls.UI_LPSTORE_CONCORD_EXCHANGE)
+        self.sr.exchangeButton = uicls.Button(parent=self.sr.topParent, name='exchangeBtn', align=uiconst.TOPRIGHT, top=40, left=5, label=localization.GetByLabel('UI/LPStore/ConcordExchange'))
         filterParent = uicls.Container(parent=self.sr.topParent, name='filterParent', pos=(100, 0, 200, 55), align=uiconst.RELATIVE)
-        uicls.Label(parent=filterParent, text=mls.UI_LPSTORE_OFFERSFILTEREDBY, left=6, top=2, autowidth=True, autoheight=True, align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL)
-        self.sr.presetCombo = uicls.Combo(parent=filterParent, name='presetCombo', left=5, top=16, width=120)
-        self.sr.filterBtn = uicls.Button(parent=filterParent, name='filterBtn', left=5, top=40, label=mls.UI_LPSTORE_EDITFILTERS)
+        uicls.EveLabelMedium(parent=filterParent, text=localization.GetByLabel('UI/LPStore/OfferFilter'), left=6, top=2, align=uiconst.TOPLEFT, state=uiconst.UI_NORMAL)
+        self.sr.presetCombo = uicls.Combo(parent=filterParent, name='presetCombo', left=5, top=16, adjustWidth=True)
+        self.sr.filterBtn = uicls.Button(parent=filterParent, name='filterBtn', left=5, top=40, label=localization.GetByLabel('UI/LPStore/EditFilters'))
 
 
 
@@ -648,9 +654,8 @@ class LPStoreWindow(uicls.Window):
         try:
             self.factionID = sm.GetService('map').GetItem(eve.session.solarsystemid2).factionID
             self.RefreshPresets()
-            self.sr.corpLabel.SetText('%(corpName)s' % {'corpName': sm.GetService('lpstore').GetCurrentCorpName()})
-            self.sr.corpLPsLabel.SetText('%(mlsLPs)s: <b>%(LPs)s</b>' % {'mlsLPs': mls.UI_LPSTORE_LPS,
-             'LPs': sm.GetService('lpstore').GetMyLPs()})
+            self.sr.corpLabel.SetText(sm.GetService('lpstore').GetCurrentCorpName())
+            self.sr.corpLPsLabel.SetText(localization.GetByLabel('UI/LPStore/CurrentLPs', lpAmount=sm.GetService('lpstore').GetMyLPs()))
 
         finally:
             self.HideLoad()
@@ -665,15 +670,13 @@ class LPStoreWindow(uicls.Window):
 
 
 
-    def OnClose_(self, *etc):
+    def _OnClose(self, *etc):
         self.ReleaseOfferRefreshDespammer()
 
 
 
     def OpenFilters(self):
-        wnd = sm.GetService('window').GetWindow('lpfilter', create=True, decoClass=form.LPStoreFilters)
-        wnd.Maximize()
-        wnd.state = uiconst.UI_NORMAL
+        wnd = form.LPStoreFilters.Open()
 
 
 
@@ -694,13 +697,12 @@ class LPStoreWindow(uicls.Window):
         else:
             exchangeRate = lpSvc.GetConcordLPExchangeRate()
             if exchangeRate is None or exchangeRate == 0.0:
-                hint = mls.UI_LPSTORE_EXCHANGE_UNAVAILABLE_RATE_NOT_DEFINED
+                hint = localization.GetByLabel('UI/LPStore/ExchangeRateNotDefined', fromCorpName=fromCorpName, toCorpName=toCorpName)
             elif fromCorpName == toCorpName:
-                hint = mls.UI_LPSTORE_EXCHANGE_UNAVAILABLE2
+                hint = localization.GetByLabel('UI/LPStore/ExchangeProhibited', fromCorpName=fromCorpName)
             else:
-                hint = mls.UI_LPSTORE_EXCHANGE_UNAVAILABLE
-            self.sr.exchangeButton.SetHint(hint % {'fromCorpName': fromCorpName,
-             'toCorpName': toCorpName})
+                hint = localization.GetByLabel('UI/LPStore/ExchangeUnavailable', fromCorpName=fromCorpName, toCorpName=toCorpName)
+            self.sr.exchangeButton.SetHint(hint)
 
 
 
@@ -710,32 +712,30 @@ class LPStoreWindow(uicls.Window):
         fromCorpName = cfg.eveowners.Get(const.ownerCONCORD).ownerName
         toCorpName = cfg.eveowners.Get(sm.GetService('lpstore').cache.corpID).ownerName
         exchangeRate = sm.GetService('lpstore').GetConcordLPExchangeRate()
-        self.sr.exchangeButton.SetHint(mls.UI_LPSTORE_CONVERT_TO_MSG % {'toCorpName': toCorpName,
-         'exchangeRate': exchangeRate,
-         'fromCorpName': fromCorpName})
+        self.sr.exchangeButton.SetHint(localization.GetByLabel('UI/LPStore/ConvertLPMsg', toCorpName=toCorpName, exchangeRate=exchangeRate, fromCorpName=fromCorpName))
 
 
 
     def InitOfferRefreshDespammer(self):
 
         def RefreshOffers():
-            columns = [mls.UI_LPSTORE_REWARD,
-             mls.UI_LPSTORE_LPCOST,
-             mls.UI_LPSTORE_ISKCOST,
-             mls.UI_LPSTORE_REQUIREDITEMS,
-             mls.UI_LPSTORE_ACCEPT]
+            columns = [localization.GetByLabel('UI/LPStore/Reward'),
+             localization.GetByLabel('UI/LPStore/LPCost'),
+             localization.GetByLabel('UI/LPStore/ISKCost'),
+             localization.GetByLabel('UI/LPStore/RequiredItems'),
+             localization.GetByLabel('UI/LPStore/Accept')]
             self.ShowLoad()
             try:
                 filters = sm.GetService('lpstore').GetCurrentFilters()
                 scroll = self.sr.lpStoreScroll
                 pos = scroll.GetScrollProportion()
                 offers = [ listentry.Get('LPOffer', offer) for offer in sm.GetService('lpstore').GetOffers() if self.Check(offer, filters) ]
-                self.sr.lpStoreScroll.sr.minColumnWidth = {mls.UI_LPSTORE_REWARD: 200,
-                 mls.UI_LPSTORE_LPCOST: 80,
-                 mls.UI_LPSTORE_ISKCOST: 115,
-                 mls.UI_LPSTORE_REQUIREDITEMS: 100,
-                 mls.UI_LPSTORE_ACCEPT: 80}
-                scroll.LoadContent(headers=columns, contentList=offers, customColumnWidths=True, noContentHint=mls.UI_LPSTORE_NOMATCHINGOFFERS)
+                self.sr.lpStoreScroll.sr.minColumnWidth = {localization.GetByLabel('UI/LPStore/Reward'): 200,
+                 localization.GetByLabel('UI/LPStore/LPCost'): 80,
+                 localization.GetByLabel('UI/LPStore/ISKCost'): 115,
+                 localization.GetByLabel('UI/LPStore/RequiredItems'): 100,
+                 localization.GetByLabel('UI/LPStore/Accept'): 80}
+                scroll.LoadContent(headers=columns, contentList=offers, customColumnWidths=True, noContentHint=localization.GetByLabel('UI/LPStore/NoMatchingOffers'))
                 columnWidthSettingsVersion = 1
                 settingsKey = 'columnWidthsReset_%s' % columnWidthSettingsVersion
                 if offers and not settings.user.ui.Get(settingsKey, False):
@@ -760,7 +760,7 @@ class LPStoreWindow(uicls.Window):
 
 
     def OnPresetComboChange(self, blah, bleh, label):
-        if label == mls.UI_LPSTORE_PRESETNONE:
+        if label == localization.GetByLabel('UI/LPStore/PresetNone'):
             self.OpenFilters()
         else:
             sm.GetService('lpstore').ChangeCurrentPreset(label)
@@ -915,10 +915,11 @@ class LPStoreFiltersWindow(uicls.Window):
     labelParentHeight = 15
     scrollSeparatorHeight = 6
     comboWidth = 120
+    default_windowID = 'lpfilter'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
-        self.SetCaption(mls.UI_LPSTORE_FILTERS)
+        self.SetCaption(localization.GetByLabel('UI/LPStore/Filters'))
         self.SetMinSize([380, 260])
         self.SetTopparentHeight(0)
         self.SetScope('station')
@@ -970,56 +971,56 @@ class LPStoreFiltersWindow(uicls.Window):
 
             panel = uicls.Container(parent=panelParent, name=caption, align=uiconst.TOALL)
             panel.OnTabSelect = MakeOnTabSelect(weakref.ref(panel))
-            tabs.append((getattr(mls, caption),
+            tabs.append((caption,
              panel,
              None,
              (caption + '_args',)))
             return panel
 
 
-        tab = MakeTab('UI_LPSTORE_REWARD')
+        tab = MakeTab(localization.GetByLabel('UI/LPStore/Reward'))
         uicls.Container(parent=tab, name='rewardComboSeparato', height=self.comboSeparatorHeight, align=uiconst.TOTOP, state=uiconst.UI_DISABLED)
         c = uicls.Container(parent=tab, name='rewardCategoryComboParent', height=self.comboParentHeight, align=uiconst.TOTOP, state=uiconst.UI_PICKCHILDREN)
-        self.sr.rewardCategoryCombo = uicls.Combo(parent=c, name='rewardCategoryCombo', label=mls.UI_GENERIC_CATEGORY, width=self.comboWidth, align=uiconst.RELATIVE)
+        self.sr.rewardCategoryCombo = uicls.Combo(parent=c, name='rewardCategoryCombo', label=localization.GetByLabel('UI/Common/Category'), width=self.comboWidth, align=uiconst.RELATIVE)
         c = uicls.Container(parent=tab, name='rewardGroupComboParent', height=self.comboParentHeight, align=uiconst.TOTOP)
-        self.sr.rewardGroupCombo = uicls.Combo(parent=c, name='rewardGroupCombo', width=self.comboWidth, label=mls.UI_GENERIC_GROUP)
+        self.sr.rewardGroupCombo = uicls.Combo(parent=c, name='rewardGroupCombo', width=self.comboWidth, label=localization.GetByLabel('UI/Common/Group'))
         c = uicls.Container(parent=tab, name='rewardTypeComboParent', height=self.comboParentHeight, align=uiconst.TOTOP)
-        self.sr.rewardTypeCombo = uicls.Combo(parent=c, name='rewardTypeCombo', width=self.comboWidth, label=mls.UI_GENERIC_TYPE)
-        tab = MakeTab('UI_LPSTORE_LPCOST')
+        self.sr.rewardTypeCombo = uicls.Combo(parent=c, name='rewardTypeCombo', width=self.comboWidth, label=localization.GetByLabel('UI/Common/Type'))
+        tab = MakeTab(localization.GetByLabel('UI/LPStore/LPCost'))
         uicls.Container(parent=tab, name='lpCostEditSeparator', height=self.editSeparatorHeight, align=uiconst.TOTOP)
         c = uicls.Container(parent=tab, name='minLPEditParent', height=self.editParentHeight, align=uiconst.TOTOP)
-        self.sr.minLPEdit = uicls.SinglelineEdit(parent=c, name='minLPEdit', label=mls.UI_LPSTORE_MINLPCOST, ints=[0, None])
+        self.sr.minLPEdit = uicls.SinglelineEdit(parent=c, name='minLPEdit', label=localization.GetByLabel('UI/LPStore/MinLPCost'), ints=[0, None])
         c = uicls.Container(parent=tab, name='maxLPEditParent', height=self.editParentHeight, align=uiconst.TOTOP)
-        self.sr.maxLPEdit = uicls.SinglelineEdit(parent=c, name='maxLPEdit', label=mls.UI_LPSTORE_MAXLPCOST, ints=[0, None])
-        tab = MakeTab('UI_LPSTORE_ISKCOST')
+        self.sr.maxLPEdit = uicls.SinglelineEdit(parent=c, name='maxLPEdit', label=localization.GetByLabel('UI/LPStore/MaxLPCost'), ints=[0, None])
+        tab = MakeTab(localization.GetByLabel('UI/LPStore/ISKCost'))
         uicls.Container(parent=tab, name='iskCostEditSeparator', height=self.editSeparatorHeight, align=uiconst.TOTOP)
         c = uicls.Container(parent=tab, name='minISKEditParent', height=self.editParentHeight, align=uiconst.TOTOP)
-        self.sr.minISKEdit = uicls.SinglelineEdit(parent=c, name='minISKEdit', label=mls.UI_LPSTORE_MINISKCOST, ints=[0, None])
+        self.sr.minISKEdit = uicls.SinglelineEdit(parent=c, name='minISKEdit', label=localization.GetByLabel('UI/LPStore/MinISKCost'), ints=[0, None])
         c = uicls.Container(parent=tab, name='maxISKEditParent', height=self.editParentHeight, align=uiconst.TOTOP)
-        self.sr.maxISKEdit = uicls.SinglelineEdit(parent=c, name='maxISKEdit', label=mls.UI_LPSTORE_MAXISKCOST, ints=[0, None])
-        tab = MakeTab('UI_LPSTORE_REQUIREDITEMS')
+        self.sr.maxISKEdit = uicls.SinglelineEdit(parent=c, name='maxISKEdit', label=localization.GetByLabel('UI/LPStore/MaxISKCost'), ints=[0, None])
+        tab = MakeTab(localization.GetByLabel('UI/LPStore/RequiredItems'))
         c = uicls.Container(parent=tab, name='reqItemsHeaderParent', height=18, align=uiconst.TOTOP)
-        LPStoreHeaderLabel(parent=c, text=mls.UI_LPSTORE_FILTERREQITEMSHEADER)
+        LPStoreHeaderLabel(parent=c, text=localization.GetByLabel('UI/LPStore/FilterRequiredItemsHeader'))
         c = uicls.Container(parent=tab, name='reqIllegalCbParent', height=self.checkboxParentHeight, align=uiconst.TOTOP)
-        self.sr.reqIllegalCb = uicls.Checkbox(parent=c, name='reqIllegalCb', text=mls.UI_LPSTORE_FILTERREQITEMSILLEGAL, align=uiconst.TOTOP)
+        self.sr.reqIllegalCb = uicls.Checkbox(parent=c, name='reqIllegalCb', text=localization.GetByLabel('UI/LPStore/FilterRequiredItemsAreIllegal'), align=uiconst.TOTOP)
         c = uicls.Container(parent=tab, name='reqNotInHangarCbParent', height=self.checkboxParentHeight, align=uiconst.TOTOP)
-        self.sr.reqNotInHangarCb = uicls.Checkbox(parent=c, name='reqNotInHangarCb', text=mls.UI_LPSTORE_FILTERREQITEMSNOTINHANGAR, align=uiconst.TOTOP)
+        self.sr.reqNotInHangarCb = uicls.Checkbox(parent=c, name='reqNotInHangarCb', text=localization.GetByLabel('UI/LPStore/FilterRequiredItemsNotInHangar'), align=uiconst.TOTOP)
         uicls.Container(parent=tab, name='reqItemsOrMatchTypeLabelSeparator', height=10, align=uiconst.TOTOP)
-        c = uicls.Container(parent=tab, name='reqItemsOrMatchTypeLabelParent', height=15, align=uiconst.TOTOP)
-        LPStoreHeaderLabel(parent=c, text=mls.UI_LPSTORE_FILTERREQITEMSTYPE, height=13)
+        c = uicls.Container(parent=tab, name='reqItemsOrMatchTypeLabelParent', height=16, align=uiconst.TOTOP)
+        LPStoreHeaderLabel(parent=c, text=localization.GetByLabel('UI/LPStore/FilterRequiredItemsType'), height=16)
         uicls.Container(parent=tab, name='reqComboSeparator', height=self.comboSeparatorHeight, align=uiconst.TOTOP)
         c = uicls.Container(parent=tab, name='reqCategoryComboParent', height=self.comboParentHeight, align=uiconst.TOTOP)
-        self.sr.reqCategoryCombo = uicls.Combo(parent=c, name='reqCategoryCombo', width=self.comboWidth, label=mls.UI_GENERIC_CATEGORY)
+        self.sr.reqCategoryCombo = uicls.Combo(parent=c, name='reqCategoryCombo', width=self.comboWidth, label=localization.GetByLabel('UI/Common/Category'))
         c = uicls.Container(parent=tab, name='reqGroupComboParent', height=self.comboParentHeight, align=uiconst.TOTOP)
-        self.sr.reqGroupCombo = uicls.Combo(parent=c, name='reqGroupCombo', width=self.comboWidth, label=mls.UI_GENERIC_GROUP)
+        self.sr.reqGroupCombo = uicls.Combo(parent=c, name='reqGroupCombo', width=self.comboWidth, label=localization.GetByLabel('UI/Common/Group'))
         c = uicls.Container(parent=tab, name='reqTypeComboParent', height=self.comboParentHeight, align=uiconst.TOTOP)
-        self.sr.reqTypeCombo = uicls.Combo(parent=c, name='reqTypeCombo', width=self.comboWidth, label=mls.UI_GENERIC_TYPE)
-        tab = MakeTab('UI_LPSTORE_FILTERPRESETS')
+        self.sr.reqTypeCombo = uicls.Combo(parent=c, name='reqTypeCombo', width=self.comboWidth, label=localization.GetByLabel('UI/Common/Type'))
+        tab = MakeTab(localization.GetByLabel('UI/LPStore/FilterPresets'))
         c = uicls.Container(parent=tab, name='presetsHeaderSeparator', height=self.labelSeparatorHeight, align=uiconst.TOTOP)
         c = uicls.Container(parent=tab, name='currentPresetHeaderParent', height=12, align=uiconst.TOTOP)
-        LPStoreHeaderLabel(name='currentPresetHeader', parent=c, text=mls.UI_LPSTORE_FILTERACTIVEPRESET, height=12)
+        LPStoreHeaderLabel(name='currentPresetHeader', parent=c, text=localization.GetByLabel('UI/LPStore/ActivePresetName'), height=12)
         c = uicls.Container(parent=tab, name='currentPresetLabelParent', height=12, align=uiconst.TOTOP)
-        self.sr.currentPresetLabel = LPStoreLabel(name='currentPresetLabel', parent=c, text=mls.UI_LPSTORE_PRESETALL, height=12)
+        self.sr.currentPresetLabel = LPStoreLabel(name='currentPresetLabel', parent=c, text=localization.GetByLabel('UI/LPStore/PresetAll'), height=12)
         c = uicls.Container(parent=tab, name='btnsGrandParent', height=15, align=uiconst.TOBOTTOM)
         self.sr.btnsParent = uicls.Container(parent=c, name='btnsParent', height=20, width=200, align=uiconst.CENTER, state=uiconst.UI_PICKCHILDREN)
         uicls.Container(parent=tab, name='presetsScrollSeparator', height=self.scrollSeparatorHeight, align=uiconst.TOTOP)
@@ -1030,7 +1031,7 @@ class LPStoreFiltersWindow(uicls.Window):
 
 
     def HookCombos(self):
-        all = [(mls.UI_GENERIC_ALL, 'all')]
+        all = [(localization.GetByLabel('UI/Common/All'), 'all')]
 
         def GetInvChoices(cfgList, filter = None):
             if filter is None:
@@ -1167,23 +1168,23 @@ class LPStoreFiltersWindow(uicls.Window):
 
     def MakeButtons(self):
         buttonSeparation = 0
-        for (btnID, mlsString, OnClick, hint,) in [('new',
-          mls.UI_GENERIC_NEW,
+        for (btnID, labelString, OnClick, hint,) in [('new',
+          localization.GetByLabel('UI/Common/Buttons/New'),
           self.OnClickNew,
-          mls.UI_LPSTORE_NEWHINT),
+          localization.GetByLabel('UI/LPStore/HintNewPreset')),
          ('load',
-          mls.UI_GENERIC_LOAD,
+          localization.GetByLabel('UI/Common/Buttons/Load'),
           self.OnClickLoad,
-          mls.UI_LPSTORE_LOADHINT),
+          localization.GetByLabel('UI/LPStore/HintLoadPreset')),
          ('overwrite',
-          mls.UI_GENERIC_OVERWRITE,
+          localization.GetByLabel('UI/Common/Buttons/Overwrite'),
           self.OnClickOverwrite,
-          mls.UI_LPSTORE_OVERWRITEHINT),
+          localization.GetByLabel('UI/LPStore/HintOverwritePreset')),
          ('del',
-          mls.UI_GENERIC_DELETE,
+          localization.GetByLabel('UI/Common/Buttons/Delete'),
           self.OnClickDelete,
-          mls.UI_LPSTORE_DELETEHINT)]:
-            parent = LPStoreButton(parent=self.sr.btnsParent, name='%sbtnParent' % btnID, label=mlsString, hint=mls.UI_LPSTORE_DELETEHINT)
+          localization.GetByLabel('UI/LPStore/HintDeletePreset'))]:
+            parent = LPStoreButton(parent=self.sr.btnsParent, name='%sbtnParent' % btnID, label=labelString, hint=localization.GetByLabel('UI/LPStore/HintDeletePreset'))
             btn = parent.sr.btn
             setattr(self.sr, '%sBtn' % btnID, btn)
             btn.sr.hint = hint
@@ -1212,7 +1213,7 @@ class LPStoreFiltersWindow(uicls.Window):
 
 
     def RefreshPresetsScroll(self):
-        self.sr.presetsScroll.Load(contentList=[ listentry.Get('Generic', data=preset) for preset in sm.GetService('lpstore').GetPresets() if preset.label != mls.UI_LPSTORE_PRESETNONE ])
+        self.sr.presetsScroll.Load(contentList=[ listentry.Get('Generic', data=preset) for preset in sm.GetService('lpstore').GetPresets() if preset.label != localization.GetByLabel('UI/LPStore/PresetNone') ])
 
 
 
@@ -1243,9 +1244,9 @@ class LPStoreFiltersWindow(uicls.Window):
         def Validate(data):
             name = data['name']
             if not name:
-                return mls.UI_LPSTORE_ERRORNONAME
+                return localization.GetByLabel('UI/LPStore/ErrorNoName', cancelLabel=localization.GetByLabel('UI/Common/Buttons/Cancel'))
             if name in [ preset.label for preset in sm.GetService('lpstore').GetPresets() ]:
-                return mls.UI_LPSTORE_ERROREXISTINGNAME
+                return localization.GetByLabel('UI/LPStore/ErrorExstingName', overwriteLabel=localization.GetByLabel('UI/Common/Buttons/Overwrite'))
 
 
         result = uix.NamePopup(maxLength=50, validator=Validate)
@@ -1271,7 +1272,7 @@ class LPStoreFiltersWindow(uicls.Window):
 
     def OnLPStoreCurrentPresetChange(self):
         self.RefreshCurrentPresetLabel()
-        if sm.GetService('lpstore').GetCurrentPresetLabel() != mls.UI_LPSTORE_PRESETNONE:
+        if sm.GetService('lpstore').GetCurrentPresetLabel() != localization.GetByLabel('UI/LPStore/PresetNone'):
             self.SyncInputs()
 
 
@@ -1351,39 +1352,38 @@ class LPExhangeDialog(uicls.Window):
         self.currentToCorpLPs = attributes.get('currentToCorpLPs')
         self.exchangeRate = attributes.get('exchangeRate')
         self.maxCorporationLPs = int(self.currentFromCorpLPs * self.exchangeRate)
-        self.SetCaption(mls.UI_LPSTORE_CONVERT_TO)
+        self.SetCaption(localization.GetByLabel('UI/LPStore/LPExchangeDialogTitle'))
         maxLPs = attributes.get('maxLPs', None)
-        btns = [[mls.UI_CMD_OK,
+        btns = [[localization.GetByLabel('UI/Common/Buttons/OK'),
           self.OnOK,
           (),
-          81], [mls.UI_CMD_CANCEL,
+          81], [localization.GetByLabel('UI/Common/Buttons/Cancel'),
           self.OnCancel,
           (),
           81]]
         self.buttons = uicls.ButtonGroup(btns=btns, parent=self.sr.main)
         topCont = uicls.Container(name='topCont', parent=self.sr.main, align=uiconst.TOALL, padding=(4, 4, 4, 4))
-        LPStoreLabel(parent=topCont, autoheight=True, autowidth=False, singleline=False, text=mls.UI_LPSTORE_CONVERT_TO_MSG % {'toCorpName': self.toCorpName,
-         'exchangeRate': self.exchangeRate,
-         'fromCorpName': self.fromCorpName})
-        LPStoreLabel(parent=topCont, text=self.toCorpName, uppercase=True, fontsize=13, bold=True)
+        LPStoreLabel(parent=topCont, singleline=False, text=localization.GetByLabel('UI/LPStore/ConvertLPMsg', toCorpName=self.toCorpName, exchangeRate=self.exchangeRate, fromCorpName=self.fromCorpName))
+        LPStoreLabel(parent=topCont, text=self.toCorpName, uppercase=True, fontsize=13, bold=True, top=10)
         cont = uicls.Container(name='toCorpLPAmountContainer', parent=topCont, align=uiconst.TOTOP, pos=(0, 0, 100, 18), state=uiconst.UI_PICKCHILDREN)
-        label = LPStoreEntryLabel(parent=cont, text='%s:' % mls.UI_LPSTORE_EXCHANGE_PURCHASE_AMOUNT, align=uiconst.CENTERLEFT)
-        label = LPStoreEntryLabel(parent=cont, text=mls.UI_GENERIC_LP, align=uiconst.TORIGHT)
-        self.amountEdit = uicls.SinglelineEdit(name='lpAmountEdit', parent=topCont, pos=(194, 58, 80, 19), ints=(1, self.maxCorporationLPs), align=uiconst.RELATIVE, setvalue=self.maxCorporationLPs, state=uiconst.UI_NORMAL)
+        label = LPStoreEntryLabel(parent=cont, text=localization.GetByLabel('UI/LPStore/ExchangePurchaseAmount'), align=uiconst.CENTERLEFT)
+        label = LPStoreEntryLabel(parent=cont, text=localization.GetByLabel('UI/LPStore/LP'), align=uiconst.TORIGHT)
+        self.amountEdit = uicls.SinglelineEdit(name='lpAmountEdit', parent=cont, pos=(17, 0, 80, 0), ints=(1, self.maxCorporationLPs), align=uiconst.TOPRIGHT, setvalue=self.maxCorporationLPs, state=uiconst.UI_NORMAL)
         self.amountEdit.OnChange = self.OnChangeEdit
+        zeroLP = 0.0
         cont = uicls.Container(name='toCorpCurrentLPContainer', parent=topCont, align=uiconst.TOTOP, height=18)
-        label = LPStoreEntryLabel(parent=cont, text='%s:' % mls.UI_GENERIC_CURRENT, align=uiconst.CENTERLEFT)
-        self.toCorpCurrentLP = LPStoreEntryLabel(parent=cont, text='0 LP', align=uiconst.CENTERRIGHT)
+        label = LPStoreEntryLabel(parent=cont, text=localization.GetByLabel('UI/Common/Current'), align=uiconst.CENTERLEFT)
+        self.toCorpCurrentLP = LPStoreEntryLabel(parent=cont, text=localization.GetByLabel('UI/LPStore/AmountLP', lpAmount=str(util.FmtAmt(zeroLP))), align=uiconst.CENTERRIGHT)
         cont = uicls.Container(name='toCorpTotalLPContainer', parent=topCont, align=uiconst.TOTOP, height=18)
-        label = LPStoreEntryLabel(parent=cont, text='%s:' % mls.UI_GENERIC_TOTAL, align=uiconst.CENTERLEFT)
-        self.toCorpTotalLP = LPStoreEntryLabel(parent=cont, text='0 LP', align=uiconst.CENTERRIGHT)
+        label = LPStoreEntryLabel(parent=cont, text=localization.GetByLabel('UI/Common/Total'), align=uiconst.CENTERLEFT)
+        self.toCorpTotalLP = LPStoreEntryLabel(parent=cont, text=localization.GetByLabel('UI/LPStore/AmountLP', lpAmount=str(util.FmtAmt(zeroLP))), align=uiconst.CENTERRIGHT)
         LPStoreLabel(parent=topCont, text=self.fromCorpName, uppercase=True, fontsize=13, bold=True)
         cont = uicls.Container(name='fromCorpCostLPContainer', parent=topCont, align=uiconst.TOTOP, height=18)
-        label = LPStoreEntryLabel(parent=cont, text='%s:' % mls.UI_GENERIC_COST, align=uiconst.CENTERLEFT)
-        self.fromCorpCostLP = LPStoreEntryLabel(parent=cont, text='0 LP', align=uiconst.CENTERRIGHT)
+        label = LPStoreEntryLabel(parent=cont, text=localization.GetByLabel('UI/Common/Cost'), align=uiconst.CENTERLEFT)
+        self.fromCorpCostLP = LPStoreEntryLabel(parent=cont, text=localization.GetByLabel('UI/LPStore/AmountLP', lpAmount=str(util.FmtAmt(zeroLP))), align=uiconst.CENTERRIGHT)
         cont = uicls.Container(name='fromCorpFinalLPContainer', parent=topCont, align=uiconst.TOTOP, height=18)
-        label = LPStoreEntryLabel(parent=cont, text='%s:' % mls.UI_GENERIC_REMAINING.capitalize(), align=uiconst.CENTERLEFT)
-        self.fromCorpFinalLP = LPStoreEntryLabel(parent=cont, text='0 LP', align=uiconst.CENTERRIGHT)
+        label = LPStoreEntryLabel(parent=cont, text=localization.GetByLabel('UI/Common/Remaining'), align=uiconst.CENTERLEFT)
+        self.fromCorpFinalLP = LPStoreEntryLabel(parent=cont, text=localization.GetByLabel('UI/LPStore/AmountLP', lpAmount=str(util.FmtAmt(zeroLP))), align=uiconst.CENTERRIGHT)
         self.SetDetails(1)
 
 
@@ -1392,10 +1392,10 @@ class LPExhangeDialog(uicls.Window):
         concordLPCost = int(math.ceil(lpToExchange / self.exchangeRate))
         concordLPAfter = self.currentFromCorpLPs - concordLPCost
         corporationLPAfter = self.currentToCorpLPs + lpToExchange
-        self.fromCorpCostLP.SetText('%s %s' % (util.FmtAmt(concordLPCost), mls.UI_GENERIC_LP))
-        self.fromCorpFinalLP.SetText('%s %s' % (util.FmtAmt(concordLPAfter), mls.UI_GENERIC_LP))
-        self.toCorpTotalLP.SetText('%s %s' % (util.FmtAmt(corporationLPAfter), mls.UI_GENERIC_LP))
-        self.toCorpCurrentLP.SetText('%s %s' % (util.FmtAmt(self.currentToCorpLPs), mls.UI_GENERIC_LP))
+        self.fromCorpCostLP.SetText(localization.GetByLabel('UI/LPStore/AmountLP', lpAmount=str(util.FmtAmt(concordLPCost))))
+        self.fromCorpFinalLP.SetText(localization.GetByLabel('UI/LPStore/AmountLP', lpAmount=str(util.FmtAmt(concordLPAfter))))
+        self.toCorpTotalLP.SetText(localization.GetByLabel('UI/LPStore/AmountLP', lpAmount=str(util.FmtAmt(corporationLPAfter))))
+        self.toCorpCurrentLP.SetText(localization.GetByLabel('UI/LPStore/AmountLP', lpAmount=str(util.FmtAmt(self.currentToCorpLPs))))
         self.amountEdit.SetValue(lpToExchange, docallback=False)
 
 
@@ -1412,23 +1412,23 @@ class LPExhangeDialog(uicls.Window):
 
         finally:
             self.EnableButton()
-            self.SelfDestruct()
+            self.Close()
 
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
         self.EnableButton()
 
 
 
     def OnCancel(self):
-        self.SelfDestruct()
+        self.Close()
 
 
 
     def EnableButton(self):
-        wnd = sm.GetService('window').GetWindow('lpstore')
+        wnd = form.LPStore.GetIfOpen()
         if wnd:
             wnd.Refresh()
 

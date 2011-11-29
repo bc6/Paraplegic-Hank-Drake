@@ -51,7 +51,7 @@ class StoragePin(planet.BasePin):
 
         tt = transferTime
         if transferTime is None:
-            tt = blue.os.GetTime()
+            tt = blue.os.GetWallclockTime()
         nextTransferTime = self.GetNextTransferTime()
         if nextTransferTime is None or nextTransferTime <= tt:
             return True

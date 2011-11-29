@@ -149,14 +149,14 @@ class Transform(uicls.Container):
             blue.pyos.synchro.Yield()
         self._rotateCycle = True
         fullRotation = math.pi * 2
-        start = blue.os.GetTime()
+        start = blue.os.GetWallclockTime()
         ndt = 0.0
         current = self.GetRotation()
         while getattr(self, '_rotateCycle', False):
             try:
-                ndt = max(ndt, blue.os.TimeDiffInMs(start) / cycleTime)
+                ndt = max(ndt, blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / cycleTime)
             except:
-                log.LogWarn('StartRotationCycle::Failed getting time diff. Diff should not exceed %s but is %s' % (cycleTime, start - blue.os.GetTime(1)))
+                log.LogWarn('StartRotationCycle::Failed getting time diff. Diff should not exceed %s but is %s' % (cycleTime, start - blue.os.GetWallclockTimeNow()))
                 ndt = 1.0
             self.SetRotation(current - fullRotation * ndt * direction)
             blue.pyos.synchro.Yield()

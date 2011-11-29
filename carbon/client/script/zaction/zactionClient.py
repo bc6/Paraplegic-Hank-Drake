@@ -10,31 +10,6 @@ import uiutil
 import uthread
 import zaction
 
-class ClientActionComponent:
-    __guid__ = 'zaction.ClientActionComponent'
-
-    def __init__(self, state):
-        self.rootID = 0
-        self.treeState = None
-        self.stepState = None
-        self.treeInstance = None
-        self.TreeInstanceID = const.ztree.GENERATE_TREE_INSTANCE_ID
-        self.defaultAction = None
-        try:
-            defaultAction = state.get(const.zaction.ACTIONTREE_RECIPE_DEFAULT_ACTION_NAME)
-            if defaultAction:
-                self.defaultAction = int(defaultAction)
-        except:
-            log.LogException()
-
-
-
-    def GetDefaultAction(self):
-        return self.defaultAction
-
-
-
-
 class zactionClient(zaction.zactionCommon):
     __guid__ = 'svc.zactionClient'
     __notifyevents__ = zaction.zactionCommon.__notifyevents__[:]
@@ -42,7 +17,8 @@ class zactionClient(zaction.zactionCommon):
      'OnEntityActionStart',
      'OnActionStepUpdate',
      'OnActionForce',
-     'OnPropertyUpdate'])
+     'OnPropertyUpdate',
+     'OnServerResetActionTree'])
     __componentTypes__ = ['action']
 
     def __init__(self):
@@ -97,7 +73,8 @@ class zactionClient(zaction.zactionCommon):
 
 
     def PackUpForSceneTransfer(self, component, destinationSceneID):
-        return self.PackUpForClientTransfer(component)
+        state = self.PackUpForClientTransfer(component)
+        return state
 
 
 
@@ -107,7 +84,7 @@ class zactionClient(zaction.zactionCommon):
 
 
     def CreateComponent(self, name, state):
-        component = ClientActionComponent(state)
+        component = zaction.ActionComponent(state)
         if state is not None:
             component.rootID = state.get('rootID', component.rootID)
             if 'TreeInstance' in state:
@@ -129,6 +106,7 @@ class zactionClient(zaction.zactionCommon):
             else:
                 component.treeInstance = GameWorld.ActionTreeInstanceClient(entityID, component.TreeInstanceID)
         component.rootNode = self.treeManager.GetTreeNodeByID(component.rootID)
+        self.entityService.entitySceneManager.PrepareComponent(entityID, sceneID, component.treeInstance)
 
 
 
@@ -140,14 +118,15 @@ class zactionClient(zaction.zactionCommon):
     def RegisterComponent(self, entity, component):
         self.treeManager.AddTreeInstanceWithDebug(component.treeInstance, self.createDebugItems)
         if component.treeState is not None and component.stepState is not None:
-            component.treeInstance.SetTreeState(*component.treeState)
-            component.treeInstance.SetStepState(*component.stepState)
+            component.treeInstance.SetTreeState(component.treeState)
+            component.treeInstance.SetStepState(component.stepState)
             component.treeState = None
             component.stepState = None
-        elif component.treeInstance.IsActionEnded():
+        elif not component.treeInstance.GetCurrentTreeNode():
             if component.GetDefaultAction():
                 treeNode = self.treeManager.GetTreeNodeByID(component.GetDefaultAction())
                 if treeNode is not None:
+                    component.treeInstance.SetDefaultActionID(component.GetDefaultAction())
                     component.treeInstance.ForceAction(treeNode)
             else:
                 self.LogError('Failed to find default action for entity %d' % entity.entityID)
@@ -173,7 +152,7 @@ class zactionClient(zaction.zactionCommon):
                 clientProps = self.GetClientProperties()
             entity = self.entityService.FindEntityByID(entID)
             if not self.entityService.IsClientSideOnly(entity.scene.sceneID):
-                requestThread = uthread.new(self.GetZactionServer().RequestActionStart, entID, actionID, interrupt, self.GetClientProperties())
+                requestThread = uthread.new(self.GetZactionServer().RequestActionStart, entID, actionID, interrupt, clientProps)
                 requestThread.context = 'ZactionClient::StartAction'
             actionTreeInst.DoActionByID(actionID, interrupt, clientProps)
         else:
@@ -228,6 +207,18 @@ class zactionClient(zaction.zactionCommon):
                 actionTreeInst.UpdateProperty(actionID, propList)
             else:
                 self.LogError('Received OnPropertyUpdate ' + str(entID) + ', ' + str(actionID) + ', but could not find entity tree instance.')
+
+
+
+    def OnServerResetActionTree(self):
+        thread = uthread.new(self._OnServerResetActionTree)
+        thread.context = '%s::OnServerResetActionTree' % self.__guid__
+
+
+
+    def _OnServerResetActionTree(self):
+        log.LogWarn('%s: Got an acttion server tree reload message. Reloading tree.' % self.__guid__)
+        self.ResetTree()
 
 
 

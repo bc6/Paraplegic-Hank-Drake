@@ -2,26 +2,6 @@ import util
 import trinity
 import graphicWrappers
 
-def SwapShadersToInterior(obj):
-    for mesh in obj.placeableRes.visualModel.meshes:
-        for areaName in ('opaqueAreas', 'decalAreas', 'transparentAreas', 'additiveAreas'):
-            areas = getattr(mesh, areaName)
-            for area in areas:
-                if 'default_glow_' in area.name.lower() or 'glow_default_' in area.name.lower():
-                    if type(area.effect) is trinity.Tr2Effect:
-                        area.effect.effectFilePath = 'res:/Graphics/Effect/Managed/Interior/Static/StaticStandardWithGlowSH.fx'
-                    else:
-                        area.effect.highLevelShaderName = 'StaticStandardWithGlowSH'
-                elif type(area.effect) is trinity.Tr2Effect:
-                    area.effect.effectFilePath = 'res:/Graphics/Effect/Managed/Interior/Static/StaticFresnelReflectionSH.fx'
-                else:
-                    area.effect.highLevelShaderName = 'StaticFresnelReflectionSH'
-
-
-
-
-
-
 class WodPlaceableRes(object):
     __guid__ = 'graphicWrappers.WodPlaceableRes'
 
@@ -37,7 +17,6 @@ class WodPlaceableRes(object):
     def ConvertToInterior(triObject, resPath):
         returnObject = trinity.Tr2InteriorPlaceable()
         returnObject.placeableResPath = resPath
-        SwapShadersToInterior(returnObject)
         return returnObject
 
 
@@ -58,7 +37,6 @@ class WodPlaceable(util.BlueClassNotifyWrap('trinity.WodPlaceable'), graphicWrap
     def ConvertToInterior(triObject, resPath):
         returnObject = trinity.Tr2InteriorPlaceable()
         returnObject.placeableResPath = triObject.placeableResPath
-        SwapShadersToInterior(returnObject)
         return returnObject
 
 

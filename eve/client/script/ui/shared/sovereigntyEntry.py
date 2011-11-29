@@ -1,3 +1,4 @@
+import localization
 import uthread
 import uix
 import uiconst
@@ -14,7 +15,7 @@ class SovereigntyEntry(uicls.SE_BaseClassCore):
 
     def Startup(self, *etc):
         uicls.Line(parent=self, align=uiconst.TOBOTTOM, color=(1.0, 1.0, 1.0, 0.125))
-        self.sr.label = uicls.Label(text='', parent=self, left=6, align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED, idx=0, singleline=1)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=self, left=6, align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED, idx=0, singleline=1)
         self.sr.icon = uicls.Container(name='icon', parent=self, align=uiconst.TOPLEFT, padding=(0, 0, 0, 0), pos=(0, 0, 14, 14), state=uiconst.UI_DISABLED)
         self.sr.selection = uicls.Fill(parent=self, padTop=1, padBottom=1, color=(1.0, 1.0, 1.0, 0.125))
         self.sr.loss = uicls.Fill(parent=self, padTop=1, padBottom=1, color=(1.0, 0.0, 0.0, 0.25))
@@ -42,7 +43,7 @@ class SovereigntyEntry(uicls.SE_BaseClassCore):
 
     def GetHeight(_self, *args):
         (node, width,) = args
-        node.height = uix.GetTextHeight(node.label, autoWidth=1, singleLine=1) + 1
+        node.height = uix.GetTextHeight(node.label, singleLine=1) + 1
         return node.height
 
 
@@ -90,35 +91,41 @@ class SovereigntyEntry(uicls.SE_BaseClassCore):
                 if self.scope == SovereigntyTab.SolarSystem:
                     label = None
                     mm += sm.GetService('menu').CelestialMenu(self.locationID)
-                    m.append((mls.SYSTEM, mm))
+                    m.append((localization.GetByLabel('UI/Common/LocationTypes/System'), mm))
                 if self.scope == SovereigntyTab.World:
-                    label = mls.REGION
+                    label = localization.GetByLabel('UI/Common/LocationTypes/Region')
                     mm += sm.GetService('menu').CelestialMenu(self.locationID)
-                    m.append((mls.REGION, mm))
+                    m.append((label, mm))
                 elif self.scope == SovereigntyTab.Region:
-                    label = mls.CONSTELLATION
+                    label = localization.GetByLabel('UI/Common/LocationTypes/Constellation')
                     mm += sm.GetService('menu').CelestialMenu(self.locationID)
-                    m.append((mls.CONSTELLATION, mm))
+                    m.append((label, mm))
                 elif self.scope == SovereigntyTab.Constellation:
-                    label = mls.SYSTEM
+                    label = localization.GetByLabel('UI/Common/LocationTypes/System')
                     mm += sm.GetService('menu').CelestialMenu(self.locationID)
-                    m.append((mls.SYSTEM, mm))
+                    m.append((label, mm))
                 m.append(None)
                 if label is not None:
-                    m.append(['%s %s' % (mls.UI_GENERIC_VIEW, label), self.DrillToLocation])
+                    if label == localization.GetByLabel('UI/Common/LocationTypes/System'):
+                        viewLabel = 'UI/Common/LocationTypes/ViewSystem'
+                    elif label == localization.GetByLabel('UI/Common/LocationTypes/Constellation'):
+                        viewLabel = 'UI/Common/LocationTypes/ViewConstellation'
+                    else:
+                        viewLabel = 'UI/Common/LocationTypes/ViewRegion'
+                    m.append([localization.GetByLabel(viewLabel), self.DrillToLocation])
             else:
                 mm += sm.GetService('menu').CelestialMenu(self.locationID)
-                m.append((mls.SYSTEM, mm))
+                m.append((localization.GetByLabel('UI/Common/LocationTypes/System'), mm))
                 mmm += sm.GetService('menu').CelestialMenu(self.regionID)
-                m.append((mls.REGION, mmm))
+                m.append((localization.GetByLabel('UI/Common/LocationTypes/Region'), mmm))
                 m.append(None)
             if self.allianceID is not None:
                 if util.IsFaction(self.allianceID):
-                    m.append([mls.UI_GENERIC_SHOWINFOONFACTION, self.ShowInfoOnSovHolder, (const.typeFaction, self.allianceID)])
+                    m.append([localization.GetByLabel('UI/Sovereignty/ShowInfoOnFaction'), self.ShowInfoOnSovHolder, (const.typeFaction, self.allianceID)])
                 else:
-                    m.append([mls.UI_GENERIC_SHOWINFOONALLIANCE, self.ShowInfoOnSovHolder, (const.typeAlliance, self.allianceID)])
+                    m.append([localization.GetByLabel('UI/Sovereignty/ShowInfoOnAlliance'), self.ShowInfoOnSovHolder, (const.typeAlliance, self.allianceID)])
             elif self.corpID is not None:
-                m.append([mls.UI_GENERIC_SHOWINFOONCORPORATION, self.ShowInfoOnSovHolder, (const.typeCorporation, self.corpID)])
+                m.append([localization.GetByLabel('UI/Sovereignty/ShowInfoOnCorporation'), self.ShowInfoOnSovHolder, (const.typeCorporation, self.corpID)])
             return m
         else:
             return 
@@ -159,19 +166,19 @@ class HeaderEntry(uicls.SE_BaseClassCore):
         self.sr.military = uicls.Container(name='military', parent=self, align=uiconst.TORIGHT, pos=(0, 0, 88, 0), padding=(0, 0, 8, 0))
         self.sr.claimTime = uicls.Container(name='claimTime', parent=self, align=uiconst.TORIGHT, pos=(0, 0, 88, 0), padding=(0, 0, 8, 0))
         self.sr.system = uicls.Container(name='solarsystem', parent=self, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(4, 0, 0, 0))
-        self.sr.systemHeader = uicls.Label(text='', parent=self.sr.system, left=0, top=4, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, idx=0, singleline=1, fontsize=10, uppercase=1, letterspace=2)
-        self.sr.claimTimeHeader = uicls.Label(text='', parent=self.sr.claimTime, left=0, top=4, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, idx=0, singleline=1, fontsize=10, uppercase=1, letterspace=2)
-        self.sr.militaryHeader = uicls.Label(text='', parent=self.sr.military, left=0, top=4, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, idx=0, singleline=1, fontsize=10, uppercase=1, letterspace=2)
-        self.sr.industryHeader = uicls.Label(text='', parent=self.sr.industry, left=0, top=4, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, idx=0, singleline=1, fontsize=10, uppercase=1, letterspace=2)
+        self.sr.systemHeader = uicls.EveLabelSmall(text='', parent=self.sr.system, left=0, top=4, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, idx=0, singleline=1)
+        self.sr.claimTimeHeader = uicls.EveLabelSmall(text='', parent=self.sr.claimTime, left=0, top=4, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, idx=0, singleline=1)
+        self.sr.militaryHeader = uicls.EveLabelSmall(text='', parent=self.sr.military, left=0, top=4, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, idx=0, singleline=1)
+        self.sr.industryHeader = uicls.EveLabelSmall(text='', parent=self.sr.industry, left=0, top=4, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, idx=0, singleline=1)
 
 
 
     def Load(self, node):
         self.sr.node = node
-        self.sr.militaryHeader.text = uiutil.UpperCase(node.militaryHeader)
-        self.sr.systemHeader.text = uiutil.UpperCase(node.systemHeader)
-        self.sr.claimTimeHeader.text = uiutil.UpperCase(node.claimTimeHeader)
-        self.sr.industryHeader.text = uiutil.UpperCase(node.industryHeader)
+        self.sr.militaryHeader.text = node.militaryHeader
+        self.sr.systemHeader.text = node.systemHeader
+        self.sr.claimTimeHeader.text = node.claimTimeHeader
+        self.sr.industryHeader.text = node.industryHeader
 
 
 
@@ -187,7 +194,7 @@ class IndexEntry(uicls.SE_BaseClassCore):
         self.sr.military = uicls.Container(name='military', parent=self, align=uiconst.TORIGHT, pos=(0, 0, 88, 10), padding=(0, 3, 8, 4))
         self.sr.claimTime = uicls.Container(name='claimTime', parent=self, align=uiconst.TORIGHT, pos=(0, 0, 88, 10), padding=(0, 3, 8, 4))
         self.sr.system = uicls.Container(name='solarsystem', parent=self, align=uiconst.TOALL, pos=(0, 0, 0, 0), padding=(0, 0, 0, 0))
-        self.sr.location = uicls.Label(text='', parent=self.sr.system, left=6, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, idx=0, singleline=1)
+        self.sr.location = uicls.EveLabelMedium(text='', parent=self.sr.system, left=6, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, idx=0, singleline=1)
         uicls.Line(parent=self.sr.claimTime, align=uiconst.TOTOP, color=COLOR)
         uicls.Line(parent=self.sr.claimTime, align=uiconst.TOBOTTOM, color=COLOR)
         uicls.Line(parent=self.sr.claimTime, align=uiconst.TOLEFT, color=COLOR)
@@ -275,22 +282,28 @@ class IndexEntry(uicls.SE_BaseClassCore):
             if self.scope == SovereigntyTab.SolarSystem:
                 label = None
                 mm += sm.GetService('menu').CelestialMenu(self.locationID)
-                m.append((mls.SYSTEM, mm))
+                m.append((localization.GetByLabel('UI/Common/LocationTypes/System'), mm))
             if self.scope == SovereigntyTab.World:
-                label = mls.REGION
+                label = localization.GetByLabel('UI/Common/LocationTypes/Region')
                 mm += sm.GetService('menu').CelestialMenu(self.locationID)
-                m.append((mls.REGION, mm))
+                m.append((label, mm))
             elif self.scope == SovereigntyTab.Region:
-                label = mls.CONSTELLATION
+                label = localization.GetByLabel('UI/Common/LocationTypes/Constellation')
                 mm += sm.GetService('menu').CelestialMenu(self.locationID)
-                m.append((mls.CONSTELLATION, mm))
+                m.append((label, mm))
             elif self.scope == SovereigntyTab.Constellation:
-                label = mls.SYSTEM
+                label = localization.GetByLabel('UI/Common/LocationTypes/System')
                 mm += sm.GetService('menu').CelestialMenu(self.locationID)
-                m.append((mls.SYSTEM, mm))
+                m.append((label, mm))
             m.append(None)
             if label is not None:
-                m.append(['%s %s' % (mls.UI_GENERIC_VIEW, label), self.DrillToLocation])
+                if label == localization.GetByLabel('UI/Common/LocationTypes/System'):
+                    viewLabel = 'UI/Common/LocationTypes/ViewSystem'
+                elif label == localization.GetByLabel('UI/Common/LocationTypes/Constellation'):
+                    viewLabel = 'UI/Common/LocationTypes/ViewConstellation'
+                else:
+                    viewLabel = 'UI/Common/LocationTypes/ViewRegion'
+                m.append([localization.GetByLabel(viewLabel), self.DrillToLocation])
             return m
         else:
             return 

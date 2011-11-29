@@ -7,6 +7,7 @@ import listentry
 import time
 import uicls
 import uiconst
+import localization
 
 class CorpDecorations(uicls.Container):
     __guid__ = 'form.CorpDecorations'
@@ -23,11 +24,11 @@ class CorpDecorations(uicls.Container):
 
 
     def Load(self, args):
-        sm.GetService('corpui').LoadTop('50_16', mls.UI_GENERIC_DECORATIONS)
+        sm.GetService('corpui').LoadTop('50_16', localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Decorations/CorpMemberDecorations'))
         if not self.sr.Get('inited', 0):
             if const.corpRolePersonnelManager & eve.session.corprole == const.corpRolePersonnelManager:
                 btns = []
-                btns.append([mls.UI_GENERIC_CREATEDECORATION,
+                btns.append([localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Decorations/CreateDecorationButton'),
                  self.CreateDecorationForm,
                  None,
                  None])
@@ -45,7 +46,7 @@ class CorpDecorations(uicls.Container):
 
 
     def CreateDecorationForm(self, *args):
-        wnd = sm.GetService('window').GetWindow('MedalRibbonPickerWindow', create=1, maximize=1)
+        form.MedalRibbonPickerWindow.Open()
 
 
 
@@ -62,10 +63,9 @@ class CorpDecorations(uicls.Container):
             details = medalDetails.Filter('medalID')
             if details and details.has_key(medalid):
                 details = details.get(medalid)
-            label = '%s<t>%s<t>%s<t>%s<t>%s' % (title,
+            label = '%s<t>%s<t>%s<t><t>%s' % (title,
              creator,
              util.FmtDate(createdate, 'ss'),
-             '',
              recipients)
             data = {'GetSubContent': self.GetDecorationSubContent,
              'label': label,
@@ -77,17 +77,17 @@ class CorpDecorations(uicls.Container):
              'state': 'locked',
              'showicon': 'hide',
              'hint': description,
-             'sort_%s' % mls.UI_GENERIC_TITLE: title.lower(),
-             'sort_%s' % mls.UI_GENERIC_DESCRIPTION: description.lower(),
-             'sort_%s' % mls.UI_GENERIC_DATE: createdate}
+             'sort_%s' % localization.GetByLabel('UI/Corporations/Common/Title'): title.lower(),
+             'sort_%s' % localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Decorations/DecorationDescription'): description.lower(),
+             'sort_%s' % localization.GetByLabel('UI/Common/Date'): createdate}
             scrolllist.append(listentry.Get('Group', data))
 
-        headers = [mls.UI_GENERIC_RECIPIENT,
-         mls.UI_CONTRACTS_ISSUER,
-         mls.UI_GENERIC_DATE,
-         mls.UI_GENERIC_REASON,
-         mls.UI_GENERIC_AWARDED]
-        self.sr.scroll.Load(contentList=scrolllist, headers=headers, noContentHint=mls.UI_GENERIC_NODECORATIONS)
+        headers = [localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Decorations/DecorationRecipient'),
+         localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Decorations/DecorationIssuer'),
+         localization.GetByLabel('UI/Common/Date'),
+         localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Decorations/DecorationReason'),
+         localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Decorations/DecorationAwardedCount')]
+        self.sr.scroll.Load(contentList=scrolllist, headers=headers, noContentHint=localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Decorations/NoDecorationsFound'))
 
 
 
@@ -103,7 +103,7 @@ class CorpDecorations(uicls.Container):
         if entry:
             scrolllist.append(entry)
         data = {'GetSubContent': self.GetMedalSubContent,
-         'label': mls.UI_GENERIC_VIEWAWARDEES,
+         'label': localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Decorations/ViewAwardees'),
          'groupItems': None,
          'medal': m,
          'id': ('corpdecorationdetails', medalid),
@@ -112,9 +112,9 @@ class CorpDecorations(uicls.Container):
          'showicon': 'hide',
          'hint': description,
          'sublevel': 1,
-         'sort_%s' % mls.UI_GENERIC_TITLE: title.lower(),
-         'sort_%s' % mls.UI_GENERIC_DESCRIPTION: description.lower(),
-         'sort_%s' % mls.UI_GENERIC_DATE: createdate}
+         'sort_%s' % localization.GetByLabel('UI/Corporations/Common/Title'): title.lower(),
+         'sort_%s' % localization.GetByLabel('UI/Corporations/CorporationWindow/Members/Decorations/DecorationDescription'): description.lower(),
+         'sort_%s' % localization.GetByLabel('UI/Common/Date'): createdate}
         scrolllist.append(listentry.Get('Group', data))
         return scrolllist
 
@@ -154,8 +154,7 @@ class CorpDecorations(uicls.Container):
                  'typeID': const.typeCharacterAmarr,
                  'itemID': recipientID,
                  'showinfo': 1,
-                 'sort_%s' % mls.UI_GENERIC_TITLE: '_%s' % label.lower(),
-                 'sort_%s' % mls.UI_GENERIC_STATUS: statusName}
+                 'sort_%s' % localization.GetByLabel('UI/Corporations/Common/Title'): ''.join([ text for text in label if type(text) is str ])}
                 scrolllist.append(listentry.Get('Generic', data))
 
         return scrolllist

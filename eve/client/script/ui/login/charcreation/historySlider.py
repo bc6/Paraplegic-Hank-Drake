@@ -4,6 +4,7 @@ import uthread
 import uiutil
 import base
 import ccConst
+import localization
 
 class CharacterCreationHistorySlider(uicls.Container):
     __guid__ = 'uicls.CharacterCreationHistorySlider'
@@ -42,7 +43,7 @@ class CharacterCreationHistorySlider(uicls.Container):
             btn.OnMouseExit = (self.OnButtonExit, btn)
             btn.cursor = uiconst.UICURSOR_SELECT
 
-        uicls.CCLabel(parent=self, idx=0, text=mls.UI_GENERIC_HISTORY, top=-16, uppercase=True, letterspace=1, shadow=None, color=ccConst.COLOR50)
+        uicls.CCLabel(parent=self, idx=0, text=localization.GetByLabel('UI/Login/CharacterCreation/UndoHistory'), top=-16, uppercase=True, letterspace=1, shadowOffset=(0, 0), color=ccConst.COLOR50)
         self.sr.mainPar = uicls.Container(parent=self, clipChildren=True, padding=(3, 0, 3, 0))
         self.sr.bitParent = uicls.Container(parent=self.sr.mainPar, align=uiconst.TOPLEFT, height=self.SIZE)
         self.sr.scrollHandle = uicls.Container(parent=self.sr.bitParent, align=uiconst.TOPLEFT, pos=(0,

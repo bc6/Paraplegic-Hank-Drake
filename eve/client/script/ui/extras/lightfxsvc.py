@@ -231,7 +231,7 @@ class LightFx(service.Service):
                     self.LogInfo('Removing expired effects')
                     self.effects = [ (each[0], each[1]) for each in self.effects if each[1].Expired() == False ]
                     heapq.heapify(self.effects)
-            blue.pyos.synchro.Sleep(self.delay)
+            blue.pyos.synchro.SleepWallclock(self.delay)
 
 
 

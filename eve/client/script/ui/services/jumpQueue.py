@@ -2,7 +2,7 @@ import uix
 import uthread
 import blue
 import form
-import michelle
+import localization
 import xtriui
 import util
 import types
@@ -53,32 +53,30 @@ class JumpQueue(service.Service):
     def __Timer(self):
         while self.state == SERVICE_RUNNING:
             if self.jumpQueue is None:
-                blue.pyos.synchro.Sleep(500)
+                blue.pyos.synchro.SleepWallclock(500)
             else:
                 try:
-                    if self.jumpQueue is not None and eve.session.IsItSafe() and (eve.session.solarsystemid2 is None or eve.session.nextSessionChange is None or blue.os.GetTime() > eve.session.nextSessionChange):
+                    if self.jumpQueue is not None and eve.session.IsItSafe() and (eve.session.solarsystemid2 is None or eve.session.nextSessionChange is None or blue.os.GetSimTime() > eve.session.nextSessionChange):
                         if eve.session.solarsystemid2 and eve.session.solarsystemid2 == self.jumpQueue.solarsystemID:
                             self.jumpQueue = None
                         elif self.queueCharID in self.jumpQueue.jumpKeys:
                             expires = self.jumpQueue.jumpKeys[self.queueCharID] + SEC * self.jumpQueue.keyLife
-                            if blue.os.GetTime() > expires:
-                                sm.ScatterEvent('OnJumpQueueMessage', mls.UI_JUMPQUEUED_KEYEXPIRED % {'system': cfg.evelocations.Get(self.jumpQueue.solarsystemID).name}, False)
+                            if blue.os.GetWallclockTime() > expires:
+                                sm.ScatterEvent('OnJumpQueueMessage', localization.GetByLabel('UI/JumpQueue/KeyExpired', system=self.jumpQueue.solarsystemID), False)
                                 self.jumpQueue = None
                             else:
-                                sm.ScatterEvent('OnJumpQueueMessage', mls.UI_JUMPQUEUED_KEYISSUED % {'system': cfg.evelocations.Get(self.jumpQueue.solarsystemID).name,
-                                 'interval': util.FmtTimeInterval(expires - blue.os.GetTime(), 'sec')}, True)
+                                sm.ScatterEvent('OnJumpQueueMessage', localization.GetByLabel('UI/JumpQueue/KeyIssued', system=self.jumpQueue.solarsystemID, expiration=expires - blue.os.GetWallclockTime()), True)
                         else:
                             try:
                                 idx = 1 + self.jumpQueue.queue.index(self.queueCharID)
                                 position = max(1, idx - self.jumpQueue.space)
-                                sm.ScatterEvent('OnJumpQueueMessage', mls.UI_JUMPQUEUED_WAITING % {'system': cfg.evelocations.Get(self.jumpQueue.solarsystemID).name,
-                                 'pos': position}, False)
+                                sm.ScatterEvent('OnJumpQueueMessage', localization.GetByLabel('UI/JumpQueue/Waiting', system=self.jumpQueue.solarsystemID, pos=position), False)
                             except ValueError:
                                 sys.exc_clear()
                 except:
                     log.LogException()
                     sys.exc_clear()
-                blue.pyos.synchro.Sleep(4500)
+                blue.pyos.synchro.SleepWallclock(4500)
 
 
 
@@ -87,7 +85,7 @@ class JumpQueue(service.Service):
         if self.jumpQueue is None:
             return False
         if self.queueCharID in self.jumpQueue.jumpKeys:
-            if blue.os.GetTime() - self.jumpQueue.jumpKeys[self.queueCharID] < SEC * self.jumpQueue.keyLife:
+            if blue.os.GetWallclockTime() - self.jumpQueue.jumpKeys[self.queueCharID] < SEC * self.jumpQueue.keyLife:
                 self.jumpQueue = None
             else:
                 return False

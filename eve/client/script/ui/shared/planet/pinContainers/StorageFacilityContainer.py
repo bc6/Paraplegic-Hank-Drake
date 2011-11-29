@@ -4,6 +4,7 @@ import planetCommon
 import uicls
 import planet
 import blue
+import localization
 
 class StorageFacilityContainer(planet.ui.BasePinContainer):
     __guid__ = 'planet.ui.StorageFacilityContainer'
@@ -15,7 +16,7 @@ class StorageFacilityContainer(planet.ui.BasePinContainer):
 
 
     def _GetActionButtons(self):
-        btns = [util.KeyVal(name=mls.UI_PI_STORAGE, panelCallback=self.PanelShowStorage, icon='ui_44_32_3')]
+        btns = [util.KeyVal(id=planetCommon.PANEL_STORAGE, panelCallback=self.PanelShowStorage)]
         btns.extend(planet.ui.BasePinContainer._GetActionButtons(self))
         return btns
 
@@ -27,10 +28,10 @@ class StorageFacilityContainer(planet.ui.BasePinContainer):
          p,
          p,
          p))
-        self.storageGauge = uicls.Gauge(parent=infoCont, value=0.0, color=planetCommon.PLANET_COLOR_STORAGE, label=mls.UI_PI_STORAGE)
-        self.cooldownTimer = planet.ui.CaptionAndSubtext(parent=infoCont, caption=mls.UI_PI_TRANSFER_NEXTTRANSFER, top=40)
+        self.storageGauge = uicls.Gauge(parent=infoCont, value=0.0, color=planetCommon.PLANET_COLOR_STORAGE, label=localization.GetByLabel('UI/PI/Common/Storage'))
+        self.cooldownTimer = planet.ui.CaptionAndSubtext(parent=infoCont, caption=localization.GetByLabel('UI/PI/Common/NextTransferAvailable'), top=40)
         left = self.infoContRightColAt
-        self.itemsTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=mls.UI_PI_STOREDITEMS, left=left, state=uiconst.UI_DISABLED)
+        self.itemsTxt = planet.ui.CaptionAndSubtext(parent=infoCont, caption=localization.GetByLabel('UI/PI/Common/StoredItems'), left=left, state=uiconst.UI_DISABLED)
         self.iconCont = uicls.Container(parent=infoCont, pos=(left,
          12,
          120,
@@ -50,24 +51,24 @@ class StorageFacilityContainer(planet.ui.BasePinContainer):
                 icon = uicls.Icon(parent=self.iconCont, pos=(iconLeft,
                  iconTop,
                  25,
-                 25), hint='%s<br>%s %s' % (cfg.invtypes.Get(typeID).name.upper(), amount, mls.UI_GENERIC_UNITS), typeID=typeID, size=32, ignoreSize=True)
+                 25), hint=localization.GetByLabel('UI/PI/Common/ItemAmount', itemName=cfg.invtypes.Get(typeID).name, amount=int(amount)), typeID=typeID, size=32, ignoreSize=True)
                 i += 1
                 if i >= maxNumIcons:
                     break
 
             self.itemsTxt.SetSubtext('')
         else:
-            self.itemsTxt.SetSubtext(mls.UI_GENERIC_NONE)
+            self.itemsTxt.SetSubtext(localization.GetByLabel('UI/PI/Common/NothingStored'))
 
 
 
     def _UpdateInfoCont(self):
         self.storageGauge.SetValue(float(self.pin.capacityUsed) / self.pin.GetCapacity())
-        self.storageGauge.SetSubText('%.1f/%.1f %s' % (self.pin.capacityUsed, self.pin.GetCapacity(), 'm3'))
-        if self.pin.lastRunTime is None or self.pin.lastRunTime <= blue.os.GetTime():
-            self.cooldownTimer.SetSubtext(mls.UI_GENERIC_NOW)
+        self.storageGauge.SetSubText(localization.GetByLabel('UI/PI/Common/StorageUsed', capacityUsed=self.pin.capacityUsed, capacityMax=self.pin.GetCapacity()))
+        if self.pin.lastRunTime is None or self.pin.lastRunTime <= blue.os.GetWallclockTime():
+            self.cooldownTimer.SetSubtext(localization.GetByLabel('UI/Common/Now'))
         else:
-            self.cooldownTimer.SetSubtext(util.FmtTime(self.pin.lastRunTime - blue.os.GetTime()))
+            self.cooldownTimer.SetSubtext(localization.GetByLabel('UI/PI/Common/TimeHourMinSec', time=self.pin.lastRunTime - blue.os.GetWallclockTime()))
 
 
 

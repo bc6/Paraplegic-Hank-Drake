@@ -10,9 +10,11 @@ import util
 import lg
 import uicls
 import uiconst
+import localization
 
 class TypeCompare(uicls.Window):
     __guid__ = 'form.TypeCompare'
+    default_windowID = 'typecompare'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
@@ -37,7 +39,7 @@ class TypeCompare(uicls.Window):
         self.compareinited = 0
         self.topLevelMarketGroup = None
         self.attrDictIDs = []
-        self.SetCaption(mls.UI_INFOWND_COMPARETOOL)
+        self.SetCaption(localization.GetByLabel('UI/Compare/CompareTool'))
         self.SetWndIcon()
         self.SetTopparentHeight(0)
         self.SetMinSize([350, 400])
@@ -65,7 +67,7 @@ class TypeCompare(uicls.Window):
             subpanel = uicls.Container(name='subpanel', parent=self.sr.panel, align=uiconst.TOALL, pos=(0, 0, 0, 0))
             self.sr.subpanel = subpanel
             bottomclear = uicls.Container(name='typecompare_bottomclear', parent=self.sr.subpanel, height=60, align=uiconst.TOBOTTOM)
-            uicls.Label(text=mls.UI_INFOWND_COMPARETXT1, parent=bottomclear, align=uiconst.TOALL, width=const.defaultPadding, height=const.defaultPadding, autowidth=False, autoheight=False, state=uiconst.UI_NORMAL)
+            uicls.EveLabelMedium(text=localization.GetByLabel('UI/Compare/CompareTypeAttributeLimit', attributeLimit=self.attributeLimit, typeLimit=self.typeLimit), parent=bottomclear, align=uiconst.TOALL, width=const.defaultPadding, height=const.defaultPadding, state=uiconst.UI_NORMAL)
             attributescroll = uicls.Container(name='typecompare_attributescroll', parent=self.sr.subpanel, align=uiconst.TOLEFT, left=0, width=settings.user.ui.Get('charsheetleftwidth', 125), idx=0)
             self.sr.attributescroll = uicls.Scroll(name='attributescroll', parent=attributescroll, padding=(0,
              const.defaultPadding,
@@ -78,10 +80,10 @@ class TypeCompare(uicls.Window):
             divider = xtriui.Divider(name='divider', align=uiconst.TOLEFT, idx=1, width=const.defaultPadding, parent=self.sr.subpanel, state=uiconst.UI_NORMAL)
             divider.Startup(attributescroll, 'width', 'x', 160, 200)
             self.sr.typescroll.sr.id = 'typecompare_typescroll'
-            btns = uicls.ButtonGroup(btns=[[mls.UI_SHARED_CHECKALL_OFF,
+            btns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Commands/UncheckAll'),
               self.SelectAll,
               (0,),
-              None], [mls.UI_GENERIC_RESETALL,
+              None], [localization.GetByLabel('UI/Commands/ResetAll'),
               self.RemoveAllEntries,
               (),
               None]], parent=self.sr.bottomparent, idx=0, unisize=0)
@@ -127,7 +129,7 @@ class TypeCompare(uicls.Window):
                     self.CompareErrorMessage(topLevelMarketGroupID)
                     break
                 else:
-                    sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_ADDINGTYPES, typeRow.typeName, i, len(valid))
+                    sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Compare/AddingTypes'), typeRow.typeName, i, len(valid))
                     blue.pyos.synchro.Yield()
                     typeRow = self.GetPreparedTypeData(typeRow)
                     if typeRow not in self.typeIDs:
@@ -135,7 +137,7 @@ class TypeCompare(uicls.Window):
                         self.typeIDs.append(typeRow)
                 i = i + 1
 
-            sm.GetService('loading').ProgressWnd(mls.UI_GENERIC_ADDINGTYPES, mls.UI_GENERIC_DONE, 1, 1)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Compare/AddingTypes'), localization.GetByLabel('UI/Commands/ProgressDone'), 1, 1)
             if hasNew:
                 self.OnColumnChanged()
 
@@ -233,7 +235,7 @@ class TypeCompare(uicls.Window):
 
     def GetAttributeScroll(self):
         scrolllist = self.GetAttributeContentList()
-        self.sr.attributescroll.Load(contentList=scrolllist, noContentHint=mls.UI_INFOWND_COMPAREHINT2)
+        self.sr.attributescroll.Load(contentList=scrolllist, noContentHint=localization.GetByLabel('UI/Compare/NothingToCompare'))
 
 
 
@@ -249,17 +251,11 @@ class TypeCompare(uicls.Window):
                     shipAttr = [ each for each in self.attrDict if each.attributeID in attrs ]
                     if shipAttr:
                         scrolllist.append(listentry.Get('Header', {'label': caption}))
-                        bd = sm.GetService('info').GetBarData(None, info, caption)
-                        attr = None
-                        if bd:
-                            attr = cfg.dgmattribs.Get(bd.get('attributeID'))
-                            scrolllist.append(self.ScrollEntry(attr))
-                            self.attrDictIDs.append(attr.attributeID)
                         for attr in shipAttr:
                             scrolllist.append(self.ScrollEntry(attr))
                             self.attrDictIDs.append(attr.attributeID)
 
-                        if caption == mls.UI_GENERIC_PROPULSION:
+                        if caption == localization.GetByLabel('UI/Compare/Propulsion'):
                             entry = self.ScrollEntry(cfg.dgmattribs.Get(const.attributeBaseWarpSpeed))
                             scrolllist.append(entry)
                             self.attrDictIDs.append(const.attributeBaseWarpSpeed)
@@ -274,7 +270,7 @@ class TypeCompare(uicls.Window):
 
 
     def GetFittings(self):
-        list = [(mls.UI_GENERIC_FITTING, [const.attributeCpuOutput,
+        list = [(localization.GetByLabel('UI/Fitting/FittingWindow/Fitting'), [const.attributeCpuOutput,
            const.attributePowerOutput,
            const.attributeUpgradeCapacity,
            const.attributeHiSlots,
@@ -313,7 +309,7 @@ class TypeCompare(uicls.Window):
                 self.OnColumnChanged(force=0)
             else:
                 checkbox.SetValue(False)
-                message = mls.SHARED_CANONLYCOMPAREAMOUNTATTRIBUTES % {'amount': self.attributeLimit}
+                message = localization.GetByLabel('UI/Compare/CanOnlyCompareAmountAttributes', amount=self.attributeLimit)
                 eve.Message('CustomInfo', {'info': message})
         elif attributeID in self.attrDictChecked:
             self.attrDictChecked.remove(attributeID)
@@ -324,7 +320,7 @@ class TypeCompare(uicls.Window):
 
     def GetTypeCompareScroll(self):
         (scrolllist, headers,) = self.GetCompareTypeInfoContentList()
-        self.sr.typescroll.Load(contentList=scrolllist, headers=headers, noContentHint=mls.UI_INFOWND_COMPAREHINT1)
+        self.sr.typescroll.Load(contentList=scrolllist, headers=headers, noContentHint=localization.GetByLabel('UI/Compare/CompareToolHint'))
 
 
 
@@ -344,7 +340,7 @@ class TypeCompare(uicls.Window):
          [],
          [])
         if self.typeIDs:
-            headers = ['type name', 'meta group']
+            headers = [localization.GetByLabel('/Carbon/UI/Common/TypeName'), localization.GetByLabel('UI/Compare/MetaGroup')]
             for typeRow in self.typeIDs:
                 data = typeRow.copy()
                 metaGroup = sm.GetService('info').GetMetaTypesFromTypeID(typeRow.invtype.typeID, groupOnly=1)
@@ -360,7 +356,7 @@ class TypeCompare(uicls.Window):
                     attribute = attributeLoop.get(each, None)
                     if not attribute:
                         continue
-                    displayName = attribute.displayName.replace(' ', '<br>')
+                    displayName = uiutil.ReplaceStringWithTags(attribute.displayName)
                     if (displayName, attribute.attributeID) not in uniqueHeaders:
                         uniqueHeaders.append((displayName, attribute.attributeID))
                     if attribute.attributeID == const.attributeBaseWarpSpeed:
@@ -377,13 +373,14 @@ class TypeCompare(uicls.Window):
                         if taa != None:
                             taa = sm.GetService('info').GetFormatAndValue(attribute, taa)
                         else:
-                            taa = mls.UI_GENERIC_NOTAVAILABLESHORT
+                            taa = localization.GetByLabel('UI/Generic/NotAvailableShort')
                     if typeRow.invtype.Group().Category().categoryID == const.categoryCharge:
                         (bsd, bad,) = sm.GetService('info').GetBaseDamageValue(typeRow.invtype.typeID)
-                        if attribute.displayName == mls.UI_INFOWND_BASESHIELDDMG:
+                        if attribute.displayName == localization.GetByLabel('UI/Compare/BaseShieldDamage'):
                             taa = bsd[0]
-                        elif attribute.displayName == mls.UI_INFOWND_BASEARMORDMG:
+                        elif attribute.displayName == localization.GetByLabel('UI/Compare/BaseArmorDamage'):
                             taa = bad[0]
+                        data.Set('sort_%s' % displayName, taa)
                     text += '<t>%s' % taa
 
                 data.label = text
@@ -412,9 +409,9 @@ class TypeCompare(uicls.Window):
         m = sm.GetService('menu').GetMenuFormItemIDTypeID(None, item.typeID, ignoreMarketDetails=0)
         item.DoSelectNode()
         sel = self.sr.typescroll.GetSelected()
-        text = mls.UI_CMD_REMOVE
+        text = localization.GetByLabel('UI/Commands/Remove')
         if len(sel) > 1:
-            text += ' (%s)' % len(sel)
+            text = localization.GetByLabel('UI/Commands/RemoveMultiple', itemcount=len(sel))
         m += [(text, self.RemoveEntry, (item,))]
         return m
 

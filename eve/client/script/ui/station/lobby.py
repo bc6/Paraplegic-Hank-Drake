@@ -11,11 +11,16 @@ import util
 import uicls
 import uiconst
 import xtriui
+import fontConst
+import localization
 SEC = 10000000L
 MIN = SEC * 60L
 HOUR = MIN * 60L
 MAX_CORP_DESC_LENGTH = 140
 MAX_CORP_DESC_LINES = 1
+BIGBUTTONSIZE = 64
+SMALLBUTTONSIZE = 56
+BUTTONGAP = 2
 
 def MakeURLTag(url):
     if url.find('.') < 0:
@@ -58,12 +63,35 @@ class Lobby(uicls.Window):
      'OnAgentMissionChange',
      'OnStandingSet',
      'OnCorporationChanged',
-     'OnCorporationMemberChanged']
-    default_left = '__right__'
+     'OnCorporationMemberChanged',
+     'OnViewStateChanged']
+    default_windowID = 'lobby'
+    default_left = 0
     default_top = 0
+    default_width = 266
 
-    def default_height(self):
-        return uicore.desktop.height - 305
+    @staticmethod
+    def default_height(*args):
+        return uicore.desktop.height - 100
+
+
+
+    def OnViewStateChanged(self, oldViewName, newViewName):
+        stationModeButton = getattr(self, 'stationModeButton', None)
+        if stationModeButton:
+            if newViewName == 'station':
+                stationModeButton.func = self.EnterHangar
+                stationModeButton.SetLabel(localization.GetByLabel('UI/Commands/EnterHangar'))
+                self.stationModeBtnParent.height = stationModeButton.height + 12
+                stationModeButton.state = uiconst.UI_NORMAL
+            elif newViewName == 'hangar':
+                stationModeButton.func = self.EnterCQ
+                stationModeButton.SetLabel(localization.GetByLabel('UI/Commands/EnterCQ'))
+                self.stationModeBtnParent.height = stationModeButton.height + 12
+                stationModeButton.state = uiconst.UI_NORMAL
+                if not prefs.GetValue('loadstationenv2', 1):
+                    stationModeButton.state = uiconst.UI_HIDDEN
+                    self.stationModeBtnParent.state = uiconst.UI_HIDDEN
 
 
 
@@ -75,36 +103,47 @@ class Lobby(uicls.Window):
         self.DoReset()
         self.sr.serviceAccessCache = {}
         self.isWindow = 1
+        self.ownerparentheight = 0
         self.locationparentheight = 0
         self.btnparentheight = 0
         self.startedUp = 0
         uiutil.Flush(uicore.layer.menu)
         self.SetWndIcon(None)
-        self.SetMinSize([238 if settings.user.ui.Get('stationservicebtns', 0) else 270, 463])
-        self.SetCaption(mls.UI_STATION_STSERVICES)
+        if not settings.user.ui.Get('stationservicebtns', 0):
+            minWidth = BUTTONGAP + (BIGBUTTONSIZE + BUTTONGAP) * 4
+        else:
+            minWidth = BUTTONGAP + (SMALLBUTTONSIZE + BUTTONGAP) * 5
+        self.SetMinSize([minWidth, 463])
+        self.SetCaption(localization.GetByLabel('UI/Station/StationServices'))
         self.scope = 'station'
         self.MakeUnKillable()
         self.MakeUnstackable()
         self.SetTopparentHeight(0)
         main = self.sr.main
-        self.sr.buttonParent = buttonParent = uicls.Container(name='buttonParent', align=uiconst.TOBOTTOM, height=0, parent=main)
-        self.sr.btnparent = btnparent = uicls.Container(name='btnparent', align=uiconst.TOTOP, width=0, height=128, parent=main)
-        self.sr.bottomparent = bottomparent = uicls.Container(name='bottomparent', align=uiconst.TOALL, parent=main, pos=(0, 0, 0, 0))
+        self.sr.buttonParent = uicls.Container(name='buttonParent', align=uiconst.TOBOTTOM, parent=main)
+        self.sr.ownerparent = ownerparent = uicls.Container(name='ownerparent', align=uiconst.TOTOP, height=160, parent=main)
+        self.stationModeBtnParent = uicls.Container(name='stationModeBtnParent', align=uiconst.TOTOP, parent=main)
+        self.stationModeButton = uicls.Button(parent=self.stationModeBtnParent, align=uiconst.CENTER, state=uiconst.UI_HIDDEN, label=' ')
+        curView = settings.user.ui.Get('defaultDockingView', 'station')
+        self.OnViewStateChanged(curView, curView)
+        uicls.Fill(parent=self.stationModeBtnParent, color=(1, 1, 1, 0.125), padLeft=6, padRight=6)
+        self.stationModeBtnParent.height = self.stationModeButton.height + 12
+        self.sr.btnparent = uicls.Container(name='btnparent', align=uiconst.TOTOP, parent=main, clipChildren=True)
+        self.sr.bottomparent = bottomparent = uicls.Container(name='bottomparent', align=uiconst.TOALL, parent=main)
         self.agentFinderCont = uicls.Container(name='agentFinderCont', parent=bottomparent, align=uiconst.TOTOP, height=20, state=uiconst.UI_HIDDEN)
-        self.agentFinderBtn = uicls.Button(label=mls.UI_SHARED_AGENTFINDER, parent=self.agentFinderCont, align=uiconst.TOTOP, height=20, func=uicore.cmd.OpenAgentFinder, padding=(const.defaultPadding,
+        self.agentFinderBtn = uicls.Button(label=localization.GetByLabel('UI/AgentFinder/AgentFinder'), parent=self.agentFinderCont, align=uiconst.TOTOP, height=20, func=uicore.cmd.OpenAgentFinder, padding=(const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding,
          const.defaultPadding))
-        lobbyscroll = uicls.Scroll(parent=bottomparent)
-        lobbyscroll.left = lobbyscroll.top = lobbyscroll.width = lobbyscroll.height = const.defaultPadding
+        lobbyscroll = uicls.Scroll(parent=bottomparent, padding=const.defaultPadding)
         self.sr.scroll = lobbyscroll
-        tabs = [[mls.UI_GENERIC_GUESTS,
+        tabs = [[localization.GetByLabel('UI/Station/Lobby/Guests'),
           lobbyscroll,
           self,
-          'lobby_guests'], [mls.UI_GENERIC_AGENTS,
+          'lobby_guests'], [localization.GetByLabel('UI/Station/Lobby/Agents'),
           lobbyscroll,
           self,
-          'lobby_agents'], [mls.UI_CORP_OFFICES,
+          'lobby_agents'], [localization.GetByLabel('UI/Station/Lobby/Offices'),
           lobbyscroll,
           self,
           'lobby_offices']]
@@ -113,10 +152,10 @@ class Lobby(uicls.Window):
         if eve.rookieState is None and settings.user.windows.Get('dockshipsanditems', 0):
             self.sr.shipsContainer = xtriui.DropDude(parent=bottomparent, state=uiconst.UI_HIDDEN)
             self.sr.itemsContainer = xtriui.DropDude(parent=bottomparent, state=uiconst.UI_HIDDEN)
-            tabs = [[mls.UI_GENERIC_SHIPS,
+            tabs = [[localization.GetByLabel('UI/Station/Ships'),
               self.sr.shipsContainer,
               self,
-              'lobby_ships'], [mls.UI_GENERIC_ITEMS,
+              'lobby_ships'], [localization.GetByLabel('UI/Station/Items'),
               self.sr.itemsContainer,
               self,
               'lobby_items']]
@@ -124,10 +163,9 @@ class Lobby(uicls.Window):
             lobbytabs.Startup(tabs, 'lobbytabs', autoselecttab=0)
             self.sr.lobbytabs.AddRow(lobbytabs)
         uthread.pool('lobby::_Startup', self.sr.lobbytabs.AutoSelect, 1)
+        self.LoadOwnerInfo()
         self.LoadServiceButtons()
         uthread.new(self.LoadButtons)
-        sm.GetService('neocom').Position()
-        sm.GetService('ui').SortGlobalLayer()
         if self.destroyed:
             return 
         sm.RegisterNotify(self)
@@ -139,21 +177,43 @@ class Lobby(uicls.Window):
 
 
 
+    def EnterCQ(self, *args):
+        sm.GetService('cmd').CmdEnterCQ()
+
+
+
+    def EnterHangar(self, *args):
+        sm.GetService('cmd').CmdEnterHangar()
+
+
+
+    def OnScale_(self, *args):
+        self.LayoutServiceButtons()
+        self.LoadButtons()
+        height = 0
+        for each in self.sr.main.children:
+            if each.align in (uiconst.TOTOP, uiconst.TOBOTTOM):
+                height += each.padTop + each.height + each.padBottom
+
+        height += 160
+        self.SetMinSize([self.minsize[0], height])
+
+
+
     def LayoutShipsAndItems(self):
-        wnd = sm.GetService('window').GetWindow('hangarFloor')
-        if wnd:
-            wnd.CloseX()
-        wnd = form.ItemHangar(name='hangarFloor')
+        form.ItemHangar.CloseIfOpen()
+        wnd = form.ItemHangar.Open()
         self.ImplantWindow('items', wnd)
-        wnd = sm.GetService('window').GetWindow('shipHangar')
-        if wnd:
-            wnd.CloseX()
-        wnd = form.ShipHangar(name='shipHangar')
+        form.ShipHangar.CloseIfOpen()
+        wnd = form.ShipHangar.Open()
         self.ImplantWindow('ships', wnd)
+        if self.GetRegisteredState('pinned'):
+            uthread.new(self.Pin, 0)
 
 
 
-    def OnClose_(self, *args):
+    def _OnClose(self, *args):
+        uicls.Window._OnClose(self, *args)
         self.DoReset()
 
 
@@ -199,8 +259,8 @@ class Lobby(uicls.Window):
         wnd.HideHeader()
         wnd.MakeUnResizeable()
         if wndID in ('items', 'ships'):
-            uiutil.GetChild(wnd, 'mainicon').top = -6
-            uiutil.GetChild(wnd, 'text').top = 2
+            wnd.sr.mainIcon.top = -6
+            wnd.sr.caption.top = 2
             wnd.sr.iconsModeBtn.top = 10
             wnd.sr.detailsModeBtn.top = 10
             wnd.sr.listModeBtn.top = 10
@@ -274,10 +334,10 @@ class Lobby(uicls.Window):
                 icn = uiutil.GetChild(icon, 'icon')
                 if not currentstate.isEnabled:
                     icn.color.a = 0.5
-                    icon.serviceStatus = mls.UI_SHARED_DISABLED
+                    icon.serviceStatus = localization.GetByLabel('UI/Station/Lobby/Disabled')
                 else:
                     icn.color.a = 1.0
-                    icon.serviceStatus = mls.UI_SHARED_ENABLED
+                    icon.serviceStatus = localization.GetByLabel('UI/Station/Lobby/Enabled')
 
 
 
@@ -287,20 +347,17 @@ class Lobby(uicls.Window):
         uix.Flush(parent)
         services = sm.GetService('station').GetStationServiceInfo()
         serviceMask = eve.stationItem.serviceMask
-        x = 0
-        y = 0
         icon = None
-        (l, t, w, h,) = parent.GetAbsolute()
         stationservicebtns = settings.user.ui.Get('stationservicebtns', 0)
-        btnsize = 64
+        btnsize = BIGBUTTONSIZE
         if stationservicebtns:
-            btnsize = 51
+            btnsize = SMALLBUTTONSIZE
         haveServices = []
-        for (serviceID, cmdStr, displayName, iconpath, stationOnly, stationServiceIDs,) in services:
+        for service in services:
             hasStationService = 0
-            for stationServiceID in stationServiceIDs:
+            for stationServiceID in service.serviceIDs:
                 if serviceMask & stationServiceID == stationServiceID:
-                    if serviceID == 'navyoffices':
+                    if service.name == 'navyoffices':
                         check = sm.StartService('facwar').CheckStationElegibleForMilitia()
                         if not check:
                             hasStationService = 0
@@ -308,27 +365,20 @@ class Lobby(uicls.Window):
                     hasStationService = 1
                     break
 
-            if 1 == hasStationService or -1 in stationServiceIDs:
-                haveServices.append((serviceID,
-                 displayName,
-                 iconpath,
-                 stationServiceIDs,
-                 1,
-                 cmdStr))
+            if 1 == hasStationService or -1 in service.serviceIDs:
+                haveServices.append(service)
 
-        amountOfButtonsPerRow = w / btnsize
-        amountOfButtonsPerRow = min(amountOfButtonsPerRow, len(haveServices))
-        for (serviceID, displayName, iconpath, stationServiceIDs, hasStationService, cmdStr,) in haveServices:
+        for service in haveServices:
             icon = uix.GetBigButton(btnsize, parent, left=0, top=0)
-            icon.name = serviceID
-            icon.cmdStr = cmdStr
-            icon.stationServiceIDs = stationServiceIDs
-            icon.displayName = displayName
+            icon.name = service.name
+            icon.cmdStr = service.command
+            icon.stationServiceIDs = service.serviceIDs
+            icon.displayName = service.label
             icon.OnClick = (self.OnSvcBtnClick, icon)
             icon.MouseEnter = self.OnSvcBtnMouseEnter
-            icon.serviceStatus = mls.UI_SHARED_ENABLED
-            icon.sr.icon.LoadIcon(iconpath)
-            self.SetServiceButtonState(icon, stationServiceIDs)
+            icon.serviceStatus = localization.GetByLabel('UI/Station/Lobby/Enabled')
+            icon.sr.icon.LoadIcon(service.iconID)
+            self.SetServiceButtonState(icon, service.serviceIDs)
             uiutil.SetOrder(icon, 0)
 
         self.LayoutServiceButtons()
@@ -337,11 +387,10 @@ class Lobby(uicls.Window):
 
     def OnSvcBtnMouseEnter(self, btn, *args):
         cmdshortcut = uicore.cmd.GetShortcutByString(btn.cmdStr)
-        cmdshortcut = cmdshortcut or mls.UI_GENERIC_NONE
-        btn.hint = mls.UI_SHARED_STATIONSERVICEBUTTONHINT % {'displayName': btn.displayName,
-         'shortCut': '<b>%s</b>' % cmdshortcut,
-         'serviceStatus': '<b>%s</b>' % btn.serviceStatus}
-        btn.displayName + (' [%s]' % cmdshortcut, '')[(cmdshortcut is None)] + '<br>status: <b>%s</b>' % btn.serviceStatus
+        if cmdshortcut is None:
+            cmdshortcut = localization.GetByLabel('UI/Station/Lobby/NoShortcut')
+        hintLabel = localization.GetByLabel('UI/Station/Lobby/StationServiceButtonHint', displayName=btn.displayName, shortCut=cmdshortcut, serviceStatus=btn.serviceStatus)
+        btn.hint = hintLabel
 
 
 
@@ -352,11 +401,11 @@ class Lobby(uicls.Window):
 
     def OnSvcBtnClick(self, btn, *args):
         services = sm.GetService('station').GetStationServiceInfo()
-        for (serviceID, cmdStr, displayName, iconpath, stationOnly, stationServiceIDs,) in services:
-            if serviceID == btn.name:
+        for service in services:
+            if service.name == btn.name:
                 corpStationMgr = None
-                now = blue.os.GetTime()
-                for stationServiceID in stationServiceIDs:
+                now = blue.os.GetWallclockTime()
+                for stationServiceID in service.serviceIDs:
                     doCheck = 1
                     (time, result,) = (None, None)
                     if self.sr.serviceAccessCache.has_key(stationServiceID):
@@ -386,24 +435,29 @@ class Lobby(uicls.Window):
             return 
         uix.Flush(self.sr.buttonParent)
         btns = []
-        self.sr.buttonParent.height = 0
         canRent = eve.session.corprole & const.corpRoleCanRentOffice == const.corpRoleCanRentOffice
         canMove = eve.session.corprole & const.corpRoleDirector == const.corpRoleDirector
         deliveryRoles = const.corpRoleAccountant | const.corpRoleJuniorAccountant | const.corpRoleTrader
         canOpenDeliveries = eve.session.corprole & deliveryRoles > 0
         if canRent:
-            btns.append([mls.UI_CMD_RENTOFFICE, self.RentOffice, None])
+            rentLabel = localization.GetByLabel('UI/Station/Lobby/RentOffice')
+            btns.append([rentLabel, self.RentOffice, None])
         if canMove:
-            btns.append([mls.UI_CMD_MOVEHQHERE, self.SetHQ, None])
+            hqLabel = localization.GetByLabel('UI/Station/Lobby/MoveHeadquartersHere')
+            btns.append([hqLabel, self.SetHQ, None])
         if not util.IsNPC(eve.session.corpid):
-            btns.append([mls.UI_CMD_CORPHANGAR, self.OpenCorpHangar, None])
+            corpHangarLabel = localization.GetByLabel('UI/Station/CorpHangar')
+            btns.append([corpHangarLabel, self.OpenCorpHangar, None])
         if sm.GetService('corp').DoesCharactersCorpOwnThisStation():
-            btns.append([mls.UI_CMD_STATIONMANAGEMENT, self.OpenStationManagement, None])
+            mgmtLabel = localization.GetByLabel('UI/Station/Lobby/StationManagement')
+            btns.append([mgmtLabel, self.OpenStationManagement, None])
         if canOpenDeliveries:
-            btns.append([mls.UI_CMD_DELIVERIES, uicore.cmd.OpenCorpDeliveries, (deliveryRoles,)])
+            deliveriesLabel = localization.GetByLabel('UI/Station/Lobby/Deliveries')
+            btns.append([deliveriesLabel, uicore.cmd.OpenCorpDeliveries, (deliveryRoles,)])
         if self is None or self.destroyed:
             return 
         maxw = self.width - 12
+        totalHeight = 0
         w = 0
         t = 0
         s = {}
@@ -427,7 +481,8 @@ class Lobby(uicls.Window):
                     btn.left += diff
 
 
-            self.sr.buttonParent.height = t + btn.height + 6
+            totalHeight = t + btn.height + 6
+        self.sr.buttonParent.height = totalHeight
 
 
 
@@ -448,6 +503,25 @@ class Lobby(uicls.Window):
 
 
 
+    def LoadOwnerInfo(self):
+        parent = self.sr.ownerparent
+        parent.Flush()
+        corpID = eve.stationItem.ownerID
+        size = 128 if uiutil.CheckCorpID(corpID) else 64
+        logo = uiutil.GetLogoIcon(itemID=corpID, parent=parent, acceptNone=False, state=uiconst.UI_DISABLED, pos=(0,
+         8,
+         size,
+         size), align=uiconst.CENTERTOP)
+        if not uiutil.CheckCorpID(corpID):
+            self.sr.corpCaption = caption = uicls.CaptionLabel(text='<center>' + cfg.eveowners.Get(corpID).name, parent=parent, align=uiconst.TOTOP, idx=0, name='corpname', padTop=logo.top + logo.height + 4)
+            parent.height = caption.padTop + caption.textheight + 4
+        else:
+            parent.height = logo.top + logo.height + 8
+        uicls.InfoIcon(typeID=const.typeCorporation, itemID=corpID, size=16, left=const.defaultPadding, top=const.defaultPadding, align=uiconst.TOPRIGHT, parent=parent, idx=0)
+        self.ownerparentheight = parent.height
+
+
+
     def ImVisible(self):
         return bool(self.state != uiconst.UI_HIDDEN and not self.IsCollapsed() and not self.IsMinimized())
 
@@ -458,30 +532,30 @@ class Lobby(uicls.Window):
             return 
         parent = self.sr.btnparent
         stationservicebtns = settings.user.ui.Get('stationservicebtns', 0)
-        btnsize = 64
+        btnsize = BIGBUTTONSIZE
         if stationservicebtns:
-            btnsize = 56
-        (l, t, w, h,) = parent.GetAbsolute()
+            btnsize = SMALLBUTTONSIZE
+        (w, h,) = parent.GetAbsoluteSize()
         if w <= btnsize:
             return 
-        perRow = w / btnsize
-        left = 4
-        top = 4
-        parent.height = btnsize + 8
-        for icon in parent.children:
-            if l + left + btnsize + 1 >= l + w:
-                left = 4
-                top += btnsize + 1
-                parent.height += btnsize + 1
+        left = BUTTONGAP
+        top = 8
+        totalHeight = 0
+        for icon in parent.children[:]:
+            if left + btnsize > w:
+                left = BUTTONGAP
+                top += btnsize + BUTTONGAP
             icon.left = left
             icon.top = top
             icon.width = btnsize
             icon.height = btnsize
             if icon.state is not None:
                 icon.state = uiconst.UI_NORMAL
-            left += btnsize + 1
+            left += btnsize + BUTTONGAP
             icon.AdjustSizeAndPosition(btnsize, btnsize)
+            totalHeight = icon.top + icon.height + 8
 
+        parent.height = totalHeight
 
 
 
@@ -501,8 +575,9 @@ class Lobby(uicls.Window):
     def OnResizeDelayed(self, *args):
         if not self or self.destroyed:
             return 
-        self.LayoutServiceButtons()
-        self.LoadButtons()
+        if self.sr.corpCaption:
+            textheight = self.sr.corpCaption.textheight
+            self.sr.corpCaption.parent.height = max(self.ownerparentheight, self.ownerparentheight + textheight - 24)
 
 
 
@@ -530,7 +605,7 @@ class Lobby(uicls.Window):
         cfg.eveowners.Prime([charID])
         if self is None or self.destroyed:
             return 
-        if self and not self.destroyed and eve.session.stationid and self.sr.state == 'lobby_guests':
+        if self and not self.destroyed and session.stationid2 and self.sr.state == 'lobby_guests':
             for entry in self.sr.scroll.GetNodes():
                 if entry.charID == charID:
                     return 
@@ -549,7 +624,7 @@ class Lobby(uicls.Window):
 
     def OnCharNoLongerInStation(self, rec):
         (charID, corpID, allianceID, warFactionID,) = rec
-        if self and not self.destroyed and eve.session.stationid and self.sr.state == 'lobby_guests':
+        if self and not self.destroyed and session.stationid2 and self.sr.state == 'lobby_guests':
             for entry in self.sr.scroll.GetNodes():
                 if entry.charID == charID:
                     self.sr.scroll.RemoveEntries([entry])
@@ -586,15 +661,15 @@ class Lobby(uicls.Window):
 
     def ShowAgents(self):
         try:
-            agentsSvc = sm.StartService('agents')
-            journalSvc = sm.StartService('journal')
+            agentsSvc = sm.GetService('agents')
+            journalSvc = sm.GetService('journal')
             facWarSvc = sm.StartService('facwar')
             standingSvc = sm.StartService('standing')
             epicArcStatusSvc = sm.RemoteSvc('epicArcStatus')
             if self.sr.state != 'lobby_agents':
                 return 
             agentMissions = journalSvc.GetMyAgentJournalDetails()[:1][0]
-            agentsInStation = agentsSvc.GetAgentsByStationID()[eve.session.stationid]
+            agentsInStation = agentsSvc.GetAgentsByStationID()[session.stationid2]
             relevantAgents = []
             for each in agentMissions:
                 (missionState, importantMission, missionType, missionName, agentID, expirationTime, bookmarks, remoteOfferable, remoteCompletable,) = each
@@ -620,7 +695,8 @@ class Lobby(uicls.Window):
                         sortlist.append((cfg.eveowners.Get(agentID).name, listentry.Get('User', {'charID': agentID})))
 
             if sortlist:
-                scrolllist.append(listentry.Get('Header', {'label': mls.UI_STATION_AGENTSOFINTEREST}))
+                agentLabel = localization.GetByLabel('UI/Station/Lobby/AgentsOfInterest')
+                scrolllist.append(listentry.Get('Header', {'label': agentLabel}))
                 scrolllist += uiutil.SortListOfTuples(sortlist)
             unavailableAgents = []
             availableAgents = []
@@ -663,14 +739,16 @@ class Lobby(uicls.Window):
                             unavailableAgents.append(agent.agentID)
 
             if availableAgents:
-                scrolllist.append(listentry.Get('Header', {'label': mls.UI_STATION_AVAILABLETOYOU}))
+                availableLabel = localization.GetByLabel('UI/Station/Lobby/AvailableToYou')
+                scrolllist.append(listentry.Get('Header', {'label': availableLabel}))
                 sortlist = []
                 for agentID in availableAgents:
                     sortlist.append((cfg.eveowners.Get(agentID).name, listentry.Get('User', {'charID': agentID})))
 
                 scrolllist += uiutil.SortListOfTuples(sortlist)
             if unavailableAgents:
-                scrolllist.append(listentry.Get('Header', {'label': mls.UI_STATION_NOTAVAILABLETOYOU}))
+                unavailableLabel = localization.GetByLabel('UI/Station/Lobby/NotAvailableToYou')
+                scrolllist.append(listentry.Get('Header', {'label': unavailableLabel}))
                 sortlist = []
                 for agentID in unavailableAgents:
                     sortlist.append((cfg.eveowners.Get(agentID).name, listentry.Get('User', {'charID': agentID})))
@@ -703,14 +781,15 @@ class Lobby(uicls.Window):
             self.sr.isRentOfficeOpening = 1
             try:
                 cost = sm.GetService('corp').GetCorpStationManager().GetQuoteForRentingAnOffice()
-                if eve.Message('AskPayOfficeRentalFee', {'cost': util.FmtCurrency(cost, currency=None),
-                 'days': const.rentalPeriodOffice}, uiconst.YESNO) == uiconst.ID_YES:
+                if eve.Message('AskPayOfficeRentalFee', {'cost': cost,
+                 'duration': const.rentalPeriodOffice * const.DAY}, uiconst.YESNO) == uiconst.ID_YES:
                     officeID = sm.GetService('corp').GetCorpStationManager().RentOffice(cost)
                     if officeID:
                         office = sm.GetService('corp').GetOffice()
-                        eve.InvalidateLocationCache(officeID)
+                        invCache = sm.GetService('invCache')
+                        invCache.InvalidateLocationCache(officeID)
                         if office is not None:
-                            folder = eve.GetInventoryFromId(office.officeFolderID)
+                            folder = invCache.GetInventoryFromId(office.officeFolderID, locationID=session.stationid2)
                             folder.List()
                             sm.GetService('window').OpenCorpHangar(office.itemID)
                 uthread.new(self.LoadButtons)
@@ -737,6 +816,13 @@ class Lobby(uicls.Window):
 
 
 
+    def ReloadOfficesIfVisible(self):
+        if self.sr.lobbytabs.GetSelectedArgs() == 'lobby_offices':
+            self.sr.state = None
+            self.ShowOffices()
+
+
+
     def ShowOffices(self):
         if self.sr.Get('state', None) != 'lobby_offices':
             return 
@@ -751,17 +837,11 @@ class Lobby(uicls.Window):
             scrolllist.append((data.corpName.lower(), listentry.Get('OfficeEntry', data=data)))
 
         scrolllist = uiutil.SortListOfTuples(scrolllist)
-        unrentedOffices = self.GetNumberOfUnrentedOffices()
-        scrolllist.insert(0, listentry.Get('Header', {'label': mls.UI_GENERIC_AVAILABLEOFFICE % {'numslots': '<b>%s</b>' % unrentedOffices}}))
+        numUnrentedOffices = self.GetNumberOfUnrentedOffices()
+        availOfficesLabel = localization.GetByLabel('UI/Station/Lobby/NumAvailableOffices', numOffices=numUnrentedOffices)
+        scrolllist.insert(0, listentry.Get('Header', {'label': availOfficesLabel}))
         if self and not self.destroyed:
             self.sr.scroll.Load(contentList=scrolllist)
-
-
-
-    def GetLobbyScrollWidth(self):
-        if not self or self.destroyed:
-            return 0
-        return self.sr.scroll.GetContentWidth()
 
 
 
@@ -773,6 +853,22 @@ class Lobby(uicls.Window):
     def OnCorporationMemberChanged(self, memberID, change):
         if memberID == session.charid:
             self.LoadButtons()
+
+
+
+    def StopAllBlinkButtons(self):
+        for each in self.sr.btnparent.children:
+            if hasattr(each, 'Blink'):
+                each.Blink(0)
+
+
+
+
+    def BlinkButton(self, whatBtn):
+        for each in self.sr.btnparent.children:
+            if each.name.lower() == whatBtn.lower():
+                each.Blink(blinks=40)
+
 
 
 
@@ -788,10 +884,10 @@ class OfficeEntry(uicls.SE_BaseClassCore):
         uicls.Line(parent=main, align=uiconst.TOLEFT)
         icon = uicls.Container(parent=left, align=uiconst.TOPLEFT, width=32, height=32, left=3, top=3, state=uiconst.UI_PICKCHILDREN)
         par = uicls.Container(parent=main, align=uiconst.TOTOP, height=17, state=uiconst.UI_PICKCHILDREN)
-        label = mls.UI_CORP_CORPNAME
+        label = localization.GetByLabel('UI/Station/Lobby/CorpName')
         fieldName = 'corpName'
-        l = uicls.Label(text=label, parent=par, left=5, top=2, letterspace=1, fontsize=9, state=uiconst.UI_DISABLED, uppercase=1)
-        t = uicls.Label(text='', parent=par, left=5, state=uiconst.UI_NORMAL)
+        l = uicls.EveHeaderSmall(text=label, parent=par, left=5, top=2, state=uiconst.UI_DISABLED)
+        t = uicls.EveLabelMedium(text='', parent=par, left=5, state=uiconst.UI_NORMAL)
         setattr(self.sr, fieldName + '_Label', l)
         setattr(self.sr, fieldName + '_Text', t)
         setattr(self.sr, fieldName, par)
@@ -833,7 +929,8 @@ class OfficeEntry(uicls.SE_BaseClassCore):
         if not util.IsNPC(node.corpID):
             buttonEntries = []
             if eve.session.corpid != node.corpID:
-                buttonEntries.append((mls.UI_CMD_APPLYTOJOIN,
+                applyLabel = localization.GetByLabel('UI/Corporations/CorporationWindow/Alliances/Rankings/ApplyToJoin')
+                buttonEntries.append((applyLabel,
                  sm.GetService('corp').ApplyForMembership,
                  (node.corpID,),
                  80))
@@ -852,8 +949,8 @@ class OfficeEntry(uicls.SE_BaseClassCore):
     def GetHeight(self, *args):
         (node, width,) = args
         height = 2
-        lh = uix.GetTextHeight(mls.UI_CORP_CORPNAME, autoWidth=1, fontsize=9, uppercase=1)
-        th = uix.GetTextHeight(node.corpName, autoWidth=1)
+        lh = uix.GetTextHeight(localization.GetByLabel('UI/Station/Lobby/CorpName'), fontsize=fontConst.EVE_SMALL_FONTSIZE, uppercase=1)
+        th = uix.GetTextHeight(node.corpName)
         multiplier = 1
         height += (lh + th + 15) * multiplier
         height += 5

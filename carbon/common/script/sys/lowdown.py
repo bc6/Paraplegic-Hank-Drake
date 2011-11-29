@@ -5,9 +5,9 @@ import util
 import cPickle
 import cStringIO
 import os
-goldName = 'root:/../GoldenCD.pikl'
-nullmanifestName = 'root:/../manifest.dat'
-bluekeyName = 'root:/../../carbon/src/blue/bluekey.h'
+goldName = 'root:/GoldenCD.pikl'
+nullmanifestName = 'root:/manifest.dat'
+bluekeyName = 'root:/../carbon/src/blue/bluekey.h'
 
 def TmpContext():
     return CryptAcquireContext(None, MS_ENHANCED_PROV, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)
@@ -56,7 +56,7 @@ def Test():
 
 def GenCodeAccessor(pw, goldName = 'GoldenCD.pikl', bluekeyName = 'bluekey.h'):
     c = TmpContext()
-    timeStamp = util.FmtDate(blue.os.GetTime())
+    timeStamp = util.FmtDateEng(blue.os.GetWallclockTime())
     pwkey = KeyFromPassword(c, pw)
     siglen = 1024
     sig = CryptGenKey(c, AT_SIGNATURE, siglen << 16 | CRYPT_EXPORTABLE)
@@ -72,7 +72,7 @@ def GenCodeAccessor(pw, goldName = 'GoldenCD.pikl', bluekeyName = 'bluekey.h'):
      'codeSignaturePublic': public,
      'codeSignaturePrivate': private,
      'codeEncryption': crypt,
-     'date': util.FmtDate(blue.os.GetTime())}
+     'date': util.FmtDateEng(blue.os.GetWallclockTime())}
     f = file(goldName, 'w')
     cPickle.dump(gold, f)
     f.close()

@@ -7,12 +7,12 @@ import xtriui
 import form
 import util
 import listentry
-import draw
 import uiconst
 import math
 import base
 import notificationUtil
 import uicls
+import localization
 HINTCUTOFF = 100
 DELETE_INTERVAL = 0.3 * SEC
 
@@ -31,10 +31,10 @@ class NotificationForm(uicls.Container):
 
 
     def DrawStuff(self, *args):
-        btns = uicls.ButtonGroup(btns=[[mls.UI_EVEMAIL_NOTIFICATIONS_MARKALLASREAD,
+        btns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Mail/Notifications/MarkAllAsRead'),
           self.MarkAllRead,
           None,
-          81], [mls.UI_EVEMAIL_NOTIFICATIONS_DELETEALL,
+          81], [localization.GetByLabel('UI/Mail/Notifications/DeleteAll'),
           self.DeleteAll,
           None,
           81]], parent=self, idx=0, line=1)
@@ -59,7 +59,7 @@ class NotificationForm(uicls.Container):
          0,
          0,
          readingContHeight))
-        self.sr.readingPane = uicls.Edit(setvalue='', parent=self.sr.readingPaneCont, align=uiconst.TOALL, readonly=1)
+        self.sr.readingPane = uicls.EditPlainText(setvalue='', parent=self.sr.readingPaneCont, align=uiconst.TOALL, readonly=1)
         self.sr.divider = xtriui.Divider(name='divider', align=uiconst.TOBOTTOM, height=const.defaultPadding, parent=self.sr.rightCont, state=uiconst.UI_NORMAL)
         self.sr.divider.Startup(self.sr.readingPaneCont, 'height', 'y', 64, self.scrollHeight)
         self.sr.divider.OnSizeChanged = self.OnReadingScrollSizeChanged
@@ -69,7 +69,7 @@ class NotificationForm(uicls.Container):
          0,
          0))
         self.sr.msgScroll.sr.id = 'notifications_msgs'
-        self.sr.msgScroll.sr.fixedColumns = {mls.UI_EVEMAIL_STATUS: 52}
+        self.sr.msgScroll.sr.fixedColumns = {localization.GetByLabel('UI/Mail/Status'): 52}
         self.sr.msgScroll.OnSelectionChange = self.MsgScrollSelectionChange
         self.sr.msgScroll.OnDelete = self.DeleteFromKeyboard
         self.inited = True
@@ -142,12 +142,14 @@ class NotificationForm(uicls.Container):
     def GetStaticLabelsGroups(self):
         scrolllist = []
         lastViewedID = settings.char.ui.Get('mail_lastnotification', None)
-        for (groupID, label,) in notificationUtil.groupNames.iteritems():
+        for (groupID, labelPath,) in notificationUtil.groupNamePaths.iteritems():
+            label = localization.GetByLabel(labelPath)
             entry = self.GetGroupEntry(groupID, label, groupID == lastViewedID)
-            scrolllist.append((label.lower(), entry))
+            strippedLabel = uiutil.StripTags(label, stripOnly=['localized'])
+            scrolllist.append((strippedLabel.lower(), entry))
 
         scrolllist = uiutil.SortListOfTuples(scrolllist)
-        entry = self.GetGroupEntry(const.notificationGroupUnread, mls.UI_GENERIC_UNREAD, const.notificationGroupUnread == lastViewedID)
+        entry = self.GetGroupEntry(const.notificationGroupUnread, localization.GetByLabel('UI/Mail/Unread'), const.notificationGroupUnread == lastViewedID)
         scrolllist.insert(0, entry)
         scrolllist.insert(1, listentry.Get('Space', {'height': 12}))
         return scrolllist
@@ -205,18 +207,20 @@ class NotificationForm(uicls.Container):
         pos = self.sr.msgScroll.GetScrollProportion()
         scrolllist = []
         for each in notifications:
-            label = ''
             senderName = ''
             if each.senderID is not None:
                 senderName = cfg.eveowners.Get(each.senderID).ownerName
-            label = '<t>%s<t>%s<t>%s' % (senderName, each.subject, util.FmtDate(each.created, 'ls'))
+            label = '<t>' + senderName + '<t>' + each.subject + '<t>' + util.FmtDate(each.created, 'ls')
             if group.groupID == const.notificationGroupUnread:
                 typeGroup = notificationUtil.GetTypeGroup(each.typeID)
-                typeName = notificationUtil.groupNames.get(typeGroup, '')
-                label += '<t>%s' % typeName
+                labelPath = notificationUtil.groupNamePaths.get(typeGroup, None)
+                if labelPath is None:
+                    typeName = ''
+                else:
+                    typeName = localization.GetByLabel(labelPath)
+                label += '<t>' + typeName
             hint = each.body.replace('<br>', '')
-            if len(hint) > HINTCUTOFF:
-                hint = hint[:HINTCUTOFF] + '...'
+            hint = uiutil.TruncateStringTo(hint, HINTCUTOFF, localization.GetByLabel('UI/Common/MoreTrail'))
             data = util.KeyVal()
             data.cleanLabel = label
             data.parentNode = node
@@ -235,15 +239,15 @@ class NotificationForm(uicls.Container):
             data.Draggable_blockDrag = 1
             scrolllist.append(listentry.Get('MailEntry', data=data))
 
-        scrollHeaders = [mls.UI_EVEMAIL_STATUS,
-         mls.UI_EVEMAIL_SENDER,
-         mls.UI_EVEMAIL_SUBJECT,
-         mls.UI_EVEMAIL_RECEIVED]
+        scrollHeaders = [localization.GetByLabel('UI/Mail/Status'),
+         localization.GetByLabel('UI/Mail/Sender'),
+         localization.GetByLabel('UI/Mail/Subject'),
+         localization.GetByLabel('UI/Mail/Received')]
         if group.groupID == const.notificationGroupUnread:
-            scrollHeaders.append(mls.UI_GENERIC_GROUPNAME)
+            scrollHeaders.append(localization.GetByLabel('UI/Mail/Notifications/GroupName'))
         if not self or self.destroyed:
             return 
-        self.sr.msgScroll.Load(contentList=scrolllist, headers=scrollHeaders, noContentHint=mls.UI_GENERIC_NOITEMSFOUND)
+        self.sr.msgScroll.Load(contentList=scrolllist, headers=scrollHeaders, noContentHint=localization.GetByLabel('UI/Mail/Notifications/NoNotifications'))
         if not refreshing:
             self.ClearReadingPane()
         else:
@@ -255,9 +259,9 @@ class NotificationForm(uicls.Container):
     def StaticMenu(self, node, *args):
         m = []
         if node.groupID != const.notificationGroupUnread:
-            m.append((mls.UI_EVEMAIL_NOTIFICATIONS_MARKALLASREAD, self.MarkAllReadInGroup, (node.groupID,)))
+            m.append((localization.GetByLabel('UI/Mail/Notifications/MarkAllAsRead'), self.MarkAllReadInGroup, (node.groupID,)))
             m.append(None)
-            m.append((mls.UI_EVEMAIL_NOTIFICATIONS_DELETEALL, self.DeleteAllFromGroup, (node.groupID,)))
+            m.append((localization.GetByLabel('UI/Mail/Notifications/DeleteAll'), self.DeleteAllFromGroup, (node.groupID,)))
         return m
 
 
@@ -299,10 +303,10 @@ class NotificationForm(uicls.Container):
                 unread[each.id] = each
 
         if len(unread) > 0:
-            m.append((mls.UI_EVEMAIL_MARKASREAD, self.MarkAsRead, (unread.values(), unread.keys())))
+            m.append((localization.GetByLabel('UI/Mail/Notifications/MarkAsRead'), self.MarkAsRead, (unread.values(), unread.keys())))
         m.append(None)
         if len(selIDs) > 0:
-            m.append((mls.UI_CMD_DELETE, self.DeleteNotifications, (sel, selIDs)))
+            m.append((localization.GetByLabel('UI/Mail/Notifications/Delete'), self.DeleteNotifications, (sel, selIDs)))
         return m
 
 
@@ -376,13 +380,13 @@ class NotificationForm(uicls.Container):
 
 
     def DeleteFromKeyboard(self, *args):
-        if blue.os.GetTime() - self.lastDeleted < DELETE_INTERVAL:
+        if blue.os.GetWallclockTime() - self.lastDeleted < DELETE_INTERVAL:
             eve.Message('uiwarning03')
             return 
         sel = self.sr.msgScroll.GetSelected()
         ids = [ each.id for each in sel ]
         self.DeleteNotifications(sel, ids)
-        self.lastDeleted = blue.os.GetTime()
+        self.lastDeleted = blue.os.GetWallclockTime()
 
 
 
@@ -401,7 +405,7 @@ class NotificationForm(uicls.Container):
             self.ClearReadingPane()
         self.UpdateCounters()
         if len(self.sr.msgScroll.GetNodes()) < 1:
-            self.sr.msgScroll.Load(contentList=[], headers=[], noContentHint=mls.UI_GENERIC_NOITEMSFOUND)
+            self.sr.msgScroll.Load(contentList=[], headers=[], noContentHint=localization.GetByLabel('UI/Mail/Notifications/NoNotifications'))
             return 
         numChildren = len(self.sr.msgScroll.GetNodes())
         newIdx = min(idx, numChildren - 1)
@@ -453,7 +457,7 @@ class NotificationForm(uicls.Container):
 
     def GetPanelLabel(self, label, count):
         if count > 0:
-            return '<b>%s (%s)</b>' % (label, count)
+            return localization.GetByLabel('UI/Mail/Notifications/GroupUnreadLabel', groupName=label, unreadCount=count)
         else:
             return label
 

@@ -93,7 +93,7 @@ class EmailSvc(Service):
                     self.mail_queue.put((args, kw))
                     self.LogWarn('Failed to send alert, SMTP server disconnected. Will try again in 1 minute')
                     sys.exc_clear()
-                    blue.pyos.synchro.Sleep(60000)
+                    blue.pyos.synchro.SleepWallclock(60000)
                 except smtplib.SMTPRecipientsRefused as e:
                     self.LogMailSendFailure('SMTPRecipientsRefused', args, e)
                 except smtplib.SMTPSenderRefused as e:
@@ -102,7 +102,7 @@ class EmailSvc(Service):
                     self.LogError('Email service:  Unexpected error during mailqueue processing')
                     log.LogException()
                     self.mail_server = None
-                    blue.pyos.synchro.Sleep(60000)
+                    blue.pyos.synchro.SleepWallclock(60000)
 
 
         finally:

@@ -10,11 +10,6 @@ class ClientDogma(svc.baseDogma):
 
 
 
-    def LoadExpressions(self):
-        self.expressions = sm.RemoteSvc('dogma').GetExpressionsForChar()
-
-
-
     def LoadOperands(self):
         self.operands = sm.RemoteSvc('dogma').GetOperandsForChar()
 

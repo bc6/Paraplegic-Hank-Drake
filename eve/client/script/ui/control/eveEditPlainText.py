@@ -7,6 +7,7 @@ import uiconst
 import uiutil
 import trinity
 import listentry
+import localization
 import _weakref
 
 class EditPlainText(uicls.EditPlainTextCore):
@@ -16,7 +17,7 @@ class EditPlainText(uicls.EditPlainTextCore):
     default_top = 0
     default_width = 0
     default_height = 0
-    default_fontcolor = (1.0, 1.0, 1.0, 0.75)
+    default_fontcolor = -1073741825
     allowPrivateDrops = 0
 
     def OnDropDataDelegate(self, node, nodes):
@@ -29,10 +30,11 @@ class EditPlainText(uicls.EditPlainTextCore):
                 self.AddLink(entry.info.name, link)
             elif entry.__guid__ == 'listentry.PlaceEntry' and self.allowPrivateDrops:
                 bookmarkID = entry.bm.bookmarkID
-                bms = sm.GetService('addressbook').GetBookmarks()
+                bookmarkSvc = sm.GetService('bookmarkSvc')
+                bms = bookmarkSvc.GetBookmarks()
                 if bookmarkID in bms:
                     bookmark = bms[bookmarkID]
-                    (hint, comment,) = sm.GetService('addressbook').UnzipMemo(bookmark.memo)
+                    (hint, comment,) = bookmarkSvc.UnzipMemo(bookmark.memo)
                 link = 'showinfo:' + str(bms[bookmarkID].typeID) + '//' + str(bms[bookmarkID].itemID)
                 self.AddLink(hint, link)
             elif entry.__guid__ == 'listentry.NoteItem' and self.allowPrivateDrops:
@@ -59,7 +61,7 @@ class EditPlainText(uicls.EditPlainTextCore):
                 self.AddLink(entry.name.replace('&gt;', '>'), link)
             elif entry.__guid__ in ('listentry.FleetFinderEntry',):
                 link = 'fleet:%s' % entry.fleet.fleetID
-                self.AddLink(entry.fleet.fleetName or mls.UI_GENERIC_UNKNOWN, link)
+                self.AddLink(entry.fleet.fleetName or localization.GetByLabel('UI/Common/Unknown'), link)
             elif entry.__guid__ == 'xtriui.ListSurroundingsBtn':
                 if not entry.typeID and not entry.itemID:
                     return 
@@ -77,7 +79,7 @@ class EditPlainText(uicls.EditPlainTextCore):
                         return 
                     link = link[:roomLeft]
                 self.AddLink(entry.fitting.name, link)
-            elif entry.__guid__ == 'listentry.GenericMarketItem':
+            elif entry.__guid__ in ('listentry.GenericMarketItem', 'listentry.QuickbarItem'):
                 link = 'showinfo:' + str(entry.typeID)
                 self.AddLink(entry.label, link)
 
@@ -106,7 +108,7 @@ class EditPlainText(uicls.EditPlainTextCore):
                  {'type': 'btline'},
                  {'type': 'checkbox',
                   'label': '_hide',
-                  'text': mls.UI_GENERIC_CHARACTER,
+                  'text': localization.GetByLabel('UI/Common/Character'),
                   'key': 'char',
                   'required': 1,
                   'setvalue': 0,
@@ -115,7 +117,7 @@ class EditPlainText(uicls.EditPlainTextCore):
                   'onchange': self.OnLinkTypeChange},
                  {'type': 'checkbox',
                   'label': '_hide',
-                  'text': mls.UI_GENERIC_CORPORATION,
+                  'text': localization.GetByLabel('UI/Common/Corporation'),
                   'key': 'corp',
                   'required': 1,
                   'setvalue': 0,
@@ -125,7 +127,7 @@ class EditPlainText(uicls.EditPlainTextCore):
                  {'type': 'btline'},
                  {'type': 'checkbox',
                   'label': '_hide',
-                  'text': mls.UI_GENERIC_ITEMTYPE,
+                  'text': localization.GetByLabel('UI/Common/ItemType'),
                   'key': 'type',
                   'required': 1,
                   'setvalue': 0,
@@ -135,7 +137,7 @@ class EditPlainText(uicls.EditPlainTextCore):
                  {'type': 'btline'},
                  {'type': 'checkbox',
                   'label': '_hide',
-                  'text': mls.UI_GENERIC_SOLARSYSTEM,
+                  'text': localization.GetByLabel('UI/Common/SolarSystem'),
                   'key': 'solarsystem',
                   'required': 1,
                   'setvalue': 0,
@@ -144,7 +146,7 @@ class EditPlainText(uicls.EditPlainTextCore):
                   'onchange': self.OnLinkTypeChange},
                  {'type': 'checkbox',
                   'label': '_hide',
-                  'text': mls.UI_GENERIC_STATION,
+                  'text': localization.GetByLabel('UI/Common/Station'),
                   'key': 'station',
                   'required': 1,
                   'setvalue': 0,
@@ -153,13 +155,13 @@ class EditPlainText(uicls.EditPlainTextCore):
                   'onchange': self.OnLinkTypeChange},
                  {'type': 'btline'},
                  {'type': 'edit',
-                  'label': mls.GENERIC_LINK,
+                  'label': localization.GetByLabel('UI/Common/Link'),
                   'text': 'http://',
                   'width': 170,
                   'required': 1,
                   'key': 'txt',
                   'frame': 1}]
-                key = self.AskLink(mls.UI_GENERIC_ENTERLINK, format, width=400)
+                key = self.AskLink(localization.GetByLabel('UI/Common/EnterLink'), format, width=400)
             anchor = -1
             if key:
                 link = key['link']
@@ -186,7 +188,7 @@ class EditPlainText(uicls.EditPlainTextCore):
             self.itemID = self.typeID = 0
             self.key = chkbox.data['key']
             text = uiutil.GetChild(chkbox, 'text')
-            wnd = chkbox.FindParentByName(mls.UI_SHARED_GENERATELINK)
+            wnd = chkbox.FindParentByName(localization.GetByLabel('UI/Common/GenerateLink'))
             if not wnd:
                 return 
             editParent = uiutil.FindChild(wnd, 'editField')
@@ -198,7 +200,7 @@ class EditPlainText(uicls.EditPlainTextCore):
                 self.sr.searchbutt = uiutil.FindChild(editParent, 'button')
                 if self.key in ('char', 'corp', 'type', 'solarsystem', 'station'):
                     if self.sr.searchbutt == None:
-                        self.sr.searchbutt = uicls.Button(parent=editParent, label=mls.UI_CMD_SEARCH, func=self.OnSearch, btn_default=0, align=uiconst.TOPRIGHT)
+                        self.sr.searchbutt = uicls.Button(parent=editParent, label=localization.GetByLabel('UI/Common/Search'), func=self.OnSearch, btn_default=0, align=uiconst.TOPRIGHT)
                     else:
                         self.sr.searchbutt.state = uiconst.UI_NORMAL
                 elif self.sr.searchbutt != None:
@@ -207,7 +209,7 @@ class EditPlainText(uicls.EditPlainTextCore):
 
 
     def OnSearch(self, *args):
-        wnd = self.sr.searchbutt.FindParentByName(mls.UI_SHARED_GENERATELINK)
+        wnd = self.sr.searchbutt.FindParentByName(localization.GetByLabel('UI/Common/GenerateLink'))
         if not wnd:
             return 
         editParent = uiutil.FindChild(wnd, 'editField')
@@ -236,7 +238,7 @@ class EditPlainText(uicls.EditPlainTextCore):
             if not itemTypes:
                 eve.Message('NoItemTypesFound')
                 return 
-            id = uix.ListWnd(itemTypes, 'item', mls.UI_GENERIC_SELECTITEMTYPE, None, 1)
+            id = uix.ListWnd(itemTypes, 'item', localization.GetByLabel('UI/Common/SelectItemType'), None, 1)
         else:
             group = None
             cat = None
@@ -283,7 +285,7 @@ class EditPlainText(uicls.EditPlainTextCore):
           'text': label,
           'frame': 1}] + lines + [{'type': 'bbline'}]
         btns = uiconst.OKCANCEL
-        retval = uix.HybridWnd(format, mls.UI_SHARED_GENERATELINK, 1, None, uiconst.OKCANCEL, minW=width, minH=110, icon=icon)
+        retval = uix.HybridWnd(format, localization.GetByLabel('UI/Common/GenerateLink'), 1, None, uiconst.OKCANCEL, minW=width, minH=110, icon=icon)
         if retval:
             return retval
         else:
@@ -296,6 +298,7 @@ class EditPlainText(uicls.EditPlainTextCore):
         node = self.GetActiveNode()
         if node is None:
             return 
+        text = uiutil.StripTags(text, stripOnly=['localized'])
         shiftCursor = len(text)
         stackCursorIndex = self.globalCursorPos - node.startCursorIndex + node.stackCursorIndex
         glyphString = node.glyphString
@@ -314,6 +317,7 @@ class EditPlainText(uicls.EditPlainTextCore):
         shift += 1
         self.UpdateGlyphString(glyphString, advance=shiftCursor, stackCursorIndex=stackCursorIndex)
         self.SetCursorPos(self.globalCursorPos + shift)
+        self.UpdatePosition()
         cursorAdvance = 1
 
 
@@ -322,12 +326,12 @@ class EditPlainText(uicls.EditPlainTextCore):
         m = uicls.EditPlainTextCore.GetMenuDelegate(self, node)
         if not self.readonly:
             m.append(None)
-            linkmenu = [(mls.UI_GENERIC_CHARACTER, self.LinkCharacter),
-             (mls.UI_GENERIC_CORPORATION, self.LinkCorp),
-             (mls.UI_GENERIC_SOLARSYSTEM, self.LinkSolarSystem),
-             (mls.UI_GENERIC_STATION, self.LinkStation),
-             (mls.UI_GENERIC_ITEMTYPE, self.LinkItemType)]
-            m.append((mls.UI_CMD_AUTOLINK, linkmenu))
+            linkmenu = [(localization.GetByLabel('UI/Common/Character'), self.LinkCharacter),
+             (localization.GetByLabel('UI/Common/Corporation'), self.LinkCorp),
+             (localization.GetByLabel('UI/Common/SolarSystem'), self.LinkSolarSystem),
+             (localization.GetByLabel('UI/Common/Station'), self.LinkStation),
+             (localization.GetByLabel('UI/Common/ItemType'), self.LinkItemType)]
+            m.append((localization.GetByLabel('UI/Common/AutoLink'), linkmenu))
             sm.GetService('ime').GetMenuDelegate(self, node, m)
         return m
 
@@ -337,8 +341,6 @@ class EditPlainText(uicls.EditPlainTextCore):
         if self.GetSelection() == 0:
             self.SelectWordUnderCursor()
         txt = self.GetSelectedText()
-        print 'txt',
-        print repr(txt)
         self.ApplySelection(6, data={'text': txt,
          'link': 'char'})
 

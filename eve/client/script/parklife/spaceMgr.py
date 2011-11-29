@@ -13,12 +13,12 @@ import log
 import geo2
 import uiconst
 import uicls
+import localization
 
 class SpaceMgr(service.Service):
     __guid__ = 'svc.space'
     __update_on_reload__ = 0
-    __exportedcalls__ = {'StopNavigation': [],
-     'CanWarp': [],
+    __exportedcalls__ = {'CanWarp': [],
      'StartPartitionDisplayTimer': [],
      'StopPartitionDisplayTimer': [],
      'WarpDestination': [],
@@ -33,7 +33,11 @@ class SpaceMgr(service.Service):
      'ProcessSessionChange',
      'OnBallparkCall',
      'OnNotifyPreload']
-    __dependencies__ = ['michelle', 'transmission', 'settings']
+    __dependencies__ = ['michelle',
+     'FxSequencer',
+     'transmission',
+     'settings',
+     'state']
 
     def __init__(self):
         service.Service.__init__(self)
@@ -128,7 +132,7 @@ class SpaceMgr(service.Service):
         preEmptiveLoads = []
         remainingBalls = ballsToAdd
         self.lazyLoadQueueCount = len(ballsToAdd)
-        timeStarted = blue.os.GetTime(1)
+        timeStarted = blue.os.GetWallclockTimeNow()
         for i in xrange(len(ballsToAdd)):
             try:
                 self.lazyLoadQueueCount = len(ballsToAdd) - i - 1
@@ -169,7 +173,7 @@ class SpaceMgr(service.Service):
                 log.LogException()
                 sys.exc_clear()
 
-        self.LogInfo('DoBallsAdded_ - Done adding', len(ballsToAdd), ' balls in', util.FmtDate(blue.os.GetTime(1) - timeStarted, 'nl'), '.', numLostBalls, 'balls were lost. lazy = ', settings.public.generic.Get('lazyLoading', 1))
+        self.LogInfo('DoBallsAdded_ - Done adding', len(ballsToAdd), ' balls in', util.FmtDate(blue.os.GetWallclockTimeNow() - timeStarted, 'nl'), '.', numLostBalls, 'balls were lost. lazy = ', settings.public.generic.Get('lazyLoading', 1))
 
 
 
@@ -220,7 +224,7 @@ class SpaceMgr(service.Service):
         self.LogInfo('SpaceMgr::PreloadLoop got', len(typeIDList), 'types to preload')
         MIN_SECONDS_IN_WARP = 20
         self.killPreloadLoop = False
-        startWarpTime = blue.os.GetTime(1)
+        startWarpTime = blue.os.GetWallclockTime()
         timeLeft = MIN_SECONDS_IN_WARP * SEC
         avg = 0.0
         times = []
@@ -247,11 +251,11 @@ class SpaceMgr(service.Service):
             if preloadUrl:
                 self.LogInfo('SpaceMgr::PreloadLoop preloading typeID =', typeID, ' url =', preloadUrl)
                 try:
-                    t0 = blue.os.GetTime(1)
+                    t0 = blue.os.GetWallclockTimeNow()
                     x = trinity.Load(preloadUrl)
                     if len(times) % numBetweenYields == 0:
                         blue.pyos.synchro.Yield()
-                    t = blue.os.GetTime(1)
+                    t = blue.os.GetWallclockTimeNow()
                     times.append(t - t0)
                     if len(times) > 5 and timeLeft > 0:
                         timePassed = t - startWarpTime
@@ -300,7 +304,7 @@ class SpaceMgr(service.Service):
     def StartWarpIndication(self):
         self.ConfirmWarpDestination()
         eve.Message('WarpDriveActive')
-        self.LogNotice('StartWarpIndication', self.warpDestinationText, 'autopilot =', sm.GetService('autoPilot').GetState())
+        self.LogNotice('StartWarpIndication', self.warpDestText, 'autopilot =', sm.GetService('autoPilot').GetState())
 
 
 
@@ -314,23 +318,31 @@ class SpaceMgr(service.Service):
             if guid == 'effects.JumpOut':
                 locations = [slimItem.jumps[0].locationID, slimItem.jumps[0].toCelestialID]
                 cfg.evelocations.Prime(locations)
-                solname = cfg.evelocations.Get(slimItem.jumps[0].locationID).name
-                destname = cfg.evelocations.Get(slimItem.jumps[0].toCelestialID).name
-                sm.GetService('logger').AddText(mls.UI_INFLIGHT_JUMPINGTO % {'location': destname,
-                 'solarsystem': solname})
-                self.Indicate(mls.UI_GENERIC_JUMPING, '<center>' + mls.UI_INFLIGHT_DESTINATIONIS % {'dest': destname,
-                 'solarsystem': solname})
+                solID = slimItem.jumps[0].locationID
+                destID = slimItem.jumps[0].toCelestialID
+                sm.GetService('logger').AddText(localization.GetByLabel('UI/Inflight/Messages/LoggerJumpingToGateInSystem', gate=destID, system=solID))
+                self.Indicate(localization.GetByLabel('UI/Inflight/Messages/Jumping'), '<center>' + localization.GetByLabel('UI/Inflight/Messages/DestinationInSystem', gate=destID, system=solID))
             elif guid == 'effects.JumpOutWormhole':
                 if otherTypeID is None:
                     otherTypeID = 0
-                self.Indicate(mls.UI_GENERIC_JUMPING_WORMHOLE, '<center>' + mls.UI_INFLIGHT_WORMHOLEJUMPING % {'space': getattr(mls, 'UI_GENERIC_WORMHOLECLASS_%s' % otherTypeID)})
+                wormholeClasses = {0: 'UI/Wormholes/Classes/Space',
+                 1: 'UI/Wormholes/Classes/UnknownSpace',
+                 2: 'UI/Wormholes/Classes/UnknownSpace',
+                 3: 'UI/Wormholes/Classes/UnknownSpace',
+                 4: 'UI/Wormholes/Classes/UnknownSpace',
+                 5: 'UI/Wormholes/Classes/DeepUnknownSpace',
+                 6: 'UI/Wormholes/Classes/DeepUnknownSpace',
+                 7: 'UI/Wormholes/Classes/HighSecuritySpace',
+                 8: 'UI/Wormholes/Classes/LowSecuritySpace',
+                 9: 'UI/Wormholes/Classes/NullSecuritySpace'}
+                wormholeClassName = localization.GetByLabel(wormholeClasses[otherTypeID])
+                self.Indicate(localization.GetByLabel('UI/Inflight/Messages/JumpingThroughWormhole'), '<center>' + localization.GetByLabel('UI/Inflight/Messages/NotifyJumpingThroughWormhole', wormholeClass=wormholeClassName))
 
 
 
     def OnDockingAccepted(self, dockingStartPos, dockingEndPos, stationID):
-        sm.GetService('space').StopNavigation()
         eve.Message('DockingAccepted')
-        self.Indicate(mls.UI_INFLIGHT_DOCKING, '<center>%s: %s' % (mls.UI_GENERIC_STATION, cfg.evelocations.Get(stationID).name))
+        self.Indicate(localization.GetByLabel('UI/Inflight/Messages/Docking'), '<center>' + localization.GetByLabel('UI/Inflight/Messages/DestinationStation', station=stationID))
 
 
 
@@ -376,22 +388,15 @@ class SpaceMgr(service.Service):
         alphaCurve.AddKey(duration, black, black, black, 3)
         alphaCurve.Sort()
         alphaCurve.keys[0].value.a = magnitude
-        if damat.diffuseCurve.GetColorAt(blue.os.GetTime(1)).a > magnitude:
+        if damat.diffuseCurve.GetColorAt(blue.os.GetSimTime()).a > magnitude:
             return 
         displayCurve = flashTransform.displayCurve
         displayCurve.keys[1].time = duration
         displayCurve.Sort()
         damat.diffuseCurve = alphaCurve
-        alphaCurve.start = blue.os.GetTime(1)
-        displayCurve.start = blue.os.GetTime(1)
+        alphaCurve.start = blue.os.GetSimTime()
+        displayCurve.start = blue.os.GetSimTime()
         self.flashingScreen = 0
-
-
-
-    def StopNavigation(self):
-        nav = uix.GetInflightNav(0)
-        if nav is not None:
-            nav.Close()
 
 
 
@@ -435,7 +440,7 @@ class SpaceMgr(service.Service):
 
     def ConfirmWarpDestination(self):
         (destinationItemID, destinationBookmarkID, destinationfleetMemberID, destinationPosition, actualDestinationPosition,) = self.warpDestinationCache
-        self.warpDestinationText = ''
+        self.warpDestText = ''
         self.warpDestinationCache[4] = None
         ballPark = sm.GetService('michelle').GetBallpark()
         if not ballPark:
@@ -447,11 +452,10 @@ class SpaceMgr(service.Service):
                 if self.CheckWarpDestination(destinationPosition, (b.x, b.y, b.z), (egoball.x, egoball.y, egoball.z), math.pi / 32, 20000000):
                     self.warpDestinationCache[4] = (b.x, b.y, b.z)
                     name = self.GetWarpDestinationName(destinationItemID)
-                    self.warpDestinationText = '%s: %s<br>' % (mls.UI_GENERIC_DESTINATION, name)
+                    self.warpDestText = localization.GetByLabel('UI/Inflight/Messages/WarpDestination', destinationName=name) + '<br>'
         elif destinationBookmarkID:
-            bookmarks = sm.GetService('addressbook').GetBookmarks()
-            if destinationBookmarkID in bookmarks:
-                bookmark = bookmarks[destinationBookmarkID]
+            bookmark = sm.GetService('addressbook').GetBookmark(destinationBookmarkID)
+            if bookmark is not None:
                 if bookmark.x is None:
                     if bookmark.memo:
                         titleEndPosition = bookmark.memo.find('\t')
@@ -459,7 +463,7 @@ class SpaceMgr(service.Service):
                             memoTitle = bookmark.memo[:titleEndPosition]
                         else:
                             memoTitle = bookmark.memo
-                        self.warpDestinationText = '%s: %s<br>' % (mls.UI_GENERIC_DESTINATION, memoTitle)
+                        self.warpDestText = localization.GetByLabel('UI/Inflight/Messages/WarpDestination', destinationName=memoTitle) + '<br>'
                         if bookmark.itemID is not None:
                             b = ballPark.balls[bookmark.itemID]
                             if self.CheckWarpDestination(destinationPosition, (b.x, b.y, b.z), (egoball.x, egoball.y, egoball.z), math.pi / 32, 20000000):
@@ -471,7 +475,7 @@ class SpaceMgr(service.Service):
                             memoTitle = bookmark.memo[:titleEndPosition]
                         else:
                             memoTitle = bookmark.memo
-                        self.warpDestinationText = '%s: %s<br>' % (mls.UI_GENERIC_DESTINATION, memoTitle)
+                        self.warpDestText = localization.GetByLabel('UI/Inflight/Messages/WarpDestination', destinationName=memoTitle) + '<br>'
                         self.warpDestinationCache[4] = (bookmark.x, bookmark.y, bookmark.z)
 
 
@@ -485,7 +489,8 @@ class SpaceMgr(service.Service):
         if not ballPark:
             self.LogWarn('Space::IndicateWarp: Trying to indicate warp without a ballpark?')
             return 
-        text = '<center>' + getattr(self, 'warpDestinationText', '')
+        centeredDestText = '<center>' + getattr(self, 'warpDestText', '')
+        text = centeredDestText
         egoball = ballPark.GetBall(ballPark.ego)
         if actualDestinationPosition is not None:
             warpDirection = [actualDestinationPosition[0] - egoball.x, actualDestinationPosition[1] - egoball.y, actualDestinationPosition[2] - egoball.z]
@@ -493,10 +498,12 @@ class SpaceMgr(service.Service):
             warpDirection = [destinationPosition[0] - egoball.x, destinationPosition[1] - egoball.y, destinationPosition[2] - egoball.z]
         dist = self.VectorLength(warpDirection)
         if dist:
-            text += '<center>%s: %s' % (mls.UI_GENERIC_DISTANCE, util.FmtDist(dist))
+            distanceText = '<center>' + localization.GetByLabel('UI/Inflight/ActiveItem/SelectedItemDistance', distToItem=util.FmtDist(dist))
             if actualDestinationPosition is None:
-                text += ' ' + mls.UI_INFLIGHT_DISTANCETOWARPBUBBLECOLLAPSE
-        self.Indicate(mls.UI_INFLIGHT_WARPDRIVEACTIVE, text)
+                text = localization.GetByLabel('UI/Inflight/Messages/WarpIndicatorWithDistanceAndBubble', warpDestination=centeredDestText, distance=distanceText)
+            else:
+                text = localization.GetByLabel('UI/Inflight/Messages/WarpIndicatorWithDistance', warpDestination=centeredDestText, distance=distanceText)
+        self.Indicate(localization.GetByLabel('UI/Inflight/Messages/WarpDriveActive'), text)
         self.LogInfo('Space::IndicateWarp', text)
 
 
@@ -510,7 +517,7 @@ class SpaceMgr(service.Service):
                 self.caption = None
             return 
         if self.indicationtext is None or self.indicationtext.destroyed:
-            self.indicationtext = uicls.Label(parent=uicore.layer.shipui.sr.indicationContainer, name='indicationtext', text=strng, align=uiconst.TOPLEFT, width=400, autoheight=1, state=uiconst.UI_DISABLED, autowidth=0)
+            self.indicationtext = uicls.EveLabelMedium(parent=uicore.layer.shipui.sr.indicationContainer, name='indicationtext', text=strng, align=uiconst.TOPLEFT, width=400, state=uiconst.UI_DISABLED)
             self.caption = uicls.CaptionLabel(text=header, parent=uicore.layer.shipui.sr.indicationContainer, align=uiconst.CENTERTOP, state=uiconst.UI_DISABLED, top=1)
         else:
             self.indicationtext.text = strng
@@ -529,7 +536,7 @@ class SpaceMgr(service.Service):
             return 
         self.caption.SetAlpha(0.0)
         self.indicationtext.SetAlpha(0.0)
-        blue.pyos.synchro.Sleep(delayMs)
+        blue.pyos.synchro.SleepWallclock(delayMs)
         if self.caption:
             self.caption.SetAlpha(1.0)
         if self.indicationtext:
@@ -538,7 +545,7 @@ class SpaceMgr(service.Service):
 
 
     def StopWarpIndication(self):
-        self.LogNotice('StopWarpIndication', getattr(self, 'warpDestinationText', '-'), 'autopilot =', sm.GetService('autoPilot').GetState())
+        self.LogNotice('StopWarpIndication', getattr(self, 'warpDestText', '-'), 'autopilot =', sm.GetService('autoPilot').GetState())
         self.warpDestinationCache = [None,
          None,
          None,

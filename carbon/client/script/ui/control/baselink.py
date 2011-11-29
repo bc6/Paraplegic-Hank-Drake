@@ -2,9 +2,11 @@ import blue
 import uicls
 import uiutil
 import htmlwriter
+import localization
 import log
 import types
 import service
+import uiconst
 
 class BaseLinkCore(uicls.Container):
     __guid__ = 'uicls.BaseLinkCore'
@@ -38,6 +40,44 @@ class BaseLinkCore(uicls.Container):
 
 
 
+    def GetStandardLinkHint(self, *args, **kwds):
+        return None
+
+
+
+    def GetLinkFormat(self, url, linkState = None, linkStyle = None):
+        linkState = linkState or uiconst.LINK_IDLE
+        fmt = uiutil.Bunch()
+        if linkState in (uiconst.LINK_IDLE, uiconst.LINK_DISABLED):
+            fmt.color = -23040
+        elif linkState in (uiconst.LINK_ACTIVE, uiconst.LINK_HOVER):
+            fmt.color = -256
+        fmt.bold = True
+        return fmt
+
+
+
+    def FormatLinkParams(self, params, linkState = None, linkStyle = None):
+        if 'priorUrlColor' not in params:
+            params.priorUrlColor = params.color
+        if 'priorUrlBold' not in params:
+            params.priorUrlBold = params.bold
+        if 'priorUrlItalic' not in params:
+            params.priorUrlItalic = params.italic
+        if 'priorUrlUnderline' not in params:
+            params.priorUrlUnderline = params.underline
+        linkFmt = self.GetLinkFormat(params.url, linkState, linkStyle)
+        if linkFmt.color is not None:
+            params.color = linkFmt.color
+        if linkFmt.underline is not None:
+            params.underline = linkFmt.underline
+        if linkFmt.bold is not None:
+            params.bold = linkFmt.bold
+        if linkFmt.italic is not None:
+            params.italic = linkFmt.italic
+
+
+
     def ClickGameLinks(self, parent, URL):
         return False
 
@@ -59,10 +99,10 @@ class BaseLinkCore(uicls.Container):
         m = []
         if self.ValidateURL(url):
             url = url.replace('&amp;', '&')
-            m += [('mls.UI_CMD_OPENINNEWVIEW', self.UrlHandlerDelegate, (parent, 'NewView', url))]
-            m += [('mls.UI_CMD_OPEN', self.UrlHandlerDelegate, (parent, 'GoTo', url))]
+            m += [(localization.GetByLabel('/Carbon/UI/Commands/OpenInNewView'), self.UrlHandlerDelegate, (parent, 'NewView', url))]
+            m += [(localization.GetByLabel('/Carbon/UI/Commands/Open'), self.UrlHandlerDelegate, (parent, 'GoTo', url))]
         if url.lower().startswith('http'):
-            m += [('mls.UI_CMD_COPYURL', self.CopyUrl, (url,))]
+            m += [(localization.GetByLabel('/Carbon/UI/Commands/CopyURL'), self.CopyUrl, (url,))]
         return m
 
 

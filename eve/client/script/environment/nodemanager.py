@@ -77,7 +77,7 @@ def RigEntry(entryGuy, target):
     timecurves.ResetTimeCurves(mover)
     timecurves.ReverseTimeCurves(destUpContainer)
     timecurves.ResetTimeCurves(destUpContainer)
-    blue.pyos.synchro.Sleep(int(timecurves.MaxLen(mover) * 1000))
+    blue.pyos.synchro.SleepSim(int(timecurves.MaxLen(mover) * 1000))
 
 
 
@@ -88,7 +88,7 @@ def UnRigEntry(entryGuy):
     timecurves.ResetTimeCurves(mover)
     timecurves.ReverseTimeCurves(destUpContainer)
     timecurves.ResetTimeCurves(destUpContainer)
-    blue.pyos.synchro.Sleep(int(timecurves.MaxLen(mover) * 1000))
+    blue.pyos.synchro.SleepSim(int(timecurves.MaxLen(mover) * 1000))
     mover.source = trinity.TriSplTransform()
     destUpContainer.source = mover.source
     destUpContainer.dest = mover.source
@@ -200,7 +200,7 @@ def SetVertexTarget(target, thingToKeepClose = None):
 
 
 def SetVertexTargetNoNormal(target, thingToKeepClose = None):
-    turrStart = blue.os.GetTime(1)
+    turrStart = blue.os.GetWallclockTimeNow()
     if target.__typename__ == 'TriLODGroup':
         if not hasattr(target.children[0], 'object'):
             log.general.Log('the target has no object attr')
@@ -303,7 +303,7 @@ def SetVertexTargetNoNormal(target, thingToKeepClose = None):
     else:
         target.children.append(vxTarget)
         owners.append(target)
-    turrEnd = blue.os.GetTime(1)
+    turrEnd = blue.os.GetWallclockTimeNow()
     log.general.Log('--->vertexobject set in  %f ms' % blue.os.TimeDiffInMs(turrStart, turrEnd))
     return [owners, vxTarget]
 
@@ -311,7 +311,7 @@ def SetVertexTargetNoNormal(target, thingToKeepClose = None):
 
 def SetVertexTargetNoNormal2(targetOwner, thingToKeepClose = None):
     target = targetOwner.model
-    turrStart = blue.os.GetTime(1)
+    turrStart = blue.os.GetWallclockTimeNow()
     if target.__typename__ == 'TriLODGroup':
         if not hasattr(target.children[0], 'object'):
             log.general.Log('the target has no object attr')
@@ -402,7 +402,7 @@ def SetVertexTargetNoNormal2(targetOwner, thingToKeepClose = None):
         lodGroup.children.append(transformCopyList[0])
 
     targetOwner.targets = generatedLocators
-    turrEnd = blue.os.GetTime(1)
+    turrEnd = blue.os.GetWallclockTimeNow()
     log.general.Log('Damage Locator targets generated in %f ms' % blue.os.TimeDiffInMs(turrStart, turrEnd), log.LGWARN)
 
 
@@ -424,7 +424,7 @@ def DoDummyEffect(model):
     ball = blue.os.LoadObject('res:/Model/Effect/placeholder.blue')
     model.children.append(ball)
     timecurves.ResetTimeCurves(ball)
-    blue.pyos.synchro.Sleep(int(timecurves.MaxLen(ball) * 1000))
+    blue.pyos.synchro.SleepSim(int(timecurves.MaxLen(ball) * 1000))
     model.children.remove(ball)
 
 

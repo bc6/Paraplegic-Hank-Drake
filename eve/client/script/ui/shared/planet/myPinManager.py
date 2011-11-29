@@ -1,14 +1,13 @@
 import uix
 import uiconst
 import util
-import math
 import uicls
 import planet
 import log
-import uthread
 import planetCommon
 import geo2
 import trinity
+import localization
 
 class MyPinManager:
     __guid__ = 'planet.ui.MyPinManager'
@@ -43,6 +42,28 @@ class MyPinManager:
 
 
 
+    def Close(self):
+        sm.UnregisterNotify(self)
+        self.planetUISvc = None
+        self.linkParentID = None
+        self.routeParentID = None
+        self.currentExpandedPin = None
+        self.currentRoute = None
+        self.routeHoverPath = None
+        self.currRouteVolume = None
+        self.newPinType = None
+        self.canMoveHeads = None
+        self.depletionPoints = None
+        self.pinsByID = None
+        self.linksByPinIDs = None
+        self.linksByGraphicID = None
+        self.links = None
+        self.buildIndicatorPin = None
+        self.currentEcuPinID = None
+        self.bracketCurveSet = None
+
+
+
     def OnPlanetViewOpened(self):
         self.planetUISvc = sm.GetService('planetUI')
         self.eventManager = self.planetUISvc.eventManager
@@ -64,7 +85,7 @@ class MyPinManager:
 
 
     def ReRender(self):
-        if not self.planetUISvc.IsOpen():
+        if not sm.GetService('viewState').IsViewActive('planet'):
             return 
         self.RenderPins()
         self.RenderLinks()
@@ -73,7 +94,7 @@ class MyPinManager:
 
 
     def ReRenderPin(self, pin):
-        if not self.planetUISvc.IsOpen():
+        if not sm.GetService('viewState').IsViewActive('planet'):
             return 
         uiPin = self.pinsByID.get(pin.id, None)
         if uiPin is None:
@@ -90,22 +111,22 @@ class MyPinManager:
         self.rubberLinkLabels.columnPadding = 9
         white = (1.0, 1.0, 1.0, 1.0)
         gray = (1.0, 1.0, 1.0, 0.6)
-        self.rubberLinkLabels.distanceLbl = uicls.Label(text=mls.UI_GENERIC_DISTANCE, parent=self.rubberLinkLabelContainer, left=self.rubberLinkLabels.padding, autowidth=1, height=16, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, color=gray, autoheight=False)
-        maxLabelWidth = uix.GetTextWidth(mls.UI_GENERIC_DISTANCE)
-        self.rubberLinkLabels.powerLbl = uicls.Label(text=mls.UI_GENERIC_POWER, parent=self.rubberLinkLabelContainer, top=16, left=self.rubberLinkLabels.padding, autowidth=1, height=16, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, color=gray, autoheight=False)
-        maxLabelWidth = max(maxLabelWidth, uix.GetTextWidth(mls.UI_GENERIC_POWER))
-        self.rubberLinkLabels.cpuLbl = uicls.Label(text=mls.UI_GENERIC_CPU, parent=self.rubberLinkLabelContainer, top=32, left=self.rubberLinkLabels.padding, autowidth=1, height=16, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, color=gray, autoheight=False)
-        maxLabelWidth = max(maxLabelWidth, uix.GetTextWidth(mls.UI_GENERIC_CPU))
+        self.rubberLinkLabels.distanceLbl = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Common/Distance'), parent=self.rubberLinkLabelContainer, left=self.rubberLinkLabels.padding, height=16, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, color=gray)
+        maxLabelWidth = uix.GetTextWidth(localization.GetByLabel('UI/Common/Distance'))
+        self.rubberLinkLabels.powerLbl = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Common/Power'), parent=self.rubberLinkLabelContainer, top=16, left=self.rubberLinkLabels.padding, height=16, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, color=gray)
+        maxLabelWidth = max(maxLabelWidth, uix.GetTextWidth(localization.GetByLabel('UI/Common/Power')))
+        self.rubberLinkLabels.cpuLbl = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Common/Cpu'), parent=self.rubberLinkLabelContainer, top=32, left=self.rubberLinkLabels.padding, height=16, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, color=gray)
+        maxLabelWidth = max(maxLabelWidth, uix.GetTextWidth(localization.GetByLabel('UI/Common/Cpu')))
         maxLabelWidth += self.rubberLinkLabels.columnPadding
-        self.rubberLinkLabels.distance = uicls.Label(text='', parent=self.rubberLinkLabelContainer, left=2, autowidth=1, autoheight=1, align=uiconst.TOPRIGHT, state=uiconst.UI_DISABLED, color=white)
-        self.rubberLinkLabels.power = uicls.Label(text='', parent=self.rubberLinkLabelContainer, left=2, top=16, autowidth=1, autoheight=1, align=uiconst.TOPRIGHT, state=uiconst.UI_DISABLED, color=white)
-        self.rubberLinkLabels.cpu = uicls.Label(text='', parent=self.rubberLinkLabelContainer, left=2, top=32, autowidth=1, autoheight=1, align=uiconst.TOPRIGHT, state=uiconst.UI_DISABLED, color=white)
+        self.rubberLinkLabels.distance = uicls.EveLabelMedium(text='', parent=self.rubberLinkLabelContainer, left=2, align=uiconst.TOPRIGHT, state=uiconst.UI_DISABLED, color=white)
+        self.rubberLinkLabels.power = uicls.EveLabelMedium(text='', parent=self.rubberLinkLabelContainer, left=2, top=16, align=uiconst.TOPRIGHT, state=uiconst.UI_DISABLED, color=white)
+        self.rubberLinkLabels.cpu = uicls.EveLabelMedium(text='', parent=self.rubberLinkLabelContainer, left=2, top=32, align=uiconst.TOPRIGHT, state=uiconst.UI_DISABLED, color=white)
         uicls.Fill(parent=self.rubberLinkLabelContainer, color=(0.0, 0.0, 0.0, 0.5))
 
 
 
     def OnPlanetPinsChanged(self, planetID):
-        if self.planetUISvc and self.planetUISvc.IsOpen() and self.planetUISvc.GetCurrentPlanet().planetID == planetID:
+        if sm.GetService('viewState').IsViewActive('planet') and self.planetUISvc and self.planetUISvc.GetCurrentPlanet().planetID == planetID:
             self.planetUISvc.CloseCurrentlyOpenContainer()
             self.planetUISvc.SetPlanet(planetID)
             self.ReRender()
@@ -504,8 +525,8 @@ class MyPinManager:
         self.rubberLinkLabels.distance.text = util.FmtDist(length)
         powerUsage = planetCommon.GetPowerUsageForLink(const.typeTestPlanetaryLink, length, 0, self.linkParams)
         cpuUsage = planetCommon.GetCpuUsageForLink(const.typeTestPlanetaryLink, length, 0, self.linkParams)
-        self.rubberLinkLabels.power.text = '%d %s' % (powerUsage, mls.UI_GENERIC_MEGAWATTSHORT)
-        self.rubberLinkLabels.cpu.text = '%d %s' % (cpuUsage, mls.UI_GENERIC_TERAFLOPSSHORT)
+        self.rubberLinkLabels.power.text = localization.GetByLabel('UI/PI/Common/MegaWattsAmount', amount=powerUsage)
+        self.rubberLinkLabels.cpu.text = localization.GetByLabel('UI/PI/Common/TeraFlopsAmount', amount=cpuUsage)
 
 
 
@@ -732,7 +753,7 @@ class MyPinManager:
         ecuSurfacePoint = uiPin.surfacePoint
         distance = headSurfacePoint.GetDistanceToOther(ecuSurfacePoint)
         areaOfInfluence = uiPin.pin.GetAreaOfInfluence()
-        if distance < areaOfInfluence:
+        if distance < areaOfInfluence * SAFETYFACTOR:
             return distance / areaOfInfluence
         ecuVector = ecuSurfacePoint.GetAsXYZTuple()
         v = headSurfacePoint.GetAsXYZTuple()

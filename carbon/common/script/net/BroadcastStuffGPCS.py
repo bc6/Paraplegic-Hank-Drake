@@ -42,7 +42,7 @@ class CoreBroadcastStuff:
     def __BusDriver(self):
         try:
             while 1:
-                blue.pyos.synchro.Sleep(self.busrate)
+                blue.pyos.synchro.SleepWallclock(self.busrate)
                 if self.machoNet is None:
                     continue
                 if self.machoNet.state not in (service.SERVICE_START_PENDING, service.SERVICE_RUNNING) or macho.mode != 'server':

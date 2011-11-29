@@ -23,7 +23,7 @@ class ScannerProbe(spaceObject.SpaceObject):
 
 
     def FakeWarp(self):
-        blue.pyos.synchro.Sleep(random.randint(100, 1000))
+        blue.pyos.synchro.SleepSim(random.randint(100, 1000))
         url = 'res:/Model/Effect3/ProbeWarp.red'
         gfx = trinity.Load(url)
         if gfx.__bluetype__ != 'trinity.EveRootTransform':
@@ -44,7 +44,7 @@ class ScannerProbe(spaceObject.SpaceObject):
         if gfx is None:
             return 
         if duration != 0:
-            blue.pyos.synchro.Sleep(duration)
+            blue.pyos.synchro.SleepSim(duration)
         if hasattr(gfx, 'translationCurve'):
             gfx.translationCurve = None
         scene2 = sm.StartService('sceneManager').GetRegisteredScene2('default')
@@ -54,7 +54,7 @@ class ScannerProbe(spaceObject.SpaceObject):
 
 
     def HideBall(self):
-        blue.pyos.synchro.Sleep(500)
+        blue.pyos.synchro.SleepSim(500)
         self.model.display = 0
 
 

@@ -3,6 +3,7 @@ import paperDoll
 import collections
 import GameWorld
 import bluepy
+import blue
 
 class PaperDollClientComponent:
     __guid__ = 'paperDoll.PaperDollClientComponent'
@@ -19,15 +20,22 @@ class PaperDollClientComponent:
 class PaperDollClient(service.Service):
     __guid__ = 'svc.paperDollClient'
     __notifyevents__ = []
+    __dependencies__ = ['cacheDirectoryLimit']
     __componentTypes__ = ['paperdoll']
 
     def Run(self, *etc):
-        paperDoll.PerformanceOptions.SetEnableYamlCache(enable=True, verbose=False, preloadModularLOD=False)
         self.dollFactory = paperDoll.Factory()
+        paperDoll.PerformanceOptions.EnableOptimizations()
         self.dollFactory.compressTextures = True
-        self.dollFactory.allowTextureCache = True
+        self.dollFactory.allowTextureCache = not blue.win32.IsTransgaming()
+        self._AppPerformanceOptions()
         self.paperDollManager = paperDoll.PaperDollManager(self.dollFactory, keyFunc=lambda doll: doll.GetName())
         self.renderAvatars = True
+
+
+
+    def _AppPerformanceOptions(self):
+        raise NotImplementedError('This needs to be implemented in application specific, derived class.')
 
 
 
@@ -61,10 +69,18 @@ class PaperDollClient(service.Service):
         gender = self.GetDBGenderToPaperDollGender(component.gender)
         resolution = self.GetInitialTextureResolution()
         realDna = self.GetDollDNA(trinityScene, entity, gender, component.dna, component.typeID)
-        shouldLod = entity.entityID != session.charid
-        component.doll = self.SpawnDoll(trinityScene, entity, gender, realDna, shouldLod, textureResolution=resolution, usePrepass=True)
+        if entity.entityID == session.charid:
+            shouldLOD = False
+            spawnAtLOD = -1
+        else:
+            shouldLOD = True
+            spawnAtLOD = 0
+        component.doll = self.SpawnDoll(trinityScene, entity, gender, realDna, shouldLOD, textureResolution=resolution, usePrepass=True, spawnAtLOD=spawnAtLOD)
         component.doll.avatar.display = self.renderAvatars
-        component.doll.avatar.animationUpdater = entity.animation.updater
+        if entity.HasComponent('animation'):
+            component.doll.avatar.animationUpdater = entity.GetComponent('animation').updater
+        else:
+            self.LogError('Entity ' + entity + " doesn't have an animation component, so the PaperDoll component didn't load an animationUpdater!")
         component.doll.avatar.name = str(entity.entityID)
 
 
@@ -108,12 +124,12 @@ class PaperDollClient(service.Service):
 
 
     @bluepy.CCP_STATS_ZONE_METHOD
-    def SpawnDoll(self, scene, entity, dollGender, dollDnaInfo, shouldLod, usePrepass = False, textureResolution = None):
+    def SpawnDoll(self, scene, entity, dollGender, dollDnaInfo, shouldLod, usePrepass = False, textureResolution = None, spawnAtLOD = 0):
         positionComponent = entity.GetComponent('position')
         if dollDnaInfo is not None:
-            doll = self.paperDollManager.SpawnPaperDollCharacterFromDNA(scene, str(entity.entityID), dollDnaInfo, position=positionComponent.position, gender=dollGender, lodEnabled=shouldLod, textureResolution=textureResolution, usePrepass=usePrepass)
+            doll = self.paperDollManager.SpawnPaperDollCharacterFromDNA(scene, str(entity.entityID), dollDnaInfo, position=positionComponent.position, gender=dollGender, lodEnabled=shouldLod, textureResolution=textureResolution, usePrepass=usePrepass, spawnAtLOD=spawnAtLOD)
         else:
-            doll = self.paperDollManager.SpawnDoll(scene, point=positionComponent.position, gender=dollGender, autoLOD=shouldLod, usePrepass=usePrepass)
+            doll = self.paperDollManager.SpawnDoll(scene, point=positionComponent.position, gender=dollGender, autoLOD=shouldLod, usePrepass=usePrepass, lod=spawnAtLOD)
         return doll
 
 

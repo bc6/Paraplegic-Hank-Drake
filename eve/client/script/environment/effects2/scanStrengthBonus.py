@@ -50,12 +50,12 @@ class ScanStrengthBonusTarget(effects.ShipEffect):
             jammerName = sm.GetService('bracket').GetBracketName(shipID)
             targetName = sm.GetService('bracket').GetBracketName(targetID)
             if eve.session.shipid == targetID:
-                eve.Message('TargetJammedBy', {'jammer': jammerName})
+                eve.Message('TargetJammedBy', {'jammerShipName': shipName})
             elif eve.session.shipid == shipID:
-                eve.Message('TargetJammedSuccess', {'jammed': targetName})
+                eve.Message('TargetJammedSuccess', {'jammedShipName': targetName})
             else:
-                eve.Message('TargetJammedOtherBy', {'jammer': jammerName,
-                 'jammed': targetName})
+                eve.Message('TargetJammedOtherBy', {'jammerShipName': shipName,
+                 'jammedShipName': targetName})
         effects.ShipEffect.Start(self, duration)
 
 

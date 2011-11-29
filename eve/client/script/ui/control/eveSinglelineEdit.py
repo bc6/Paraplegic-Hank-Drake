@@ -1,10 +1,10 @@
 import uthread
-import draw
 import weakref
 import uiutil
 import uiconst
 import log
 import uicls
+import localization
 
 class SinglelineEdit(uicls.SinglelineEditCore):
     __guid__ = 'uicls.SinglelineEdit'
@@ -29,8 +29,11 @@ class SinglelineEdit(uicls.SinglelineEditCore):
 
 
     def Prepare_(self):
-        self.sr.text = uicls.Label(text='', parent=self.sr.content, left=self.TEXTLEFTMARGIN, top=1, state=uiconst.UI_DISABLED, singleline=1)
-        self.sr.hinttext = uicls.Label(text='', parent=self.sr.content, name='hinttext', align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED, singleline=True, left=self.TEXTLEFTMARGIN, autowidth=True, autoheight=True)
+        self.sr.text = uicls.EveLabelMedium(text='', parent=self.sr.content, left=self.TEXTLEFTMARGIN, top=1, state=uiconst.UI_DISABLED, singleline=1)
+        self.sr.hinttext = uicls.EveLabelMedium(text='', parent=self.sr.content, name='hinttext', align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED, singleline=True, left=self.TEXTLEFTMARGIN, top=1)
+        self.capsWarning = uicls.CapsHint(parent=uicore.layer.hint, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, idx=0)
+        self.capsWarning.editControl = self
+        self.capsWarning.pointer.SetTexturePath('res:/UI/Texture/classes/Hint/pointerToTopLeft.png')
         self.sr.background = uicls.Container(name='_underlay', parent=self, state=uiconst.UI_DISABLED)
         self.sr.backgroundFrame = uicls.BumpedUnderlay(parent=self.sr.background)
         sm.GetService('window').CheckControlAppearance(self)
@@ -41,7 +44,7 @@ class SinglelineEdit(uicls.SinglelineEditCore):
 
 
     def SetLabel(self, text):
-        self.sr.label = uicls.Label(parent=self, name='__caption', text=text, state=uiconst.UI_DISABLED, align=uiconst.TOPLEFT, idx=0, top=-13, uppercase=1, fontsize=10, letterspace=1, linespace=9)
+        self.sr.label = uicls.EveLabelSmall(parent=self, name='__caption', text=text, state=uiconst.UI_DISABLED, align=uiconst.TOPLEFT, idx=0, top=-13)
         if self.adjustWidth:
             self.width = max(self.width, self.sr.label.textwidth)
 
@@ -187,7 +190,7 @@ class SinglelineEdit(uicls.SinglelineEditCore):
         ep.OnMouseDown = (self.HEMouseDown, ep)
         ep.OnMouseUp = (self.HEMouseUp, ep)
         uicls.Line(parent=ep, align=uiconst.TOBOTTOM)
-        t = uicls.Label(text=displayText, parent=ep, left=6, align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED)
+        t = uicls.EveLabelMedium(text=displayText, parent=ep, left=6, align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED, userEditable=True)
         ep.height = t.textheight + 4
         ep.sr.hilite = uicls.Fill(parent=ep, color=(1.0, 1.0, 1.0, 0.25), pos=(1, 1, 1, 1), state=uiconst.UI_HIDDEN)
         ep.selected = 0
@@ -225,6 +228,26 @@ class SinglelineEdit(uicls.SinglelineEditCore):
 
     def OnHistoryClick(self, clickedString, *args):
         pass
+
+
+
+
+class CapsHint(uicls.Hint):
+    __guid__ = 'uicls.CapsHint'
+    default_name = 'capshint'
+
+    def Prepare_(self):
+        uicls.Hint.Prepare_(self)
+        self.frame.SetRGBA(0, 0, 0, 1)
+        self.pointer = uicls.Sprite(parent=self, name='leftPointer', pos=(-8, -8, 18, 12), align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, texturePath='res:/UI/Texture/classes/Hint/pointerToTopLeft.png', color=(1, 1, 1, 1))
+
+
+
+    def ShowHint(self):
+        if self.parent:
+            self.LoadHint(localization.GetByLabel('/Carbon/UI/Common/CapsLockWarning'))
+            self.left = self.editControl.absoluteRight + 10
+            self.top = self.editControl.absoluteTop + self.pointer.height
 
 
 

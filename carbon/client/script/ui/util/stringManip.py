@@ -35,11 +35,50 @@ def Unzip(s):
 
 
 
+def TruncateStringTo(s, length, addTrail = None):
+    tagSplit = re.split('(<.*?>)', s)
+    done = False
+    ret = u''
+    counter = 0
+    for part in tagSplit:
+        if part.startswith('<'):
+            ret += part
+            continue
+        if done:
+            continue
+        encoded = Encode(part)
+        for letter in encoded:
+            ret += Decode(letter)
+            counter += 1
+            if counter == length:
+                done = True
+                if addTrail:
+                    ret += addTrail
+                break
+
+
+    return ret
+
+
+
+def Encode(text):
+    return text.replace(u'&gt;', u'>').replace(u'&lt;', u'<').replace(u'&amp;', u'&').replace(u'&AMP;', u'&').replace(u'&GT;', u'>').replace(u'&LT;', u'<')
+
+
+
+def Decode(text):
+    return text.replace(u'&', u'&amp;').replace(u'<', u'&lt;').replace(u'>', u'&gt;')
+
+
+
 def StripTags(s, ignoredTags = [], stripOnly = []):
-    if not s:
+    if not s or not isinstance(s, basestring):
         return s
     else:
-        regex = '|'.join([ '</?%s>|<%s *=.*?>' % (tag, tag) for tag in stripOnly or ignoredTags ])
+        regex = '|'.join([ '</%s>|<%s>|<%s .*?>|<%s *=.*?>' % (tag,
+         tag,
+         tag,
+         tag) for tag in stripOnly or ignoredTags ])
         if stripOnly:
             return ''.join(re.split(regex, s))
         if ignoredTags:
@@ -48,6 +87,37 @@ def StripTags(s, ignoredTags = [], stripOnly = []):
 
             return s
         return ''.join(re.split('<.*?>', s))
+
+
+
+def FlattenListText(listText):
+    ret = []
+    for each in listText:
+        if isinstance(each, (tuple, list)):
+            ret += FlattenListText(each)
+        else:
+            ret.append(each)
+
+    return ret
+
+
+
+def ReplaceTags(textOrListText, tags_replace):
+    if not isinstance(tags_replace[0], tuple):
+        tags_replace = (tags_replace,)
+    textOrListText = GetAsUnicode(textOrListText)
+    for (tag, replaceWith,) in tags_replace:
+        textOrListText = textOrListText.replace(tag, replaceWith)
+
+    return textOrListText
+
+
+
+def GetAsUnicode(textOrListText):
+    if isinstance(textOrListText, (list, tuple)):
+        textOrListText = FlattenListText(textOrListText)
+        return ''.join((unicode(each) for each in textOrListText))
+    return unicode(textOrListText)
 
 
 
@@ -119,6 +189,19 @@ def FindTextBoundaries(text, regexObject = None):
     import uiconst
     regexObject = regexObject or uiconst.LINE_BREAK_BOUNDARY_REGEX
     return [ token for token in regexObject.split(text) if token ]
+
+
+
+def ReplaceStringWithTags(string, old = ' ', new = '<br>'):
+    tagSplit = re.split('(<.*?>)', string)
+    ret = u''
+    for part in tagSplit:
+        if part.startswith('<'):
+            ret += part
+            continue
+        ret += part.replace(old, new)
+
+    return ret
 
 
 exports = uiutil.AutoExports('uiutil', locals())

@@ -1,11 +1,12 @@
 import blue
 import bluepy
+import cef
 import geo2
 import trinity
-import uthread
 import prepassConversion
+import yaml
 ENLIGHTEN_BUILD_WAIT_TIME = 200
-INTERIOR_RES_PATH = 'res:/interiorCache/'
+INTERIOR_RES_PATH = const.res.INTERIOR_RES_PATH
 INTERIOR_REFMAP_PATH = 'res:/Graphics/Interior/StaticEnvmaps/'
 
 class Tr2InteriorScene(bluepy.WrapBlueClass('trinity.Tr2InteriorScene')):
@@ -48,7 +49,6 @@ class Tr2InteriorScene(bluepy.WrapBlueClass('trinity.Tr2InteriorScene')):
 
 
     def _GetCell(self, cellName):
-        cellName = str(cellName)
         for cell in self.cells:
             if cell.name == cellName:
                 return cell
@@ -92,8 +92,20 @@ class Tr2InteriorScene(bluepy.WrapBlueClass('trinity.Tr2InteriorScene')):
         while len(cell.systems) < systemNum + 1:
             newSystem = trinity.Tr2InteriorEnlightenSystem()
             newSystem.bounceScale = 1.0
-            newSystem.systemID = int(systemName) + int(cell.name) * 100000
-            newSystem.radSystemPath = INTERIOR_RES_PATH + str(self.id) + '_' + cell.name + '_' + str(systemName) + '.rad'
+            newSystem.systemID = hash(cell.name)
+            newSystem.radSystemPath = INTERIOR_RES_PATH + str(self.id) + '_' + cell.name + '.rad'
+            try:
+                path = INTERIOR_RES_PATH + str(self.id) + '_' + cell.name + '.yaml'
+                rf = blue.ResFile()
+                if rf.FileExists(path):
+                    rf.Open(path)
+                    yamlStr = rf.read()
+                    rf.close()
+                    data = yaml.load(yamlStr)
+                    newSystem.irradianceScale = data['irradianceScale']
+                    newSystem.bounceScale = data['bounceScale']
+            except:
+                pass
             cell.systems.append(newSystem)
             newSystem.SetSystemInCellIdx(cell.systems.index(newSystem))
             self._SortSystems(cell)
@@ -103,7 +115,7 @@ class Tr2InteriorScene(bluepy.WrapBlueClass('trinity.Tr2InteriorScene')):
 
 
 
-    def AddStatic(self, staticObj, cellName = '', systemName = 0, id = None):
+    def AddStatic(self, staticObj, cellName = 'DefaultCell', systemName = 0, id = None):
         prepassConversion.AddPrepassAreasToStatic(staticObj)
         self.RemoveStatic(staticObj)
         cell = self._GetCell(cellName)
@@ -112,7 +124,7 @@ class Tr2InteriorScene(bluepy.WrapBlueClass('trinity.Tr2InteriorScene')):
         self.objects[staticObj] = system
         if id is None:
             id = staticObj.objectID
-        uvData = self.cellData[cellName].get(id, None)
+        uvData = self.cellData.get(cellName, {}).get(id, None)
         if uvData:
             staticObj.SetInstanceData(*uvData)
 
@@ -163,7 +175,8 @@ class Tr2InteriorScene(bluepy.WrapBlueClass('trinity.Tr2InteriorScene')):
 
 
     def RemovePhysicalPortal(self, portalObj):
-        self.portals.remove(portalObj)
+        if portalObj in self.portals:
+            self.portals.remove(portalObj)
 
 
 
@@ -240,34 +253,56 @@ class Tr2InteriorScene(bluepy.WrapBlueClass('trinity.Tr2InteriorScene')):
     def BuildEnlightenScene(self):
         trinity.WaitForResourceLoads()
         import CCP_P4 as p4
+        import os
+        pathsToClear = []
         for cell in self.cells:
             p4.PrepareFileForSave(blue.rot.PathToFilename(cell.shProbeResPath))
+            pathsToClear.append(cell.shProbeResPath)
             for system in cell.systems:
                 p4.PrepareFileForSave(blue.rot.PathToFilename(system.radSystemPath))
+                pathsToClear.append(system.radSystemPath)
 
             cell.RebuildInternalData()
             lightVolumeRes = [ int(v) + 1 for v in geo2.Vec3Subtract(cell.maxBounds, cell.minBounds) ]
             cell.BuildLightVolume(*lightVolumeRes)
-            uvFileName = blue.rot.PathToFilename('res:/interiorCache/' + str(self.id) + '_' + str(cell.name) + '.uv')
-            p4.PrepareFileForSave(blue.rot.PathToFilename(uvFileName))
+            uvResPath = 'res:/interiorCache/' + str(self.id) + '_' + str(cell.name) + '.uv'
+            pathsToClear.append(uvResPath)
+            uvFileName = blue.rot.PathToFilename(uvResPath)
+            p4.PrepareFileForSave(uvFileName)
 
         import app.Interior.EnlightenBuildProgressDialog as progress
         dlg = progress.EnlightenBuildDialog()
         if dlg.BuildEnlighten(self):
             self.SaveEnlighten()
+            revisionsDB = INTERIOR_RES_PATH + str(self.id) + '.revisions'
+            revisionsDB = blue.rot.PathToFilename(revisionsDB)
+            p4.PrepareFileForSave(revisionsDB)
+            currentRevs = sm.GetService('jessicaWorldSpaceClient').GetWorldSpace(self.id).GetWorldSpaceSpawnRevisionsList()
+            if not os.access(revisionsDB, os.F_OK):
+                file = open(revisionsDB, 'w')
+                yaml.dump(currentRevs, file)
+                file.close()
+            else:
+                with open(revisionsDB, 'w') as DB:
+                    yaml.dump(currentRevs, DB)
         p4.AddFilesToP4()
         for cell in self.cells:
             self._SaveUVData(cell, cell.name)
+
+        for path in pathsToClear:
+            blue.resMan.ClearCachedObject(path)
 
 
 
 
     def _SaveUVData(self, cell, cellName):
+        import selectionTypes
         self.cellData[cellName] = {}
         cellData = self.cellData[cellName]
         for system in cell.systems:
             for static in system.statics:
-                cellData[static.worldSpaceObject().GetID()] = (static.uvLinearTransform, static.uvTranslation, static.instanceInSystemIdx)
+                spawnID = cef.Spawn.GetByRecipeID(selectionTypes.replaceObjects[static].recipeID).spawnID
+                cellData[spawnID] = (static.uvLinearTransform, static.uvTranslation, static.instanceInSystemIdx)
 
 
         marshalData = blue.marshal.Save(cellData)

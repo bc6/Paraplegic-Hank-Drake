@@ -13,18 +13,20 @@ import mathUtil
 import uthread
 import util
 import xtriui
-import appUtils
 import uiconst
 import uicls
-from sceneManager import SCENE_TYPE_INTERIOR
 import weakref
 import cameras
+import appUtils
+import localization
+import localizationUtil
 CACHESIZES = [0,
  32,
  128,
  256,
  512]
 LEFTPADDING = 120
+SLIDERWIDTH = 120
 
 class SystemMenu(uicls.LayerCore):
     __guid__ = 'form.SystemMenu'
@@ -34,7 +36,14 @@ class SystemMenu(uicls.LayerCore):
      'OnVoiceChatLoggedOut',
      'OnVoiceFontChanged',
      'OnEndChangeDevice',
-     'OnUIColorsChanged']
+     'OnUIColorsChanged',
+     'OnUIRefresh']
+
+    def OnUIRefresh(self):
+        self.CloseView()
+        uicore.layer.systemmenu.OpenView()
+
+
 
     def Reset(self):
         self.sr.genericinited = 0
@@ -47,242 +56,243 @@ class SystemMenu(uicls.LayerCore):
         self.sr.wnd = None
         self.closing = 0
         self.inited = 0
-        self.init_languageID = eve.session.languageID
-        self.init_loadstationenv = prefs.GetValue('loadstationenv', 1)
+        self.init_languageID = eve.session.languageID if session.userid else prefs.languageID
+        self.init_loadstationenv = prefs.GetValue('loadstationenv2', 1)
         self.init_dockshipsanditems = settings.user.windows.Get('dockshipsanditems', 0)
         self.init_stationservicebtns = settings.user.ui.Get('stationservicebtns', 0)
         self.tempStuff = []
-        self.colors = [(mls.UI_GENERIC_COLORARMYGREEN, (70 / 256.0,
+        self.colors = [(localization.GetByLabel('UI/Common/Colors/ArmyGreen'), (70 / 256.0,
            75 / 256.0,
            50 / 256.0,
            170 / 256.0)),
-         (mls.UI_GENERIC_COLORBLACK, eve.themeColor),
-         (mls.UI_GENERIC_COLORCOOLGRAY, (70 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Black'), eve.themeColor),
+         (localization.GetByLabel('UI/Common/Colors/CoolGray'), (70 / 256.0,
            75 / 256.0,
            70 / 256.0,
            172 / 256.0)),
-         (mls.UI_GENERIC_COLORDARKOPAQUE, (43 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/DarkOpaque'), (43 / 256.0,
            43 / 256.0,
            43 / 256.0,
            204 / 256.0)),
-         (mls.UI_GENERIC_COLORDESERT, (111 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Desert'), (111 / 256.0,
            102 / 256.0,
            82 / 256.0,
            184 / 256.0)),
-         (mls.UI_GENERIC_COLORMIDGRAY, (101 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/MidGray'), (101 / 256.0,
            100 / 256.0,
            111 / 256.0,
            171 / 256.0)),
-         (mls.UI_GENERIC_COLORMIRAGE, (24 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Mirage'), (24 / 256.0,
            32 / 256.0,
            41 / 256.0,
            235 / 256.0)),
-         (mls.UI_GENERIC_COLORNERO, (23 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Nero'), (23 / 256.0,
            5 / 256.0,
            0 / 256.0,
            207 / 256.0)),
-         (mls.UI_GENERIC_COLOROIL, (49 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Oil'), (49 / 256.0,
            38 / 256.0,
            27 / 256.0,
            0.75)),
-         (mls.UI_GENERIC_COLORSILVER, (125 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Silver'), (125 / 256.0,
            125 / 256.0,
            125 / 256.0,
            130 / 256.0)),
-         (mls.UI_GENERIC_COLORSTEALTH, (51 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Stealth'), (51 / 256.0,
            54 / 256.0,
            45 / 256.0,
            113 / 256.0)),
-         (mls.UI_GENERIC_COLORSTEELGRAY, (61 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/SteelGray'), (61 / 256.0,
            55 / 256.0,
            68 / 256.0,
            172 / 256.0)),
-         (mls.UI_GENERIC_COLORSWAMP, (0 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Swamp'), (0 / 256.0,
            21 / 256.0,
            21 / 256.0,
            181 / 256.0)),
-         (mls.UI_GENERIC_COLORSBLACKPEARL, (9 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/BlackPearl'), (9 / 256.0,
            30 / 256.0,
            45 / 256.0,
            201 / 256.0)),
-         (mls.UI_GENERIC_COLORSDARKLUNARGREEN, (25 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/DarkLunarGreen'), (25 / 256.0,
            30 / 256.0,
            25 / 256.0,
            180 / 256.0))]
-        self.backgroundcolors = [(mls.UI_GENERIC_COLORARMYGREEN, (14 / 256.0,
+        self.backgroundcolors = [(localization.GetByLabel('UI/Common/Colors/ArmyGreen'), (14 / 256.0,
            28 / 256.0,
            17 / 256.0,
            170 / 256.0)),
-         (mls.UI_GENERIC_COLORBLACK, eve.themeBgColor),
-         (mls.UI_GENERIC_COLORCOOLGRAY, (14 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Black'), eve.themeBgColor),
+         (localization.GetByLabel('UI/Common/Colors/CoolGray'), (14 / 256.0,
            28 / 256.0,
            32 / 256.0,
            172 / 256.0)),
-         (mls.UI_GENERIC_COLORDARKOPAQUE, (19 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/DarkOpaque'), (19 / 256.0,
            19 / 256.0,
            19 / 256.0,
            204 / 256.0)),
-         (mls.UI_GENERIC_COLORDESERT, (71 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Desert'), (71 / 256.0,
            53 / 256.0,
            37 / 256.0,
            184 / 256.0)),
-         (mls.UI_GENERIC_COLORMIDGRAY, (71 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/MidGray'), (71 / 256.0,
            70 / 256.0,
            79 / 256.0,
            200 / 256.0)),
-         (mls.UI_GENERIC_COLORMIRAGE, (34 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Mirage'), (34 / 256.0,
            48 / 256.0,
            59 / 256.0,
            132 / 256.0)),
-         (mls.UI_GENERIC_COLORNERO, (32 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Nero'), (32 / 256.0,
            32 / 256.0,
            32 / 256.0,
            145 / 256.0)),
-         (mls.UI_GENERIC_COLOROIL, (116 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Oil'), (116 / 256.0,
            116 / 256.0,
            116 / 256.0,
            152 / 256.0)),
-         (mls.UI_GENERIC_COLORSILVER, (0.0,
+         (localization.GetByLabel('UI/Common/Colors/Silver'), (0.0,
            0.0,
            0.0,
            160 / 256.0)),
-         (mls.UI_GENERIC_COLORSTEALTH, (25 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Stealth'), (25 / 256.0,
            23 / 256.0,
            15 / 256.0,
            150 / 256.0)),
-         (mls.UI_GENERIC_COLORSTEELGRAY, (32 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/SteelGray'), (32 / 256.0,
            41 / 256.0,
            46 / 256.0,
            168 / 256.0)),
-         (mls.UI_GENERIC_COLORSWAMP, (23 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Swamp'), (23 / 256.0,
            23 / 256.0,
            23 / 256.0,
            153 / 256.0)),
-         (mls.UI_GENERIC_COLORSBLACKPEARL, (116 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/BlackPearl'), (116 / 256.0,
            116 / 256.0,
            116 / 256.0,
            116 / 256.0)),
-         (mls.UI_GENERIC_COLORSDARKLUNARGREEN, (70 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/DarkLunarGreen'), (70 / 256.0,
            75 / 256.0,
            70 / 256.0,
            200 / 256.0))]
-        self.components = [(mls.UI_GENERIC_COLORARMYGREEN, (14 / 256.0,
+        self.components = [(localization.GetByLabel('UI/Common/Colors/ArmyGreen'), (14 / 256.0,
            28 / 256.0,
            17 / 256.0,
            170 / 256.0)),
-         (mls.UI_GENERIC_COLORBLACK, eve.themeCompColor),
-         (mls.UI_GENERIC_COLORCOOLGRAY, (14 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Black'), eve.themeCompColor),
+         (localization.GetByLabel('UI/Common/Colors/CoolGray'), (14 / 256.0,
            28 / 256.0,
            32 / 256.0,
            172 / 256.0)),
-         (mls.UI_GENERIC_COLORDARKOPAQUE, (31 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/DarkOpaque'), (31 / 256.0,
            31 / 256.0,
            31 / 256.0,
            204 / 256.0)),
-         (mls.UI_GENERIC_COLORDESERT, (71 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Desert'), (71 / 256.0,
            53 / 256.0,
            37 / 256.0,
            184 / 256.0)),
-         (mls.UI_GENERIC_COLORMIDGRAY, (32 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/MidGray'), (32 / 256.0,
            32 / 256.0,
            32 / 256.0,
            128 / 256.0)),
-         (mls.UI_GENERIC_COLORMIRAGE, (0 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Mirage'), (0 / 256.0,
            0 / 256.0,
            0 / 256.0,
            112 / 256.0)),
-         (mls.UI_GENERIC_COLORNERO, (23 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Nero'), (23 / 256.0,
            5 / 256.0,
            0 / 256.0,
            145 / 256.0)),
-         (mls.UI_GENERIC_COLOROIL, (42 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Oil'), (42 / 256.0,
            42 / 256.0,
            42 / 256.0,
            162 / 256.0)),
-         (mls.UI_GENERIC_COLORSILVER, (0.0,
+         (localization.GetByLabel('UI/Common/Colors/Silver'), (0.0,
            0.0,
            0.0,
            61 / 256.0)),
-         (mls.UI_GENERIC_COLORSTEALTH, (25 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Stealth'), (25 / 256.0,
            23 / 256.0,
            15 / 256.0,
            150 / 256.0)),
-         (mls.UI_GENERIC_COLORSTEELGRAY, (32 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/SteelGray'), (32 / 256.0,
            41 / 256.0,
            46 / 256.0,
            168 / 256.0)),
-         (mls.UI_GENERIC_COLORSWAMP, (31 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Swamp'), (31 / 256.0,
            61 / 256.0,
            71 / 256.0,
            121 / 256.0)),
-         (mls.UI_GENERIC_COLORSBLACKPEARL, (2 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/BlackPearl'), (2 / 256.0,
            4 / 256.0,
            9 / 256.0,
            110 / 256.0)),
-         (mls.UI_GENERIC_COLORSDARKLUNARGREEN, (2 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/DarkLunarGreen'), (2 / 256.0,
            4 / 256.0,
            9 / 256.0,
            109 / 256.0))]
-        self.componentsubs = [(mls.UI_GENERIC_COLORARMYGREEN, (182 / 256.0,
+        self.componentsubs = [(localization.GetByLabel('UI/Common/Colors/ArmyGreen'), (182 / 256.0,
            210 / 256.0,
            182 / 256.0,
            44 / 256.0)),
-         (mls.UI_GENERIC_COLORBLACK, eve.themeCompSubColor),
-         (mls.UI_GENERIC_COLORCOOLGRAY, (149 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Black'), eve.themeCompSubColor),
+         (localization.GetByLabel('UI/Common/Colors/CoolGray'), (149 / 256.0,
            194 / 256.0,
            216 / 256.0,
            16 / 256.0)),
-         (mls.UI_GENERIC_COLORDARKOPAQUE, (256 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/DarkOpaque'), (256 / 256.0,
            256 / 256.0,
            256 / 256.0,
            16 / 256.0)),
-         (mls.UI_GENERIC_COLORDESERT, (221 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Desert'), (221 / 256.0,
            232 / 256.0,
            256 / 256.0,
            11 / 256.0)),
-         (mls.UI_GENERIC_COLORMIDGRAY, (127 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/MidGray'), (127 / 256.0,
            127 / 256.0,
            127 / 256.0,
            115 / 256.0)),
-         (mls.UI_GENERIC_COLORMIRAGE, (0 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Mirage'), (0 / 256.0,
            0 / 256.0,
            0 / 256.0,
            50 / 256.0)),
-         (mls.UI_GENERIC_COLORNERO, (23 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Nero'), (23 / 256.0,
            5 / 256.0,
            0 / 256.0,
            145 / 256.0)),
-         (mls.UI_GENERIC_COLOROIL, (25 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Oil'), (25 / 256.0,
            25 / 256.0,
            25 / 256.0,
            160 / 256.0)),
-         (mls.UI_GENERIC_COLORSILVER, (256 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Silver'), (256 / 256.0,
            256 / 256.0,
            256 / 256.0,
            11 / 256.0)),
-         (mls.UI_GENERIC_COLORSTEALTH, (206 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Stealth'), (206 / 256.0,
            206 / 256.0,
            206 / 256.0,
            16 / 256.0)),
-         (mls.UI_GENERIC_COLORSTEELGRAY, (88 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/SteelGray'), (88 / 256.0,
            83 / 256.0,
            94 / 256.0,
            110 / 256.0)),
-         (mls.UI_GENERIC_COLORSWAMP, (31 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/Swamp'), (31 / 256.0,
            61 / 256.0,
            71 / 256.0,
            121 / 256.0)),
-         (mls.UI_GENERIC_COLORSBLACKPEARL, (2 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/BlackPearl'), (2 / 256.0,
            4 / 256.0,
            9 / 256.0,
            115 / 256.0)),
-         (mls.UI_GENERIC_COLORSDARKLUNARGREEN, (2 / 256.0,
+         (localization.GetByLabel('UI/Common/Colors/DarkLunarGreen'), (2 / 256.0,
            4 / 256.0,
            9 / 256.0,
            114 / 256.0))]
         self.voiceFontList = None
         if sm.GetService('vivox').Enabled():
             sm.GetService('vivox').StopAudioTest()
+        self.NO_PSEUDOLOCALIZATION_PRESET = -1
 
 
 
@@ -292,7 +302,7 @@ class SystemMenu(uicls.LayerCore):
         if self.settings:
             self.ApplyDeviceChanges()
         if getattr(self, 'optimizeWnd', None) is not None:
-            self.optimizeWnd.SelfDestruct()
+            self.optimizeWnd.Close()
         vivox = sm.GetService('vivox')
         if vivox.Enabled():
             vivox.LeaveEchoChannel()
@@ -305,8 +315,7 @@ class SystemMenu(uicls.LayerCore):
         sm.GetService('sceneManager').CheckCameraOffsets()
         sm.GetService('cameraClient').ApplyUserSettings()
         if eve.session.charid:
-            mapOpen = sm.GetService('map').ViewingStarMap()
-            if mapOpen:
+            if sm.GetService('viewState').IsViewActive('starmap'):
                 sm.GetService('starmap').UpdateRoute()
         sm.GetService('settings').LoadSettings()
         self.Reset()
@@ -358,10 +367,10 @@ class SystemMenu(uicls.LayerCore):
         if self.sr.wnd is None or self.sr.wnd.destroyed:
             return 
         ndt = 0.0
-        start = blue.os.GetTime(1)
+        start = blue.os.GetWallclockTimeNow()
         sceneManager = sm.GetService('sceneManager')
         while ndt != 1.0:
-            ndt = min(blue.os.TimeDiffInMs(start) / time, 1.0)
+            ndt = min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / time, 1.0)
             if not self or self.dead:
                 return 
             if self.sr.wnd is None or self.sr.wnd.destroyed or pic is None or pic.destroyed:
@@ -385,19 +394,20 @@ class SystemMenu(uicls.LayerCore):
 
     def GetTabs(self):
         if eve.session.userid:
-            return ['displayandgraphics',
-             'audioandchat',
-             'generic',
-             'shortcuts',
-             'reset settings',
-             'language',
-             'about eve']
+            return [('displayandgraphics', localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Header')),
+             ('audioandchat', localization.GetByLabel('UI/SystemMenu/AudioAndChat/Header')),
+             ('generic', localization.GetByLabel('UI/SystemMenu/GeneralSettings/Header')),
+             ('shortcuts', localization.GetByLabel('UI/SystemMenu/Shortcuts/Header')),
+             ('reset settings', localization.GetByLabel('UI/SystemMenu/ResetSettings/Header')),
+             ('language', localization.GetByLabel('UI/SystemMenu/Language/Header')),
+             ('about eve', localization.GetByLabel('UI/SystemMenu/AboutEve/Header'))]
         else:
-            return ['displayandgraphics',
-             'audioandchat',
-             'generic',
-             'reset settings',
-             'about eve']
+            return [('displayandgraphics', localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Header')),
+             ('audioandchat', localization.GetByLabel('UI/SystemMenu/AudioAndChat/Header')),
+             ('generic', localization.GetByLabel('UI/SystemMenu/GeneralSettings/Header')),
+             ('reset settings', localization.GetByLabel('UI/SystemMenu/ResetSettings/Header')),
+             ('language', localization.GetByLabel('UI/SystemMenu/Language/Header')),
+             ('about eve', localization.GetByLabel('UI/SystemMenu/AboutEve/Header'))]
 
 
 
@@ -417,35 +427,32 @@ class SystemMenu(uicls.LayerCore):
         menusub = uicls.Container(name='menusub', state=uiconst.UI_NORMAL, parent=menuarea, padTop=20)
         tabs = self.GetTabs()
         maintabgroups = []
-        for tabname in tabs:
-            if tabname == 'generic':
-                label = mls.UI_SHARED_GENERALSETTINGS
-            else:
-                label = getattr(mls, 'UI_SYSMENU_' + tabname.replace(' ', '').upper())
+        for (tabId, label,) in tabs:
             maintabgroups.append([label,
-             uicls.Container(name=tabname + '_container', parent=menusub, padTop=8, padBottom=8),
+             uicls.Container(name=tabId + '_container', parent=menusub, padTop=8, padBottom=8),
              self,
-             tabname])
+             tabId])
 
         maintabs = uicls.TabGroup(parent=menusub, autoselecttab=True, tabs=maintabgroups, groupID='sysmenumaintabs', idx=0)
         self.sr.maintabs = maintabs
         uicls.Line(parent=menusub, align=uiconst.TOBOTTOM, padTop=-1)
         btnPar = uicls.Container(name='btnPar', parent=menusub, align=uiconst.TOBOTTOM, height=35, padTop=const.defaultPadding, idx=0)
-        btn = uicls.Button(parent=btnPar, label=mls.UI_CMD_CLOSEWINDOW, func=self.CloseMenuClick, align=uiconst.CENTER)
-        btn = uicls.Button(parent=btnPar, label=mls.UI_CMD_QUITGAME, func=self.QuitBtnClick, left=10, align=uiconst.CENTERRIGHT)
+        btn = uicls.Button(parent=btnPar, label=localization.GetByLabel('UI/SystemMenu/CloseWindow'), func=self.CloseMenuClick, align=uiconst.CENTER)
+        btn = uicls.Button(parent=btnPar, label=localization.GetByLabel('UI/SystemMenu/QuitGame'), func=self.QuitBtnClick, left=10, align=uiconst.CENTERRIGHT)
         if eve.session.userid:
-            btn = uicls.Button(parent=btnPar, label=mls.UI_CMD_LOGOFF, func=self.Logoff, left=btn.width + btn.left + 2, align=uiconst.CENTERRIGHT)
-            btn = uicls.Button(parent=btnPar, label=mls.UI_CMD_OPENPETITIONS, func=self.Petition, left=10, align=uiconst.CENTERLEFT)
+            btn = uicls.Button(parent=btnPar, label=localization.GetByLabel('UI/SystemMenu/LogOff'), func=self.Logoff, left=btn.width + btn.left + 2, align=uiconst.CENTERRIGHT)
+            btn = uicls.Button(parent=btnPar, label=localization.GetByLabel('UI/SystemMenu/YourPetitions'), func=self.Petition, left=10, align=uiconst.CENTERLEFT)
         if eve.session.charid and boot.region != 'optic':
-            btn = uicls.Button(parent=btnPar, label=mls.UI_CMD_CONVERTETC, func=self.ConvertETC, left=btn.width + btn.left + 2, align=uiconst.CENTERLEFT)
-            btn = uicls.Button(parent=btnPar, label=mls.UI_GENERIC_REDEEMITEMS, func=self.RedeemItems, left=btn.width + btn.left + 2, align=uiconst.CENTERLEFT)
+            btn = uicls.Button(parent=btnPar, label=localization.GetByLabel('UI/SystemMenu/ConvertETC'), func=self.ConvertETC, left=btn.width + btn.left + 2, align=uiconst.CENTERLEFT)
+            btn = uicls.Button(parent=btnPar, label=localization.GetByLabel('UI/SystemMenu/RedeemItems'), func=self.RedeemItems, left=btn.width + btn.left + 2, align=uiconst.CENTERLEFT)
         if eve.session.userid:
-            build = uicls.Label(text='%s: %s.%s' % (mls.UI_LOGIN_VERSION, boot.keyval['version'].split('=', 1)[1], boot.build), parent=self.sr.wnd, left=6, top=6, state=uiconst.UI_NORMAL)
+            build = uicls.EveLabelMedium(text=localization.GetByLabel('UI/SystemMenu/VersionInfo', version=boot.keyval['version'].split('=', 1)[1], build=boot.build), parent=self.sr.wnd, left=6, top=6, state=uiconst.UI_NORMAL)
         self.sr.wndUnderlay = uicls.WindowUnderlay(parent=menuarea)
         if eve.session.userid:
             blue.pyos.synchro.Yield()
             self.GetBackground()
-        self.sr.wnd.state = uiconst.UI_NORMAL
+        if self.sr.wnd:
+            self.sr.wnd.state = uiconst.UI_NORMAL
 
 
 
@@ -470,6 +477,8 @@ class SystemMenu(uicls.LayerCore):
     def InitDeviceSettings(self):
         self.settings = sm.GetService('device').GetSettings()
         self.initsettings = self.settings.copy()
+        windowed = self.IsWindowed()
+        self.uiScaleValue = sm.GetService('device').GetUIScaleValue(windowed)
 
 
 
@@ -521,110 +530,118 @@ class SystemMenu(uicls.LayerCore):
         adapterOps = deviceSvc.GetAdaptersEnumerated()
         windowOps = deviceSvc.GetWindowModes()
         (resolutionOps, refresh,) = deviceSvc.GetAdapterResolutionsAndRefreshRates(set)
-        currentRes = ('%sx%s' % (deviceSet.BackBufferWidth, deviceSet.BackBufferHeight), (deviceSet.BackBufferWidth, deviceSet.BackBufferHeight))
+        currentResLabel = localization.GetByLabel('/Carbon/UI/Service/Device/ScreenSize', width=deviceSet.BackBufferWidth, height=deviceSet.BackBufferHeight)
+        currentRes = (currentResLabel, (deviceSet.BackBufferWidth, deviceSet.BackBufferHeight))
         windowed = set.Windowed
         if bool(set.Windowed) and settings.public.device.Get('FixedWindow', False):
             set.Windowed = 2
             windowed = 1
         elif not set.Windowed:
             settings.public.device.Set('FixedWindow', False)
-        currentRes = ('%sx%s' % (deviceSet.BackBufferWidth, deviceSet.BackBufferHeight), (deviceSet.BackBufferWidth, deviceSet.BackBufferHeight))
+        currentResLabel = localization.GetByLabel('/Carbon/UI/Service/Device/ScreenSize', width=deviceSet.BackBufferWidth, height=deviceSet.BackBufferHeight)
+        currentRes = (currentResLabel, (deviceSet.BackBufferWidth, deviceSet.BackBufferHeight))
         if windowed and currentRes not in resolutionOps:
             resolutionOps.append(currentRes)
         setBB = deviceSvc.GetPreferedResolution(windowed)
         triapp = trinity.app
         if triapp.isMaximized:
             setBB = (deviceSet.BackBufferWidth, deviceSet.BackBufferHeight)
-        deviceData = [('header', mls.UI_SYSMENU_DISPLAYSETUP),
-         ('text', mls.UI_SYSMENU_DISPLAYSETUP_DESCRIPTION),
-         ('line',),
-         ('combo',
-          ('Adapter', None, set.Adapter),
-          mls.UI_SYSMENU_DISPLAYADADAPTER,
-          adapterOps,
-          left,
-          mls.UI_SYSMENU_DISPLAYADADAPTER_TOOLTIP,
-          whatChanged == 'Adapter'),
+        scalingOps = deviceSvc.GetUIScalingOptions(height=setBB[1])
+        deviceData = [('header', localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/Header')),
+         ('toppush', 4),
          ('combo',
           ('Windowed', None, deviceSvc.IsWindowed(self.settings)),
-          mls.UI_SYSMENU_WINDOWEDORFULLSCREEN,
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/WindowedOrFullscreen'),
           windowOps,
           left,
-          mls.UI_SYSMENU_WINDOWEDORFULLSCREEN_TOOLTIP,
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/WindowedOrFullscreenTooltip'),
           whatChanged == 'Windowed'),
          ('combo',
           ('BackBufferSize', None, setBB),
-          [mls.UI_SYSMENU_ADAPTERRESOLUTION, mls.UI_SYSMENU_WINDOWSIZE][windowed],
+          [localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/AdapterResolution'), localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/WindowSize')][windowed],
           resolutionOps,
           left,
-          [mls.UI_SYSMENU_ADAPTERRESOLUTION_TOOLTIP, mls.UI_SYSMENU_WINDOWSIZE_TOOLTIP][windowed],
+          [localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/AdapterResolutionTooltip'), localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/WindowSizeTooltip')][windowed],
           whatChanged == 'BackBufferSize',
-          triapp.isMaximized)]
+          triapp.isMaximized),
+         ('combo',
+          ('UIScaling', None, self.uiScaleValue),
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/UIScaling'),
+          scalingOps,
+          left,
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/UIScalingTooltip'),
+          whatChanged == 'UIScaling'),
+         ('combo',
+          ('Adapter', None, set.Adapter),
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/DisplayAdapter'),
+          adapterOps,
+          left,
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/DisplayAdapterTooltip'),
+          whatChanged == 'Adapter')]
         if blue.win32.IsTransgaming():
             deviceData += [('checkbox',
               ('MacMTOpenGL', ('public', 'ui'), bool(sm.GetService('cider').GetMultiThreadedOpenGL())),
-              mls.UI_SYSMENU_MAC_MTOPENGL,
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/UseMultithreadedOpenGL'),
               None,
               None,
-              mls.UI_SYSMENU_MAC_MTOPENGL_TOOLTIP)]
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/UseMultithreadedOpenglToolTip'))]
         options = deviceSvc.GetPresentationIntervalOptions(set)
         if set.PresentationInterval not in [ val for (label, val,) in options ]:
             set.PresentationInterval = options[1][1]
         deviceData.append(('combo',
          ('PresentationInterval', None, set.PresentationInterval),
-         mls.UI_SYSMENU_PRESENTINTERVAL,
+         localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/PresentInterval'),
          options,
          left,
-         mls.UI_SYSMENU_PRESENTINTERVAL_TOOLTIP))
-        deviceData += [('line',)]
+         localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/PresentIntervalTooltip')))
         if eve.session.userid:
+            deviceData += [('header', localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/CameraSettings/InSpaceCameraSettings'))]
             self.cameraOffsetTextAdded = 0
             deviceData.append(('slider',
              ('cameraOffset', ('user', 'ui'), 0.0),
-             mls.UI_SYSMENU_CAMERACENTER,
+             'UI/SystemMenu/DisplayAndGraphics/DisplaySetup/CameraCenter',
              (-100, 100),
              120,
              10))
-            deviceData.append(('toppush', 8))
+            deviceData.append(('toppush', 10))
             deviceData.append(('checkbox',
              ('offsetUIwithCamera', ('user', 'ui'), 0),
-             mls.UI_SYSMENU_OFFSETUIWITHCAMERA,
+             localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/OffsetUIWithCamera'),
              None,
              None,
-             mls.UI_SYSMENU_OFFSETUIWITHCAMERAHINT))
+             localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/OffsetUIWithCameraTooltip')))
             incarnaCameraSvc = sm.GetService('cameraClient')
             incarnaCamSett = incarnaCameraSvc.GetCameraSettings()
-            deviceData += [('header', mls.UI_SYSMENU_CAMERA_HEADING_INCARNA_CAMERA),
+            deviceData += [('header', localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/CameraSettings/InStationCameraSettings')),
              ('slider',
               ('incarnaCameraOffset', ('user', 'ui'), incarnaCamSett.charOffsetSetting),
-              mls.UI_SYSMENU_CAMERACENTER,
+              'UI/SystemMenu/DisplayAndGraphics/DisplaySetup/CameraCenter',
               (-1.0, 1.0),
               120,
               10),
              ('toppush', 8),
              ('slider',
               ('incarnaCameraMouseLookSpeedSlider', ('user', 'ui'), incarnaCamSett.mouseLookSpeed),
-              mls.UI_SYSMENU_CAMERALOOKSPEED,
+              'UI/SystemMenu/DisplayAndGraphics/DisplaySetup/IncarnaCamera/CameraLookSpeed',
               (-6, 6),
               120,
               10),
-             ('toppush', 8),
+             ('toppush', 10),
              ('checkbox',
               ('incarnaCameraInvertY', ('user', 'ui'), incarnaCamSett.invertY),
-              mls.UI_SYSMENU_CAMERA_INVERTY,
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/IncarnaCamera/InvertY'),
               None,
               None,
-              mls.UI_SYSMENU_CAMERA_INVERTY_TOOLTIP),
-             ('toppush', 8),
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/IncarnaCamera/InvertYTooltip')),
              ('checkbox',
               ('incarnaCameraMouseSmooth', ('user', 'ui'), incarnaCamSett.mouseSmooth),
-              mls.UI_SYSMENU_CAMERA_SMOOTHMOUSE,
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/IncarnaCamera/SmoothCamera'),
               None,
               None,
-              mls.UI_SYSMENU_CAMERA_SMOOTHMOUSE_TOOLTIP)]
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/IncarnaCamera/SmoothCameraTooltip'))]
         self.ParseData(deviceData, where)
         btnPar = uicls.Container(name='btnpar', parent=where, align=uiconst.TOBOTTOM, height=32)
-        btn = uicls.Button(parent=btnPar, label=mls.UI_GENERIC_APPLY, func=self.ApplyDeviceChanges, align=uiconst.CENTERTOP)
+        btn = uicls.Button(parent=btnPar, label=localization.GetByLabel('UI/Common/Buttons/Apply'), func=self.ApplyDeviceChanges, align=uiconst.CENTERTOP)
 
 
 
@@ -634,16 +651,29 @@ class SystemMenu(uicls.LayerCore):
             return 
         s = self.settings.copy()
         fixedWindow = settings.public.device.Get('FixedWindow', False)
-        deviceChanged = sm.GetService('device').CheckDeviceDifference(s, True)
+        deviceChanged = deviceSvc.CheckDeviceDifference(s, True)
         triapp = trinity.app
         if not deviceChanged and blue.win32.IsTransgaming():
             windowModeChanged = sm.GetService('cider').HasFullscreenModeChanged()
             deviceChanged = deviceChanged or windowModeChanged
         if deviceChanged:
-            sm.GetService('device').SetDevice(s, userModified=True)
+            deviceSvc.SetDevice(s, userModified=True)
         elif triapp.fixedWindow != fixedWindow:
             triapp.AdjustWindowForChange(s.Windowed, fixedWindow)
-            sm.GetService('device').UpdateWindowPosition(s)
+            deviceSvc.UpdateWindowPosition(s)
+        windowed = self.IsWindowed()
+        currentUIScale = deviceSvc.GetUIScaleValue(windowed)
+        scaleValue = getattr(self, 'uiScaleValue', currentUIScale)
+        if scaleValue != currentUIScale:
+            if eve.Message('ScaleUI', {}, uiconst.YESNO, default=uiconst.ID_YES) == uiconst.ID_YES:
+                deviceSvc.SetUIScaleValue(scaleValue, windowed)
+
+
+
+    def IsWindowed(self):
+        if self.settings.Windowed:
+            return True
+        return False
 
 
 
@@ -657,6 +687,7 @@ class SystemMenu(uicls.LayerCore):
 
     def ChangeWindowMode(self, windowed):
         val = windowed
+        self.uiScaleValue = sm.GetService('device').GetUIScaleValue(windowed)
         if windowed == 2:
             settings.public.device.Set('FixedWindow', True)
             val = 1
@@ -671,7 +702,7 @@ class SystemMenu(uicls.LayerCore):
 
 
     def OnComboChange(self, combo, header, value, *args):
-        if combo.name in ('Adapter', 'Windowed', 'BackBufferFormat', 'BackBufferSize', 'AutoDepthStencilFormat', 'zEnable', 'PresentationInterval', 'incarnaCameraChase', 'Anti-Aliasing'):
+        if combo.name in ('Adapter', 'Windowed', 'BackBufferFormat', 'BackBufferSize', 'AutoDepthStencilFormat', 'zEnable', 'PresentationInterval', 'incarnaCameraChase', 'Anti-Aliasing', 'UIScaling'):
             rot = blue.os.CreateInstance('blue.Rot')
             triapp = trinity.app
             D3D = rot.GetInstance('tri:/Direct3D', 'trinity.TriDirect3D')
@@ -686,13 +717,15 @@ class SystemMenu(uicls.LayerCore):
                 prefs.SetValue('antiAliasing', value)
             elif combo.name == 'Windowed':
                 self.ChangeWindowMode(value)
+            elif combo.name == 'UIScaling':
+                self.uiScaleValue = value
             else:
                 setattr(self.settings, combo.name, value)
             self.ProcessDeviceSettings(whatChanged=combo.name)
         elif combo.name == 'autoTargetBack':
             settings.user.ui.Set('autoTargetBack', value)
         elif combo.name in ('color', 'backgroundcolor', 'component', 'componentsub'):
-            if settings.user.ui.Get('linkColorCombos', False) and header != mls.UI_SYSMENU_CUSTOMCOL:
+            if settings.user.ui.Get('linkColorCombos', False) and header != localization.GetByLabel('UI/Common/Colors/CustomColor'):
                 for box in ['color',
                  'backgroundcolor',
                  'component',
@@ -717,24 +750,6 @@ class SystemMenu(uicls.LayerCore):
         elif combo.name == 'TalkInputDevice':
             settings.user.audio.Set('TalkInputDevice', value)
             sm.GetService('vivox').SetPreferredAudioInputDevice(value)
-        elif combo.name == 'fontWFactor':
-            settings.user.ui.Set('fontWFactor', value)
-            wnds = [ w for w in uicore.desktop.Find('trinity.Tr2Sprite2d') + uicore.desktop.Find('trinity.Tr2Sprite2dContainer') if hasattr(w, 'DoFontChange') ]
-            for s in wnds:
-                s.DoFontChange()
-
-            if sm.GetService('vivox').Enabled():
-                sm.GetService('vivox').StopAudioTest()
-            for each in self.GetTabs():
-                contName = each[:]
-                config = '%sinited' % each.replace(' ', '')
-                if self.sr.Get(config) and self.sr.Get(config, False):
-                    parent = uiutil.GetChild(self.sr.wnd, '%s_container' % contName)
-                    uix.Flush(parent)
-                    setattr(self.sr, config, 0)
-
-            self.sr.maintabs.ReloadVisible()
-            sm.ScatterEvent('OnFontChanged')
         elif combo.name == 'actionmenuBtn':
             settings.user.ui.Set('actionmenuBtn', value)
         elif combo.name == 'cmenufontsize':
@@ -750,7 +765,7 @@ class SystemMenu(uicls.LayerCore):
             settings.user.ui.Set('dblClickUser', value)
         elif combo.name == 'shaderQuality':
             prefs.SetValue('shaderQuality', value)
-            clothEnabled = value == 3
+            clothEnabled = value > 1
             prefs.SetValue('charClothSimulation', int(clothEnabled))
             sm.GetService('sceneManager').ApplyClothSimulationSettings()
         elif combo.name == 'textureQuality':
@@ -765,6 +780,23 @@ class SystemMenu(uicls.LayerCore):
             prefs.SetValue('shadowQuality', value)
         elif combo.name == 'interiorGraphicsQuality':
             prefs.SetValue('interiorGraphicsQuality', value)
+        elif combo.name == 'interiorShaderQuality':
+            prefs.SetValue('interiorShaderQuality', value)
+        elif combo.name == 'pseudolocalizationPreset':
+            settings.user.localization.Set('pseudolocalizationPreset', value)
+            self.SetPseudolocalizationSettingsByPreset(value)
+            self.RefreshLanguage()
+        elif combo.name == 'characterReplacementMethod':
+            originalPresetValue = settings.user.localization.Get('pseudolocalizationPreset', self.NO_PSEUDOLOCALIZATION_PRESET)
+            originalReplaceValue = settings.user.localization.Get('characterReplacementMethod', localization.NO_REPLACEMENT)
+            settings.user.localization.Set('characterReplacementMethod', value)
+            if value == localization.NO_REPLACEMENT:
+                localizationUtil.SetPseudolocalization(False)
+            else:
+                localizationUtil.SetPseudolocalization(True)
+            if originalPresetValue != self.NO_PSEUDOLOCALIZATION_PRESET and originalReplaceValue != value:
+                settings.user.localization.Set('pseudolocalizationPreset', self.NO_PSEUDOLOCALIZATION_PRESET)
+            self.RefreshLanguage()
 
 
 
@@ -832,24 +864,18 @@ class SystemMenu(uicls.LayerCore):
             data = util.KeyVal()
             data.cmdname = c.name
             data.context = uicore.cmd.GetCategoryContext(c.category)
-            shortcutString = c.GetShortcutAsString() or '<color=%s>(%s)</color>' % (util.Color(0.5, 0.5, 0.5).GetHex(), mls.UI_GENERIC_NONE)
-            data.label = '%s<t>%s' % (c.GetDescription(), shortcutString)
+            shortcutString = c.GetShortcutAsString() or localization.GetByLabel('UI/SystemMenu/Shortcuts/NoShortcut')
+            data.label = c.GetDescription() + '<t>' + shortcutString
             data.locked = c.isLocked
             data.refreshcallback = self.ReloadCommands
             scrolllist.append(listentry.Get('CmdListEntry', data=data))
 
-        self.sr.active_cmdscroll.Load(contentList=scrolllist, headers=[mls.UI_GENERIC_COMMAND, mls.UI_GENERIC_SHORTCUT], scrollTo=self.sr.active_cmdscroll.GetScrollProportion())
+        self.sr.active_cmdscroll.Load(contentList=scrolllist, headers=[localization.GetByLabel('UI/SystemMenu/Shortcuts/Command'), localization.GetByLabel('UI/SystemMenu/Shortcuts/Shortcut')], scrollTo=self.sr.active_cmdscroll.GetScrollProportion())
 
 
 
     def RestoreShortcuts(self, *args):
         uicore.cmd.RestoreDefaults()
-        self.ReloadCommands()
-
-
-
-    def EditCommand(self, cmdName):
-        uicore.cmd.EditCmd(cmdName)
         self.ReloadCommands()
 
 
@@ -866,11 +892,7 @@ class SystemMenu(uicls.LayerCore):
         parent = uiutil.GetChild(self.sr.wnd, 'about eve_container')
         self.sr.messageArea = uicls.Edit(parent=parent, padLeft=8, padRight=8, readonly=1)
         self.sr.messageArea.AllowResizeUpdates(0)
-        html = mls.UI_SYSMENU_CREDITS2 % {'title': cfg.GetMessage('ReleaseTitle').text,
-         'subtitle': cfg.GetMessage('ReleaseSubtitle').text,
-         'version': '%s.%s' % (boot.keyval['version'].split('=', 1)[1], boot.build),
-         'year': util.FmtDate(blue.os.GetTime())[:4],
-         'evecredits': mls.UI_SYSMENU_EVECREDITS}
+        html = localization.GetByLabel('UI/SystemMenu/AboutEve/AboutEve', title=localization.GetByLabel('UI/SystemMenu/AboutEve/ReleaseTitle'), subtitle=localization.GetByLabel('UI/SystemMenu/AboutEve/ReleaseSubtitle'), version=boot.keyval['version'].split('=', 1)[1], build=boot.build, currentYear=blue.os.GetTimeParts(blue.os.GetTime())[0], EVECredits=localization.GetByLabel('UI/SystemMenu/AboutEve/EVECredits'), CarbonCredits=localization.GetByLabel('UI/SystemMenu/AboutEve/CarbonCredits'), EVEPublishingCredits=localization.GetByLabel('UI/SystemMenu/AboutEve/EVEPublishingCredits'), CCPCredits=localization.GetByLabel('UI/SystemMenu/AboutEve/CCPCredits'))
         self.sr.messageArea.LoadHTML(html)
         self.sr.abouteveinited = 1
 
@@ -880,6 +902,7 @@ class SystemMenu(uicls.LayerCore):
         valid = []
         for rec in entries:
             if rec[0] not in ('checkbox', 'combo', 'slider', 'button'):
+                valid.append(rec)
                 continue
             if eve.session.charid:
                 valid.append(rec)
@@ -939,7 +962,7 @@ class SystemMenu(uicls.LayerCore):
                     uicls.Container(name='rightpush', align=uiconst.TORIGHT, width=6, parent=parent)
                     uicls.Container(name='toppush', align=uiconst.TOTOP, height=2, parent=parent)
             elif rec[0] == 'text':
-                t = uicls.Label(name='sysheader', text=rec[1], parent=parent, align=uiconst.TOTOP, padTop=2, padBottom=2, state=uiconst.UI_NORMAL)
+                t = uicls.EveLabelMedium(name='sysheader', text=rec[1], parent=parent, align=uiconst.TOTOP, padTop=2, padBottom=2, state=uiconst.UI_NORMAL)
                 if len(rec) > 2:
                     self.sr.Set(rec[2], t)
             elif rec[0] == 'line':
@@ -970,7 +993,6 @@ class SystemMenu(uicls.LayerCore):
                 if focus:
                     uicore.registry.SetFocus(cb)
                 cb.sr.hint = hint
-                cb.sr.label.linespace = 9
                 cb.RefreshHeight()
                 self.tempStuff.append(cb)
             elif rec[0] == 'combo':
@@ -979,6 +1001,14 @@ class SystemMenu(uicls.LayerCore):
                     defaultValue = self.GetSettingsValue(cfgName, prefsType, defaultValue)
                 label = rec[2]
                 options = rec[3]
+                if cfgName == 'UIScaling':
+                    newValue = False
+                    for (optionLabel, value,) in options:
+                        if defaultValue == value:
+                            newValue = True
+
+                    if not newValue:
+                        defaultValue = options[-1][1]
                 labelleft = 0
                 if len(rec) > 4:
                     labelleft = rec[4]
@@ -1019,42 +1049,33 @@ class SystemMenu(uicls.LayerCore):
 
 
     def OnSetCameraSliderValue(self, value, *args):
-        if getattr(self, 'cameraOffset', None) is None:
-            self.cameraSlider = uiutil.FindChild(self, 'cameraOffset')
-        if getattr(self, 'cameraSlider', None) is not None:
-            hint = self.GetCameraOffsetHintText(value)
-            self.cameraSlider.hint = self.cameraSlider.parent.hint = hint
-            if not getattr(self, 'cameraOffsetTextAdded', 0):
-                self.AddCameraOffsetHint(self.cameraSlider)
-                self.cameraOffsetTextAdded = 1
+        if not getattr(self, 'cameraOffsetTextAdded', 0):
+            if getattr(self, 'cameraOffset', None) is None:
+                self.cameraSlider = uiutil.FindChild(self, 'cameraOffset')
+            self.AddCameraOffsetHint(self.cameraSlider)
+            self.cameraOffsetTextAdded = 1
         settings.user.ui.cameraOffset = value
         sm.GetService('sceneManager').CheckCameraOffsets()
 
 
 
     def OnSetIncarnaCameraSliderValue(self, value, *args):
-        if getattr(self, 'incarnaCameraOffset', None) is None:
-            self.incarnaCameraSlider = uiutil.FindChild(self, 'incarnaCameraOffset')
-        if getattr(self, 'incarnaCameraSlider', None) is not None:
-            hint = self.GetCameraOffsetHintText(value, incarna=True)
-            self.incarnaCameraSlider.hint = self.incarnaCameraSlider.parent.hint = hint
-            if not getattr(self, 'incarnaCameraOffsetTextAdded', 0):
-                self.AddCameraOffsetHint(self.incarnaCameraSlider)
-                self.incarnaCameraOffsetTextAdded = 1
+        if not getattr(self, 'incarnaCameraOffsetTextAdded', 0):
+            if getattr(self, 'incarnaCameraOffset', None) is None:
+                self.incarnaCameraSlider = uiutil.FindChild(self, 'incarnaCameraOffset')
+            self.AddCameraOffsetHint(self.incarnaCameraSlider)
+            self.incarnaCameraOffsetTextAdded = 1
         settings.user.ui.incarnaCameraOffset = value
         sm.GetService('cameraClient').CheckCameraOffsets()
 
 
 
     def OnSetIncarnaCameraMouseLookSpeedSliderValue(self, value, *args):
-        if getattr(self, 'incarnaCameraMouseLookSpeedSlider', None) is None:
-            self.incarnaCameraMouseSpeedSlider = uiutil.FindChild(self, 'incarnaCameraMouseLookSpeedSlider')
-        if getattr(self, 'incarnaCameraMouseSpeedSlider', None) is not None:
-            hint = self.GetCameraMouseSpeedHintText(value)
-            self.incarnaCameraMouseSpeedSlider.hint = self.incarnaCameraMouseSpeedSlider.parent.hint = hint
-            if not getattr(self, 'incarnaCameraMouseLookSpeedTextAdded', 0):
-                self.AddCameraMouseLookSpeedHint(self.incarnaCameraMouseSpeedSlider)
-                self.incarnaCameraMouseLookSpeedTextAdded = 1
+        if not getattr(self, 'incarnaCameraMouseLookSpeedTextAdded', 0):
+            if getattr(self, 'incarnaCameraMouseLookSpeedSlider', None) is None:
+                self.incarnaCameraMouseSpeedSlider = uiutil.FindChild(self, 'incarnaCameraMouseLookSpeedSlider')
+            self.AddCameraMouseLookSpeedHint(self.incarnaCameraMouseSpeedSlider)
+            self.incarnaCameraMouseLookSpeedTextAdded = 1
         valueToUse = cameras.MOUSE_LOOK_SPEED
         if value < 0:
             value = abs(value)
@@ -1070,33 +1091,33 @@ class SystemMenu(uicls.LayerCore):
 
     def AddCameraMouseLookSpeedHint(self, whichOne):
         p = whichOne.parent
-        uicls.Label(name='slower', text=mls.UI_SYSMENU_SLOWERLABEL, parent=p, align=uiconst.TOPLEFT, autowidth=1, autoheight=1, top=10, uppercase=1, fontsize=9, letterspace=2, color=(1.0, 1.0, 1.0, 0.75))
-        uicls.Label(name='faster', text=mls.UI_SYSMENU_FASTERLABEL, parent=p, align=uiconst.TOPRIGHT, autowidth=1, autoheight=1, top=10, uppercase=1, fontsize=9, letterspace=2, color=(1.0, 1.0, 1.0, 0.75))
-        uicls.Line(name='centerLine', parent=p, width=1, height=12, align=uiconst.CENTER, left=1)
-        p.parent.hint = mls.UI_SYSMENU_CAMERASPEED_HINT
+        uicls.EveLabelSmall(name='slower', text=localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/IncarnaCamera/CameraSpeedSliderSlow'), parent=p, align=uiconst.TOPLEFT, top=10, color=(1.0, 1.0, 1.0, 0.75))
+        uicls.EveLabelSmall(name='faster', text=localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/IncarnaCamera/CameraSpeedSliderFast'), parent=p, align=uiconst.TOPRIGHT, top=10, color=(1.0, 1.0, 1.0, 0.75))
+        uicls.Line(name='centerLine', parent=p, width=2, height=10, align=uiconst.CENTER)
+        p.parent.hint = localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/IncarnaCamera/CameraSpeedSliderTooltip')
         p.state = p.parent.state = uiconst.UI_NORMAL
 
 
 
     def AddCameraOffsetHint(self, whichOne):
         p = whichOne.parent
-        uicls.Label(name='left', text=mls.UI_SYSMENU_CAMERACENTER_LEFT, parent=p, align=uiconst.TOPLEFT, autowidth=1, autoheight=1, top=10, uppercase=1, fontsize=9, letterspace=2, color=(1.0, 1.0, 1.0, 0.75))
-        uicls.Label(name='right', text=mls.UI_SYSMENU_CAMERACENTER_RIGHT, parent=p, align=uiconst.TOPRIGHT, autowidth=1, autoheight=1, top=10, uppercase=1, fontsize=9, letterspace=2, color=(1.0, 1.0, 1.0, 0.75))
-        uicls.Line(name='centerLine', parent=p, width=1, height=12, align=uiconst.CENTER, left=1)
-        p.parent.hint = mls.UI_SYSMENU_CAMERACENTER_HINT
+        uicls.EveLabelSmall(name='left', text=localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/CameraCenterSliderLeft'), parent=p, align=uiconst.TOPLEFT, top=10, color=(1.0, 1.0, 1.0, 0.75))
+        uicls.EveLabelSmall(name='right', text=localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/CameraCenterSliderRight'), parent=p, align=uiconst.TOPRIGHT, top=10, color=(1.0, 1.0, 1.0, 0.75))
+        uicls.Line(name='centerLine', parent=p, width=2, height=10, align=uiconst.CENTER)
+        p.parent.hint = localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/CameraCenterSliderTooltip')
         p.state = p.parent.state = uiconst.UI_NORMAL
 
 
 
     def GetCameraMouseSpeedHintText(self, value):
         if value == 0:
-            return mls.UI_GENERIC_DEFAULT
+            return localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/IncarnaCamera/CameraSpeedSliderDefaultValue')
         else:
             if value < 0:
                 value = abs(value) + 1.0
-                return mls.UI_SYSMENU_SLOWER % {'amount': str(round(value, 1))}
+                return localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/IncarnaCamera/CameraSpeedSliderSlowerValue', value=value)
             value += 1.0
-            return mls.UI_SYSMENU_FASTER % {'amount': str(round(value, 1))}
+            return localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/IncarnaCamera/CameraSpeedSliderFasterValue', value=value)
 
 
 
@@ -1104,11 +1125,11 @@ class SystemMenu(uicls.LayerCore):
         if incarna:
             value *= 100
         if value == 0:
-            return mls.UI_SYSMENU_CAMERACENTER_CENTERED
+            return localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/CameraCenterSliderCenteredValue')
         else:
             if value < 0:
-                return '%s %s %s' % (mls.UI_SYSMENU_CAMERACENTER_LEFT, str(abs(int(value))), '%')
-            return '%s %s %s' % (mls.UI_SYSMENU_CAMERACENTER_RIGHT, str(abs(int(value))), '%')
+                return localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/CameraCenterSliderLeftValue', value=abs(int(value)))
+            return localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/DisplaySetup/CameraCenterSliderRightValue', value=abs(int(value)))
 
 
 
@@ -1123,57 +1144,51 @@ class SystemMenu(uicls.LayerCore):
         if self.sr.genericinited:
             return 
         parent = uiutil.GetChild(self.sr.wnd, 'generic_container')
-        fontWidthOps = [(mls.UI_SYSMENU_CONDENSED, 'condensed'), (mls.UI_SYSMENU_NORMAL, 'normal'), (mls.UI_SYSMENU_EXPANDED, 'expanded')]
-        actionbtnOps = [(mls.UI_GENERIC_LEFTMOUSEBUTTON, 0), (mls.UI_GENERIC_MIDDLEMOUSEBUTTON, 2)]
-        menufontsizeOps = [('9', 9),
-         ('10', 10),
-         ('11', 11),
-         ('12', 12),
-         ('13', 13)]
-        snapOps = [(mls.UI_SYSMENU_DONTSNAP, 0),
-         ('3', 3),
-         ('6', 6),
-         ('12', 12),
-         ('24', 24)]
+        actionbtnOps = [(localization.GetByLabel('UI/Common/Input/Mouse/LeftMouseButton'), 0), (localization.GetByLabel('UI/Common/Input/Mouse/MiddleMouseButton'), 2)]
+        menufontsizeOps = [(localizationUtil.FormatNumeric(9), 9),
+         (localizationUtil.FormatNumeric(10), 10),
+         (localizationUtil.FormatNumeric(11), 11),
+         (localizationUtil.FormatNumeric(12), 12),
+         (localizationUtil.FormatNumeric(13), 13)]
+        snapOps = [(localization.GetByLabel('UI/SystemMenu/GeneralSettings/Windows/DontSnap'), 0),
+         (localizationUtil.FormatNumeric(3), 3),
+         (localizationUtil.FormatNumeric(6), 6),
+         (localizationUtil.FormatNumeric(12), 12),
+         (localizationUtil.FormatNumeric(24), 24)]
         column = uicls.Container(name='col1', align=uiconst.TOLEFT, width=self.colWidth, padLeft=8, parent=parent)
         column.isTabOrderGroup = 1
         uicls.Frame(parent=column)
-        if settings.user.ui.Get('fontWFactor', 'normal') not in ('condensed', 'normal', 'expanded'):
-            settings.user.ui.Set('fontWFactor', 'normal')
         if settings.public.generic.Get('showintro2', None) is None:
             settings.public.generic.Set('showintro2', prefs.GetValue('showintro2', 1))
-        menusData = [('header', mls.UI_GENERIC_GENERAL),
-         ('checkbox', ('showintro2', ('public', 'generic'), 1), mls.UI_LOGIN_SHOWINTROMOVIE2),
-         ('checkbox', ('showSessionTimer', ('user', 'ui'), 0), mls.UI_SYSMENU_SHOWSESSIONTIMER),
-         ('checkbox', ('rebootOnDisconnect', ('user', 'ui'), 1), mls.UI_SYSMENU_REBOOTCLIENTONDISCONNECT),
-         ('checkbox', ('hdScreenshots', ('user', 'ui'), 0), mls.UI_SYSMENU_ENABLEHIGHQSHOTS),
-         ('checkbox', ('windowidentification', ('user', 'ui'), 0), mls.UI_SYSMENU_SHOWWINDOWIDENTIFICATION),
+        menusData = [('header', localization.GetByLabel('UI/SystemMenu/GeneralSettings/General/Header')),
+         ('checkbox', ('showintro2', ('public', 'generic'), 1), localization.GetByLabel('UI/SystemMenu/GeneralSettings/General/ShowIntro')),
+         ('checkbox', ('showSessionTimer', ('user', 'ui'), 0), localization.GetByLabel('UI/SystemMenu/GeneralSettings/General/ShowSessionTimer')),
+         ('checkbox', ('hdScreenshots', ('user', 'ui'), 0), localization.GetByLabel('UI/SystemMenu/GeneralSettings/General/EnableHQScreenShots')),
+         ('checkbox', ('windowidentification', ('user', 'ui'), 0), localization.GetByLabel('UI/SystemMenu/GeneralSettings/General/ShowWindowIdentification')),
          ('toppush', 4),
          ('combo',
           ('cmenufontsize', ('user', 'ui'), 10),
-          mls.UI_SYSMENU_CONTEXTMENUFONTSIZE,
+          localization.GetByLabel('UI/SystemMenu/GeneralSettings/General/ContextMenuFontSize'),
           menufontsizeOps,
           LEFTPADDING),
-         ('combo',
-          ('fontWFactor', ('user', 'ui'), 'normal'),
-          mls.UI_SYSMENU_FONTWIDTH,
-          fontWidthOps,
-          LEFTPADDING),
-         ('header', mls.UI_SYSMENU_WINDOWS),
-         ('checkbox', ('stackwndsonshift', ('user', 'ui'), 0), mls.UI_SYSMENU_ONLYSTACKWINDOWSIFSHIFTPRESSED),
-         ('checkbox', ('useexistinginfownd', ('user', 'ui'), 1), mls.UI_SYSMENU_TRYUSEEXSISTINGINFOWIN),
-         ('checkbox', ('lockwhenpinned', ('user', 'windows'), 0), mls.UI_SYSMENU_LOCKWHENPINNED),
+         ('header', localization.GetByLabel('UI/SystemMenu/GeneralSettings/Windows/Header')),
+         ('checkbox', ('stackwndsonshift', ('user', 'ui'), 0), localization.GetByLabel('UI/SystemMenu/GeneralSettings/Windows/OnlyStackWindowsIfShiftIsPressed')),
+         ('checkbox', ('useexistinginfownd', ('user', 'ui'), 1), localization.GetByLabel('UI/SystemMenu/GeneralSettings/Windows/TryUseExistingInfoWin')),
          ('toppush', 4),
          ('combo',
           ('snapdistance', ('user', 'windows'), 12),
-          mls.UI_SYSMENU_WINDOWSNAPDISTANCE,
+          localization.GetByLabel('UI/SystemMenu/GeneralSettings/Windows/WindowSnapDistance'),
           snapOps,
           LEFTPADDING)]
         self.ParseData(menusData, column)
+        uicls.Container(name='toppush', align=uiconst.TOTOP, height=4, parent=column)
+        uix.GetContainerHeader(localization.GetByLabel('UI/SystemMenu/GeneralSettings/Crashes/Header'), column, xmargin=-5)
+        uicls.Container(name='toppush', align=uiconst.TOTOP, height=2, parent=column)
+        uicls.Checkbox(text=localization.GetByLabel('UI/SystemMenu/GeneralSettings/Crashes/UploadCrashDumpsToCCPEnabled'), parent=column, checked=blue.IsBreakpadEnabled(), callback=self.EnableDisableBreakpad)
         lst = []
         if lst:
             uicls.Container(name='toppush', align=uiconst.TOTOP, height=4, parent=column)
-            uix.GetContainerHeader(mls.UI_SYSMENU_EXPERIMENTAL, column, xmargin=-5)
+            uix.GetContainerHeader(localization.GetByLabel('UI/SystemMenu/GeneralSettings/Experimental/Header'), column, xmargin=-5)
             uicls.Container(name='toppush', align=uiconst.TOTOP, height=2, parent=column)
             scroll = uicls.Scroll(parent=column)
             scroll.name = 'experimentalFeatures'
@@ -1184,7 +1199,8 @@ class SystemMenu(uicls.LayerCore):
                  'caption': each['caption'],
                  'OnClick': each['OnClick'],
                  'args': (each['args'],),
-                 'singleline': 0}))
+                 'singleline': 0,
+                 'entryWidth': self.colWidth - 16}))
 
             scroll.Load(contentList=scrollList)
         if len(column.children) == 1:
@@ -1194,40 +1210,39 @@ class SystemMenu(uicls.LayerCore):
         uicls.Frame(parent=column)
         atOps = []
         for i in xrange(13):
-            if i == 1:
-                atOps.append((mls.UI_GENERIC_ONE_TARGET, i))
+            if i == 0:
+                atOps.append((localization.GetByLabel('UI/SystemMenu/GeneralSettings/Inflight/ZeroTargets', targetCount=i), i))
             else:
-                atOps.append((mls.UI_GENERIC_NUM_TARGET % {'num': i}, i))
+                atOps.append((localization.GetByLabel('UI/SystemMenu/GeneralSettings/Inflight/Targets', targetCount=i), i))
 
-        stationData = (('header', mls.UI_SHARED_HELP),
-         ('checkbox', ('showTutorials', ('char', 'ui'), 1), mls.UI_SYSMENU_SHOWTUTORIALS),
-         ('checkbox', ('showWelcomPages', ('char', 'ui'), 0), mls.UI_SYSMENU_SHOWWELCOMEPAGES),
-         ('header', mls.UI_GENERIC_STATION),
-         ('checkbox', ('stationservicebtns', ('user', 'ui'), 0), mls.UI_SYSMENU_SMALLSTATIONSERVICEBUTTONS),
-         ('checkbox', ('dockshipsanditems', ('user', 'windows'), 0), mls.UI_SYSMENU_MERGEITEMSANDSHIPSINTOSTATIONPANEL))
+        stationData = (('header', localization.GetByLabel('UI/SystemMenu/GeneralSettings/Help/Header')),
+         ('checkbox', ('showTutorials', ('char', 'ui'), 1), localization.GetByLabel('UI/SystemMenu/GeneralSettings/Help/ShowTutorials')),
+         ('header', localization.GetByLabel('UI/SystemMenu/GeneralSettings/Station/Header')),
+         ('checkbox', ('stationservicebtns', ('user', 'ui'), 0), localization.GetByLabel('UI/SystemMenu/GeneralSettings/Station/SmallButtons')),
+         ('checkbox', ('dockshipsanditems', ('user', 'windows'), 0), localization.GetByLabel('UI/SystemMenu/GeneralSettings/Station/MergeItemsAndShips')))
         self.ParseData(stationData, column)
-        inflightData = (('header', mls.UI_TUTORIAL_INFLIGHT),
-         ('checkbox', ('damageMessages', ('user', 'ui'), 1), mls.UI_SYSMENU_DAMAGEMESSAGESONOFF),
-         ('checkbox', ('damageMessagesNoDamage', ('user', 'ui'), 1), mls.UI_SYSMENU_DAMAGEMESSAGESONOFF_NODAMAGE),
-         ('checkbox', ('damageMessagesMine', ('user', 'ui'), 1), mls.UI_SYSMENU_DAMAGEMESSAGES_MINE),
-         ('checkbox', ('damageMessagesEnemy', ('user', 'ui'), 1), mls.UI_SYSMENU_DAMAGEMESSAGES_ENEMY),
-         ('checkbox', ('damageMessagesSimple', ('user', 'ui'), 0), mls.UI_SYSMENU_DAMAGEMESSAGES_SIMPLE),
+        inflightData = (('header', localization.GetByLabel('UI/SystemMenu/GeneralSettings/Inflight/Header')),
+         ('checkbox', ('damageMessages', ('user', 'ui'), 1), localization.GetByLabel('UI/SystemMenu/GeneralSettings/Inflight/DamageNotifications')),
+         ('checkbox', ('damageMessagesNoDamage', ('user', 'ui'), 1), localization.GetByLabel('UI/SystemMenu/GeneralSettings/Inflight/MissedHitNotifications')),
+         ('checkbox', ('damageMessagesMine', ('user', 'ui'), 1), localization.GetByLabel('UI/SystemMenu/GeneralSettings/Inflight/ShowInflictedDamageNotifications')),
+         ('checkbox', ('damageMessagesEnemy', ('user', 'ui'), 1), localization.GetByLabel('UI/SystemMenu/GeneralSettings/Inflight/ShowIncurredDamageNotification')),
+         ('checkbox', ('damageMessagesSimple', ('user', 'ui'), 0), localization.GetByLabel('UI/SystemMenu/GeneralSettings/Inflight/SimpleDamageNotifications')),
          ('checkbox',
           ('notifyMessagesEnabled', ('user', 'ui'), 1),
-          mls.UI_SYSMENU_ENABLENOTIFYMESSAGES,
+          localization.GetByLabel('UI/SystemMenu/GeneralSettings/Inflight/ShowTacticalNotifications'),
           None,
           None,
-          mls.UI_SYSMENU_ENABLEEWARMESSAGES_TOOLTIP),
-         ('checkbox', ('targetCrosshair', ('user', 'ui'), 1), mls.UI_SYSMENU_TARGETCROSSHAIR),
+          localization.GetByLabel('UI/SystemMenu/GeneralSettings/Inflight/ShowTacticalNotificationTooltip')),
+         ('checkbox', ('targetCrosshair', ('user', 'ui'), 1), localization.GetByLabel('UI/SystemMenu/GeneralSettings/Inflight/ShowTargettingCrosshair')),
          ('toppush', 4),
          ('combo',
           ('autoTargetBack', ('user', 'ui'), 1),
-          mls.UI_SYSMENU_AUTOTARGETBACKTARGETS,
+          localization.GetByLabel('UI/SystemMenu/GeneralSettings/Inflight/AutoTargetBack'),
           atOps,
           LEFTPADDING),
          ('combo',
           ('actionmenuBtn', ('user', 'ui'), 0),
-          mls.UI_SYSMENU_EXPANDACTIONMENU,
+          localization.GetByLabel('UI/SystemMenu/GeneralSettings/Inflight/ExpandActionMenu'),
           actionbtnOps,
           LEFTPADDING))
         self.ParseData(inflightData, column)
@@ -1237,7 +1252,7 @@ class SystemMenu(uicls.LayerCore):
                 if cb:
                     cb.state = uiconst.UI_HIDDEN
 
-        optionalUpgradeData = [('header', mls.UI_OPTIONAL_UPGRADE)]
+        optionalUpgradeData = [('header', localization.GetByLabel('UI/SystemMenu/GeneralSettings/ClientUpdate/Header'))]
         patchService = sm.StartService('patch')
         upgradeInfo = patchService.GetServerUpgradeInfo()
         bottomPar = uicls.Container(name='bottomPar', parent=None, align=uiconst.TOALL)
@@ -1245,16 +1260,16 @@ class SystemMenu(uicls.LayerCore):
         if upgradeInfo is not None:
             n = nasty.GetAppDataCompiledCodePath()
             if (n.build or boot.build) < upgradeInfo.build:
-                optionalUpgradeData.append(('text', mls.UI_OPTIONAL_UPGRADE_AVAILABLE))
-                detailsBtn = uicls.Button(parent=bottomBtnPar, label=mls.UI_GENERIC_DETAILS, func=self.GoToOptionalUpgradeDetails, args=(), pos=(0, 0, 0, 0))
-                installBtn = uicls.Button(parent=bottomBtnPar, label=mls.UI_CMD_INSTALL, func=self.InstallOptionalUpgradeClick, args=(), pos=(detailsBtn.width + 2,
+                optionalUpgradeData.append(('text', localization.GetByLabel('UI/SystemMenu/GeneralSettings/ClientUpdate/UpdateAvailable')))
+                detailsBtn = uicls.Button(parent=bottomBtnPar, label=localization.GetByLabel('UI/SystemMenu/GeneralSettings/ClientUpdate/Details'), func=self.GoToOptionalUpgradeDetails, args=(), pos=(0, 0, 0, 0))
+                installBtn = uicls.Button(parent=bottomBtnPar, label=localization.GetByLabel('UI/SystemMenu/GeneralSettings/ClientUpdate/Install'), func=self.InstallOptionalUpgradeClick, args=(), pos=(detailsBtn.width + 2,
                  0,
                  0,
                  0))
                 bottomBtnPar.width = detailsBtn.width + installBtn.width
         if nasty.IsRunningWithOptionalUpgrade():
-            optionalUpgradeData.append(('text', mls.UI_RUNNING_AN_OPTIONAL_UPGRADE))
-            uninstallBtn = uicls.Button(parent=bottomBtnPar, label=mls.UI_UNINSTALL, func=self.UnInstallOptionalUpgradeClick, args=(), pos=(0, 0, 0, 0))
+            optionalUpgradeData.append(('text', localization.GetByLabel('UI/SystemMenu/GeneralSettings/ClientUpdate/AnUpdateHasBeenApplied')))
+            uninstallBtn = uicls.Button(parent=bottomBtnPar, label=localization.GetByLabel('UI/SystemMenu/GeneralSettings/ClientUpdate/Uninstall'), func=self.UnInstallOptionalUpgradeClick, args=(), pos=(0, 0, 0, 0))
             bottomBtnPar.width = uninstallBtn.width
         if len(optionalUpgradeData) > 1:
             self.ParseData(optionalUpgradeData, column, validateEntries=False)
@@ -1275,91 +1290,91 @@ class SystemMenu(uicls.LayerCore):
             colors.sort()
             select = self.FindColor(main, self.colors)
             if not select:
-                colors.insert(0, (mls.UI_SYSMENU_CUSTOMCOL, main))
+                colors.insert(0, (localization.GetByLabel('UI/Common/Colors/CustomColor'), main))
             bgcolors = self.backgroundcolors[:]
             bgcolors.sort()
             bgselect = self.FindColor(backgroundcolor, self.backgroundcolors)
             if not bgselect:
-                bgcolors.insert(0, (mls.UI_SYSMENU_CUSTOMCOL, backgroundcolor))
+                bgcolors.insert(0, (localization.GetByLabel('UI/Common/Colors/CustomColor'), backgroundcolor))
             ccolors = self.components[:]
             ccolors.sort()
             cselect = self.FindColor(component, self.components)
             if not cselect:
-                ccolors.insert(0, (mls.UI_SYSMENU_CUSTOMCOL, component))
+                ccolors.insert(0, (localization.GetByLabel('UI/Common/Colors/CustomColor'), component))
             cscolors = self.componentsubs[:]
             cscolors.sort()
             csselect = self.FindColor(componentsub, self.componentsubs)
             if not csselect:
-                cscolors.insert(0, (mls.UI_SYSMENU_CUSTOMCOL, componentsub))
-            colorData = [('header', mls.CHAR_SKILL_LAYOUT),
+                cscolors.insert(0, (localization.GetByLabel('UI/Common/Colors/CustomColor'), componentsub))
+            colorData = [('header', localization.GetByLabel('UI/SystemMenu/GeneralSettings/Layout/Header')),
              ('toppush', 2),
-             ('checkbox', ('linkColorCombos', ('user', 'ui'), 0), mls.UI_SYSMENU_EASYTHEMESELECTION),
-             ('header', mls.UI_SYSMENU_WINDOWCOL),
+             ('checkbox', ('linkColorCombos', ('user', 'ui'), 0), localization.GetByLabel('UI/SystemMenu/GeneralSettings/Layout/EasyThemeSelection')),
+             ('header', localization.GetByLabel('UI/SystemMenu/GeneralSettings/WindowColorHeader')),
              ('toppush', 4),
              ('combo',
               ('color', None, select),
-              mls.UI_SYSMENU_PRESETS,
+              localization.GetByLabel('UI/SystemMenu/GeneralSettings/Layout/Presets'),
               colors,
               sidepush),
              ('slider',
               ('wnd_color_r', None, mr),
-              mls.UI_GENERIC_COLORRED,
+              'UI/SystemMenu/GeneralSettings/Red',
               (0.0, 1.0),
               sidepush),
              ('slider',
               ('wnd_color_g', None, mg),
-              mls.UI_GENERIC_COLORGREEN,
+              'UI/SystemMenu/GeneralSettings/Green',
               (0.0, 1.0),
               sidepush),
              ('slider',
               ('wnd_color_b', None, mb),
-              mls.UI_GENERIC_COLORBLUE,
+              'UI/SystemMenu/GeneralSettings/Blue',
               (0.0, 1.0),
               sidepush),
              ('slider',
               ('wnd_color_a', None, ma),
-              mls.UI_GENERIC_COLORTRANSP,
+              'UI/SystemMenu/GeneralSettings/Transparent',
               (0.0, 1.0),
               sidepush),
              ('toppush', 4),
-             ('header', mls.UI_SYSMENU_BACKGRCOLOR),
+             ('header', localization.GetByLabel('UI/SystemMenu/GeneralSettings/BackgroundColorHeader')),
              ('toppush', 4),
              ('combo',
               ('backgroundcolor', None, bgselect),
-              mls.UI_SYSMENU_PRESETS,
+              localization.GetByLabel('UI/SystemMenu/GeneralSettings/Layout/Presets'),
               bgcolors,
               sidepush),
              ('slider',
               ('wnd_backgroundcolor_r', None, br),
-              mls.UI_GENERIC_COLORRED,
+              'UI/SystemMenu/GeneralSettings/Red',
               (0.0, 1.0),
               sidepush),
              ('slider',
               ('wnd_backgroundcolor_g', None, bg),
-              mls.UI_GENERIC_COLORGREEN,
+              'UI/SystemMenu/GeneralSettings/Green',
               (0.0, 1.0),
               sidepush),
              ('slider',
               ('wnd_backgroundcolor_b', None, bb),
-              mls.UI_GENERIC_COLORBLUE,
+              'UI/SystemMenu/GeneralSettings/Blue',
               (0.0, 1.0),
               sidepush),
              ('slider',
               ('wnd_backgroundcolor_a', None, ba),
-              mls.UI_GENERIC_COLORTRANSP,
+              'UI/SystemMenu/GeneralSettings/Transparent',
               (0.0, 1.0),
               sidepush),
              ('toppush', 4),
-             ('header', mls.UI_GENERIC_HEADERSUBHEADERCOLOR),
+             ('header', localization.GetByLabel('UI/SystemMenu/GeneralSettings/HeaderAndSubHeaderColorHeader')),
              ('toppush', 4),
              ('combo',
               ('component', None, cselect),
-              mls.UI_SYSMENU_PRESETS,
+              localization.GetByLabel('UI/SystemMenu/GeneralSettings/Layout/Presets'),
               ccolors,
               sidepush),
              ('combo',
               ('componentsub', None, csselect),
-              mls.UI_SYSMENU_PRESETS,
+              localization.GetByLabel('UI/SystemMenu/GeneralSettings/Layout/Presets'),
               cscolors,
               sidepush)]
             self.ParseData(colorData, column)
@@ -1407,35 +1422,35 @@ class SystemMenu(uicls.LayerCore):
         audioSvc = sm.GetService('audio')
         enabled = audioSvc.IsActivated()
         turretSuppressed = audioSvc.GetTurretSuppression()
-        audioData = (('header', mls.UI_SYSMENU_AUDIOENGSETTINGS),
-         ('checkbox', ('audioEnabled', ('public', 'audio'), enabled), mls.UI_SYSMENU_AUDIOENABLED),
-         ('header', mls.UI_SYSMENU_VOLUMELEVEL),
+        audioData = (('header', localization.GetByLabel('UI/SystemMenu/AudioAndChat/AudioEngine/Header')),
+         ('checkbox', ('audioEnabled', ('public', 'audio'), enabled), localization.GetByLabel('UI/SystemMenu/AudioAndChat/AudioEngine/AudioEnabled')),
+         ('header', localization.GetByLabel('UI/SystemMenu/AudioAndChat/VolumeLevel/Header')),
          ('slider',
           ('eveampGain', ('public', 'audio'), 0.4),
-          mls.UI_SYSMENU_MUSICLEVEL,
+          'UI/SystemMenu/AudioAndChat/VolumeLevel/MusicLevel',
           (0.0, 1.0),
           labelWidth),
          ('slider',
           ('uiGain', ('public', 'audio'), 0.4),
-          mls.UI_SYSMENU_UISOUNDLEVEL,
+          'UI/SystemMenu/AudioAndChat/VolumeLevel/UISoundLevel',
           (0.0, 1.0),
           labelWidth),
          ('slider',
           ('evevoiceGain', ('public', 'audio'), 0.9),
-          mls.UI_SYSMENU_VOICELEVEL,
+          'UI/SystemMenu/AudioAndChat/VolumeLevel/UIVoiceLevel',
           (0.0, 1.0),
           labelWidth),
          ('slider',
           ('worldVolume', ('public', 'audio'), 0.4),
-          mls.UI_SYSMENU_WORLDLEVEL,
+          'UI/SystemMenu/AudioAndChat/VolumeLevel/WorldLevel',
           (0.0, 1.0),
           labelWidth),
          ('slider',
           ('masterVolume', ('public', 'audio'), 0.4),
-          mls.UI_SYSMENU_MASTERLEVEL,
+          'UI/SystemMenu/AudioAndChat/VolumeLevel/MasterLevel',
           (0.0, 1.0),
           labelWidth),
-         ('checkbox', ('suppressTurret', ('public', 'audio'), turretSuppressed), mls.UI_SYSMENU_SUPPRESSTURRETS))
+         ('checkbox', ('suppressTurret', ('public', 'audio'), turretSuppressed), localization.GetByLabel('UI/SystemMenu/AudioAndChat/VolumeLevel/SuppressTurretSounds')))
         self.ParseData(audioData, column)
         if len(self.sr.audiopanels) < 2:
             col2 = uicls.Container(name='column2', align=uiconst.TOLEFT, width=self.colWidth, padLeft=8, parent=parent)
@@ -1460,121 +1475,121 @@ class SystemMenu(uicls.LayerCore):
                 sys.exc_clear()
                 inputOps = []
             joinedChannels = sm.GetService('vivox').GetJoinedChannels()
-            voiceHeader = mls.UI_SYSMENU_VOICESETTINGS
+            voiceHeader = localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceSettings/Header')
             voiceServerInfo = sm.GetService('vivox').GetServerInfo()
             if voiceServerInfo:
-                voiceHeader += ', server: ' + voiceServerInfo
+                voiceHeader = localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceSettings/Header', server=voiceServerInfo)
             vivoxData = [('header', voiceHeader),
              ('checkbox',
               ('voiceenabled', ('user', 'audio'), 1),
-              mls.UI_SYSMENU_EVEVOICEENABLED,
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceSettings/EveVoiceEnabled'),
               None,
               None,
-              mls.UI_SYSMENU_EVEVOICEENABLED_TOOLTIP),
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceSettings/EveVoiceEnabledTooltip')),
              ('checkbox',
               ('talkMutesGameSounds', ('user', 'audio'), 0),
-              mls.UI_SYSMENU_TALKMUTESGAMESOUNDS,
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceSettings/MuteWhenITalk'),
               None,
               None,
-              mls.UI_SYSMENU_TALKMUTESGAMESOUNDS_TOOLTIP),
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceSettings/MuteWhenITalkTooltip')),
              ('checkbox',
               ('listenMutesGameSounds', ('user', 'audio'), 0),
-              mls.UI_SYSMENU_LISTENMUTESGAMESOUNDS,
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceSettings/MuteWhenOthersTalk'),
               None,
               None,
-              mls.UI_SYSMENU_LISTENMUTESGAMESOUNDS_TOOLTIP),
-             ('header', mls.UI_SYSMENU_CHANNELSPECIFICSETTINGS),
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceSettings/MuteWhenOthersTalkTooltip')),
+             ('header', localization.GetByLabel('UI/SystemMenu/AudioAndChat/ChannelSpecification/Header')),
              ('checkbox',
               ('talkMoveToTopBtn', ('user', 'audio'), 0),
-              mls.UI_SYSMENU_TALKMOVELASTSPEAKERTOTOP,
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/ChannelSpecification/MoveLastSpeakerToTop'),
               None,
               None,
-              mls.UI_SYSMENU_TALKMOVELASTSPEAKERTOTOP_TOOLTIP),
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/ChannelSpecification/MoveLastSpeakerToTopTooltip')),
              ('checkbox',
               ('talkAutoJoinFleet', ('user', 'audio'), 1),
-              mls.UI_SYSMENU_AUTOJOINFLEETVOICE,
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/ChannelSpecification/AutoJoinFleetVoice'),
               None,
               None,
-              mls.UI_SYSMENU_AUTOJOINFLEETVOICE_TOOLTIP),
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/ChannelSpecification/AutoJoinFleetVoiceTooltip')),
              ('checkbox',
               ('talkChannelPriority', ('user', 'audio'), 0),
-              mls.UI_SYSMENU_CHANNELPRIORITIZE,
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/ChannelSpecification/ChannelPrioritize'),
               None,
               None,
-              mls.UI_SYSMENU_CHANNELPRIORITIZE_TOOLTIP),
-             ('header', mls.UI_GENERIC_CONFIGURATION),
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/ChannelSpecification/ChannelPrioritizeTooltip')),
+             ('header', localization.GetByLabel('UI/SystemMenu/AudioAndChat/GenericConfiguration/Header')),
              ('toppush', 4),
              ('combo',
               ('talkBinding', ('user', 'audio'), 4),
-              mls.UI_SYSMENU_TALKKEY,
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/GenericConfiguration/TalkKey'),
               keybindOptions,
               labelWidth),
              ('combo',
               ('TalkOutputDevice', ('user', 'audio'), 0),
-              mls.UI_SYSMENU_TALKOUTPUT,
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/GenericConfiguration/TalkDriverOutput'),
               outputOps,
               labelWidth),
              ('combo',
               ('TalkInputDevice', ('user', 'audio'), 0),
-              mls.UI_SYSMENU_TALKDEVICE,
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/GenericConfiguration/TalkDevice'),
               inputOps,
               labelWidth),
              ('slider',
               ('TalkMicrophoneVolume', ('user', 'audio'), sm.GetService('vivox').defaultMicrophoneVolume),
-              mls.UI_SYSMENU_TALKVOLUME,
+              'UI/SystemMenu/AudioAndChat/GenericConfiguration/InputVolume',
               (0.0, 1.0),
               labelWidth),
              ('toppush', 4)]
             self.ParseData(vivoxData, col2)
             inputmeterpar = uicls.Container(name='inputmeter', align=uiconst.TOTOP, height=12, parent=col2)
             if not sm.GetService('vivox').GetSpeakingChannel() == 'Echo':
-                uix.GetContainerHeader(mls.UI_SYSMENU_TALKMETERINACTIVE, col2, 0)
+                uix.GetContainerHeader(localization.GetByLabel('UI/SystemMenu/AudioAndChat/GenericConfiguration/TalkMeterInactive'), col2, 0)
             else:
                 subpar = uicls.Container(name='im_sub', align=uiconst.TORIGHT, width=col2.width - labelWidth - 11, parent=inputmeterpar)
                 uicls.Frame(parent=subpar, width=-1)
                 self.maxInputMeterWidth = subpar.width - 4
                 self.sr.inputmeter = uicls.Fill(parent=subpar, left=2, top=2, width=1, height=inputmeterpar.height - 4, align=uiconst.RELATIVE, color=(1.0, 1.0, 1.0, 0.25))
-                uicls.Label(text=mls.UI_SYSMENU_TALKMETER, parent=inputmeterpar, fontsize=9, letterspace=2, uppercase=1, top=2, state=uiconst.UI_NORMAL)
+                uicls.EveLabelSmall(text=localization.GetByLabel('UI/SystemMenu/AudioAndChat/GenericConfiguration/TalkMeter'), parent=inputmeterpar, top=2, state=uiconst.UI_NORMAL)
                 sm.GetService('vivox').RegisterIntensityCallback(self)
                 sm.GetService('vivox').StartAudioTest()
             if sm.GetService('vivox').GetSpeakingChannel() == 'Echo':
-                echoBtnLabel = mls.UI_SYSMENU_TALKSTOPECHOTEST
-                echoTextString = mls.UI_SYSMENU_TALKECHOINSTRUCTIONS
+                echoBtnLabel = localization.GetByLabel('UI/SystemMenu/AudioAndChat/GenericConfiguration/StopEchoTest')
+                echoTextString = localization.GetByLabel('UI/SystemMenu/AudioAndChat/GenericConfiguration/EchoTestInstructions')
             else:
-                echoBtnLabel = mls.UI_SYSMENU_TALKSTARTECHOTEST
+                echoBtnLabel = localization.GetByLabel('UI/SystemMenu/AudioAndChat/GenericConfiguration/EchoTest')
                 echoTextString = ''
             btnPar = uicls.Container(name='push', align=uiconst.TOTOP, height=30, parent=col2)
             self.echoBtn = uicls.Button(parent=btnPar, label=echoBtnLabel, func=self.JoinLeaveEchoChannel, align=uiconst.CENTER)
             uicls.Container(name='push', align=uiconst.TOTOP, height=8, parent=col2)
-            self.echoText = uicls.Label(text=echoTextString, parent=col2, align=uiconst.TOTOP, fontsize=9, letterspace=1, uppercase=1, autowidth=False, state=uiconst.UI_NORMAL)
+            self.echoText = uicls.EveLabelSmall(text=echoTextString, parent=col2, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
         elif eve.session.userid and voiceChatMenuAvailable:
-            vivoxData = (('header', mls.UI_SYSMENU_VOICESETTINGS),
+            vivoxData = (('header', localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceSettings/Header')),
              ('checkbox',
               ('voiceenabled', ('user', 'audio'), 1),
-              mls.UI_SYSMENU_EVEVOICEENABLED,
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceSettings/EveVoiceEnabled'),
               None,
               None,
-              mls.UI_SYSMENU_EVEVOICEENABLED_TOOLTIP),
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceSettings/EveVoiceEnabledTooltip')),
              ('checkbox',
               ('talkMutesGameSounds', ('user', 'audio'), 0),
-              mls.UI_SYSMENU_TALKMUTESGAMESOUNDS,
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceSettings/MuteWhenITalk'),
               None,
               None,
-              mls.UI_SYSMENU_TALKMUTESGAMESOUNDS_TOOLTIP),
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceSettings/MuteWhenITalkTooltip')),
              ('checkbox',
               ('listenMutesGameSounds', ('user', 'audio'), 0),
-              mls.UI_SYSMENU_LISTENMUTESGAMESOUNDS,
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceSettings/MuteWhenOthersTalk'),
               None,
               None,
-              mls.UI_SYSMENU_LISTENMUTESGAMESOUNDS_TOOLTIP),
-             ('header', mls.UI_SYSMENU_CHANNELSPECIFICSETTINGS),
-             ('text', mls.UI_SYSMENU_VOICESETTINGS_NOTCONNECTED))
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceSettings/MuteWhenOthersTalkTooltip')),
+             ('header', localization.GetByLabel('UI/SystemMenu/AudioAndChat/ChannelSpecification/Header')),
+             ('text', localization.GetByLabel('UI/SystemMenu/AudioAndChat/GenericConfiguration/NotConnected')))
             self.ParseData(vivoxData, col2, 0)
         elif voiceChatMenuAvailable:
-            vivoxData = (('header', mls.UI_SYSMENU_VOICESETTINGS),
-             ('text', mls.UI_SYSMENU_CHAT_NOTLOGGEDIN),
-             ('header', mls.UI_SYSMENU_CHANNELSPECIFICSETTINGS),
-             ('text', mls.UI_SYSMENU_VOICESETTINGS_NOTCONNECTED))
+            vivoxData = (('header', localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceSettings/Header')),
+             ('text', localization.GetByLabel('UI/SystemMenu/AudioAndChat/GenericConfiguration/NotLoggedIn')),
+             ('header', localization.GetByLabel('UI/SystemMenu/AudioAndChat/ChannelSpecification/Header')),
+             ('text', localization.GetByLabel('UI/SystemMenu/AudioAndChat/GenericConfiguration/NotConnected')))
             self.ParseData(vivoxData, col2, 0)
         self.sr.audioinited = 1
         if voiceChatMenuAvailable:
@@ -1587,40 +1602,39 @@ class SystemMenu(uicls.LayerCore):
         else:
             col3 = col2
         uicls.Frame(parent=col3, idx=0)
-        dblClickUserOps = [(mls.UI_CMD_SHOWINFO, 0), (mls.UI_CMD_STARTCONVERSATION, 1)]
-        self.ParseData((('header', mls.UI_GENERIC_CHAT),), col3, 0)
+        dblClickUserOps = [(localization.GetByLabel('UI/Commands/ShowInfo'), 0), (localization.GetByLabel('UI/Chat/StartConversation'), 1)]
+        self.ParseData((('header', localization.GetByLabel('UI/SystemMenu/AudioAndChat/Chat/Header')),), col3, 0)
         if eve.session.userid:
-            chatData = (('checkbox', ('logchat', ('user', 'ui'), 1), mls.UI_SYSMENU_LOGCHATTOFILE),
-             ('checkbox', ('autoRejectInvitations', ('user', 'ui'), 0), mls.UI_SYSMENU_AUTOREJECTINVITATIONS),
+            chatData = (('checkbox', ('logchat', ('user', 'ui'), 1), localization.GetByLabel('UI/SystemMenu/AudioAndChat/Chat/LogChatToFile')),
+             ('checkbox', ('autoRejectInvitations', ('user', 'ui'), 0), localization.GetByLabel('UI/SystemMenu/AudioAndChat/Chat/AutoRejectInvitations')),
              ('toppush', 4),
              ('combo',
               ('dblClickUser', ('user', 'ui'), 0),
-              mls.UI_SYSMENU_ONDOUBLECLICK,
+              localization.GetByLabel('UI/SystemMenu/AudioAndChat/Chat/OnDoubleClick'),
               dblClickUserOps,
               labelWidth),
              ('toppush', 4))
             if voiceChatMenuAvailable and sm.GetService('vivox').LoggedIn():
-                chatData += (('header', mls.UI_SYSMENU_CHAT_AUTOJOIN_HEADER),
-                 ('checkbox', ('chatJoinCorporationChannelOnLogin', ('user', 'ui'), 0), mls.UI_SYSMENU_CHAT_AUTOJOIN_CORPORATION),
-                 ('checkbox', ('chatJoinAllianceChannelOnLogin', ('user', 'ui'), 0), mls.UI_SYSMENU_CHAT_AUTOJOIN_ALLIANCE),
-                 ('header', mls.UI_SYSMENU_VOICEFONT_HEADER))
+                chatData += (('header', localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceChatChannelSettings/Header')),
+                 ('checkbox', ('chatJoinCorporationChannelOnLogin', ('user', 'ui'), 0), localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceChatChannelSettings/AutoJoinCorporation')),
+                 ('checkbox', ('chatJoinAllianceChannelOnLogin', ('user', 'ui'), 0), localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceChatChannelSettings/AutoJoinAlliance')),
+                 ('header', localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/Header')))
         else:
-            chatData = (('text', mls.UI_SYSMENU_CHAT_NOTLOGGEDIN),)
+            chatData = (('text', localization.GetByLabel('UI/SystemMenu/AudioAndChat/GenericConfiguration/NotLoggedIn')),)
         self.ParseData(chatData, col3, 0)
         if eve.session.charid and voiceChatMenuAvailable and sm.GetService('vivox').LoggedIn():
-            args = {}
-            args['currentVoiceFont'] = settings.char.ui.Get('voiceFontName', mls.UI_GENERIC_NONE)
-            currentVoiceFontText = uicls.Label(text=mls.UI_SYSMENU_CURRENT_VOICEFONT % args, parent=col3, align=uiconst.TOTOP, fontsize=9, letterspace=1, uppercase=1, autowidth=False, top=4)
+            currentVoiceFont = settings.char.ui.Get('voiceFontName', localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/NoFontSelected'))
+            currentVoiceFontText = uicls.EveLabelSmall(text=localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/SelectedFont', selectedFont=currentVoiceFont), parent=col3, align=uiconst.TOTOP, top=4)
             btnPar = uicls.Container(name='push', align=uiconst.TOTOP, height=30, parent=col3)
-            self.voiceFontBtn = uicls.Button(parent=btnPar, label=mls.UI_SYSMENU_CHANGE_VOICEFONT, func=self.SelectVoiceFontDialog, args=(), align=uiconst.CENTER)
+            self.voiceFontBtn = uicls.Button(parent=btnPar, label=localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/ChangeFont'), func=self.SelectVoiceFontDialog, args=(), align=uiconst.CENTER)
             uicls.Container(name='push', align=uiconst.TOTOP, height=8, parent=col3)
 
 
 
     def SelectVoiceFontDialog(self):
-        wnd = sm.GetService('window').GetWindow('VoiceFontSelection')
+        wnd = form.VoiceFontSelectionWindow.GetIfOpen()
         if wnd is None:
-            wnd = sm.GetService('window').GetWindow('VoiceFontSelection', 1, decoClass=form.VoiceFontSelectionWindow)
+            wnd = form.VoiceFontSelectionWindow.Open()
             wnd.ShowModal()
 
 
@@ -1666,186 +1680,194 @@ class SystemMenu(uicls.LayerCore):
         message = None
         manualDownload = False
         graphicsData = []
-        graphicsData2 = [('header', mls.UI_SYSMENU_GRAPHIC_CONTENT_SETTINGS), ('text', mls.UI_SYSMENU_GRAPHIC_CONTENT_SETTING_DESCRIPTION), ('line',)]
-        shaderQualityOptions = [(mls.UI_GENERIC_LOW, 1), (mls.UI_GENERIC_HIGH, 3)]
+        graphicsData2 = [('header', localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/Header')), ('text', localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/Description'))]
+        shaderQualityOptions = [(localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/LowQuality'), 1), (localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/MediumQuality'), 2)]
+        if deviceSvc.SupportsDepthEffects():
+            shaderQualityOptions.append((localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/HighQuality'), 3))
         try:
             shaderQualityMenu = [('combo',
               ('shaderQuality', None, prefs.GetValue('shaderQuality', deviceSvc.GetDefaultShaderQuality())),
-              mls.UI_SYSMENU_SHADER_QUALITY,
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/ShaderQuality'),
               shaderQualityOptions,
               LEFTPADDING,
-              mls.UI_SYSMENU_SHADER_QUALITY_TOOLTIP)]
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/ShaderQualityTooltip'))]
         except:
             log.LogException()
-        textureQualityOptions = [(mls.UI_GENERIC_LOW, 2), (mls.UI_GENERIC_MEDIUM, 1), (mls.UI_GENERIC_HIGH, 0)]
+        textureQualityOptions = [(localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/LowQuality'), 2), (localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/MediumQuality'), 1), (localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/HighQuality'), 0)]
         textureQualityMenu = [('combo',
           ('textureQuality', None, prefs.GetValue('textureQuality', deviceSvc.GetDefaultTextureQuality())),
-          mls.UI_SYSMENU_TEXTURE_QUALITY,
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/TextureQuality'),
           textureQualityOptions,
           LEFTPADDING,
-          mls.UI_SYSMENU_TEXTURE_QUALITY_TOOLTIP)]
-        lodQualityOptions = [(mls.UI_GENERIC_LOW, 1), (mls.UI_GENERIC_MEDIUM, 2), (mls.UI_GENERIC_HIGH, 3)]
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/TextureQualityTooltip'))]
+        lodQualityOptions = [(localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/LowQuality'), 1), (localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/MediumQuality'), 2), (localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/HighQuality'), 3)]
         lodQualityMenu = [('combo',
           ('lodQuality', None, prefs.GetValue('lodQuality', deviceSvc.GetDefaultLodQuality())),
-          mls.UI_SYSMENU_LOD_QUALITY,
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/LODQuality'),
           lodQualityOptions,
           LEFTPADDING,
-          mls.UI_SYSMENU_LOD_QUALITY_TOOLTIP)]
-        shadowQualityOptions = [(mls.UI_GENERIC_DISABLED, 0), (mls.UI_GENERIC_LOW, 1), (mls.UI_GENERIC_HIGH, 2)]
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/LODQualityTooltip'))]
+        shadowQualityOptions = [(localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/Disabled'), 0), (localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/LowQuality'), 1), (localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/HighQuality'), 2)]
         shadowQualityMenu = [('combo',
           ('shadowQuality', None, prefs.GetValue('shadowQuality', deviceSvc.GetDefaultShadowQuality())),
-          mls.UI_SYSMENU_SHADOWQUALITY,
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/ShadowQuality'),
           shadowQualityOptions,
           LEFTPADDING,
-          mls.UI_SYSMENU_SHADOWS_TOOLTIP)]
-        interiorQualityOptions = [(mls.UI_GENERIC_LOW, 0), (mls.UI_GENERIC_MEDIUM, 1), (mls.UI_GENERIC_HIGH, 2)]
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/ShadowQualityTooltip'))]
+        interiorQualityOptions = [(localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/LowQuality'), 0), (localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/MediumQuality'), 1), (localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/HighQuality'), 2)]
         interiorQualityMenu = [('combo',
           ('interiorGraphicsQuality', None, prefs.GetValue('interiorGraphicsQuality', deviceSvc.GetDefaultInteriorGraphicsQuality())),
-          mls.UI_SYSMENU_INTERIOREFFECTS,
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/InteriorQuality'),
           interiorQualityOptions,
           LEFTPADDING,
-          mls.UI_SYSMENU_INTERIOREFFECTS_TOOLTIP), ('line',)]
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/InteriorQualityTooltip'))]
+        interiorShaderQualityOptions = [(localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/LowQuality'), 0), (localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/HighQuality'), 1)]
+        interiorShaderQualityMenu = [('combo',
+          ('interiorShaderQuality', None, prefs.GetValue('interiorShaderQuality', 1)),
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/InteriorShaderQuality'),
+          interiorShaderQualityOptions,
+          LEFTPADDING,
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/InteriorShaderQualityTooltip'))]
         graphicsData2 += [('checkbox',
           ('resourceCacheEnabled', None, bool(prefs.GetValue('resourceCacheEnabled', deviceSvc.GetDefaultResourceState()))),
-          mls.UI_SYSMENU_CACHE_ENABLED,
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/ResourceCache'),
           None,
           None,
-          mls.UI_SYSMENU_CACHE_TOOLTIP)]
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/ResourceCacheTooltip'))]
         if deviceSvc.IsHDRSupported():
             graphicsData2 += [('checkbox',
               ('hdrEnabled', None, bool(prefs.GetValue('hdrEnabled', deviceSvc.GetDefaultHDRState()))),
-              mls.UI_SYSMENU_HDR_ENABLED,
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/HDR'),
               None,
               None,
-              mls.UI_SYSMENU_HDR_TOOLIP)]
-        depthEffectsEnabled = prefs.GetValue('depthEffectsEnabled', deviceSvc.GetDefaultDepthEffectsEnabled())
-        if deviceSvc.SupportsDepthEffects():
-            graphicsData2 += [('checkbox',
-              ('depthEffectsEnabled', None, depthEffectsEnabled),
-              mls.UI_SYSMENU_DEPTHEFFECTS,
-              None,
-              None,
-              mls.UI_SYSMENU_DEPTHEFFECTS_TOOLTIP)]
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/HDRTooltip'))]
         graphicsData2 += [('checkbox',
-          ('loadstationenv', None, prefs.GetValue('loadstationenv', 1)),
-          mls.UI_SYSMENU_LOADSTATIONENVIRONMENT,
+          ('loadstationenv2', None, prefs.GetValue('loadstationenv2', 1)),
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/LoadStationEnvironment'),
           None,
           None,
-          mls.UI_SYSMENU_LOADSTATIONENVIRONMENT_TOOLTIP)]
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/LoadStationEnvironmentTooltip'))]
         devicSvc = sm.GetService('device')
         hdrEnabled = prefs.GetValue('hdrEnabled', deviceSvc.GetDefaultHDRState())
         formats = [self.settings.BackBufferFormat, self.settings.AutoDepthStencilFormat, trinity.TRIFMT_A16B16G16R16F]
         options = deviceSvc.GetMultiSampleQualityOptions(self.settings, formats)
         graphicsData2.append(('combo',
          ('Anti-Aliasing', None, prefs.GetValue('antiAliasing', 0)),
-         mls.UI_SYSMENU_ANTIALIASING,
+         localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/AntiAliasing'),
          options,
          LEFTPADDING,
-         mls.UI_SYSMENU_ANTIALIASING_TOOLTIP))
-        postProcessingQualityOptions = [(mls.UI_GENERIC_NONE, 0), (mls.UI_GENERIC_LOW, 1), (mls.UI_GENERIC_HIGH, 2)]
+         localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/AntiAliasingTooltip')))
+        postProcessingQualityOptions = [(localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/NoneLabel'), 0), (localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/LowQuality'), 1), (localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/HighQuality'), 2)]
         if deviceSvc.IsBloomSupported():
             graphicsData2 += [('combo',
               ('postProcessingQuality', None, prefs.GetValue('postProcessingQuality', deviceSvc.GetDefaultPostProcessingQuality())),
-              mls.UI_SYSMENU_POSTPROCESS,
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/PostProcessing'),
               postProcessingQualityOptions,
               LEFTPADDING,
-              mls.UI_SYSMENU_POSTPROCESS_TOOLIP)]
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/PostProcessingTooltip'))]
         graphicsData2 += shaderQualityMenu
         graphicsData2 += textureQualityMenu
         graphicsData2 += lodQualityMenu
         graphicsData2 += shadowQualityMenu
         graphicsData2 += interiorQualityMenu
+        graphicsData2 += interiorShaderQualityMenu
         if eve.session.userid:
-            graphicsData += [('header', mls.UI_GENERIC_EFFECTS),
+            graphicsData += [('header', localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Effects/Header')),
              ('checkbox',
               ('turretsEnabled', ('user', 'ui'), 1),
-              mls.UI_SYSMENU_TURRETEFFECTS,
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Effects/TurretEffects'),
               None,
               None,
-              mls.UI_SYSMENU_TURRETEFFECTS_TOOLTIP),
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Effects/TurretEffectsTooltip')),
              ('checkbox',
               ('effectsEnabled', ('user', 'ui'), 1),
-              mls.UI_GENERIC_EFFECTS,
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Effects/Effects'),
               None,
               None,
-              mls.UI_GENERIC_EFFECTS_TOOLTIP),
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Effects/EffectsTooltip')),
              ('checkbox',
               ('missilesEnabled', ('user', 'ui'), 1),
-              mls.UI_SYSMENU_MISSILEEFFECTS,
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Effects/MissileEffects'),
               None,
               None,
-              mls.UI_GENERIC_EFFECTS_TOOLTIP),
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Effects/EffectsTooltip')),
              ('checkbox',
               ('cameraShakeEnabled', ('user', 'ui'), 1),
-              mls.UI_SYSMENU_CAMERASHAKE,
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Effects/CameraShake'),
               None,
               None,
-              mls.UI_SYSMENU_CAMERASHAKE_TOOLTIP),
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Effects/CameraShakeTooltip')),
              ('checkbox',
               ('explosionEffectsEnabled', ('user', 'ui'), 1),
-              mls.UI_SYSMENU_EXPLOSIONEFFECTS,
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Effects/ShipExplosions'),
               None,
               None,
-              mls.UI_SYSMENU_EXPLOSIONEFFECTS_TOOLTIP),
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Effects/ShipExplosionsTooltip')),
              ('checkbox',
               ('droneModelsEnabled', ('user', 'ui'), 1),
-              mls.UI_SYSMENU_DRONEMODELS,
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Effects/DroneModels'),
               None,
               None,
-              mls.UI_SYSMENU_DRONEMODELS_TOOLTIP),
-             ('header', mls.UI_SYSMENU_MISC),
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Effects/DroneModelsTooltip')),
+             ('checkbox',
+              ('trailsEnabled', ('user', 'ui'), settings.user.ui.Get('effectsEnabled', 1)),
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Effects/Trails'),
+              None,
+              None,
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Effects/TrailsTooltip')),
+             ('header', localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Miscellaneous/Header')),
              ('checkbox',
               ('lod', ('user', 'ui'), 1),
-              mls.UI_SYSMENU_USELOD,
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Miscellaneous/UseLOD'),
               None,
               None,
-              mls.UI_SYSMENU_USELOD_TOOLTIP),
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Miscellaneous/UseLODTooltip')),
              ('checkbox',
               ('sunOcclusion', ('public', 'device'), 1),
-              mls.UI_SYSMENU_SUNISOCCLUDEDBYSHIPS,
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Miscellaneous/SunOccludedByObjects'),
               None,
               None,
-              mls.UI_SYSMENU_SUNISOCCLUDEDBYSHIPS_TOOLTIP),
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Miscellaneous/SunOccludedByObjectsTooltip')),
              ('checkbox',
               ('advancedCamera', ('user', 'ui'), 0),
-              mls.UI_SYSMENU_ADVCAMMENU,
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Miscellaneous/AdvancedCameraMenu'),
               None,
               None,
-              mls.UI_SYSMENU_ADVCAMMENU_TOOLTIP)]
+              localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Miscellaneous/AdvancedCameraMenuTooltip'))]
             if sm.GetService('lightFx').IsLightFxSupported():
                 graphicsData += [('checkbox',
                   ('LightFxEnabled', ('user', 'ui'), 1),
-                  mls.UI_SYSMENU_ALIENFX,
+                  localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Miscellaneous/LightLEDEffect'),
                   None,
                   None,
-                  mls.UI_SYSMENU_ALIENFX_TOOLTIP)]
-        graphicsData += (('header', mls.UI_SYSMENU_CHARACTER_HEADER),)
+                  localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Miscellaneous/LightLEDEffectTooltip'))]
+        graphicsData += (('header', localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/CharacterCreation/Header')),)
         disabled = not trinity.GetShaderModel().startswith('SM_3')
         currentFastCharacterCreationValue = bool(prefs.GetValue('fastCharacterCreation', deviceSvc.GetDefaultFastCharacterCreation())) or disabled
         currentClothSimValue = prefs.GetValue('charClothSimulation', deviceSvc.GetDefaultClothSimEnabled()) and not disabled
         graphicsData += [('checkbox',
           ('fastCharacterCreation', None, currentFastCharacterCreationValue),
-          mls.UI_SYSMENU_FASTCHARACTERS,
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/CharacterCreation/LowQualityCharacters'),
           None,
           None,
-          mls.UI_SYSMENU_FASTCHARACTERS_TOOLTIP,
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/CharacterCreation/LowQualityCharactersTooltip'),
           None,
           disabled)]
         graphicsData += [('checkbox',
           ('charClothSimulation', None, currentClothSimValue),
-          mls.UI_SYSMENU_CLOTHSIM,
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/CharacterCreation/ClothHairSim'),
           None,
           None,
-          mls.UI_SYSMENU_CLOTHSIM_TOOLTIP,
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/CharacterCreation/ClothHairSimTooltip'),
           None,
           disabled)]
-        charTextureQualityOptions = [(mls.UI_GENERIC_LOW, 2), (mls.UI_GENERIC_MEDIUM, 1), (mls.UI_GENERIC_HIGH, 0)]
+        charTextureQualityOptions = [(localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/LowQuality'), 2), (localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/MediumQuality'), 1), (localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/Common/HighQuality'), 0)]
         graphicsData += [('combo',
           ('charTextureQuality', None, prefs.GetValue('charTextureQuality', deviceSvc.GetDefaultCharTextureQuality())),
-          mls.UI_SYSMENU_TEXTURE_QUALITY,
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/CharacterCreation/TextureQuality'),
           charTextureQualityOptions,
           LEFTPADDING,
-          mls.UI_SYSMENU_TEXTURE_QUALITY_TOOLTIP)]
+          localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/CharacterCreation/TextureQualityTooltip'))]
         if message is not None:
             graphicsData2 += [('text', message, 'dlMessage')]
         if where:
@@ -1853,15 +1875,15 @@ class SystemMenu(uicls.LayerCore):
         if where2:
             self.ParseData(graphicsData2, where2, validateEntries=0)
             optSettingsPar = uicls.Container(name='optSettingsPar', parent=where2, align=uiconst.TOTOP, height=24)
-            btn = uicls.Button(parent=optSettingsPar, label=mls.UI_SYSMENU_OPTIMIZE_SETTINGS, func=self.OpenOptimizeSettings, args=(), align=uiconst.CENTERTOP)
+            btn = uicls.Button(parent=optSettingsPar, label=localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/OptimizeSettings'), func=self.OpenOptimizeSettings, args=(), align=uiconst.CENTERTOP)
             bottomBtnPar = uicls.Container(name='bottomBtnPar', parent=where2, align=uiconst.CENTERBOTTOM, height=32)
             bottomLeftCounter = 0
-            btn = uicls.Button(parent=bottomBtnPar, label=mls.UI_GENERIC_APPLY, func=self.ApplyGraphicsSettings, args=(), pos=(bottomLeftCounter,
+            btn = uicls.Button(parent=bottomBtnPar, label=localization.GetByLabel('UI/Common/Buttons/Apply'), func=self.ApplyGraphicsSettings, args=(), pos=(bottomLeftCounter,
              0,
              0,
              0))
             bottomLeftCounter += btn.width + 2
-            btn = uicls.Button(parent=bottomBtnPar, label=mls.UI_SYSMENU_RESETGRAPHICSSETTINGS, func=self.ResetGraphicsSettings, args=(), pos=(bottomLeftCounter,
+            btn = uicls.Button(parent=bottomBtnPar, label=localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/ResetGraphicSettings'), func=self.ResetGraphicsSettings, args=(), pos=(bottomLeftCounter,
              0,
              0,
              0))
@@ -1871,9 +1893,9 @@ class SystemMenu(uicls.LayerCore):
 
 
     def OpenOptimizeSettings(self):
-        optimizeWnd = sm.StartService('window').GetWindow('optimizesettings')
+        optimizeWnd = form.OptimizeSettingsWindow.GetIfOpen()
         if optimizeWnd is None:
-            self.optimizeWnd = weakref.proxy(sm.StartService('window').GetWindow('optimizesettings', 1, decoClass=form.OptimizeSettingsWindow))
+            self.optimizeWnd = weakref.proxy(form.OptimizeSettingsWindow.Open())
             self.optimizeWnd.ShowModal()
             self.ApplyGraphicsSettings()
             sm.GetService('sceneManager').ApplyClothSimulationSettings()
@@ -1893,7 +1915,6 @@ class SystemMenu(uicls.LayerCore):
         prefs.fastCharacterCreation = deviceSvc.GetDefaultFastCharacterCreation()
         prefs.charTextureQuality = deviceSvc.GetDefaultCharTextureQuality()
         prefs.optimizeSettings = 0
-        prefs.depthEffectsEnabled = deviceSvc.GetDefaultDepthEffectsEnabled()
         prefs.incarnaGraphicsQuality = deviceSvc.GetDefaultInteriorGraphicsQuality()
         prefs.shadowQuality = deviceSvc.GetDefaultShadowQuality()
         settings.public.device.Set('MultiSampleType', 0)
@@ -1901,11 +1922,12 @@ class SystemMenu(uicls.LayerCore):
         settings.user.ui.Set('turretsEnabled', 1)
         settings.user.ui.Set('effectsEnabled', 1)
         settings.user.ui.Set('missilesEnabled', 1)
+        settings.user.ui.Set('trailsEnabled', 1)
         settings.user.ui.Set('lod', 1)
         settings.public.device.Set('sunOcclusion', 1)
         settings.user.ui.Set('advancedCamera', 0)
         settings.user.ui.Set('cameraOffset', 0)
-        settings.user.ui.Set('loadstationenv', 1)
+        prefs.SetValue('loadstationenv2', 1)
         settings.user.ui.Set('incarnaCameraOffset', 1)
         settings.user.ui.Set('incarnaCameraInvertY', 0)
         settings.user.ui.Set('incarnaCameraMouseSmooth', 1)
@@ -1929,6 +1951,7 @@ class SystemMenu(uicls.LayerCore):
         msType = getattr(self.settings, 'MultiSampleType', deviceSet.MultiSampleType)
         msQuality = getattr(self.settings, 'MultiSampleQuality', deviceSet.MultiSampleQuality)
         interiorGraphics = prefs.GetValue('interiorGraphicsQuality', deviceSvc.GetDefaultInteriorGraphicsQuality())
+        interiorShaderQuality = prefs.GetValue('interiorShaderQuality', deviceSvc.GetDefaultInteriorShaderQuality())
         fastCharacterCreation = prefs.GetValue('fastCharacterCreation', 0)
         charTextureQuality = prefs.GetValue('charTextureQuality', deviceSvc.GetDefaultCharTextureQuality())
         postProcessingQuality = prefs.GetValue('postProcessingQuality', deviceSvc.GetDefaultPostProcessingQuality())
@@ -1973,6 +1996,13 @@ class SystemMenu(uicls.LayerCore):
             changes.append('antiAliasing')
         if sm.GetService('sceneManager').interiorGraphicsQuality != interiorGraphics:
             changes.append('interiorGraphics')
+        if interiorShaderQuality > 0 != trinity.HasGlobalSituationFlag('OPT_INTERIOR_SM_HIGH'):
+            changes.append('interiorShaderQuality')
+            if interiorShaderQuality == 0:
+                trinity.RemoveGlobalSituationFlags(['OPT_INTERIOR_SM_HIGH'])
+            else:
+                trinity.AddGlobalSituationFlags(['OPT_INTERIOR_SM_HIGH'])
+            trinity.RebindAllShaderMaterials()
         resetTriggered = False
         if 'textureQuality' in changes:
             dev.mipLevelSkipCount = textureQuality
@@ -1980,8 +2010,8 @@ class SystemMenu(uicls.LayerCore):
             resetTriggered = True
         if 'shaderQuality' in changes:
             message = uicls.Message(className='Message', parent=uicore.layer.modal, name='msgDeviceReset')
-            message.ShowMsg(mls.UI_SYSMENU_APPLYSHADERMODELWAIT)
-            blue.synchro.Sleep(200)
+            message.ShowMsg(localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/ApplyingSettings'))
+            blue.synchro.SleepWallclock(200)
             trinity.SetShaderModel(deviceSvc.GetShaderModel(shaderQuality))
             message.Close()
             resetTriggered = True
@@ -2001,8 +2031,15 @@ class SystemMenu(uicls.LayerCore):
         parent.Load = self.LoadShortcutTabs
         parent.Flush()
         tabs = []
+        categoryLabelDictionary = {'window': localization.GetByLabel('UI/SystemMenu/Shortcuts/WindowTab'),
+         'combat': localization.GetByLabel('UI/SystemMenu/Shortcuts/CombatTab'),
+         'general': localization.GetByLabel('UI/SystemMenu/Shortcuts/GeneralTab'),
+         'navigation': localization.GetByLabel('UI/SystemMenu/Shortcuts/NavigationTab'),
+         'modules': localization.GetByLabel('UI/SystemMenu/Shortcuts/ModulesTab'),
+         'movement': localization.GetByLabel('UI/SystemMenu/Shortcuts/MovementTab'),
+         'drones': localization.GetByLabel('UI/SystemMenu/Shortcuts/DronesTab')}
         for category in uicore.cmd.GetCommandCategoryNames():
-            tabs.append([category,
+            tabs.append([categoryLabelDictionary[category],
              None,
              parent,
              category])
@@ -2011,9 +2048,9 @@ class SystemMenu(uicls.LayerCore):
         col2 = uicls.Container(name='column2', parent=parent)
         col2.isTabOrderGroup = 1
         shortcutoptions = uicls.Container(name='options', align=uiconst.TOBOTTOM, height=30, top=0, parent=col2, padding=(5, 0, 5, 0))
-        btns = [(mls.UI_CMD_EDITSHORTCUT, self.OnEditShortcutBtnClicked, None), (mls.UI_CMD_CLEARSHORTCUT, self.OnClearShortcutBtnClicked, None)]
+        btns = [(localization.GetByLabel('UI/SystemMenu/Shortcuts/EditShortcut'), self.OnEditShortcutBtnClicked, None), (localization.GetByLabel('UI/SystemMenu/Shortcuts/ClearShortcut'), self.OnClearShortcutBtnClicked, None)]
         btnGroup = uicls.ButtonGroup(btns=btns, parent=shortcutoptions, line=False, subalign=uiconst.BOTTOMLEFT)
-        btn = uicls.Button(parent=shortcutoptions, label=mls.UI_CMD_DEFAULTS, func=self.RestoreShortcuts, top=0, align=uiconst.BOTTOMRIGHT)
+        btn = uicls.Button(parent=shortcutoptions, label=localization.GetByLabel('UI/SystemMenu/Shortcuts/DefaultShortcuts'), func=self.RestoreShortcuts, top=0, align=uiconst.BOTTOMRIGHT)
         self.sr.active_cmdscroll = uicls.Scroll(name='availscroll', align=uiconst.TOALL, parent=col2, padLeft=8, multiSelect=False, id='active_cmdscroll')
         self.sr.shortcutsinited = 1
 
@@ -2023,7 +2060,8 @@ class SystemMenu(uicls.LayerCore):
         selected = self.sr.active_cmdscroll.GetSelected()
         if not selected:
             return 
-        self.EditCommand(selected[0].cmdname)
+        p = selected[0].panel
+        p.Edit()
 
 
 
@@ -2061,7 +2099,7 @@ class SystemMenu(uicls.LayerCore):
         col1 = uicls.Container(name='col1', align=uiconst.TOLEFT, width=self.colWidth, padLeft=8, parent=parent)
         col1.isTabOrderGroup = 1
         uicls.Frame(parent=col1)
-        uix.GetContainerHeader(mls.UI_SYSMENU_RESETSUPPRESSMESSAGESETTINGS, col1, 0)
+        uix.GetContainerHeader(localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/Header'), col1, 0)
         scroll = uicls.Scroll(parent=col1)
         scroll.name = 'suppressResetScroll'
         scroll.HideBackground()
@@ -2070,10 +2108,11 @@ class SystemMenu(uicls.LayerCore):
         for each in settings.user.suppress.GetValues().keys():
             label = self.GetConfigName(each)
             entry = listentry.Get('Button', {'label': label,
-             'caption': mls.UI_CMD_RESET,
+             'caption': localization.GetByLabel('UI/SystemMenu/ResetSettings/Reset'),
              'OnClick': self.ConfigBtnClick,
              'args': (each,),
-             'singleline': 0})
+             'singleline': 0,
+             'entryWidth': self.colWidth - 16})
             scrollList.append((label, entry))
 
         scrollList = uiutil.SortListOfTuples(scrollList)
@@ -2081,38 +2120,39 @@ class SystemMenu(uicls.LayerCore):
         col2 = uicls.Container(name='column2', align=uiconst.TOLEFT, width=self.colWidth, padLeft=8, parent=parent)
         col2.isTabOrderGroup = 1
         uicls.Frame(parent=col2)
-        uix.GetContainerHeader(mls.UI_SYSMENU_RESETTODEFAULT, col2, (0, 1)[(i >= 12)])
+        uix.GetContainerHeader(localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetToDefault/Header'), col2, (0, 1)[(i >= 12)])
         scroll = uicls.Scroll(parent=col2)
         scroll.name = 'defaultsResetScroll'
         scroll.HideBackground()
         scrollList = []
-        lst = [{'label': mls.UI_CMD_RESETDEFAULTWNDPOS,
-          'caption': mls.UI_CMD_RESET,
+        lst = [{'label': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetToDefault/WindowPosition'),
+          'caption': localization.GetByLabel('UI/SystemMenu/ResetSettings/Reset'),
           'OnClick': self.ResetBtnClick,
           'args': 'windows'},
-         {'label': mls.UI_CMD_RESETDEFAULTWNDCOL,
-          'caption': mls.UI_CMD_RESET,
+         {'label': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetToDefault/WindowColors'),
+          'caption': localization.GetByLabel('UI/SystemMenu/ResetSettings/Reset'),
           'OnClick': self.ResetBtnClick,
           'args': 'window color'},
-         {'label': mls.UI_CMD_RESETJUKEBOXPLAYLIST,
-          'caption': mls.UI_CMD_RESET,
+         {'label': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetToDefault/JukeboxPlaylist'),
+          'caption': localization.GetByLabel('UI/SystemMenu/ResetSettings/Reset'),
           'OnClick': self.ResetBtnClick,
           'args': 'jukebox playlist'},
-         {'label': mls.UI_CMD_CLEARALLSETTINGS,
-          'caption': mls.UI_CMD_CLEAR,
+         {'label': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetToDefault/ClearAllSettings'),
+          'caption': localization.GetByLabel('UI/SystemMenu/ResetSettings/Clear'),
           'OnClick': self.ResetBtnClick,
           'args': 'clear settings'},
-         {'label': mls.UI_CMD_CLEARALLCACHEFILES,
-          'caption': mls.UI_CMD_CLEAR,
+         {'label': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetToDefault/ClearAllCacheFiles'),
+          'caption': localization.GetByLabel('UI/SystemMenu/ResetSettings/Clear'),
           'OnClick': self.ResetBtnClick,
-          'args': 'clear cache'},
-         {'label': mls.UI_CMD_CLEARMAILCACHE,
-          'caption': mls.UI_CMD_CLEAR,
-          'OnClick': self.ResetBtnClick,
-          'args': 'clear mail'}]
+          'args': 'clear cache'}]
+        if session.charid:
+            lst.append({'label': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetToDefault/ClearMailCache'),
+             'caption': localization.GetByLabel('UI/SystemMenu/ResetSettings/Clear'),
+             'OnClick': self.ResetBtnClick,
+             'args': 'clear mail'})
         if hasattr(sm.GetService('LSC'), 'spammerList'):
-            lst.append({'label': mls.UI_CMD_CLEARISKSPAMMERLIST,
-             'caption': mls.UI_CMD_CLEAR,
+            lst.append({'label': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetToDefault/ClearISKSpammerList'),
+             'caption': localization.GetByLabel('UI/SystemMenu/ResetSettings/Clear'),
              'OnClick': self.ResetBtnClick,
              'args': 'clear iskspammers'})
         for each in lst:
@@ -2120,7 +2160,8 @@ class SystemMenu(uicls.LayerCore):
              'caption': each['caption'],
              'OnClick': each['OnClick'],
              'args': (each['args'],),
-             'singleline': 0}))
+             'singleline': 0,
+             'entryWidth': self.colWidth - 16}))
 
         scroll.Load(contentList=scrollList, scrollTo=suppressScrollTo)
         tutorials = sm.GetService('tutorial').GetTutorials()
@@ -2128,7 +2169,7 @@ class SystemMenu(uicls.LayerCore):
             col3 = uicls.Container(name='column3', align=uiconst.TOLEFT, width=self.colWidth, padLeft=8, parent=parent)
             col3.isTabOrderGroup = 1
             uicls.Frame(parent=col3)
-            uix.GetContainerHeader(mls.UI_SYSMENU_RESETTUTORIALSTATE, col3, 0)
+            uix.GetContainerHeader(localization.GetByLabel('UI/SystemMenu/ResetSettings/Tutorial/Header'), col3, 0)
             scroll = uicls.Scroll(parent=col3)
             scroll.name = 'tutorialResetScroll'
             scroll.HideBackground()
@@ -2139,12 +2180,13 @@ class SystemMenu(uicls.LayerCore):
                     continue
                 seqStat = sm.GetService('tutorial').GetSequenceStatus(tutorialID)
                 if seqStat:
-                    label = Tr(tutorials[tutorialID].tutorialName, 'tutorial.tutorials.tutorialName', tutorials[tutorialID].dataID)
+                    label = localization.GetByMessageID(tutorials[tutorialID].tutorialNameID)
                     entry = listentry.Get('Button', {'label': label,
-                     'caption': mls.UI_CMD_RESET,
+                     'caption': localization.GetByLabel('UI/SystemMenu/ResetSettings/Reset'),
                      'OnClick': self.TutorialResetBtnClick,
                      'args': (tutorialID,),
-                     'singleline': 0})
+                     'singleline': 0,
+                     'entryWidth': self.colWidth - 16})
                     scrollList.append((label, entry))
 
             scrollList = uiutil.SortListOfTuples(scrollList)
@@ -2153,41 +2195,122 @@ class SystemMenu(uicls.LayerCore):
 
 
 
+    def RefreshLanguage(self):
+        self.sr.languageinited = 0
+        sm.ChainEvent('ProcessUIRefresh')
+        sm.ScatterEvent('OnUIRefresh')
+
+
+
     def Language(self):
         if self.sr.languageinited:
             return 
         parent = uiutil.GetChild(self.sr.wnd, 'language_container')
         if boot.region != 'optic' or eve.session.role & service.ROLEMASK_ELEVATEDPLAYER:
-            column = column1 = uicls.Container(name='col1', align=uiconst.TOLEFT, width=self.colWidth, padLeft=8, parent=parent)
-            column.isTabOrderGroup = 1
-            uicls.Frame(parent=column)
-            languageData = [('header', mls.UI_SYSMENU_LANGUAGE)]
-            langs = sm.GetService('gameui').GetLanguages()
-            for (languageID, languageName, translatedName,) in langs:
-                languageData.append(('checkbox',
-                 ('language', None, eve.session.languageID),
-                 translatedName or languageName,
-                 languageID,
-                 'langgroup'))
+            langs = localization.GetLanguages()
+            if len(langs) > 1:
+                column1 = uicls.Container(name='language_column_1', align=uiconst.TOLEFT, width=self.colWidth, padLeft=8, parent=parent)
+                column1.isTabOrderGroup = 1
+                uicls.Frame(parent=column1)
+                languageData = [('header', localization.GetByLabel('UI/SystemMenu/Language/Header'))]
+                self.ParseData(languageData, column1)
+                for lang in langs:
+                    convertedID = localizationUtil.ConvertToLanguageSet('languageID', 'MLS', lang)
+                    if convertedID == 'JA':
+                        text = localization.GetByLabel('UI/SystemMenu/Language/LanguageJapanese')
+                    else:
+                        text = localizationUtil.GetDisplayLanguageName(lang, lang)
+                    checkbox = uicls.Checkbox(parent=column1, name='languageCheckbox_%s' % lang, text=text, retval=convertedID, groupname='languageSelection', checked=convertedID == (session.languageID if session.userid else prefs.languageID), fontsize=12, configName='language', callback=self.OnCheckBoxChange)
 
-            self.ParseData(languageData, column)
-            if len(column.children) == 1:
-                column.Close()
-            column = uicls.Container(name='column', align=uiconst.TOLEFT, width=self.colWidth, padLeft=8, parent=parent)
-            column.isTabOrderGroup = 1
-            uicls.Frame(parent=column)
-            columnData = [('header', mls.UI_SYSMENU_INPUTMETHODEDITOR), ('checkbox', ('nativeIME', ('user', 'ui'), True), mls.UI_SYSMENU_USEEVEIME)]
-            self.ParseData(columnData, column)
-            if len(column.children) == 1:
-                column.Close()
-        column = uicls.Container(name='col1', align=uiconst.TOLEFT, width=self.colWidth, padLeft=8, parent=parent)
-        column.isTabOrderGroup = 1
-        uicls.Frame(parent=column)
-        columnData = [('header', mls.UI_SYSMENU_VOICEOPTIONS), ('checkbox', ('forceEnglishVoice', ('user', 'ui'), False), mls.UI_SYSMENU_VOICEFORCEENGLISH)]
-        self.ParseData(columnData, column)
-        if len(column.children) == 1:
-            column.Close()
+        column2 = uicls.Container(name='language_column_2', align=uiconst.TOLEFT, width=self.colWidth, padLeft=8, parent=parent)
+        column2.isTabOrderGroup = 1
+        uicls.Frame(parent=column2)
+        if boot.region != 'optic' or eve.session.role & service.ROLEMASK_ELEVATEDPLAYER:
+            columnData = [('header', localization.GetByLabel('UI/SystemMenu/Language/InputMethodEditor/Header')), ('checkbox', ('nativeIME', ('user', 'ui'), True), localization.GetByLabel('UI/SystemMenu/Language/InputMethodEditor/UseEveIME'))]
+            self.ParseData(columnData, column2)
+        columnData = [('header', localization.GetByLabel('UI/SystemMenu/Language/VoiceOptions/Header')), ('checkbox', ('forceEnglishVoice', ('public', 'audio'), False), localization.GetByLabel('UI/SystemMenu/Language/VoiceOptions/ForceEnglishVoice'))]
+        self.ParseData(columnData, column2)
+        column3 = uicls.Container(name='language_column_3', align=uiconst.TOLEFT, width=self.colWidth, padLeft=8, parent=parent)
+        column3.isTabOrderGroup = 1
+        uicls.Frame(parent=column3)
+        if session and session.role & service.ROLE_QA == service.ROLE_QA:
+            self.DisplayLocalizationQAOptions(column2)
+            sm.RemoteSvc('localizationServer').UpdateLocalizationQASettings(showHardcodedStrings=settings.user.localization.Get('showHardcodedStrings', 0), showMessageID=settings.user.localization.Get('showMessageID', 0), enableBoundaryMarkers=settings.user.localization.Get('enableBoundaryMarkers', 0), characterReplacementMethod=settings.user.localization.Get('characterReplacementMethod', 0), enableTextExpansion=settings.user.localization.Get('enableTextExpansion', 0))
+            self.DisplayPseudolocalizationSample(column3)
         self.sr.languageinited = 1
+
+
+
+    def DisplayLocalizationQAOptions(self, column):
+        localizationQAOptions = [('header', 'Localization QA Options'),
+         ('checkbox', ('showMessageID', ('user', 'localization'), settings.user.localization.Get('showMessageID', 0)), 'Show MessageID'),
+         ('checkbox', ('enableBoundaryMarkers', ('user', 'localization'), settings.user.localization.Get('enableBoundaryMarkers', 0)), 'Show Boundary Markers'),
+         ('checkbox', ('showHardcodedStrings', ('user', 'localization'), getattr(prefs, 'showHardcodedStrings', False)), 'Show Hardcoded Strings')]
+        if session.languageID == 'EN':
+            conversionMethodOptions = [('No Simulation', self.NO_PSEUDOLOCALIZATION_PRESET),
+             ('Simulate German', localization.GERMAN_SIMULATION),
+             ('Simulate Russian', localization.RUSSIAN_SIMULATION),
+             ('Simulate Japanese', localization.JAPANESE_SIMULATION)]
+            localizationQAOptions += [('combo',
+              ('pseudolocalizationPreset', ('user', 'localization'), self.NO_PSEUDOLOCALIZATION_PRESET),
+              'Simulation Preset',
+              conversionMethodOptions,
+              LEFTPADDING,
+              'Simulation presets auto-configure the pseudolocalization settings to test for common localization issues.')]
+            replacementMethodOptions = [('No Replacement', localization.NO_REPLACEMENT),
+             ('Diacritic Replacement', localization.DIACRITIC_REPLACEMENT),
+             ('Cyrillic Replacement', localization.CYRILLIC_REPLACEMENT),
+             ('Full-Width Replacement', localization.FULL_WIDTH_REPLACEMENT)]
+            localizationQAOptions += [('header', 'Localization QA: Advanced Settings'), ('combo',
+              ('characterReplacementMethod', ('user', 'localization'), localization.NO_REPLACEMENT),
+              'Char. Replacement',
+              replacementMethodOptions,
+              LEFTPADDING,
+              'The character replacement method allows you to test for specific character rendering issues.'), ('checkbox', ('enableTextExpansion', ('user', 'localization'), settings.user.localization.Get('enableTextExpansion', 0)), 'Text Expansion Enabled')]
+            if settings.user.localization.Get('enableTextExpansion', 0):
+                localizationQAOptions += [('slider',
+                  ('textExpansionAmount', ('user', 'localization'), 0.0),
+                  'UI/SystemMenu/Language/LocalizationQAAdvanced/TextExpansion',
+                  (0.0, 0.5),
+                  SLIDERWIDTH)]
+        self.ParseData(localizationQAOptions, column)
+
+
+
+    def DisplayPseudolocalizationSample(self, column):
+        if session.languageID == 'EN':
+            pseudolocalizationSample = [('header', 'Localization QA: Sample Text')]
+            self.ParseData(pseudolocalizationSample, column, validateEntries=0)
+            self.pseudolocalizedSampleTextLabel = uicls.EveLabelMedium(name='pseudolocSample', text=self.GetPseudolocalizationSampleText(), parent=column, align=uiconst.TOTOP, padTop=2, padBottom=2, state=uiconst.UI_NORMAL)
+
+
+
+    def SetPseudolocalizationSettingsByPreset(self, presetValue):
+        if presetValue == self.NO_PSEUDOLOCALIZATION_PRESET:
+            settings.user.localization.Set('characterReplacementMethod', localization.NO_REPLACEMENT)
+            settings.user.localization.Set('enableTextExpansion', 0)
+            settings.user.localization.Set('textExpansionAmount', 0.0)
+            localizationUtil.SetPseudolocalization(False)
+        elif presetValue == localization.GERMAN_SIMULATION:
+            settings.user.localization.Set('characterReplacementMethod', localization.DIACRITIC_REPLACEMENT)
+            settings.user.localization.Set('enableTextExpansion', 1)
+            settings.user.localization.Set('textExpansionAmount', 0.3)
+            localizationUtil.SetPseudolocalization(True)
+        elif presetValue == localization.RUSSIAN_SIMULATION:
+            settings.user.localization.Set('characterReplacementMethod', localization.CYRILLIC_REPLACEMENT)
+            settings.user.localization.Set('enableTextExpansion', 1)
+            settings.user.localization.Set('textExpansionAmount', 0.3)
+            localizationUtil.SetPseudolocalization(True)
+        elif presetValue == localization.JAPANESE_SIMULATION:
+            settings.user.localization.Set('characterReplacementMethod', localization.FULL_WIDTH_REPLACEMENT)
+            settings.user.localization.Set('enableTextExpansion', 1)
+            settings.user.localization.Set('textExpansionAmount', 0.0)
+            localizationUtil.SetPseudolocalization(True)
+
+
+
+    def GetPseudolocalizationSampleText(self):
+        return localization.GetByLabel('UI/SystemMenu/SampleText') + ''
 
 
 
@@ -2198,15 +2321,16 @@ class SystemMenu(uicls.LayerCore):
         slider = xtriui.Slider(parent=par, width=height, height=height)
         if labelAlign is not None:
             labelParent = uicls.Container(name='labelparent', parent=_par, align=labelAlign, width=labelWidth, idx=0)
-            lbl = uicls.Label(text='', parent=labelParent, width=labelWidth, autowidth=False, fontsize=9, letterspace=2, tabs=[labelWidth - 22], uppercase=1, state=uiconst.UI_NORMAL)
+            lbl = uicls.EveLabelSmall(text='', parent=labelParent, width=labelWidth, tabs=[labelWidth - 22], state=uiconst.UI_NORMAL)
             lbl._tabMargin = 0
         else:
-            lbl = uicls.Label(text='', parent=par, width=200, autowidth=False, top=-14, fontsize=9, letterspace=2, uppercase=1, state=uiconst.UI_NORMAL)
+            lbl = uicls.EveLabelSmall(text='', parent=par, width=200, top=-14, state=uiconst.UI_NORMAL)
         lbl.state = uiconst.UI_PICKCHILDREN
         lbl.name = 'label'
         slider.label = lbl
         slider.GetSliderValue = self.GetSliderValue
         slider.SetSliderLabel = self.SetSliderLabel
+        slider.GetSliderHint = self.GetSliderHint
         slider.Startup(config[0], minval, maxval, config, header, usePrefs=usePrefs, startVal=startValue)
         slider.name = config[0]
         slider.hint = hint
@@ -2250,12 +2374,21 @@ class SystemMenu(uicls.LayerCore):
 
 
     def SetSliderLabel(self, label, idname, dname, value):
+        label.text = localization.GetByLabel(dname)
+
+
+
+    def GetSliderHint(self, idname, dname, value):
         if idname.startswith('wnd_'):
-            label.text = '%s<t>%d' % (dname, value * 255)
-        elif idname not in ('cameraOffset', 'incarnaCameraOffset', 'incarnaCameraMouseLookSpeedSlider'):
-            label.text = '%s %.1f' % (dname, value)
+            return localizationUtil.FormatNumeric(int(value * 255))
         else:
-            label.text = dname
+            if idname == 'cameraOffset':
+                return self.GetCameraOffsetHintText(value)
+            if idname == 'incarnaCameraOffset':
+                return self.GetCameraOffsetHintText(value, incarna=True)
+            if idname == 'incarnaCameraMouseLookSpeedSlider':
+                return self.GetCameraMouseSpeedHintText(value)
+            return localizationUtil.FormatNumeric(int(value * 100))
 
 
 
@@ -2278,6 +2411,23 @@ class SystemMenu(uicls.LayerCore):
             self.OnSetIncarnaCameraSliderValue(value)
         elif idname == 'incarnaCameraMouseLookSpeedSlider':
             self.OnSetIncarnaCameraMouseLookSpeedSliderValue(value)
+        elif idname == 'textExpansionAmount':
+            settings.user.localization.Set(idname, value)
+            if getattr(self, 'pseudolocalizedSampleTextLabel', None) is not None and hasattr(self.pseudolocalizedSampleTextLabel, 'SetText'):
+                self.pseudolocalizedSampleTextLabel.SetText(self.GetPseudolocalizationSampleText())
+
+
+
+    def EnableDisableBreakpad(self, checkbox):
+        try:
+            try:
+                blue.EnableBreakpad(checkbox.checked)
+            except RuntimeError:
+                pass
+
+        finally:
+            prefs.SetValue('breakpadUpload', 1 if checkbox.checked else 0)
+
 
 
 
@@ -2290,35 +2440,27 @@ class SystemMenu(uicls.LayerCore):
                     langID = 'ZH'
                 self.setlanguageID = langID
                 self.LanguageCheck()
-            if config == 'lockwhenpinned':
-                wnds = sm.GetService('window').GetValidWindows(getHidden=True)
-                for wnd in wnds:
-                    if wnd.IsPinned():
-                        if checkbox.checked:
-                            wnd.Lock()
-                        else:
-                            wnd.Unlock()
-
-            if config == 'audioEnabled':
+            elif config == 'audioEnabled':
                 if checkbox.checked:
                     sm.GetService('audio').Activate()
                 else:
                     sm.GetService('audio').Deactivate()
-            if config == 'suppressTurret':
+            elif config == 'suppressTurret':
                 sm.StartService('audio').SetTurretSuppression(checkbox.checked)
-            if config == 'damageMessages':
+            elif config == 'damageMessages':
                 idx = checkbox.parent.children.index(checkbox) + 1
                 state = [uiconst.UI_HIDDEN, uiconst.UI_NORMAL][settings.user.ui.Get('damageMessages', 1)]
                 for i in xrange(4):
                     checkbox.parent.children[(idx + i)].state = state
 
-            if config == 'windowidentification':
+            elif config == 'windowidentification':
                 sm.GetService('gameui').DoWindowIdentification()
-            if config == 'targetCrosshair':
+            elif config == 'targetCrosshair':
                 sm.GetService('bracket').Reload()
-            if config == 'advancedDevice':
+            elif config == 'advancedDevice':
                 self.ProcessDeviceSettings(whatChanged='advancedDevice')
-            if config == 'voiceenabled':
+            elif config == 'voiceenabled':
+                checkbox.Disable()
                 if checkbox.checked:
                     if hasattr(self, 'voiceFontBtn'):
                         self.voiceFontBtn.Enable()
@@ -2326,22 +2468,15 @@ class SystemMenu(uicls.LayerCore):
                 elif hasattr(self, 'voiceFontBtn'):
                     self.voiceFontBtn.Disable()
                 sm.GetService('vivox').LogOut()
-            if config == 'talkChannelPriority':
+            elif config == 'talkChannelPriority':
                 if not checkbox.checked:
                     sm.GetService('vivox').StopChannelPriority()
-            if config == 'hdrEnabled':
+            elif config == 'hdrEnabled':
                 if checkbox.checked:
                     prefs.hdrEnabled = 1
                     self.ProcessGraphicsSettings()
                 else:
                     prefs.hdrEnabled = 0
-                    self.ProcessGraphicsSettings()
-            if config == 'depthEffectsEnabled':
-                if checkbox.checked:
-                    prefs.depthEffectsEnabled = 1
-                    self.ProcessGraphicsSettings()
-                else:
-                    prefs.depthEffectsEnabled = 0
                     self.ProcessGraphicsSettings()
             if config == 'fastCharacterCreation':
                 if checkbox.checked:
@@ -2350,7 +2485,7 @@ class SystemMenu(uicls.LayerCore):
                 else:
                     prefs.fastCharacterCreation = 0
                     self.ProcessGraphicsSettings()
-            if config == 'charClothSimulation':
+            elif config == 'charClothSimulation':
                 prefs.charClothSimulation = checkbox.checked
                 sm.GetService('sceneManager').ApplyClothSimulationSettings()
             if config == 'bloomEnabled':
@@ -2360,22 +2495,21 @@ class SystemMenu(uicls.LayerCore):
                 else:
                     prefs.bloomEnabled = 0
                     self.ProcessGraphicsSettings()
-            if config == 'resourceCacheEnabled':
+            elif config == 'resourceCacheEnabled':
                 prefs.resourceCacheEnabled = bool(checkbox.checked)
                 self.ProcessGraphicsSettings()
-            if config == 'loadstationenv':
-                view = util.GetCurrentView()
-                prefs.SetValue('loadstationenv', 1 if checkbox.checked else 0)
-                if session.stationid and view == 'station':
-                    eve.Message('CustomInfo', {'info': mls.UI_SYSMENU_NEEDTOREENTERCQ})
-                elif sm.IsServiceRunning('neocom'):
-                    sm.GetService('neocom').ShowToggleHangarCQButton()
+            elif config == 'loadstationenv2':
+                oldVal = prefs.GetValue('loadstationenv2', 1)
+                prefs.SetValue('loadstationenv2', 1 if checkbox.checked else 0)
+                if sm.GetService('viewState').IsViewActive('hangar') and oldVal:
+                    sm.GetService('station').ReloadLobby()
+                eve.Message('CustomInfo', {'info': localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/GraphicContentSettings/NeedToEnterCQ')})
             if config == 'turretsEnabled':
                 if checkbox.checked:
                     sm.GetService('FxSequencer').EnableGuids(FxSequencer.fxTurretGuids)
                 else:
                     sm.GetService('FxSequencer').DisableGuids(FxSequencer.fxTurretGuids)
-            if config == 'effectsEnabled':
+            elif config == 'effectsEnabled':
                 candidateEffects = []
                 for guid in FxSequencer.fxGuids:
                     if guid not in FxSequencer.fxTurretGuids and guid not in FxSequencer.fxProtectedGuids:
@@ -2386,45 +2520,56 @@ class SystemMenu(uicls.LayerCore):
                         sm.GetService('FxSequencer').EnableGuids(candidateEffects)
                     else:
                         sm.GetService('FxSequencer').DisableGuids(candidateEffects)
+            elif config == 'trailsEnabled':
+                trinity.settings.SetValue('eveSpaceObjectTrailsEnabled', checkbox.checked)
+            if config == 'enableTextExpansion':
+                self.RefreshLanguage()
+            elif config in ('showMessageID', 'enableBoundaryMarkers'):
+                self.RefreshLanguage()
+                sm.RemoteSvc('localizationServer').UpdateLocalizationQASettings(showHardcodedStrings=settings.user.localization.Get('showHardcodedStrings', 0), showMessageID=settings.user.localization.Get('showMessageID', 0), enableBoundaryMarkers=settings.user.localization.Get('enableBoundaryMarkers', 0), characterReplacementMethod=settings.user.localization.Get('characterReplacementMethod', 0), enableTextExpansion=settings.user.localization.Get('enableTextExpansion', 0))
+            elif config == 'showHardcodedStrings':
+                localizationUtil.SetHardcodedStringDetection(checkbox.checked)
+                self.RefreshLanguage()
 
 
 
     def GetConfigName(self, suppression):
-        configTranslation = {'AgtDelayMission': mls.UI_SYSMENU_CONFIRMDELAYMISSION,
-         'AgtMissionOfferWarning': mls.UI_SYSMENU_AGENTMISSIONOFFERWARNING,
-         'AgtMissionAcceptBigCargo': mls.UI_SYSMENU_AGENTMISSIONACCEPTBIGCARGO,
-         'AgtDeclineMission': mls.UI_SYSMENU_AGENTMISSIONDECLINEWARNING,
-         'AgtDeclineOnlyMission': mls.UI_SYSMENU_AGENTDECLINEONLYMISSIONWARNING,
-         'AgtDeclineImportantMission': mls.UI_SYSMENU_AGENTDECLINEIMPORTANTMISSIONWARNING,
-         'AgtDeclineMissionSequence': mls.UI_SYSMENU_AGENTDECLINEMISSIONSEQUENCEWARNING,
-         'AgtQuitMission': mls.UI_SYSMENU_AGENTQUITMISSIONWARNING,
-         'AgtQuitImportantMission': mls.UI_SYSMENU_AGENTQUITIMPORTANTMISSIONWARNING,
-         'AgtQuitMissionSequence': mls.UI_SYSMENU_AGENTQUITMISSIONSEQUENCEWARNING,
-         'AgtShare': mls.UI_SYSMENU_UI_AGTSHARE,
-         'AgtNotShare': mls.UI_SYSMENU_UI_AGTNOTSHARE,
-         'AskPartialCargoLoad': mls.UI_SYSMENU_PARTIALMOVEBECAUSEOFLIMITEDSPACE,
-         'AidWithEnemiesEmpire2': mls.UI_SYSMENU_CONFIRMAIDINGAENEMYPLAYERINEMPIRESPACE,
-         'AidOutlawEmpire2': mls.UI_SYSMENU_CONFIRMAIDINGANOUTLAWINEMPIRESPACE,
-         'AidGlobalCriminalEmpire2': mls.UI_SYSMENU_CONFIRMAIDINGCRIMINALFLAGGEDPLAYERINEMPIRE,
-         'AttackInnocentEmpire2': mls.UI_SYSMENU_CONFIRMATTACKINGOFANINNOCENTPLAYERINEMPIRESPACE,
-         'AttackInnocentEmpireAbort1': mls.UI_SYSMENU_CONFIRMATTACKINGOFANINNOCENTPLAYERINEMPIRESPACE,
-         'AttackGoodNPC2': mls.UI_SYSMENU_CONFIRMATTACKINGAGOODNPC,
-         'AttackGoodNPCAbort1': mls.UI_SYSMENU_CONFIRMATTACKINGAGOODNPC,
-         'AttackAreaEmpire3': mls.UI_SYSMENU_CONFIRMACTIVATIONOFAREAEFFECTMODULEINEMPIRESPACE,
-         'AttackAreaEmpireAbort1': mls.UI_SYSMENU_CONFIRMACTIVATINGANAREAOFEFFECTMODULEINEMPIRESPACE,
-         'AttackNonEmpire2': mls.UI_SYSMENU_CONFIRMATTACKINGPLAYEROWNEDSTUFFINNON,
-         'AttackNonEmpireAbort1': mls.UI_SYSMENU_CONFIRMATTACKINGPLAYEROWNEDSTUFFINNON,
-         'ConfirmOneWayItemMove': mls.UI_SYSMENU_CONFIRMONEWAYITEMMOVE,
-         'ConfirmJumpToUnsafeSS': mls.UI_SYSMENU_CONFIRMJUMPTOUNSAFESOLARSYSTEM,
-         'ConfirmJettison': mls.UI_SYSMENU_CONFIRMJETTISIONOFITEMS,
-         'AskQuitGame': mls.UI_SYSMENU_CONFIRMQUITGAME,
-         'facAcceptEjectMaterialLoss': mls.UI_SYSMENU_CONFIRMEJECTINGOFBPFROMFACTORY,
-         'WarnDeleteFromAddressbook': mls.UI_SYSMENU_WARNWHENDELETINGFROMADDRESSBOOK,
-         'ConfirmDeleteFolder': mls.UI_SYSMENU_CONFIRMDELETINGOFFOLDERS,
-         'AskCancelContinuation': mls.UI_SYSMENU_CONFIRMMODIFYINCHARACTERCREATION,
-         'ConfirmClearText': mls.UI_SYSMENU_CONFIRMCLEARTEXT,
-         'ConfirmAbandonDrone': mls.UI_SYSMENU_CONFIRMABANDONDRONE,
-         'QueueSaveChangesOnClose': mls.UI_SHARED_SQ_APPLYCHANGES}
+        configTranslation = {'AgtDelayMission': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/DelayMissionOfferDecision'),
+         'AgtMissionOfferWarning': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AgentMissionOfferWarning'),
+         'AgtMissionAcceptBigCargo': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AgentMissionAcceptsBigCargo'),
+         'AgtDeclineMission': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AgentMissionDeclineWarning'),
+         'AgtDeclineOnlyMission': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AgentDeclineOnlyMissionWarning'),
+         'AgtDeclineImportantMission': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AgentDeclineImportantMissionWarning'),
+         'AgtDeclineMissionSequence': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AgentDeclineMissionSequenceWarning'),
+         'AgtQuitMission': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AgentQuitMissionWarning'),
+         'AgtQuitImportantMission': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AgentQuitImportantMissionWarning'),
+         'AgtQuitMissionSequence': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AgentQuitMissionSequenceWarning'),
+         'AgtShare': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AgentShare'),
+         'AgtNotShare': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AgentNotSharing'),
+         'AskPartialCargoLoad': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/PartialCargoLoad'),
+         'AidWithEnemiesEmpire2': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AidEnemiesInEmpireSpaceWarning'),
+         'AidOutlawEmpire2': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AidOutlawInEmpireSpaceWarning'),
+         'AidGlobalCriminalEmpire2': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AidCriminalInEmpireSpaceWarning'),
+         'AttackInnocentEmpire2': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AttackInnocentPlayerInEmpireSpaceConfirmation'),
+         'AttackInnocentEmpireAbort1': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AttackInnocentPlayerInEmpireSpaceConfirmation'),
+         'AttackGoodNPC2': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AttackGoodPlayerConfirmation'),
+         'AttackGoodNPCAbort1': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AttackGoodPlayerConfirmation'),
+         'AttackAreaEmpire3': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AreaOfEffectModuleInEmpireSpaceConfirmation'),
+         'AttackAreaEmpireAbort1': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AreaOfEffectModuleInEmpireSpaceConfirmation'),
+         'AttackNonEmpire2': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AttackPlayerOwnedStuffConfirmation'),
+         'AttackNonEmpireAbort1': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AttackPlayerOwnedStuffConfirmation'),
+         'ConfirmOneWayItemMove': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/OneWayItemMoveConfirmation'),
+         'ConfirmJumpToUnsafeSS': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/JumpToUnsafeSolarSystemConfirmation'),
+         'ConfirmJettison': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/JettisonItemsConfirmation'),
+         'AskQuitGame': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/QuitGameConfirmation'),
+         'facAcceptEjectMaterialLoss': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/EjectBluePrintFromFactoryConformation'),
+         'WarnDeleteFromAddressbook': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/DeleteFromAddressBookWarning'),
+         'ConfirmDeleteFolder': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/DeleteFoldersConfirmation'),
+         'AskCancelContinuation': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/ModifyCharacterConfirmation'),
+         'ConfirmClearText': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/ClearTextConfirmation'),
+         'ConfirmAbandonDrone': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/AbandonDroneConfirmation'),
+         'QueueSaveChangesOnClose': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/TrainingQueueChanges'),
+         'PI_Info': localization.GetByLabel('UI/SystemMenu/ResetSettings/ResetSuppressMessageSettings/PlanetaryInteractionInfo')}
         if configTranslation.has_key(suppression[9:]):
             txt = configTranslation[suppression[9:]]
         else:
@@ -2498,16 +2643,16 @@ class SystemMenu(uicls.LayerCore):
         while ret and IsIllegal(ret['name']):
             if ret:
                 name = ret['name']
-            ret = uix.NamePopup(mls.UI_SHARED_CONVERTETC, mls.UI_SHARED_TYPEINETC, name, maxLength=KEY_LENGTH)
+            ret = uix.NamePopup(localization.GetByLabel('UI/SystemMenu/ConvertEveTimeCodeHeader'), localization.GetByLabel('UI/SystemMenu/ConvertEveTimeCodeTypeInCode'), name, maxLength=KEY_LENGTH)
 
         if not ret:
             return 
-        sm.GetService('loading').ProgressWnd(mls.UI_SHARED_CONVERTINGETC, '.', 1, 2)
+        sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/SystemMenu/ConvertEveTimeCodeHeader'), '.', 1, 2)
         try:
             sm.RemoteSvc('userSvc').ConvertETCToPilotLicence(ret['name'])
 
         finally:
-            sm.GetService('loading').ProgressWnd(mls.UI_SHARED_CONVERTINGETC, '.', 2, 2)
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/SystemMenu/ConvertEveTimeCodeHeader'), '.', 2, 2)
 
 
 
@@ -2560,21 +2705,21 @@ class SystemMenu(uicls.LayerCore):
                 return 
             ret = eve.Message('ChangeLanguageReboot', {}, uiconst.YESNO)
             if ret == uiconst.ID_YES:
-                sm.RemoteSvc('authentication').SetLanguageID(setlanguageID)
-                prefs.languageID = setlanguageID
-                appUtils.Reboot('language change')
+                sm.GetService('gameui').SetLanguage(setlanguageID)
+                if prefs.GetValue('suppressLanguageChangeRestart', 0):
+                    eve.Message('CustomNotify', {'notify': 'Prefs override: Language changed without restart'})
+                else:
+                    appUtils.Reboot('language change')
 
 
 
     def StationUpdateCheck(self):
         if eve.session.stationid:
-            lobbyReloaded = False
             if self.init_dockshipsanditems != settings.user.windows.Get('dockshipsanditems', 0):
-                sm.GetService('station').LoadLobby()
-                lobbyReloaded = True
+                sm.GetService('station').ReloadLobby()
                 sm.GetService('neocom').UpdateMenu()
-            if not lobbyReloaded and self.init_stationservicebtns != settings.user.ui.Get('stationservicebtns', 0):
-                uthread.new(sm.GetService('station').LoadLobby)
+            elif self.init_stationservicebtns != settings.user.ui.Get('stationservicebtns', 0):
+                sm.GetService('station').ReloadLobby()
 
 
 
@@ -2585,7 +2730,7 @@ class CmdListEntry(listentry.Generic):
 
     def Startup(self, *args):
         listentry.Generic.Startup(self, args)
-        self.sr.lock = uicls.Icon(icon='ui_22_32_30', parent=self, size=20, align=uiconst.CENTERRIGHT, state=uiconst.UI_HIDDEN, hint=mls.UI_SYSMENU_LOCKEDSHORTCUTHINT, ignoreSize=1)
+        self.sr.lock = uicls.Icon(icon='ui_22_32_30', parent=self, size=20, align=uiconst.CENTERRIGHT, state=uiconst.UI_HIDDEN, hint=localization.GetByLabel('UI/SystemMenu/Shortcuts/LockedShortcut'), ignoreSize=1)
 
 
 
@@ -2602,7 +2747,7 @@ class CmdListEntry(listentry.Generic):
         self.OnClick()
         if self.sr.isLocked:
             return []
-        m = [(mls.UI_CMD_EDITSHORTCUT, self.Edit), (mls.UI_CMD_CLEARSHORTCUT, self.Clear)]
+        m = [(localization.GetByLabel('UI/SystemMenu/Shortcuts/EditShortcut'), self.Edit), (localization.GetByLabel('UI/SystemMenu/Shortcuts/ClearShortcut'), self.Clear)]
         return m
 
 
@@ -2636,16 +2781,16 @@ class CmdListEntry(listentry.Generic):
 class VoiceFontSelectionWindow(uicls.Window):
     __guid__ = 'form.VoiceFontSelectionWindow'
     __notifyevents__ = ['OnVoiceFontsReceived']
+    default_windowID = 'VoiceFontSelection'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.SetWndIcon('ui_9_64_16', mainTop=-10)
-        args = {}
-        args['currentVoiceFont'] = settings.char.ui.Get('voiceFontName', mls.UI_GENERIC_NONE)
-        self.SetCaption(mls.UI_SYSMENU_CURRENT_VOICEFONT % args)
+        currentVoiceFont = settings.char.ui.Get('voiceFontName', localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/NoFontSelected'))
+        self.SetCaption(localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/SelectedFont', selectedFont=currentVoiceFont))
         self.SetMinSize([240, 150])
         self.MakeUnResizeable()
-        self.sr.windowCaption = uicls.CaptionLabel(text=mls.UI_SYSMENU_VOICEFONT, parent=self.sr.topParent, align=uiconst.RELATIVE, left=70, top=15, state=uiconst.UI_DISABLED, fontsize=18)
+        self.sr.windowCaption = uicls.CaptionLabel(text=localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/Header'), parent=self.sr.topParent, align=uiconst.RELATIVE, left=70, top=15, state=uiconst.UI_DISABLED, fontsize=18)
         self.voiceFonts = None
         sm.RegisterNotify(self)
         uthread.new(self.Display)
@@ -2653,14 +2798,27 @@ class VoiceFontSelectionWindow(uicls.Window):
 
 
     def OnVoiceFontsReceived(self, voiceFontList):
-        self.voiceFonts = [(mls.UI_GENERIC_NONE, 0)]
+        self.voiceFonts = [(localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/NoFontSelected'), 0)]
+        voiceFontMenuLabelDictionary = {'distorted_female1': localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/DistoredFemale1'),
+         'distorted_female2': localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/DistoredFemale2'),
+         'distorted_male1': localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/DistoredMale1'),
+         'distorted_male2': localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/DistoredMale2'),
+         'female1': localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/Female1'),
+         'female2': localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/Female2'),
+         'female3': localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/Female3'),
+         'female4': localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/Female4'),
+         'female5': localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/Female5'),
+         'female2male': localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/FemaleToMale'),
+         'male1': localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/Male1'),
+         'male2': localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/Male2'),
+         'male3': localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/Male3'),
+         'male4': localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/Male4'),
+         'male5': localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/Male5'),
+         'male2female': localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/MaleToFemale')}
         for voiceFont in voiceFontList:
-            mlskey = 'UI_VOICEFONT_' + voiceFont[1].upper()
-            if mls.HasLabel(mlskey):
-                label = getattr(mls, mlskey)
-            else:
-                label = mlskey
-            self.voiceFonts.append((label, voiceFont[0]))
+            if voiceFont[1] in voiceFontMenuLabelDictionary:
+                label = voiceFontMenuLabelDictionary[voiceFont[1]]
+                self.voiceFonts.append((label, voiceFont[0]))
 
         self.Display()
 
@@ -2673,18 +2831,18 @@ class VoiceFontSelectionWindow(uicls.Window):
         self.sr.main = uiutil.GetChild(self, 'main')
         mainContainer = uicls.Container(name='mainContainer', parent=self.sr.main, align=uiconst.TOALL, padding=(3, 3, 3, 3))
         if self.voiceFonts is None:
-            self.echoText = uicls.Label(text=mls.UI_SYSMENU_RECEIVINGVOICEFONTS, parent=mainContainer, align=uiconst.TOTOP, fontsize=9, letterspace=1, uppercase=1, autowidth=False, top=2, state=uiconst.UI_NORMAL)
+            self.echoText = uicls.EveHeaderSmall(text=localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/ReceivingVoiceFonts'), parent=mainContainer, align=uiconst.TOTOP, padTop=2, state=uiconst.UI_NORMAL)
             sm.GetService('vivox').GetAvailableVoiceFonts()
         else:
             idx = sm.GetService('vivox').GetVoiceFont()
-            self.combo = uicls.Combo(label=mls.UI_SYSMENU_VOICEFONT, parent=mainContainer, options=self.voiceFonts, name='voicefont', idx=idx, callback=self.OnComboChange, labelleft=100, align=uiconst.TOTOP, padTop=5)
-            self.combo.SetHint(mls.UI_SYSMENU_VOICEFONT)
+            self.combo = uicls.Combo(label=localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/VoiceFont'), parent=mainContainer, options=self.voiceFonts, name='voicefont', idx=idx, callback=self.OnComboChange, labelleft=100, align=uiconst.TOTOP, padTop=5)
+            self.combo.SetHint(localization.GetByLabel('UI/SystemMenu/AudioAndChat/VoiceFont/VoiceFont'))
             self.combo.parent.state = uiconst.UI_NORMAL
-        btns = uicls.ButtonGroup(btns=[[mls.UI_CMD_APPLY,
+        btns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Common/Buttons/Apply'),
           self.Apply,
           (),
-          66], [mls.UI_CMD_CANCEL,
-          self.CloseX,
+          66], [localization.GetByLabel('UI/Common/Buttons/Cancel'),
+          self.CloseByUser,
           (),
           66]], parent=mainContainer, idx=0)
 
@@ -2694,7 +2852,7 @@ class VoiceFontSelectionWindow(uicls.Window):
         settings.char.ui.Set('voiceFontName', self.combo.GetKey())
         sm.GetService('vivox').SetVoiceFont(self.combo.selectedValue)
         sm.ScatterEvent('OnVoiceFontChanged')
-        self.CloseX(args)
+        self.CloseByUser(args)
 
 
 
@@ -2706,33 +2864,34 @@ class VoiceFontSelectionWindow(uicls.Window):
 
 class OptimizeSettingsWindow(uicls.Window):
     __guid__ = 'form.OptimizeSettingsWindow'
+    default_windowID = 'optimizesettings'
 
     def ApplyAttributes(self, attributes):
         uicls.Window.ApplyAttributes(self, attributes)
         self.SetWndIcon('ui_9_64_16', mainTop=-10)
-        self.SetCaption(mls.UI_SYSMENU_OPTIMIZE_SETTINGS)
+        self.SetCaption(localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/OptimizeSettings/Header'))
         self.SetMinSize([360, 240])
         self.MakeUnResizeable()
-        self.sr.windowCaption = uicls.CaptionLabel(text=mls.UI_SYSMENU_OPTIMIZE_SETTINGS, parent=self.sr.topParent, align=uiconst.RELATIVE, left=70, top=15, state=uiconst.UI_DISABLED, fontsize=18)
+        self.sr.windowCaption = uicls.CaptionLabel(text=localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/OptimizeSettings/Header'), parent=self.sr.topParent, align=uiconst.RELATIVE, left=70, top=15, state=uiconst.UI_DISABLED, fontsize=18)
         self.SetScope('all')
         main = self.sr.main
-        optimizeSettingsOptions = [(mls.UI_SYSMENU_OPTIMIZE_SETTINGS_SELECT, None),
-         (mls.UI_SYSMENU_OPTIMIZE_SETTINGS_MEMORY, 1),
-         (mls.UI_SYSMENU_OPTIMIZE_SETTINGS_PERFORMANCE, 2),
-         (mls.UI_SYSMENU_OPTIMIZE_SETTINGS_QUALITY, 3)]
+        optimizeSettingsOptions = [(localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/OptimizeSettings/OptimizeSettingsSelect'), None),
+         (localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/OptimizeSettings/OptimizeSettingsMemory'), 1),
+         (localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/OptimizeSettings/OptimizeSettingsPerformance'), 2),
+         (localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/OptimizeSettings/OptimizeSettingsQuality'), 3)]
         combo = self.combo = uicls.Combo(label='', parent=main, options=optimizeSettingsOptions, name='', select=None, callback=self.OnComboChange, labelleft=0, align=uiconst.TOTOP)
-        combo.SetHint(mls.UI_SYSMENU_OPTIMIZE_SETTINGS_SELECT)
+        combo.SetHint(localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/OptimizeSettings/OptimizeSettingsSelect'))
         combo.SetPadding(6, 0, 6, 0)
-        self.messageArea = uicls.Edit(parent=main, readonly=1, hideBackground=1, padding=6)
-        self.messageArea.AllowResizeUpdates(1)
+        self.messageArea = uicls.EditPlainText(parent=main, readonly=1, hideBackground=1, padding=6)
+        self.messageArea.HideBackground()
+        self.messageArea.RemoveActiveFrame()
         uicls.Frame(parent=self.messageArea, color=(0.4, 0.4, 0.4, 0.5))
-        self.UpdateAlignmentAsRoot()
-        self.messageArea.LoadHTML('<html><body>%s</body></html>' % mls.UI_SYSMENU_OPTIMIZE_SETTINGS_SELECT_INFO)
-        btns = uicls.ButtonGroup(btns=[[mls.UI_CMD_APPLY,
+        self.messageArea.SetValue(localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/OptimizeSettings/OptimizeSettingsSelectInfo'))
+        btns = uicls.ButtonGroup(btns=[[localization.GetByLabel('UI/Common/Buttons/Apply'),
           self.Apply,
           (),
-          66], [mls.UI_CMD_CANCEL,
-          self.CloseX,
+          66], [localization.GetByLabel('UI/Common/Buttons/Cancel'),
+          self.CloseByUser,
           (),
           66]], parent=main, idx=0)
         return self
@@ -2741,10 +2900,10 @@ class OptimizeSettingsWindow(uicls.Window):
 
     def OnComboChange(self, *args):
         idx = args[2]
-        info = {1: mls.UI_SYSMENU_OPTIMIZE_SETTINGS_MEMORY_INFO,
-         2: mls.UI_SYSMENU_OPTIMIZE_SETTINGS_PERFORMANCE_INFO,
-         3: mls.UI_SYSMENU_OPTIMIZE_SETTINGS_QUALITY_INFO}.get(idx, mls.UI_SYSMENU_OPTIMIZE_SETTINGS_SELECT_INFO)
-        self.messageArea.LoadHTML('<html><body>%s</body></html>' % info)
+        info = {1: localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/OptimizeSettings/OptimizeSettingsMemoryInfo'),
+         2: localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/OptimizeSettings/OptimizeSettingsPerformanceInfo'),
+         3: localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/OptimizeSettings/OptimizeSettingsQualityInfo')}.get(idx, localization.GetByLabel('UI/SystemMenu/DisplayAndGraphics/OptimizeSettings/OptimizeSettingsSelectInfo'))
+        self.messageArea.SetValue(info)
 
 
 
@@ -2760,7 +2919,6 @@ class OptimizeSettingsWindow(uicls.Window):
             prefs.SetValue('postProcessingQuality', 2)
             prefs.SetValue('resourceCacheEnabled', 0)
             prefs.SetValue('lodQuality', 3)
-            prefs.SetValue('depthEffectsEnabled', sm.GetService('device').SupportsDepthEffects())
             prefs.SetValue('fastCharacterCreation', 0)
             prefs.SetValue('charClothSimulation', 1)
             prefs.SetValue('charTextureQuality', 0)
@@ -2770,6 +2928,7 @@ class OptimizeSettingsWindow(uicls.Window):
                 settings.user.ui.Set('missilesEnabled', 1)
                 settings.user.ui.Set('explosionEffectsEnabled', 1)
                 settings.user.ui.Set('turretsEnabled', 1)
+                settings.user.ui.Set('trailsEnabled', 1)
         elif value == 2:
             prefs.SetValue('textureQuality', 1)
             prefs.SetValue('shaderQuality', 1)
@@ -2778,7 +2937,6 @@ class OptimizeSettingsWindow(uicls.Window):
             prefs.SetValue('postProcessingQuality', 0)
             prefs.SetValue('resourceCacheEnabled', 0)
             prefs.SetValue('lodQuality', 1)
-            prefs.SetValue('depthEffectsEnabled', 0)
             settings.public.device.Set('MultiSampleQuality', 0)
             settings.public.device.Set('MultiSampleType', 0)
             prefs.SetValue('fastCharacterCreation', 1)
@@ -2790,6 +2948,7 @@ class OptimizeSettingsWindow(uicls.Window):
                 settings.user.ui.Set('missilesEnabled', 0)
                 settings.user.ui.Set('explosionEffectsEnabled', 0)
                 settings.user.ui.Set('turretsEnabled', 0)
+                settings.user.ui.Set('trailsEnabled', 0)
         elif value == 1:
             prefs.SetValue('textureQuality', 2)
             prefs.SetValue('shaderQuality', 1)
@@ -2798,7 +2957,6 @@ class OptimizeSettingsWindow(uicls.Window):
             prefs.SetValue('postProcessingQuality', 0)
             prefs.SetValue('resourceCacheEnabled', 0)
             prefs.SetValue('lodQuality', 2)
-            prefs.SetValue('depthEffectsEnabled', 0)
             settings.public.device.Set('MultiSampleQuality', 0)
             settings.public.device.Set('MultiSampleType', 0)
             prefs.SetValue('fastCharacterCreation', 1)
@@ -2810,7 +2968,8 @@ class OptimizeSettingsWindow(uicls.Window):
                 settings.user.ui.Set('missilesEnabled', 1)
                 settings.user.ui.Set('explosionEffectsEnabled', 1)
                 settings.user.ui.Set('turretsEnabled', 1)
-        self.CloseX()
+                settings.user.ui.Set('trailsEnabled', 0)
+        self.CloseByUser()
 
 
 

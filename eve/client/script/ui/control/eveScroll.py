@@ -13,10 +13,10 @@ import listentry
 import stackless
 import lg
 import html
-import draw
 import sys
 import dbg
 import trinity
+import fontConst
 import uicls
 import uiutil
 import uiconst
@@ -25,7 +25,7 @@ MINCOLUMNWIDTH = 24
 
 class Scroll(uicls.ScrollCore):
     __guid__ = 'uicls.Scroll'
-    headerFontSize = 10
+    headerFontSize = fontConst.EVE_SMALL_FONTSIZE
     sortGroups = False
 
     def ApplyAttributes(self, attributes):
@@ -75,7 +75,7 @@ class Scroll(uicls.ScrollCore):
         if len(uicore.layer.menu.children):
             focus = uicore.registry.GetFocus()
             if focus and isinstance(focus, uicls.ScrollCore):
-                if focus.name not in ('combodropdown', '_comboDropDown'):
+                if not uiutil.IsUnder(focus, uicore.layer.menu):
                     return 1
         self.wheeling = 1
         self.Scroll(uicore.uilib.dz / 240.0)
@@ -87,6 +87,19 @@ class Scroll(uicls.ScrollCore):
     def GetNoItemNode(self, text, sublevel = 0, *args):
         return listentry.Get('Generic', {'label': text,
          'sublevel': sublevel})
+
+
+
+    def ShowHint(self, hint = None):
+        if self.sr.hint is None and hint:
+            clipperWidth = self.GetContentWidth()
+            self.sr.hint = uicls.EveCaptionMedium(parent=self.sr.clipper, align=uiconst.TOPLEFT, left=16, top=32, width=clipperWidth - 32, text=hint)
+            self.sr.hint.SetAlpha(0.5)
+        elif self.sr.hint is not None and hint:
+            self.sr.hint.text = hint
+            self.sr.hint.state = uiconst.UI_DISABLED
+        elif self.sr.hint is not None and not hint:
+            self.sr.hint.state = uiconst.UI_HIDDEN
 
 
 
@@ -158,6 +171,11 @@ class ScrollHandle(uicls.ScrollHandleCore):
 
 class ColumnHeader(uicls.ScrollColumnHeaderCore):
     __guid__ = 'uicls.ScrollColumnHeader'
-    letterspace = 2
+
+    def Prepare_Label_(self):
+        textclipper = uicls.Container(name='textclipper', parent=self, align=uiconst.TOALL, padding=(6, 2, 6, 0), state=uiconst.UI_PICKCHILDREN, clipChildren=1)
+        self.sr.label = uicls.EveLabelSmall(text='', parent=textclipper, hilightable=1, state=uiconst.UI_DISABLED)
+
+
 
 

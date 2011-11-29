@@ -40,15 +40,15 @@ class Wormhole(spaceObject.SpaceObject):
 
         self.SetWobbleSpeed(10.0)
         self.LogInfo('Setting wormhole size from', oldSize, 'to', newSize)
-        blue.pyos.synchro.Sleep(1000)
+        blue.pyos.synchro.SleepSim(1000)
         if self.model is None:
             return 
         diff = newSize - oldSize
         i = 0
         time = 2000.0
-        (start, ndt,) = (blue.os.GetTime(), 0.0)
+        (start, ndt,) = (blue.os.GetSimTime(), 0.0)
         while ndt < 1.0:
-            ndt = max(ndt, min(blue.os.TimeDiffInMs(start) / time, 1.0))
+            ndt = max(ndt, min(blue.os.TimeDiffInMs(start, blue.os.GetSimTime()) / time, 1.0))
             val = Lerp(oldSize, newSize, ndt)
             sz = val
             self.model.scaling = (sz, sz, sz)
@@ -57,7 +57,7 @@ class Wormhole(spaceObject.SpaceObject):
             if self.model is None:
                 return 
 
-        blue.pyos.synchro.Sleep(2000)
+        blue.pyos.synchro.SleepSim(2000)
         self.SetWobbleSpeed()
 
 
@@ -86,7 +86,7 @@ class Wormhole(spaceObject.SpaceObject):
         sz = slimItem.wormholeSize
         self.LogInfo('Wormhole - Assemble : Setting wormhole size to', sz)
         expiryDate = slimItem.expiryDate
-        scene = sceneManager.GetSceneFromIndex(slimItem.nebulaType)
+        scene = cfg.graphics.Get(slimItem.nebulaType).graphicFile
         texturePath = sceneManager.DeriveTextureFromSceneName(scene)
         self.LogInfo('Wormhole - Assemble : wormholeSize =', slimItem.wormholeSize, ', nebulaType =', slimItem.nebulaType, ',wormholeAge =', slimItem.wormholeAge)
         self.LogInfo('I will hand this wormhole the following texture:', texturePath)
@@ -126,7 +126,7 @@ class Wormhole(spaceObject.SpaceObject):
     def PlayDeath(self):
         self.PlaySound('worldobject_wormhole_collapse_play')
         self.SetWobbleSpeed(20.0)
-        blue.pyos.synchro.Sleep(1000)
+        blue.pyos.synchro.SleepSim(1000)
         coll = self.FindCurveSet('Collapse')
         if coll:
             coll.Play()

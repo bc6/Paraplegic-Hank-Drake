@@ -1,2 +1,0 @@
-thing2 = object()
-

@@ -1,7 +1,5 @@
 import sys
 import log
-import types
-import exceptions
 import stackless
 import math
 import uthread
@@ -10,7 +8,6 @@ import blue
 import util
 import bluepy
 import moniker
-import trinity
 import service
 import foo
 import collections
@@ -40,7 +37,9 @@ class Michelle(service.Service):
      'OnFleetStateChange',
      'OnDroneStateChange',
      'OnDroneActivityChange',
-     'OnAudioActivated']
+     'OnAudioActivated',
+     'DoSimClockRebase',
+     'OnSessionChanged']
     __dependencies__ = ['machoNet', 'dataconfig']
 
     def Run(self, ms):
@@ -61,6 +60,19 @@ class Michelle(service.Service):
             self.logInfo = False
         self.state = SERVICE_RUNNING
         uthread.new(self._Michelle__ClearAggressionThread)
+
+
+
+    def OnSessionChanged(self, isRemote, session, change):
+        if 'locationid' in change:
+            (oldLocation, newLocation,) = change['locationid']
+            if util.IsSolarSystem(oldLocation):
+                self.RemoveBallpark()
+                self.LogInfo('Removed ballpark for', oldLocation)
+            if util.IsSolarSystem(newLocation):
+                sm.GetService('space')
+                self.LogInfo('Adding new ballpark for', newLocation)
+                self.AddBallpark(newLocation)
 
 
 
@@ -112,7 +124,7 @@ class Michelle(service.Service):
                 broadcast = False
                 for (k, when,) in self.clearAggressions.iteritems():
                     (aggressorID, aggresseeID, solarSystemID,) = k
-                    if when < blue.os.GetTime() - 2 * SEC:
+                    if when < blue.os.GetSimTime() - 2 * SEC:
                         aggressionState = self.GetAggressionState(aggressorID)
                         if aggressionState != 2 and aggresseeID not in (session.charid, session.corpid):
                             clrList.append(k)
@@ -129,7 +141,7 @@ class Michelle(service.Service):
             except:
                 log.LogException()
                 sys.exc_clear()
-            blue.pyos.synchro.Sleep(5000)
+            blue.pyos.synchro.SleepWallclock(5000)
 
 
 
@@ -139,11 +151,12 @@ class Michelle(service.Service):
         if not aggressor:
             return 0
         lastGlobalAggression = aggressor.get(None, 0)
-        if lastGlobalAggression and blue.os.GetTime() - lastGlobalAggression < const.aggressionTime * MIN:
+        if lastGlobalAggression and blue.os.GetSimTime() - lastGlobalAggression < const.aggressionTime * MIN:
             return 2
         lastAggression = max(aggressor.get(eve.session.charid, 0), aggressor.get(eve.session.corpid, 0))
-        if lastAggression and blue.os.GetTime() - lastAggression < const.aggressionTime * MIN:
+        if lastAggression and blue.os.GetSimTime() - lastAggression < const.aggressionTime * MIN:
             return 1
+        return 0
 
 
 
@@ -153,7 +166,7 @@ class Michelle(service.Service):
         for (aggressions, id,) in ((charaggressions, eve.session.charid), (corpaggressions, eve.session.corpid)):
             for (victimID, timestamp,) in self.aggressors.get(id, {}).iteritems():
                 t = timestamp + const.aggressionTime * MIN
-                if t > blue.os.GetTime():
+                if t > blue.os.GetSimTime():
                     aggressions[victimID] = t
 
 
@@ -172,8 +185,18 @@ class Michelle(service.Service):
 
     def IsCriminalFlaggedTo(self, recipientID, actorID):
         if self.aggressors.has_key(recipientID) and self.aggressors[recipientID].has_key(actorID):
-            return self.aggressors[recipientID][actorID] + 15 * MIN > blue.os.GetTime()
+            return self.aggressors[recipientID][actorID] + 15 * MIN > blue.os.GetSimTime()
         return False
+
+
+
+    def GetPlayerAggressionsForOwner(self, actorID):
+        ret = set()
+        for (victim, t,) in self.aggressors.get(actorID, {}).iteritems():
+            if not util.IsSystemOrNPC(victim) and t + const.aggressionTime * MIN > blue.os.GetSimTime():
+                ret.add(victim)
+
+        return ret
 
 
 
@@ -208,8 +231,7 @@ class Michelle(service.Service):
         self.bpReady = False
         if self._Michelle__bp is not None:
             self._Michelle__bp.Release()
-        rot = blue.os.CreateInstance('blue.Rot')
-        self._Michelle__bp = rot.GetInstance('dst:/park-%s' % solarsystemID, 'destiny.Ballpark')
+        self._Michelle__bp = blue.rot.GetInstance('dst:/park-%s' % solarsystemID, 'destiny.Ballpark')
         self.LogInfo('GetBallpark1 object', self._Michelle__bp, 'now has:', sys.getrefcount(self._Michelle__bp), 'references')
         Park(self._Michelle__bp, {'broker': self,
          'solarsystemID': long(solarsystemID),
@@ -247,7 +269,7 @@ class Michelle(service.Service):
             while not self.bpReady and tries < MAX_TRIES:
                 self.LogInfo('Waiting for ballpark', tries)
                 tries = tries + 1
-                blue.pyos.synchro.Sleep(WAIT_TIME * 1000)
+                blue.pyos.synchro.SleepSim(WAIT_TIME * 1000)
 
             if not self.bpReady:
                 logstring = 'Failed to get a valid ballpark in time after trying %d times' % tries
@@ -381,16 +403,16 @@ class Michelle(service.Service):
         lpark = self.GetBallpark()
         ball = self.GetBall(eve.session.shipid)
         presTime = lpark.currentTime
-        pretTime = blue.os.GetTime()
-        prerTime = blue.os.GetTime(1)
+        pretTime = blue.os.GetWallclockTime()
+        prerTime = blue.os.GetWallclockTimeNow()
         preX = ball.x
         preY = ball.y
         preZ = ball.z
         (diff, x, y, z, sTime, tTime, rTime,) = self.GetRemotePark().GetRelativity(preX, preY, preZ, presTime, pretTime, prerTime)
         ldiff = math.sqrt((preX - x) ** 2 + (preY - y) ** 2 + (preZ - z) ** 2)
         postsTime = lpark.currentTime
-        posttTime = blue.os.GetTime()
-        postrTime = blue.os.GetTime(1)
+        posttTime = blue.os.GetWallclockTime()
+        postrTime = blue.os.GetWallclockTimeNow()
         pdiff = math.sqrt((ball.x - x) ** 2 + (ball.y - y) ** 2 + (ball.z - z) ** 2)
         print '------------------------------------------------------------------------------------'
         print 'Ticks: client(%s) to server(%s) = %s, server(%s) to client(%s) = %s' % (presTime,
@@ -497,7 +519,7 @@ class Michelle(service.Service):
 
 
     def HandleBallNotInParkError(self, ball):
-        now = blue.os.GetTime()
+        now = blue.os.GetWallclockTime()
         ballID = ball.id
         if ballID in self.ballNotInParkErrors and ballID not in self.handledBallErrors:
             diff = now - self.ballNotInParkErrors[ballID]
@@ -559,6 +581,13 @@ class Michelle(service.Service):
 
 
 
+    def DoSimClockRebase(self, times):
+        (oldSimTime, newSimTime,) = times
+        if self._Michelle__bp:
+            self._Michelle__bp.time += newSimTime - oldSimTime
+
+
+
 SEC = 10000000L
 MIN = SEC * 60L
 HOUR = MIN * 60L
@@ -590,7 +619,6 @@ class Park(bluepy.WrapBlueClass('destiny.Ballpark')):
         self.slimItems = {}
         self.damageState = {}
         self.stateByDroneID = {}
-        self.cargoLinksByPlanetID = {}
         self.fleetState = None
         self.lootRightsByObjectID = {}
         self.solItem = None
@@ -805,10 +833,11 @@ class Park(bluepy.WrapBlueClass('destiny.Ballpark')):
                     allyTickersToPrime.append(slimItem.allianceID)
                 if not (slimItem.categoryID == const.categoryAsteroid or slimItem.groupID == const.groupHarvestableCloud):
                     cfg.evelocations.Hint(slimItem.itemID, [slimItem.itemID,
-                     ball.name,
+                     slimItem.name,
                      ball.x,
                      ball.y,
-                     ball.z])
+                     ball.z,
+                     slimItem.nameID])
 
         self.validState = True
         if self.hideDesyncSymptoms:
@@ -820,7 +849,7 @@ class Park(bluepy.WrapBlueClass('destiny.Ballpark')):
          allyTickersToPrime,
          stuffToAdd,
          self))
-        now = blue.os.GetTime()
+        now = blue.os.GetSimTime()
         self.damageState = {}
         for (k, v,) in bag.damageState.iteritems():
             self.damageState[k] = (v, now)
@@ -846,7 +875,7 @@ class Park(bluepy.WrapBlueClass('destiny.Ballpark')):
                 return 
             ret = []
             if type(state[0]) in (list, tuple):
-                now = blue.os.GetTime()
+                now = blue.os.GetSimTime()
                 (num, tau,) = state[0][:2]
                 sq = math.sqrt(num)
                 exp = math.exp((time - now) / const.dgmTauConstant / tau)
@@ -859,30 +888,6 @@ class Park(bluepy.WrapBlueClass('destiny.Ballpark')):
             blue.pyos.taskletTimer.ReturnFromTasklet(mainctx)
 
         return ret
-
-
-
-    def GetCargoLinksForPlanet(self, planetID):
-        if planetID in self.cargoLinksByPlanetID:
-            return self.cargoLinksByPlanetID[planetID]
-        else:
-            if planetID in self.slimItems:
-                for item in self.slimItems.itervalues():
-                    if item.typeID == const.typePlanetaryCargoLink and item.planetID == planetID:
-                        if planetID not in self.cargoLinksByPlanetID:
-                            self.cargoLinksByPlanetID[planetID] = []
-                        self.cargoLinksByPlanetID[planetID].append(item.itemID)
-
-                if planetID in self.cargoLinksByPlanetID and len(self.cargoLinksByPlanetID[planetID]) > 0:
-                    return self.cargoLinksByPlanetID[planetID]
-                else:
-                    return []
-            self.broker.LogWarn('GetCargoLinksForPlanet called for remote solarsystem, going to the server...')
-            cargoLinkIDs = list(self.remoteBallpark.GetCargoLinksForPlanet(planetID))
-            if cargoLinkIDs:
-                self.cargoLinksByPlanetID[planetID] = cargoLinkIDs
-                return cargoLinkIDs
-            return []
 
 
 
@@ -1078,7 +1083,7 @@ class Park(bluepy.WrapBlueClass('destiny.Ballpark')):
                             if funcName in self.scatterEvents:
                                 sm.ScatterEvent('OnBallparkCall', funcName, args)
                     except Exception as e:
-                        self.broker.LogError('Something potentially bad happened with', funcName, args)
+                        log.LogException('Something potentially bad happened with %s' % funcName)
                         sys.exc_clear()
                         continue
 
@@ -1120,17 +1125,18 @@ class Park(bluepy.WrapBlueClass('destiny.Ballpark')):
                     allyTickersToPrime.append(slimItem.allianceID)
                 if not (slimItem.categoryID == const.categoryAsteroid or slimItem.groupID == const.groupHarvestableCloud):
                     cfg.evelocations.Hint(slimItem.itemID, [slimItem.itemID,
-                     ball.name,
+                     slimItem.name,
                      ball.x,
                      ball.y,
-                     ball.z])
+                     ball.z,
+                     slimItem.nameID])
 
         self.broker.ballQueue.non_blocking_put((ownersToPrime,
          tickersToPrime,
          allyTickersToPrime,
          stuffToAdd,
          None))
-        t = blue.os.GetTime()
+        t = blue.os.GetSimTime()
         for (ballID, damage,) in damageDict.iteritems():
             self.damageState[ballID] = (damage, t)
 
@@ -1146,7 +1152,7 @@ class Park(bluepy.WrapBlueClass('destiny.Ballpark')):
         ownersToPrime = []
         tickersToPrime = []
         allyTickersToPrime = []
-        damageTime = blue.os.GetTime()
+        damageTime = blue.os.GetSimTime()
         for data in extraBallData:
             if type(data) is tuple:
                 (slimItemDict, damageState,) = data
@@ -1172,10 +1178,11 @@ class Park(bluepy.WrapBlueClass('destiny.Ballpark')):
                     allyTickersToPrime.append(slimItem.allianceID)
                 if not (slimItem.categoryID == const.categoryAsteroid or slimItem.groupID == const.groupHarvestableCloud):
                     cfg.evelocations.Hint(slimItem.itemID, [slimItem.itemID,
-                     ball.name,
+                     slimItem.name,
                      ball.x,
                      ball.y,
-                     ball.z])
+                     ball.z,
+                     slimItem.nameID])
 
         self.broker.ballQueue.non_blocking_put((ownersToPrime,
          tickersToPrime,
@@ -1341,7 +1348,7 @@ class Park(bluepy.WrapBlueClass('destiny.Ballpark')):
             else:
                 self.broker.LogInfo('OnDamageStateChange')
         shield = damageState[0]
-        self.damageState[shipID] = (damageState, blue.os.GetTime())
+        self.damageState[shipID] = (damageState, blue.os.GetSimTime())
         sm.ScatterEvent('OnDamageStateChange', shipID, self.GetDamageState(shipID))
 
 
@@ -1349,7 +1356,7 @@ class Park(bluepy.WrapBlueClass('destiny.Ballpark')):
     def OnFleetDamageStateChange(self, shipID, damageState):
         if self.broker.logInfo:
             self.broker.LogInfo('OnFleetDamageStateChange', shipID, damageState)
-        self.damageState[shipID] = (damageState, blue.os.GetTime())
+        self.damageState[shipID] = (damageState, blue.os.GetSimTime())
         sm.ScatterEvent('OnFleetDamageStateChange', shipID, self.GetDamageState(shipID))
 
 

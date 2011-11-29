@@ -9,6 +9,7 @@ import uiutil
 import uicls
 import weakref
 import stackless
+import localization
 SCROLLMARGIN = 0
 MINCOLUMNWIDTH = 24
 VERSION = uiconst.SCROLLVERSION
@@ -243,7 +244,7 @@ class ScrollCore(uicls.Container):
     def ShowHint(self, hint = None):
         if self.sr.hint is None and hint:
             clipperWidth = self.GetContentWidth()
-            self.sr.hint = uicls.Label(parent=self.sr.clipper, align=uiconst.TOPLEFT, left=16, top=32, width=clipperWidth - 32, text=hint, fontsize=20, linespace=20, uppercase=True, letterspace=1)
+            self.sr.hint = uicls.Label(parent=self.sr.clipper, align=uiconst.TOPLEFT, left=16, top=32, width=clipperWidth - 32, text=hint, fontsize=20, uppercase=True, letterspace=1)
         elif self.sr.hint is not None and hint:
             self.sr.hint.text = hint
             self.sr.hint.state = uiconst.UI_DISABLED
@@ -377,6 +378,14 @@ class ScrollCore(uicls.Container):
     def _DeselectNode(self, node):
         node.selected = 0
         self.UpdateSelection(node)
+
+
+
+    def SelectNodes(self, nodeList):
+        self.DeselectAll()
+        for node in nodeList:
+            self._SelectNode(node)
+
 
 
 
@@ -561,6 +570,7 @@ class ScrollCore(uicls.Container):
 
     def GetSortValue(self, by, node, idx = None):
         ret = self._GetSortValue(by, node, idx)
+        ret = uiutil.StripTags(ret, stripOnly=['localized'])
         Deco = node.get('DecoSortValue', lambda x: x)
         return Deco(ret)
 
@@ -577,7 +587,7 @@ class ScrollCore(uicls.Container):
                 sys.exc_clear()
             return val
         if idx is not None:
-            strings = (node.get('label', '') or node.get('text', '')).split('<t>')
+            strings = self.GetStringFromNode(node).split('<t>')
             if len(strings) > idx:
                 value = strings[idx].lower()
                 try:
@@ -604,6 +614,11 @@ class ScrollCore(uicls.Container):
 
 
 
+    def GetContentContainer(self):
+        return self.sr.content
+
+
+
     def GetColumns(self):
         if self.sr.id and (self.smartSort or self.allowFilterColumns):
             if not self.sr.headers:
@@ -623,10 +638,10 @@ class ScrollCore(uicls.Container):
     def GetHeaderMenu(self, label):
         m = []
         if self.smartSort:
-            m += [(mls.UI_CMD_MAKEPRIMARY, self.MakePrimary, (label,))]
+            m += [(localization.GetByLabel('/Carbon/UI/Commands/CmdMakePrimary'), self.MakePrimary, (label,))]
         if self.smartSort or self.allowFilterColumns:
             if len(self.GetColumns()) > 1:
-                m += [('%s %s' % (mls.UI_GENERIC_HIDE, label), self.HideColumn, (label,))]
+                m += [(localization.GetByLabel('/Carbon/UI/Common/Hide', label=label), self.HideColumn, (label,))]
             m += self.GetShowColumnMenu()
         return m
 
@@ -636,7 +651,7 @@ class ScrollCore(uicls.Container):
         m = []
         for label in self.sr.headers:
             if label not in self.GetColumns():
-                m.append(('%s %s' % (mls.UI_GENERIC_SHOW, label), self.ShowColumn, (label,)))
+                m.append((localization.GetByLabel('/Carbon/UI/Common/Show', label=label), self.ShowColumn, (label,)))
 
         if m:
             m.insert(0, None)
@@ -773,7 +788,7 @@ class ScrollCore(uicls.Container):
             if groupIndex is None and node.isSub:
                 continue
             val = self.GetSortValue(columnName, node, columnIndex)
-            val = (val, node.get('label', '').lower() or node.get('text', '').lower())
+            val = (val, self.GetStringFromNode(node).lower())
             if issubclass(node.decoClass, uicls.SE_ListGroupCore):
                 rootSortList_Groups.append((val, node))
             else:
@@ -800,6 +815,12 @@ class ScrollCore(uicls.Container):
                 self.SortAsRoot(subNodes, endOrder, columnName, columnIndex, reversedSorting, groupIndex=groupIdx)
 
         return nodes
+
+
+
+    def GetStringFromNode(self, node):
+        label_or_text = node.get('label', '') or node.get('text', '')
+        return uiutil.GetAsUnicode(label_or_text)
 
 
 
@@ -1026,7 +1047,7 @@ class ScrollCore(uicls.Container):
                 shift = 0
                 strengir = []
                 for node in self.sr.nodes:
-                    tabs = (node.get('label', '') or node.get('text', '')).split('<t>')
+                    tabs = self.GetStringFromNode(node).split('<t>')
                     if len(tabs) <= idx:
                         continue
                     if node.panel and node.panel.sr.label:
@@ -1055,6 +1076,7 @@ class ScrollCore(uicls.Container):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def ApplyTabstopsToNode(self, node, fromWhere = ''):
         if self.sr.ignoreTabTrimming or not self.GetColumns():
             return 
@@ -1073,14 +1095,15 @@ class ScrollCore(uicls.Container):
             label = node.panel.sr.label
             subTract = label.left
             if isinstance(label, uicls.LabelCore):
-                newtext = node.label or node.text
-                if getattr(label, 'tabs', None) != tabStops or label.xShift != -subTract:
+                newtext = self.GetStringFromNode(node)
+                if newtext and (getattr(label, 'tabs', None) != tabStops or label.xShift != -subTract) and newtext.find('<t>') != -1:
                     label.xShift = -subTract
                     label.tabs = tabStops
                     label.text = newtext
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def UpdateTabStops(self, fromWhere = None, updatePosition = True):
         headers = self.GetColumns()
         if self.debug:
@@ -1097,8 +1120,8 @@ class ScrollCore(uicls.Container):
         letterspace = 0
         shift = 0
         for node in self.sr.nodes:
-            t = node.get('label', '') or node.get('text', '')
-            if not t:
+            t = self.GetStringFromNode(node)
+            if not t or t.find('<t>') == -1:
                 continue
             if node.panel and node.panel.sr.label:
                 label = node.panel.sr.label
@@ -1144,11 +1167,16 @@ class ScrollCore(uicls.Container):
                 if not self._loading:
                     self.OnColumnChanged(tabstops)
         if updatePosition:
+            for node in self.sr.nodes:
+                if node.tabs != tabstops:
+                    self.ApplyTabstopsToNode(node, 'UpdateTabStops')
+
             self.UpdatePositionThreaded('UpdateTabStops')
         return tabstops
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def AddNode(self, idx, node, isSub = 0, initing = False):
         if self.debug:
             log.LogInfo('vscroll', 'AddNode', idx)
@@ -1170,6 +1198,7 @@ class ScrollCore(uicls.Container):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def PrepareSubContent(self, node, initing = False, threadedUpdate = True):
         if node.id:
             if node.get('subNodes', []):
@@ -1180,51 +1209,13 @@ class ScrollCore(uicls.Container):
             if node.Get('GetSubContent', None) is not None and uicore.registry.GetListGroupOpenState(node.id, default=node.get('openByDefault', False)):
                 subcontent = node.GetSubContent(node)
                 if not node.Get('hideNoItem', False) and not len(subcontent):
-                    noItemText = node.get('noItemText', mls.UI_GENERIC_NOITEM)
+                    noItemText = node.get('noItemText', localization.GetByLabel('/Carbon/UI/Controls/Common/NoItem'))
                     subcontent.append(self.GetNoItemNode(text=noItemText, sublevel=node.get('sublevel', 0) + 1))
                 if not self.destroyed:
                     self.AddNodes(node.idx + 1, subcontent, node, initing=initing, threadedUpdate=threadedUpdate)
                     node.subNodes = subcontent
                     node.open = 1
                     return subcontent
-
-
-
-    def RemoveNodesRaw(self, nodes):
-        wnd = uiutil.GetWindowAbove(self)
-        if wnd and not wnd.destroyed and hasattr(wnd, 'ShowLoad'):
-            wnd.ShowLoad()
-        for node in nodes:
-            if node.panel:
-                node.panel.Close()
-            if node in self.sr.nodes:
-                self.sr.nodes.remove(node)
-
-        self.RefreshNodes()
-        self.UpdatePositionThreaded('RemoveNodesRaw')
-        if wnd and not wnd.destroyed and hasattr(wnd, 'HideLoad'):
-            wnd.HideLoad()
-
-
-
-    def InsertNodesRaw(self, fromIdx, nodesData):
-        wnd = uiutil.GetWindowAbove(self)
-        if wnd and not wnd.destroyed and hasattr(wnd, 'ShowLoad'):
-            wnd.ShowLoad()
-        if fromIdx == -1:
-            fromIdx = len(self.sr.nodes)
-        addedNodes = []
-        idx = fromIdx
-        for data in nodesData:
-            newnode = self.AddNode(idx, data)
-            addedNodes.append(newnode)
-            idx += 1
-
-        self.RefreshNodes()
-        self.UpdatePositionThreaded('InsertNodesRaw')
-        if wnd and not wnd.destroyed and hasattr(wnd, 'HideLoad'):
-            wnd.HideLoad()
-        return addedNodes
 
 
 
@@ -1238,7 +1229,7 @@ class ScrollCore(uicls.Container):
     def RefreshNodes(self, fromWhere = None):
         if self.destroyed:
             return 
-        (clipperWidth, clipperHeight,) = (self.sr.clipper.displayWidth, self.sr.clipper.displayHeight)
+        (clipperWidth, clipperHeight,) = self.sr.clipper.GetCurrentAbsoluteSize()
         if not clipperWidth or not clipperHeight:
             (clipperWidth, clipperHeight,) = self.sr.clipper.GetAbsoluteSize()
         fromTop = 0
@@ -1279,6 +1270,7 @@ class ScrollCore(uicls.Container):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def AddNodes(self, fromIdx, nodesData, parentNode = None, ignoreSort = 0, initing = False, threadedUpdate = True):
         if self.debug:
             log.LogInfo('vscroll', 'AddNodes start')
@@ -1312,6 +1304,7 @@ class ScrollCore(uicls.Container):
             else:
                 self.RefreshNodes()
                 self.UpdatePosition(fromWhere='AddNodes')
+        self.UpdateTabStops('AddNodes', updatePosition=False)
         if wnd and not wnd.destroyed and hasattr(wnd, 'HideLoad'):
             wnd.HideLoad()
         if self.debug:
@@ -1367,6 +1360,7 @@ class ScrollCore(uicls.Container):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def GetNodeHeight(self, node, clipperWidth):
         func = node.GetHeightFunction
         newStyle = getattr(node.decoClass, 'GetDynamicHeight', None)
@@ -1392,12 +1386,14 @@ class ScrollCore(uicls.Container):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def GetContentWidth(self):
         (w, h,) = self.GetContentParentSize()
         return w
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def GetContentHeight(self):
         return self._totalHeight
 
@@ -1507,7 +1503,7 @@ class ScrollCore(uicls.Container):
             return False
         if not self.sr.nodes:
             return True
-        if blue.os.TimeAsDouble() - self.lastCharReceivedAt < 1.0 and self.currChars is not None:
+        if blue.os.TimeAsDouble(blue.os.GetWallclockTime()) - self.lastCharReceivedAt < 1.0 and self.currChars is not None:
             self.currChars += unichr(enteredChar).lower()
         else:
             self.currChars = unichr(enteredChar).lower()
@@ -1517,7 +1513,7 @@ class ScrollCore(uicls.Container):
                 selected[0].panel.OnCharSpace(enteredChar)
                 return True
         uthread.new(self._OnCharThread, enteredChar)
-        self.lastCharReceivedAt = blue.os.TimeAsDouble()
+        self.lastCharReceivedAt = blue.os.TimeAsDouble(blue.os.GetWallclockTime())
         return True
 
 
@@ -1526,7 +1522,7 @@ class ScrollCore(uicls.Container):
         if self.destroyed:
             return 
         charsBefore = self.currChars
-        blue.pyos.synchro.Sleep(100)
+        blue.pyos.synchro.SleepWallclock(100)
         if self.destroyed:
             return 
         if self.currChars != charsBefore:
@@ -1843,7 +1839,8 @@ class ScrollHandleCore(uicls.Container):
 
     def ScrollToProportion(self, proportion):
         proportion = min(1.0, max(0.0, proportion))
-        self.top = int((self.parent.displayHeight - self.height) * proportion)
+        (w, h,) = self.parent.GetCurrentAbsoluteSize()
+        self.top = int((h - self.height) * proportion)
 
 
 
@@ -1872,7 +1869,8 @@ class ScrollHandleCore(uicls.Container):
             self._dragging = 0
             return 
         (y0, top0,) = self.startdragdata
-        range_ = self.parent.displayHeight - self.height
+        (w, h,) = self.parent.GetCurrentAbsoluteSize()
+        range_ = h - self.height
         self.top = max(0, min(range_, top0 - y0 + uicore.uilib.y))
         scrollTo = 0.0
         if range_ and self.top:
@@ -1959,7 +1957,7 @@ class ScrollBtnCore(uicls.Container):
                 self.children[0].top = [2, 0][(self.sr.direction < 0)]
             else:
                 break
-            blue.pyos.synchro.Sleep(100)
+            blue.pyos.synchro.SleepWallclock(100)
 
 
 
@@ -1988,7 +1986,7 @@ class ColumnHeaderCore(uicls.Container):
 
     def Prepare_Label_(self):
         textclipper = uicls.Container(name='textclipper', parent=self, align=uiconst.TOALL, padding=(6, 2, 6, 0), state=uiconst.UI_PICKCHILDREN, clipChildren=1)
-        self.sr.label = uicls.Label(text='', parent=textclipper, letterspace=self.letterspace, fontsize=self.headerFontSize, hilightable=1, state=uiconst.UI_DISABLED, uppercase=1, autowidth=1, autoheight=1)
+        self.sr.label = uicls.Label(text='', parent=textclipper, letterspace=self.letterspace, fontsize=self.headerFontSize, hilightable=1, state=uiconst.UI_DISABLED, uppercase=1)
 
 
 

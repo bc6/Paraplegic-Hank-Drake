@@ -12,6 +12,8 @@ import log
 import uicls
 import uiconst
 import service
+import localization
+import bluepy
 DEBUGMODE = False
 MAX_ICON_RANGE = 200
 
@@ -30,7 +32,6 @@ class WebTools(service.Service):
      'IconsRender': [],
      'NothingRender': []}
     __dependencies__ = ['settings']
-    __notifyevents__ = ['OnClientReady']
 
     def __init__(self):
         service.Service.__init__(self)
@@ -54,20 +55,19 @@ class WebTools(service.Service):
 
 
 
-    def OnClientReady(self, what):
-        self.events.add(what)
-
-
-
-    def WaitForEvent(self, *events):
+    def WaitForViewStateIn(self, *views):
         found = False
         while not found:
             blue.pyos.synchro.Yield()
-            for event in events:
-                if event in self.events:
-                    found = True
+            found = sm.GetService('viewState').IsViewActive(*views)
 
-
+        sm.GetService('loading').GoBlack()
+        s1 = sm.GetService('sceneManager').GetActiveScene1()
+        if s1 is not None:
+            s1.display = 0
+        s2 = sm.GetService('sceneManager').GetActiveScene2()
+        if s2 is not None:
+            s2.display = 0
 
 
 
@@ -129,7 +129,7 @@ class WebTools(service.Service):
             while photoSvc.byTypeID_IsRunning:
                 if i > 20:
                     print 'waited for photoservice for a long time... %s' % i
-                blue.pyos.synchro.Sleep(50)
+                blue.pyos.synchro.SleepWallclock(50)
                 i += 1
 
             desktop.UpdateAlignmentAsRoot()
@@ -199,26 +199,19 @@ class WebTools(service.Service):
             func = getattr(self, '%sRender' % rv.routine.capitalize(), None)
             if func:
                 self.GoLogin(rv.username, rv.password)
-                self.WaitForEvent('login')
+                self.WaitForViewStateIn('charsel')
                 self.GoCharsel()
-                self.WaitForEvent('worldspace', 'inflight')
+                self.WaitForViewStateIn('station', 'hangar', 'inflight')
                 self.GoRoutine(rv.routine, func)
 
 
 
     def GoLogin(self, username, password):
-        sm.GetService('loading').GoBlack()
-        s1 = sm.GetService('sceneManager').GetActiveScene1()
-        if s1 is not None:
-            s1.display = 0
-        s2 = sm.GetService('sceneManager').GetActiveScene2()
-        if s2 is not None:
-            s2.display = 0
         sm.GetService('overviewPresetSvc')
-        sm.GetService('gameui').OpenExclusive('login')
+        sm.GetService('viewState').ActivateView('login')
         user = username
         pwd = util.PasswordString(password)
-        sm.GetService('loading').ProgressWnd(mls.UI_LOGIN_LOGGINGIN, mls.UI_LOGIN_CONNECTINGCLUSTER, 1, 100)
+        sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/Login/LoggingIn'), localization.GetByLabel('UI/Login/ConnectingToCluster'), 1, 100)
         blue.pyos.synchro.Yield()
         eve.Message('OnConnecting')
         blue.pyos.synchro.Yield()
@@ -241,6 +234,7 @@ class WebTools(service.Service):
         blue.pyos.synchro.Yield()
         blue.pyos.synchro.Yield()
         blue.pyos.synchro.Yield()
+        sm.GetService('viewState').ActivateView('charsel')
 
 
 
@@ -281,7 +275,7 @@ class WebTools(service.Service):
 
     def GenericQuit(self):
         self.settings.SaveSettings()
-        blue.pyos.Quit('User requesting close')
+        bluepy.Terminate('User requesting close')
 
 
 
@@ -374,10 +368,8 @@ class IconRoutines():
         file = blue.ResFile()
         if not file.Open(fullpath):
             if categoryID == const.categoryPlanetaryInteraction:
-                if group.id not in (const.groupPlanetaryLinks, const.groupPlanetaryCustomsOffices):
+                if group.id not in (const.groupPlanetaryLinks,):
                     sm.GetService('photo').GetPinPhoto(typeID, typeinfo=typeinfo, size=iconsize)
-                elif group.id == const.groupPlanetaryCustomsOffices:
-                    sm.GetService('photo').GetPhoto(typeID, typeinfo, size=iconsize)
                 else:
                     return 
             elif categoryID == const.categoryModule and group.groupID in const.turretModuleGroups:
@@ -391,7 +383,7 @@ class IconRoutines():
         if file:
             del file
         sur = dev.CreateOffscreenPlainSurface(iconsize, iconsize, trinity.TRIFMT_A8R8G8B8, trinity.TRIPOOL_SYSTEMMEM)
-        blue.pyos.synchro.Sleep(100)
+        blue.pyos.synchro.SleepWallclock(100)
         try:
             sur.LoadSurfaceFromFile(util.ResFile(fullpath))
         except:
@@ -412,7 +404,7 @@ class IconRoutines():
          (92, 29988),
          (93, 29990))
         outputRoot = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '/EVE/capture/Screenshots/Renders/%d.png'
-        resRoot = blue.os.respath + '/UI/Texture/Icons/%d_256_1.png'
+        resRoot = blue.os.ResolvePath(u'res:/') + '/UI/Texture/Icons/%d_256_1.png'
         for (iconNum, typeID,) in tech3IconMap:
             try:
                 shutil.copy(resRoot % iconNum, outputRoot % typeID)
@@ -434,14 +426,14 @@ class IconRoutines():
         dr.DeleteCachedFile(None, 'Gids', 1)
         if icons:
             outputRoot = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '/EVE/capture/Screenshots/Icons/items'
-            resRoot = blue.os.respath + 'UI/Texture/Icons'
+            resRoot = blue.os.ResolvePath(u'res:/') + 'UI/Texture/Icons'
             try:
                 shutil.copytree(resRoot, outputRoot)
             except Exception as e:
                 Msg('Error copying icons folder: %s' % e)
         if corporation:
             outputRoot = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '/EVE/capture/Screenshots/Icons/corporations'
-            resRoot = blue.os.respath + 'UI/Texture/Corps'
+            resRoot = blue.os.ResolvePath(u'res:/') + 'UI/Texture/Corps'
             try:
                 shutil.copytree(resRoot, outputRoot)
             except Exception as e:
@@ -540,7 +532,7 @@ class DirectoryRoutines():
 
 
     def DeleteCachedFile(self, itemID, folder = 'Portraits', flush = 0):
-        resPath = blue.os.cachepath + 'Pictures/%s/' % folder
+        resPath = blue.os.ResolvePath(u'cache:/Pictures/%s/' % folder)
         for (rRoot, dirs, files,) in os.walk(resPath):
             for rFile in files:
                 rFile = str(rFile)

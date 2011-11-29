@@ -9,6 +9,7 @@ import listentry
 import trinity
 import uicls
 import uiconst
+import localization
 from pychartdir import *
 
 class PriceHistoryParent(uicls.Container):
@@ -54,18 +55,18 @@ class PriceHistory(uicls.Container):
         self.optionsinited = 0
         self.sr.updateTimer = None
         setLicenseCode('DIST-0000-05de-f7ec-ffbeURDT-232Q-M544-C2XM-BD6E-C452')
-        self.months = [mls.UI_GENERIC_JANUARYSHORT,
-         mls.UI_GENERIC_FEBRUARYSHORT,
-         mls.UI_GENERIC_MARCHSHORT,
-         mls.UI_GENERIC_APRILSHORT,
-         mls.UI_GENERIC_MAYSHORT,
-         mls.UI_GENERIC_JUNESHORT,
-         mls.UI_GENERIC_JULYSHORT,
-         mls.UI_GENERIC_AUGUSTSHORT,
-         mls.UI_GENERIC_SEPTEMBERSHORT,
-         mls.UI_GENERIC_OCTOBERSHORT,
-         mls.UI_GENERIC_NOVEMBERSHORT,
-         mls.UI_GENERIC_DECEMBERSHORT]
+        self.months = [GetStrippedLabel('/Carbon/UI/Common/Months/JanuaryShort'),
+         GetStrippedLabel('/Carbon/UI/Common/Months/FebruaryShort'),
+         GetStrippedLabel('/Carbon/UI/Common/Months/MarchShort'),
+         GetStrippedLabel('/Carbon/UI/Common/Months/AprilShort'),
+         GetStrippedLabel('/Carbon/UI/Common/Months/MayShort'),
+         GetStrippedLabel('/Carbon/UI/Common/Months/JuneShort'),
+         GetStrippedLabel('/Carbon/UI/Common/Months/JulyShort'),
+         GetStrippedLabel('/Carbon/UI/Common/Months/AugustShort'),
+         GetStrippedLabel('/Carbon/UI/Common/Months/SeptemberShort'),
+         GetStrippedLabel('/Carbon/UI/Common/Months/OctoberShort'),
+         GetStrippedLabel('/Carbon/UI/Common/Months/NovemberShort'),
+         GetStrippedLabel('/Carbon/UI/Common/Months/DecemberShort')]
 
 
 
@@ -85,24 +86,32 @@ class PriceHistory(uicls.Container):
 
     def InitOptions(self):
         uix.Flush(self.sr.options)
-        idx = settings.user.ui.Get('pricehistorytype', 0)
-        btn = uicls.Button(parent=self.sr.options, label=[mls.UI_CMD_SHOWTABLE, mls.UI_CMD_SHOWGRAPH][idx], align=uiconst.TOPLEFT, pos=(0, 16, 0, 0), func=self.ToggleView, args='self', fixedwidth=100)
+        showingPriceHistoryType = settings.user.ui.Get('pricehistorytype', 0)
+        if showingPriceHistoryType:
+            buttonLabel = localization.GetByLabel('UI/PriceHistory/ShowGraph')
+        else:
+            buttonLabel = localization.GetByLabel('UI/PriceHistory/ShowTable')
+        btn = uicls.Button(parent=self.sr.options, label=buttonLabel, align=uiconst.TOPLEFT, pos=(0, 16, 0, 0), func=self.ToggleView, args='self', fixedwidth=100)
         pos = btn.width + btn.left + 10
-        timeOptions = [['5 %s' % mls.UI_GENERIC_DAYS, 5],
-         ['10 %s' % mls.UI_GENERIC_DAYS, 10],
-         [mls.UI_GENERIC_MONTH, 30],
-         ['3 %s' % mls.UI_GENERIC_MONTHS, 90],
-         ['6 %s' % mls.UI_GENERIC_MONTHS, 180],
-         [mls.UI_GENERIC_YEAR, 365]]
-        timeCombo = uicls.Combo(label=mls.UI_GENERIC_TIME, parent=self.sr.options, options=timeOptions, name='pricehistorytime', select=settings.user.ui.Get('pricehistorytime', 90), callback=self.ChangeOption, pos=(pos,
+        timeOptions = [[localization.GetByLabel('/Carbon/UI/Common/WrittenDateTimeQuantity/Day', days=5), 5],
+         [localization.GetByLabel('/Carbon/UI/Common/WrittenDateTimeQuantity/Day', days=10), 10],
+         [localization.GetByLabel('UI/Common/DateWords/Month'), 30],
+         [localization.GetByLabel('/Carbon/UI/Common/WrittenDateTimeQuantity/Month', months=3), 90],
+         [localization.GetByLabel('/Carbon/UI/Common/WrittenDateTimeQuantity/Month', months=6), 180],
+         [localization.GetByLabel('UI/Common/DateWords/Year'), 365]]
+        timeLabel = localization.GetByLabel('/Carbon/UI/Common/Time')
+        timeCombo = uicls.Combo(label=timeLabel, parent=self.sr.options, options=timeOptions, name='pricehistorytime', select=settings.user.ui.Get('pricehistorytime', 90), callback=self.ChangeOption, pos=(pos,
          16,
          0,
          0))
         pos += timeCombo.width + 10
         graphTipCont = uicls.Container(name='graphTipCont', parent=self.sr.options, align=uiconst.BOTTOMLEFT, height=20, width=200, left=pos, top=0)
-        self.graphTip = uicls.Label(text=mls.UI_MARKET_PRICEHISTORYCHARTHINT, parent=graphTipCont, left=0, top=0, align=uiconst.TOALL, fontsize=12, state=uiconst.UI_DISABLED, idx=0, autowidth=False, autoheight=False)
+        self.graphTip = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Market/PriceHistory/RightClickHintForChart'), parent=graphTipCont, align=uiconst.TOTOP, state=uiconst.UI_DISABLED, idx=0)
         graphTipCont.height = self.graphTip.textheight + 10
-        self.graphTip.state = [uiconst.UI_NORMAL, uiconst.UI_HIDDEN][settings.user.ui.Get('pricehistorytype', 0)]
+        if showingPriceHistoryType:
+            self.graphTip.state = uiconst.UI_HIDDEN
+        else:
+            self.graphTip.state = uiconst.UI_NORMAL
         self.optionsinited = 1
 
 
@@ -117,9 +126,17 @@ class PriceHistory(uicls.Container):
 
     def ToggleView(self, btn, *args):
         settings.user.ui.Set('pricehistorytype', not settings.user.ui.Get('pricehistorytype', 0))
-        btn.SetLabel([mls.UI_CMD_SHOWTABLE, mls.UI_CMD_SHOWGRAPH][settings.user.ui.Get('pricehistorytype', 0)])
+        showingPriceHistoryType = settings.user.ui.Get('pricehistorytype', 0)
+        if showingPriceHistoryType:
+            btnLabel = localization.GetByLabel('UI/PriceHistory/ShowGraph')
+        else:
+            btnLabel = localization.GetByLabel('UI/PriceHistory/ShowTable')
+        btn.SetLabel(btnLabel)
         btn.width = 100
-        self.graphTip.state = [uiconst.UI_NORMAL, uiconst.UI_HIDDEN][settings.user.ui.Get('pricehistorytype', 0)]
+        if showingPriceHistoryType:
+            self.graphTip.state = uiconst.UI_HIDDEN
+        else:
+            self.graphTip.state = uiconst.UI_NORMAL
         if self.typerecord:
             uthread.new(self.Render, self.typerecord)
 
@@ -167,24 +184,23 @@ class PriceHistory(uicls.Container):
              util.FmtCurrency(rec[1], currency=None),
              util.FmtCurrency(rec[2], currency=None),
              util.FmtCurrency(rec[3], currency=None))
-            data = {'tabs': [],
-             'text': text,
-             'sort_%s' % mls.UI_GENERIC_QUANTITY: rec[4],
-             'sort_%s' % mls.UI_GENERIC_ORDERSCAP: rec[5],
-             'sort_%s' % mls.UI_GENERIC_LOW: rec[1],
-             'sort_%s' % mls.UI_GENERIC_HIGH: rec[2],
-             'sort_%s' % mls.UI_GENERIC_AVERAGESHORT: rec[3],
-             'sort_%s' % mls.UI_GENERIC_DATE: rec[0]}
-            data2 = util.KeyVal()
-            data2.label = text
-            scrolllist.append(listentry.Get('Generic', data=data2))
+            data = util.KeyVal()
+            data.label = text
+            data.Set('sort_%s' % localization.GetByLabel('UI/Market/PriceHistory/Quantity'), rec[4])
+            data.Set('sort_%s' % localization.GetByLabel('UI/Market/PriceHistory'), rec[5])
+            data.Set('sort_%s' % localization.GetByLabel('UI/Market/PriceHistory/LowestPrice'), rec[1])
+            data.Set('sort_%s' % localization.GetByLabel('UI/Market/PriceHistory/HighestPrice'), rec[2])
+            data.Set('sort_%s' % localization.GetByLabel('UI/Market/PriceHistory/AveragePrice'), rec[3])
+            data.Set('sort_%s' % localization.GetByLabel('UI/Common/Date'), rec[0])
+            scrolllist.append(listentry.Get('Generic', data=data))
 
-        scroll.Load(fixedEntryHeight=18, contentList=scrolllist, headers=[mls.UI_GENERIC_DATE,
-         mls.UI_GENERIC_ORDERSCAP,
-         mls.UI_GENERIC_QUANTITY,
-         mls.UI_GENERIC_LOW,
-         mls.UI_GENERIC_HIGH,
-         mls.UI_GENERIC_AVERAGESHORT])
+        headers = [localization.GetByLabel('UI/Common/Date'),
+         localization.GetByLabel('UI/Market/PriceHistory'),
+         localization.GetByLabel('UI/Market/PriceHistory/Quantity'),
+         localization.GetByLabel('UI/Market/PriceHistory/LowestPrice'),
+         localization.GetByLabel('UI/Market/PriceHistory/HighestPrice'),
+         localization.GetByLabel('UI/Market/PriceHistory/AveragePrice')]
+        scroll.Load(fixedEntryHeight=18, contentList=scrolllist, headers=headers)
 
 
 
@@ -223,8 +239,11 @@ class PriceHistory(uicls.Container):
         availableData = len(timeStamps)
         windowData = settings.user.ui.Get('pricehistorytime', 90)
         (fontFace, fontSize,) = self.GetLocale()
+        fontSize = int(fontSize * uicore.desktop.dpiScaling)
         trimData = availableData - windowData
         (graphWidth, graphHeight,) = self.GetSize()
+        graphWidth = int(graphWidth * uicore.desktop.dpiScaling)
+        graphHeight = int(graphHeight * uicore.desktop.dpiScaling)
         for i in range(len(timeStamps)):
             stamp = timeStamps[i]
             (year, month, wd, day, hour, min, sec, ms,) = util.GetTimeParts(stamp)
@@ -262,12 +281,12 @@ class PriceHistory(uicls.Container):
         c.setTransparentColor(-1)
         c.setAntiAlias(1, 1)
         if availableData == 0:
-            textBox = c.addText(20, graphHeight / 5, mls.UI_MARKET_NOHISTORICDATA, 'normal', 24)
+            textBox = c.addText(20, graphHeight / 5, localization.GetByLabel('UI/PriceHistory/NoDataAvailable'), 'normal', 24)
             return c.makeChart2(PNG)
         axis = c.yAxis()
         axis.setLabelStyle(fontFace, fontSize)
         axis.setAutoScale(0.1, 0.1, 0.3)
-        axis.setTickDensity(40, -1)
+        axis.setTickDensity(int(40 * uicore.desktop.dpiScaling), -1)
         axis = c.yAxis2()
         axis.setLabelFormat('{value|,}')
         axis.setLabelStyle(fontFace, fontSize)
@@ -280,8 +299,14 @@ class PriceHistory(uicls.Container):
             c.xAxis().setLabelStep(2)
         c.xAxis().setLabelStyle(fontFace, fontSize)
         c.setXAxisOnTop()
-        c.setPlotArea(70, 20, priceWidth - 110, priceHeight - 40, 1711276032, -1, -1, 5592405)
-        legend = c.addLegend(105, 18, 0, fontFace, fontSize)
+        paLeft = int(70 * uicore.desktop.dpiScaling)
+        paTop = int(20 * uicore.desktop.dpiScaling)
+        paRight = int(110 * uicore.desktop.dpiScaling)
+        paBottom = int(40 * uicore.desktop.dpiScaling)
+        c.setPlotArea(paLeft, paTop, priceWidth - paRight, priceHeight - paBottom, 1711276032, -1, -1, 5592405)
+        legendLeft = int(105 * uicore.desktop.dpiScaling)
+        legendTop = int(18 * uicore.desktop.dpiScaling)
+        legend = c.addLegend(legendLeft, legendTop, 0, fontFace, fontSize)
         legend.setBackground(Transparent)
         legend.setWidth(priceWidth - 150)
         trimmedCloseData = ArrayMath(closeData).trim(trimData).result()
@@ -298,24 +323,30 @@ class PriceHistory(uicls.Container):
                 if settings.user.ui.Get('market_setting_movingavg5', 1):
                     avg5 = c.addLineLayer2()
                     lineColor = avg5.xZoneColor(actualData - 1, 16711680, c.dashLineColor(13647936, DashLine))
-                    avg5.addDataSet(ArrayMath(closeData + 5 * isExtrapolated * closeData[-1:]).movAvg(5).trim(trimData).result(), lineColor, mls.UI_MARKET_MOVINGAVG5)
+                    daysText = uiutil.StripTags(localization.GetByLabel('/Carbon/UI/Common/WrittenDateTimeQuantityShort/Day', value=5), stripOnly=['localized'])
+                    label = uiutil.StripTags(localization.GetByLabel('UI/PriceHistory/MovingAvg', numDays=daysText), stripOnly=['localized'])
+                    avg5.addDataSet(ArrayMath(closeData + 5 * isExtrapolated * closeData[-1:]).movAvg(5).trim(trimData).result(), lineColor, label)
                 if settings.user.ui.Get('market_setting_movingavg20', 1):
                     avg20 = c.addLineLayer2()
                     lineColor = avg20.xZoneColor(actualData - 1, 6750054, c.dashLineColor(4247616, DashLine))
-                    avg20.addDataSet(ArrayMath(closeData + 5 * isExtrapolated * closeData[-1:]).movAvg(20).trim(trimData).result(), lineColor, mls.UI_MARKET_MOVINGAVG20)
+                    daysText = uiutil.StripTags(localization.GetByLabel('/Carbon/UI/Common/WrittenDateTimeQuantityShort/Day', value=20), stripOnly=['localized'])
+                    label = uiutil.StripTags(localization.GetByLabel('UI/PriceHistory/MovingAvg', numDays=daysText), stripOnly=['localized'])
+                    avg20.addDataSet(ArrayMath(closeData + 5 * isExtrapolated * closeData[-1:]).movAvg(20).trim(trimData).result(), lineColor, label)
             else:
                 if settings.user.ui.Get('market_setting_movingavg5', 1):
-                    avg5 = c.addLineLayer(ArrayMath(closeData).movAvg(5).trim(trimData).result(), 16711680, mls.UI_MARKET_MOVINGAVG5)
+                    daysText = uiutil.StripTags(localization.GetByLabel('/Carbon/UI/Common/WrittenDateTimeQuantityShort/Day', value=5), stripOnly=['localized'])
+                    avg5 = c.addLineLayer(ArrayMath(closeData).movAvg(5).trim(trimData).result(), 16711680, uiutil.StripTags(localization.GetByLabel('UI/PriceHistory/MovingAvg', numDays=daysText), stripOnly=['localized']))
                 if settings.user.ui.Get('market_setting_movingavg20', 1):
-                    avg20 = c.addLineLayer(ArrayMath(closeData).movAvg(20).trim(trimData).result(), 6750054, mls.UI_MARKET_MOVINGAVG20)
+                    daysText = uiutil.StripTags(localization.GetByLabel('/Carbon/UI/Common/WrittenDateTimeQuantityShort/Day', value=20), stripOnly=['localized'])
+                    avg20 = c.addLineLayer(ArrayMath(closeData).movAvg(20).trim(trimData).result(), 6750054, uiutil.StripTags(localization.GetByLabel('UI/PriceHistory/MovingAvg', numDays=daysText), stripOnly=['localized']))
         if settings.user.ui.Get('market_setting_donchian', 1):
             upperBand = ArrayMath(highData).movMax(5).trim(trimData).result()
             lowerBand = ArrayMath(lowData).movMin(5).trim(trimData).result()
-            uLayer = c.addLineLayer(upperBand, LtoI(2868864614L), mls.UI_MARKET_DONCHIANCHANNEL)
+            uLayer = c.addLineLayer(upperBand, LtoI(2868864614L), GetStrippedLabel('UI/PriceHistory/DonchianChannel'))
             lLayer = c.addLineLayer(lowerBand, LtoI(2868864614L))
             c.addInterLineLayer(uLayer.getLine(), lLayer.getLine(), LtoI(3674170982L))
         if settings.user.ui.Get('market_setting_mediandayprice', 1):
-            lineLayer = c.addLineLayer(ArrayMath(closeData).trim(trimData).result(), Transparent, mls.UI_MARKET_MEDIANDAYPRICE)
+            lineLayer = c.addLineLayer(ArrayMath(closeData).trim(trimData).result(), Transparent, GetStrippedLabel('UI/PriceHistory/MedianDayPrice'))
             lineLayer.getDataSet(0).setDataSymbol(SquareSymbol, 5, fillColor=16776960, edgeColor=3355392)
         if settings.user.ui.Get('market_setting_volume', 1):
             barLayer = c.addBarLayer(ArrayMath(volData).trim(trimData).result(), 10092441)
@@ -328,13 +359,13 @@ class PriceHistory(uicls.Container):
         if val < 10000L:
             lf = '{value|2,.}'
         elif val < 1000000L:
-            lf = '{={value}/1000|2,.}%s' % mls.K_FOR_THOUSAND
+            lf = GetStrippedLabel('UI/Market/PriceHistory/YaxisFormattingThousand')
         elif val < 1000000000L:
-            lf = '{={value}/1000000|2,.}%s' % mls.M_FOR_MILLION
+            lf = GetStrippedLabel('UI/Market/PriceHistory/YaxisFormattingMillion')
         elif val < 1000000000000L:
-            lf = '{={value}/1000000000|2,.}%s' % mls.B_FOR_BILLION
+            lf = GetStrippedLabel('UI/Market/PriceHistory/YaxisFormattingBillion')
         else:
-            lf = '{={value}/1000000000000|2,.}%s' % mls.T_FOR_TRILLION
+            lf = GetStrippedLabel('UI/Market/PriceHistory/YaxisFormattingTrillion')
         c.yAxis().setLabelFormat(lf)
         c.layout()
         yAxis = c.yAxis2()
@@ -342,7 +373,8 @@ class PriceHistory(uicls.Container):
         if len(ticks) > 2:
             for i in range(3):
                 markValue = ticks[i]
-                mark = yAxis.addMark(markValue, Transparent, util.FmtAmt(markValue, fmt='ss', showFraction=1), fontFace, fontSize)
+                label = uiutil.StripTags(util.FmtAmt(markValue, fmt='ss', showFraction=1), stripOnly=['localized'])
+                mark = yAxis.addMark(markValue, Transparent, label, fontFace, fontSize)
                 mark.setMarkColor(Transparent, 16777215, 16777215)
 
         return c.makeChart2(PNG)
@@ -360,6 +392,8 @@ class PriceHistory(uicls.Container):
             self.RenderTable()
             return 
         (graphWidth, graphHeight,) = self.GetSize()
+        graphWidth = int(graphWidth * uicore.desktop.dpiScaling)
+        graphHeight = int(graphHeight * uicore.desktop.dpiScaling)
         if graphWidth < 2 or graphHeight < 2:
             return 
         self.rendering = 1
@@ -381,15 +415,22 @@ class PriceHistory(uicls.Container):
 
 
     def GetGraphMenu(self, *args):
-        PRICE_FILTERS = {'movingavg5': mls.UI_MARKET_MOVINGAVG5,
-         'movingavg20': mls.UI_MARKET_MOVINGAVG20,
-         'donchian': mls.UI_MARKET_DONCHIANCHANNEL,
-         'mediandayprice': mls.UI_MARKET_MEDIANDAYPRICE,
-         'minmax': mls.UI_MARKET_MINMAX,
-         'volume': mls.UI_GENERIC_VOLUME}
+        avg5 = localization.GetByLabel('/Carbon/UI/Common/WrittenDateTimeQuantityShort/Day', value=5)
+        avg20 = localization.GetByLabel('/Carbon/UI/Common/WrittenDateTimeQuantityShort/Day', value=20)
+        PRICE_FILTERS = {'movingavg5': (localization.GetByLabel('UI/Market/PriceHistory/ShowMovingAvg', numDays=avg5), localization.GetByLabel('UI/Market/PriceHistory/HideMovingAvg', numDays=avg5)),
+         'movingavg20': (localization.GetByLabel('UI/Market/PriceHistory/ShowMovingAvg', numDays=avg20), localization.GetByLabel('UI/Market/PriceHistory/HideMovingAvg', numDays=avg20)),
+         'donchian': (localization.GetByLabel('UI/Market/PriceHistory/ShowDonchianChannel'), localization.GetByLabel('UI/Market/PriceHistory/HideDonchianChannel')),
+         'mediandayprice': (localization.GetByLabel('UI/Market/PriceHistory/ShowMedianDayPrice'), localization.GetByLabel('UI/Market/PriceHistory/HideMedianDayPrice')),
+         'minmax': (localization.GetByLabel('UI/Market/PriceHistory/ShowMinMax'), localization.GetByLabel('UI/Market/PriceHistory/HideMinMax')),
+         'volume': (localization.GetByLabel('UI/Market/PriceHistory/ShowVolume'), localization.GetByLabel('UI/Market/PriceHistory/HideVolume'))}
         m = []
-        for (name, label,) in PRICE_FILTERS.iteritems():
-            m.append(('%s %s' % ([mls.UI_GENERIC_SHOW, mls.UI_GENERIC_HIDE][settings.user.ui.Get('market_setting_' + name, 1)], label), self.Toggle, (name,)))
+        for (name, labels,) in PRICE_FILTERS.iteritems():
+            showing = settings.user.ui.Get('market_setting_' + name, 1)
+            if showing:
+                string = labels[1]
+            else:
+                string = labels[0]
+            m.append((string, self.Toggle, (name,)))
 
         return m
 
@@ -411,7 +452,7 @@ class HistoryEntry(uicls.SE_BaseClassCore):
 
     def Startup(self, *etc):
         uicls.Line(parent=self, align=uiconst.TOBOTTOM)
-        self.sr.label = uicls.Label(text='', parent=self, left=6, top=2, width=1000, autowidth=False, fontsize=12, state=uiconst.UI_DISABLED, idx=0)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=self, left=6, top=2, width=1000, state=uiconst.UI_DISABLED, idx=0)
         self.state = uiconst.UI_NORMAL
 
 
@@ -421,6 +462,14 @@ class HistoryEntry(uicls.SE_BaseClassCore):
         data = node
         self.sr.label.text = data.text
 
+
+
+
+def GetStrippedLabel(path):
+    label = localization.GetByLabel(path)
+    if isinstance(label, basestring):
+        label = uiutil.StripTags(label, stripOnly=['localized'])
+    return label
 
 
 

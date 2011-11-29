@@ -1,6 +1,8 @@
 from service import Service
 import blue
+import bluepy
 import uthread
+import localization
 import log
 import const
 import service
@@ -10,6 +12,13 @@ import util
 import uiconst
 DEFAULTLONGWAITWARNINGSECS = 300
 LONGWAITWARNINGMETHODS = ['MachoBindObject', 'SelectCharacterID']
+LoginProgressLabels = {'loginprogress::authenticating': '/Carbon/UI/Login/Progress/Authenticating',
+ 'loginprogress::connecting': '/Carbon/UI/Login/Progress/Connecting',
+ 'loginprogress::done': '/Carbon/UI/Login/Progress/Done',
+ 'loginprogress::gettingbulkdata': '/Carbon/UI/Login/Progress/GettingBulkData',
+ 'loginprogress::lowlevelversioncheck': '/Carbon/UI/Login/Progress/LowLevelVersionCheck',
+ 'loginprogress::miscinitdata': '/Carbon/UI/Login/Progress/MiscInitData',
+ 'loginprogress::processingInitialDataDone': '/Carbon/UI/Login/Progress/ProcessingInitialDataDone'}
 
 class ClientShell:
     __guid__ = 'base.ClientShell'
@@ -48,7 +57,7 @@ class ConnectionService(Service):
      'ConnectToService': [],
      'Login': []}
     __dependencies__ = ['machoNet']
-    __notifyevents__ = ['ProcessLoginProgress']
+    __notifyevents__ = ['OnProcessLoginProgress', 'OnClientStageChanged']
 
     def __init__(self):
         Service.__init__(self)
@@ -65,7 +74,6 @@ class ConnectionService(Service):
     def Run(self, *args):
         Service.Run(self, *args)
         uthread.worker('ConnectionService::LongCallTimer', self._ConnectionService__LongCallTimer)
-        uthread.new(self.TryAutomaticLogin)
 
 
 
@@ -77,6 +85,7 @@ class ConnectionService(Service):
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def Connect(self, host, port, userid, password, ct):
         try:
             self.LogInfo('calling connect')
@@ -91,23 +100,27 @@ class ConnectionService(Service):
 
 
 
-    def ProcessLoginProgress(self, what, prefix = None, current = 1, total = 1, response = None):
-        if what not in cfg.messages:
-            text = "In ProcessLoginProgress, '%s' not found in messages" % what
-            log.LogTraceback(extraText=text, channel='_Mls.General', severity=log.LGERR)
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def OnProcessLoginProgress(self, what, prefix = None, current = 1, total = 1, response = None):
+        if what not in LoginProgressLabels.keys():
+            text = "Unexpected step in OnProcessLoginProgress, '%s'" % what
+            log.LogTraceback(extraText=text, severity=log.LGERR)
             return 
         self.processingBulkData = 0
-        msg = cfg.Format(what)
         useMorph = 1
+        args = {}
         if what == 'loginprogress::gettingbulkdata':
             self.processingBulkData = total
-            msg += ' ' + str(current) + '/' + str(total)
+            args['current'] = current
+            args['total'] = total
             useMorph = 0
-        uthread.new(sm.GetService('loading').ProgressWnd, mls.UI_LOGIN_LOGGINGIN, msg, current, total, useMorph=useMorph, autoTick=useMorph)
+        msg = localization.GetByLabel(LoginProgressLabels[what], **args)
+        uthread.new(sm.GetService('loading').ProgressWnd, localization.GetByLabel('/Carbon/UI/Login/LoggingIn'), msg, current, total, useMorph=useMorph, autoTick=useMorph)
         blue.pyos.synchro.Yield()
 
 
 
+    @bluepy.CCP_STATS_ZONE_METHOD
     def Login(self, loginparam, selchar = None):
         if self.reentrancyGaurd:
             return 
@@ -159,11 +172,11 @@ class ConnectionService(Service):
     def SynchronizeClock(self, firstTime = 1, maxIterations = 5):
         log.general.Log('connection.synchronizeClock called', log.LGINFO)
         if not firstTime:
-            if self.clocklastsynchronized is not None and blue.os.GetTime() - self.clocklastsynchronized < const.HOUR:
+            if self.clocklastsynchronized is not None and blue.os.GetWallclockTime() - self.clocklastsynchronized < const.HOUR:
                 return 
         if self.clocksynchronizing:
             return 
-        self.clocklastsynchronized = blue.os.GetTime()
+        self.clocklastsynchronized = blue.os.GetWallclockTime()
         self.clocksynchronizing = 1
         try:
             diff = 0
@@ -171,9 +184,9 @@ class ConnectionService(Service):
             lastElaps = None
             log.general.Log('***   ***   ***   ***   Clock Synchronizing loop initiating      ***   ***   ***   ***', log.LGINFO)
             for i in range(maxIterations):
-                myTime = blue.os.GetTime(1)
+                myTime = blue.os.GetWallclockTimeNow()
                 serverTime = sm.ProxySvc('machoNet').GetTime()
-                now = blue.os.GetTime(1)
+                now = blue.os.GetWallclockTimeNow()
                 elaps = now - myTime
                 serverTime += elaps / 2
                 diff = float(now - serverTime) / float(const.SEC)
@@ -227,28 +240,34 @@ class ConnectionService(Service):
             if sm.GetService('machoNet').GetClientConfigVals().get('disableLongCallWarning'):
                 self.LogWarn('__LongCallTimer should not be running! Exiting.')
                 return 
-            blue.pyos.synchro.Sleep(sleepSecs * 1000)
+            blue.pyos.synchro.SleepWallclock(sleepSecs * 1000)
             try:
                 maxDiff = 0
                 for ct in base.outstandingCallTimers:
                     method = ct[0]
                     t = ct[1]
-                    diff = blue.os.GetTime(1) - t
+                    diff = blue.os.GetWallclockTimeNow() - t
                     if diff > maxDiff and ShouldWarn(method):
                         maxDiff = diff
                     if diff > 60 * const.SEC:
                         self.LogWarn('Have waited', util.FmtTime(diff), 'for', method)
 
-                if maxDiff > longWarningSecs * const.SEC and self.lastLongCallTimestamp < blue.os.GetTime(1) - longWarningSecs * const.SEC:
+                if maxDiff > longWarningSecs * const.SEC and self.lastLongCallTimestamp < blue.os.GetWallclockTimeNow() - longWarningSecs * const.SEC:
                     modalWnd = uicore.registry.GetModalWindow()
                     if modalWnd:
                         modalWnd.SetModalResult(uiconst.ID_CLOSE)
                     uthread.new(uicore.Message, 'LongWaitForRemoteCall', {'time': int(maxDiff / const.MIN)})
-                    self.lastLongCallTimestamp = blue.os.GetTime(1)
+                    self.lastLongCallTimestamp = blue.os.GetWallclockTimeNow()
             except:
                 log.LogException()
                 sys.exc_clear()
 
+
+
+
+    def OnClientStageChanged(self, state):
+        if state == 'login':
+            self.TryAutomaticLogin()
 
 
 
