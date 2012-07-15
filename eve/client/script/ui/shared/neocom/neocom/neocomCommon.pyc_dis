@@ -1,0 +1,23 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/shared/neocom/neocom/neocomCommon.py
+import util
+import math
+import blue
+ICONPATH_DEFAULT = 'ui_105_64_45'
+ICONPATH_GROUP = 'ui_79_64_10'
+ICONPATH_CHAT = 'ui_9_64_2'
+ICONPATH_UNDOCK = 'ui_9_64_6'
+ICONPATH_BOOKMARKS = 'ui_9_64_4'
+BTNTYPE_CMD = 1
+BTNTYPE_WINDOW = 2
+BTNTYPE_GROUP = 3
+BTNTYPE_INVENTORY = 4
+BTNTYPE_CHAT = 10
+BTNTYPE_BOOKMARKS = 11
+BTNTYPE_CHATCHANNEL = 12
+BTNTYPE_BOOKMARK = 13
+PANEL_SHOWABOVE = 1
+PANEL_SHOWONSIDE = 2
+FIXED_PARENT_BTNTYPES = [BTNTYPE_CHAT, BTNTYPE_WINDOW, BTNTYPE_INVENTORY]
+COLOR_GROUPDEFAULT = (0.5, 1.0, 1.0, 1.0)
+BLINK_INTERVAL = 1000
+exports = util.AutoExports('neocom', locals())

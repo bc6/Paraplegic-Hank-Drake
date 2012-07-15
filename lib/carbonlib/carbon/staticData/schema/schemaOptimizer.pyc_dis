@@ -1,0 +1,216 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\carbon\common\lib\carbon\staticData\schema\schemaOptimizer.py
+import copy
+import collections
+import ctypes
+import validator
+builtInCTypesObjectTypes = {'typeID': ctypes.c_uint32,
+ 'float': ctypes.c_float,
+ 'vector2': ctypes.c_float * 2,
+ 'vector3': ctypes.c_float * 3,
+ 'vector4': ctypes.c_float * 4,
+ 'bool': ctypes.c_ubyte}
+
+def IsUsedInTarget(schema, target):
+    usage = schema.get('usage', None)
+    if usage is None or usage == target or target == validator.EDITOR:
+        return True
+    else:
+        return False
+
+
+def GetLargeEnoughUnsignedTypeForMaxValue(i):
+    if i <= 255:
+        return ctypes.c_ubyte
+    elif i <= 65536:
+        return ctypes.c_uint16
+    else:
+        return ctypes.c_uint32
+
+
+def GetAttributesForTarget(schema, target):
+    orderedAttributeList = []
+    attributes = schema.get('attributes')
+    for attr in attributes:
+        if IsUsedInTarget(attributes[attr], target):
+            orderedAttributeList.append(attr)
+
+    return orderedAttributeList
+
+
+def GetOptionalAttributesForTarget(schema, target):
+    attributes = GetAttributesForTarget(schema, target)
+    for attr in attributes:
+        if not schema['attributes'][attr].get('isOptional', False):
+            attributes.remove(attr)
+
+    return attributes
+
+
+fixedSizeTypes = set(['float',
+ 'int',
+ 'typeID',
+ 'vector2',
+ 'vector3',
+ 'vector4',
+ 'enum',
+ 'bool'])
+
+def IsFixedSize(schema, target):
+    schemaType = schema['type']
+    if schemaType in fixedSizeTypes:
+        return True
+    if schemaType == 'object':
+        attributes = schema['attributes']
+        for attr in attributes:
+            if not IsUsedInTarget(attrributes[attr]):
+                continue
+            if attributes[attr].get('isOptional', False) or not IsFixedSize(attributes[attr]):
+                return False
+
+        return True
+    return False
+
+
+def OptimizeDictSchema(schema, target):
+    newSchema = {'type': 'dict'}
+    if 'isOptional' in schema:
+        newSchema['isOptional'] = schema['isOptional']
+    newSchema['keyTypes'] = OptimizeSchema(schema['keyTypes'], target)
+    newSchema['valueTypes'] = OptimizeSchema(schema['valueTypes'], target)
+    keyHeaderSchema = {'type': 'list',
+     'itemTypes': {'type': 'object',
+                   'attributes': {'key': schema['keyTypes'],
+                                  'offset': {'type': 'int',
+                                             'min': 0}}}}
+    if schema.get('buildIndex', False):
+        newSchema['buildIndex'] = True
+        keyHeaderSchema['itemTypes']['attributes']['size'] = {'type': 'int',
+         'min': 0}
+    newSchema['keyHeader'] = OptimizeSchema(keyHeaderSchema, target)
+    return newSchema
+
+
+def OptimizeListSchema(schema, target):
+    newSchema = {'type': 'list'}
+    newSchema['itemTypes'] = OptimizeSchema(schema['itemTypes'], target)
+    if 'size' in newSchema['itemTypes']:
+        newSchema['fixedItemSize'] = newSchema['itemTypes']['size']
+    if 'length' in schema:
+        newSchema['length'] = schema['length']
+    if 'isOptional' in schema:
+        newSchema['isOptional'] = schema['isOptional']
+    return newSchema
+
+
+def OptimizeObjectSchema(schema, target):
+    newSchema = {'type': 'object'}
+    if 'isOptional' in schema:
+        newSchema['isOptional'] = schema['isOptional']
+    allAttributesForTarget = GetAttributesForTarget(schema, target)
+    optionalAttributes = []
+    variableSizedAttributes = []
+    for attr in allAttributesForTarget:
+        if schema['attributes'][attr].get('isOptional', False):
+            optionalAttributes.append(attr)
+
+    optionalAttributes = set(optionalAttributes)
+    numOptionalAttributes = len(optionalAttributes)
+    optionalAttributeValue = 1
+    newSchema['optionalValueLookups'] = {}
+    if numOptionalAttributes > 0:
+        for attr in optionalAttributes:
+            newSchema['optionalValueLookups'][attr] = optionalAttributeValue
+            optionalAttributeValue <<= 1
+
+        newSchema['optionalValueLookupType'] = GetLargeEnoughUnsignedTypeForMaxValue(optionalAttributeValue >> 1)
+    requiredFixedSizeAttributes = [ attr for attr in allAttributesForTarget if attr not in optionalAttributes and attr not in variableSizedAttributes ]
+    newSchema['attributes'] = collections.OrderedDict()
+    currentOffset = 0
+    newSchema['attributeOffsets'] = {}
+    newSchema['size'] = 0
+    resolvedAttributes = set()
+    for attr in allAttributesForTarget:
+        attrOptimizedSchema = OptimizeSchema(schema['attributes'][attr], target)
+        newSchema['attributes'][attr] = attrOptimizedSchema
+        if 'size' in attrOptimizedSchema:
+            if 'size' in newSchema:
+                newSchema['size'] += newSchema['attributes'][attr]['size']
+            if attr not in optionalAttributes:
+                newSchema['attributeOffsets'][attr] = currentOffset
+                currentOffset += newSchema['attributes'][attr]['size']
+                resolvedAttributes.add(attr)
+            elif 'size' in newSchema:
+                del newSchema['size']
+        elif 'size' in newSchema:
+            del newSchema['size']
+
+    newSchema['endOfFixedSizeData'] = currentOffset
+    attributesWithOffsets = [ attr for attr in allAttributesForTarget if attr not in resolvedAttributes ]
+    newSchema['attributesWithOffsets'] = attributesWithOffsets
+    return newSchema
+
+
+def OptimizeEnumSchema(schema, target):
+    newSchema = {'type': 'enum'}
+    maxEnumValue = max(schema['values'].values())
+    newSchema['enumType'] = GetLargeEnoughUnsignedTypeForMaxValue(maxEnumValue)
+    newSchema['size'] = ctypes.sizeof(newSchema['enumType'])
+    newSchema['values'] = schema['values']
+    if 'isOptional' in schema:
+        newSchema['isOptional'] = schema['isOptional']
+    return newSchema
+
+
+def OptimizeIntSchema(schema, target):
+    newSchema = {'type': 'int'}
+    intType = ctypes.c_int32
+    if 'min' in schema:
+        newSchema['min'] = schema['min']
+    newSchema['size'] = ctypes.sizeof(intType)
+    if 'isOptional' in schema:
+        newSchema['isOptional'] = schema['isOptional']
+    return newSchema
+
+
+def OptimizeVectorSchema(schema, target):
+    newSchema = {'type': schema['type']}
+    if 'aliases' in schema:
+        newSchema['aliases'] = schema['aliases']
+    if 'isOptional' in schema:
+        newSchema['isOptional'] = schema['isOptional']
+    return newSchema
+
+
+def OptimizeBinarySchema(schema, target):
+    newSchema = {'type': schema['type']}
+    if 'schema' in schema:
+        newSchema['schema'] = schema['schema']
+        dataSchema = OptimizeSchema(schema['schema'], target)
+        if 'size' in dataSchema:
+            newSchema['size'] = dataSchema['size']
+        if 'isOptional' in dataSchema:
+            newSchema['isOptional'] = dataSchema['isOptional']
+    return newSchema
+
+
+builtInSchemaOptimizationFunctions = {'dict': OptimizeDictSchema,
+ 'list': OptimizeListSchema,
+ 'object': OptimizeObjectSchema,
+ 'enum': OptimizeEnumSchema,
+ 'int': OptimizeIntSchema,
+ 'vector2': OptimizeVectorSchema,
+ 'vector3': OptimizeVectorSchema,
+ 'vector4': OptimizeVectorSchema,
+ 'binary': OptimizeBinarySchema}
+
+def OptimizeSchema(schema, target):
+    schemaType = schema.get('type')
+    if schemaType in builtInSchemaOptimizationFunctions:
+        return builtInSchemaOptimizationFunctions[schemaType](schema, target)
+    else:
+        newSchema = {'type': schemaType}
+        if 'isOptional' in schema:
+            newSchema['isOptional'] = schema['isOptional']
+        if schemaType in builtInCTypesObjectTypes:
+            newSchema['size'] = ctypes.sizeof(builtInCTypesObjectTypes[schemaType])
+        return newSchema

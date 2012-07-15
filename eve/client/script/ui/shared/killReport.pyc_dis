@@ -1,0 +1,629 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/shared/killReport.py
+import localization
+import uix
+import uiutil
+import util
+import uiconst
+import listentry
+import uicls
+import log
+import blue
+import form
+import uthread
+from collections import defaultdict
+
+class KillReportWnd(uicls.Window):
+    __guid__ = 'form.KillReportWnd'
+    __notifyevents__ = []
+    default_windowID = 'KillReportWnd'
+    default_width = 650
+    default_height = 640
+    default_minSize = (default_width, default_height)
+    default_iconNum = 'ui_1337_64_1'
+
+    def ApplyAttributes(self, attributes):
+        uicls.Window.ApplyAttributes(self, attributes)
+        killmail = attributes.Get('killmail', None)
+        self.rawKillmail = None
+        self.SetCaption(localization.GetByLabel('UI/Corporations/Wars/Killmails/KillReport'))
+        self.SetTopparentHeight(0)
+        self.SetHeaderIcon()
+        settingsIcon = self.sr.headerIcon
+        settingsIcon.state = uiconst.UI_NORMAL
+        settingsIcon.GetMenu = self.GetSettingsMenu
+        settingsIcon.expandOnLeft = 1
+        settingsIcon.hint = localization.GetByLabel('UI/Common/Settings')
+        self.ConstructLayout()
+        self.LoadInfo(killmail)
+
+    def ConstructLayout(self):
+        topCont = uicls.Container(name='topCont', parent=self.sr.main, align=uiconst.TOTOP, height=138, padding=const.defaultPadding)
+        uicls.Line(parent=topCont, align=uiconst.TOBOTTOM)
+        topLeftCont = uicls.Container(name='topLeftCont', parent=topCont, align=uiconst.TOLEFT, width=260, padLeft=const.defaultPadding)
+        topRightCont = uicls.Container(name='topRightCont', parent=topCont, align=uiconst.TOALL)
+        self.guyCont = uicls.Container(name='guyCont', parent=topLeftCont, align=uiconst.TOLEFT, width=128)
+        self.shipCont = uicls.Container(name='shipCont', parent=topLeftCont, align=uiconst.TOLEFT, width=128)
+        self.infoCont = uicls.Container(name='infoCont', parent=topRightCont, align=uiconst.TOALL, padLeft=6)
+        victimCont = uicls.Container(name='victimCont', parent=self.infoCont, align=uiconst.TOTOP, height=68)
+        victimNameCont = uicls.Container(name='victimNameCont', parent=victimCont, align=uiconst.TOTOP, height=24, clipChildren=True)
+        victimCorpCont = uicls.Container(name='victimCorpCont', parent=victimCont, align=uiconst.TOALL)
+        self.victimCorpLogoCont = uicls.Container(name='victimCorpLogoCont', parent=victimCorpCont, align=uiconst.TOLEFT, width=32)
+        self.victimAllianceLogoCont = uicls.Container(name='victimAllianceLogoCont', parent=victimCorpCont, align=uiconst.TOLEFT, width=32)
+        victimCorpTextCont = uicls.Container(name='victimCorpTextCont', parent=victimCorpCont, align=uiconst.TOALL, padLeft=const.defaultPadding)
+        shipCont = uicls.Container(name='damageCont', parent=self.infoCont, align=uiconst.TOTOP, height=32)
+        dateCont = uicls.Container(name='dateCont', parent=self.infoCont, align=uiconst.TOALL)
+        self.victimName = uicls.EveCaptionSmall(text='', parent=victimNameCont, name='victimName', state=uiconst.UI_NORMAL)
+        self.victimCorpName = uicls.EveLabelMedium(text='', parent=victimCorpTextCont, name='victimCorpName', align=uiconst.TOTOP, height=14, state=uiconst.UI_NORMAL, top=const.defaultPadding)
+        self.victimAllianceName = uicls.EveLabelMedium(text='', parent=victimCorpTextCont, name='victimAllianceName', align=uiconst.TOTOP, height=14, state=uiconst.UI_NORMAL)
+        self.shipName = uicls.EveLabelMedium(text='', parent=shipCont, name='shipName', state=uiconst.UI_NORMAL)
+        self.killDate = uicls.EveLabelMedium(text='', parent=dateCont, name='killDate')
+        self.locationName = uicls.EveLabelMedium(text='', parent=dateCont, name='locationName', top=14, state=uiconst.UI_NORMAL)
+        infoCont = uicls.Container(name='infoCont', parent=self.sr.main, align=uiconst.TOALL, padding=(const.defaultPadding,
+         0,
+         const.defaultPadding,
+         const.defaultPadding))
+        bottomLeftCont = uicls.Container(name='bottomLeftCont', parent=infoCont, align=uiconst.TOLEFT, width=260, padLeft=const.defaultPadding)
+        bottomRightCont = uicls.Container(name='bottomRightCont', padLeft=4, parent=infoCont, align=uiconst.TOALL)
+        killersCont = uicls.Container(name='itemsCont', parent=bottomLeftCont, align=uiconst.TOALL)
+        self.involvedParties = uicls.EveLabelLarge(text='', parent=killersCont, name='involvedParties', align=uiconst.TOTOP)
+        self.damageTaken = uicls.EveLabelMedium(text='', parent=killersCont, name='damageTaken', align=uiconst.TOTOP, height=14, color=(1.0, 0.0, 0.0))
+        finalBlowCont = uicls.Container(name='finalBlowCont', parent=killersCont, align=uiconst.TOTOP, height=84, top=8)
+        finalBlowLabel = uicls.EveLabelMedium(text='Final blow', parent=finalBlowCont, align=uiconst.TOTOP)
+        self.finalBlowCont = uicls.KillerContainer(name='topKiller', parent=finalBlowCont, align=uiconst.TOTOP)
+        topDamageCont = uicls.Container(name='topDamageCont', parent=killersCont, align=uiconst.TOTOP, height=94, top=12)
+        topDamageLabel = uicls.EveLabelMedium(text='Top damage', parent=topDamageCont, align=uiconst.TOTOP)
+        self.topDamageCont = uicls.KillerContainer(name='topDamageCont', parent=topDamageCont, align=uiconst.TOTOP)
+        self.killersScrollLine = uicls.Line(parent=killersCont, align=uiconst.TOTOP, padBottom=6)
+        self.killersScroll = uicls.ScrollContainer(name='killersScroll', parent=killersCont, align=uiconst.TOALL)
+        itemsCont = uicls.Container(name='itemsCont', parent=bottomRightCont, align=uiconst.TOALL)
+        topItemsCont = uicls.Container(name='topItemsCont', parent=itemsCont, align=uiconst.TOTOP, height=16, padBottom=const.defaultPadding)
+        self.savefittingBtn = uicls.Button(label='Save Fitting', parent=topItemsCont, align=uiconst.TOPRIGHT, func=self.SaveFitting)
+        fittingLabel = uicls.EveLabelLarge(text=localization.GetByLabel('UI/Corporations/Wars/Killmails/FittingAndContent'), parent=topItemsCont, name='fittingLabel', align=uiconst.TOPLEFT)
+        bottomItemsCont = uicls.Container(name='bottomItemsCont', parent=itemsCont, align=uiconst.TOBOTTOM, height=20)
+        allItemsCont = uicls.Container(name='allItemsCont', parent=itemsCont, align=uiconst.TOALL)
+        self.itemsScroll = uicls.Scroll(name='itemsScroll', parent=allItemsCont)
+        totalLossCont = uicls.Container(name='totalLossCont', parent=bottomItemsCont, align=uiconst.TOBOTTOM, height=20)
+        lossCont = uicls.Container(name='lossCont', parent=bottomItemsCont, align=uiconst.TOTOP, height=46, state=uiconst.UI_HIDDEN)
+        top = 4
+        uicls.EveLabelSmall(text=localization.GetByLabel('UI/Corporations/Wars/Killmails/TotalModuleLoss'), parent=lossCont, name='moduleLoss', align=uiconst.TOPLEFT, height=12, top=top)
+        self.moduleLossLabel = uicls.EveLabelMedium(text='sdf', parent=lossCont, name='moduleLossLabel', align=uiconst.TOPRIGHT, height=12, color=(1.0, 0.0, 0.0), top=top)
+        top += 12
+        uicls.EveLabelSmall(text=localization.GetByLabel('UI/Corporations/Wars/Killmails/TotalModuleDrop'), parent=lossCont, name='moduleDrop', align=uiconst.TOPLEFT, height=12, top=top)
+        self.moduleDropLabel = uicls.EveLabelMedium(text='sf', parent=lossCont, name='moduleDropLabel', align=uiconst.TOPRIGHT, height=12, color=(0.0, 1.0, 0.0), top=top)
+        top += 12
+        uicls.EveLabelSmall(text=localization.GetByLabel('UI/Corporations/Wars/Killmails/ShipLoss'), parent=lossCont, name='shipLoss', align=uiconst.TOPLEFT, height=12, top=top)
+        self.shipLossLabel = uicls.EveLabelMedium(text='ddd', parent=lossCont, name='shipLossLabel', align=uiconst.TOPRIGHT, height=12, color=(1.0, 0.0, 0.0), top=top)
+        uicls.Line(parent=lossCont, align=uiconst.TOBOTTOM)
+        bottomItemsCont = uicls.Container(name='bottomItemsCont', parent=itemsCont, align=uiconst.TOBOTTOM, height=80)
+        uicls.EveLabelLarge(text=localization.GetByLabel('UI/Corporations/Wars/Killmails/TotalLoss'), parent=totalLossCont, name='totalLoss', align=uiconst.BOTTOMLEFT)
+        self.totalLossLabel = uicls.EveLabelLarge(text='', parent=totalLossCont, name='totalLossLabel', align=uiconst.BOTTOMRIGHT, color=(1.0, 0.0, 0.0))
+
+    def LoadInfo(self, killmail):
+        uthread.new(self.LoadInfo_thread, killmail)
+
+    def LoadInfo_thread(self, killmail):
+        self.guyCont.Flush()
+        self.shipCont.Flush()
+        self.victimAllianceLogoCont.Flush()
+        self.victimCorpLogoCont.Flush()
+        self.rawKillmail = killmail
+        self.killmail = self.FormatKillMail(killmail)
+        killmail = self.killmail
+        self.attackers, self.items = util.GetKillMailInfo(self.rawKillmail)
+        isCapsule = False
+        if cfg.invtypes.Get(killmail.victimShipTypeID).groupID == const.groupCapsule:
+            isCapsule = True
+        if len(self.items) and not isCapsule:
+            self.savefittingBtn.display = True
+        else:
+            self.savefittingBtn.display = False
+        if util.IsCharacter(killmail.victimCharacterID):
+            victim = uicls.Icon(parent=self.guyCont, align=uiconst.TOPRIGHT, size=128, idx=0)
+            sm.GetService('photo').GetPortrait(killmail.victimCharacterID, 128, victim)
+            victim.OnClick = (self.OpenPortrait, killmail.victimCharacterID)
+            victimHint = cfg.eveowners.Get(killmail.victimCharacterID).name
+            dragHint = localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/FittingIconHint')
+        else:
+            victim = uiutil.GetLogoIcon(itemID=killmail.victimCorporationID, parent=self.guyCont, acceptNone=False, align=uiconst.TOPRIGHT, height=128, width=128, state=uiconst.UI_NORMAL)
+            victim.OnClick = (self.ShowInfo, killmail.victimCorporationID, const.typeCorporation)
+            victimHint = cfg.eveowners.Get(killmail.victimCorporationID).name
+            dragHint = localization.GetByLabel('UI/Corporations/Wars/DragToShare')
+        victim.GetDragData = self.GetKillDragData
+        victim.hint = '%s<br>%s' % (victimHint, dragHint)
+        ship = uicls.Icon(parent=self.shipCont, align=uiconst.TOPRIGHT, size=128, typeID=killmail.victimShipTypeID)
+        ship.OnClick = (self.OpenPreview, killmail.victimShipTypeID)
+        ship.GetDragData = self.GetKillDragData
+        shipTechIcon = uicls.Sprite(name='techIcon', parent=self.shipCont, width=32, height=32, idx=0)
+        shipTechSprite = uix.GetTechLevelIcon(shipTechIcon, 0, killmail.victimShipTypeID)
+        ship.hint = '%s<br>%s' % (cfg.invtypes.Get(killmail.victimShipTypeID).typeName, localization.GetByLabel('UI/Fitting/FittingWindow/FittingManagement/FittingIconHint'))
+        victimCorpName = cfg.eveowners.Get(killmail.victimCorporationID).name
+        victimCorpLabel = localization.GetByLabel('UI/Contracts/ContractsWindow/ShowInfoLink', showInfoName=victimCorpName, info=('showinfo', const.typeCorporation, killmail.victimCorporationID))
+        self.victimCorpName.text = victimCorpLabel
+        victimCorpLogo = uiutil.GetLogoIcon(itemID=killmail.victimCorporationID, parent=self.victimCorpLogoCont, acceptNone=False, align=uiconst.TOPRIGHT, height=32, width=32, state=uiconst.UI_NORMAL)
+        victimCorpLogo.OnClick = (self.ShowInfo, killmail.victimCorporationID, const.typeCorporation)
+        victimCorpLogo.hint = victimCorpName
+        victimCorpLogo.SetSize(32, 32)
+        victimCorpNameTop = const.defaultPadding * 2
+        if killmail.victimAllianceID:
+            victimAllianceName = cfg.eveowners.Get(killmail.victimAllianceID).name
+            victimAllianceLabel = localization.GetByLabel('UI/Contracts/ContractsWindow/ShowInfoLink', showInfoName=victimAllianceName, info=('showinfo', const.typeAlliance, killmail.victimAllianceID))
+            self.victimAllianceName.text = victimAllianceLabel
+            victimAllianceLogo = uiutil.GetLogoIcon(itemID=killmail.victimAllianceID, parent=self.victimAllianceLogoCont, acceptNone=False, align=uiconst.TOPRIGHT, height=32, width=32)
+            victimAllianceLogo.OnClick = (self.ShowInfo, killmail.victimAllianceID, const.typeAlliance)
+            victimAllianceLogo.hint = victimAllianceName
+            victimCorpNameTop = 0
+        elif killmail.victimFactionID:
+            victimFactionName = cfg.eveowners.Get(killmail.victimFactionID).name
+            victimFactionLabel = localization.GetByLabel('UI/Contracts/ContractsWindow/ShowInfoLink', showInfoName=victimFactionName, info=('showinfo', const.typeFaction, killmail.victimFactionID))
+            self.victimAllianceName.text = victimFactionLabel
+            victimAllianceLogo = uiutil.GetLogoIcon(itemID=killmail.victimFactionID, parent=self.victimAllianceLogoCont, acceptNone=False, align=uiconst.TOPRIGHT, height=32, width=32)
+            victimAllianceLogo.OnClick = (self.ShowInfo, killmail.victimFactionID, const.typeFaction)
+            victimAllianceLogo.hint = victimFactionName
+            victimAllianceLogo.SetSize(32, 32)
+            victimCorpNameTop = 0
+        else:
+            self.victimAllianceName.text = ''
+            victimAllianceLogo = uicls.Sprite(texturePath='res:/UI/Texture/defaultAlliance.dds', parent=self.victimAllianceLogoCont, align=uiconst.TOPLEFT, width=32, height=32, state=uiconst.UI_NORMAL)
+            victimAllianceLogo.hint = localization.GetByLabel('UI/PeopleAndPlaces/OwnerNotInAnyAlliance', corpName=victimCorpName)
+            victimAllianceLogo.SetAlpha(0.4)
+        self.victimCorpName.top = victimCorpNameTop
+        self.killDate.text = util.FmtDate(killmail.killTime, 'ss')
+        self.locationName.text = self.GetLocation(killmail.solarSystemID)
+        shipType = cfg.invtypes.Get(killmail.victimShipTypeID)
+        shipName = shipType.typeName
+        shipGroupID = shipType.groupID
+        shipGroupName = cfg.invgroups.Get(shipGroupID).groupName
+        shipLabel = localization.GetByLabel('UI/Corporations/Wars/Killmails/ShipInfo', showInfoName=shipName, info=('showinfo', killmail.victimShipTypeID), groupName=shipGroupName)
+        if util.IsCharacter(killmail.victimCharacterID):
+            victimName = cfg.eveowners.Get(killmail.victimCharacterID).name
+            victimNameLabel = localization.GetByLabel('UI/Contracts/ContractsWindow/ShowInfoLink', showInfoName=victimName, info=('showinfo', const.typeCharacterAmarr, killmail.victimCharacterID))
+            self.victimName.text = victimNameLabel
+            self.shipName.text = shipLabel
+        else:
+            self.victimName.text = shipLabel
+            self.shipName.text = ''
+        self.damageTaken.text = localization.GetByLabel('UI/Corporations/Wars/Killmails/TotalDamage', damage=killmail.victimDamageTaken)
+        if killmail.iskLost:
+            lossText = util.FmtISK(killmail.iskLost)
+        else:
+            lossText = localization.GetByLabel('UI/Common/Unknown')
+        self.totalLossLabel.text = lossText
+        self.moduleLossLabel.text = util.FmtISK(1337)
+        self.moduleDropLabel.text = util.FmtISK(1337)
+        self.shipLossLabel.text = util.FmtISK(1337)
+        self.DrawItems()
+        self.GetAttackers()
+        self.DrawKillers()
+
+    def DrawItems(self):
+        items = self.GetItems()
+        scrolllist = []
+        for slots, label, iconID in (('hiSlots', 'HighPowerSlots', 293),
+         ('medSlots', 'MediumPowerSlots', 294),
+         ('lowSlots', 'LowPowerSlots', 295),
+         ('rigs', 'RigSlots', 3266),
+         ('subSystems', 'SubSystemSlots', 3756)):
+            if items[slots]:
+                scrolllist.append(listentry.Get('ItemsHeader', {'label': localization.GetByLabel('UI/Corporations/Wars/Killmails/%s' % label),
+                 'iconID': iconID}))
+                itemsByTypeID = {}
+                for item in items[slots]:
+                    if item.typeID not in itemsByTypeID:
+                        itemsByTypeID[item.typeID] = item
+                    else:
+                        itemsByTypeID[item.typeID].qtyDestroyed += item.qtyDestroyed
+                        itemsByTypeID[item.typeID].qtyDropped += item.qtyDropped
+
+                for item in itemsByTypeID.itervalues():
+                    destroyedData, droppedData = self.MakeItemEntry(item)
+                    if destroyedData:
+                        scrolllist.append(listentry.Get('KillItems', data=destroyedData))
+                    if droppedData:
+                        scrolllist.append(listentry.Get('KillItems', data=droppedData))
+
+        if const.flagDroneBay in items['other']:
+            scrolllist.append(listentry.Get('ItemsHeader', {'label': localization.GetByLabel('UI/Corporations/Wars/Killmails/DroneBay'),
+             'iconID': 76}))
+            for item in items['other'][const.flagDroneBay]:
+                destroyedData, droppedData = self.MakeItemEntry(item)
+                if destroyedData:
+                    scrolllist.append(listentry.Get('KillItems', data=destroyedData))
+                if droppedData:
+                    scrolllist.append(listentry.Get('KillItems', data=droppedData))
+
+        if const.flagCargo in items['other']:
+            scrolllist.append(listentry.Get('ItemsHeader', {'label': localization.GetByLabel('UI/Corporations/Wars/Killmails/CargoBay'),
+             'iconID': 71}))
+            for item in items['other'][const.flagCargo]:
+                destroyedData, droppedData = self.MakeItemEntry(item)
+                if destroyedData:
+                    scrolllist.append(listentry.Get('KillItems', data=destroyedData))
+                if droppedData:
+                    scrolllist.append(listentry.Get('KillItems', data=droppedData))
+
+        if const.flagImplant in items['other']:
+            scrolllist.append(listentry.Get('ItemsHeader', {'label': localization.GetByLabel('UI/Corporations/Wars/Killmails/Implants'),
+             'iconID': 2224}))
+            for item in items['other'][const.flagImplant]:
+                destroyedData, droppedData = self.MakeItemEntry(item)
+                if destroyedData:
+                    scrolllist.append(listentry.Get('KillItems', data=destroyedData))
+                if droppedData:
+                    scrolllist.append(listentry.Get('KillItems', data=droppedData))
+
+        scrolllist2 = []
+        for flagID, items2 in items['other'].iteritems():
+            if flagID in (const.flagDroneBay, const.flagCargo, const.flagImplant):
+                continue
+            for item in items2:
+                destroyedData, droppedData = self.MakeItemEntry(item)
+                if destroyedData:
+                    scrolllist2.append(listentry.Get('KillItems', data=destroyedData))
+                if droppedData:
+                    scrolllist2.append(listentry.Get('KillItems', data=droppedData))
+
+        if len(scrolllist2):
+            scrolllist.append(listentry.Get('ItemsHeader', {'label': 'Other',
+             'iconID': 71}))
+            scrolllist.extend(scrolllist2)
+        self.itemsScroll.Load(contentList=scrolllist, headers=[], noContentHint=localization.GetByLabel('UI/Corporations/Assets/NoItemsFound'))
+
+    def MakeItemEntry(self, item):
+        if item.qtyDestroyed > 0:
+            destroyedData = util.KeyVal()
+            destroyedData.typeID = item.typeID
+            destroyedData.qtyDestroyed = item.qtyDestroyed
+            destroyedData.qtyDropped = None
+            destroyedData.singleton = item.singleton
+            destroyedData.flag = item.flag
+        else:
+            destroyedData = None
+        if item.qtyDropped > 0:
+            droppedData = util.KeyVal()
+            droppedData.typeID = item.typeID
+            droppedData.qtyDestroyed = None
+            droppedData.qtyDropped = item.qtyDropped
+            droppedData.singleton = item.singleton
+            droppedData.flag = item.flag
+        else:
+            droppedData = None
+        return (destroyedData, droppedData)
+
+    def DrawKillers(self):
+        self.killersScroll.Flush()
+        killmail = self.killmail
+        topKiller = util.KeyVal()
+        topKiller.killerID = killmail.finalCharacterID
+        topKiller.killerCorporationID = killmail.finalCorporationID
+        topKiller.killerAllianceID = killmail.finalAllianceID
+        topKiller.killerShipTypeID = killmail.finalShipTypeID
+        topKiller.killerWeaponTypeID = killmail.finalWeaponTypeID
+        topKiller.killerSecurityStatus = killmail.finalSecurityStatus
+        topKiller.killerDamageDone = killmail.finalDamageDone
+        topKiller.killerFactionID = killmail.finalFactionID
+        try:
+            topKiller.percentage = float(killmail.finalDamageDone) / float(killmail.victimDamageTaken) * 100
+        except:
+            topKiller.percentage = 0.0
+
+        involvedParties = 1
+        self.finalBlowCont.LoadInfo(topKiller)
+        highestDamage, restOfAttackers = self.GetAttackers()
+        if highestDamage.characterID:
+            if topKiller.killerID != int(highestDamage.characterID):
+                involvedParties += 1
+        topDamage = self.GetKiller(highestDamage)
+        self.topDamageCont.LoadInfo(topDamage)
+        if len(restOfAttackers):
+            self.killersScroll.state = uiconst.UI_NORMAL
+            self.killersScrollLine.state = uiconst.UI_DISABLED
+            for killer in restOfAttackers:
+                killerInfo = self.GetKiller(killer)
+                killerCont = uicls.KillerContainer(parent=self.killersScroll, padBottom=8)
+                killerCont.LoadInfo(killerInfo)
+
+        else:
+            self.killersScroll.state = uiconst.UI_HIDDEN
+            self.killersScrollLine.state = uiconst.UI_HIDDEN
+        involvedParties += len(restOfAttackers)
+        self.involvedParties.text = localization.GetByLabel('UI/Corporations/Wars/Killmails/InvolvedParties', parties=involvedParties)
+
+    def GetKiller(self, killer):
+        killerInfo = util.KeyVal()
+        if killer.characterID:
+            killerInfo.killerID = int(killer.characterID)
+        else:
+            killerInfo.killerID = None
+        killerInfo.killerCorporationID = killer.corporationID
+        killerInfo.killerAllianceID = killer.allianceID
+        if killer.shipTypeID:
+            killerInfo.killerShipTypeID = int(killer.shipTypeID)
+        else:
+            killerInfo.killerShipTypeID = None
+        if killer.weaponTypeID:
+            killerInfo.killerWeaponTypeID = int(killer.weaponTypeID)
+        else:
+            killerInfo.killerWeaponTypeID = None
+        killerInfo.killerSecurityStatus = killer.secStatusText
+        killerInfo.killerDamageDone = killer.damageDone
+        killerInfo.killerFactionID = killer.factionID
+        try:
+            killerInfo.percentage = float(killer.damageDone) / float(self.killmail.victimDamageTaken) * 100
+        except:
+            killerInfo.percentage = 0
+
+        return killerInfo
+
+    def GetLocation(self, solarSystemID):
+        try:
+            sec, col = util.FmtSystemSecStatus(sm.GetService('map').GetSecurityStatus(solarSystemID), 1)
+            col.a = 1.0
+            securityLabel = "</b> <color=%s><hint='%s'>%s</hint></color>" % (util.StrFromColor(col), localization.GetByLabel('UI/Map/StarMap/SecurityStatus'), sec)
+        except KeyError:
+            self.LogError('Failed to get security status for item', solarSystemID, 'displaying BROKEN')
+            log.LogException()
+            sys.exc_clear()
+            securityLabel = ''
+
+        constellationID = cfg.solarsystems.Get(solarSystemID).constellationID
+        regionID = cfg.constellations.Get(constellationID).regionID
+        locationTrace = '<url=showinfo:%s//%s>%s</url>%s &lt; <url=showinfo:%s//%s>%s</url> &lt; <url=showinfo:%s//%s>%s</url>' % (const.typeSolarSystem,
+         solarSystemID,
+         cfg.evelocations.Get(solarSystemID).locationName,
+         securityLabel,
+         const.typeConstellation,
+         constellationID,
+         cfg.evelocations.Get(constellationID).locationName,
+         const.typeRegion,
+         regionID,
+         cfg.evelocations.Get(regionID).locationName)
+        return locationTrace
+
+    def FormatKillMail(self, killmail):
+        km = util.KeyVal()
+        km.killID = killmail.killID
+        km.killTime = killmail.killTime
+        km.solarSystemID = killmail.solarSystemID
+        km.moonID = killmail.moonID
+        km.victimCharacterID = killmail.victimCharacterID
+        km.victimCorporationID = killmail.victimCorporationID
+        km.victimFactionID = killmail.victimFactionID
+        km.victimAllianceID = killmail.victimAllianceID
+        km.victimShipTypeID = killmail.victimShipTypeID
+        km.victimDamageTaken = killmail.victimDamageTaken
+        km.finalCharacterID = killmail.finalCharacterID
+        km.finalCorporationID = killmail.finalCorporationID
+        km.finalAllianceID = killmail.finalAllianceID
+        km.finalShipTypeID = killmail.finalShipTypeID
+        km.finalWeaponTypeID = killmail.finalWeaponTypeID
+        km.finalSecurityStatus = killmail.finalSecurityStatus
+        km.finalDamageDone = killmail.finalDamageDone
+        km.finalFactionID = killmail.finalFactionID
+        km.warID = killmail.warID
+        km.iskLost = killmail.iskLost or None
+        return km
+
+    def GetAttackers(self):
+        self.attackers.sort(reverse=True)
+        highestDamage = self.attackers[0][1]
+        try:
+            restOfAttackers = [ attacker for damage, attacker in self.attackers[1:] if not attacker.finalBlow ]
+        except IndexError:
+            restOfAttackers = []
+
+        return (highestDamage, restOfAttackers)
+
+    def GetItems(self):
+        killmail = self.rawKillmail
+        ret = {'hiSlots': [],
+         'medSlots': [],
+         'lowSlots': [],
+         'rigs': [],
+         'subSystems': [],
+         'other': defaultdict(list)}
+        for item in self.items:
+            loc = self.GetRack(item.flag)
+            if loc is None:
+                ret['other'][item.flag].append(item)
+            else:
+                ret[loc].append(item)
+
+        return ret
+
+    def GetRack(self, flagID):
+        if const.flagHiSlot0 <= flagID <= const.flagHiSlot7:
+            return 'hiSlots'
+        if const.flagMedSlot0 <= flagID <= const.flagMedSlot7:
+            return 'medSlots'
+        if const.flagLoSlot0 <= flagID <= const.flagLoSlot7:
+            return 'lowSlots'
+        if const.flagRigSlot0 <= flagID <= const.flagRigSlot7:
+            return 'rigs'
+        if const.flagSubSystemSlot0 <= flagID <= const.flagSubSystemSlot7:
+            return 'subSystems'
+
+    def OpenPreview(self, typeID, *args):
+        sm.GetService('preview').PreviewType(typeID)
+
+    def OpenPortrait(self, charID, *args):
+        form.PortraitWindow.CloseIfOpen()
+        form.PortraitWindow.Open(charID=charID)
+
+    def ShowInfo(self, itemID, typeID, *args):
+        sm.GetService('info').ShowInfo(typeID, itemID)
+
+    def SaveFitting(self, *args):
+        sm.GetService('fittingSvc').DisplayFittingFromItems(self.rawKillmail.victimShipTypeID, self.items)
+
+    def GetSettingsMenu(self, *args):
+        m = [(uiutil.MenuLabel('UI/Control/Entries/CopyKillInfo'), self.GetCombatText, ())]
+        return m
+
+    def GetCombatText(self, *args):
+        killmail = util.CombatLog_CopyText(self.rawKillmail)
+        blue.pyos.SetClipboardData(CleanKillMail(killmail))
+
+    def GetKillDragData(self, *args):
+        fakeNode = uiutil.Bunch()
+        fakeNode.mail = self.rawKillmail
+        fakeNode.__guid__ = 'listentry.KillMail'
+        return [fakeNode]
+
+
+class KillItems(listentry.Generic):
+    __guid__ = 'listentry.KillItems'
+
+    def Startup(self, *args):
+        listentry.Generic.Startup(self, *args)
+        self.bgColor = uicls.Fill(bgParent=self, color=(0.0, 1.0, 0.0, 0.1), state=uiconst.UI_HIDDEN)
+        qtyCont = uicls.Container(name='qtyCont', parent=self, align=uiconst.TORIGHT, width=80, padRight=const.defaultPadding)
+        itemCont = uicls.Container(name='itemCont', parent=self, align=uiconst.TOALL, clipChildren=True)
+        self.sr.label = uicls.EveLabelMedium(text='', parent=itemCont, state=uiconst.UI_DISABLED, maxLines=1, align=uiconst.CENTERLEFT)
+        self.sr.qtyLabel = uicls.EveLabelMedium(text='', parent=qtyCont, state=uiconst.UI_DISABLED, maxLines=1, align=uiconst.CENTERRIGHT)
+        iconCont = uicls.Container(parent=itemCont, pos=(16, 0, 24, 24), align=uiconst.CENTERLEFT)
+        uicls.Sprite(bgParent=iconCont, name='background', texturePath='res:/UI/Texture/classes/InvItem/bgNormal.png')
+        self.sr.icon = uicls.Icon(parent=iconCont, pos=(0, 1, 24, 24), align=uiconst.TOPLEFT, idx=0)
+        self.sr.techIcon = uicls.Sprite(name='techIcon', parent=iconCont, left=0, width=12, height=12, idx=0)
+        self.sr.line.display = False
+
+    def Load(self, node):
+        listentry.Generic.Load(self, node)
+        self.sr.node = node
+        data = node
+        self.typeID = int(data.typeID)
+        qtyDestroyed = data.qtyDestroyed
+        qtyDropped = data.qtyDropped
+        singleton = data.singleton
+        flag = data.flag
+        typeName = cfg.invtypes.Get(self.typeID).typeName
+        self.sr.label.text = typeName
+        if qtyDropped > 0:
+            self.bgColor.state = uiconst.UI_DISABLED
+            self.sr.qtyLabel.text = util.FmtAmt(qtyDropped)
+        else:
+            self.bgColor = uiconst.UI_HIDDEN
+            self.sr.qtyLabel.text = util.FmtAmt(qtyDestroyed)
+        self.sr.techIcon.state = uiconst.UI_HIDDEN
+        if self.typeID:
+            self.sr.icon.state = uiconst.UI_NORMAL
+            if flag == const.flagImplant:
+                self.sr.icon.LoadIcon(cfg.invtypes.Get(self.typeID).iconID, ignoreSize=True)
+            else:
+                self.sr.icon.LoadIconByTypeID(typeID=self.typeID, size=24, ignoreSize=True, isCopy=getattr(data, 'isCopy', False))
+            self.sr.icon.SetSize(24, 24)
+            self.sr.label.left = self.height + 16
+            techSprite = uix.GetTechLevelIcon(self.sr.techIcon, 1, self.typeID)
+            techSprite.SetSize(12, 12)
+
+    def GetHeight(self, *args):
+        node, width = args
+        node.height = 26
+        return node.height
+
+    def GetMenu(self):
+        if self.typeID:
+            return sm.GetService('menu').GetMenuFormItemIDTypeID(None, self.typeID, ignoreMarketDetails=0)
+        return []
+
+    def OnDblClick(self, *args):
+        sm.GetService('info').ShowInfo(self.typeID)
+
+
+class ItemsHeader(listentry.Header):
+    __guid__ = 'listentry.ItemsHeader'
+
+    def Startup(self, *args):
+        listentry.Header.Startup(self, *args)
+        self.sr.icon = uicls.Icon(parent=self, pos=(0, 0, 24, 24), align=uiconst.CENTERLEFT, idx=0, ignoreSize=True)
+        self.sr.line.SetAlpha(0.1)
+
+    def Load(self, node):
+        listentry.Header.Load(self, node)
+        self.sr.label.left = 30
+        self.sr.icon.LoadIcon(node.iconID, ignoreSize=True)
+
+    def GetHeight(self, *args):
+        node, width = args
+        node.height = 27
+        return node.height
+
+
+class KillerContainer(uicls.Container):
+    __guid__ = 'uicls.KillerContainer'
+    default_height = 66
+    default_align = uiconst.TOTOP
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        self.killerID = attributes.get('killerID', None)
+        self.ConstructLayout()
+
+    def ConstructLayout(self):
+        iconCont = uicls.Container(name='iconCont', parent=self, align=uiconst.TOLEFT, width=96)
+        self.killerCont = uicls.Container(name='killerCont', parent=iconCont, align=uiconst.TOLEFT, width=64, padTop=1, padBottom=1, state=uiconst.UI_NORMAL)
+        self.shipCont = uicls.Container(name='shipCont', parent=iconCont, align=uiconst.TOPRIGHT, width=32, height=32, top=1)
+        uicls.Sprite(bgParent=self.shipCont, name='shipBackground', texturePath='res:/UI/Texture/classes/InvItem/bgNormal.png')
+        self.weaponCont = uicls.Container(name='weaponCont', parent=iconCont, align=uiconst.BOTTOMRIGHT, width=32, height=32, top=1)
+        uicls.Sprite(bgParent=self.weaponCont, name='weaponBackground', texturePath='res:/UI/Texture/classes/InvItem/bgNormal.png')
+        self.textCont = uicls.Container(name='textCont', parent=self, align=uiconst.TOALL, padLeft=const.defaultPadding)
+        self.nameLabel = uicls.EveLabelSmall(text='', parent=self.textCont, maxLines=1, align=uiconst.TOTOP, top=-1, state=uiconst.UI_NORMAL)
+        self.corpLabel = uicls.EveLabelSmall(text='', parent=self.textCont, maxLines=1, align=uiconst.TOTOP, top=-1, state=uiconst.UI_NORMAL)
+        self.allianceLabel = uicls.EveLabelSmall(text='', parent=self.textCont, maxLines=1, align=uiconst.TOTOP, top=-1, state=uiconst.UI_NORMAL)
+        self.damageLabel = uicls.EveLabelSmall(text='', parent=self.textCont, maxLines=1, align=uiconst.TOBOTTOM)
+
+    def LoadInfo(self, killer):
+        self.killerCont.Flush()
+        self.shipCont.Flush()
+        self.weaponCont.Flush()
+        self.allianceLabel.text = ''
+        self.damageLabel.text = ''
+        nameHint = ''
+        killerLogo = uicls.Sprite(parent=self.killerCont, align=uiconst.TOALL, idx=0, texturePath='res:/UI/Texture/silhouette_64.png')
+        if killer.killerID:
+            sm.GetService('photo').GetPortrait(killer.killerID, 64, killerLogo)
+            killerLogo.OnClick = (self.ShowInfo, killer.killerID, const.typeCharacterAmarr)
+            killerLogo.hint = cfg.eveowners.Get(killer.killerID).name
+        if killer.killerShipTypeID:
+            shipLogo = uicls.Icon(parent=self.shipCont, align=uiconst.TOPRIGHT, size=32, typeID=killer.killerShipTypeID, ignoreSize=True)
+            shipLogo.OnClick = (self.ShowInfo, None, killer.killerShipTypeID)
+            shipTechIcon = uicls.Sprite(name='techIcon', parent=self.shipCont, width=12, height=12, idx=0)
+            shipTechSprite = uix.GetTechLevelIcon(shipTechIcon, 0, killer.killerShipTypeID)
+            if shipTechSprite:
+                shipTechSprite.SetSize(12, 12)
+            shipLogo.hint = cfg.invtypes.Get(killer.killerShipTypeID).typeName
+        if killer.killerWeaponTypeID:
+            weaponLogo = uicls.Icon(parent=self.weaponCont, align=uiconst.TOPRIGHT, size=32, typeID=killer.killerWeaponTypeID, ignoreSize=True)
+            weaponLogo.OnClick = (self.ShowInfo, None, killer.killerWeaponTypeID)
+            techIcon = uicls.Sprite(name='techIcon', parent=self.weaponCont, width=12, height=12, idx=0)
+            techSprite = uix.GetTechLevelIcon(techIcon, 0, killer.killerWeaponTypeID)
+            if techSprite:
+                techSprite.SetSize(12, 12)
+            self.damageLabel.text = localization.GetByLabel('UI/Corporations/Wars/Killmails/DamageDone', damage=killer.killerDamageDone, percentage=killer.percentage)
+            weaponLogo.hint = '%s<br>%s' % (cfg.invtypes.Get(killer.killerWeaponTypeID).typeName, self.damageLabel.text)
+        if killer.killerID:
+            self.nameLabel.text = localization.GetByLabel('UI/Contracts/ContractsWindow/ShowInfoLink', showInfoName=cfg.eveowners.Get(killer.killerID).name, info=('showinfo', const.typeCharacterAmarr, killer.killerID))
+            nameHint = '%s<br>%s' % (cfg.eveowners.Get(killer.killerID).name, cfg.eveowners.Get(killer.killerCorporationID).name)
+        else:
+            self.nameLabel.text = cfg.invtypes.Get(killer.killerShipTypeID).typeName
+        self.corpLabel.text = localization.GetByLabel('UI/Contracts/ContractsWindow/ShowInfoLink', showInfoName=cfg.eveowners.Get(killer.killerCorporationID).name, info=('showinfo', const.typeCorporation, killer.killerCorporationID))
+        if killer.killerAllianceID:
+            self.allianceLabel.text = localization.GetByLabel('UI/Contracts/ContractsWindow/ShowInfoLink', showInfoName=cfg.eveowners.Get(killer.killerAllianceID).name, info=('showinfo', const.typeAlliance, killer.killerAllianceID))
+            nameHint += '<br>%s' % cfg.eveowners.Get(killer.killerAllianceID).name
+        elif killer.killerFactionID:
+            self.allianceLabel.text = localization.GetByLabel('UI/Contracts/ContractsWindow/ShowInfoLink', showInfoName=cfg.eveowners.Get(killer.killerFactionID).name, info=('showinfo', const.typeFaction, killer.killerFactionID))
+            nameHint += '<br>%s' % cfg.eveowners.Get(killer.killerFactionID).name
+        killerLogo.hint = nameHint
+
+    def ShowInfo(self, itemID, typeID, *args):
+        sm.GetService('info').ShowInfo(typeID, itemID)
+
+
+def CleanKillMail(killMailText):
+    ret = killMailText
+    if '<localized' in ret:
+        ret = ret.replace('*</localized>', '</localized>')
+        ret = uiutil.StripTags(ret, stripOnly=['localized'])
+    return ret.replace('<br>', '\r\n').replace('<t>', '   ')
+
+
+exports = {'util.CleanKillMail': CleanKillMail}

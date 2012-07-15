@@ -1,0 +1,852 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/control/eveWindow.py
+import uicls
+import blue
+import uiconst
+import uthread
+import uiutil
+import uix
+import mathUtil
+import form
+import types
+import base
+import localization
+
+class Window(uicls.WindowCore):
+    __guid__ = 'uicls.Window'
+    default_state = uiconst.UI_HIDDEN
+    default_pinned = False
+    default_isPinable = True
+    default_iconNum = 'ui_105_64_45'
+    default_topParentHeight = 52
+    default_width = 256
+    default_height = 128
+
+    def ApplyAttributes(self, attributes):
+        self.default_parent = uicore.layer.main
+        self._pinned = False
+        self._pinable = self.default_isPinable
+        self.showhelp = False
+        self.showforward = False
+        self.showback = False
+        self.isBlinking = False
+        self.iconNum = attributes.get('iconNum', self.default_iconNum)
+        self.topParentHeight = attributes.get('topParentHeight', self.default_topParentHeight)
+        uicls.WindowCore.ApplyAttributes(self, attributes)
+
+    def GetMainArea(self):
+        return self.sr.main
+
+    def Prepare_(self):
+        self.Prepare_Layout()
+        self.Prepare_Header_()
+        self.Prepare_LoadingIndicator_()
+        self.Prepare_Background_()
+        self.Prepare_ScaleAreas_()
+
+    def Prepare_Layout(self):
+        self.sr.headerParent = uicls.Container(parent=self.sr.maincontainer, name='headerParent', align=uiconst.TOTOP, pos=(0, 0, 0, 16))
+        self.sr.topParent = uicls.Container(parent=self.sr.maincontainer, name='topParent', align=uiconst.TOTOP, clipChildren=True)
+        self.sr.mainIcon = uicls.Icon(parent=self.sr.topParent, name='mainicon', pos=(0, 0, 64, 64), state=uiconst.UI_HIDDEN)
+        self.sr.main = uicls.Container(parent=self.sr.maincontainer, name='main', align=uiconst.TOALL)
+        self.sr.iconClipper = uicls.Container(parent=self.sr.maincontainer, name='iconclipper', align=uiconst.TOALL, state=uiconst.UI_DISABLED, top=-53, clipChildren=True)
+        self.sr.clippedIcon = uicls.Icon(parent=self.sr.iconClipper, name='clippedicon', pos=(-22, -36, 128, 128), state=uiconst.UI_HIDDEN)
+        self.sr.clippedIcon.color.a = 0.1
+        self.SetTopparentHeight(self.topParentHeight)
+
+    def Prepare_Header_(self):
+        top = uicls.Container(parent=self.sr.headerParent, name='top', align=uiconst.TOALL)
+        self.sr.captionParent = uicls.Container(parent=top, name='captionParent', align=uiconst.TOALL, clipChildren=True)
+        self.sr.caption = uicls.EveLabelSmall(text='', parent=self.sr.captionParent, left=8, top=2, state=uiconst.UI_DISABLED)
+        self.sr.headerLine = uicls.Line(parent=self.sr.headerParent, align=uiconst.TOBOTTOM, idx=0, color=(1.0, 1.0, 1.0, 0.1))
+
+    def Prepare_LoadingIndicator_(self):
+        uicls.WindowCore.Prepare_LoadingIndicator_(self)
+        self.sr.loadingIndicator.icons = [ 'ui_38_16_%s' % (210 + i) for i in xrange(8) ]
+
+    def Prepare_HeaderButtons_(self):
+        self.sr.headerButtons = uicls.Container(name='headerButtons', state=uiconst.UI_PICKCHILDREN, align=uiconst.TOPRIGHT, parent=self.sr.maincontainer, pos=(5, 0, 0, 30), idx=0)
+        isStack = isinstance(self, self.GetStackClass())
+        if isStack:
+            closeHint = localization.GetByLabel('UI/Control/EveWindow/CloseStack')
+            minimizeHint = localization.GetByLabel('UI/Control/EveWindow/MinimizeStack')
+        else:
+            closeHint = localization.GetByLabel('UI/Common/Buttons/Close')
+            minimizeHint = localization.GetByLabel('UI/Control/EveWindow/Minimize')
+        helpHint = localization.GetByLabel('UI/Control/EveWindow/Help')
+        pinFunc = self.TogglePinState
+        if self.IsPinned():
+            pinhint = localization.GetByLabel('UI/Control/EveWindow/Unpin')
+        else:
+            pinhint = localization.GetByLabel('UI/Control/EveWindow/Pin')
+        w = 0
+        for icon, name, hint, showflag, clickfunc, menufunc in [('ui_38_16_220',
+          'close',
+          closeHint,
+          self.IsKillable(),
+          self.CloseByUser,
+          None),
+         ('ui_38_16_221',
+          'minimize',
+          minimizeHint,
+          self.IsMinimizable(),
+          self.Minimize,
+          None),
+         ('ui_38_16_222',
+          'pin',
+          pinhint,
+          self.IsPinable(),
+          pinFunc,
+          None),
+         ('ui_38_16_219',
+          'contextHelp',
+          helpHint,
+          self.showhelp,
+          None,
+          self.Help)]:
+            if not showflag:
+                continue
+            btn = uicls.ImageButton(name=name, parent=self.sr.headerButtons, align=uiconst.TOPRIGHT, state=uiconst.UI_NORMAL, pos=(w,
+             0,
+             16,
+             16), idleIcon=icon, mouseoverIcon=icon, mousedownIcon=icon, onclick=clickfunc, getmenu=menufunc, expandonleft=True, hint=hint)
+            w += 15
+
+        self.sr.headerButtons.width = w
+        if self.sr.captionParent:
+            self.sr.captionParent.padRight = w + 6
+
+    def Prepare_Background_(self):
+        self.sr.underlay = uicls.WindowUnderlay(parent=self)
+        self.sr.underlay.SetState(uiconst.UI_DISABLED)
+
+    def SetWndIcon(self, iconNum = None, headerIcon = 0, size = 64, fullPath = None, mainTop = -3, hidden = False, **kw):
+        self.iconNum = iconNum
+        if hidden:
+            iconNum = None
+        retmain = None
+        retclipped = None
+        for each in ['mainicon', 'clippedicon', 'clippedicon2']:
+            icon = uiutil.FindChild(self, each)
+            if not icon:
+                continue
+            elif iconNum is None:
+                icon.state = uiconst.UI_HIDDEN
+                continue
+            icon.state = uiconst.UI_DISABLED
+            icon.LoadIcon(iconNum or fullPath, ignoreSize=True)
+            if each in ('clippedicon', 'clippedicon2'):
+                if self.sr.topParent:
+                    icon.parent.top = -self.sr.topParent.height
+                if headerIcon:
+                    retclipped = None
+                    icon.Close()
+                else:
+                    retclipped = icon
+            elif each == 'mainicon':
+                retmain = icon
+                icon.top = mainTop
+            if headerIcon and each == 'mainicon':
+                icon.width = icon.height = 16
+                icon.left = 4
+                icon.top = 0
+                uiutil.Transplant(icon, uiutil.GetChild(self, 'captionParent'))
+                if self.sr.caption:
+                    self.sr.caption.left = 24
+                self.sr.headerIcon = icon
+
+        return (retmain, retclipped)
+
+    def SetTopparentHeight(self, height):
+        self.sr.topParent.height = height
+        self.sr.iconClipper.top = -height
+
+    def Help(self, *args):
+        m = []
+        kbContent, overlayPage, suppressed = self.CheckForContextHelp()
+        if kbContent is not None:
+            sub = []
+            for each in kbContent:
+                sub.append((each.description.strip(), self.ClickHelp, (each.url.strip(),)))
+
+            if sub:
+                m.append((uiutil.MenuLabel('UI/Control/EveWindow/KnowledgeBaseArticles'), sub))
+                m.append(None)
+        if overlayPage:
+            m.append(None)
+            m.append((uiutil.MenuLabel('UI/Control/EveWindow/ShowWindowOverlay'), self.ShowWindowOverlayPage, (None,)))
+        return m
+
+    def CheckForContextHelp(self, *args):
+        disallowedWnds = ('form.HybridWindow', 'form.ListWindow', 'form.LSCChannel', 'uicls.WindowStack', 'form.VirtualBrowser')
+        caption = self.GetCaption(0)
+        if not caption or getattr(self, '__guid__', None) in disallowedWnds:
+            return (None, None, None)
+        suppressed = None
+        if self.windowID:
+            key = 'suppress.WindowOverlay_%s' % unicode(self.windowID).capitalize()
+            suppressed = settings.user.suppress.Get(key, None)
+        overlayPage = None
+        return (None, overlayPage, suppressed)
+
+    def ClickHelp(self, url, *args):
+        uthread.new(self.ClickURL, url)
+
+    def ClickURL(self, url, *args):
+        uicore.cmd.OpenBrowser(url=url)
+
+    def ClickTutorial(self, tutorialID, *args):
+        uthread.new(sm.StartService('tutorial').OpenTutorialSequence_Check, tutorialID, force=1, click=1)
+
+    def ShowHelp(self):
+        self.showhelp = True
+
+    def HideHelp(self):
+        self.showhelp = False
+
+    def HideMainIcon(self):
+        self.sr.mainIcon.state = uiconst.UI_HIDDEN
+
+    def SetHeaderIcon(self, iconNo = 'ui_73_16_50', shiftLabel = 12, hint = None, size = 16):
+        par = self.sr.captionParent
+        if self.sr.headerIcon:
+            self.sr.headerIcon.Close()
+            self.sr.headerIcon = None
+        if iconNo is None:
+            if self.sr.caption:
+                self.sr.caption.left = 8
+        else:
+            self.sr.headerIcon = uicls.Icon(icon=iconNo, parent=par, pos=(4,
+             0,
+             size,
+             size), align=uiconst.RELATIVE, ignoreSize=True)
+            self.sr.headerIcon.SetAlpha(0.8)
+            self.sr.headerIcon.OnMouseEnter = self.HeaderIconMouseEnter
+            self.sr.headerIcon.OnMouseExit = self.HeaderIconMouseExit
+            self.sr.headerIcon.expandOnLeft = 1
+            if self.sr.caption:
+                self.sr.caption.left = 8 + shiftLabel
+        self.headerIconNo = iconNo
+        self.headerIconHint = hint
+        if self.sr.tab:
+            self.sr.tab.SetIcon(iconNo, 14, hint)
+
+    def HeaderIconMouseEnter(self, *args):
+        self.sr.headerIcon.SetAlpha(1.0)
+
+    def HeaderIconMouseExit(self, *args):
+        self.sr.headerIcon.SetAlpha(0.8)
+
+    def ShowWindowOverlayPage(self, *args):
+        self.LoadWindowOverlayPage(1)
+
+    def LoadWindowOverlayPage(self, force = 0):
+        mainpar = uiutil.FindChild(self, 'startpage_mainpar')
+        if mainpar and not mainpar.destroyed:
+            return
+        if not self or self.destroyed:
+            return
+        kbContent, overlayPage, suppressed = self.CheckForContextHelp()
+        if overlayPage is None or suppressed and not force:
+            return
+        if getattr(self, 'isToggling', 0):
+            return
+        if self.sr.stack:
+            top = 0
+        else:
+            headerHeight = self.GetCollapsedHeight()
+            top = headerHeight
+        if not force:
+            tutorialWnd = form.TutorialWindow.GetIfOpen()
+            if tutorialWnd:
+                return
+        m = 2
+        mainpar = uicls.Container(name='startpage', parent=self.sr.maincontainer, left=m, width=m, height=m, idx=0, top=top, clipChildren=True, state=uiconst.UI_NORMAL)
+        par = uicls.Container(name='startpage_mainpar', parent=mainpar, state=uiconst.UI_HIDDEN)
+        uicls.Line(parent=par, align=uiconst.TOLEFT)
+        uicls.Line(parent=par, align=uiconst.TORIGHT)
+        uicls.Line(parent=par, align=uiconst.TOBOTTOM)
+        uicls.Fill(parent=par, color=(0.0, 0.0, 0.0, 0.8))
+        contentpar = uicls.Container(name='contentpar', parent=par, idx=0)
+        topPar = uicls.Container(name='topPar', parent=contentpar, align=uiconst.TOTOP, height=64)
+        icon = uicls.Icon(icon='ui_74_64_13', parent=contentpar)
+        caption = uicls.CaptionLabel(text=overlayPage.title, parent=topPar, align=uiconst.CENTERLEFT, left=70)
+        topPar.height = max(topPar.height, caption.textheight)
+        bottomPar = uicls.Container(name='bottomPar', parent=contentpar, align=uiconst.TOBOTTOM)
+        uicls.Line(parent=bottomPar, align=uiconst.TOTOP)
+        btn = uicls.Button(parent=bottomPar, label=localization.GetByLabel('UI/Control/EveWindow/CloseWindowOverlay'), func=self.CloseWindowOverlay, idx=0, left=6, align=uiconst.CENTERRIGHT, alwaysLite=True)
+        self.sr.wpCloseBtn = btn
+        checkboxLabel = localization.GetByLabel('UI/Control/EveWindow/DisableThisWindowOverlay')
+        self.sr.wpSuppress = uicls.Checkbox(text=checkboxLabel, parent=bottomPar, configName='suppress', retval=0, checked=suppressed, groupname=None, align=uiconst.TOPLEFT, pos=(6, 0, 200, 0), callback=self.DoSupress)
+        allSuppressed = not settings.char.ui.Get('showWindowOverlays', 0)
+        checkboxLabel = localization.GetByLabel('UI/Control/EveWindow/DisableAllWindowOverlays')
+        self.sr.wpSuppressAll = uicls.Checkbox(text=checkboxLabel, parent=bottomPar, configName='suppressAll', retval=0, checked=allSuppressed, groupname=None, align=uiconst.TOPLEFT, pos=(6, 0, 200, 0), callback=self.DoSuppressAll)
+        self.sr.wpSuppress.top = self.sr.wpSuppressAll.height
+        bottomPar.height = max(self.sr.wpSuppress.height + 2 + self.sr.wpSuppressAll.height, btn.height + 6)
+        if kbContent:
+            uicls.Container(name='push', parent=contentpar, align=uiconst.TOBOTTOM, height=16)
+            mainBottomPar = uicls.Container(name='mainBottomPar', parent=contentpar, align=uiconst.TOBOTTOM, height=32)
+            kbPar = uicls.Container(name='kbPar', parent=mainBottomPar, align=uiconst.TOLEFT, width=128, left=16)
+            uicls.Line(parent=kbPar, align=uiconst.TORIGHT)
+            t = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Control/EveWindow/KnowledgeBase'), parent=kbPar, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+            maxWidth = t.textwidth
+            for each in kbContent:
+                if not each.url:
+                    continue
+                entryPar = uicls.Container(name='entryPar', parent=kbPar, align=uiconst.TOTOP)
+                l = uicls.EveHeaderSmall(text='<url=%s>%s</url>' % (each.url, each.description or each.url), parent=entryPar, top=1, align=uiconst.CENTERLEFT, state=uiconst.UI_NORMAL)
+                entryPar.height = max(14, l.textheight)
+                maxWidth = max(maxWidth, l.textwidth + 18)
+                icon = uicls.Icon(icon='ui_38_16_125', parent=entryPar, align=uiconst.CENTERRIGHT, idx=0, state=uiconst.UI_NORMAL)
+                icon.OnClick = (self.ClickHelp, each.url)
+
+            kbPar.width = maxWidth
+            kbHeight = sum([ each.height for each in kbPar.children ])
+            tutorials = sm.GetService('tutorial').GetTutorials()
+            validTutorials = sm.GetService('tutorial').GetValidTutorials()
+            tutorialsPar = uicls.Container(name='tutorialsPar', parent=mainBottomPar, align=uiconst.TOLEFT, width=128, left=16)
+            uicls.Line(parent=tutorialsPar, align=uiconst.TORIGHT)
+            t = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Control/EveWindow/Tutorials'), parent=tutorialsPar, align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+            maxWidth = t.textwidth
+            for each in kbContent:
+                if each.tutorialID is None:
+                    continue
+                tutorialData = tutorials.get(each.tutorialID, None)
+                if tutorialData and each.tutorialID in validTutorials:
+                    entryPar = uicls.Container(name='entryPar', parent=tutorialsPar, align=uiconst.TOTOP)
+                    tutorialName = localization.GetByMessageID(tutorialData.tutorialNameID)
+                    l = uicls.EveHeaderSmall(text='<url=localsvc:service=tutorial&method=OpenTutorialSequence_Check&tutorialID=%s&force=1&click=1>%s</url>' % (each.tutorialID, tutorialName), parent=entryPar, align=uiconst.CENTERLEFT, top=1, state=uiconst.UI_NORMAL)
+                    entryPar.height = max(14, l.textheight)
+                    maxWidth = max(maxWidth, l.textwidth + 18)
+                    icon = uicls.Icon(icon='ui_38_16_125', parent=entryPar, align=uiconst.CENTERRIGHT, idx=0, state=uiconst.UI_NORMAL)
+                    icon.OnClick = (self.ClickTutorial, each.tutorialID)
+
+            if len(tutorialsPar.children) <= 2:
+                tutorialsPar.Flush()
+            tutorialsPar.width = maxWidth
+            tutorialsHeight = sum([ each.height for each in tutorialsPar.children ])
+            mainBottomPar.height = max(64, kbHeight, tutorialsHeight)
+        browser = uicls.EditPlainText(parent=contentpar, padLeft=const.defaultPadding, padRight=const.defaultPadding, readonly=1, setvalue=overlayPage.text)
+        browser.HideBackground()
+        browser.RemoveActiveFrame()
+        uthread.new(self.ToggleWindowOverlay, 1)
+
+    def CloseWindowOverlay(self, *args):
+        startpage = uiutil.FindChild(self, 'startpage')
+        if startpage:
+            self.ToggleWindowOverlay(0)
+            startpage.Close()
+
+    def ToggleWindowOverlay(self, show):
+        if getattr(self, 'isToggling', 0):
+            return
+        prestate = self.state
+        if not self or self.destroyed:
+            return
+        if prestate != uiconst.UI_HIDDEN:
+            self.state = uiconst.UI_DISABLED
+        setattr(self, 'isToggling', 1)
+        try:
+            mainpar = uiutil.FindChild(self, 'startpage_mainpar')
+            if not mainpar or mainpar.destroyed:
+                return
+            mainpar.state = uiconst.UI_PICKCHILDREN
+            l, t, w, h = mainpar.parent.GetAbsolute()
+            start, ndt = blue.os.GetWallclockTime(), 0.0
+            time = 750.0
+            while ndt != 1.0:
+                ndt = max(ndt, min(blue.os.TimeDiffInMs(start, blue.os.GetWallclockTime()) / time, 1.0))
+                if show:
+                    mainpar.top = int(mathUtil.Lerp(-h, 0, ndt))
+                    mainpar.opacity = ndt
+                else:
+                    mainpar.top = int(mathUtil.Lerp(0, -h, ndt))
+                    mainpar.opacity = 1.0 - ndt
+                mainpar.height = -mainpar.top
+                blue.pyos.synchro.Yield()
+
+        finally:
+            if not self.destroyed:
+                self.state = prestate
+
+        mainpar = uiutil.FindChild(self, 'startpage_mainpar')
+        if mainpar and not mainpar.destroyed:
+            uicore.registry.SetFocus(self.sr.wpCloseBtn)
+        if not self or self.destroyed:
+            return
+        setattr(self, 'isToggling', 0)
+
+    def DoSupress(self, *args):
+        suppress = self.sr.wpSuppress.GetValue()
+        key = 'suppress.WindowOverlay_%s' % str(self.windowID).capitalize()
+        if suppress:
+            settings.user.suppress.Set(key, suppress)
+        else:
+            try:
+                settings.user.suppress.Delete(key)
+            except:
+                sys.exc_clear()
+
+    def DoSuppressAll(self, *args):
+        suppress = not self.sr.wpSuppressAll.GetValue()
+        settings.char.ui.Set('showWindowOverlays', suppress)
+
+    def TogglePinState(self, *args):
+        if self.IsPinned():
+            self.Unpin()
+        else:
+            self.Pin()
+
+    def Pin(self, delegate = 1, *args, **kwds):
+        self._SetPinned(True)
+        if delegate:
+            shift = uicore.uilib.Key(uiconst.VK_SHIFT)
+            ctrl = uicore.uilib.Key(uiconst.VK_CONTROL)
+            if shift or ctrl:
+                if shift:
+                    alignedWindows = self.FindConnectingWindows()
+                else:
+                    alignedWindows = self.FindConnectingWindows('bottom')
+                for each in alignedWindows:
+                    if each == self:
+                        continue
+                    each.Pin(0)
+
+        self.RefreshHeaderButtonsIfVisible()
+
+    def Unpin(self, delegate = 1, *args, **kwds):
+        self._SetPinned(False)
+        if delegate:
+            shift = uicore.uilib.Key(uiconst.VK_SHIFT)
+            ctrl = uicore.uilib.Key(uiconst.VK_CONTROL)
+            if shift or ctrl:
+                if shift:
+                    alignedWindows = self.FindConnectingWindows()
+                else:
+                    alignedWindows = self.FindConnectingWindows('bottom')
+                for each in alignedWindows:
+                    if each == self:
+                        continue
+                    each.Unpin(0)
+
+        self.RefreshHeaderButtonsIfVisible()
+
+    def MakePinable(self):
+        self._pinable = True
+        self.RefreshHeaderButtonsIfVisible()
+
+    def MakeUnpinable(self):
+        self._pinable = False
+        self.RefreshHeaderButtonsIfVisible()
+
+    def SetActive(self, *args):
+        if self.display:
+            self.SetNotBlinking()
+        self.OnSetActive_(self)
+
+    def SetBlinking(self):
+        if uicore.registry.GetActive() == self:
+            return
+        self.isBlinking = True
+        sm.ScatterEvent('OnWindowStartBlinking', self)
+
+    def SetNotBlinking(self):
+        self.isBlinking = False
+        sm.ScatterEvent('OnWindowStopBlinking', self)
+
+    def IsPinned(self):
+        return self._pinned
+
+    def IsPinable(self):
+        return self._pinable
+
+    def _SetPinned(self, isPinned):
+        self._pinned = isPinned
+        sm.GetService('window').ToggleLiteWindowAppearance(self)
+        self.RegisterState('_pinned')
+
+    def IsBlinking(self):
+        return self.isBlinking
+
+    def DefineButtons(self, buttons, okLabel = None, okFunc = 'default', args = 'self', cancelLabel = None, cancelFunc = 'default', okModalResult = 'default', default = None):
+        if okLabel is None:
+            okLabel = localization.GetByLabel('UI/Common/Buttons/OK')
+        if cancelLabel is None:
+            cancelLabel = localization.GetByLabel('UI/Common/Buttons/Cancel')
+        if getattr(self.sr, 'bottom', None) is None:
+            self.sr.bottom = uiutil.FindChild(self, 'bottom')
+            if not self.sr.bottom:
+                self.sr.bottom = uicls.Container(name='bottom', parent=self.sr.maincontainer, align=uiconst.TOBOTTOM, height=24, idx=0)
+        if self.sr.bottom is None:
+            return
+        self.sr.bottom.Flush()
+        if buttons is None:
+            self.sr.bottom.state = uiconst.UI_HIDDEN
+            return
+        self.sr.bottom.height = 24
+        if okModalResult == 'default':
+            okModalResult = uiconst.ID_OK
+        if okFunc == 'default':
+            okFunc = self.ConfirmFunction
+        if cancelFunc == 'default':
+            cancelFunc = self.ButtonResult
+        if buttons == uiconst.OK:
+            btns = [[okLabel,
+              okFunc,
+              args,
+              None,
+              okModalResult,
+              1,
+              0]]
+        elif buttons == uiconst.OKCANCEL:
+            btns = [[okLabel,
+              okFunc,
+              args,
+              None,
+              okModalResult,
+              1,
+              0], [cancelLabel,
+              cancelFunc,
+              args,
+              None,
+              uiconst.ID_CANCEL,
+              0,
+              1]]
+        elif buttons == uiconst.OKCLOSE:
+            closeLabel = localization.GetByLabel('UI/Common/Buttons/Close')
+            btns = [[okLabel,
+              okFunc,
+              args,
+              None,
+              okModalResult,
+              1,
+              0], [closeLabel,
+              self.CloseByUser,
+              args,
+              None,
+              uiconst.ID_CLOSE,
+              0,
+              1]]
+        elif buttons == uiconst.YESNO:
+            yesLabel = localization.GetByLabel('UI/Common/Buttons/Yes')
+            noLabel = localization.GetByLabel('UI/Common/Buttons/No')
+            btns = [[yesLabel,
+              self.ButtonResult,
+              args,
+              None,
+              uiconst.ID_YES,
+              1,
+              0], [noLabel,
+              self.ButtonResult,
+              args,
+              None,
+              uiconst.ID_NO,
+              0,
+              0]]
+        elif buttons == uiconst.YESNOCANCEL:
+            yesLabel = localization.GetByLabel('UI/Common/Buttons/Yes')
+            noLabel = localization.GetByLabel('UI/Common/Buttons/No')
+            btns = [[yesLabel,
+              self.ButtonResult,
+              args,
+              None,
+              uiconst.ID_YES,
+              1,
+              0], [noLabel,
+              self.ButtonResult,
+              args,
+              None,
+              uiconst.ID_NO,
+              0,
+              0], [cancelLabel,
+              cancelFunc,
+              args,
+              None,
+              uiconst.ID_CANCEL,
+              0,
+              1]]
+        elif buttons == uiconst.CLOSE:
+            closeLabel = localization.GetByLabel('UI/Common/Buttons/Close')
+            btns = [[closeLabel,
+              self.CloseByUser,
+              args,
+              None,
+              uiconst.ID_CANCEL,
+              0,
+              1]]
+        elif type(okLabel) == types.ListType or type(okLabel) == types.TupleType:
+            btns = []
+            for index in xrange(len(okLabel)):
+                label = okLabel[index]
+                additionalArguments = {'Function': okFunc,
+                 'Arguments': args,
+                 'Cancel Label': cancelLabel,
+                 'Cancel Function': cancelFunc,
+                 'Modal Result': okModalResult,
+                 'Default': default}
+                for argName in additionalArguments:
+                    if type(additionalArguments[argName]) in (types.ListType, types.TupleType) and len(additionalArguments[argName]) > index:
+                        additionalArguments[argName] = additionalArguments[argName][index]
+
+                cancel = additionalArguments['Modal Result'] == uiconst.ID_CANCEL
+                btns.append([label,
+                 additionalArguments['Function'],
+                 additionalArguments['Arguments'],
+                 None,
+                 additionalArguments['Modal Result'],
+                 additionalArguments['Default'],
+                 cancel])
+
+        else:
+            btns = [[okLabel,
+              okFunc,
+              args,
+              None,
+              okModalResult,
+              1,
+              0]]
+        if default is not None:
+            for each in btns:
+                each[5] = each[4] == default
+
+        buttonGroup = uicls.ButtonGroup(btns=btns, parent=self.sr.bottom, unisize=1)
+        self.sr.bottom.height = max(24, buttonGroup.height)
+        self.sr.bottom.state = uiconst.UI_PICKCHILDREN
+
+    SetButtons = DefineButtons
+
+    def NoSeeThrough(self):
+        solidBackground = uicls.Fill(name='solidBackground', color=(0.0, 0.0, 0.0, 1.0), padding=(2, 2, 2, 2))
+        self.sr.underlay.background.append(solidBackground)
+        self.MakeUnpinable()
+
+    def SetScope(self, scope):
+        self.scope = scope
+
+    def HideClippedIcon(self):
+        self.sr.iconClipper.state = uiconst.UI_HIDDEN
+
+    def CloseByUser(self, *args):
+        if not self.IsKillable():
+            return
+        uicls.WindowCore.CloseByUser(self)
+
+    def SetMainIconSize(self, size = 64):
+        self.sr.mainIcon.width = self.sr.mainIcon.height = size
+
+    def Collapse(self, forceCollapse = False, checkchain = 1, *args):
+        if not self._collapseable or not forceCollapse and self.IsCollapsed():
+            return
+        if self.sr.iconClipper:
+            self.sr.iconClipper.state = uiconst.UI_HIDDEN
+        if self.sr.topParent:
+            self.sr.topParent.state = uiconst.UI_HIDDEN
+        if self.sr.bottom:
+            self.sr.bottom.state = uiconst.UI_HIDDEN
+        if self.sr.main:
+            self.sr.main.state = uiconst.UI_HIDDEN
+        uicls.WindowCore.Collapse(self, forceCollapse, checkchain, args)
+
+    def Expand(self, checkchain = 1, *args):
+        uicls.WindowCore.Expand(self, checkchain, args)
+        if self.sr.iconClipper:
+            self.sr.iconClipper.state = uiconst.UI_PICKCHILDREN
+        if self.sr.topParent:
+            self.sr.topParent.state = uiconst.UI_PICKCHILDREN
+        if self.sr.bottom:
+            self.sr.bottom.state = uiconst.UI_PICKCHILDREN
+        if self.sr.main:
+            self.sr.main.state = uiconst.UI_PICKCHILDREN
+
+    def OnResize_(self, *args):
+        self.OnResizeUpdate(self)
+
+    def OnResizeUpdate(self, *args):
+        pass
+
+    def GetStackClass(self):
+        return uicls.WindowStack
+
+    def HideHeaderButtons(self):
+        self._hideHeaderButtons = True
+
+    def UnhideHeaderButtons(self):
+        self._hideHeaderButtons = False
+
+    def ShowHeaderButtons(self, refresh = False, *args):
+        if getattr(self, '_hideHeaderButtons', False):
+            return
+        if refresh and self.sr.headerButtons:
+            self.sr.headerButtons.Close()
+            self.sr.headerButtons = None
+        if self.sr.stack or self.GetAlign() != uiconst.RELATIVE or uicore.uilib.leftbtn or getattr(self, 'isImplanted', False):
+            return
+        if not self.sr.headerButtons:
+            self.Prepare_HeaderButtons_()
+        if self.sr.headerButtons:
+            w = self.sr.headerButtons.width
+            if self.sr.captionParent:
+                self.sr.captionParent.padRight = w + 6
+            if self.sr.loadingIndicator:
+                self.sr.loadingIndicator.left = w + self.sr.headerButtons.left
+            self.sr.headerButtons.Show()
+            self.sr.headerButtonsTimer = base.AutoTimer(1000, self.CloseHeaderButtons)
+
+    def IndicateStackable(self, wnd = None):
+        if wnd is None:
+            if self.sr.snapIndicator:
+                self.sr.snapIndicator.Close()
+                self.sr.snapIndicator = None
+            return
+        if not wnd.IsStackable() or not self.IsStackable():
+            return
+        if self.sr.snapIndicator is None:
+            self.sr.snapIndicator = uicls.Fill(parent=None, align=uiconst.TOTOP_NOPUSH, height=19)
+        si = self.sr.snapIndicator
+        si.state = uiconst.UI_DISABLED
+        if si.parent != wnd:
+            uiutil.Transplant(si, wnd, idx=0)
+        else:
+            uiutil.SetOrder(si, 0)
+
+    def GetMenu(self, *args):
+        menu = uicls.WindowCore.GetMenu(self)
+        helpMenu = self.Help()
+        if helpMenu:
+            menu.append((uiutil.MenuLabel('UI/Control/EveWindow/Help'), helpMenu))
+        return menu
+
+    def InitializeStatesAndPosition(self, *args, **kwds):
+        self.startingup = 1
+        pinned = self.GetRegisteredState('pinned')
+        if pinned:
+            self.Pin(delegate=False)
+        else:
+            self.Unpin(delegate=False)
+        uicls.WindowCore.InitializeStatesAndPosition(self, *args, **kwds)
+        if settings.char.ui.Get('showWindowOverlays', 0):
+            uthread.new(self.LoadWindowOverlayPage)
+        self.startingup = 0
+
+    @classmethod
+    def GetSideOffset(cls):
+        if uicore.layer.sidePanels:
+            return uicore.layer.sidePanels.GetSideOffset()
+        return (0, 0)
+
+    def GetRegisteredState(self, stateName):
+        if stateName == 'locked':
+            if self.GetRegisteredState('pinned') and settings.char.windows.Get('lockwhenpinned', False):
+                return True
+        return uicls.WindowCore.GetRegisteredState(self, stateName)
+
+    def IsLocked(self):
+        return self._locked or self.IsPinned() and settings.char.windows.Get('lockwhenpinned', False)
+
+    def DefineIcons(self, icon, customicon = None, mainTop = -3):
+        import types
+        if customicon is not None:
+            iconNo = customicon
+        else:
+            mapping = {uiconst.INFO: 'ui_9_64_9',
+             uiconst.WARNING: 'ui_9_64_11',
+             uiconst.QUESTION: 'ui_9_64_10',
+             uiconst.ERROR: 'ui_9_64_8',
+             uiconst.FATAL: 'ui_9_64_12'}
+            if type(icon) == types.StringType:
+                iconNo = icon
+            else:
+                iconNo = mapping.get(icon, 'ui_9_64_11')
+        self.SetWndIcon(iconNo, mainTop=mainTop)
+
+    def ConfirmFunction(self, button, *args):
+        uicore.registry.Confirm(button)
+
+    def HideBackground(self):
+        self.HideUnderlay()
+        for each in self.children[:]:
+            if each.name.startswith('_lite'):
+                each.Close()
+
+    def ShowBackground(self):
+        self.ShowUnderlay()
+        liteState = self.IsPinned()
+        sm.GetService('window').ToggleLiteWindowAppearance(self, liteState)
+
+    def SetCaption(self, caption, *args, **kwds):
+        uicls.WindowCore.SetCaption(self, caption)
+        self.CheckForContextHelp()
+
+    def ShowDialog(self, modal = False, state = uiconst.UI_NORMAL):
+        if modal:
+            self.NoSeeThrough()
+        return uicls.WindowCore.ShowDialog(self, modal, state)
+
+    @classmethod
+    def GetDefaultLeftOffset(cls, width, align = None, left = 0):
+        return sm.GetService('window').GetCameraLeftOffset(width, align, left)
+
+    @classmethod
+    def ToggleOpenClose(cls, *args, **kwds):
+        wnd = cls.GetIfOpen(windowID=kwds.get('windowID', None))
+        if wnd:
+            wasCollapsed = wnd.IsCollapsed()
+            if wasCollapsed:
+                wnd.Expand()
+            if wnd.sr.stack:
+                if wnd.sr.stack.GetActiveWindow() != wnd:
+                    wnd.Maximize()
+                    return wnd
+                obscured = wnd.sr.stack.ObscuredByOtherWindows()
+            else:
+                obscured = wnd.ObscuredByOtherWindows()
+            if wnd.IsMinimized():
+                wnd.Maximize()
+                return wnd
+            if obscured:
+                uicore.registry.SetFocus(wnd)
+                return wnd
+            if not wasCollapsed:
+                wnd.CloseByUser()
+        else:
+            return cls.Open(*args, **kwds)
+
+    def ObscuredByOtherWindows(self):
+        intersecting = self.GetIntersectingWindows()
+        for wnd in intersecting:
+            if self not in uicore.layer.main.children:
+                return False
+            if wnd not in uicore.layer.main.children:
+                continue
+            if uicore.layer.main.children.index(self) > uicore.layer.main.children.index(wnd):
+                return True
+
+        return False
+
+    def _Minimize(self, animate = True):
+        if self.destroyed or self.IsMinimized():
+            return
+        self.OnStartMinimize_(self)
+        self._changing = True
+        self._SetMinimized(True)
+        uicore.registry.CheckMoveActiveState(self)
+        if animate:
+            x, y = sm.GetService('neocom').GetMinimizeToPos(self)
+            x = float(x) / uicore.desktop.width
+            y = float(y) / uicore.desktop.height
+            t = uicls.Transform(parent=uicore.layer.main, state=uiconst.UI_DISABLED, align=uiconst.TOALL, scalingCenter=(x, y), idx=0)
+            wasCacheContent = self.cacheContents
+            self.cacheContents = False
+            self.SetParent(t)
+            uicore.animations.Tr2DFlipOut(t, duration=0.3)
+            uicore.animations.FadeOut(t, duration=0.25, sleep=True)
+            self.SetParent(uicore.layer.main)
+            self.cacheContents = wasCacheContent
+            t.Close()
+        self.state = uiconst.UI_HIDDEN
+        self.OnEndMinimize_(self)
+        self._changing = False
+        sm.ScatterEvent('OnWindowMinimized', self)
+
+    @classmethod
+    def GetSettingsVersion(cls):
+        return 1

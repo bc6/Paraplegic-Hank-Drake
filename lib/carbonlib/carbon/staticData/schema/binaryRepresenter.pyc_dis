@@ -1,0 +1,168 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\carbon\common\lib\carbon\staticData\schema\binaryRepresenter.py
+import ctypes
+import cStringIO
+
+def StringAsBinaryString(s, schema):
+    count = ctypes.c_uint32(len(s))
+    countB = ctypes.string_at(ctypes.addressof(count), ctypes.sizeof(count))
+    return countB + s
+
+
+def IntAsBinaryString(i, schema):
+    intType = ctypes.c_int32
+    if 'min' in schema and schema['min'] >= 0:
+        intType = ctypes.c_uint32
+    r = intType(i)
+    return ctypes.string_at(ctypes.addressof(r), ctypes.sizeof(r))
+
+
+def FloatAsBinaryString(f, schema):
+    r = ctypes.c_float(f)
+    return ctypes.string_at(ctypes.addressof(r), ctypes.sizeof(r))
+
+
+def Vector2AsBinaryString(v, schema):
+    t = ctypes.c_float * 2
+    r = t()
+    r[0] = v[0]
+    r[1] = v[1]
+    return ctypes.string_at(ctypes.addressof(r), ctypes.sizeof(r))
+
+
+def Vector3AsBinaryString(v, schema):
+    t = ctypes.c_float * 3
+    r = t()
+    r[0] = v[0]
+    r[1] = v[1]
+    r[2] = v[2]
+    return ctypes.string_at(ctypes.addressof(r), ctypes.sizeof(r))
+
+
+def Vector4AsBinaryString(v, schema):
+    t = ctypes.c_float * 4
+    r = t()
+    r[0] = v[0]
+    r[1] = v[1]
+    r[2] = v[2]
+    r[3] = v[3]
+    return ctypes.string_at(ctypes.addressof(r), ctypes.sizeof(r))
+
+
+def BoolAsBinaryString(v, schema):
+    r = ctypes.c_ubyte(255 if v else 0)
+    return ctypes.string_at(ctypes.addressof(r), ctypes.sizeof(r))
+
+
+def EnumAsBinaryString(e, schema):
+    maxEnumValue = max(schema['values'].values())
+    enumType = schema['enumType']
+    r = enumType(schema['values'][e])
+    return ctypes.string_at(ctypes.addressof(r), ctypes.sizeof(r))
+
+
+def ListAsBinaryString(l, schema):
+    representation = cStringIO.StringIO()
+    if 'length' not in schema:
+        listLength = len(l)
+        count = ctypes.c_uint32(listLength)
+        representation.write(ctypes.string_at(ctypes.addressof(count), ctypes.sizeof(count)))
+    else:
+        listLength = len(l)
+    if 'fixedItemSize' in schema:
+        for i in l:
+            representation.write(RepresentAsBinary(i, schema['itemTypes']))
+
+    else:
+        binaryRepresentations = [ RepresentAsBinary(i, schema['itemTypes']) for i in l ]
+        offset = ctypes.sizeof(ctypes.c_uint32) * (listLength + 1)
+        offsetArray = (ctypes.c_uint32 * listLength)()
+        for i, b in enumerate(binaryRepresentations):
+            offsetArray[i] = offset
+            offset += len(b)
+
+        representation.write(ctypes.string_at(ctypes.addressof(offsetArray), ctypes.sizeof(offsetArray)))
+        for b in binaryRepresentations:
+            representation.write(b)
+
+    return representation.getvalue()
+
+
+def DictAsBinaryString(d, schema):
+    keySchema = schema['keyHeader']
+    valuesAsBinary = {}
+    for k, v in d.iteritems():
+        dataValue = RepresentAsBinary(v, schema['valueTypes'])
+        valuesAsBinary[k] = dataValue
+
+    sortedKeyList = [ k for k in sorted(valuesAsBinary.keys()) ]
+    offsets = []
+    dataRepresentation = cStringIO.StringIO()
+    for key in sortedKeyList:
+        v = valuesAsBinary[key]
+        offset = dataRepresentation.tell()
+        headerData = {'key': key,
+         'offset': offset}
+        if schema.get('buildIndex', False):
+            headerData['size'] = len(v)
+        offsets.append(headerData)
+        dataRepresentation.write(v)
+
+    offsetTable = RepresentAsBinary(offsets, keySchema)
+    offsetToData = ctypes.c_uint32(len(offsetTable))
+    return ctypes.string_at(ctypes.addressof(offsetToData), ctypes.sizeof(offsetToData)) + offsetTable + dataRepresentation.getvalue()
+
+
+def ObjectAsBinaryString(o, schema):
+    representation = cStringIO.StringIO()
+    attributesByOffset = [ (off, attr) for attr, off in schema['attributeOffsets'].iteritems() ]
+    attributesByOffset.sort()
+    for offset, attr in attributesByOffset:
+        representation.write(RepresentAsBinary(o[attr], schema['attributes'][attr]))
+
+    if 'size' in schema:
+        return representation.getvalue()
+    variableAndOptionalAttributeOrder = schema['attributesWithOffsets'][:]
+    optionalAttributesField = 0
+    for i in schema['optionalValueLookups']:
+        if i in o:
+            optionalAttributesField |= schema['optionalValueLookups'][i]
+        else:
+            variableAndOptionalAttributeOrder.remove(i)
+
+    field = ctypes.c_uint32(optionalAttributesField)
+    offsets = (ctypes.c_uint32 * len(variableAndOptionalAttributeOrder))()
+    attributesWithOffsets = cStringIO.StringIO()
+    for i, attr in enumerate(variableAndOptionalAttributeOrder):
+        offsets[i] = attributesWithOffsets.tell()
+        attributesWithOffsets.write(RepresentAsBinary(o[attr], schema['attributes'][attr]))
+
+    representation.write(ctypes.string_at(ctypes.addressof(field), ctypes.sizeof(field)))
+    representation.write(ctypes.string_at(ctypes.addressof(offsets), ctypes.sizeof(offsets)))
+    representation.write(attributesWithOffsets.getvalue())
+    return representation.getvalue()
+
+
+def BinaryStringAsBinaryString(o, schema):
+    return o
+
+
+builtInRepresenters = {'enum': EnumAsBinaryString,
+ 'bool': BoolAsBinaryString,
+ 'vector4': Vector4AsBinaryString,
+ 'vector3': Vector3AsBinaryString,
+ 'vector2': Vector2AsBinaryString,
+ 'float': FloatAsBinaryString,
+ 'int': IntAsBinaryString,
+ 'typeID': IntAsBinaryString,
+ 'string': StringAsBinaryString,
+ 'resPath': StringAsBinaryString,
+ 'list': ListAsBinaryString,
+ 'dict': DictAsBinaryString,
+ 'object': ObjectAsBinaryString,
+ 'binary': BinaryStringAsBinaryString}
+
+def RepresentAsBinary(o, schema):
+    schemaType = schema.get('type')
+    if schemaType in builtInRepresenters:
+        return builtInRepresenters[schemaType](o, schema)
+    raise NotImplemented("Type '%s' does not have a binary representation implementation" % schemaType)

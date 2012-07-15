@@ -1,0 +1,348 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/environment/spaceObject/sovereigntyClaimMarker.py
+import trinity
+import blue
+import spaceObject
+import uthread
+import nodemanager
+import pos
+import util
+import uiutil
+CONSTRUCTION_MATERIAL = 'res:/Texture/MinmatarShared/Gradientbuild.dds'
+NANO_CONTAINER = 'res:/Model/deployables/nanocontainer/NanoContainer.blue'
+BUILD_MODEL = 'res:/dx9/model/Deployables/SovClaimMarker/S_ClaimMarker_Build.red'
+ONLINE_MODEL = 'res:/dx9/model/Deployables/SovClaimMarker/S_ClaimMarker.red'
+LOOP_ROTATION_TIME = 45
+ONLINE_GLOW_OFF = trinity.TriVector(0.0, 0.0, 0.0)
+ONLINE_GLOW_MID = trinity.TriVector(0.004, 0.0, 0.0)
+VULNERABLE_COLOR = trinity.TriVector4Parameter(6.0, 1.9765, 1.0353)
+ONLINE_COLOR = trinity.TriVector4Parameter(2.4314, 3.6863, 4.0)
+
+class SovereigntyClaimMarker(spaceObject.LargeCollidableStructure):
+    __guid__ = 'spaceObject.SovereigntyClaimMarker'
+    __notifyevents__ = ['OnAllianceLogoReady']
+
+    def __init__(self):
+        spaceObject.SpaceObject.__init__(self)
+        sm.RegisterNotify(self)
+        self.transitionTo = {(pos.STRUCTURE_UNANCHORED, pos.STRUCTURE_ANCHORED): util.KeyVal(forwardTo=pos.STRUCTURE_ANCHORED, playForward=True, transitionModel=BUILD_MODEL, staticModel=BUILD_MODEL),
+         (pos.STRUCTURE_ANCHORED, pos.STRUCTURE_ONLINING): util.KeyVal(forwardTo=pos.STRUCTURE_ONLINE, playForward=True, transitionModel=ONLINE_MODEL, staticModel=ONLINE_MODEL),
+         (pos.STRUCTURE_ANCHORED, pos.STRUCTURE_UNANCHORED): util.KeyVal(forwardTo=pos.STRUCTURE_UNANCHORED, playForward=False, transitionModel=BUILD_MODEL, staticModel=NANO_CONTAINER),
+         (pos.STRUCTURE_ONLINE, pos.STRUCTURE_ANCHORED): util.KeyVal(forwardTo=pos.STRUCTURE_ANCHORED, playForward=False, transitionModel=ONLINE_MODEL, staticModel=BUILD_MODEL),
+         (pos.STRUCTURE_ONLINING, pos.STRUCTURE_ONLINE): util.KeyVal(forwardTo=pos.STRUCTURE_ONLINE, playForward=True, transitionModel=None, staticModel=ONLINE_MODEL),
+         (pos.STRUCTURE_ONLINING, pos.STRUCTURE_ANCHORED): util.KeyVal(forwardTo=pos.STRUCTURE_ANCHORED, playForward=False, transitionModel=ONLINE_MODEL, staticModel=BUILD_MODEL)}
+        self.programerTransisitons = {(pos.STRUCTURE_ONLINING, pos.STRUCTURE_ONLINE): util.KeyVal(function=self.LoadAllianceLogo, args=())}
+        self.programerStartUpState = {pos.STRUCTURE_ONLINE: [util.KeyVal(function=self.LoadAllianceLogo, args=())],
+         pos.STRUCTURE_VULNERABLE: [util.KeyVal(function=self.LoadAllianceLogo, args=())]}
+        self.stateModels = {pos.STRUCTURE_UNANCHORED: NANO_CONTAINER,
+         pos.STRUCTURE_ANCHORED: BUILD_MODEL,
+         pos.STRUCTURE_ONLINE: ONLINE_MODEL,
+         pos.STRUCTURE_VULNERABLE: ONLINE_MODEL}
+        self.spriteStateNames = {pos.STRUCTURE_UNANCHORED: 'STATE_UNANCHORED',
+         pos.STRUCTURE_ANCHORED: 'STATE_ANCHORED',
+         pos.STRUCTURE_ONLINING: 'STATE_ONLINING',
+         pos.STRUCTURE_REINFORCED: 'STATE_REINFORCED',
+         pos.STRUCTURE_ONLINE: 'STATE_ONLINE',
+         pos.STRUCTURE_OPERATING: 'STATE_OPERATING',
+         pos.STRUCTURE_VULNERABLE: 'STATE_VULNERABLE',
+         pos.STRUCTURE_SHIELD_REINFORCE: 'STATE_SHIELD_REINFORCE',
+         pos.STRUCTURE_ARMOR_REINFORCE: 'STATE_ARMOR_REINFORCE'}
+        self.currentModel = None
+        self.loadThread = None
+        self.buildAnim = None
+        self.onlineAnim = None
+        self.posState = pos.STRUCTURE_UNANCHORED
+
+    def LoadModel(self):
+        self.posState = self.ballpark.slimItems[self.id].posState
+        if self.posState in self.stateModels:
+            self.ChangeModel(self.stateModels[self.posState])
+            if self.posState in self.programerStartUpState:
+                eventList = self.programerStartUpState[self.posState]
+                for eventData in eventList:
+                    eventData.function(*eventData.args)
+
+            self.StartStopSpriteSetsByState(self.posState)
+            self.SteadyStateAnimations(self.posState)
+        else:
+            if self.posState == pos.STRUCTURE_ONLINING:
+                self.posState = pos.STRUCTURE_ANCHORED
+            slimItem = self.ballpark.slimItems[self.id]
+            posState = getattr(slimItem, 'posState', None)
+            posTime = getattr(slimItem, 'posTimestamp', blue.os.GetWallclockTime())
+            posDelay = getattr(slimItem, 'posDelayTime', 0)
+            self.HandleStateChange(posState, posTime, posDelay)
+        self.Display(1)
+
+    def OnSlimItemUpdated(self, slimItem):
+        posState = getattr(slimItem, 'posState', None)
+        posTime = getattr(slimItem, 'posTimestamp', blue.os.GetWallclockTime())
+        posDelay = getattr(slimItem, 'posDelayTime', 0)
+        if posState is None:
+            return
+        self.HandleStateChange(posState, posTime, posDelay)
+
+    def HandleStateChange(self, posState, posTime, posDelay):
+        if self.posState == posState:
+            return
+        uthread.pool('SovereigntyClaimMarker::HandleStateChange', self._HandleStateChange, posState, posTime, posDelay)
+
+    def _HandleStateChange(self, posState, posTime, posDelay):
+        transState = (self.posState, posState)
+        forwarding = transState in self.transitionTo
+        timeSinceStartMs = 0
+        playForward = None
+        if forwarding:
+            if posTime is None:
+                posTime = blue.os.GetWallclockTime()
+                posDelay = 0
+            transData = self.transitionTo[self.posState, posState]
+            timeSinceStartMs = blue.os.TimeDiffInMs(long(posTime), blue.os.GetWallclockTime())
+            playForward = transData.playForward
+            if timeSinceStartMs > const.MIN / const.MSEC:
+                self.ChangeModel(self.stateModels[transData.forwardTo], 100)
+            elif transData.transitionModel is not None:
+                self.ChangeModel(transData.transitionModel, 100)
+                if posDelay <= 0:
+                    posDelay = self.GetDelayFromModel(transState)
+                if posDelay > 0:
+                    self.LoadStaticModelIn(transData.staticModel, transData.forwardTo, posDelay)
+            else:
+                self.LoadStaticModelIn(transData.staticModel, transData.forwardTo, 100)
+        else:
+            self.ChangeModel(self.stateModels[posState], 100)
+        blue.pyos.synchro.SleepWallclock(200)
+        if transState in self.programerTransisitons:
+            eventData = self.programerTransisitons[transState]
+            eventData.function(*eventData.args)
+        self.StartAnimationsFrom(self.posState, posState, timeSinceStartMs, playForward)
+        self.StartStopSpriteSetsByState(posState)
+        self.PlaySounds(self.posState, posState)
+        self.posState = posState
+
+    def ChangeModel(self, fileName, delay = 0):
+        if self.currentModel == fileName:
+            return
+        oldModel = self.model
+        self.buildAnim = None
+        self.onlineAnim = None
+        spaceObject.SpaceObject.LoadModel(self, fileName)
+        self.currentModel = fileName
+        trinity.WaitForResourceLoads()
+        self.PrepareAnimationSetupFor(fileName)
+        self.model.display = True
+        if oldModel != None and oldModel != self.model:
+            oldModel.display = False
+            if delay == 0:
+                self.DelayedRemove(oldModel, 0)
+            else:
+                uthread.pool('SovereigntyClaimMarker::DelayedRemove', self.DelayedRemove, oldModel, int(delay))
+
+    def LoadStaticModelIn(self, fileName, posState, delay = 0):
+        if self.loadThread is not None:
+            self.loadThread.kill()
+        if delay == 0:
+            self.ChangeModel(fileName, 100)
+            self.SteadyStateAnimations(posState)
+        else:
+            self.loadThread = uthread.pool('SovereigntyClaimMarker::LoadStaticModelIn', self._LoadStaticModelIn, fileName, posState, int(delay))
+
+    def _LoadStaticModelIn(self, fileName, posState, delay = 0):
+        blue.pyos.synchro.SleepWallclock(delay)
+        if self.ballpark is None or self.id not in self.ballpark.slimItems:
+            return
+        self.ChangeModel(fileName, 100)
+        self.SteadyStateAnimations(posState)
+
+    def GetDelayFromModel(self, posState):
+        if posState in [(pos.STRUCTURE_ONLINE, pos.STRUCTURE_ANCHORED), (pos.STRUCTURE_ONLINING, pos.STRUCTURE_ANCHORED), (pos.STRUCTURE_VULNERABLE, pos.STRUCTURE_ANCHORED)]:
+            delayBonus = 0.0
+            if posState in [(pos.STRUCTURE_ONLINE, pos.STRUCTURE_ANCHORED), (pos.STRUCTURE_VULNERABLE, pos.STRUCTURE_ANCHORED)]:
+                delayBonus = LOOP_ROTATION_TIME
+            curves = nodemanager.FindNodes(self.model, 'STATE_ONLINE', 'trinity.TriCurveSet')
+            for each in curves:
+                delay = (each.GetMaxCurveDuration() + delayBonus) * 1000
+                return delay
+
+        return 10000
+
+    def PrepareAnimationSetupFor(self, fileName):
+        if fileName in BUILD_MODEL:
+            self.model.highDetailMesh.Freeze()
+            self.model.mediumDetailMesh.Freeze()
+            self.model.lowDetailMesh.Freeze()
+            alphas = nodemanager.FindNodes(self.model, 'AlphaThreshold', 'trinity.TriVector4Parameter')
+            curves = nodemanager.FindNodes(self.model, 'STATE_BUILD', 'trinity.TriCurveSet')
+            curve = curves[0]
+            src = curve.curves[0]
+            while len(curve.bindings) > 0:
+                curve.bindings.fremove(curve.bindings[0])
+
+            for eachAlpha in alphas:
+                binding = trinity.TriValueBinding()
+                binding.sourceAttribute = 'value'
+                binding.destinationAttribute = 'v1'
+                binding.scale = 1.0
+                binding.sourceObject = src
+                binding.destinationObject = eachAlpha
+                curve.bindings.append(binding)
+                binding = None
+
+            curve.scale = 0.0
+            curve.Play()
+        if fileName == ONLINE_MODEL:
+            holograms = nodemanager.FindNodes(self.model.children, 'Holograms', 'trinity.EveTransform')
+            projectors = nodemanager.FindNodes(self.model.children, 'Projectors', 'trinity.EveTransform')
+            for each in holograms + projectors:
+                each.display = False
+
+            curves = nodemanager.FindNodes(self.model, 'STATE_ONLINE', 'trinity.TriCurveSet')
+            for curve in curves:
+                curve.scale = 0.0
+                curve.Play()
+
+    def StartAnimationsFrom(self, oldState, posState, timeSinceStartMs, playForward):
+        transState = (oldState, posState)
+        timeSincesStartS = timeSinceStartMs / 1000.0
+        if transState == (pos.STRUCTURE_UNANCHORED, pos.STRUCTURE_ANCHORED):
+            curves = nodemanager.FindNodes(self.model, 'STATE_BUILD', 'trinity.TriCurveSet')
+            self.StartCurvesIn(curves, playForward, startTime=timeSincesStartS)
+        elif transState == (pos.STRUCTURE_ANCHORED, pos.STRUCTURE_UNANCHORED):
+            curves = nodemanager.FindNodes(self.model, 'STATE_BUILD', 'trinity.TriCurveSet')
+            maxTime = 0.0
+            for each in curves:
+                maxTime = max(maxTime, each.GetMaxCurveDuration())
+
+            maxTime = int(maxTime) * 1000
+            godma = sm.GetService('godma')
+            slim = self.ballpark.slimItems[self.id]
+            unanchorTime = godma.GetTypeAttribute(slim.typeID, const.attributeUnanchoringDelay)
+            self.StartCurvesIn(curves, playForward, delay=unanchorTime - maxTime, startTime=timeSincesStartS)
+        elif transState in [(pos.STRUCTURE_ANCHORED, pos.STRUCTURE_ONLINING),
+         (pos.STRUCTURE_ONLINE, pos.STRUCTURE_ANCHORED),
+         (pos.STRUCTURE_ONLINING, pos.STRUCTURE_ANCHORED),
+         (pos.STRUCTURE_VULNERABLE, pos.STRUCTURE_ANCHORED)]:
+            curves = nodemanager.FindNodes(self.model, 'STATE_ONLINING', 'trinity.TriCurveSet')
+            if playForward:
+                self.model.ChainAnimationEx('Opening', 1, 0, 1.0)
+                self.model.ChainAnimationEx('LOOP_Open', 0, 0, 1.0)
+                for each in curves:
+                    each.scale = 1.0
+                    each.PlayFrom(timeSincesStartS)
+
+            else:
+                holograms = nodemanager.FindNodes(self.model.children, 'Holograms', 'trinity.EveTransform')
+                projectors = nodemanager.FindNodes(self.model.children, 'Projectors', 'trinity.EveTransform')
+                for each in holograms + projectors:
+                    each.display = False
+
+                self.model.ChainAnimationEx('Closing', 1, 0, 1.0)
+                for each in curves:
+                    each.scale = -1.0
+                    each.PlayFrom(each.GetMaxCurveDuration() - timeSincesStartS)
+
+        elif transState == (pos.STRUCTURE_ONLINING, pos.STRUCTURE_ONLINE):
+            self.SteadyStateAnimations(posState)
+
+    def SteadyStateAnimations(self, posState):
+        if posState in (pos.STRUCTURE_ONLINE, pos.STRUCTURE_VULNERABLE):
+            self.model.ChainAnimationEx('LOOP_Open', 0, 0, 1.0)
+            curves = nodemanager.FindNodes(self.model, 'STATE_ONLINE', 'trinity.TriCurveSet')
+            for each in curves:
+                each.scale = 0.0
+                each.PlayFrom(0)
+
+            holograms = nodemanager.FindNodes(self.model.children, 'Holograms', 'trinity.EveTransform')
+            projectors = nodemanager.FindNodes(self.model.children, 'Projectors', 'trinity.EveTransform')
+            for each in holograms + projectors:
+                each.display = True
+
+        elif posState == pos.STRUCTURE_ANCHORED:
+            curves = nodemanager.FindNodes(self.model, 'STATE_BUILD', 'trinity.TriCurveSet')
+            for each in curves:
+                each.scale = 0.0
+                each.PlayFrom(each.GetMaxCurveDuration())
+
+    def StartCurvesIn(self, curves, playForward, delay = 0, scale = 1.0, startTime = 0):
+        if delay == 0:
+            self._StartCurvesIn(curves, playForward, delay, scale, startTime)
+        else:
+            uthread.pool('SovereigntyClaimMarker::StartCurvesIn', self._StartCurvesIn, curves, playForward, delay, scale, startTime)
+
+    def _StartCurvesIn(self, curves, playForward, delay, scale, startTime):
+        if delay > 0:
+            blue.pyos.synchro.SleepSim(int(delay))
+        if playForward:
+            for each in curves:
+                each.scale = scale
+                each.PlayFrom(startTime)
+
+        else:
+            for each in curves:
+                each.scale = -scale
+                each.PlayFrom(each.GetMaxCurveDuration() - startTime)
+
+    def StartStopSpriteSetsByState(self, posState):
+        if not hasattr(self.model, 'spriteSets') or self.model.spriteSets is None:
+            return
+        stateSprites = self.spriteStateNames[posState]
+        for spriteSet in self.model.spriteSets:
+            if spriteSet.name.upper().startswith('STATE_'):
+                spriteSet.display = False
+            if spriteSet.name.upper() == stateSprites:
+                spriteSet.display = True
+
+    def LoadAllianceLogo(self):
+        if self.ballpark is None or self.id not in self.ballpark.slimItems:
+            return
+        slimItem = self.ballpark.slimItems[self.id]
+        allianceID = slimItem.allianceID
+        iconPath = sm.GetService('photo').GetAllianceLogo(allianceID, 128, callback=True)
+        if iconPath is not None:
+            self.__MapAllianceLogo(iconPath)
+
+    def __MapAllianceLogo(self, iconPath):
+        screenNodes = nodemanager.FindNodes(self.model.children, 'Screen', 'trinity.Tr2MeshArea')
+        for each in screenNodes:
+            for res in each.effect.resources:
+                if res.name in ('MaskMap', 'DiffuseMap1'):
+                    res.resourcePath = iconPath
+
+    def OnAllianceLogoReady(self, allianceID):
+        if self.ballpark is None or self.id not in self.ballpark.slimItems:
+            return
+        slimItem = self.ballpark.slimItems[self.id]
+        if slimItem.allianceID == allianceID:
+            iconPath = sm.GetService('photo').GetAllianceLogo(allianceID, 128, orderIfMissing=False)
+            if iconPath is not None:
+                self.__MapAllianceLogo(iconPath)
+
+    def ChangeVulnerableState(self, toVulnerable):
+        difuseNodes = nodemanager.FindNodes(self.model, 'DiffuseColor', 'trinity.TriVector4Parameter')
+        for each in difuseNodes:
+            if toVulnerable:
+                each.v1 = 6.0
+                each.v2 = 1.9765
+                each.v3 = 1.0353
+            else:
+                each.v1 = 2.4314
+                each.v2 = 3.6863
+                each.v3 = 4.0
+
+    def PlaySounds(self, oldState, posState):
+        if oldState == pos.STRUCTURE_ONLINING and posState == pos.STRUCTURE_ONLINE:
+            self.PlayGeneralAudioEvent('wise:/msg_ct_online_play')
+        elif oldState == pos.STRUCTURE_ONLINE and posState == pos.STRUCTURE_ANCHORED:
+            self.PlayGeneralAudioEvent('wise:/msg_ct_online_play')
+        elif oldState == pos.STRUCTURE_UNANCHORED and posState == pos.STRUCTURE_ANCHORED:
+            self.PlayGeneralAudioEvent('wise:/msg_ct_assembly_play')
+        elif oldState == pos.STRUCTURE_ANCHORED and posState == pos.STRUCTURE_UNANCHORED:
+            self.PlayGeneralAudioEvent('wise:/msg_ct_disassembly_play')
+
+    def DelayedRemove(self, model, delay):
+        model.name = model.name + '_removing'
+        blue.pyos.synchro.SleepWallclock(delay)
+        model.display = False
+        self.RemoveAndClearModel(model)
+
+
+exports = {'spaceObject.SovereigntyClaimMarker': SovereigntyClaimMarker}

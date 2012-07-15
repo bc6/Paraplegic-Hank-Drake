@@ -1,0 +1,156 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/control/gauge.py
+import uiconst
+import util
+import uicls
+import uthread
+import blue
+from math import pi
+
+class _GaugeBase(uicls.ContainerAutoSize):
+    __guid__ = 'uicls._GaugeBase'
+    default_state = uiconst.UI_NORMAL
+    default_align = uiconst.TOPLEFT
+    default_width = 100
+    default_height = 30
+    default_gaugeHeight = 6
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        labelTxt = attributes.Get('label', '')
+        subTxt = attributes.Get('subText', '')
+        gaugeHeight = attributes.Get('gaugeHeight', self.default_gaugeHeight)
+        self.markers = {}
+        self.gaugeCont = uicls.Container(parent=self, name='gaugeCont', height=gaugeHeight, align=uiconst.TOTOP, clipChildren=True)
+        self.label = None
+        if labelTxt:
+            self.SetText(labelTxt)
+        self.subText = None
+        if subTxt:
+            self.SetSubText(subTxt)
+
+    def _SetValue(self, gauge, value, frequency):
+        uicore.animations.MorphScalar(gauge, 'width', gauge.width, value)
+        self.value = value
+
+    def ShowMarker(self, value, width = 1, color = util.Color.WHITE):
+        self.HideMarker(value)
+        left = int(self.width * value)
+        marker = uicls.Fill(parent=self.gaugeCont, name='marker', color=color, align=uiconst.TOPLEFT_PROP, pos=(value,
+         0,
+         width,
+         self.gaugeCont.height), state=uiconst.UI_DISABLED, idx=0)
+        self.markers[value] = marker
+
+    def ShowMarkers(self, values, width = 1, color = util.Color.WHITE):
+        for value in values:
+            self.ShowMarker(value, width, color)
+
+    def HideMarker(self, value):
+        if value in self.markers:
+            self.markers[value].Close()
+            self.markers.pop(value)
+
+    def HideAllMarkers(self):
+        for marker in self.markers.values():
+            marker.Close()
+
+        self.markers = {}
+
+    def SetSubText(self, text):
+        if not self.subText:
+            self.subText = uicls.EveLabelSmall(parent=self, align=uiconst.TOTOP, state=uiconst.UI_DISABLED, maxLines=1, padTop=1)
+        self.subText.text = text
+
+    def SetText(self, text):
+        if not self.label:
+            self.label = uicls.EveLabelSmallBold(parent=self, align=uiconst.TOTOP, state=uiconst.UI_DISABLED, maxLines=1, padBottom=1, idx=0)
+        self.label.text = text
+
+    def _CreateGradient(self, parent, color):
+        colBase = util.Color(*color).GetRGB()
+        colBright = util.Color(*color)
+        colBright = colBright.SetBrightness(min(1.0, 2.0 * colBright.GetBrightness())).GetRGB()
+        return uicls.GradientSprite(align=uiconst.TOALL, parent=parent, rotation=-pi / 2, rgbData=[(0, colBright), (0.5, colBase), (1.0, colBase)], alphaData=[(0, 1.0)])
+
+
+class Gauge(_GaugeBase):
+    __guid__ = 'uicls.Gauge'
+    default_name = 'Gauge'
+
+    def ApplyAttributes(self, attributes):
+        _GaugeBase.ApplyAttributes(self, attributes)
+        color = attributes.Get('color', util.Color.WHITE)
+        backgroundColor = attributes.Get('backgroundColor', None)
+        self.value = attributes.Get('value', 0.0)
+        self.cyclic = attributes.Get('cyclic', False)
+        self.gauge = uicls.Container(parent=self.gaugeCont, name='gauge', align=uiconst.TOLEFT_PROP, clipChildren=True, width=0.0, state=uiconst.UI_DISABLED)
+        self.gaugeGradient = self._CreateGradient(parent=self.gauge, color=color)
+        self.flashGradient = None
+        if backgroundColor is None:
+            backgroundColor = util.Color(*color).SetAlpha(0.2).GetRGBA()
+        uicls.Fill(bgParent=self.gaugeCont, name='background', color=backgroundColor)
+        self.SetValueInstantly(self.value)
+
+    def SetValue(self, value, frequency = 10.0, animate = True):
+        if self.value == value:
+            return
+        if self.cyclic and self.value > value:
+            self.SetValueInstantly(value, gaugeNum)
+        else:
+            if animate:
+                self.AnimFlash(value - self.value)
+            uthread.new(self._SetValue, self.gauge, value, frequency)
+
+    def SetColor(self, color):
+        if self.gaugeGradient:
+            self.gaugeGradient.Close()
+        self.gaugeGradient = self._CreateGradient(self.gauge, color)
+
+    def SetValueInstantly(self, value):
+        self.value = value
+        self.gauge.width = value
+
+    def AnimFlash(self, diff):
+        uthread.new(self._AnimFlash, diff)
+
+    def _AnimFlash(self, diff):
+        w, h = self.gaugeCont.GetAbsoluteSize()
+        if not self.flashGradient:
+            self.flashGradient = uicls.GradientSprite(parent=self.gauge, idx=0, name='flashGradient', align=uiconst.TOPLEFT, width=w, height=h, rgbData=[(0, (0.99, 1.0, 1.0))], alphaData=[(0, 0.0), (0.9, 0.5), (1.0, 0.0)])
+        self.flashGradient.opacity = 1.0
+        if diff > 0:
+            self.flashGradient.rotation = 0
+            uicore.animations.MorphScalar(self.flashGradient, 'left', -w, w, 1.2)
+        else:
+            self.flashGradient.rotation = pi
+            uicore.animations.MorphScalar(self.flashGradient, 'left', w, -w, 1.2)
+        uicore.animations.FadeOut(self.flashGradient, duration=1.6)
+
+
+class GaugeMultiValue(_GaugeBase):
+    __guid__ = 'uicls.GaugeMultiValue'
+    default_name = 'GaugeMultiValue'
+
+    def ApplyAttributes(self, attributes):
+        _GaugeBase.ApplyAttributes(self, attributes)
+        colors = attributes.Get('colors', [])
+        values = attributes.Get('values', [])
+        backgroundColor = attributes.Get('backgroundColor', util.Color.WHITE)
+        numGauges = len(colors)
+        self.gauges = []
+        for gaugeNum in xrange(numGauges):
+            layer = uicls.Container(parent=self.gaugeCont, name='layer')
+            gauge = uicls.Container(parent=layer, name='gaugeCont%s' % gaugeNum, align=uiconst.TOLEFT_PROP)
+            self._CreateGradient(gauge, color=colors[gaugeNum])
+            self.gauges.append(gauge)
+
+        backgroundColor = util.Color(*backgroundColor).SetAlpha(0.2).GetRGBA()
+        uicls.Fill(bgParent=self.gaugeCont, name='background', color=backgroundColor)
+        for gaugeNum, value in enumerate(values):
+            self.SetValueInstantly(gaugeNum, value)
+
+    def SetValue(self, gaugeNum, value, frequency = 10.0):
+        uthread.new(self._SetValue, self.gauges[gaugeNum], value, frequency)
+
+    def SetValueInstantly(self, gaugeNum, value):
+        self.gauges[gaugeNum].width = value

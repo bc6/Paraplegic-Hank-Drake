@@ -1,0 +1,1112 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/parklife/scenarioMgr.py
+import service
+import uthread
+import trinity
+import geo2
+import blue
+import bluepy
+import spaceObject
+import base
+import random
+import sys
+import util, uix
+import dungeonHelper
+import dungeonEditorTools
+import __builtin__
+import log
+import uiconst
+pi = 3.141592653589793
+SAVE_TIME = 30 * const.SEC
+UNLOCK_TIME = 15 * const.SEC
+UNLOCK_OBJECT_MODEL_TIMEOUT = 30.0 * const.SEC
+
+class FakeBall(bluepy.WrapBlueClass('destiny.ClientBall')):
+    pass
+
+
+class ScenarioMgr(service.Service):
+    __guid__ = 'svc.scenario'
+    __exportedcalls__ = {'DoNotRemoveMeIAmNeccessary': [service.ROLE_SERVICE],
+     'ChoosePathStep': [service.ROLE_SERVICE]}
+    __notifyevents__ = ['DoBallsAdded',
+     'DoBallRemove',
+     'OnReleaseBallpark',
+     'OnDungeonEdit',
+     'OnBSDRevisionChange']
+    __dependencies__ = ['michelle']
+    __startupdependencies__ = ['settings']
+
+    def __init__(self):
+        service.Service.__init__(self)
+        self.updateTimer = None
+        self.selection = []
+        self.selectionObjs = []
+        self.ignoreAxis = None
+        self.lookatID = None
+        self.ed = None
+        view, projection = sm.GetService('sceneManager').GetCurrentViewAndProjection()
+        self.clientToolsScene = None
+        self.clientToolsScene = scene = self.GetClientToolsScene()
+        self.cursors = {'Translation': dungeonEditorTools.TranslationTool(view, projection, scene),
+         'Rotation': dungeonEditorTools.RotationTool(view, projection, scene),
+         'Scaling': dungeonEditorTools.ScalingTool(view, projection, scene)}
+        self.currentCursor = None
+        self.isActive = False
+        self.isMoving = False
+        self.isSaving = False
+        self.isUnlocking = False
+        self.dungeonOrigin = None
+        self.playerLocation = None
+        self.fakeTransforms = {}
+        self.backupTranslations = {}
+        self.backupRotations = {}
+        self.unsavedChanges = {}
+        self.unsavedTime = {}
+        self.lockedObjects = {}
+        self.lockedTime = {}
+        self.lastChangeTimestamp = None
+        self.lastUpdateRecievedTimestamp = None
+        self.selectionCenter = (0.0, 0.0, 0.0)
+        self.groupRotation = geo2.Vector(0, 0, 0, 1)
+        self.addSelectedTaskletCount = 0
+        self.currentHardGroup = None
+        self.hardGroupRotations = {}
+        self.rotatedSelectionGroups = {}
+        self.editDungeonID = None
+        self.editRoomID = None
+        self.editRoomPos = None
+        self.yellowCubeModel = blue.resMan.LoadObject('res:/Model/UI/yellowGlassCube.blue')
+        self.yellowCubeModel.useCurves = 1
+        self.redCubeModel = blue.resMan.LoadObject('res:/Model/UI/redGlassCube.blue')
+        self.redCubeModel.useCurves = 1
+        self.blueLineCubeModel = blue.resMan.LoadObject('res:/Model/UI/blueLineCube.blue')
+        self.blueLineCubeModel.useCurves = 1
+        self.groupsWithNoModel = [const.groupCosmicAnomaly, const.groupCosmicSignature]
+
+    def Run(self, memStream = None):
+        service.Service.Run(self, memStream)
+        self.ed = None
+
+    def GetLevelEditor(self):
+        if self.ed is None and session.role & service.ROLE_CONTENT == service.ROLE_CONTENT:
+            self.DoNotRemoveMeIAmNeccessary()
+        return self.ed
+
+    def DoNotRemoveMeIAmNeccessary(self):
+        self.ed = sm.RemoteSvc('keeper').GetLevelEditor()
+        self.ed.Bind()
+
+    def EditRoom(self, dungeonID, roomID):
+        ed = self.GetLevelEditor()
+        if ed:
+            ed.EditDungeon(dungeonID, roomID=roomID)
+        else:
+            print 'I have no ed instance'
+
+    def PlayDungeon(self, dungeonID, roomID, godmode = 1):
+        ed = self.GetLevelEditor()
+        if ed:
+            if roomID is not None:
+                roomID = int(roomID)
+            ed.PlayDungeon(dungeonID, roomID=roomID, godmode=godmode)
+        else:
+            print 'I have no ed instance'
+
+    def ResetD(self):
+        ed = self.GetLevelEditor()
+        if ed:
+            for ballID in self.fakeTransforms.keys():
+                self.RestoreObjectBall(ballID)
+
+            ed.Reset()
+            self.lastChangeTimestamp = None
+            self.unsavedChanges = {}
+            self.lockedObjects = {}
+        else:
+            print 'I have no ed instance'
+
+    def GotoRoom(self, roomID):
+        ed = self.GetLevelEditor()
+        if roomID is not None and ed:
+            ed.GotoRoom(int(roomID))
+
+    def ChoosePathStep(self, defaultPathStepID, pathSteps, namesByDungeonID):
+        deadEndLabel = 'Dead end'
+        l = []
+        for pathStep in pathSteps:
+            l.append(('%s<t>%s<t>%s' % (pathStep.pathStepID, namesByDungeonID.get(pathStep.destDungeonID, deadEndLabel), ['No', 'Yes'][pathStep.pathStepID == defaultPathStepID]), pathStep.pathStepID))
+
+        windowTitle = 'GMH EP Choice'
+        listTitle = 'Select the next step in the escalating path. If you do not choose a step, or do not choose one within a reasonable amount of time, the random pick will be chosen for you.'
+        choice = uix.ListWnd(l, 'generic', windowTitle, hint=listTitle, isModal=1, scrollHeaders=['ID', 'Dungeon', 'Default'], minw=180)
+        if choice:
+            choice = choice[1]
+        return choice
+
+    def Stop(self, stream):
+        self.HideCursor()
+        service.Service.Stop(self)
+
+    def IsSelected(self, ballID):
+        return ballID in self.selection
+
+    def IsSelectedByObjID(self, objectID):
+        if objectID in self.selectionObjs:
+            return 1
+        return 0
+
+    def AreAllSelected(self, objectList):
+        for slimItem in objectList:
+            if slimItem.dunObjectID not in self.selectionObjs:
+                return False
+
+        return True
+
+    def GetSelectedObjIDs(self):
+        return self.selectionObjs[:]
+
+    def WaitForObjectCreationByID(self, objectIDs):
+        bp = sm.GetService('michelle').GetBallpark()
+        attemptsLeft = 120
+        pendingObjectIDs = set(objectIDs)
+        objectItemIDs = []
+        while len(pendingObjectIDs) and attemptsLeft:
+            blue.pyos.synchro.SleepWallclock(500)
+            arrivedObjectIDs = set()
+            for itemID, slimItem in bp.slimItems.iteritems():
+                if slimItem.dunObjectID in pendingObjectIDs:
+                    arrivedObjectIDs.add(slimItem.dunObjectID)
+                    objectItemIDs.append(slimItem.itemID)
+
+            pendingObjectIDs -= arrivedObjectIDs
+            attemptsLeft -= 1
+            self.LogInfo('WaitForObjectCreationByID', attemptsLeft, len(pendingObjectIDs) * 100.0 / len(objectIDs), pendingObjectIDs)
+
+        if attemptsLeft == 0:
+            raise RuntimeError('Failed to identify the arrival of specified objects')
+
+    def SetSelectionByID(self, objectIDs):
+        self.SetActiveHardGroup(None)
+        self.selection = []
+        self.selectionObjs = []
+        bp = sm.StartService('michelle').GetBallpark()
+        dunObjects = self.GetDunObjects()
+        sleepTime = 0
+        for objectID in objectIDs:
+            objectWasAdded = False
+            while not objectWasAdded and sleepTime < 5000:
+                for slimItem in dunObjects:
+                    if slimItem.dunObjectID == objectID:
+                        self.AddSelected(slimItem.itemID)
+                        objectWasAdded = True
+
+                if not objectWasAdded:
+                    sleepTime += 200
+                    blue.synchro.SleepWallclock(200)
+                    dunObjects = self.GetDunObjects()
+
+            if not objectWasAdded:
+                self.LogError('scenarioMgr could not add objectID', objectID, "to the selection--can't find it in the dungeon!")
+                log.LogTraceback()
+
+    def _SendSelectionEvent(self, objects = None):
+        if objects is None:
+            objects = self.selectionObjs
+        objectID = objects and objects[0] or None
+        sm.ScatterEvent('OnSelectObjectInGame', 'SelectDungeonObject', dungeonID=self.GetEditingDungeonID(), roomID=self.GetEditingRoomID(), objectID=objectID)
+
+    def IncrementAddSelectedTaskletCount(self):
+        self.addSelectedTaskletCount += 1
+
+    def DecrementAddSelectedTaskletCount(self):
+        self.addSelectedTaskletCount -= 1
+        if self.addSelectedTaskletCount == 0:
+            self.DoFullRefresh()
+        elif self.addSelectedTaskletCount < 0:
+            self.LogError('We have negative AddSelected tasklets--this is bad')
+
+    def DoFullRefresh(self):
+        self.RefreshSelection()
+        uthread.new(self.GetLevelEditor().ObjectSelection, self.selectionObjs)
+        sm.ScatterEvent('OnDESelectionChanged')
+        self._SendSelectionEvent()
+
+    def AddSelected(self, ballID):
+        self.IncrementAddSelectedTaskletCount()
+        uthread.new(self.AddSelected_thread, ballID).context = 'svc.scenario.AddSelected'
+
+    def AddSelected_thread(self, ballID):
+        try:
+            self._AddSelected_thread(ballID)
+        finally:
+            self.DecrementAddSelectedTaskletCount()
+
+    def _AddSelected_thread(self, ballID):
+        if ballID in self.selection:
+            return
+        slimItem = sm.GetService('michelle').GetItem(ballID)
+        for i in xrange(10):
+            locked, byWho = dungeonHelper.IsObjectLocked(slimItem.dunObjectID)
+            if locked != True or byWho != []:
+                break
+            blue.synchro.SleepWallclock(500)
+        else:
+            self.LogError('AddSelected_thread tried to add ball', ballID, 'for dungeon object', slimItem.dunObjectID, 'to selection, but it does not appear to exist.')
+            return
+
+        if locked:
+            lockedBy = ', '.join((userName for userId, userName in byWho))
+            eve.Message('AdminNotify', {'text': 'Unable to select object %d as its locked by %s' % (slimItem.dunObjectID, lockedBy)})
+            sm.ScatterEvent('OnDESelectionChanged')
+            return
+        if not self.currentCursor:
+            self.currentCursor = 'Translation'
+        self.selection.append(ballID)
+        if slimItem.dunObjectID not in self.selectionObjs:
+            self.selectionObjs.append(slimItem.dunObjectID)
+        self.groupRotation = geo2.Vector(0, 0, 0, 1)
+        self.ReplaceObjectBall(ballID, slimItem)
+
+    def ReplaceObjectBall(self, ballID, slimItem):
+        if ballID in self.fakeTransforms:
+            return
+        targetBall = sm.GetService('michelle').GetBall(ballID)
+        targetModel = getattr(targetBall, 'model', None)
+        modelWaitEntryTime = blue.os.GetWallclockTime()
+        if slimItem.groupID not in self.groupsWithNoModel:
+            while not targetModel:
+                blue.pyos.synchro.SleepWallclock(100)
+                targetModel = getattr(targetBall, 'model', None)
+                if blue.os.GetWallclockTime() > modelWaitEntryTime + const.SEC * 15.0:
+                    self.LogError('ReplaceObjectBall gave up on waiting for the object model to load.')
+                    return False
+
+        bp = sm.GetService('michelle').GetBallpark()
+        replacementBall = bp.AddBall(-ballID, 1.0, 0.0, 0, 0, 0, 0, 0, 0, targetBall.x, targetBall.y, targetBall.z, 0, 0, 0, 0, 1.0)
+        replacementBall = FakeBall(replacementBall)
+        replacementBall.__dict__['id'] = ballID
+        tf = trinity.TriTransform()
+        tf.translationCurve = replacementBall
+        tf.rotationCurve = trinity.TriRotationCurve()
+        if targetModel and targetModel.rotationCurve and hasattr(targetModel.rotationCurve, 'value'):
+            yaw, pitch, roll = targetModel.rotationCurve.value.GetYawPitchRoll()
+            tf.rotationCurve.value.SetYawPitchRoll(yaw, pitch, roll)
+        elif hasattr(targetModel, 'rotation'):
+            yaw, pitch, roll = targetModel.rotation.GetYawPitchRoll()
+            tf.rotationCurve.value.SetYawPitchRoll(yaw, pitch, roll)
+        tf.useCurves = 1
+        tf.Update(blue.os.GetSimTime())
+        self.fakeTransforms[ballID] = tf
+        if targetModel:
+            self.backupTranslations[ballID] = targetModel.translationCurve
+            self.backupRotations[ballID] = targetModel.rotationCurve
+            targetModel.translationCurve = tf.translationCurve
+            targetModel.rotationCurve = tf.rotationCurve
+
+    def RestoreObjectBall(self, ballID):
+        targetBall = sm.GetService('michelle').GetBall(ballID)
+        targetModel = getattr(targetBall, 'model', None)
+        if targetModel:
+            targetModel.translationCurve = self.backupTranslations[ballID]
+            targetModel.rotationCurve = self.backupRotations[ballID]
+        del self.fakeTransforms[ballID]
+
+    def RemoveSelected(self, ballID, bpRemoval = None, silent = False):
+        if ballID not in self.selection:
+            return
+        self.selection.remove(ballID)
+        self.groupRotation = geo2.Vector(0, 0, 0, 1)
+        self.RestoreObjectBall(ballID)
+        if bpRemoval == None:
+            slimItem = sm.GetService('michelle').GetItem(ballID)
+            self.selectionObjs.remove(slimItem.dunObjectID)
+        if not silent:
+            self.RefreshSelection()
+            sm.ScatterEvent('OnDESelectionChanged')
+            self._SendSelectionEvent()
+
+    def UnselectAll(self):
+        while len(self.selection) > 1:
+            self.RemoveSelected(self.selection[0], silent=True)
+
+        if self.selection:
+            self.RemoveSelected(self.selection[0])
+
+    def StopMovingCursor(self):
+        self.cursors[self.currentCursor].ReleaseAxis()
+        self.StartSavingChanges()
+
+    def StartSavingChanges(self):
+        if not self.isSaving:
+            self.isSaving = True
+            uthread.new(self.SavingChanges_thread).context = 'svc.scenario::SavingChanges'
+
+    def SavingChanges_thread(self):
+        try:
+            while self.unsavedTime:
+                sleepTill = min(self.unsavedTime.itervalues()) + SAVE_TIME
+                sleepTill += const.SEC
+                sleepTime = (sleepTill - blue.os.GetWallclockTime()) / const.MSEC
+                if sleepTime > 0:
+                    blue.synchro.SleepWallclock(sleepTime)
+                while self.isMoving:
+                    blue.synchro.Yield()
+
+                if sleepTime < 0 and not self.isMoving:
+                    self.unsavedTime = {}
+                savingIDs = []
+                threshhold = blue.os.GetWallclockTime() - SAVE_TIME
+                for ballID, updateTime in self.unsavedTime.iteritems():
+                    if threshhold > self.unsavedTime[ballID]:
+                        savingIDs.append(ballID)
+
+                if savingIDs or self.rotatedSelectionGroups:
+                    self.SaveChanges(savingIDs)
+
+        finally:
+            self.isSaving = False
+
+    def SaveAllChanges(self):
+        self.SaveChanges(self.unsavedChanges.keys())
+
+    def SaveChanges(self, savingIDs):
+        for groupName, orientation in self.rotatedSelectionGroups.iteritems():
+            sm.ScatterEvent('OnDungeonSelectionGroupRotation', self.currentHardGroup, *orientation)
+
+        self.rotatedSelectionGroups = {}
+        if savingIDs:
+            michelle = sm.StartService('michelle')
+            uthread.new(eve.Message, 'AdminNotify', {'text': 'LevelEd: Saving changes to database...'}).context = 'gameui.ServerMessage'
+            for ballID in savingIDs[:]:
+                slimItem = michelle.GetItem(ballID)
+                if not slimItem:
+                    savingIDs.remove(ballID)
+                    continue
+                if dungeonHelper.IsObjectLocked(slimItem.dunObjectID)[0]:
+                    savingIDs.remove(ballID)
+                    uthread.new(eve.Message, 'AdminNotify', {'text': 'Object %d is Locked' % slimItem.dunObjectID}).context = 'gameui.ServerMessage'
+                    self.RestoreObjectBall(ballID)
+
+            for ballID in savingIDs:
+                self._LockBall(ballID, michelle)
+
+            self.RefreshSelection()
+            dungeonHelper.BatchStart()
+            try:
+                for ballID in savingIDs:
+                    self._SaveBall(ballID, michelle)
+
+            finally:
+                dungeonHelper.BatchEnd()
+
+    def _LockBall(self, ballID, michelle):
+        slimItem = michelle.GetItem(ballID)
+        if not slimItem:
+            return
+        objectID = slimItem.dunObjectID
+        if objectID not in self.lockedObjects:
+            self.lockedObjects[objectID] = int(bool(self.unsavedChanges[ballID] & dungeonEditorTools.CHANGE_TRANSLATION) or bool(self.unsavedChanges[ballID] & dungeonEditorTools.CHANGE_ROTATION) or bool(self.unsavedChanges[ballID] & dungeonEditorTools.CHANGE_SCALE))
+            self.lockedTime[objectID] = blue.os.GetWallclockTime()
+            self.UnlockObjectsOnTimeout()
+
+    def _SaveBall(self, ballID, michelle):
+        try:
+            slimItem = michelle.GetItem(ballID)
+            if not slimItem:
+                return
+            objectID = slimItem.dunObjectID
+            if self.unsavedChanges[ballID] & dungeonEditorTools.CHANGE_TRANSLATION:
+                dungeonHelper.SaveObjectPosition(objectID, slimItem.dunX, slimItem.dunY, slimItem.dunZ)
+            if self.unsavedChanges[ballID] & dungeonEditorTools.CHANGE_SCALE:
+                dungeonHelper.SaveObjectRadius(objectID, slimItem.dunRadius)
+            targetBall = michelle.GetBall(slimItem.itemID)
+            targetModel = getattr(targetBall, 'model', None)
+            if not targetModel and not self.unsavedChanges[ballID] & dungeonEditorTools.CHANGE_TRANSLATION | dungeonEditorTools.CHANGE_SCALE:
+                del self.lockedObjects[objectID]
+            if targetModel and self.unsavedChanges[ballID] & dungeonEditorTools.CHANGE_ROTATION:
+                yaw, pitch, roll = targetModel.rotationCurve.value.GetYawPitchRoll()
+                yaw = yaw / pi * 180.0
+                pitch = pitch / pi * 180.0
+                roll = roll / pi * 180.0
+                dungeonHelper.SaveObjectRotation(objectID, yaw, pitch, roll)
+        finally:
+            del self.unsavedChanges[ballID]
+            del self.unsavedTime[ballID]
+
+    def DuplicateSelection(self, amount, x, y, z):
+        slimItems = self.GetSelObjects()
+        if len(slimItems) == 0:
+            return
+        newIDs = []
+        for slimItem in slimItems:
+            for n in range(1, amount + 1):
+                objID = dungeonHelper.CopyObject(slimItem.dunObjectID, slimItem.dunRoomID, x * n, y * n, z * n)
+                newIDs.append(objID)
+
+        self.SetSelectionByID(newIDs)
+
+    def SetSelectedQuantity(self, minQuantity, maxQuantity):
+        slimItems = self.GetSelObjects()
+        for slimItem in slimItems:
+            obtype = cfg.invtypes.Get(slimItem.typeID)
+            if slimItem.categoryID == const.categoryAsteroid or slimItem.groupID in (const.groupHarvestableCloud, const.groupCloud):
+                quantity = minQuantity + (maxQuantity - minQuantity) * random.random()
+                dungeonHelper.SetObjectQuantity(slimItem.dunObjectID, quantity)
+
+    def SetSelectedRadius(self, minRadius, maxRadius):
+        slimItems = self.GetSelObjects()
+        for slimItem in slimItems:
+            obtype = cfg.invtypes.Get(slimItem.typeID)
+            if slimItem.categoryID == const.categoryAsteroid or slimItem.groupID in (const.groupHarvestableCloud, const.groupCloud):
+                radius = minRadius + (maxRadius - minRadius) * random.random()
+                dungeonHelper.SetObjectRadius(slimItem.dunObjectID, radius)
+
+    def JitterSelection(self, x, y, z):
+        slimItems = self.GetSelObjects()
+        if len(slimItems) == 0:
+            return
+        commandArgs = []
+        for slimItem in slimItems:
+            ox = slimItem.dunX + x * random.random() * 2 - x
+            oy = slimItem.dunY + y * random.random() * 2 - y
+            oz = slimItem.dunZ + z * random.random() * 2 - z
+            dungeonHelper.SetObjectPosition(slimItem.dunObjectID, ox, oy, oz)
+
+    def JitterRotationSelection(self, yaw, pitch, roll):
+        slimItems = self.GetSelObjects()
+        if len(slimItems) == 0:
+            return
+        commandArgs = []
+        for slimItem in slimItems:
+            oYaw, oPitch, oRoll = dungeonHelper.GetObjectRotation(slimItem.dunObjectID)
+            oYaw += yaw * random.random() * 2 - yaw
+            oPitch += pitch * random.random() * 2 - pitch
+            oRoll += roll * random.random() * 2 - roll
+            dungeonHelper.SetObjectRotation(slimItem.dunObjectID, oYaw, oPitch, oRoll)
+
+    def ArrangeSelection(self, x, y, z):
+        slimItems = self.GetSelObjects()
+        if len(slimItems) < 2:
+            return
+        minV = trinity.TriVector(slimItems[0].dunX, slimItems[0].dunY, slimItems[0].dunZ)
+        maxV = minV.CopyTo()
+        commandArgs = []
+        centreAxis = trinity.TriVector()
+        for slimItem in slimItems:
+            centreAxis.x = centreAxis.x + slimItem.dunX
+            centreAxis.y = centreAxis.y + slimItem.dunY
+            centreAxis.z = centreAxis.z + slimItem.dunZ
+
+        centreAxis.Scale(1.0 / len(slimItems))
+        stepCount = float(len(slimItems))
+        totalOffset = trinity.TriVector(x * stepCount, y * stepCount, z * stepCount)
+        totalOffset.Scale(-0.5)
+        counter = 0
+        for slimItem in slimItems:
+            offset = trinity.TriVector(x, y, z)
+            offset.Scale(counter)
+            pos = centreAxis + totalOffset + offset
+            counter += 1
+            dungeonHelper.SetObjectPosition(slimItem.dunObjectID, pos.x, pos.y, pos.z)
+
+    def SetRotate(self, y, p, r):
+        slimItems = self.GetSelObjects()
+        if len(slimItems) == 0:
+            return
+        for slimItem in slimItems:
+            dungeonHelper.SetObjectRotation(slimItem.dunObjectID, y, p, r)
+
+    def RotateSelected(self, yaw, pitch, roll):
+        slimItems = self.GetSelObjects()
+        if len(slimItems) == 0:
+            return
+        nq = trinity.TriQuaternion()
+        nq.SetYawPitchRoll(yaw / 180.0 * pi, pitch / 180.0 * pi, roll / 180.0 * pi)
+        posCtr = trinity.TriVector()
+        for slimItem in slimItems:
+            posCtr += trinity.TriVector(slimItem.dunX, slimItem.dunY, slimItem.dunZ)
+
+        posCtr.Scale(1.0 / len(slimItems))
+        for slimItem in slimItems:
+            q = trinity.TriQuaternion()
+            rot = getattr(slimItem, 'dunRotation', None)
+            if rot is not None:
+                yaw, pitch, roll = rot
+                q.SetYawPitchRoll(yaw / 180.0 * pi, pitch / 180.0 * pi, roll / 180.0 * pi)
+            q.Multiply(nq)
+            y, p, r = q.GetYawPitchRoll()
+            y = y / pi * 180.0
+            p = p / pi * 180.0
+            r = r / pi * 180.0
+            translation = trinity.TriVector(slimItem.dunX, slimItem.dunY, slimItem.dunZ)
+            translation -= posCtr
+            translation.TransformQuaternion(nq)
+            translation += posCtr
+            dungeonHelper.SetObjectPosition(slimItem.dunObjectID, translation.x, translation.y, translation.z)
+            dungeonHelper.SetObjectRotation(slimItem.dunObjectID, y, p, r)
+
+    def ClearSelection(self):
+        self.selection = []
+        self.SetActiveHardGroup(None)
+        self.RefreshSelection()
+
+    def RefreshSelection(self):
+        self.LogInfo('ScenarioMgr: RefreshSelection')
+        uthread.new(self.RefreshSelection_thread).context = 'svc.scenario.RefreshSelection'
+
+    def RefreshSelection_thread(self):
+        if getattr(self, 'refreshingSelection', None) != None:
+            return
+        self.refreshingSelection = 1
+        if not self.isActive:
+            self.ShowCursor()
+        scene = sm.GetService('sceneManager').GetRegisteredScene('default')
+        del scene.children[:]
+        bp = sm.GetService('michelle').GetBallpark()
+        if bp is None:
+            self.refreshingSelection = None
+            return
+        balls = []
+        self.HideCursor()
+        showAggrRadius = settings.user.ui.Get('showAggrRadius', 0)
+        aggrSettingsAll = settings.user.ui.Get('aggrSettingsAll', 0)
+        if showAggrRadius == 1 or aggrSettingsAll == 1:
+            aggrSphere = blue.resMan.LoadObject('res:/model/global/transsphere.blue')
+            aggrSphere.useCurves = 1
+            s = aggrSphere.object.areas[0].shader
+            aggrSphere.object.areas[0].shader.passes[0].textureStage1.colorOp = trinity.TRITOP_MODULATE
+            aggrSphere.pickable = 0
+        for ballID in bp.balls:
+            ball = bp.GetBall(ballID)
+            if ball is None:
+                continue
+            slimItem = sm.GetService('michelle').GetItem(ballID)
+            if slimItem and slimItem.dunObjectID in self.lockedObjects:
+                if self.lockedObjects[slimItem.dunObjectID] > 0:
+                    scale = 1.5
+                    self.AddBoundingCube(ball, self.redCubeModel.CloneTo(), scale=scale)
+                    balls.append(ball)
+                else:
+                    scale = 1.5
+                    self.AddBoundingCube(ball, self.yellowCubeModel.CloneTo(), scale=scale)
+                    balls.append(ball)
+
+        for ballID in self.selection[:]:
+            ball = bp.GetBall(ballID)
+            if ball is None:
+                self.selection.remove(ballID)
+                continue
+            scale = 1.5
+            self.AddBoundingCube(ball, self.blueLineCubeModel.CloneTo(), scale=scale)
+            balls.append(ball)
+
+        if aggrSettingsAll == 1 or showAggrRadius == 1:
+            if aggrSettingsAll == 1:
+                slimItems = self.GetDunObjects()
+            else:
+                slimItems = self.GetSelObjects()
+            self.LogInfo('ScenarioMgr: showAggrRadius')
+            for slimItem in slimItems:
+                if hasattr(slimItem, 'dunGuardCommands'):
+                    gc = slimItem.dunGuardCommands
+                    if gc == None:
+                        continue
+                    aggressionRange = gc.aggressionRange
+                    ball = bp.GetBall(slimItem.itemID)
+                    aggrSphereInst = aggrSphere.CloneTo()
+                    aggrSphereInst.object.areas[0].shader = s
+                    aggrSphereInst.translationCurve = ball
+                    aggrSphereInst.scaling.SetXYZ(aggressionRange, aggressionRange, aggressionRange)
+                    aggrSphereInst.scaling.Scale(2.0)
+                    scene.children.append(aggrSphereInst)
+
+        if len(balls):
+            self.ShowCursor()
+        self.LogInfo('ScenarioMgr: RefreshSelection Done')
+        self.refreshingSelection = None
+
+    def AddBoundingCube(self, ball, model, scale = 1.0, rotation = geo2.Vector(0, 0, 0, 1)):
+        scene = sm.GetService('sceneManager').GetRegisteredScene('default')
+        if hasattr(ball, 'model') and ball.model is not None:
+            model.translationCurve = ball.model.translationCurve
+        else:
+            try:
+                model.translationCurve = self.fakeTransforms[ball.id].translationCurve
+            except KeyError:
+                self.LogError('AddBoundingCube failed because ball', ball.id, "didn't have a fake ball!")
+
+        model.rotationCurve = trinity.TriRotationCurve()
+        model.rotationCurve.value.SetXYZW(rotation.x, rotation.y, rotation.z, rotation.w)
+        scaleFromBall = max(ball.radius, 150)
+        model.scaling.SetXYZ(scaleFromBall, scaleFromBall, scaleFromBall)
+        model.scaling.Scale(scale)
+        scene.children.append(model)
+
+    def DoBallsAdded(self, *args, **kw):
+        import stackless
+        t = stackless.getcurrent()
+        timer = t.PushTimer(blue.pyos.taskletTimer.GetCurrent() + '::scenarioMgr')
+        try:
+            return self.DoBallsAdded_(*args, **kw)
+        finally:
+            t.PopTimer(timer)
+
+    def DoBallsAdded_(self, lst):
+        for each in lst:
+            self.DoBallAdd(*each)
+
+    def DoBallAdd(self, ball, slimItem):
+        if slimItem is None:
+            bp = sm.GetService('michelle').GetBallpark()
+            if bp is None:
+                return
+            slimItem = bp.GetInvItem(ball.id)
+            if slimItem is None:
+                return
+        if slimItem.itemID is None or slimItem.itemID < 0:
+            return
+        slimItem = sm.GetService('michelle').GetItem(slimItem.itemID)
+        toLookAt = None
+        if slimItem.dunObjectID in self.selectionObjs:
+            if getattr(self, 'lookingAt', [-1])[0] == slimItem.dunObjectID:
+                toLookAt = ball.id
+            self.AddSelected(ball.id)
+        self.UnlockObject(slimItem.itemID, slimItem.dunObjectID, force=False)
+        sm.ScatterEvent('OnDungeonObjectProperties', slimItem.dunObjectID)
+
+    def DoBallRemove(self, ball, slimItem, terminal):
+        if ball is None:
+            return
+        self.LogInfo('DoBallRemove::scenarioMgr', ball.id)
+        if ball.id in self.selection:
+            self.RemoveSelected(slimItem.itemID, 1)
+
+    def OnReleaseBallpark(self):
+        pass
+
+    def KillTimer(self):
+        self.updateTimer = None
+
+    def StartTimer(self):
+        if self.updateTimer:
+            return
+        self.timerCount = 0
+        self.updateTimer = base.AutoTimer(500, self.Update)
+
+    def Update(self):
+        if trinity.device is None:
+            self.timerCount += 1
+            if self.timerCount > 50:
+                self.LogError('scenarioMgr could not get a real tridev from trinity.device - giving up.  Goodbye cruel world.')
+            return
+        scene = sm.GetService('sceneManager').GetRegisteredScene('default')
+        if not scene:
+            return
+        ballpark = scene.ballpark
+        if not ballpark:
+            return
+        if eve.session.shipid:
+            ship = ballpark.GetBall(eve.session.shipid)
+
+    def _RenderCallback(self, evt):
+        if not self.cursors[self.currentCursor] or not self.dungeonOrigin:
+            self.HideCursor()
+            return
+        x, y, z = self.GetSelectionCenter()
+        playerPos = self.GetPlayerOffset()
+        self.cursors[self.currentCursor].Rotate(self.GetSelectionRotation())
+        self.cursors[self.currentCursor].Translate(trinity.TriVector(x - playerPos.x, y - playerPos.y, z - playerPos.z))
+        self.cursors[self.currentCursor].Render()
+
+    def ShowCursor(self):
+        self.LogInfo('ScenarioMgr: ShowCursor')
+        if self.currentCursor:
+            uthread.new(self._UpdateCursor).context = 'svc.scenario.ShowCursor'
+        self.isActive = True
+
+    def HideCursor(self):
+        self.LogInfo('ScenarioMgr: HideCursor')
+        if self.currentCursor:
+            self.cursors[self.currentCursor].Hide()
+        self.isActive = False
+
+    def MoveCursor(self, tf, dx, dy, camera):
+        if not self.isMoving:
+            self.LogInfo('ScenarioMgr: MoveCursor')
+            uthread.new(self.MoveCursor_thread).context = 'svc.scenario.MoveCursor'
+
+    def MoveCursor_thread(self):
+        self.isMoving = True
+        lib = uicore.uilib
+        while lib.leftbtn:
+            if self.currentCursor:
+                x, y, z = self.GetSelectionCenter()
+                dungeonOrigin = self.GetDungeonOrigin()
+                playerPos = self.GetPlayerOffset()
+                try:
+                    rotation = self.GetSelectionRotation()
+                    singleObjectRotation = self.currentCursor == 'Rotation' and len(self.selection) == 1
+                    multipleObjectRotation = self.currentCursor == 'Rotation' and len(self.selection) > 1
+                    if singleObjectRotation:
+                        self.cursors[self.currentCursor].Rotate((rotation[0],
+                         rotation[1],
+                         rotation[2],
+                         rotation[3]))
+                    elif multipleObjectRotation:
+                        self.cursors[self.currentCursor].Rotate((rotation[0],
+                         rotation[1],
+                         rotation[2],
+                         -rotation[3]))
+                    self.cursors[self.currentCursor].Translate(trinity.TriVector(x - playerPos.x, y - playerPos.y, z - playerPos.z))
+                    self.cursors[self.currentCursor].Transform(uicore.uilib.x, uicore.uilib.y)
+                    if multipleObjectRotation:
+                        rotation = self.cursors[self.currentCursor].GetRotation()
+                        self.SetGroupSelectionRotation((rotation[0],
+                         rotation[1],
+                         rotation[2],
+                         -rotation[3]))
+                except:
+                    self.LogError('Error when attempting to move the dungeon editor object manipulation tool.')
+                    log.LogException()
+                    sys.exc_clear()
+                    self.isMoving = False
+                    return
+
+            self.lastChangeTimestamp = blue.os.GetWallclockTime()
+            blue.synchro.Yield()
+
+        self.isMoving = False
+        self.StopMovingCursor()
+
+    def UpdateUnsavedObjectChanges(self, ballID, changeType):
+        if ballID not in self.unsavedChanges:
+            self.unsavedChanges[ballID] = dungeonEditorTools.CHANGE_NONE
+        self.unsavedChanges[ballID] = self.unsavedChanges[ballID] | changeType
+        self.unsavedTime[ballID] = blue.os.GetWallclockTime()
+        self.StartSavingChanges()
+        slimItem = sm.StartService('michelle').GetItem(ballID)
+        if slimItem and getattr(slimItem, 'dunObjectID', None) is not None:
+            sm.ScatterEvent('OnDungeonObjectProperties', slimItem.dunObjectID)
+
+    def DeleteSelected(self):
+        selItems = self.GetSelObjects()
+        self.UnselectAll()
+        self.DeleteObjects(selItems)
+
+    def DeleteObjects(self, objects):
+        for slimItem in objects:
+            try:
+                dungeonHelper.DeleteObject(slimItem.dunObjectID)
+            except:
+                eve.Message('CannotDeleteObjectNPCAttached')
+                sys.exc_clear()
+
+        self.RefreshWhenDeletesAreFinished(objects)
+
+    def RefreshWhenDeletesAreFinished(self, slimItemList):
+        MAX_SLEEP_TIME = 10000
+        bp = sm.StartService('michelle').GetBallpark()
+        ballStillHere = True
+        sleepTime = 0
+        while ballStillHere and sleepTime < MAX_SLEEP_TIME:
+            ballStillHere = False
+            for oldSlim in slimItemList:
+                ball, newSlim = self.GetBallAndSlimItemFromObjectID(oldSlim.dunObjectID)
+                if ball is not None:
+                    ballStillHere = True
+                    break
+
+            if ballStillHere:
+                sleepTime += 500
+                blue.synchro.SleepWallclock(500)
+
+        sm.ScatterEvent('OnDEObjectListChanged')
+
+    def GetDunObjects(self):
+        dunObjs = []
+        bp = sm.StartService('michelle').GetBallpark()
+        if not bp:
+            return []
+        for ballID in bp.balls:
+            slimItem = sm.StartService('michelle').GetItem(ballID)
+            if getattr(slimItem, 'dunObjectID', None) is not None:
+                dunObjs.append(slimItem)
+
+        return dunObjs
+
+    def GetBallAndSlimItemFromObjectID(self, objectID):
+        michelleSvc = sm.StartService('michelle')
+        bp = michelleSvc.GetBallpark()
+        if not bp:
+            return (None, None)
+        for ballID, ball in bp.balls.iteritems():
+            slimItem = michelleSvc.GetItem(ballID)
+            if getattr(slimItem, 'dunObjectID', None) == objectID:
+                return (ball, slimItem)
+
+        return (None, None)
+
+    def GetLockedObjects(self):
+        return self.lockedObjects
+
+    def UnlockObject(self, ballID, dunObjectID, force = False):
+        if dunObjectID in self.lockedObjects and force:
+            del self.lockedObjects[dunObjectID]
+            del self.lockedTime[dunObjectID]
+            self.RefreshSelection()
+        else:
+            uthread.new(self.UnlockObjectWhenInitialized, ballID, dunObjectID).context = 'svc.scenario.UnlockObject'
+
+    def UnlockObjectWhenInitialized(self, ballID, dunObjectID):
+        if dunObjectID not in self.lockedObjects:
+            return
+        michelleSvc = sm.StartService('michelle')
+        targetBall = michelleSvc.GetBall(ballID)
+        targetModel = getattr(targetBall, 'model', None)
+        modelWaitEntryTime = blue.os.GetWallclockTime()
+        slimItem = michelleSvc.GetItem(ballID)
+        if slimItem.groupID not in self.groupsWithNoModel:
+            while not targetModel:
+                blue.pyos.synchro.SleepWallclock(1000)
+                targetModel = getattr(targetBall, 'model', None)
+                if blue.os.GetWallclockTime() > modelWaitEntryTime + UNLOCK_OBJECT_MODEL_TIMEOUT:
+                    self.LogWarn('UnlockObjectWhenInitialized gave up after', UNLOCK_OBJECT_MODEL_TIMEOUT, 'sec on waiting for the object model to load.', ballID, dunObjectID)
+                    return False
+
+        self.lockedObjects[dunObjectID] -= 1
+        pendingChanges = 0
+        for count in self.lockedObjects.itervalues():
+            if count > 0:
+                pendingChanges += count
+
+        if not pendingChanges:
+            self.lockedObjects = {}
+            self.lockedTime = {}
+            uthread.new(eve.Message, 'AdminNotify', {'text': 'LevelEd: All changes have been confirmed.'}).context = 'gameui.ServerMessage'
+        else:
+            pendingObjects = len([ dunObjectID for dunObjectID in self.lockedObjects if self.lockedObjects[dunObjectID] > 0 ])
+            if pendingChanges == 1:
+                changeString = '%d unconfirmed change' % pendingChanges
+            else:
+                changeString = '%d unconfirmed changes' % pendingChanges
+            if pendingObjects == 1:
+                dict = {'text': 'LevelEd: %s pending in 1 object.' % changeString}
+            else:
+                dict = {'text': 'LevelEd: %s pending in %d objects.' % (changeString, len([ dunObjectID for dunObjectID in self.lockedObjects if self.lockedObjects[dunObjectID] > 0 ]))}
+            uthread.new(eve.Message, 'AdminNotify', dict).context = 'gameui.ServerMessage'
+        self.RefreshSelection()
+
+    def UnlockObjectsOnTimeout(self):
+        if not self.isUnlocking:
+            self.isUnlocking = True
+            uthread.new(self.UnlockObjectsOnTimeout_Thread).context = 'svc.scenario::UnlockObjectsOnTimeout'
+
+    def UnlockObjectsOnTimeout_Thread(self):
+        if self.currentCursor:
+            self.cursors[self.currentCursor].ReleaseAxis()
+        try:
+            while self.lockedTime:
+                sleepTill = min(self.lockedTime.itervalues()) + UNLOCK_TIME
+                sleepTime = (sleepTill - blue.os.GetWallclockTime()) / const.MSEC
+                if sleepTime > 0:
+                    blue.synchro.SleepWallclock(sleepTime)
+                threshhold = blue.os.GetWallclockTime() - UNLOCK_TIME
+                unlockedAny = False
+                for ballID, updateTime in self.lockedTime.items():
+                    if threshhold > self.lockedTime[ballID]:
+                        del self.lockedObjects[ballID]
+                        del self.lockedTime[ballID]
+                        unlockedAny = True
+
+                if unlockedAny:
+                    self.RefreshSelection()
+                    uthread.new(eve.Message, 'AdminNotify', {'text': 'LevelEd: Timeout waiting for change confirmation; releasing locked objects.'}).context = 'gameui.ServerMessage'
+
+        finally:
+            self.isUnlocking = False
+
+    def GetSelObjects(self):
+        selObjs = []
+        for each in self.GetDunObjects():
+            if self.IsSelected(each.itemID):
+                selObjs.append(each)
+
+        return selObjs
+
+    def GetSelectionCenter(self):
+        x = 0
+        y = 0
+        z = 0
+        count = 0
+        for ballID in self.selection:
+            if ballID in self.fakeTransforms:
+                self.fakeTransforms[ballID].Update(blue.os.GetSimTime())
+                targetBall = self.fakeTransforms[ballID].translationCurve
+                x += targetBall.x
+                y += targetBall.y
+                z += targetBall.z
+                count += 1
+
+        if count:
+            x /= count
+            y /= count
+            z /= count
+        self.selectionCenter = (x, y, z)
+        return self.selectionCenter
+
+    def GetSelectionRotation(self):
+        if self.currentCursor != 'Rotation' or not len(self.selection):
+            return geo2.Vector(0, 0, 0, 1)
+        if self.currentHardGroup in self.hardGroupRotations:
+            return self.GetHardGroupRotation(self.currentHardGroup)
+        if len(self.selection) > 1:
+            return self.groupRotation
+        ballID = self.selection[0]
+        if ballID in self.fakeTransforms:
+            self.fakeTransforms[ballID].Update(blue.os.GetSimTime())
+            targetBall = self.fakeTransforms[ballID].rotationCurve
+            return geo2.Vector(targetBall.value.x, targetBall.value.y, targetBall.value.z, targetBall.value.w)
+
+    def SetGroupSelectionRotation(self, rotation):
+        self.groupRotation = rotation
+        if self.currentHardGroup in self.hardGroupRotations:
+            self.hardGroupRotations[self.currentHardGroup] = rotation
+            self.rotatedSelectionGroups[self.currentHardGroup] = rotation
+
+    def SetCursor(self, cursorName):
+        if cursorName in self.cursors:
+            if self.currentCursor:
+                self.cursors[self.currentCursor].Hide()
+            self.currentCursor = cursorName
+            self.cursors[self.currentCursor].Show()
+
+    def _UpdateCursor(self):
+        if self.currentCursor:
+            self.cursors[self.currentCursor].Show()
+        while self.currentCursor and self.cursors[self.currentCursor].IsShown():
+            x, y, z = self.GetSelectionCenter()
+            playerPos = self.GetPlayerOffset()
+            self.cursors[self.currentCursor].Rotate(self.GetSelectionRotation())
+            self.cursors[self.currentCursor].Translate(trinity.TriVector(x - playerPos.x, y - playerPos.y, z - playerPos.z))
+            self.cursors[self.currentCursor].UpdatePrimitives()
+            keyDown = uicore.uilib.Key
+            if keyDown(uiconst.VK_MENU):
+                if keyDown(uiconst.VK_W):
+                    self.SetCursor('Translation')
+                if keyDown(uiconst.VK_E):
+                    self.SetCursor('Rotation')
+                if keyDown(uiconst.VK_R):
+                    self.SetCursor('Scaling')
+            blue.synchro.Yield()
+
+    def SetPlayerOffset(self):
+        bp = sm.StartService('michelle').GetBallpark()
+        if not bp or not bp.ego:
+            return
+        ego = bp.balls[bp.ego]
+        self.playerLocation = trinity.TriTransform()
+        self.playerLocation.translationCurve = ego
+        self.playerLocation.rotationCurve = ego
+        self.playerLocation.useCurves = 1
+        self.playerLocation.Update(blue.os.GetSimTime())
+
+    def GetPlayerOffset(self):
+        self.playerLocation.Update(blue.os.GetSimTime())
+        return self.playerLocation.translationCurve
+
+    def GetDungeonOrigin(self):
+        self.dungeonOrigin.Update(blue.os.GetSimTime())
+        return self.dungeonOrigin.translationCurve
+
+    def SetDungeonOrigin(self):
+        bp = sm.StartService('michelle').GetBallpark()
+        if not bp or not bp.ego:
+            return
+        ego = bp.balls[bp.ego]
+        translationCurve = bp.AddBall(-bp.ego, 1.0, 0.0, 0, 0, 0, 0, 0, 0, ego.x, ego.y, ego.z, 0, 0, 0, 0, 1.0)
+        rotationCurve = trinity.TriRotationCurve()
+        rotationCurve.value.SetYawPitchRoll(ego.yaw, ego.pitch, ego.roll)
+        self.dungeonOrigin = trinity.TriTransform()
+        self.dungeonOrigin.translationCurve = translationCurve
+        self.dungeonOrigin.rotationCurve = rotationCurve
+        self.dungeonOrigin.useCurves = 1
+        self.dungeonOrigin.Update(blue.os.GetSimTime())
+
+    def IsActive(self):
+        return self.isActive
+
+    def GetCursor(self):
+        return self.cursors.get(self.currentCursor, None)
+
+    def GetPickAxis(self):
+        if self.currentCursor:
+            x, y, z = self.GetSelectionCenter()
+            return self.cursors[self.currentCursor].PickAxis(uicore.uilib.x, uicore.uilib.y, geo2.Vector(x, y, z))
+
+    def AddHardGroup(self, groupName, orientation = None):
+        if orientation is None:
+            orientation = geo2.Vector(0, 0, 0, 1)
+        self.hardGroupRotations[groupName] = orientation
+
+    def RemoveHardGroup(self, groupName):
+        if groupName in self.hardGroupRotations:
+            del self.hardGroupRotations[groupName]
+            if groupName in self.rotatedSelectionGroups:
+                del self.rotatedSelectionGroups[groupName]
+
+    def RemoveAllHardGroups(self):
+        self.hardGroupRotations = {}
+        self.rotatedSelectionGroups = {}
+
+    def RenameHardGroup(self, oldGroupName, newGroupName):
+        if oldGroupName == newGroupName:
+            return
+        if oldGroupName in self.hardGroupRotations:
+            self.hardGroupRotations[newGroupName] = self.hardGroupRotations[oldGroupName]
+            del self.hardGroupRotations[oldGroupName]
+            if self.currentHardGroup == oldGroupName:
+                self.currentHardGroup = newGroupName
+
+    def SetActiveHardGroup(self, groupName):
+        self.currentHardGroup = groupName
+
+    def GetActiveHardGroup(self):
+        return self.currentHardGroup
+
+    def GetHardGroupRotation(self, groupName):
+        return self.hardGroupRotations.get(groupName, None)
+
+    def OnDungeonEdit(self, dungeonID, roomID, roomPos):
+        self.editDungeonID = dungeonID
+        self.editRoomID = roomID
+        self.editRoomPos = roomPos
+        self.SetPlayerOffset()
+        self.SetDungeonOrigin()
+        self.lastChangeTimestamp = None
+        self.unsavedChanges = {}
+        self.lockedObjects = {}
+
+    def GetEditingDungeonID(self):
+        return self.editDungeonID
+
+    def GetEditingRoomID(self):
+        return self.editRoomID
+
+    def GetEditingRoomPosition(self):
+        return self.editRoomPos
+
+    def OnBSDRevisionChange(self, action, schemaName, tableName, rowKeys, columnValues, reverting, _source = 'local'):
+        remoteDungeonKeepr = sm.RemoteSvc('keeper')
+        remoteDungeonKeepr.ClientBSDRevisionChange(action, schemaName, tableName, rowKeys, columnValues, reverting)
+
+    def GetClientToolsScene(self):
+        if self.clientToolsScene is not None:
+            return self.clientToolsScene
+        rj = sm.GetService('sceneManager').fisRenderJob
+        scene = rj.GetClientToolsScene()
+        if scene is not None:
+            self.clientToolsScene = scene
+            return self.clientToolsScene
+        self.clientToolsScene = trinity.Tr2PrimitiveScene()
+        rj.SetClientToolsScene(self.clientToolsScene)
+        return self.clientToolsScene

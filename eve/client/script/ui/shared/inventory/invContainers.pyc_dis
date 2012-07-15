@@ -1,0 +1,217 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/shared/inventory/invContainers.py
+import form
+import localization
+import log
+import uicls
+import uiconst
+import uiutil
+import uthread
+import util
+import invCtrl
+import invCont
+
+class ShipCargo(invCont._InvContBase):
+    __guid__ = 'invCont.ShipCargo'
+    __invControllerClass__ = invCtrl.ShipCargo
+
+
+class POSStructure(invCont._InvContBase):
+    __guid__ = 'invCont.POSStructure'
+    __invControllerClass__ = invCtrl.POSStructure
+
+
+class POSStructureCargo(invCont._InvContBase):
+    __guid__ = 'invCont.POSStructureCargo'
+    __invControllerClass__ = invCtrl.POSStructureCargo
+
+
+class POSStructureCharges(invCont._InvContBase):
+    __guid__ = 'invCont.POSStructureCharges'
+    __invControllerClass__ = invCtrl.POSStructureCharges
+
+
+class POSStrontiumBay(invCont._InvContBase):
+    __guid__ = 'invCont.POSStrontiumBay'
+    __invControllerClass__ = invCtrl.POSStrontiumBay
+
+
+class POSConstructionPlatform(invCont._InvContBase):
+    __guid__ = 'invCont.POSConstructionPlatform'
+    __invControllerClass__ = invCtrl.POSConstructionPlatform
+
+
+class ItemWreck(invCont._InvContBase):
+    __guid__ = 'invCont.ItemWreck'
+    __invControllerClass__ = invCtrl.ItemWreck
+
+
+class ItemFloatingCargo(invCont._InvContBase):
+    __guid__ = 'invCont.ItemFloatingCargo'
+    __invControllerClass__ = invCtrl.ItemFloatingCargo
+
+
+class StationContainer(invCont._InvContBase):
+    __guid__ = 'invCont.StationContainer'
+    __invControllerClass__ = invCtrl.StationContainer
+
+
+class StationCorpContainer(invCont._InvContBase):
+    __guid__ = 'invCont.StationCorpContainer'
+    __invControllerClass__ = invCtrl.StationCorpContainer
+
+    def _GetInvController(self, attributes):
+        return self.__invControllerClass__(itemID=attributes.itemID, divisionID=attributes.divisionID)
+
+
+class ShipMaintenanceBay(invCont._InvContBase):
+    __guid__ = 'invCont.ShipMaintenanceBay'
+    __invControllerClass__ = invCtrl.ShipMaintenanceBay
+
+
+class ShipDroneBay(invCont._InvContBase):
+    __guid__ = 'invCont.ShipDroneBay'
+    __invControllerClass__ = invCtrl.ShipDroneBay
+
+
+class ShipFuelBay(invCont._InvContBase):
+    __guid__ = 'invCont.ShipFuelBay'
+    __invControllerClass__ = invCtrl.ShipFuelBay
+
+
+class ShipOreHold(invCont._InvContBase):
+    __guid__ = 'invCont.ShipOreHold'
+    __invControllerClass__ = invCtrl.ShipOreHold
+
+
+class ShipGasHold(invCont._InvContBase):
+    __guid__ = 'invCont.ShipGasHold'
+    __invControllerClass__ = invCtrl.ShipGasHold
+
+
+class ShipMineralHold(invCont._InvContBase):
+    __guid__ = 'invCont.ShipMineralHold'
+    __invControllerClass__ = invCtrl.ShipMineralHold
+
+
+class ShipSalvageHold(invCont._InvContBase):
+    __guid__ = 'invCont.ShipSalvageHold'
+    __invControllerClass__ = invCtrl.ShipSalvageHold
+
+
+class ShipShipHold(invCont._InvContBase):
+    __guid__ = 'invCont.ShipShipHold'
+    __invControllerClass__ = invCtrl.ShipShipHold
+
+
+class ShipSmallShipHold(invCont._InvContBase):
+    __guid__ = 'invCont.ShipSmallShipHold'
+    __invControllerClass__ = invCtrl.ShipSmallShipHold
+
+
+class ShipMediumShipHold(invCont._InvContBase):
+    __guid__ = 'invCont.ShipMediumShipHold'
+    __invControllerClass__ = invCtrl.ShipMediumShipHold
+
+
+class ShipLargeShipHold(invCont._InvContBase):
+    __guid__ = 'invCont.ShipLargeShipHold'
+    __invControllerClass__ = invCtrl.ShipLargeShipHold
+
+
+class ShipIndustrialShipHold(invCont._InvContBase):
+    __guid__ = 'invCont.ShipIndustrialShipHold'
+    __invControllerClass__ = invCtrl.ShipIndustrialShipHold
+
+
+class ShipAmmoHold(invCont._InvContBase):
+    __guid__ = 'invCont.ShipAmmoHold'
+    __invControllerClass__ = invCtrl.ShipAmmoHold
+
+
+class ShipCommandCenterHold(invCont._InvContBase):
+    __guid__ = 'invCont.ShipCommandCenterHold'
+    __invControllerClass__ = invCtrl.ShipCommandCenterHold
+
+
+class ShipPlanetaryCommoditiesHold(invCont._InvContBase):
+    __guid__ = 'invCont.ShipPlanetaryCommoditiesHold'
+    __invControllerClass__ = invCtrl.ShipPlanetaryCommoditiesHold
+
+
+class ShipQuafeHold(invCont._InvContBase):
+    __guid__ = 'invCont.ShipQuafeHold'
+    __invControllerClass__ = invCtrl.ShipQuafeHold
+
+
+class StationCorpDelveries(invCont._InvContBase):
+    __guid__ = 'invCont.StationCorpDelveries'
+    __invControllerClass__ = invCtrl.StationCorpDelveries
+
+
+class StationOwnerView(invCont._InvContBase):
+    __guid__ = 'invCont.StationOwnerView'
+    __invControllerClass__ = invCtrl.StationOwnerView
+
+    def _GetInvController(self, attributes):
+        return self.__invControllerClass__(itemID=attributes.itemID, ownerID=attributes.ownerID)
+
+
+class StationItems(invCont._InvContBase):
+    __guid__ = 'invCont.StationItems'
+    __invControllerClass__ = invCtrl.StationItems
+    __notifyevents__ = invCont._InvContBase.__notifyevents__ + ['OnItemNameChange']
+
+    def OnItemNameChange(self, *args):
+        self.Refresh()
+
+
+class StationShips(invCont._InvContBase):
+    __guid__ = 'invCont.StationShips'
+    __invControllerClass__ = invCtrl.StationShips
+    __notifyevents__ = invCont._InvContBase.__notifyevents__ + ['OnItemNameChange', 'ProcessActiveShipChanged']
+
+    def OnItemNameChange(self, *args):
+        self.Refresh()
+
+    def ProcessActiveShipChanged(self, shipID, oldShipID):
+        self.Refresh()
+
+
+class StationCorpMember(invCont._InvContBase):
+    __guid__ = 'invCont.StationCorpMember'
+    __invControllerClass__ = invCtrl.StationCorpMember
+
+    def ApplyAttributes(self, attributes):
+        invCont._InvContBase.ApplyAttributes(self, attributes)
+        sm.GetService('invCache').InvalidateLocationCache((const.containerHangar, self.invController.ownerID))
+
+    def _GetInvController(self, attributes):
+        return self.__invControllerClass__(itemID=attributes.itemID, ownerID=attributes.ownerID)
+
+    def Refresh(self):
+        sm.GetService('invCache').InvalidateLocationCache((const.containerHangar, self.ownerID))
+        invCont._InvContBase.Refresh(self)
+
+
+class StationCorpHangar(invCont._InvContBase):
+    __guid__ = 'invCont.StationCorpHangar'
+    __invControllerClass__ = invCtrl.StationCorpHangar
+
+    def _GetInvController(self, attributes):
+        return self.__invControllerClass__(itemID=attributes.itemID, divisionID=attributes.divisionID)
+
+
+class ShipCorpHangar(invCont._InvContBase):
+    __guid__ = 'invCont.ShipCorpHangar'
+    __invControllerClass__ = invCtrl.ShipCorpHangar
+
+    def _GetInvController(self, attributes):
+        return self.__invControllerClass__(itemID=attributes.itemID, divisionID=attributes.divisionID)
+
+
+class POSCorpHangar(invCont._InvContBase):
+    __guid__ = 'invCont.POSCorpHangar'
+    __invControllerClass__ = invCtrl.POSCorpHangar
+
+    def _GetInvController(self, attributes):
+        return self.__invControllerClass__(itemID=attributes.itemID, divisionID=attributes.divisionID)

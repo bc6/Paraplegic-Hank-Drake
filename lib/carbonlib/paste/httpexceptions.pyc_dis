@@ -1,0 +1,376 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\carbon\common\lib\paste\httpexceptions.py
+import types
+from paste.wsgilib import catch_errors_app
+from paste.response import has_header, header_value, replace_header
+from paste.request import resolve_relative_url
+from paste.util.quoting import strip_html, html_quote, no_quote, comment_quote
+SERVER_NAME = 'WSGI Server'
+TEMPLATE = '<html>\r\n  <head><title>%(title)s</title></head>\r\n  <body>\r\n    <h1>%(title)s</h1>\r\n    <p>%(body)s</p>\r\n    <hr noshade>\r\n    <div align="right">%(server)s</div>\r\n  </body>\r\n</html>\r\n'
+
+class HTTPException(Exception):
+    code = None
+    title = None
+    explanation = ''
+    detail = ''
+    comment = ''
+    template = '%(explanation)s\r\n<br/>%(detail)s\r\n<!-- %(comment)s -->'
+    required_headers = ()
+
+    def __init__(self, detail = None, headers = None, comment = None):
+        self.headers = headers or tuple()
+        for req in self.required_headers:
+            pass
+
+        if detail is not None:
+            self.detail = detail
+        if comment is not None:
+            self.comment = comment
+        Exception.__init__(self, '%s %s\n%s\n%s\n' % (self.code,
+         self.title,
+         self.explanation,
+         self.detail))
+
+    def make_body(self, environ, template, escfunc, comment_escfunc = None):
+        comment_escfunc = comment_escfunc or escfunc
+        args = {'explanation': escfunc(self.explanation),
+         'detail': escfunc(self.detail),
+         'comment': comment_escfunc(self.comment)}
+        if HTTPException.template != self.template:
+            for k, v in environ.items():
+                args[k] = escfunc(v)
+
+            if self.headers:
+                for k, v in self.headers:
+                    args[k.lower()] = escfunc(v)
+
+        for key, value in args.items():
+            if isinstance(value, unicode):
+                args[key] = value.encode('utf8', 'xmlcharrefreplace')
+
+        return template % args
+
+    def plain(self, environ):
+        body = self.make_body(environ, strip_html(self.template), no_quote, comment_quote)
+        return '%s %s\r\n%s\r\n' % (self.code, self.title, body)
+
+    def html(self, environ):
+        body = self.make_body(environ, self.template, html_quote, comment_quote)
+        return TEMPLATE % {'title': self.title,
+         'code': self.code,
+         'server': SERVER_NAME,
+         'body': body}
+
+    def prepare_content(self, environ):
+        if self.headers:
+            headers = list(self.headers)
+        else:
+            headers = []
+        if 'html' in environ.get('HTTP_ACCEPT', '') or '*/*' in environ.get('HTTP_ACCEPT', ''):
+            replace_header(headers, 'content-type', 'text/html')
+            content = self.html(environ)
+        else:
+            replace_header(headers, 'content-type', 'text/plain')
+            content = self.plain(environ)
+        if isinstance(content, unicode):
+            content = content.encode('utf8')
+            cur_content_type = header_value(headers, 'content-type') or 'text/html'
+            replace_header(headers, 'content-type', cur_content_type + '; charset=utf8')
+        return (headers, content)
+
+    def response(self, environ):
+        from paste.wsgiwrappers import WSGIResponse
+        headers, content = self.prepare_content(environ)
+        resp = WSGIResponse(code=self.code, content=content)
+        resp.headers = resp.headers.fromlist(headers)
+        return resp
+
+    def wsgi_application(self, environ, start_response, exc_info = None):
+        headers, content = self.prepare_content(environ)
+        start_response('%s %s' % (self.code, self.title), headers, exc_info)
+        return [content]
+
+    __call__ = wsgi_application
+
+    def __repr__(self):
+        return '<%s %s; code=%s>' % (self.__class__.__name__, self.title, self.code)
+
+
+class HTTPError(HTTPException):
+    pass
+
+
+class HTTPRedirection(HTTPException):
+    pass
+
+
+class _HTTPMove(HTTPRedirection):
+    required_headers = ('location',)
+    explanation = 'The resource has been moved to'
+    template = '%(explanation)s <a href="%(location)s">%(location)s</a>;\r\nyou should be redirected automatically.\r\n%(detail)s\r\n<!-- %(comment)s -->'
+
+    def __init__(self, detail = None, headers = None, comment = None):
+        headers = headers or []
+        location = header_value(headers, 'location')
+        if not location:
+            location = detail
+            detail = ''
+            headers.append(('location', location))
+        HTTPRedirection.__init__(self, location, headers, comment)
+        if detail is not None:
+            self.detail = detail
+
+    def relative_redirect(cls, dest_uri, environ, detail = None, headers = None, comment = None):
+        location = resolve_relative_url(dest_uri, environ)
+        headers = headers or []
+        headers.append(('Location', location))
+        return cls(detail=detail, headers=headers, comment=comment)
+
+    relative_redirect = classmethod(relative_redirect)
+
+    def location(self):
+        for name, value in self.headers:
+            if name.lower() == 'location':
+                return value
+        else:
+            raise KeyError('No location set for %s' % self)
+
+
+class HTTPMultipleChoices(_HTTPMove):
+    code = 300
+    title = 'Multiple Choices'
+
+
+class HTTPMovedPermanently(_HTTPMove):
+    code = 301
+    title = 'Moved Permanently'
+
+
+class HTTPFound(_HTTPMove):
+    code = 302
+    title = 'Found'
+    explanation = 'The resource was found at'
+
+
+class HTTPSeeOther(_HTTPMove):
+    code = 303
+    title = 'See Other'
+
+
+class HTTPNotModified(HTTPRedirection):
+    code = 304
+    title = 'Not Modified'
+    message = ''
+
+    def plain(self, environ):
+        return ''
+
+    def html(self, environ):
+        return ''
+
+
+class HTTPUseProxy(_HTTPMove):
+    code = 305
+    title = 'Use Proxy'
+    explanation = 'The resource must be accessed through a proxy located at'
+
+
+class HTTPTemporaryRedirect(_HTTPMove):
+    code = 307
+    title = 'Temporary Redirect'
+
+
+class HTTPClientError(HTTPError):
+    code = 400
+    title = 'Bad Request'
+    explanation = 'The server could not comply with the request since\r\nit is either malformed or otherwise incorrect.\r\n'
+
+
+class HTTPBadRequest(HTTPClientError):
+    pass
+
+
+class HTTPUnauthorized(HTTPClientError):
+    code = 401
+    title = 'Unauthorized'
+    explanation = 'This server could not verify that you are authorized to\r\naccess the document you requested.  Either you supplied the\r\nwrong credentials (e.g., bad password), or your browser\r\ndoes not understand how to supply the credentials required.\r\n'
+
+
+class HTTPPaymentRequired(HTTPClientError):
+    code = 402
+    title = 'Payment Required'
+    explanation = 'Access was denied for financial reasons.'
+
+
+class HTTPForbidden(HTTPClientError):
+    code = 403
+    title = 'Forbidden'
+    explanation = 'Access was denied to this resource.'
+
+
+class HTTPNotFound(HTTPClientError):
+    code = 404
+    title = 'Not Found'
+    explanation = 'The resource could not be found.'
+
+
+class HTTPMethodNotAllowed(HTTPClientError):
+    required_headers = ('allow',)
+    code = 405
+    title = 'Method Not Allowed'
+    template = 'The method %(REQUEST_METHOD)s is not allowed for this resource.\r\n%(detail)s'
+
+
+class HTTPNotAcceptable(HTTPClientError):
+    code = 406
+    title = 'Not Acceptable'
+    template = 'The resource could not be generated that was acceptable to your browser (content\r\nof type %(HTTP_ACCEPT)s).\r\n%(detail)s'
+
+
+class HTTPProxyAuthenticationRequired(HTTPClientError):
+    code = 407
+    title = 'Proxy Authentication Required'
+    explanation = 'Authentication /w a local proxy is needed.'
+
+
+class HTTPRequestTimeout(HTTPClientError):
+    code = 408
+    title = 'Request Timeout'
+    explanation = 'The server has waited too long for the request to be sent by the client.'
+
+
+class HTTPConflict(HTTPClientError):
+    code = 409
+    title = 'Conflict'
+    explanation = 'There was a conflict when trying to complete your request.'
+
+
+class HTTPGone(HTTPClientError):
+    code = 410
+    title = 'Gone'
+    explanation = 'This resource is no longer available.  No forwarding address is given.'
+
+
+class HTTPLengthRequired(HTTPClientError):
+    code = 411
+    title = 'Length Required'
+    explanation = 'Content-Length header required.'
+
+
+class HTTPPreconditionFailed(HTTPClientError):
+    code = 412
+    title = 'Precondition Failed'
+    explanation = 'Request precondition failed.'
+
+
+class HTTPRequestEntityTooLarge(HTTPClientError):
+    code = 413
+    title = 'Request Entity Too Large'
+    explanation = 'The body of your request was too large for this server.'
+
+
+class HTTPRequestURITooLong(HTTPClientError):
+    code = 414
+    title = 'Request-URI Too Long'
+    explanation = 'The request URI was too long for this server.'
+
+
+class HTTPUnsupportedMediaType(HTTPClientError):
+    code = 415
+    title = 'Unsupported Media Type'
+    template = 'The request media type %(CONTENT_TYPE)s is not supported by this server.\r\n%(detail)s'
+
+
+class HTTPRequestRangeNotSatisfiable(HTTPClientError):
+    code = 416
+    title = 'Request Range Not Satisfiable'
+    explanation = 'The Range requested is not available.'
+
+
+class HTTPExpectationFailed(HTTPClientError):
+    code = 417
+    title = 'Expectation Failed'
+    explanation = 'Expectation failed.'
+
+
+class HTTPServerError(HTTPError):
+    code = 500
+    title = 'Internal Server Error'
+    explanation = 'The server has either erred or is incapable of performing\r\nthe requested operation.\r\n'
+
+
+class HTTPInternalServerError(HTTPServerError):
+    pass
+
+
+class HTTPNotImplemented(HTTPServerError):
+    code = 501
+    title = 'Not Implemented'
+    template = 'The request method %(REQUEST_METHOD)s is not implemented for this server.\r\n%(detail)s'
+
+
+class HTTPBadGateway(HTTPServerError):
+    code = 502
+    title = 'Bad Gateway'
+    explanation = 'Bad gateway.'
+
+
+class HTTPServiceUnavailable(HTTPServerError):
+    code = 503
+    title = 'Service Unavailable'
+    explanation = 'The server is currently unavailable. Please try again at a later time.'
+
+
+class HTTPGatewayTimeout(HTTPServerError):
+    code = 504
+    title = 'Gateway Timeout'
+    explanation = 'The gateway has timed out.'
+
+
+class HTTPVersionNotSupported(HTTPServerError):
+    code = 505
+    title = 'HTTP Version Not Supported'
+    explanation = 'The HTTP version is not supported.'
+
+
+__all__ = ['HTTPException', 'HTTPRedirection', 'HTTPError']
+_exceptions = {}
+for name, value in globals().items():
+    if isinstance(value, (type, types.ClassType)) and issubclass(value, HTTPException) and value.code:
+        _exceptions[value.code] = value
+        __all__.append(name)
+
+def get_exception(code):
+    return _exceptions[code]
+
+
+class HTTPExceptionHandler(object):
+
+    def __init__(self, application, warning_level = None):
+        if warning_level is not None:
+            import warnings
+            warnings.warn('The warning_level parameter is not used or supported', DeprecationWarning, 2)
+        self.warning_level = warning_level or 500
+        self.application = application
+
+    def __call__(self, environ, start_response):
+        environ['paste.httpexceptions'] = self
+        environ.setdefault('paste.expected_exceptions', []).append(HTTPException)
+        try:
+            return self.application(environ, start_response)
+        except HTTPException as exc:
+            return exc(environ, start_response)
+
+
+def middleware(*args, **kw):
+    import warnings
+    warnings.warn('httpexceptions.middleware is deprecated; use make_middleware or HTTPExceptionHandler instead', DeprecationWarning, 2)
+    return make_middleware(*args, **kw)
+
+
+def make_middleware(app, global_conf = None, warning_level = None):
+    if warning_level:
+        warning_level = int(warning_level)
+    return HTTPExceptionHandler(app, warning_level=warning_level)
+
+
+__all__.extend(['HTTPExceptionHandler', 'get_exception'])

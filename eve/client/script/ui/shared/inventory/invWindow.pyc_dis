@@ -1,0 +1,1781 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/shared/inventory/invWindow.py
+import uicls
+import uiconst
+import util
+import uiutil
+import blue
+import invCont
+import invCtrl
+import uthread
+import uix
+import log
+import localization
+import form
+import state
+import service
+import bluepy
+from math import pi
+import base
+CONTAINERGROUPS = (const.groupCargoContainer,
+ const.groupSecureCargoContainer,
+ const.groupAuditLogSecureContainer,
+ const.groupFreightContainer)
+
+def SortData(data):
+    data.sort(key=lambda x: x.GetLabel().lower())
+
+
+def GetContainerDataFromItems(items):
+    data = []
+    for item in items:
+        if item.typeID == const.typePlasticWrap and item.singleton:
+            data.append(uiutil.TreeDataPlasticWrap(clsName='StationContainer', itemID=item.itemID))
+        elif item.groupID in CONTAINERGROUPS and item.singleton:
+            data.append(uiutil.TreeDataInv(clsName='StationContainer', itemID=item.itemID))
+
+    SortData(data)
+    return data
+
+
+class Inventory(uicls.Window):
+    __guid__ = 'form.Inventory'
+    __notifyevents__ = ['OnSessionChanged',
+     'OnItemNameChange',
+     'OnMultipleItemChange',
+     'ProcessActiveShipChanged',
+     'OnBeforeActiveShipChanged',
+     'OnOfficeRentalChanged',
+     'OnStateChange',
+     'OnInvContDragEnter',
+     'OnInvContDragExit',
+     'DoBallsAdded',
+     'DoBallRemove',
+     'ProcessTempInvLocationAdded',
+     'ProcessTempInvLocationRemoved',
+     'OnSlimItemChange',
+     'OnInvFiltersChanged',
+     'OnInvContRefreshed',
+     'OnCapacityChange']
+    default_windowID = ('Inventory', None)
+    default_width = 600
+    default_height = 450
+    default_topParentHeight = 0
+    default_minSize = (265, 180)
+    default_iconNum = 'ui_12_64_3'
+    default_caption = localization.GetByLabel('UI/Neocom/InventoryBtn')
+
+    def ApplyAttributes(self, attributes):
+        uicls.Window.ApplyAttributes(self, attributes)
+        sm.GetService('inv').Register(self)
+        self.currInvID = attributes.Get('invID', None)
+        collapseTree = attributes.Get('collapseTree', None)
+        self.treeEntryByID = {}
+        self.tempTreeEntryByID = {}
+        self.dragHoverThread = None
+        self.refreshTreeThread = None
+        self.updateSelectedItemsThread = None
+        self.updateSelectedItemsPending = None
+        self.invCont = None
+        self.filterEntries = []
+        self.loadingTreeView = False
+        self.loadingInvCont = False
+        self.invController = None
+        if session.stationid2:
+            invCtrl.StationItems().GetItems()
+        self.dividerCont = uicls.DragResizeCont(name='dividerCont', settingsID='invTreeViewWidth_%s' % repr(self.GetWindowIDLocationVersion()), parent=self.sr.main, align=uiconst.TOLEFT_PROP, minSize=0.1, maxSize=0.5, defaultSize=0.3, clipChildren=True)
+        self.treeTopCont = uicls.Container(name='treeTopCont', parent=self.dividerCont.mainCont, align=uiconst.TOTOP, height=20, padBottom=1)
+        uicls.Line(parent=self.treeTopCont, align=uiconst.TOBOTTOM, color=(1.0, 1.0, 1.0, 0.1))
+        uicls.Fill(parent=self.treeTopCont, color=(0.5, 0.5, 0.5, 0.1), padRight=-4)
+        uicls.Label(parent=self.treeTopCont, text='Index', align=uiconst.CENTERLEFT, left=6, color=(0.5, 0.5, 0.5, 1.0))
+        self.treeBottomCont = uicls.DragResizeCont(name='treeBottomCont', parent=self.dividerCont.mainCont, settingsID='invFiltersHeight_%s' % repr(self.GetWindowIDLocationVersion()), align=uiconst.TOBOTTOM, state=uiconst.UI_PICKCHILDREN, minSize=100, maxSize=0.5, defaultSize=150, padBottom=5)
+        self.filterHeaderCont = uicls.Container(name='filterHeaderCont', parent=self.treeBottomCont, align=uiconst.TOTOP, height=22, state=uiconst.UI_NORMAL)
+        self.filterHeaderCont.OnDblClick = self.OnExpandFiltersBtn
+        uicls.GradientSprite(bgParent=self.filterHeaderCont, rotation=-pi / 2, rgbData=[(0, (0.3, 0.3, 0.3))], alphaData=[(0, 0.5), (0.9, 0.15)])
+        self.expandFiltersBtn = uicls.ButtonIcon(name='expandFiltersBtn', parent=self.filterHeaderCont, align=uiconst.TOLEFT, texturePath='res:/ui/texture/icons/1_16_100.png', width=22, func=self.OnExpandFiltersBtn)
+        filtersEnabledBtn = uicls.Container(name='filtersEnabledBtn', parent=self.filterHeaderCont, align=uiconst.TORIGHT, state=uiconst.UI_NORMAL, width=24)
+        self.createFilterBtn = uicls.ButtonIcon(name='createFilterBtn', parent=self.filterHeaderCont, align=uiconst.TORIGHT, width=self.filterHeaderCont.height, iconSize=9, texturePath='res:/UI/Texture/Icons/Plus.png', func=self.OnCreateFilterBtn)
+        filtersEnabledBtn.OnClick = self.OnFiltersEnabledBtnClicked
+        self.filtersEnabledBtnColor = uicls.Sprite(bgParent=filtersEnabledBtn, texturePath='res:/UI/Texture/CharacterCreation/radiobuttonColor.dds', color=(0, 1.0, 0, 0.0))
+        uicls.Sprite(bgParent=filtersEnabledBtn, texturePath='res:/UI/Texture/CharacterCreation/radiobuttonBack.dds', opacity=0.4)
+        uicls.Sprite(bgParent=filtersEnabledBtn, texturePath='res:/UI/Texture/CharacterCreation/radiobuttonShadow.dds', color=(0.4, 0.4, 0.4, 0.4))
+        label = uicls.Label(parent=uicls.Container(name='labelCont', parent=self.filterHeaderCont, clipChildren=True), text=localization.GetByLabel('UI/Inventory/MyFilters'), align=uiconst.CENTERLEFT)
+        self.filterCont = uicls.ScrollContainer(name='filterCont', parent=self.treeBottomCont, align=uiconst.TOALL, height=0.2)
+        uicls.GradientSprite(bgParent=self.filterCont, rotation=-pi / 2, rgbData=[(0, (0.3, 0.3, 0.3))], alphaData=[(0, 0.2), (0.7, 0.2), (0.9, 0)])
+        self.tree = uicls.ScrollContainer(parent=self.dividerCont.mainCont, padTop=1)
+        uicls.GradientSprite(bgParent=self.tree, rotation=-pi / 2, rgbData=[(0, (0.3, 0.3, 0.3))], alphaData=[(0, 0.2), (0.7, 0.2), (0.9, 0)])
+        self.tree.Paste = self.Paste
+        self.rightCont = uicls.Container(name='rightCont', parent=self.sr.main, padRight=const.defaultPadding)
+        self.topRightCont1 = uicls.Container(name='topRightcont1', parent=self.rightCont, align=uiconst.TOTOP, height=20)
+        uicls.Line(parent=self.topRightCont1, align=uiconst.TOBOTTOM, color=(1.0, 1.0, 1.0, 0.1), padLeft=-4)
+        uicls.GradientSprite(parent=self.topRightCont1, align=uiconst.TOALL, state=uiconst.UI_DISABLED, rgbData=[(0, (0.5, 0.5, 0.5))], alphaData=[(0, 0.0), (0.1, 0.1)])
+        self.topRightCont2 = uicls.Container(name='topRightCont2', parent=self.rightCont, align=uiconst.TOTOP, height=24, padBottom=1)
+        self.bottomRightCont = uicls.Container(name='bottomRightcont', parent=self.rightCont, align=uiconst.TOBOTTOM, height=40)
+        self.specialActionsCont = uicls.ContainerAutoSize(name='specialActionsCont', parent=self.bottomRightCont, align=uiconst.TOLEFT, padTop=10, padBottom=10)
+        self.expandTreeBtn = uicls.ButtonIcon(name='expandTreeBtn', parent=self.topRightCont1, align=uiconst.TOLEFT, width=20, texturePath='res:/ui/texture/icons/1_16_100.png', func=self.OnExpandTreeBtn)
+        viewBtnsCont = uicls.Container(parent=self.topRightCont1, align=uiconst.TORIGHT, width=55)
+        self.viewBtns = uicls.InvContViewBtns(parent=viewBtnsCont, align=uiconst.CENTERRIGHT, left=3, controller=self)
+        breadCrumbLabelCont = uicls.Container(parent=self.topRightCont1, clipChildren=True)
+        self.bradCrumbLabel = uicls.Label(name='breadCrumbLabel', parent=breadCrumbLabelCont, align=uiconst.CENTERLEFT)
+        self.quickFilter = uicls.InvContQuickFilter(parent=self.topRightCont2, align=uiconst.TORIGHT, width=120)
+        self.capacityGauge = uicls.InvContCapacityGauge(parent=self.topRightCont2, align=uiconst.TOALL, padding=(2, 5, 4, 4))
+        self.totalPriceLabel = uicls.Label(name='totalPriceLabel', parent=self.bottomRightCont, align=uiconst.BOTTOMRIGHT, left=5, top=4)
+        self.numItemsLabel = uicls.Label(name='numItemsLabel', parent=self.bottomRightCont, align=uiconst.BOTTOMRIGHT, left=5, top=20)
+        if not self.GetInvTreeExpandedSetting() or collapseTree:
+            self.CollapseTree(animate=False)
+        else:
+            self.ExpandTree(animate=False)
+        if not settings.user.ui.Get('invFiltersExpanded_%s' % repr(self.GetWindowIDLocationVersion()), True):
+            self.CollapseFilters(animate=False)
+        else:
+            self.ExpandFilters(animate=False)
+        if not self.currInvID:
+            self.currInvID = settings.user.ui.Get('invLastOpenContainerData', None)
+        self.ShowInvContLoadingWheel()
+        uthread.new(self.ConstructFilters)
+        uthread.new(self.RefreshTree)
+        if not self.IsPrimaryInvWindow():
+            self.SetSecondaryWindowOpen()
+
+    def GetWindowIDLocationVersion(self):
+        windowID, subWindowID = self.windowID
+        if session.stationid2:
+            return (windowID + '_station', subWindowID)
+        else:
+            return (windowID + '_space', subWindowID)
+
+    def GetRegisteredPositionAndSize(self):
+        return self.GetRegisteredPositionAndSizeByClass(self.GetWindowIDLocationVersion())
+
+    def RegisterPositionAndSize(self, key = None, windowID = None):
+        windowID = self.GetWindowIDLocationVersion()[0]
+        uicls.Window.RegisterPositionAndSize(self, key, windowID)
+
+    def OnCreateFilterBtn(self, *args):
+        sm.GetService('itemFilter').CreateFilter()
+
+    def ShowTreeLoadingWheel(self):
+        if self.loadingTreeView:
+            return
+        self.loadingTreeView = True
+        uthread.new(self._ShowTreeLoadingWheel)
+
+    def _ShowTreeLoadingWheel(self):
+        blue.synchro.SleepWallclock(500)
+        wheelCont = uicls.Container(parent=self.dividerCont.mainCont)
+        wheel = uicls.LoadingWheel(parent=wheelCont, align=uiconst.CENTER)
+        while self.loadingTreeView:
+            blue.synchro.Yield()
+
+        wheelCont.Close()
+
+    def HideTreeLoadingWheel(self):
+        self.loadingTreeView = False
+
+    def ShowInvContLoadingWheel(self):
+        if self.loadingInvCont:
+            return
+        self.loadingInvCont = True
+        uthread.new(self._ShowInvContLoadingWheel)
+
+    def _ShowInvContLoadingWheel(self):
+        blue.synchro.SleepWallclock(500)
+        wheel = uicls.LoadingWheel(parent=self.rightCont, align=uiconst.CENTER)
+        while self.loadingInvCont:
+            blue.synchro.Yield()
+
+        wheel.Close()
+
+    def HideInvContLoadingWheel(self):
+        self.loadingInvCont = False
+
+    def ConstructTree(self):
+        self.treeEntryByID = {}
+        self.tree.Flush()
+        self.ShowTreeLoadingWheel()
+        try:
+            self.treeData = self.GetInvLocationTreeData()
+        except RuntimeError as e:
+            if e.args[0] == 'CharacterNotAtStation':
+                return
+            raise 
+
+        self.tree.opacity = 0.0
+        for data in self.treeData:
+            entry = uicls.TreeViewEntry(parent=self.tree, level=0, eventListener=self, data=data)
+
+        self.HideTreeLoadingWheel()
+        uicore.animations.FadeIn(self.tree, duration=0.2)
+        if self.currInvID:
+            for entry in self.treeEntryByID.values():
+                entry.Update(selectedID=self.currInvID)
+
+            self.ScrollToActiveEntry()
+        if self.currInvID not in self.treeEntryByID:
+            if self.IsPrimaryInvWindow():
+                self.ShowInvContainer(id=None)
+            else:
+                self.Close()
+        else:
+            self.ShowInvContainer(self.currInvID)
+
+    def OnInvFiltersChanged(self):
+        self.ConstructFilters()
+        self.UpdateFilters()
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def ConstructFilters(self):
+        for filterEntry in self.filterEntries:
+            filterEntry.Close()
+
+        self.filterEntries = []
+        for filt in sm.GetService('itemFilter').GetFilters():
+            filterEntry = uicls.FilterEntry(parent=self.filterCont, filter=filt, eventListener=self)
+            self.filterEntries.append(filterEntry)
+
+    def RemoveTreeEntry(self, entry):
+        invID = entry.data.GetID()
+        sm.GetService('inv').RemoveTemporaryInvLocation(invID)
+        if not self.IsPrimaryInvWindow() and invID == self.currInvID:
+            self.Close()
+            return
+        if invID == self.currInvID:
+            self.ShowInvContainer(None)
+        if invID in self.treeEntryByID:
+            self.treeEntryByID.pop(invID)
+        if invID in self.tempTreeEntryByID:
+            self.tempTreeEntryByID.pop(invID)
+        entry.Close()
+
+    def OnInvContScrollSelectionChanged(self, nodes):
+        items = []
+        for node in nodes:
+            items.append(node.rec)
+
+        self.UpdateSelectedItems(items)
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def UpdateSelectedItems(self, items = []):
+        self.updateSelectedItemsPending = items or []
+        if self.updateSelectedItemsThread:
+            return
+        self.updateSelectedItemsThread = uthread.new(self._UpdateSelectedItems)
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def _UpdateSelectedItems(self):
+        try:
+            while self.updateSelectedItemsPending is not None:
+                if session.mutating:
+                    break
+                items = self.updateSelectedItemsPending
+                if not items:
+                    iskItems = self.invCont.items
+                    self.UpdateIskPriceLabel(iskItems)
+                else:
+                    self.UpdateIskPriceLabel(items)
+                self.capacityGauge.SetSecondaryVolume(items)
+                self.capacityGauge.SetAdditionalVolume()
+                self.UpdateNumberOfItems(items)
+                self.updateSelectedItemsPending = None
+                blue.synchro.SleepWallclock(500)
+
+        finally:
+            self.updateSelectedItemsThread = None
+
+    def SetInvContViewMode(self, value):
+        if self.invCont:
+            self.invCont.ChangeViewMode(value)
+        self.UpdateSelectedItems()
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def UpdateNumberOfItems(self, items = []):
+        numFiltered = self.invCont.numFilteredItems
+        if numFiltered:
+            text = '<color=#FF00FF00>'
+            numFilteredTxt = localization.GetByLabel('UI/Inventory/NumFiltered', numFiltered=numFiltered)
+        else:
+            text = numFilteredTxt = ''
+        numTotal = len(self.invCont.invController.GetItems()) - numFiltered
+        numSelected = len(items)
+        if numSelected:
+            text += localization.GetByLabel('UI/Inventory/NumItemsAndSelected', numItems=numTotal, numSelected=numSelected, numFilteredTxt=numFilteredTxt)
+        else:
+            text += localization.GetByLabel('UI/Inventory/NumItems', numItems=numTotal, numFilteredTxt=numFilteredTxt)
+        self.numItemsLabel.text = text
+
+    def OnInvContDragEnter(self, invID, nodes):
+        if invID != self.currInvID:
+            return
+        items = []
+        itemIDs = [ item.itemID for item in self.invCont.invController.GetItems() ]
+        for node in nodes:
+            if getattr(node, 'item', None):
+                if node.item.itemID in itemIDs:
+                    return
+                items.append(node.item)
+
+        self.capacityGauge.SetAdditionalVolume(items)
+
+    def OnInvContDragExit(self, invID, nodes):
+        self.capacityGauge.SetAdditionalVolume()
+
+    def OnResize_(self, *args):
+        self.treeBottomCont.UpdateSize()
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def UpdateIskPriceLabel(self, items):
+        total = 0
+        for item in items:
+            if item is None:
+                continue
+            price = util.GetAveragePrice(item)
+            if price:
+                total += price * item.stacksize
+
+        text = localization.GetByLabel('UI/Inventory/EstIskPrice', iskString=util.FmtISKAndRound(total, False))
+        self.totalPriceLabel.text = text
+
+    def UpdateSpecialActionButtons(self):
+        self.specialActionsCont.Flush()
+        actions = self.invCont.invController.GetSpecialActions()
+        for label, func in actions:
+            uicls.Button(parent=self.specialActionsCont, label=label, func=func, align=uiconst.TOLEFT)
+
+    def RegisterID(self, entry, id):
+        if id in self.treeEntryByID:
+            raise ValueError('Duplicate inventory location ids: %s' % repr(id))
+        self.treeEntryByID[id] = entry
+
+    def OnTreeViewClick(self, entry, *args):
+        if session.solarsystemid and hasattr(entry.data, 'GetItemID'):
+            itemID = entry.data.GetItemID()
+            bp = sm.GetService('michelle').GetBallpark()
+            if bp and itemID in bp.slimItems:
+                sm.GetService('state').SetState(itemID, state.selected, 1)
+                if uicore.cmd.ExecuteCombatCommand(itemID, uiconst.UI_CLICK):
+                    return
+        if isinstance(entry.data, uiutil.TreeDataInv) and entry.data.HasInvCont():
+            if uicore.uilib.Key(uiconst.VK_SHIFT):
+                entry.data.OpenNewWindow()
+            else:
+                self.ShowInvContainer(entry.data.GetID())
+        elif entry.data.HasChildren():
+            entry.ToggleChildren()
+
+    def OnTreeViewDblClick(self, entry, *args):
+        if isinstance(entry.data, uiutil.TreeDataInv) and entry.data.HasInvCont():
+            entry.ToggleChildren()
+
+    def OnTreeViewMouseEnter(self, entry, *args):
+        if not session.solarsystemid:
+            return
+        if hasattr(entry.data, 'GetItemID'):
+            sm.GetService('state').SetState(entry.data.GetItemID(), state.mouseOver, 1)
+
+    def OnTreeViewMouseExit(self, entry, *args):
+        if not session.solarsystemid:
+            return
+        if hasattr(entry.data, 'GetItemID'):
+            sm.GetService('state').SetState(entry.data.GetItemID(), state.mouseOver, 0)
+
+    def OnTreeViewDragEnter(self, entry, dragObj, nodes):
+        self.dragHoverThread = uthread.new(self._OnTreeViewDragEnter, entry, dragObj, nodes)
+
+    def OnTreeViewDragExit(self, entry, dragObj, nodes):
+        sm.ScatterEvent('OnInvContDragExit', dragObj, nodes)
+
+    def _OnTreeViewDragEnter(self, entry, dragObj, nodes):
+        blue.synchro.SleepWallclock(1000)
+        if uicore.uilib.mouseOver == entry and uicore.uilib.leftbtn:
+            entry.ToggleChildren(True)
+            if isinstance(entry.data, uiutil.TreeDataInv) and entry.data.HasInvCont():
+                self.ShowInvContainer(entry.data.GetID())
+                blue.synchro.Yield()
+                sm.ScatterEvent('OnInvContDragEnter', entry.data.GetID(), nodes)
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def ShowInvContainer(self, id):
+        if id is None or id not in self.treeEntryByID:
+            id = ('ShipCargo', util.GetActiveShip())
+            if id not in self.treeEntryByID:
+                return
+        if self.currInvID == id and self.invCont is not None:
+            return
+        data = self.treeEntryByID[id].data
+        try:
+            data.invController.GetItems()
+        except UserError:
+            self.HideInvContLoadingWheel()
+            if not self.invCont:
+                self.ShowInvContainer(None)
+            raise 
+
+        if self.invCont:
+            self.invCont.Close()
+        self.ShowInvContLoadingWheel()
+        self.invCont = data.GetInvCont(parent=self.rightCont, activeFilters=self.GetActiveFilters(), name=repr(self.windowID))
+        self.invController = self.invCont.invController
+        self.HideInvContLoadingWheel()
+        self.capacityGauge.SetInvCont(self.invCont)
+        self.invCont.scroll.OnSelectionChange = self.OnInvContScrollSelectionChanged
+        self.UpdateIskPriceLabel(self.invCont.invController.GetItems())
+        self.UpdateSpecialActionButtons()
+        self.quickFilter.SetInvCont(self.invCont)
+        self.viewBtns.UpdateButtons(['icons', 'details', 'list'].index(self.invCont.viewMode))
+        uicore.registry.SetFocus(self.tree)
+        self.currInvID = id
+        isCelestial = isinstance(self.invCont.invController, invCtrl.BaseCelestialContainer)
+        if self.IsPrimaryInvWindow() and not isCelestial:
+            settings.user.ui.Set('invLastOpenContainerData', id)
+        for entry in self.treeEntryByID.values():
+            entry.Update(selectedID=id)
+
+        self.UpdateWindowCaption()
+        self.UpdateNumberOfItems()
+
+    def SetSingleFilter(self, selectedEntry):
+        for entry in self.filterEntries:
+            if entry != selectedEntry:
+                entry.checkbox.SetChecked(False)
+
+    def DeselectAllFilters(self):
+        for entry in self.filterEntries:
+            entry.checkbox.SetChecked(False)
+
+    def UpdateFilters(self):
+        if self.invCont:
+            self.SetActiveFilters(self.GetActiveFilters())
+
+    def SetActiveFilters(self, filters):
+        self.invCont.SetFilters(filters)
+        if filters:
+            uicore.animations.FadeIn(self.filtersEnabledBtnColor, 0.9, curveType=uiconst.ANIM_OVERSHOT)
+        else:
+            uicore.animations.FadeOut(self.filtersEnabledBtnColor)
+
+    def OnInvContRefreshed(self, invCont):
+        if self.invCont == invCont:
+            self.UpdateSelectedItems()
+
+    def GetActiveFilters(self):
+        filters = []
+        for filterEntry in self.filterEntries:
+            flt = filterEntry.GetFilter()
+            if flt:
+                filters.append(flt)
+
+        return filters
+
+    def UpdateWindowCaption(self):
+        entry = self.treeEntryByID.get(self.currInvID, None)
+        if not entry:
+            return
+        if self.IsPrimaryInvWindow():
+            labelList = entry.GetFullPathLabelList()
+            text = ''
+            for label in labelList:
+                if label != labelList[-1]:
+                    text += label + ' > '
+                else:
+                    text += label
+
+            self.SetCaption(text)
+        else:
+            self.SetCaption(entry.data.GetLabel())
+
+    def IsPrimaryInvWindow(self):
+        return self.windowID == self.default_windowID
+
+    @staticmethod
+    def OpenOrShow(invID, **kw):
+        if uicore.uilib.Key(uiconst.VK_SHIFT):
+            return form.Inventory.OpenSecondary(invID=invID, **kw)
+        wnd = form.Inventory.GetIfOpen()
+        if wnd:
+            if wnd.IsMinimized():
+                wnd.Maximize()
+            wnd.ShowInvContainer(invID)
+        else:
+            wnd = form.Inventory.Open(invID=invID, **kw)
+        wnd.ScrollToActiveEntry()
+        return wnd
+
+    @staticmethod
+    def ToggleOpenOrShow(invID, **kw):
+        wnd = form.Inventory.GetIfOpen()
+        if uicore.uilib.Key(uiconst.VK_SHIFT):
+            return form.Inventory.ToggleOpenSecondary(invID=invID)
+        elif wnd and wnd.currInvID == invID:
+            return form.Inventory.ToggleOpenClose()
+        else:
+            return form.Inventory.OpenOrShow(invID)
+
+    @staticmethod
+    def ToggleOpenSecondary(invID, **kw):
+        windowID = form.Inventory.GetSecondaryWindowID(invID)
+        return form.InventorySecondary.ToggleOpenClose(windowID=windowID, invID=invID, collapseTree=True)
+
+    @staticmethod
+    def OpenSecondary(invID = None, **kw):
+        windowID = form.Inventory.GetSecondaryWindowID(invID)
+        return form.InventorySecondary.Open(invID=invID, windowID=windowID, collapseTree=True, **kw)
+
+    @staticmethod
+    def GetSecondaryWindowID(invID):
+        if invID:
+            invCtrlName = invID[0]
+            if invCtrlName in ('StationContainer', 'ShipCargo', 'ShipDroneBay'):
+                return ('InventorySecondary_%s_%s' % invID, invID[1])
+            elif invCtrlName in ('StationCorpHangar', 'POSCorpHangar', 'ShipCorpHangar'):
+                return ('InventorySecondary_%s' % invID[0], '%s_%s' % (invID[1], invID[2]))
+            else:
+                return ('InventorySecondary_%s' % invID[0], invID[1])
+        else:
+            return ('InventorySecondary', blue.os.GetTime())
+
+    def ScrollToActiveEntry(self):
+        uthread.new(self._ScrollToActiveEntry)
+
+    def _ScrollToActiveEntry(self):
+        blue.synchro.Yield()
+        entry = self.treeEntryByID.get(self.currInvID, None)
+        if not entry:
+            return
+        _, topEntry = entry.GetAbsolutePosition()
+        _, topScroll, _, height = self.tree.mainCont.GetAbsolute()
+        denum = height - entry.topRightCont.height
+        if denum:
+            fraction = float(topEntry - topScroll) / denum
+            self.tree.ScrollToVertical(fraction)
+
+    def OnDropData(self, dragObj, nodes):
+        if self.invCont:
+            self.invCont.OnDropData(dragObj, nodes)
+
+    def OnTreeViewDropData(self, entry, obj, nodes):
+        if self.dragHoverThread:
+            self.dragHoverThread.kill()
+            self.dragHoverThread = None
+        if isinstance(entry.data, uiutil.TreeDataInv):
+            sm.ScatterEvent('OnInvContDragExit', obj, nodes)
+            uthread.new(self._MoveItems, entry, nodes)
+
+    def _MoveItems(self, entry, nodes):
+        try:
+            items = entry.data.invController.GetItems()
+        except UserError as e:
+            if e.msg != 'CrpAccessDenied':
+                raise e
+            items = []
+
+        if nodes and getattr(nodes[0], 'item', None) in items and not uicore.uilib.Key(uiconst.VK_SHIFT):
+            return
+        if entry.data.invController.OnDropData(nodes):
+            entry.Blink()
+
+    def GetTreeEntryByItemID(self, itemID):
+        ret = []
+        for id, entry in self.treeEntryByID.iteritems():
+            if hasattr(entry.data, 'GetItemID') and entry.data.GetItemID() == itemID:
+                ret.append(entry)
+
+        return ret
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetInvLocationTreeData(self):
+        data = []
+        shipID = util.GetActiveShip()
+        typeID = None
+        if shipID:
+            if session.stationid2:
+                activeShip = invCtrl.StationShips().GetActiveShip()
+                if activeShip:
+                    typeID = activeShip.typeID
+            else:
+                godmaLoc = sm.GetService('clientDogmaIM').GetDogmaLocation()
+                if shipID in godmaLoc.dogmaItems:
+                    typeID = godmaLoc.dogmaItems[shipID].typeID
+            if typeID:
+                data.append(uiutil.TreeDataShip(clsName='ShipCargo', itemID=shipID, typeID=typeID, cmdName='OpenCargoHoldOfActiveShip'))
+        if session.stationid2:
+            stationData = []
+            shipsData = []
+            activeShipID = util.GetActiveShip()
+            singletonShips = [ ship for ship in invCtrl.StationShips().GetItems() if ship.singleton == 1 and ship.itemID != activeShipID ]
+            cfg.evelocations.Prime([ ship.itemID for ship in singletonShips ])
+            for ship in singletonShips:
+                shipsData.append(uiutil.TreeDataShip(clsName='ShipCargo', itemID=ship.itemID, typeID=ship.typeID))
+
+            SortData(shipsData)
+            data.append(uiutil.TreeDataInv(clsName='StationShips', itemID=session.stationid2, children=shipsData, cmdName='OpenShipHangar'))
+            containersData = GetContainerDataFromItems(invCtrl.StationItems().GetItems())
+            data.append(uiutil.TreeDataInv(clsName='StationItems', itemID=session.stationid2, children=containersData, cmdName='OpenHangarFloor'))
+            if sm.GetService('corp').GetOffice() is not None:
+                data.append(uiutil.TreeDataStationCorp(label=localization.GetByLabel('UI/Inventory/CorporationHangars')))
+            deliveryRoles = const.corpRoleAccountant | const.corpRoleJuniorAccountant | const.corpRoleTrader
+            if session.corprole & deliveryRoles > 0:
+                data.append(uiutil.TreeDataInv(clsName='StationCorpDelveries', itemID=session.stationid2, cmdName='OpenCorpDeliveries'))
+        elif session.solarsystemid:
+            starbaseData = []
+            defensesData = []
+            industryData = []
+            hangarData = []
+            infrastrcutureData = []
+            bp = sm.GetService('michelle').GetBallpark()
+            if bp:
+                for slimItem in bp.slimItems.values():
+                    itemID = slimItem.itemID
+                    groupID = slimItem.groupID
+                    haveAccess = bool(slimItem) and (slimItem.ownerID == session.charid or slimItem.ownerID == session.corpid or session.allianceid and slimItem.allianceID == session.allianceid)
+                    isAnchored = not bp.balls[itemID].isFree
+                    if not haveAccess or not isAnchored:
+                        continue
+                    if groupID == const.groupControlTower:
+                        towerData = [uiutil.TreeDataInv(clsName='POSStrontiumBay', itemID=itemID, iconName='ui_51_64_10'), uiutil.TreeDataInv(clsName='POSStructure', itemID=itemID, label=localization.GetByLabel('UI/Ship/FuelBay'), iconName='ui_98_64_9')]
+                        starbaseData.append(uiutil.TreeDataCelestialParent(clsName='BaseCelestialContainer', itemID=itemID, children=towerData, iconName='ui_7_64_10'))
+                    elif groupID == const.groupCorporateHangarArray:
+                        hangarData.append(uiutil.TreeDataPOSCorp(slimItem=slimItem))
+                    elif groupID == const.groupAssemblyArray:
+                        industryData.append(uiutil.TreeDataPOSCorp(slimItem=slimItem))
+                    elif groupID == const.groupMobileLaboratory:
+                        industryData.append(uiutil.TreeDataPOSCorp(slimItem=slimItem))
+                    elif groupID == const.groupJumpPortalArray:
+                        infrastrcutureData.append(uiutil.TreeDataInv(clsName='POSStructure', itemID=itemID))
+                    elif groupID in (const.groupMobileMissileSentry, const.groupMobileProjectileSentry, const.groupMobileHybridSentry):
+                        defensesData.append(uiutil.TreeDataInv(clsName='POSStructureCharges', itemID=itemID))
+                    elif groupID == const.groupMobileLaserSentry:
+                        sentryData = [uiutil.TreeDataInv(clsName='POSStructureCharges', itemID=itemID, label=localization.GetByLabel('UI/Inflight/POS/AccessPOSActiveCrystalError'), iconName='ui_8_64_2'), uiutil.TreeDataInv(clsName='POSStructure', itemID=itemID, label=localization.GetByLabel('UI/Inflight/POS/AccessPOSCrystalStorageError'), iconName='ui_8_64_1')]
+                        defensesData.append(uiutil.TreeDataCelestialParent(clsName='BaseCelestialContainer', itemID=itemID, children=sentryData, iconName='ui_13_64_9'))
+                    elif groupID == const.groupShipMaintenanceArray:
+                        hangarData.append(uiutil.TreeDataInv(clsName='POSStructure', itemID=itemID))
+                    elif groupID == const.groupSilo:
+                        industryData.append(uiutil.TreeDataInv(clsName='POSStructure', itemID=itemID))
+                    elif groupID == const.groupMobileReactor:
+                        industryData.append(uiutil.TreeDataInv(clsName='POSStructure', itemID=itemID))
+                    elif groupID == const.groupRefiningArray:
+                        industryData.append(uiutil.TreeDataInv(clsName='POSStructureCargo', itemID=itemID))
+                    elif groupID in (const.groupConstructionPlatform, const.groupStationUpgradePlatform, const.groupStationImprovementPlatform):
+                        industryData.append(uiutil.TreeDataInv(clsName='POSConstructionPlatform', itemID=itemID))
+
+            if industryData:
+                SortData(industryData)
+                starbaseData.append(uiutil.TreeData(label=localization.GetByLabel('UI/Inventory/POSGroupIndustry'), children=industryData, icon='ui_33_128_2'))
+            if hangarData:
+                SortData(hangarData)
+                starbaseData.append(uiutil.TreeData(label=localization.GetByLabel('UI/Inventory/POSGroupStorage'), children=hangarData, icon='ui_26_64_13'))
+            if infrastrcutureData:
+                SortData(infrastrcutureData)
+                starbaseData.append(uiutil.TreeData(label=localization.GetByLabel('UI/Inventory/POSGroupInfrastructure'), children=infrastrcutureData, icon='ui_57_64_18'))
+            if defensesData:
+                SortData(defensesData)
+                starbaseData.append(uiutil.TreeData(label=localization.GetByLabel('UI/Inventory/POSGroupDefenses'), children=defensesData, icon='ui_5_64_13'))
+            if starbaseData:
+                data.append(uiutil.TreeData(label=localization.GetByLabel('UI/Inventory/StarbaseStructures'), children=starbaseData, icon='ui_3_64_13'))
+        for invName, itemID in sm.GetService('inv').GetTemporaryInvLocations():
+            if itemID == util.GetActiveShip():
+                sm.GetService('inv').RemoveTemporaryInvLocation((invName, itemID))
+                continue
+            if invName == 'TreeDataShipCorp':
+                data.append(uiutil.TreeDataShipCorp(itemID=itemID, isRemovable=True))
+            else:
+                data.append(uiutil.TreeDataInv(invName, itemID=itemID, isRemovable=True))
+
+        return data
+
+    def ProcessTempInvLocationAdded(self, invID):
+        if invID in self.treeEntryByID:
+            return
+        invName, itemID = invID
+        if invName == 'TreeDataShipCorp':
+            data = uiutil.TreeDataShipCorp(itemID=itemID, isRemovable=True)
+        else:
+            data = uiutil.TreeDataInv(invName, itemID=itemID, isRemovable=True)
+        uicls.TreeViewEntry(parent=self.tree, level=0, eventListener=self, data=data)
+
+    def ProcessTempInvLocationRemoved(self, invID):
+        if not self.IsPrimaryInvWindow() and invID == self.currInvID:
+            self.Close()
+        entry = self.treeEntryByID.get(invID, None)
+        if entry and entry.data.IsRemovable():
+            self.RemoveTreeEntry(entry)
+
+    def OnSessionChanged(self, isRemote, sess, change):
+        if change.keys() == ['shipid']:
+            return
+        oldInvID = self.currInvID
+        self.RefreshTree()
+        if 'stationid' in change:
+            wasMinimized = self.IsMinimized()
+            if self.IsPrimaryInvWindow():
+                self.Close()
+                form.Inventory.Open(openMinimized=wasMinimized)
+
+    def CloseByUser(self, *args, **kw):
+        if not self.IsPrimaryInvWindow():
+            self.SetSecondaryWindowClosed()
+        uicls.Window.CloseByUser(self, *args, **kw)
+        self.containersInRangeUpdater = None
+
+    def SetSecondaryWindowOpen(self):
+        invCtrlName = self.currInvID[0]
+        if invCtrlName in ('StationItems', 'StationShips', 'StationCorpDelveries'):
+            self.AddPersistedStationSecondaryWindow((invCtrlName, None))
+        elif invCtrlName == 'StationCorpHangar':
+            divisionID = self.currInvID[2]
+            self.AddPersistedStationSecondaryWindow((invCtrlName, None, divisionID))
+
+    def SetSecondaryWindowClosed(self):
+        invCtrlName = self.currInvID[0]
+        if invCtrlName in ('StationItems', 'StationShips', 'StationCorpDelveries'):
+            self.RemovePersistedStationSecondaryWindow((invCtrlName, None))
+        elif invCtrlName == 'StationCorpHangar':
+            divisionID = self.currInvID[2]
+            self.RemovePersistedStationSecondaryWindow((invCtrlName, None, divisionID))
+
+    def AddPersistedStationSecondaryWindow(self, invID):
+        invIDs = form.Inventory.GetStationOpenInvIDs()
+        invIDs.add(invID)
+        return settings.user.ui.Set('StationOpenInvIDs', invIDs)
+
+    def RemovePersistedStationSecondaryWindow(self, invID):
+        invIDs = form.Inventory.GetStationOpenInvIDs()
+        if invID in invIDs:
+            invIDs.remove(invID)
+        return settings.user.ui.Set('StationOpenInvIDs', invIDs)
+
+    @staticmethod
+    def GetStationOpenInvIDs():
+        return settings.user.ui.Get('StationOpenInvIDs', set())
+
+    def _IsInventoryItem(self, item):
+        if item.groupID in CONTAINERGROUPS:
+            return True
+        if item.categoryID == const.categoryShip:
+            return True
+        return False
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def OnMultipleItemChange(self, items, change):
+        self.UpdateSelectedItems()
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def OnInvChangeAny(self, item = None, change = None):
+        if not self._IsInventoryItem(item):
+            return
+        if item.itemID == util.GetActiveShip():
+            return
+        if const.ixSingleton in change:
+            self.RefreshTree()
+            return
+        if not item.singleton:
+            return
+        if const.ixLocationID in change or const.ixFlag in change:
+            self.RefreshTree()
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def RemoveItem(self, item):
+        if session.solarsystemid and not self.invController.GetItems():
+            itemID = self.invController.itemID
+            bp = sm.GetService('michelle').GetBallpark()
+            if bp and itemID in bp.slimItems:
+                slimItem = bp.slimItems[itemID]
+                if slimItem.groupID in invCtrl.LOOT_GROUPS:
+                    if self.IsPrimaryInvWindow():
+                        entry = self.treeEntryByID.get(self.currInvID, None)
+                        if entry and entry.data.IsRemovable():
+                            self.RemoveTreeEntry(entry)
+                        self.SwitchToOtherLootable()
+                    else:
+                        self.CloseByUser()
+
+    def SwitchToOtherLootable(self):
+        for entry in self.tree.mainCont.children:
+            if not isinstance(entry, TreeViewEntry):
+                continue
+            invID = entry.data.GetID()
+            if invID == self.currInvID:
+                continue
+            if invID[0] in ('ItemWreck', 'ItemFloatingCargo'):
+                self.ShowInvContainer(invID)
+                return
+
+    def OnStateChange(self, itemID, flag, isSet, *args):
+        if flag == state.flagWreckEmpty:
+            invID = self.currInvID
+            entries = self.GetTreeEntryByItemID(itemID)
+            for entry in entries:
+                self.RemoveTreeEntry(entry)
+
+    def OnSlimItemChange(self, oldSlim, newSlim):
+        if util.IsStructure(newSlim.categoryID):
+            if oldSlim.posState != newSlim.posState:
+                self.RefreshTree()
+
+    def OnCapacityChange(self, itemID):
+        if self.invController and itemID == self.invController.itemID:
+            self.UpdateSelectedItems()
+
+    def DoBallsAdded(self, data):
+        for ball, slimItem in data:
+            if slimItem.categoryID == const.categoryStructure:
+                self.RefreshTree()
+                return
+
+    def DoBallRemove(self, ball, slimItem, terminal):
+        uthread.new(self._DoBallRemove, ball, slimItem, terminal)
+
+    def _DoBallRemove(self, ball, slimItem, terminal):
+        invID = ('ShipCargo', util.GetActiveShip())
+        activeShipEntry = self.treeEntryByID.get(invID, None)
+        for entry in self.GetTreeEntryByItemID(slimItem.itemID):
+            if entry == activeShipEntry:
+                continue
+            if activeShipEntry and entry.IsDescendantOf(activeShipEntry):
+                continue
+            self.RemoveTreeEntry(entry)
+
+        id = (localization.GetByLabel('UI/Inventory/StarbaseStructures'), ())
+        starbaseEntry = self.treeEntryByID.get(id, None)
+        if starbaseEntry:
+            for child in starbaseEntry.childCont.children:
+                if not child.data.GetChildren():
+                    self.RemoveTreeEntry(child)
+
+            if not starbaseEntry.data.GetChildren():
+                self.RemoveTreeEntry(starbaseEntry)
+
+    def OnFiltersEnabledBtnClicked(self, *args):
+        for filterEntry in self.filterEntries:
+            filterEntry.checkbox.SetChecked(False)
+
+    def OnItemNameChange(self, *args):
+        self.RefreshTree()
+        uthread.new(self.UpdateWindowCaption)
+
+    def ProcessActiveShipChanged(self, shipID, oldShipID):
+        self.RefreshTree()
+        self.UpdateWindowCaption()
+
+    def OnBeforeActiveShipChanged(self, shipID, oldShipID):
+        if not self.IsPrimaryInvWindow() and oldShipID == self.invController.itemID:
+            self.Close()
+
+    def OnExpandFiltersBtn(self, *args):
+        if self.filterCont.pickState == uiconst.TR2_SPS_ON:
+            self.CollapseFilters()
+        else:
+            self.ExpandFilters()
+
+    def ExpandFilters(self, animate = True):
+        self.expandFiltersBtn.icon.rotation = -pi / 2
+        self.expandFiltersBtn.Disable()
+        self.treeBottomCont.EnableDragResize()
+        self.treeBottomCont.minSize = 100
+        if animate:
+            self.tree.DisableScrollbars()
+            height = settings.user.ui.Get('invFiltersHeight_%s' % repr(self.windowID), 150)
+            height = min(self.treeBottomCont.GetMaxSize(), height)
+            uicore.animations.MorphScalar(self.treeBottomCont, 'height', self.treeBottomCont.height, height, duration=0.3)
+            uicore.animations.FadeIn(self.filterCont, duration=0.3, sleep=True)
+            self.tree.EnableScrollbars()
+        self.expandFiltersBtn.Enable()
+        self.filterCont.EnableScrollbars()
+        self.filterCont.Enable()
+        if self.IsPrimaryInvWindow():
+            settings.user.ui.Set('invFiltersExpanded_%s' % repr(self.GetWindowIDLocationVersion()), True)
+
+    def CollapseFilters(self, animate = True):
+        self.filterCont.Disable()
+        self.expandFiltersBtn.Disable()
+        self.expandFiltersBtn.icon.rotation = pi / 2
+        self.treeBottomCont.DisableDragResize()
+        self.treeBottomCont.minSize = self.filterHeaderCont.height
+        self.filterCont.DisableScrollbars()
+        if animate:
+            self.tree.DisableScrollbars()
+            uicore.animations.MorphScalar(self.treeBottomCont, 'height', self.treeBottomCont.height, self.filterHeaderCont.height, duration=0.3)
+            uicore.animations.FadeOut(self.filterCont, duration=0.3, sleep=True)
+            self.tree.EnableScrollbars()
+        else:
+            self.treeBottomCont.height = self.filterHeaderCont.height
+        self.treeBottomCont.height = self.filterHeaderCont.height
+        self.expandFiltersBtn.Enable()
+        if self.IsPrimaryInvWindow():
+            settings.user.ui.Set('invFiltersExpanded_%s' % repr(self.GetWindowIDLocationVersion()), False)
+
+    def Paste(self, value):
+        if self.invCont:
+            self.invCont.Paste(value)
+
+    def OnOfficeRentalChanged(self, *args):
+        self.RefreshTree()
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def RefreshTree(self):
+        if self.refreshTreeThread:
+            self.refreshTreeThread.kill()
+        self.refreshTreeThread = uthread.new(self._RefreshTree)
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def _RefreshTree(self):
+        if self.destroyed:
+            return
+        if self.invCont:
+            self.invCont.Disable()
+        self.tree.Disable()
+        try:
+            self.ConstructTree()
+        finally:
+            self.tree.Enable()
+            if self.invCont:
+                self.invCont.Enable()
+
+        self.UpdateRangeUpdater()
+
+    def UpdateRangeUpdater(self):
+        if session.solarsystemid is None:
+            self.containersInRangeUpdater = None
+        else:
+            self.containersInRangeUpdater = base.AutoTimer(1000, self.UpdateTreeViewEntriesInRange)
+
+    def UpdateTreeViewEntriesInRange(self):
+        if session.solarsystemid is None:
+            self.containersInRangeUpdater = None
+        michelle = sm.GetService('michelle')
+        bp = michelle.GetBallpark()
+        if bp is None:
+            return
+        godma = sm.GetService('godma')
+        for invID in self.treeEntryByID.keys():
+            itemID = invID[1]
+            ball = bp.GetBall(itemID)
+            if ball:
+                canAccess = True
+                item = michelle.GetItem(itemID)
+                if item is None:
+                    continue
+                operationalDistance = godma.GetTypeAttribute(item.typeID, const.attributeMaxOperationalDistance)
+                if operationalDistance is None:
+                    operationalDistance = const.maxCargoContainerTransferDistance
+                if ball.surfaceDist > operationalDistance:
+                    canAccess = False
+                entry = self.treeEntryByID.get(invID)
+                if entry:
+                    entry.SetAccessability(canAccess)
+
+    def OnExpandTreeBtn(self, *args):
+        if self.dividerCont.pickState:
+            self.CollapseTree()
+        else:
+            self.ExpandTree()
+
+    def SetInvTreeExpandedSetting(self, isExpanded):
+        if session.stationid2:
+            settings.user.ui.Set('invTreeExpanded_station', isExpanded)
+        else:
+            settings.user.ui.Set('invTreeExpanded_space', isExpanded)
+
+    def GetInvTreeExpandedSetting(self):
+        if session.stationid2:
+            return settings.user.ui.Get('invTreeExpanded_station', True)
+        else:
+            return settings.user.ui.Get('invTreeExpanded_space', True)
+
+    def ExpandTree(self, animate = True):
+        self.expandTreeBtn.icon.rotation = pi
+        self.expandTreeBtn.Disable()
+        if animate:
+            width = settings.user.ui.Get('invTreeViewWidth_%s' % repr(self.windowID), 0.3)
+            uicore.animations.MorphScalar(self.dividerCont, 'width', self.dividerCont.width, width, duration=0.3)
+            uicore.animations.MorphScalar(self.rightCont, 'padLeft', 4, 0, duration=0.3)
+            uicore.animations.FadeIn(self.dividerCont, duration=0.3, sleep=True)
+        self.rightCont.padLeft = 0
+        self.expandTreeBtn.Enable()
+        self.dividerCont.Enable()
+        if self.IsPrimaryInvWindow():
+            self.SetInvTreeExpandedSetting(True)
+
+    def CollapseTree(self, animate = True):
+        self.dividerCont.Disable()
+        self.expandTreeBtn.Disable()
+        self.expandTreeBtn.icon.rotation = 0.0
+        if animate:
+            uicore.animations.MorphScalar(self.dividerCont, 'width', self.dividerCont.width, 0.0, duration=0.3)
+            uicore.animations.MorphScalar(self.rightCont, 'padLeft', 0, 4, duration=0.3)
+            uicore.animations.FadeOut(self.dividerCont, duration=0.3, sleep=True)
+        else:
+            self.rightCont.padLeft = 4
+            self.dividerCont.width = 0
+        self.expandTreeBtn.Enable()
+        if self.IsPrimaryInvWindow():
+            self.SetInvTreeExpandedSetting(False)
+
+
+class InventorySecondary(Inventory):
+    __guid__ = 'form.InventorySecondary'
+
+    def ApplyAttributes(self, attributes):
+        form.Inventory.ApplyAttributes(self, attributes)
+        try:
+            invID = attributes.invID
+            cls = getattr(invCtrl, invID[0])
+            args = invID[1:]
+            invController = cls(*args)
+            self.SetWndIcon(iconNum=invController.GetIconName(), hidden=True)
+        except:
+            log.LogWarn('Unable to load icon for invID: %s' % repr(invID))
+
+
+class TreeViewEntry(uicls.ContainerAutoSize):
+    __guid__ = 'uicls.TreeViewEntry'
+    default_name = 'TreeViewEntry'
+    default_align = uiconst.TOTOP
+    default_state = uiconst.UI_NORMAL
+    LEFTPUSH = 10
+    default_height = 22
+    isDragObject = True
+    noAccessColor = (0.33, 0.33, 0.33, 1.0)
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def ApplyAttributes(self, attributes):
+        uicls.ContainerAutoSize.ApplyAttributes(self, attributes)
+        self.level = attributes.get('level', 0)
+        self.data = attributes.get('data')
+        self.eventListener = attributes.get('eventListener', None)
+        self.parentEntry = attributes.get('parentEntry', None)
+        self.childrenInitialized = False
+        self.isToggling = False
+        self.canAccess = True
+        self.topRightCont = uicls.Container(name='topCont', parent=self, align=uiconst.TOTOP, height=self.default_height)
+        self.topRightCont.GetDragData = self.GetDragData
+        content = uicls.Container(parent=self.topRightCont)
+        spacerCont = uicls.Container(name='spacerCont', parent=content, align=uiconst.TOLEFT, width=(1 + self.level) * self.LEFTPUSH + 8)
+        self.labelCont = uicls.Container(name='labelCont', parent=content)
+        self.toggleBtn = uicls.Container(parent=spacerCont, align=uiconst.CENTERRIGHT, width=16, height=16, state=uiconst.UI_HIDDEN)
+        self.toggleBtn.OnClick = self.OnToggleBtnClick
+        self.toggleBtn.OnDblClick = lambda : None
+        self.toggleBtnSprite = uicls.Sprite(name='toggleBtn', parent=self.toggleBtn, align=uiconst.CENTER, texturePath='res:/UI/Texture/classes/Neocom/arrowDown.png', rotation=pi / 2, width=7, height=7, state=uiconst.UI_DISABLED)
+        left = 0
+        if self.data.IsRemovable():
+            removeBtn = uicls.Sprite(texturePath='res:/UI/Texture/icons/73_16_210.png', parent=self.labelCont, align=uiconst.CENTERLEFT, width=16, height=16, left=left, hint=localization.GetByLabel('UI/Common/Buttons/Close'))
+            left += 20
+            removeBtn.OnClick = self.Remove
+        icon = self.data.GetIcon()
+        if icon:
+            iconSize = self.height - 2
+            uicls.Icon(icon=icon, parent=self.labelCont, pos=(left,
+             0,
+             iconSize,
+             iconSize), align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED, ignoreSize=True)
+            left += iconSize
+        self.label = uicls.Label(parent=self.labelCont, align=uiconst.CENTERLEFT, text=self.data.GetLabel(), left=left + 4)
+        self.hoverBG = uicls.Fill(bgParent=self.topRightCont, color=util.Color.WHITE, opacity=0.0)
+        self.selectedBG = uicls.Fill(bgParent=self.topRightCont, color=(1.0, 1.0, 1.0, 0.1), state=uiconst.UI_HIDDEN)
+        self.blinkBG = uicls.Fill(bgParent=self.topRightCont, color=(1.0, 1.0, 1.0, 0.0))
+        self.childCont = uicls.ContainerAutoSize(parent=self, name='childCont', align=uiconst.TOTOP, padBottom=5, clipChildren=True, state=uiconst.UI_HIDDEN)
+        if self.data.HasChildren():
+            expandChildren = False
+            if not self.data.IsForceCollapsed():
+                toggleSettingsDict = settings.user.ui.Get('invTreeViewEntryToggle', {})
+                expandChildren = toggleSettingsDict.get(self.data.GetID(), self.level < 1)
+                self.ConstructChildren()
+            else:
+                self.toggleBtn.state = uiconst.UI_NORMAL
+            self.ShowChildCont(expandChildren, animate=False)
+        else:
+            self.toggleBtn.state = uiconst.UI_HIDDEN
+            self.ShowChildCont(False, animate=False)
+        self.eventListener.RegisterID(self, self.data.GetID())
+
+    def Close(self):
+        if self.parentEntry and self.data in self.parentEntry.data._children:
+            self.parentEntry.data._children.remove(self.data)
+        uicls.ContainerAutoSize.Close(self)
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def ConstructChildren(self):
+        self.childrenInitialized = True
+        children = self.data.GetChildren()
+        if children:
+            for child in children:
+                uicls.TreeViewEntry(parent=self.childCont, parentEntry=self, level=self.level + 1, eventListener=self.eventListener, data=child)
+
+            self.toggleBtn.state = uiconst.UI_NORMAL
+
+    def ShowChildCont(self, show = True, animate = True):
+        if self.childCont.display == show or not self.data.HasChildren():
+            return
+        self.isToggling = True
+        if animate:
+            if show:
+                self.childCont.display = True
+                uicore.animations.Tr2DRotateTo(self.toggleBtnSprite, pi / 2, 0.0, duration=0.15)
+                self.childCont.DisableAutoSize()
+                _, height = self.childCont.GetAutoSize()
+                uicore.animations.FadeIn(self.childCont, duration=0.3)
+                uicore.animations.MorphScalar(self.childCont, 'height', self.childCont.height, height, duration=0.15, sleep=True)
+                self.childCont.EnableAutoSize()
+            else:
+                uicore.animations.Tr2DRotateTo(self.toggleBtnSprite, 0.0, pi / 2, duration=0.15)
+                self.childCont.DisableAutoSize()
+                uicore.animations.FadeOut(self.childCont, duration=0.15)
+                uicore.animations.MorphScalar(self.childCont, 'height', self.childCont.height, 0, duration=0.15, sleep=True)
+                self.childCont.display = False
+            self.toggleBtn.Enable()
+        else:
+            self.childCont.display = show
+            if show:
+                self.toggleBtnSprite.rotation = 0.0
+                self.childCont.opacity = 1.0
+            else:
+                self.toggleBtnSprite.rotation = pi / 2
+                self.childCont.DisableAutoSize()
+                self.childCont.opacity = 0.0
+        self.isToggling = False
+
+    def Update(self, selectedID):
+        self.SetSelected(selectedID == self.data.GetID())
+
+    def SetSelected(self, isSelected):
+        self.isSelected = isSelected
+        self.selectedBG.display = isSelected
+        self.UpdateLabel()
+        if isSelected and self.parentEntry:
+            self.parentEntry.ExpandFromRoot()
+
+    def UpdateLabel(self):
+        if self.isSelected:
+            self.label.color = util.Color.WHITE
+        elif self.canAccess:
+            self.label.color = uicls.Label.default_color
+        else:
+            self.label.color = self.noAccessColor
+
+    def ExpandFromRoot(self):
+        self.ToggleChildren(forceShow=True)
+        if self.parentEntry:
+            self.parentEntry.ExpandFromRoot()
+
+    def OnClick(self, *args):
+        if self.eventListener and hasattr(self.eventListener, 'OnTreeViewClick'):
+            self.eventListener.OnTreeViewClick(self, *args)
+
+    def OnDblClick(self, *args):
+        if self.eventListener and hasattr(self.eventListener, 'OnTreeViewDblClick'):
+            self.eventListener.OnTreeViewDblClick(self, *args)
+
+    def OnToggleBtnClick(self, *args):
+        if not self.isToggling:
+            self.ToggleChildren()
+
+    def IsDescendantOf(self, parentEntry):
+        if not self.parentEntry:
+            return False
+        if parentEntry == self.parentEntry or parentEntry == self:
+            return True
+        return self.parentEntry.IsDescendantOf(parentEntry)
+
+    def ToggleChildren(self, forceShow = False):
+        if not self.data.HasChildren():
+            return
+        if not self.childrenInitialized:
+            self.ConstructChildren()
+        show = forceShow or not self.childCont.display
+        self.ShowChildCont(show)
+        toggleSettingsDict = settings.user.ui.Get('invTreeViewEntryToggle', {})
+        toggleSettingsDict[self.data.GetID()] = self.childCont.display
+        settings.user.ui.Set('invTreeViewEntryToggle', toggleSettingsDict)
+
+    def GetMenu(self):
+        m = self.data.GetMenu()
+        if session.role & service.ROLE_PROGRAMMER:
+            idString = repr(self.data.GetID())
+            m.append((idString, blue.pyos.SetClipboardData, (idString,)))
+        if self.data.IsRemovable():
+            m.append(None)
+            m.append((localization.GetByLabel('UI/Common/Buttons/Close'), self.Remove, ()))
+        return m
+
+    def GetHint(self):
+        return self.data.GetHint()
+
+    def GetFullPathLabelList(self):
+        labelTuple = [self.data.GetLabel()]
+        if self.parentEntry:
+            labelTuple = self.parentEntry.GetFullPathLabelList() + labelTuple
+        return labelTuple
+
+    def Remove(self, *args):
+        self.eventListener.RemoveTreeEntry(self)
+
+    def OnMouseDown(self, *args):
+        if self.eventListener and hasattr(self.eventListener, 'OnTreeViewMouseDown'):
+            self.eventListener.OnTreeViewMouseDown(self, *args)
+
+    def OnMouseUp(self, *args):
+        if self.eventListener and hasattr(self.eventListener, 'OnTreeViewMouseUp'):
+            self.eventListener.OnTreeViewMouseUp(self, *args)
+
+    def OnMouseEnter(self, *args):
+        uicore.animations.FadeIn(self.hoverBG, 0.05, duration=0.1)
+        if self.eventListener and hasattr(self.eventListener, 'OnTreeViewMouseEnter'):
+            self.eventListener.OnTreeViewMouseEnter(self, *args)
+
+    def OnMouseExit(self, *args):
+        uicore.animations.FadeOut(self.hoverBG, duration=0.3)
+        if self.eventListener and hasattr(self.eventListener, 'OnTreeViewMouseExit'):
+            self.eventListener.OnTreeViewMouseExit(self, *args)
+
+    def OnDropData(self, *args):
+        if self.eventListener and hasattr(self.eventListener, 'OnTreeViewDropData'):
+            self.eventListener.OnTreeViewDropData(self, *args)
+
+    def OnDragEnter(self, dragObj, nodes):
+        uicore.animations.FadeIn(self.hoverBG, 0.05, duration=0.1)
+        if self.eventListener and hasattr(self.eventListener, 'OnTreeViewDragEnter'):
+            self.eventListener.OnTreeViewDragEnter(self, dragObj, nodes)
+
+    def GetDragData(self):
+        if self.data.IsDraggable():
+            return [self.data]
+
+    def OnDragExit(self, *args):
+        uicore.animations.FadeOut(self.hoverBG, duration=0.1)
+        if self.eventListener and hasattr(self.eventListener, 'OnTreeViewDragExit'):
+            self.eventListener.OnTreeViewDragExit(self, *args)
+
+    def Blink(self):
+        uicore.animations.FadeTo(self.blinkBG, 0.0, 0.25, duration=0.25, curveType=uiconst.ANIM_WAVE, loops=2)
+
+    def SetAccessability(self, canAccess):
+        self.canAccess = canAccess
+        self.UpdateLabel()
+
+
+class DragResizeCont(uicls.Container):
+    __guid__ = 'uicls.DragResizeCont'
+    default_align = uiconst.TOTOP
+    default_state = uiconst.UI_NORMAL
+    default_maxSize = 200
+    default_minSize = 50
+    default_defaultSize = 150
+    default_settingsID = None
+    default_dragAreaSize = 4
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        self.maxSize = attributes.Get('maxSize', self.default_maxSize)
+        self.minSize = attributes.Get('minSize', self.default_minSize)
+        self.settingsID = attributes.Get('settingsID', self.default_settingsID)
+        dragAreaSize = attributes.Get('dragAreaSize', self.default_dragAreaSize)
+        defaultSize = attributes.Get('defaultSize', self.default_defaultSize)
+        dividerAlign = {uiconst.TOLEFT: uiconst.TORIGHT,
+         uiconst.TORIGHT: uiconst.TOLEFT,
+         uiconst.TOTOP: uiconst.TOBOTTOM,
+         uiconst.TOBOTTOM: uiconst.TOTOP,
+         uiconst.TOLEFT_PROP: uiconst.TORIGHT,
+         uiconst.TORIGHT_PROP: uiconst.TOLEFT,
+         uiconst.TOTOP_PROP: uiconst.TOBOTTOM,
+         uiconst.TOBOTTOM_PROP: uiconst.TOTOP}
+        if self.align not in dividerAlign:
+            raise ValueError('Invalid alignment mode selected. Must be push aligned to LEFT, TOP, RIGHT or BOTTOM')
+        self.isHorizontal = self.align in (uiconst.TOLEFT,
+         uiconst.TORIGHT,
+         uiconst.TOLEFT_PROP,
+         uiconst.TORIGHT_PROP)
+        self.isProportional = self.align in (uiconst.TOLEFT_PROP,
+         uiconst.TOTOP_PROP,
+         uiconst.TORIGHT_PROP,
+         uiconst.TOBOTTOM_PROP)
+        self.isInverse = self.align in (uiconst.TORIGHT,
+         uiconst.TORIGHT_PROP,
+         uiconst.TOBOTTOM,
+         uiconst.TOBOTTOM_PROP)
+        self.isDraggin = False
+        self.initialPos = None
+        size = settings.user.ui.Get(self.settingsID, defaultSize)
+        self._SetSize(size)
+        self.dragArea = uicls.Container(name='dragArea', parent=self, state=uiconst.UI_NORMAL, align=dividerAlign[self.align], width=dragAreaSize, height=dragAreaSize)
+        self.dragArea.cursor = 18 if self.isHorizontal else 11
+        self.dragArea.OnMouseDown = self.OnDragAreaMouseDown
+        self.dragArea.OnMouseUp = self.OnDragAreaMouseUp
+        self.dragArea.OnMouseMove = self.OnDragAreaMouseMove
+        self.mainCont = uicls.Container(parent=self, name='mainCont')
+
+    def _GetPos(self):
+        if self.isHorizontal:
+            return uicore.uilib.x
+        return uicore.uilib.y
+
+    def OnDragAreaMouseDown(self, *args):
+        self.isDraggin = True
+        self.initialPos = self._GetPos()
+        self.parSize = self._GetParSize()
+
+    def DisableDragResize(self):
+        self.dragArea.Disable()
+
+    def EnableDragResize(self):
+        self.dragArea.Enable()
+
+    def _GetParSize(self):
+        parWidth, parHeight = self.parent.GetAbsoluteSize()
+        parSize = parWidth if self.isHorizontal else parHeight
+        return parSize
+
+    def OnDragAreaMouseUp(self, *args):
+        self.isDraggin = False
+        settings.user.ui.Set(self.settingsID, self._GetSize())
+
+    def OnDragAreaMouseMove(self, *args):
+        if not self.isDraggin:
+            return
+        newPos = self._GetPos()
+        if self.isInverse:
+            self._ChangeSize(self.initialPos - newPos)
+        else:
+            self._ChangeSize(newPos - self.initialPos)
+        self.initialPos = newPos
+
+    def _GetSize(self):
+        if self.isHorizontal:
+            return self.width
+        else:
+            return self.height
+
+    def GetMaxSize(self):
+        return self._ConvertSize(self.maxSize)
+
+    def GetMinSize(self):
+        return self._ConvertSize(self.minSize)
+
+    def _ConvertSize(self, size):
+        self.parSize = self._GetParSize()
+        if size > 1:
+            if self.isProportional:
+                return float(size) / self.parSize
+            else:
+                return size
+        else:
+            if self.isProportional:
+                return size
+            return size * self.parSize
+
+    def _OnSizeChange_NoBlock(self, width, height):
+        self._UpdateSize(width, height)
+
+    def UpdateSize(self):
+        width, height = self.GetAbsoluteSize()
+        self._UpdateSize(width, height)
+
+    def _UpdateSize(self, width = None, height = None):
+        if not self.pickState:
+            return
+        size = width if self.isHorizontal else height
+        size = self._ConvertSize(size)
+        minSize = self._ConvertSize(self.minSize)
+        if size < minSize:
+            self._SetSize(minSize)
+        maxSize = self._ConvertSize(self.maxSize)
+        if size > maxSize:
+            self._SetSize(maxSize)
+
+    def _SetSize(self, size):
+        minSize = self._ConvertSize(self.minSize)
+        maxSize = self._ConvertSize(self.maxSize)
+        size = max(minSize, min(size, maxSize))
+        if self.isHorizontal:
+            self.width = size
+        else:
+            self.height = size
+
+    def _ChangeSize(self, diff):
+        size = self._GetSize()
+        if self.isProportional:
+            size += float(diff) / self.parSize
+        else:
+            size += diff
+        self._SetSize(size)
+
+
+class FilterEntry(uicls.Container):
+    __guid__ = 'uicls.FilterEntry'
+    default_align = uiconst.TOTOP
+    default_state = uiconst.UI_NORMAL
+    default_height = 22
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        self.eventListener = attributes.eventListener
+        self.filter = attributes.filter
+        filtName, allOrAny, conditions = self.filter
+        self.checkbox = uicls.Checkbox(name='checkbox', parent=self, checked=False, callback=self.OnCheckbox, align=uiconst.CENTERLEFT, left=5)
+        self.label = uicls.Label(parent=self, text=filtName, align=uiconst.CENTERLEFT, left=22)
+        self.hoverBG = uicls.Fill(bgParent=self, color=util.Color.WHITE, opacity=0.0)
+
+    def OnClick(self):
+        self.checkbox.ToggleState()
+
+    def OnDblClick(self):
+        self.eventListener.SetSingleFilter(self)
+
+    def OnMouseEnter(self, *args):
+        uicore.animations.FadeIn(self.hoverBG, 0.05, duration=0.1)
+
+    def OnMouseExit(self, *args):
+        uicore.animations.FadeOut(self.hoverBG, duration=0.3)
+
+    def GetFilter(self):
+        if self.checkbox.checked:
+            return self.filter
+
+    def OnCheckbox(self, checkbox):
+        self.eventListener.UpdateFilters()
+
+    def GetMenu(self):
+        m = []
+        m.append((localization.GetByLabel('UI/Inventory/Filters/Edit'), self.EditFilter, [self.label.text]))
+        m.append((localization.GetByLabel('UI/Commands/Remove'), sm.GetService('itemFilter').RemoveFilter, [self.label.text]))
+        return m
+
+    def EditFilter(self, filterName):
+        self.eventListener.DeselectAllFilters()
+        sm.GetService('itemFilter').EditFilter(filterName)
+
+
+class TreeData():
+    __guid__ = 'uiutil.TreeData'
+
+    def __init__(self, label = None, children = None, icon = None, isRemovable = False, **kw):
+        self._label = label
+        self._children = children or []
+        self._kw = kw
+        self._icon = icon
+        self._isRemovable = isRemovable
+
+    def GetLabel(self):
+        return self._label
+
+    def GetIcon(self):
+        return self._icon
+
+    def GetMenu(self):
+        return []
+
+    def GetHint(self):
+        return None
+
+    def GetID(self):
+        return (self._label, tuple(self._kw.values()))
+
+    def GetChildren(self):
+        return self._children
+
+    def IsDraggable(self):
+        return False
+
+    def HasChildren(self):
+        return bool(self._children)
+
+    def IsRemovable(self):
+        return self._isRemovable
+
+    def IsForceCollapsed(self):
+        return False
+
+
+class TreeDataInv(TreeData):
+    __guid__ = 'uiutil.TreeDataInv'
+
+    def __init__(self, clsName, children = None, label = None, isRemovable = False, cmdName = None, iconName = None, **kw):
+        uiutil.TreeData.__init__(self, children=children, label=label, isRemovable=isRemovable, **kw)
+        self._clsName = clsName
+        self.cmdName = cmdName
+        self.iconName = iconName
+        self.invController = getattr(invCtrl, clsName)(**kw)
+
+    def GetLabel(self):
+        if self._label:
+            return self._label
+        return self.invController.GetName()
+
+    def GetIcon(self):
+        if self.iconName:
+            return self.iconName
+        return self.invController.GetIconName()
+
+    def GetMenu(self):
+        m = self.invController.GetMenu()
+        m += [(localization.GetByLabel('UI/Inventory/OpenInNewWindow'), self.OpenNewWindow, ())]
+        return m
+
+    def GetHint(self):
+        if self.cmdName:
+            shortcut = uicore.cmd.GetShortcutStringByFuncName(self.cmdName)
+            if shortcut:
+                return localization.GetByLabel('UI/Inventory/ShortcutBrackets', shortcut=shortcut)
+
+    def GetID(self):
+        return self.invController.GetInvID()
+
+    def GetItemID(self):
+        return self.invController.itemID
+
+    def GetInvCont(self, **kw):
+        kw.update(self._kw)
+        return getattr(invCont, self._clsName)(**kw)
+
+    def HasInvCont(self):
+        return True
+
+    def OpenNewWindow(self):
+        form.Inventory.ToggleOpenSecondary(invID=self.GetID(), **self._kw)
+
+    def IsForceCollapsed(self):
+        return not self.invController.IsPrimed()
+
+    def IsDraggable(self):
+        return self.invController.GetInventoryItem().groupID in CONTAINERGROUPS
+
+
+class TreeDataPlasticWrap(TreeDataInv):
+    __guid__ = 'uiutil.TreeDataPlasticWrap'
+
+    def GetChildren(self):
+        return GetContainerDataFromItems(self.invController.GetItems())
+
+    def HasChildren(self):
+        for item in self.invController.GetItems():
+            if item.groupID in CONTAINERGROUPS:
+                return True
+
+        return False
+
+
+class TreeDataCelestialParent(TreeDataInv):
+    __guid__ = 'uiutil.TreeDataCelestialParent'
+
+    def HasInvCont(self, **kw):
+        return False
+
+    def IsForceCollapsed(self):
+        return False
+
+
+class TreeDataShipCorp(TreeData):
+    __guid__ = 'uiutil.TreeDataShipCorp'
+
+    def __init__(self, itemID, **kw):
+        TreeData.__init__(self, itemID=itemID, **kw)
+        self.itemID = itemID
+
+    def GetItemID(self):
+        return self.itemID
+
+    def GetID(self):
+        return ('TreeDataShipCorp', self.itemID)
+
+    def GetLabel(self):
+        invController = invCtrl.ShipCorpHangar(itemID=self.itemID, divisionID=None)
+        return invController.GetNameWithLocation()
+
+    def GetIcon(self):
+        return 'ui_7_64_6'
+
+    def GetChildren(self):
+        data = []
+        for divID in xrange(7):
+            invController = invCtrl.ShipCorpHangar(itemID=self.itemID, divisionID=divID)
+            containerData = GetContainerDataFromItems(invController.GetItems())
+            data.append(uiutil.TreeDataInv(clsName='ShipCorpHangar', itemID=self.itemID, divisionID=divID, children=containerData))
+
+        return data
+
+    def HasChildren(self):
+        return True
+
+
+class TreeDataPOSCorp(TreeData):
+    __guid__ = 'uiutil.TreeDataPOSCorp'
+
+    def __init__(self, slimItem, **kw):
+        TreeData.__init__(self, **kw)
+        self.slimItem = slimItem
+
+    def GetLabel(self):
+        return uix.GetSlimItemName(self.slimItem)
+
+    def GetIcon(self):
+        return 'ui_7_64_6'
+
+    def GetItemID(self):
+        return self.slimItem.itemID
+
+    def GetID(self):
+        return ('POSCorpHangar', self.slimItem.itemID)
+
+    def GetMenu(self):
+        return sm.GetService('menu').GetMenuFormItemIDTypeID(self.slimItem.itemID, self.slimItem.typeID)
+
+    def GetChildren(self):
+        data = []
+        itemID = self.slimItem.itemID
+        for divID in xrange(7):
+            data.append(uiutil.TreeDataInv(clsName='POSCorpHangar', itemID=itemID, divisionID=divID))
+
+        return data
+
+    def HasChildren(self):
+        return True
+
+
+class TreeDataShip(TreeDataInv):
+    __guid__ = 'uiutil.TreeDataShip'
+
+    def __init__(self, clsName, typeID, **kw):
+        uiutil.TreeDataInv.__init__(self, clsName, **kw)
+        self.typeID = typeID
+
+    def GetLabel(self):
+        shipName = TreeDataInv.GetLabel(self)
+        return localization.GetByLabel('UI/Inventory/ShipNameAndType', shipName=shipName, typeName=cfg.invtypes.Get(self.typeID).name)
+
+    def GetHint(self):
+        hint = TreeDataInv.GetHint(self)
+        typeName = cfg.invtypes.Get(self.typeID).name
+        if hint:
+            return typeName + hint
+        else:
+            return typeName
+
+    def HasChildren(self):
+        return True
+
+    def IsForceCollapsed(self):
+        if self.invController.itemID == util.GetActiveShip():
+            return False
+        return TreeDataInv.IsForceCollapsed(self)
+
+    def GetIcon(self):
+        return self.invController.GetIconName()
+
+    def GetChildren(self):
+        shipData = []
+        itemID = self.invController.itemID
+        typeID = self.typeID
+        if itemID == util.GetActiveShip():
+            cmdName = 'OpenDroneBayOfActiveShip'
+        else:
+            cmdName = None
+        godmaType = sm.GetService('godma').GetType(typeID)
+        if godmaType.droneCapacity or godmaType.techLevel == 3:
+            shipData.append(uiutil.TreeDataInv(clsName='ShipDroneBay', itemID=itemID, cmdName=cmdName))
+        godmaSM = sm.GetService('godma').GetStateManager()
+        if bool(godmaSM.GetType(typeID).hasShipMaintenanceBay):
+            shipData.append(uiutil.TreeDataInv(clsName='ShipMaintenanceBay', itemID=itemID))
+        if bool(godmaSM.GetType(typeID).specialFuelBayCapacity):
+            shipData.append(uiutil.TreeDataInv(clsName='ShipFuelBay', itemID=itemID))
+        if bool(godmaSM.GetType(typeID).specialOreHoldCapacity):
+            shipData.append(uiutil.TreeDataInv(clsName='ShipOreHold', itemID=itemID))
+        if bool(godmaSM.GetType(typeID).specialGasHoldCapacity):
+            shipData.append(uiutil.TreeDataInv(clsName='ShipGasHold', itemID=itemID))
+        if bool(godmaSM.GetType(typeID).specialMineralHoldCapacity):
+            shipData.append(uiutil.TreeDataInv(clsName='ShipMineralHold', itemID=itemID))
+        if bool(godmaSM.GetType(typeID).specialSalvageHoldCapacity):
+            shipData.append(uiutil.TreeDataInv(clsName='ShipSalvageHold', itemID=itemID))
+        if bool(godmaSM.GetType(typeID).specialShipHoldCapacity):
+            shipData.append(uiutil.TreeDataInv(clsName='ShipShipHold', itemID=itemID))
+        if bool(godmaSM.GetType(typeID).specialSmallShipHoldCapacity):
+            shipData.append(uiutil.TreeDataInv(clsName='ShipSmallShipHold', itemID=itemID))
+        if bool(godmaSM.GetType(typeID).specialMediumShipHoldCapacity):
+            shipData.append(uiutil.TreeDataInv(clsName='ShipMediumShipHold', itemID=itemID))
+        if bool(godmaSM.GetType(typeID).specialLargeShipHoldCapacity):
+            shipData.append(uiutil.TreeDataInv(clsName='ShipLargeShipHold', itemID=itemID))
+        if bool(godmaSM.GetType(typeID).specialIndustrialShipHoldCapacity):
+            shipData.append(uiutil.TreeDataInv(clsName='ShipIndustrialShipHold', itemID=itemID))
+        if bool(godmaSM.GetType(typeID).specialAmmoHoldCapacity):
+            shipData.append(uiutil.TreeDataInv(clsName='ShipAmmoHold', itemID=itemID))
+        if bool(godmaSM.GetType(typeID).specialCommandCenterHoldCapacity):
+            shipData.append(uiutil.TreeDataInv(clsName='ShipCommandCenterHold', itemID=itemID))
+        if bool(godmaSM.GetType(typeID).specialPlanetaryCommoditiesHoldCapacity):
+            shipData.append(uiutil.TreeDataInv(clsName='ShipPlanetaryCommoditiesHold', itemID=itemID))
+        if bool(godmaSM.GetType(typeID).specialQuafeHoldCapacity):
+            shipData.append(uiutil.TreeDataInv(clsName='ShipQuafeHold', itemID=itemID))
+        invController = invCtrl.ShipCargo(itemID=itemID)
+        shipData += GetContainerDataFromItems(invController.GetItems())
+        if bool(godmaSM.GetType(typeID).hasCorporateHangars):
+            shipCorpHangarData = []
+            for divID in xrange(7):
+                invController = invCtrl.ShipCorpHangar(itemID=itemID, divisionID=divID)
+                containerData = GetContainerDataFromItems(invController.GetItems())
+                shipCorpHangarData.append(uiutil.TreeDataInv(clsName='ShipCorpHangar', itemID=itemID, divisionID=divID, children=containerData))
+
+            shipData.append(uiutil.TreeData(label=localization.GetByLabel('UI/Inventory/CorporationHangars'), itemID=itemID, children=shipCorpHangarData, icon='ui_7_64_6'))
+        if not shipData:
+            shipData.append(uiutil.TreeData(label=localization.GetByLabel('UI/Inventory/NoAdditionalBays'), id='none_%s' % itemID))
+        return shipData
+
+
+class TreeDataStationCorp(TreeData):
+    __guid__ = 'uiutil.TreeDataStationCorp'
+
+    def HasChildren(self):
+        return True
+
+    def GetChildren(self):
+        corpData = []
+        itemID = sm.GetService('corp').GetOffice().itemID
+        for divID in xrange(7):
+            invController = invCtrl.StationCorpHangar(itemID, divID)
+            divData = []
+            for item in invController.GetItems():
+                if item.groupID in CONTAINERGROUPS and item.singleton:
+                    divData.append(uiutil.TreeDataInv(clsName='StationCorpContainer', itemID=item.itemID, divisionID=divID))
+
+            SortData(divData)
+            corpData.append(uiutil.TreeDataInv(clsName='StationCorpHangar', itemID=itemID, divisionID=divID, children=divData))
+
+        securityOfficerRoles = session.corprole & const.corpRoleSecurityOfficer == const.corpRoleSecurityOfficer
+        if securityOfficerRoles:
+            corpData.append(uiutil.TreeDataCorpMembers(label=localization.GetByLabel('UI/Inventory/MemberHangars')))
+        return corpData
+
+    def IsForceCollapsed(self):
+        for invID in form.Inventory.GetStationOpenInvIDs():
+            if invID[0] == 'StationCorpHangar':
+                return False
+
+        itemID = sm.GetService('corp').GetOffice().itemID
+        invController = invCtrl.StationCorpHangar(itemID, 0)
+        return not invController.IsPrimed()
+
+    def GetIcon(self):
+        return 'ui_7_64_6'
+
+
+class TreeDataCorpMembers(TreeData):
+    __guid__ = 'uiutil.TreeDataCorpMembers'
+
+    def HasChildren(self):
+        return True
+
+    def GetChildren(self):
+        corpMemberHangarData = sm.GetService('corpui').GetMemberHangarsData()
+        data = []
+        for (itemID, ownerID), hangarName in corpMemberHangarData.iteritems():
+            if itemID == session.charid:
+                continue
+            if itemID == ownerID:
+                data.append(uiutil.TreeDataInv(clsName='StationCorpMember', itemID=itemID, ownerID=ownerID))
+            else:
+                data.append(uiutil.TreeDataInv(clsName='StationOwnerView', itemID=itemID, ownerID=ownerID))
+
+        if not data:
+            data.append(uiutil.TreeData(label=localization.GetByLabel('UI/Inventory/NoCorpHangars'), id='corpMembers_none'))
+        SortData(data)
+        return data
+
+    def IsForceCollapsed(self):
+        return True
+
+    def GetIcon(self):
+        return 'ui_7_64_11'

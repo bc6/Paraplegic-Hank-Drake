@@ -1,0 +1,95 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\eve\common\lib\extraCatmaConfig.py
+import os
+import stacklesslib.locks
+from catma import enum
+from catma import catmaConfig
+import logging
+logger = logging.getLogger('CATMA')
+GROUPS = enum.Enum('System', 'Physics', 'Content', 'Combat', 'LockOn', 'Logic', 'Misc', 'Engineering', value_type=lambda self, i, k: k)
+BUILTIN_GROUP = GROUPS.System
+CUSTOM_FLAGS = enum.Enum('DIRECT_ATTRIB', 'THUNKER_CODE', 'SERVER_UPDATE_ONLY', value_type=lambda self, i, k: 1 << i)
+DEFAULT_CUSTOM_FLAGS = 0
+DEFAULT_CUSTOM_FLAGS_FOR_CLASS_TYPE = 0
+DEPENDENT_MODULES = ['dustAttribs2', 'dustContent']
+ROWSET_CACHE_NAME = 'cache'
+
+def EntryPoint(*args, **kwargs):
+    import dustAttribs2
+    dustAttribs2.PopulateAll(*args, **kwargs)
+
+
+def LoadCatmaDBFromFilePath(filePath):
+    with open(filePath, 'rb') as catmaDBPickle:
+        import catma.catmaDB
+        cdb = catma.catmaDB.LoadData(catmaDBPickle)
+        fileName = os.path.basename(filePath)
+        dataName, ext = os.path.splitext(fileName)
+        cdb.SetFileName(dataName)
+        return cdb
+
+
+cachedDB = None
+_loadingLock = stacklesslib.locks.Lock()
+
+def SetCatmaDB(newCatmaDB):
+    global cachedDB
+    logger.info('Replacing global catmaDB instance %s' % cachedDB)
+    logger.info('with: %s' % newCatmaDB)
+    if newCatmaDB and cachedDB is not newCatmaDB:
+        if cachedDB:
+            cachedDB.TearOff()
+        cachedDB = newCatmaDB
+
+
+def GetCatmaDB():
+    if not cachedDB:
+        _LoadCatmaDB()
+    return cachedDB
+
+
+def _LoadCatmaDB():
+    with _loadingLock:
+        if cachedDB:
+            return
+        from sake.app import app
+        from sake.const import APP_ROLE_CLIENT, APP_ROLE_SERVER
+        dataName = catmaConfig.GetDataName()
+        pickleName = catmaConfig.GetPickleName(dataName)
+        if app:
+            if app.HasRole(APP_ROLE_CLIENT):
+                vault = app.GetService('vaultClient')
+                from dust.const import APP_ROLE_GAME_CLIENT, APP_ROLE_BATTLESERVER, APP_ROLE_GAME_EDITOR_CLIENT, APP_ROLE_COOK
+                if app.HasRole(APP_ROLE_GAME_CLIENT) or app.HasRole(APP_ROLE_BATTLESERVER) or app.HasRole(APP_ROLE_GAME_EDITOR_CLIENT) or app.HasRole(APP_ROLE_COOK):
+                    vault.StartupCacheCopy()
+            elif app.HasRole(APP_ROLE_SERVER):
+                vault = app.GetService('vaultServer')
+            location = vault.GetFilePath(pickleName)
+            if location is None and dataName == catmaConfig.DATA_DEV:
+                logger.warn('Development version (%s) of CATMA data cannot be found, resort to normal version (%s)', dataName, catmaConfig.DATA_NORMAL)
+                dataName = catmaConfig.DATA_NORMAL
+                pickleName = catmaConfig.GetPickleName(dataName)
+                location = vault.GetFilePath(pickleName)
+        else:
+            rootPath = None
+            startLocations = ['', os.path.dirname(__file__)]
+            for startLocation in startLocations:
+                rootPath = startLocation
+                for i in range(100):
+                    if os.path.exists(os.path.join(rootPath, 'eve\\common\\common.ini')):
+                        break
+                    rootPath += '..\\'
+                else:
+                    rootPath = None
+
+                if rootPath:
+                    break
+
+            if not rootPath:
+                raise RuntimeError('extraCatmaConfig: Cannot determine branch root from {0}'.format(startLocations))
+            location = os.path.join(rootPath, 'eve/dust/ue3/DustGame/vault/%s' % pickleName)
+        if not location or not os.path.exists(location):
+            raise RuntimeError("Can't find %s in vault folder\n   Possible fixes:\n   1. Run start_vaultgen.bat from eve/server folder. It will auto-generate all cache files.\n   2. Grab the cache files from the latest build and copy it to your vault folder.\n      (i.e. from here \\\\bamboo\\builds\\CN_MAIN\\CN_MAIN_232240_00006\\PC\\ue3\\DustGame\\vault\n   3. Ask someone around you for assistance. Show this error message" % pickleName)
+        logger.info('Loading CATMA data from %s' % location)
+        cdb = LoadCatmaDBFromFilePath(location)
+        SetCatmaDB(cdb)
+        logger.info('CATMA data loaded: %s' % cachedDB)

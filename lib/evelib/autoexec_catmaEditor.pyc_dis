@@ -1,0 +1,15 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\eve\common\lib\autoexec_catmaEditor.py
+import sys
+
+def InitPath(branchRoot):
+    del sys.path[:]
+    for path in ['common\\lib',
+     '..\\carbon\\common\\lib',
+     'common\\modules',
+     'dust\\ue3\\DustGame\\python.zip',
+     'dust\\ue3\\DustGame\\python27.zip']:
+        sys.path.append(branchRoot + path)
+
+    print 'sys.path:'
+    for path in sys.path:
+        print path

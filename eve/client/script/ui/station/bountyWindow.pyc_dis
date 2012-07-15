@@ -1,0 +1,142 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/station/bountyWindow.py
+import blue
+import listentry
+import types
+import uix
+import util
+import uicls
+import uiconst
+import localization
+MIN_BOUNTY_AMOUNT = 5000
+
+class BountyWindow(uicls.Window):
+    __guid__ = 'form.BountyWindow'
+    default_width = 400
+    default_height = 300
+    default_windowID = 'missions'
+
+    def ApplyAttributes(self, attributes):
+        uicls.Window.ApplyAttributes(self, attributes)
+        self.bounties = None
+        self.bountyCacheTimer = 0
+        self.placebountycharid = None
+        self.SetWndIcon('61_2', mainTop=-8)
+        self.SetMinSize([350, 270])
+        self.SetCaption(localization.GetByLabel('UI/Station/BountyOffice/BountyOffice'))
+        self.label = uicls.WndCaptionLabel(text=' ', subcaption=' ', parent=self.sr.topParent, align=uiconst.RELATIVE)
+        self.scope = 'station'
+        self.sr.tabs = uicls.TabGroup(name='tabparent', parent=self.sr.main, idx=1)
+        self.sr.searchcontainer = uicls.Container(name='searchcontainer', align=uiconst.TOTOP, parent=self.sr.main, height=36, idx=1)
+        self.sr.inpt = uicls.SinglelineEdit(name='search', parent=self.sr.searchcontainer, maxLength=32, left=5, top=17, width=86, label=localization.GetByLabel('UI/Shared/TypeSearchString'))
+        uicls.Button(parent=self.sr.searchcontainer, label=localization.GetByLabel('UI/Common/Buttons/Search'), pos=(self.sr.inpt.left + self.sr.inpt.width + 2,
+         self.sr.inpt.top,
+         0,
+         0), func=self.SearchCharacterFromBtn, btn_default=1)
+        self.sr.scroll = uicls.Scroll(parent=self.sr.main, padding=(const.defaultPadding,
+         const.defaultPadding,
+         const.defaultPadding,
+         const.defaultPadding))
+        tabs = ([localization.GetByLabel('UI/Station/BountyOffice/MostWanted'),
+          self.sr.main,
+          self,
+          'browsebounties'], [localization.GetByLabel('UI/Station/BountyOffice/PlaceBounty'),
+          self.sr.main,
+          self,
+          'placebounty',
+          self.sr.searchcontainer])
+        self.sr.tabs.Startup(tabs, 'bountymissiontabs')
+        charID = attributes.charID
+        if charID:
+            self.PlaceBountyExt(charID)
+
+    def Load(self, key):
+        self.label.text = localization.GetByLabel('UI/Station/BountyOffice/BountyOffice')
+        if self and not self.destroyed:
+            if key == 'placebounty':
+                self.label.SetSubcaption(localization.GetByLabel('UI/Station/BountyOffice/MinimumBounty', bountyAmount=util.FmtISK(MIN_BOUNTY_AMOUNT)))
+                self.PlaceBounty()
+            elif key == 'browsebounties':
+                self.label.SetSubcaption(localization.GetByLabel('UI/Station/DelayedTwoHours'))
+                self.BrowseBounties()
+
+    def PlaceBounty(self):
+        if self.placebountycharid is None:
+            self.sr.scroll.Load(contentList=[], noContentHint=localization.GetByLabel('UI/Common/TypeInSearch'))
+        else:
+            self.SearchCharacter(self.placebountycharid)
+
+    def BrowseBounties(self):
+        bounties = sm.RemoteSvc('charMgr').GetTopBounties()
+        cfg.eveowners.Prime([ b.characterID for b in bounties ])
+        scrolllist = []
+        for bounty in bounties:
+            scrolllist.append(listentry.Get('User', {'charID': bounty.characterID,
+             'bounty': bounty}))
+
+        if not self or self.destroyed:
+            return
+        self.sr.scroll.Load(fixedEntryHeight=42, contentList=scrolllist, noContentHint=localization.GetByLabel('UI/Station/BountyOffice/NoBountiesFound'))
+
+    def SearchCharacterFromBtn(self, *args):
+        self.SearchCharacter()
+
+    def SearchCharacter(self, charID = None, *args):
+        sm.GetService('loading').Cycle(localization.GetByLabel('UI/Common/Searching'), self.sr.inpt.GetValue().strip())
+        charID = charID or uix.Search(self.sr.inpt.GetValue().strip().lower(), const.groupCharacter, hideNPC=1, getError=1, searchWndName='stationMissionsSearchCharacterSearch')
+        sm.GetService('loading').StopCycle()
+        errMsg = localization.GetByLabel('UI/Common/TypeInSearch')
+        scrolllist = []
+        if charID:
+            if type(charID) == types.TupleType:
+                charID = int(charID[0])
+            if type(charID) == types.IntType:
+                charinfo = cfg.eveowners.Get(charID)
+                self.placebountycharid = charID
+                charMgr = sm.RemoteSvc('charMgr')
+                dynamicinfo = charMgr.GetPublicInfo3(charID)[0]
+                scrolllist.append(listentry.Get('User', {'charID': charID,
+                 'charinfo': charinfo,
+                 'bounty': util.KeyVal(bounty=dynamicinfo.bounty)}))
+                scrolllist.append(listentry.Get('Divider'))
+                scrolllist.append(listentry.Get('Edit', {'OnReturn': None,
+                 'label': localization.GetByLabel('UI/Common/Bounty'),
+                 'hint': localization.GetByLabel('UI/Station/BountyOffice/MinimumBounty', bountyAmount=util.FmtISK(MIN_BOUNTY_AMOUNT)),
+                 'setValue': MIN_BOUNTY_AMOUNT,
+                 'name': 'bounty_amount',
+                 'intmode': (MIN_BOUNTY_AMOUNT, None)}))
+                scrolllist.append(listentry.Get('Button', {'label': '',
+                 'caption': localization.GetByLabel('UI/Commands/AddBountyToPilot'),
+                 'OnClick': self.AddToBounty}))
+                errMsg = None
+            else:
+                errMsg = charID
+        else:
+            scrolllist = []
+        self.sr.scroll.Load(contentList=scrolllist, noContentHint=errMsg)
+        sm.GetService('loading').StopCycle()
+
+    def FindNode(self, nodeName):
+        for entry in self.sr.scroll.GetNodes():
+            if entry.name == nodeName:
+                return entry
+
+    def GetNodeValue(self, nodeName):
+        node = self.FindNode(nodeName)
+        if node is not None:
+            return node.setValue
+        raise RuntimeError('ChildNotFound', nodeName)
+
+    def PlaceBountyExt(self, charID):
+        if eve.session.stationid:
+            blue.pyos.synchro.Yield()
+            self.sr.tabs.ShowPanelByName(localization.GetByLabel('UI/Station/BountyOffice/PlaceBounty'))
+            self.SearchCharacter(charID)
+
+    def AddToBounty(self, *args):
+        charID = self.placebountycharid
+        amount = self.GetNodeValue('bounty_amount')
+        if charID and amount:
+            sm.RemoteSvc('charMgr').AddToBounty(charID, amount)
+            self.placebountycharid = None
+            sm.GetService('objectCaching').InvalidateCachedMethodCall('charMgr', 'GetPublicInfo3', charID)
+            self.SearchCharacter(charID)

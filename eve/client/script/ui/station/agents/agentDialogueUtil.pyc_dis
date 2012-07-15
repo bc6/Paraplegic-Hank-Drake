@@ -1,0 +1,365 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/station/agents/agentDialogueUtil.py
+import localization
+import util
+import localizationUtil
+import uiutil
+CHECK_ICON = '<img src=icon:38_193 size=16>'
+CROSS_ICON = '<img src=icon:38_194 size=16>'
+CIRCLE_ICON = '<img src=icon:38_195 size=16>'
+HIGH_SEC_COLOR = (0, 255, 255)
+MEDIUM_HIGH_SEC_COLOR = (0, 255, 0)
+MEDIUM_SEC_COLOR = (255, 255, 0)
+LOW_SEC_COLOR = (255, 0, 0)
+SECURITY_COLORS = {'1.0': HIGH_SEC_COLOR,
+ '0.9': (HIGH_SEC_COLOR[0] * 0.75 + MEDIUM_HIGH_SEC_COLOR[0] * 0.25, HIGH_SEC_COLOR[1] * 0.75 + MEDIUM_HIGH_SEC_COLOR[1] * 0.25, HIGH_SEC_COLOR[2] * 0.75 + MEDIUM_HIGH_SEC_COLOR[2] * 0.25),
+ '0.8': (HIGH_SEC_COLOR[0] * 0.5 + MEDIUM_HIGH_SEC_COLOR[0] * 0.5, HIGH_SEC_COLOR[1] * 0.5 + MEDIUM_HIGH_SEC_COLOR[1] * 0.5, HIGH_SEC_COLOR[2] * 0.5 + MEDIUM_HIGH_SEC_COLOR[2] * 0.5),
+ '0.7': (HIGH_SEC_COLOR[0] * 0.25 + MEDIUM_HIGH_SEC_COLOR[0] * 0.75, HIGH_SEC_COLOR[1] * 0.25 + MEDIUM_HIGH_SEC_COLOR[1] * 0.75, HIGH_SEC_COLOR[2] * 0.25 + MEDIUM_HIGH_SEC_COLOR[2] * 0.75),
+ '0.6': MEDIUM_HIGH_SEC_COLOR,
+ '0.5': MEDIUM_SEC_COLOR,
+ '0.4': (MEDIUM_SEC_COLOR[0] * 0.8 + LOW_SEC_COLOR[0] * 0.2, MEDIUM_SEC_COLOR[1] * 0.8 + LOW_SEC_COLOR[1] * 0.2, MEDIUM_SEC_COLOR[2] * 0.8 + LOW_SEC_COLOR[2] * 0.2),
+ '0.3': (MEDIUM_SEC_COLOR[0] * 0.6 + LOW_SEC_COLOR[0] * 0.4, MEDIUM_SEC_COLOR[1] * 0.6 + LOW_SEC_COLOR[1] * 0.4, MEDIUM_SEC_COLOR[2] * 0.6 + LOW_SEC_COLOR[2] * 0.4),
+ '0.2': (MEDIUM_SEC_COLOR[0] * 0.4 + LOW_SEC_COLOR[0] * 0.6, MEDIUM_SEC_COLOR[1] * 0.4 + LOW_SEC_COLOR[1] * 0.6, MEDIUM_SEC_COLOR[2] * 0.4 + LOW_SEC_COLOR[2] * 0.6),
+ '0.1': (MEDIUM_SEC_COLOR[0] * 0.2 + LOW_SEC_COLOR[0] * 0.8, MEDIUM_SEC_COLOR[1] * 0.2 + LOW_SEC_COLOR[1] * 0.8, MEDIUM_SEC_COLOR[2] * 0.2 + LOW_SEC_COLOR[2] * 0.8),
+ '0.0': LOW_SEC_COLOR}
+
+def ProcessObjectiveEntry(objType, objData):
+    html = ''
+    if objType == 'agent':
+        agentID, agentLocation = objData
+        agentInfoIcon = '<a href=showinfo:%d//%d><img src=icon:38_208 size=16 alt="%s"></a>' % (cfg.eveowners.Get(agentID).typeID, agentID, uiutil.StripTags(localization.GetByLabel('UI/Commands/ShowInfo')))
+        html = '\n            <span id=caption>%(speakWithString)s %(agentInfoIcon)s</span><br>\n            <table>\n                <tr valign=middle>\n                    <td width=64>%(agentGraphic)s</td>\n                    <td>%(agentLocationHeader)s</td>\n                    <td>%(dropoffLocation)s</td>\n                </tr>\n            </table>\n            <br>\n        ' % {'speakWithString': localization.GetByLabel('UI/Agents/StandardMission/ObjectiveReportToAgent', agentID=agentID),
+         'agentInfoIcon': agentInfoIcon,
+         'agentGraphic': '<img src="portrait:%d" size=64 hspace=2 vspace=2>' % agentID,
+         'dropoffLocation': LocationWrapper(agentLocation, 'agenthomebase'),
+         'agentLocationHeader': localization.GetByLabel('UI/Agents/StandardMission/AgentLocation')}
+    elif objType == 'transport':
+        pickupOwnerID, pickupLocation, dropoffOwnerID, dropoffLocation, cargo = objData
+        cargoObjectiveIcon = CHECK_ICON if cargo['hasCargo'] else CIRCLE_ICON
+        isAtPickupLocation = pickupLocation['locationID'] == session.locationid
+        if isAtPickupLocation or cargo['hasCargo']:
+            pickupObjectiveIcon = CHECK_ICON
+        else:
+            pickupObjectiveIcon = CIRCLE_ICON
+        pickupGraphic = OwnerWrap(pickupOwnerID)
+        isAtDropoffLocation = dropoffLocation['locationID'] == session.locationid
+        if isAtDropoffLocation and (isAtPickupLocation or cargo['hasCargo']):
+            dropoffObjectiveIcon = CHECK_ICON
+        else:
+            dropoffObjectiveIcon = CIRCLE_ICON
+        dropoffGraphic = OwnerWrap(dropoffOwnerID)
+        cargoText = localization.GetByLabel('UI/Common/QuantityAndItem', quantity=cargo['quantity'], item=cargo['typeID'])
+        if cargo['volume'] > 0:
+            cargoText = localization.GetByLabel('UI/Agents/StandardMission/CargoDescriptionWithSize', cargoDescription=cargoText, size=cargo['volume'])
+        cargoGraphic = IconWrap(cargo['typeID'])
+        html = '\n            <span id=caption>%(transportHeader)s</span><br>\n            <div id=basetext>%(transportBlurb)s\n            <br>\n            <table>\n                <tr valign=middle>\n                    <td>%(pickupObjectiveIcon)s</td>                \n                    <td width=32>%(pickupGraphic)s</td>\n                    <td>%(transportPickup)s</td>\n                    <td>%(pickupLocation)s</td>\n                </tr>\n                <tr valign=middle>\n                    <td>%(dropoffObjectiveIcon)s</td>                \n                    <td width=32>%(dropoffGraphic)s</td>\n                    <td>%(transportDropOff)s</td>\n                    <td>%(dropoffLocation)s</td>\n                </tr>\n                <tr valign=middle>\n                    <td>%(cargoObjectiveIcon)s</td>\n                    <td width=32>%(cargoGraphic)s</td>\n                    <td>%(transportCargo)s</td>\n                    <td>%(cargo)s</td>\n                </tr>\n            </table></div>\n            <br>\n        ' % {'transportHeader': localization.GetByLabel('UI/Agents/StandardMission/TransportObjectiveHeader'),
+         'transportBlurb': localization.GetByLabel('UI/Agents/StandardMission/TransportBlurb'),
+         'pickupObjectiveIcon': pickupObjectiveIcon,
+         'pickupGraphic': pickupGraphic,
+         'transportPickup': localization.GetByLabel('UI/Agents/StandardMission/TransportPickupLocation'),
+         'pickupLocation': LocationWrapper(pickupLocation),
+         'dropoffObjectiveIcon': dropoffObjectiveIcon,
+         'dropoffGraphic': dropoffGraphic,
+         'transportDropOff': localization.GetByLabel('UI/Agents/StandardMission/TransportDropOffLocation'),
+         'dropoffLocation': LocationWrapper(dropoffLocation),
+         'cargoObjectiveIcon': cargoObjectiveIcon,
+         'cargoGraphic': cargoGraphic,
+         'transportCargo': localization.GetByLabel('UI/Agents/StandardMission/TransportCargo'),
+         'cargo': cargoText}
+    elif objType == 'fetch':
+        dropoffOwnerID, dropoffLocation, cargo = objData
+        isAtDropoffLocation = dropoffLocation is not None and dropoffLocation['locationID'] == session.locationid
+        dropoffObjectiveIcon = CHECK_ICON if isAtDropoffLocation else CIRCLE_ICON
+        dropoffGraphic = OwnerWrap(dropoffOwnerID)
+        if dropoffLocation is not None:
+            dropoffLocationText = LocationWrapper(dropoffLocation)
+        else:
+            dropoffLocationText = OwnerWrap(dropoffOwnerID)
+        cargoObjectiveIcon = CHECK_ICON if cargo['hasCargo'] else CIRCLE_ICON
+        cargoGraphic = IconWrap(cargo['typeID'])
+        cargoText = localization.GetByLabel('UI/Common/QuantityAndItem', quantity=cargo['quantity'], item=cargo['typeID'])
+        if cargo['volume'] > 0:
+            cargoText = localization.GetByLabel('UI/Agents/StandardMission/CargoDescriptionWithSize', cargoDescription=cargoText, size=cargo['volume'])
+        html = '\n            <span id=caption>%(fetchHeader)s</span><br>\n            <div id=basetext>%(fetchBlurb)s<br><br>\n            <table>\n                <tr valign=middle>\n                    <td>%(dropoffObjectiveIcon)s</td>\n                    <td width=32>%(dropoffGraphic)s</td>\n                    <td>%(fetchDropOff)s</td>\n                    <td>%(dropoffLocation)s</td>\n                </tr>\n                <tr valign=middle>\n                    <td>%(cargoObjectiveIcon)s</td>\n                    <td width=32>%(cargoGraphic)s</td>\n                    <td>%(fetchItem)s</td>\n                    <td>%(cargo)s</td>\n                </tr>\n            </table>\n            </div>\n            <br>\n        ' % {'fetchHeader': localization.GetByLabel('UI/Agents/StandardMission/FetchObjectiveHeader'),
+         'fetchBlurb': localization.GetByLabel('UI/Agents/StandardMission/FetchObjectiveBlurb'),
+         'dropoffObjectiveIcon': dropoffObjectiveIcon,
+         'dropoffGraphic': dropoffGraphic,
+         'fetchDropOff': localization.GetByLabel('UI/Agents/StandardMission/FetchObjectiveDropOffLocation'),
+         'dropoffLocation': dropoffLocationText,
+         'cargoObjectiveIcon': cargoObjectiveIcon,
+         'cargoGraphic': cargoGraphic,
+         'fetchItem': localization.GetByLabel('UI/Agents/StandardMission/FetchObjectiveItem'),
+         'cargo': cargoText}
+    return html
+
+
+def ProcessDungeonData(dunData, agentID):
+    s1, s2 = ('', '')
+    if 'completionStatus' in dunData:
+        lbl = ['UI/Agents/StandardMission/DungeonObjectiveCompleted', 'UI/Agents/StandardMission/DungeonObjectiveFailed'][dunData['completionStatus']]
+        s1 = '<strike>'
+        s2 = '</strike> %s' % localization.GetByLabel(lbl)
+    if dunData['optional']:
+        objectiveTextTitle = localization.GetByLabel('UI/Agents/StandardMission/OptionalObjectiveHeader')
+        objectiveTextBody = localization.GetByLabel('UI/Agents/StandardMission/OptionalObjectiveBody')
+    else:
+        objectiveTextTitle = localization.GetByLabel('UI/Agents/StandardMission/ObjectiveHeader')
+        objectiveTextBody = localization.GetByLabel('UI/Agents/StandardMission/DungeonObjectiveBody')
+    if 'briefingMessage' in dunData:
+        objectiveTextBody = sm.GetService('agents').ProcessMessage(dunData['briefingMessage'], agentID)
+    if dunData['objectiveCompleted'] is not None:
+        objectiveIcon = [CROSS_ICON, CHECK_ICON][dunData['objectiveCompleted']]
+    else:
+        objectiveIcon = CIRCLE_ICON
+    if 'ownerID' in dunData:
+        dungeonGraphic = OwnerWrap(dunData['ownerID'])
+    else:
+        dungeonGraphic = ''
+    html = '\n        <span id=caption>%(objectiveTextTitle)s</span><br>\n        <div id=basetext> %(s1)s%(objectiveTextBody)s%(s2)s<br>\n        <table>\n            <tr valign=middle>\n                <td>%(objectiveIcon)s</td>\n                <td width=32>%(dungeonGraphic)s</td>\n                <td width=50>%(locationHeader)s</td>\n                <td width=200>%(dungeonLocation)s</td>\n            </tr>\n        </table></div>\n    ' % {'objectiveTextTitle': objectiveTextTitle,
+     'objectiveTextBody': objectiveTextBody,
+     'objectiveIcon': objectiveIcon,
+     's1': s1,
+     's2': s2,
+     'locationHeader': localization.GetByLabel('UI/Agents/StandardMission/ObjectiveLocation'),
+     'dungeonGraphic': dungeonGraphic,
+     'dungeonLocation': LocationWrapper(dunData['location'])}
+    if 'shipRestrictions' in dunData:
+        lbl = ['UI/Agents/StandardMission/DungeonObjectiveNormalRestrictions', 'UI/Agents/StandardMission/DungeonObjectiveSpecialRestrictions'][dunData['shipRestrictions']]
+        httpLink = '<a href=localsvc:service=agents&method=PopupDungeonShipRestrictionList&agentID=%d&charID=%d&dungeonID=%d>' % (agentID, session.charid, dunData['dungeonID'])
+        if dunData['shipRestrictions'] == 1:
+            html += '<font color=#E3170D>'
+        html += localization.GetByLabel(lbl, startHttpLink=httpLink, endHttpLink='</a>')
+        if dunData['shipRestrictions'] == 1:
+            html += '</font>'
+        html += '<br>'
+    return html
+
+
+def LocationWrapper(location, locationType = None):
+    if locationType is None and 'locationType' in location:
+        locationType = location['locationType']
+    pseudoSecurityRating = cfg.solarsystems.Get(location['solarsystemID']).pseudoSecurity
+    if pseudoSecurityRating <= 0:
+        securityKey = '0.0'
+    else:
+        securityKey = str(round(pseudoSecurityRating, 1))
+    secColor = SECURITY_COLORS[securityKey]
+    secColorAsHtml = '#%02X%02X%02X' % (secColor[0], secColor[1], secColor[2])
+    secWarning = '<font color=#E3170D>'
+    secClass = util.SecurityClassFromLevel(pseudoSecurityRating)
+    standingSvc = sm.GetService('standing')
+    if secClass <= const.securityClassLowSec:
+        secWarning += localization.GetByLabel('UI/Agents/LowSecWarning')
+    elif standingSvc.GetMySecurityRating() <= -5:
+        secWarning += localization.GetByLabel('UI/Agents/HighSecWarning')
+    secWarning += '</font>'
+    if 'coords' in location:
+        x, y, z = location['coords']
+        refAgentString = str(location['agentID'])
+        if 'referringAgentID' in location:
+            refAgentString += ',' + str(location['referringAgentID'])
+        infoLinkData = ['showinfo',
+         location['typeID'],
+         location['locationID'],
+         x,
+         y,
+         z,
+         refAgentString,
+         0,
+         locationType]
+    else:
+        infoLinkData = ['showinfo', location['typeID'], location['locationID']]
+    spacePigShipType = location.get('shipTypeID', None)
+    if spacePigShipType is not None:
+        locationName = localization.GetByLabel('UI/Agents/Items/ItemLocation', typeID=spacePigShipType, locationID=location['locationID'])
+    else:
+        locationName = cfg.evelocations.Get(location['locationID']).locationName
+    return localization.GetByLabel('UI/Agents/LocationWrapper', startFontTag='<font color=%s>' % secColorAsHtml, endFontTag='</font>', securityRating=pseudoSecurityRating, locationName=locationName, linkdata=infoLinkData, securityWarning=secWarning)
+
+
+def OwnerWrap(ownerID, typeID = None):
+    if ownerID is None:
+        return ''
+    elif util.IsFaction(ownerID):
+        return '<a href=showinfo:%d//%d><img src="factionlogo:%d" width=32 height=32 hspace=2 vspace=2></a>' % (const.typeFaction, ownerID, ownerID)
+    elif util.IsCorporation(ownerID):
+        return '<a href=showinfo:%d//%d><img src="corplogo:%d" width=32 height=32 hspace=2 vspace=2></a>' % (const.typeCorporation, ownerID, ownerID)
+    else:
+        if not typeID:
+            typeID = cfg.eveowners.Get(ownerID).typeID
+        return '<a href=showinfo:%d//%d><img src="portrait:%d" width=32 height=32 hspace=2 vspace=2></a>' % (typeID, ownerID, ownerID)
+
+
+def IconWrap(typeID, extra = None):
+    if typeID is None:
+        return ''
+    elif typeID == const.typeCredits:
+        return '<img style:vertical-align:bottom src="icon:06_03" size="32">'
+    elif extra and 'blueprintInfo' in extra:
+        bpInfo = extra['blueprintInfo']
+        return '<a href=showinfo:%d//0//1//%d//%d//%d><img src="typeicon:%d" width=32 height=32 align=left iscopy=1></a>' % (typeID,
+         bpInfo.get('licensedProductionRunsRemaining', 0),
+         bpInfo.get('materialLevel', 0),
+         bpInfo.get('productivityLevel', 0),
+         typeID)
+    else:
+        return '<a href=showinfo:%d><img src="typeicon:%d" width=32 height=32 align=left></a>' % (typeID, typeID)
+
+
+def ProcessTypeAndQuantity(typeID, quantity, extra = None):
+    if typeID == const.typeCredits:
+        return util.FmtISK(quantity)
+    elif extra is None:
+        return cfg.FormatConvert(TYPEIDANDQUANTITY, typeID, quantity)
+    else:
+        specificItemID = extra.get('specificItemID', 0)
+        blueprintInfo = extra.get('blueprintInfo', None)
+        if blueprintInfo is None:
+            if specificItemID:
+                props = [localization.GetByLabel('UI/Agents/Items/SpecificItems')]
+            else:
+                return cfg.FormatConvert(TYPEIDANDQUANTITY, typeID, quantity)
+        else:
+            props = []
+            if specificItemID:
+                props.append(localization.GetByLabel('UI/Agents/Items/SpecificItems'))
+            if blueprintInfo.get('licensedProductionRunsRemaining', 0) > 1:
+                runsRemaining = blueprintInfo.get('licensedProductionRunsRemaining', 0)
+                props.append(localization.GetByLabel('UI/Agents/Items/BlueprintInfoMultirun', runsRemaining=runsRemaining))
+            elif blueprintInfo.get('licensedProductionRunsRemaining', 0) == 1:
+                props.append(localization.GetByLabel('UI/Agents/Items/BlueprintInfoSingleRun'))
+            if blueprintInfo.get('copy', 0):
+                props.append(localization.GetByLabel('UI/Agents/Items/BlueprintInfoCopy'))
+            else:
+                props.append(localization.GetByLabel('UI/Agents/Items/BlueprintInfoOriginal'))
+            if blueprintInfo.get('materialLevel', 0):
+                props.append(localization.GetByLabel('UI/Agents/Items/BlueprintInfoMaterialLevel', materialLevel=blueprintInfo.get('materialLevel', 0)))
+            if blueprintInfo.get('productivityLevel', 0):
+                props.append(localization.GetByLabel('UI/Agents/Items/ProductivityLevel', productivityLevel=blueprintInfo.get('productivityLevel', 0)))
+        return localization.GetByLabel('UI/Agents/Items/NumItemsAndProperties', itemAndQuantity=cfg.FormatConvert(TYPEIDANDQUANTITY, typeID, quantity), propertyList=localizationUtil.FormatGenericList(props))
+
+
+def BuildObjectiveHTML(agentID, objectiveData):
+    html = ''
+    if objectiveData.get('importantStandings', 0):
+        html += '<span id=ip>%s</span><br><br>' % localization.GetByLabel('UI/Agents/StandardMission/ImportantStandingsWarning')
+    cmpStatus = objectiveData['completionStatus']
+    if isinstance(objectiveData['missionTitleID'], basestring):
+        missionName = objectiveData['missionTitleID']
+    else:
+        missionName = localization.GetByMessageID(objectiveData['missionTitleID'])
+    if cmpStatus > 0:
+        missionHeaderColor = '<font color=#5ABA56>'
+        missionHeader = localization.GetByLabel('UI/Agents/StandardMission/MissionObjectivesComplete', missionName=missionName)
+    else:
+        missionHeaderColor = '<font>'
+        missionHeader = localization.GetByLabel('UI/Agents/StandardMission/MissionObjectives', missionName=missionName)
+    if cmpStatus == 2:
+        gmStatusHeader = '<font color=#00FF00>Debug Mode: Cheat Complete Enabled</div></font>'
+    else:
+        gmStatusHeader = ''
+    objectives = ''
+    for objType, objData in objectiveData['objectives']:
+        objectives += ProcessObjectiveEntry(objType, objData)
+
+    for dunData in objectiveData['dungeons']:
+        objectives += ProcessDungeonData(dunData, agentID)
+
+    html += '\n        %(GMStatusHeader)s\n        <span id=subheader>%(missionHeaderColor)s%(missionHeader)s</font></span><br>\n        <div id=basetext>%(objectivesHeader)s<br>\n        <br>\n        <span id=basetext>\n        %(objectives)s\n        </span>\n        <br>\n    ' % {'GMStatusHeader': gmStatusHeader,
+     'missionHeader': missionHeader,
+     'missionHeaderColor': missionHeaderColor,
+     'objectivesHeader': localization.GetByLabel('UI/Agents/StandardMission/OverviewAndObjectivesBlurb'),
+     'objectives': objectives}
+    secWarning = sm.GetService('agents').GetSecurityWarning(objectiveData['locations'])
+    if secWarning:
+        html += '<font color=red>%s</font><br><br>' % secWarning
+
+    def ProcessEntry(typeID, quantity, extra):
+        if util.IsCharacter(typeID):
+            iconWrap = OwnerWrap(typeID)
+            description = localization.GetByLabel('UI/Agents/StandardMission/MissionReferral', agentID=typeID)
+        else:
+            iconWrap = IconWrap(typeID, extra)
+            description = ProcessTypeAndQuantity(typeID, quantity, extra)
+        return (iconWrap, description)
+
+    if len(objectiveData['agentGift']) > 0:
+        if objectiveData['missionState'] in (const.agentMissionStateAccepted, const.agentMissionStateFailed):
+            grantedItemsDetail = localization.GetByLabel('UI/Agents/StandardMission/AcceptedGrantedItemDetail')
+        else:
+            grantedItemsDetail = localization.GetByLabel('UI/Agents/StandardMission/GrantedItemDetail')
+        html += '<br>\n            <span id=subheader>%s</span>\n            <div id=basetext>%s</div>\n            <div><table>\n        ' % (localization.GetByLabel('UI/Agents/StandardMission/GrantedItems'), grantedItemsDetail)
+        for typeID, quantity, extra in objectiveData['agentGift']:
+            icon, description = ProcessEntry(typeID, quantity, extra)
+            html += '\n                <tr valign=middle>\n                    <td width=36>%s</td>\n                    <td width=352>%s</td>\n                </tr>\n                ' % (icon, description)
+
+        html += '</table></div><br>'
+    if len(objectiveData['normalRewards']) or objectiveData['loyaltyPoints'] > 0 or objectiveData['researchPoints'] > 0:
+        html += '\n            <span id=subheader>%s</span>\n            <div id=basetext>%s</div>\n            <div><table>\n        ' % (localization.GetByLabel('UI/Agents/StandardMission/RewardsTitle'), localization.GetByLabel('UI/Agents/StandardMission/RewardsHeader'))
+        for typeID, quantity, extra in objectiveData['normalRewards']:
+            icon, description = ProcessEntry(typeID, quantity, extra)
+            html += '\n                <tr valign=middle>\n                    <td width=36>%s</td>\n                    <td width=352>%s</td>\n                </tr>\n            ' % (icon, description)
+
+        if objectiveData['loyaltyPoints'] > 0:
+            loyaltyPointsIcon = IconWrap(const.typeLoyaltyPoints)
+            loyaltyPoints = objectiveData['loyaltyPoints']
+            html += '\n                <tr valign=middle>\n                    <td width=36>%s</td>\n                    <td width=352>%s</td>\n                </tr>\n            ' % (loyaltyPointsIcon, localization.GetByLabel('UI/Agents/StandardMission/NumLoyaltyPoints', lpAmount=loyaltyPoints))
+        if objectiveData['researchPoints'] > 0:
+            researchPointsIcon = IconWrap(const.typeResearch)
+            researchPoints = round(objectiveData['researchPoints'], 0)
+            html += '\n                <tr valign=middle>\n                    <td width=36>%s</td>\n                    <td width=352>%s</td>\n                </tr>\n            ' % (researchPointsIcon, localization.GetByLabel('UI/Agents/StandardMission/NumResearchPoints', rpAmount=researchPoints))
+        html += '</table></div><br>'
+    if len(objectiveData['bonusRewards']) > 0:
+        html += '<span id=subheader>%s</span><br>' % localization.GetByLabel('UI/Agents/StandardMission/BonusRewardsTitle')
+        for timeRemaining, typeID, quantity, extra in objectiveData['bonusRewards']:
+            if timeRemaining > 0:
+                header = localization.GetByLabel('UI/Agents/StandardMission/BonusRewardsHeader', timeRemaining=timeRemaining)
+            else:
+                header = localization.GetByLabel('UI/Agents/StandardMission/BonusTimePassed')
+            icon, description = ProcessEntry(typeID, quantity, extra)
+            html += '\n                <div id=basetext>%s<br>\n                <div><table>\n                    <tr valign=middle>\n                        <td width=36>%s</TD>\n                        <td width=352>%s</TD>\n                    </tr>\n                </table></div>\n            ' % (header, icon, description)
+
+        html += '<br>'
+    if len(objectiveData['collateral']) > 0:
+        html += '\n            <span id=subheader>%s</span>\n            <div id=basetext>%s</div><br>\n            <div><table>\n        ' % (localization.GetByLabel('UI/Agents/StandardMission/CollateralTitle'), localization.GetByLabel('UI/Agents/StandardMission/CollateralHeader'))
+        for typeID, quantity, extra in objectiveData['collateral']:
+            collateralIcon = IconWrap(typeID, extra)
+            collateralDescription = ProcessTypeAndQuantity(typeID, quantity, extra)
+            html += '\n                <tr valign=middle>\n                    <td width=36>%s</td>\n                    <td width=352>%s</td>\n                </tr>\n            ' % (collateralIcon, collateralDescription)
+
+        html += '</table></div><br>'
+    if 'missionExtra' in objectiveData:
+        headerID, bodyID = objectiveData['missionExtra']
+        html += '\n            <span id=subheader>%s</span>\n            <div id=basetext>%s</div>\n        ' % (sm.GetService('agents').ProcessMessage((headerID, objectiveData['contentID']), agentID), sm.GetService('agents').ProcessMessage((bodyID, objectiveData['contentID']), agentID))
+    return html
+
+
+def GetAgentLocationHeader(agentInfo, agentLocation, loyaltyPoints = None):
+    cfgAgent = cfg.eveowners.Get(agentInfo.agentID)
+    if agentInfo.agentTypeID == const.agentTypeAura:
+        agentInfoIcon = ''
+        blurbEffectiveStanding = ''
+        blurbDivision = ''
+    else:
+        agentInfoIcon = '<a href=showinfo:%d//%d><img src=icon:38_208 size=16 alt="%s"></a>' % (cfgAgent.typeID, agentInfo.agentID, uiutil.StripTags(localization.GetByLabel('UI/Commands/ShowInfo'), stripOnly=['localized']))
+        divisions = sm.GetService('agents').GetDivisions()
+        blurbDivision = localization.GetByLabel('UI/Agents/Dialogue/Division', divisionName=divisions[agentInfo.divisionID].divisionName)
+    s = [sm.GetService('standing').GetEffectiveStanding(agentInfo.factionID, session.charid)[0], sm.GetService('standing').GetEffectiveStanding(agentInfo.corporationID, session.charid)[0], sm.GetService('standing').GetEffectiveStanding(agentInfo.agentID, session.charid)[0]]
+    if min(*s) <= -2.0:
+        blurbEffectiveStanding = localization.GetByLabel('UI/Agents/Dialogue/EffectiveStandingLow', effectiveStanding=min(*s))
+    else:
+        es = max(*s) or 0.0
+        blurbEffectiveStanding = localization.GetByLabel('UI/Agents/Dialogue/EffectiveStanding', effectiveStanding=es)
+    if loyaltyPoints:
+        loyaltyPointsBlurb = localization.GetByLabel('UI/Agents/Dialogue/LoyaltyPointsTableRow', loyaltyPoints=loyaltyPoints)
+    else:
+        loyaltyPointsBlurb = ''
+    return '\n        <table border=0 cellpadding=1 cellspacing=1>\n            <tr>\n                <td valign=top >\n                    <table border=0 cellpadding=1 cellspacing=1>\n                        <tr>\n                        </tr>\n                        <tr>\n                        </tr>\n                        <tr>\n                        </tr>\n                        <tr>\n                            <td valign=top><img src="portrait:%(agentID)d" width=120 height=120 size=256 align=left style=margin-right:10></td>\n                        </tr>\n                    </table>\n                </td>\n                <td valign=top>\n                    <table border=0 width=290 cellpadding=1 cellspacing=1>\n                        <tr>\n                            <td width=120 valign=top colspan=2>\n                                <font size=18>%(agentName)s</font> %(showInfoLink)s\n                            </td>\n                        </tr>\n                        <tr>\n                            <td>%(blurbDivision)s</td>\n                        </tr>\n                        <tr>\n                            <td height=12> </td>\n                        </tr>\n                        <tr>\n                            <td>%(agentLocation)s</td>\n                        </tr>\n                        <tr>\n                            <td height=12> </td>\n                        </tr>\n                        <tr>\n                            <td>%(blurbEffectiveStanding)s</td>\n                        </tr>\n                        %(loyaltyPoints)s\n                    </table>\n                </td>\n            </tr>\n        </table>\n    ' % {'agentID': agentInfo.agentID,
+     'agentName': cfgAgent.name,
+     'showInfoLink': agentInfoIcon,
+     'blurbDivision': blurbDivision,
+     'agentLocation': LocationWrapper(agentLocation),
+     'blurbEffectiveStanding': blurbEffectiveStanding,
+     'loyaltyPoints': loyaltyPointsBlurb}
+
+
+exports = util.AutoExports('agentDialogueUtil', locals())

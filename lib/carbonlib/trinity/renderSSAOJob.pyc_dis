@@ -1,0 +1,262 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\carbon\common\lib\trinity\renderSSAOJob.py
+import trinity
+import bluepy
+import random
+import struct
+import math
+SSAO_USE_NORMAL = 0
+SSAO_NORMAL_FREE = 1
+SSAO_HALF_RES_AO = 0
+SSAO_FULL_RES_AO = 1
+
+def GetSSAOCallbackStep(options, width, height, shaderSSAO, linearizeDepth, linearizeDepthAndPackAODepth):
+    if options.resolutionMode == SSAO_HALF_RES_AO:
+        downsampleFactor = 2.0
+    else:
+        downsampleFactor = 1.0
+    aoWidth = width / downsampleFactor
+    aoHeight = height / downsampleFactor
+
+    def Callback():
+        fovY = trinity.GetFieldOfView()
+        focalLen = (1.0 / math.tan(fovY * 0.5) * aoHeight / aoWidth, 1.0 / math.tan(fovY * 0.5))
+        invFocalLen = (1.0 / focalLen[0], 1.0 / focalLen[1])
+        focalLengthParams = (focalLen[0],
+         focalLen[1],
+         invFocalLen[0],
+         invFocalLen[1])
+        shaderSSAO.parameters['FocalLengthParams'].value = focalLengthParams
+        zNear = trinity.GetFrontClip()
+        zFar = trinity.GetBackClip()
+        linA = 1.0 / zFar - 1.0 / zNear
+        linB = 1.0 / zNear
+        linearizeDepth.parameters['MiscParams'].z = linA
+        linearizeDepth.parameters['MiscParams'].w = linB
+        linearizeDepthAndPackAODepth.parameters['MiscParams'].z = linA
+        linearizeDepthAndPackAODepth.parameters['MiscParams'].w = linB
+        shaderSSAO.parameters['MiscParams'].z = linA
+        shaderSSAO.parameters['MiscParams'].w = linB
+
+    return Callback
+
+
+class SSAOOptions:
+    strength = 1
+    radius = 3
+    angleBias = 0
+    radialAttenuation = 1
+    randomTextureWidth = 4
+    powerExponent = 1
+    fogDistOfHalfStrength = 500
+    fogAmount = 0
+    shaderType = SSAO_NORMAL_FREE
+    resolutionMode = SSAO_HALF_RES_AO
+    numDirections = 6
+    numSteps = 6
+    maxFootprintRadius = 0.05
+    blurRadius = 16
+    blurSharpness = 5
+    disableBlending = True
+
+
+class RenderSSAOJob(object):
+    __cid__ = 'trinity.TriRenderJob'
+    __metaclass__ = bluepy.BlueWrappedMetaclass
+
+    def CreateMaterial(self, situation):
+        material = trinity.Tr2ShaderMaterial()
+        material.highLevelShaderName = 'SSAO'
+        material.defaultSituation = situation
+        return material
+
+    def CreateShaders(self, options):
+        self.linearizeDepth = self.CreateMaterial('linearizeDepth')
+        self.shaderSSAO = self.CreateMaterial('normalFree useNormals')
+        self.linearizeDepthAndPackAODepth = self.CreateMaterial('linearizeDepthAndPack')
+        self.blurX = self.CreateMaterial('blurX')
+        if not options.disableBlending:
+            self.blurY = self.CreateMaterial('blurY blend')
+        else:
+            self.blurY = self.CreateMaterial('blurY')
+
+    def SetMaterialConstants(self, options, width, height, linearizeDepth, linearizeDepthAndPackAODepth, blurX, blurY, shaderSSAO):
+        if options.resolutionMode == SSAO_HALF_RES_AO:
+            downsampleFactor = 2.0
+        else:
+            downsampleFactor = 1.0
+        aoWidth = width / downsampleFactor
+        aoHeight = height / downsampleFactor
+        angleBiasRad = options.angleBias * math.pi / 180 + 1e-05
+        aoResolution = (aoWidth, aoHeight)
+        invAOResolution = (1.0 / aoWidth, 1.0 / aoHeight)
+        aoResolutionParams = (aoResolution[0],
+         aoResolution[1],
+         invAOResolution[0],
+         invAOResolution[1])
+        focalLengthParams = (1, 1, 1, 1)
+        numDirs = (options.numDirections + 1) / 2 * 2
+        numSteps = options.numSteps
+        tanAngleBias = math.tan(angleBiasRad)
+        angleBias = angleBiasRad
+        directionParams = (numDirs,
+         numSteps,
+         tanAngleBias,
+         angleBias)
+        r = options.radius
+        sqrR = options.radius * options.radius
+        invR = 1.0 / options.radius
+        aspectRatio = aoHeight / aoWidth
+        scaleParams = (r,
+         sqrR,
+         invR,
+         aspectRatio)
+        fullResolution = (width, height)
+        invFullResolution = (1.0 / width, 1.0 / height)
+        resolutionParams = (fullResolution[0],
+         fullResolution[1],
+         invFullResolution[0],
+         invFullResolution[1])
+        blurSigma = (options.blurRadius + 1.0) * 0.5
+        halfBlurRadius = options.blurRadius * 0.5
+        blurRadius = options.blurRadius
+        blurSharpness = 1.44269504 * (options.blurSharpness * options.blurSharpness)
+        blurFalloff = 1.44269504 / (2.0 * blurSigma * blurSigma)
+        blurParams = (halfBlurRadius,
+         blurRadius,
+         blurSharpness,
+         blurFalloff)
+        deltaZ = options.fogDistOfHalfStrength - 1.0
+        invRandTexSize = 1.0 / self.randomTexture.width
+        fogK = 1.0 / (deltaZ * deltaZ)
+        fogAmount = min(max(options.fogAmount, 0), 1)
+        attenuation = options.radialAttenuation
+        fogParams = (invRandTexSize,
+         fogK,
+         fogAmount,
+         attenuation)
+        powExponent = options.powerExponent
+        contrast = options.strength / (1 - math.sin(angleBiasRad))
+        miscParams = (powExponent,
+         contrast,
+         0,
+         0)
+        maxFootprintUV = min(options.maxFootprintRadius, 0.05)
+        maxFootprintPixels = min(options.maxFootprintRadius, 0.05) * aoWidth
+        filterParams = (maxFootprintUV,
+         maxFootprintPixels,
+         0,
+         0)
+        self.AddMaterialParam(linearizeDepth, 'MiscParams', miscParams)
+        self.AddMaterialParam(linearizeDepthAndPackAODepth, 'MiscParams', miscParams)
+        self.AddMaterialParam(blurX, 'ResolutionParams', resolutionParams)
+        self.AddMaterialParam(blurX, 'BlurParams', blurParams)
+        self.AddMaterialParam(blurY, 'ResolutionParams', resolutionParams)
+        self.AddMaterialParam(blurY, 'BlurParams', blurParams)
+        self.AddMaterialParam(blurY, 'FogParams', fogParams)
+        self.AddMaterialParam(blurY, 'MiscParams', miscParams)
+        self.AddMaterialParam(blurY, 'FilterParams', filterParams)
+        self.AddMaterialParam(shaderSSAO, 'AOResolutionParams', aoResolutionParams)
+        self.AddMaterialParam(shaderSSAO, 'FocalLengthParams', focalLengthParams)
+        self.AddMaterialParam(shaderSSAO, 'DirectionParams', directionParams)
+        self.AddMaterialParam(shaderSSAO, 'ScaleParams', scaleParams)
+        self.AddMaterialParam(shaderSSAO, 'ResolutionParams', resolutionParams)
+        self.AddMaterialParam(shaderSSAO, 'BlurParams', blurParams)
+        self.AddMaterialParam(shaderSSAO, 'FogParams', fogParams)
+        self.AddMaterialParam(shaderSSAO, 'MiscParams', miscParams)
+        self.AddMaterialParam(shaderSSAO, 'FilterParams', filterParams)
+
+    def AddMaterialParam(self, material, name, value):
+        if type(value) == trinity.TriTextureRes:
+            param = trinity.TriTexture2DParameter()
+            param.name = name
+            param.SetResource(value)
+        elif type(value) == trinity.Tr2RenderTarget:
+            param = trinity.TriTexture2DParameter()
+            param.name = name
+            t = trinity.TriTextureRes(value)
+            param.SetResource(t)
+        elif type(value) == trinity.Tr2DepthStencil:
+            param = trinity.TriTexture2DParameter()
+            param.name = name
+            t = trinity.TriTextureRes(value)
+            param.SetResource(t)
+        else:
+            param = trinity.Tr2Vector4Parameter()
+            param.name = name
+            param.value = value
+        material.parameters[name] = param
+
+    def CreateRandomTexture(self, options):
+        randomBitmap = trinity.Tr2HostBitmap(options.randomTextureWidth, options.randomTextureWidth, 1, trinity.PIXEL_FORMAT.R32G32B32A32_FLOAT)
+        data = randomBitmap.GetRawData()
+        values = []
+        dataFormat = ''
+        for i in range(options.randomTextureWidth * options.randomTextureWidth):
+            angle = 2.0 * math.pi * random.random() / options.numDirections
+            values.append(math.sin(angle))
+            values.append(math.cos(angle))
+            values.append(random.random())
+            values.append(random.random())
+            dataFormat += 'ffff'
+
+        struct.pack_into(dataFormat, data[0], 0, *values)
+        self.randomTexture = trinity.TriTextureRes()
+        self.randomTexture.CreateFromHostBitmap(randomBitmap)
+
+    def AddStep(self, name, step):
+        step.name = name
+        self.steps.append(step)
+
+    def Initialize(self, options, width, height, outputRT):
+        self.CreateRandomTexture(options)
+        linearizeDepth = self.CreateMaterial('linearizeDepth')
+        shaderSSAO = self.CreateMaterial('normalFree useNormals')
+        linearizeDepthAndPackAODepth = self.CreateMaterial('linearizeDepthAndPack')
+        blurX = self.CreateMaterial('blurX')
+        if not options.disableBlending:
+            blurY = self.CreateMaterial('blurY blend')
+        else:
+            blurY = self.CreateMaterial('blurY')
+        self.SetMaterialConstants(options, width, height, linearizeDepth, linearizeDepthAndPackAODepth, blurX, blurY, shaderSSAO)
+        curHistoryAOZRT = trinity.Tr2RenderTarget(width, height, 1, trinity.PIXEL_FORMAT.R16G16_FLOAT)
+        fullResAOZRT = trinity.Tr2RenderTarget(width, height, 1, trinity.PIXEL_FORMAT.R16G16_FLOAT)
+        if options.resolutionMode == SSAO_HALF_RES_AO:
+            linDepthRT = trinity.Tr2RenderTarget(width / 2, height / 2, 1, trinity.PIXEL_FORMAT.R32_FLOAT)
+            halfResAORT = trinity.Tr2RenderTarget(width / 2, height / 2, 1, trinity.PIXEL_FORMAT.R8_UNORM)
+            outputAOZ = halfResAORT
+        else:
+            linDepthRT = trinity.Tr2RenderTarget(width, height, 1, trinity.PIXEL_FORMAT.R32_FLOAT)
+            outputAOZ = curHistoryAOZRT
+        self.AddMaterialParam(shaderSSAO, 'DepthMap', linDepthRT)
+        self.AddMaterialParam(shaderSSAO, 'RandomMap', self.randomTexture)
+        if options.resolutionMode == SSAO_HALF_RES_AO:
+            self.AddMaterialParam(linearizeDepthAndPackAODepth, 'SSAOMap', halfResAORT)
+        self.AddMaterialParam(blurX, 'SSAOMap', curHistoryAOZRT)
+        self.AddMaterialParam(blurY, 'SSAOMap', fullResAOZRT)
+        linearizeDepth.BindLowLevelShader([])
+        shaderSSAO.BindLowLevelShader([])
+        linearizeDepthAndPackAODepth.BindLowLevelShader([])
+        blurX.BindLowLevelShader([])
+        blurY.BindLowLevelShader([])
+        self.steps.removeAt(-1)
+        self.AddStep('SAVE_DS', trinity.TriStepPushDepthStencil())
+        self.AddStep('SAVE_RT', trinity.TriStepPushRenderTarget())
+        self.AddStep('UPDATE_CONSTANTS', trinity.TriStepPythonCB(GetSSAOCallbackStep(options, width, height, shaderSSAO, linearizeDepth, linearizeDepthAndPackAODepth)))
+        self.AddStep('SET_FULLSCREEN_STATES', trinity.TriStepSetStdRndStates(trinity.RM_FULLSCREEN))
+        self.AddStep('SET_LINEAR_DEPTH_RT', trinity.TriStepSetRenderTarget(linDepthRT))
+        self.AddStep('LINEARIZE_DEPTH', trinity.TriStepRenderFullScreenShader(linearizeDepth))
+        self.AddStep('SET_AO_RT', trinity.TriStepSetRenderTarget(outputAOZ))
+        self.AddStep('RENDER_AO', trinity.TriStepRenderFullScreenShader(shaderSSAO))
+        if options.resolutionMode == SSAO_HALF_RES_AO:
+            self.AddStep('SET_TEMP_AO_RT', trinity.TriStepSetRenderTarget(curHistoryAOZRT))
+            self.AddStep('PACK_DEPTH_AND_AO', trinity.TriStepRenderFullScreenShader(linearizeDepthAndPackAODepth))
+        self.AddStep('SET_FULL_AO_RT', trinity.TriStepSetRenderTarget(fullResAOZRT))
+        self.AddStep('BLUR_X', trinity.TriStepRenderFullScreenShader(blurX))
+        if outputRT is None:
+            self.AddStep('RESTORE_RT', trinity.TriStepPopRenderTarget())
+        else:
+            self.AddStep('SET_OUTPUT_RT', trinity.TriStepSetRenderTarget(outputRT))
+        self.AddStep('BLUR_Y', trinity.TriStepRenderFullScreenShader(blurY))
+        if outputRT:
+            self.AddStep('RESTORE_RT', trinity.TriStepPopRenderTarget())
+        self.AddStep('RESTORE_DS', trinity.TriStepPopDepthStencil())

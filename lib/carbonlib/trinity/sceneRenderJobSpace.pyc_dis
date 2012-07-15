@@ -1,0 +1,739 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\carbon\common\lib\trinity\sceneRenderJobSpace.py
+from trinity.sceneRenderJobBase import SceneRenderJobBase
+from trinity.renderJobUtils import DeviceSupportsRenderTargetFormat, renderTargetManager as rtm
+import trinity
+import blue
+import localization
+import log
+
+def CreateSceneRenderJobSpace(name = None, stageKey = None):
+    newRJ = SceneRenderJobSpace()
+    if name is not None:
+        newRJ.ManualInit(name)
+    else:
+        newRJ.ManualInit()
+    newRJ.SetMultiViewStage(stageKey)
+    return newRJ
+
+
+class SceneRenderJobSpace(SceneRenderJobBase):
+    renderStepOrder = ['SET_SWAPCHAIN_RT',
+     'SET_SWAPCHAIN_DEPTH',
+     'UPDATE_SCENE1',
+     'UPDATE_SCENE',
+     'UPDATE_UI',
+     'SET_CUSTOM_RT',
+     'SET_DEPTH',
+     'SET_VAR_DEPTH',
+     'SET_VIEWPORT',
+     'SET_PROJECTION',
+     'SET_VIEW',
+     'CLEAR',
+     'BEGIN_RENDER',
+     'RENDER_BACKGROUND',
+     'RENDER_DEPTH_PASS',
+     'RENDER_MAIN_PASS',
+     'SET_SCENE1_STATES',
+     'RENDER_SCENE1',
+     'DO_DISTORTIONS',
+     'END_RENDERING',
+     'UPDATE_TOOLS',
+     'RENDER_PROXY',
+     'RENDER_INFO',
+     'RENDER_VISUAL',
+     'RENDER_TOOLS',
+     'FPS_COUNTER',
+     'RJ_POSTPROCESSING',
+     'SET_FINAL_RT',
+     'FINAL_BLIT',
+     'SET_VAR_GATHER',
+     'FXAA_CLEAR',
+     'FXAA',
+     'POST_RENDER_CALLBACK',
+     'RESTORE_DEPTH',
+     'RENDER_UI',
+     'PRESENT_SWAPCHAIN']
+    multiViewStages = [('SETUP', True, ['SET_VIEWPORT',
+       'CLEAR',
+       'UPDATE_SCENE1',
+       'UPDATE_SCENE',
+       'SET_DEPTH',
+       'SET_VAR_DEPTH']),
+     ('SPACE_MAIN', False, ['SET_VIEWPORT',
+       'SET_PROJECTION',
+       'SET_VIEW',
+       'RENDER_SCENE',
+       'SET_SCENE1_STATES',
+       'RENDER_SCENE1']),
+     ('FINALIZE', True, ['RJ_POSTPROCESSING', 'SET_FINAL_RT', 'FINAL_BLIT']),
+     ('TOOLS', False, ['SET_VIEWPORT',
+       'SET_VIEW',
+       'SET_PROJECTION',
+       'UPDATE_TOOLS',
+       'RENDER_INFO',
+       'RENDER_VISUAL',
+       'RENDER_TOOLS'])]
+    visualizations = []
+    renderTargetList = []
+
+    def _ManualInit(self, name = 'SceneRenderJobSpace'):
+        self.scene1 = None
+        self.scene2 = None
+        self.clientToolsScene = None
+        self.activeSceneKey = None
+        self.camera = None
+        self.customBackBuffer = None
+        self.customDepthStencil = None
+        self.depthTexture = None
+        self.hdrBlitTexture = None
+        self.distortionTexture = None
+        self.shadowMap = None
+        log.LogInfo('_ManualInit: reseting post-process list')
+        self.postProcesses = []
+        self.ui = None
+        self.hdrEnabled = False
+        self.usePostProcessing = False
+        self.shadowQuality = 0
+        self.useDepth = False
+        self.antiAliasingEnabled = False
+        self.antiAliasingQuality = 0
+        self.aaQuality = 0
+        self.useFXAA = False
+        self.fxaaEnabled = False
+        self.fxaaQuality = 'FXAA_High'
+        self.msaaEnabled = False
+        self.msaaType = 4
+        self.distortionEffectsEnabled = False
+        self.postProcessRJ = None
+        self.bloomEffect = None
+        self.fxaaEffect = None
+        self.bbFormat = trinity.renderContext.GetBackBufferFormat()
+        self.prepared = False
+        self.overrideSettings = {}
+        self.SetSettingsBasedOnPerformancePreferences()
+
+    def Enable(self, schedule = True):
+        SceneRenderJobBase.Enable(self, schedule)
+        self.SetSettingsBasedOnPerformancePreferences()
+
+    def SetScene1(self, scene):
+        if scene is None:
+            self.scene1 = None
+        else:
+            self.scene1 = blue.BluePythonWeakRef(scene)
+        self.AddStep('UPDATE_SCENE1', trinity.TriStepUpdate(scene))
+        self.AddStep('RENDER_SCENE1', trinity.TriStepRenderScene(scene))
+
+    def GetScene1(self):
+        if self.scene1 is None:
+            return
+        else:
+            return self.scene1.object
+
+    def SetClientToolsScene(self, scene):
+        if scene is None:
+            self.clientToolsScene = None
+        else:
+            self.clientToolsScene = blue.BluePythonWeakRef(scene)
+        self.AddStep('UPDATE_TOOLS', trinity.TriStepUpdate(scene))
+        self.AddStep('RENDER_TOOLS', trinity.TriStepRenderScene(scene))
+        if self.GetStep('RESTORE_DEPTH') is None:
+            self.AddStep('RESTORE_DEPTH', trinity.TriStepSetDepthStencil(self.GetBackBufferDepthStencil()))
+
+    def GetClientToolsScene(self):
+        if self.clientToolsScene is None:
+            return
+        else:
+            return self.clientToolsScene.object
+
+    def SetUI(self, ui):
+        if ui is None:
+            self.RemoveStep('UPDATE_UI')
+            self.RemoveStep('RENDER_UI')
+        else:
+            self.AddStep('UPDATE_UI', trinity.TriStepUpdate(ui))
+            self.AddStep('RENDER_UI', trinity.TriStepRenderUI(ui))
+
+    def SetActiveCamera(self, camera = None, view = None, projection = None):
+        if camera is None and view is None and projection is None:
+            self.RemoveStep('SET_VIEW')
+            self.RemoveStep('SET_PROJECTION')
+            return
+        if camera is not None:
+            self.AddStep('SET_VIEW', trinity.TriStepSetView(None, camera))
+            self.AddStep('SET_PROJECTION', trinity.TriStepSetProjection(camera.triProjection))
+        if view is not None:
+            self.AddStep('SET_VIEW', trinity.TriStepSetView(view))
+        if projection is not None:
+            self.AddStep('SET_PROJECTION', trinity.TriStepSetProjection(projection))
+
+    def SetActiveScenes(self, scene1, scene2, key):
+        self.activeSceneKey = key
+        self.SetScene1(scene1)
+        self.SetScene(scene2)
+        if self.GetStep('RJ_POSTPROCESSING') is not None:
+            self.AddStep('RJ_POSTPROCESSING', trinity.TriStepRunJob(self.CreatePostProcessRenderJob()))
+
+    def _SetDepthMap(self):
+        if self.GetScene() is None:
+            return
+        if hasattr(self.GetScene(), 'depthTexture'):
+            if self.msaaEnabled:
+                self.GetScene().depthTexture = self.depthTexture
+            else:
+                self.GetScene().depthTexture = None
+
+    def _SetDistortionMap(self):
+        if self.GetScene() is None:
+            return
+        if hasattr(self.GetScene(), 'distortionTexture'):
+            self.GetScene().distortionTexture = self.distortionTexture
+
+    def _SetShadowMap(self):
+        scene = self.GetScene()
+        if scene is None:
+            return
+        if self.shadowQuality > 1:
+            scene.shadowMap = self.shadowMap
+            scene.shadowFadeThreshold = 180
+            scene.shadowThreshold = 80
+        elif self.shadowQuality > 0:
+            scene.shadowMap = self.shadowMap
+            scene.shadowFadeThreshold = 200
+            scene.shadowThreshold = 120
+        else:
+            scene.shadowMap = None
+
+    def EnablePostProcessing(self, enabled):
+        if enabled:
+            self.AddStep('RJ_POSTPROCESSING', trinity.TriStepRunJob(self.CreatePostProcessRenderJob()))
+        else:
+            self.RemoveStep('RJ_POSTPROCESSING')
+
+    def EnablePostRenderCallbacks(self, enabled):
+        if enabled:
+            self.AddStep('POST_RENDER_CALLBACK', trinity.TriStepPostRenderCB())
+        else:
+            self.RemoveStep('POST_RENDER_CALLBACK')
+
+    def AddPostProcess(self, id, path, sceneKey = None):
+        entries = [ each for each in self.postProcesses if each[0] == id ]
+        if len(entries) > 0:
+            return
+        log.LogInfo('Adding post process effect ' + str(id))
+        self.postProcesses.append((id,
+         path,
+         sceneKey,
+         {}))
+        if self.GetStep('RJ_POSTPROCESSING') is not None:
+            self.AddStep('RJ_POSTPROCESSING', trinity.TriStepRunJob(self.CreatePostProcessRenderJob()))
+
+    def RemovePostProcess(self, id):
+        entries = [ each for each in self.postProcesses if each[0] == id ]
+        if len(entries) > 0:
+            log.LogInfo('Removing ' + str(len(entries)) + ' post process effects ' + str(id))
+        for each in entries:
+            self.postProcesses.remove(each)
+
+        if self.GetStep('RJ_POSTPROCESSING') is not None:
+            self.AddStep('RJ_POSTPROCESSING', trinity.TriStepRunJob(self.CreatePostProcessRenderJob()))
+
+    def SetPostProcessVariable(self, id, variable, value):
+        ppSteps = getattr(self.postProcessRJ, 'steps', [])
+        entries = [ each for each in ppSteps if each.name == 'PostProcess ' + str(id) ]
+        for each in entries:
+            for stage in each.PostProcess.stages:
+                for param in stage.parameters:
+                    if param.name == variable:
+                        param.value = value
+
+        for each in self.postProcesses:
+            if each[0] == id:
+                each[3][variable] = value
+                break
+
+    def CreateDistortionRenderJob(self):
+        if not self.prepared:
+            return None
+        if not self.distortionEffectsEnabled:
+            return None
+        rj = trinity.CreateRenderJob('DistortionPostProcess')
+        distortionPostProcess = trinity.Load('res:/PostProcess/distortion.red')
+        distortionTriTextureRes = trinity.TriTextureRes()
+        distortionTriTextureRes.SetFromRenderTarget(self.distortionTexture)
+        distortionPostProcess.stages[0].resources[0].SetResource(distortionTriTextureRes)
+        if self.hdrEnabled and self.msaaEnabled:
+            rj.Resolve(self.hdrBlitTexture, self.customBackBuffer)
+            step = rj.RenderPostProcess(distortionPostProcess, self.customBackBuffer, self.hdrBlitTexture)
+        elif self.hdrEnabled:
+            rj.Resolve(self.hdrBlitTexture, self.customBackBuffer)
+            step = rj.RenderPostProcess(distortionPostProcess, self.customBackBuffer, self.hdrBlitTexture)
+        elif self.msaaEnabled:
+            rj.Resolve(self.GetBackBufferRenderTargetAL(), self.customBackBuffer)
+            step = rj.RenderPostProcess(distortionPostProcess, self.customBackBuffer)
+            rj.SetRenderTarget(self.customBackBuffer)
+        elif self.fxaaEnabled:
+            step = rj.RenderPostProcess(distortionPostProcess, self.GetBackBufferRenderTarget(), self.customBackBuffer)
+        else:
+            step = rj.RenderPostProcess(distortionPostProcess)
+        step.name = 'PostProcess Distortion'
+        return rj
+
+    def _GetPostProcessObject(self, pp):
+        return trinity.Load(pp[1])
+
+    def CreatePostProcessRenderJob(self):
+        if not self.prepared:
+            return
+        if not self.usePostProcessing or len(self.postProcesses) < 1:
+            return
+        log.LogInfo('CreatePostProcessRenderJob entered')
+        self.postProcessRJ = rj = trinity.CreateRenderJob('PostProcessingJob')
+        targetRT = self.GetBackBufferRenderTargetAL()
+        rj.SetRenderTarget(targetRT)
+        blitTexture = None
+        first = self._GetPostProcessObject(self.postProcesses[0])
+        if self.hdrEnabled and self.msaaEnabled:
+            rj.Resolve(self.hdrBlitTexture, self.customBackBuffer)
+            step = rj.RenderPostProcess(first, targetRT, self.hdrBlitTexture)
+            blitTexture = self.hdrBlitTexture
+        elif self.hdrEnabled or self.fxaaEnabled:
+            step = rj.RenderPostProcess(first, targetRT, self.customBackBuffer)
+            blitTexture = self.customBackBuffer
+        elif self.msaaEnabled:
+            rj.Resolve(targetRT, self.customBackBuffer)
+            step = rj.RenderPostProcess(first)
+        else:
+            step = rj.RenderPostProcess(first)
+        log.LogInfo('CreatePostProcessRenderJob: ' + str(len(self.postProcesses)) + ' PPS')
+        log.LogInfo('PostProcess[0] ' + str(self.postProcesses[0]))
+        step.name = 'PostProcess ' + str(self.postProcesses[0][0])
+        for i in range(1, len(self.postProcesses)):
+            log.LogInfo('PostProcess[' + str(i) + '] ' + str(self.postProcesses[i]))
+            ppID, path, sceneKey, variables = self.postProcesses[i]
+            if sceneKey == self.activeSceneKey or sceneKey is None:
+                step = rj.RenderPostProcess(self._GetPostProcessObject(self.postProcesses[i]), None, None)
+                step.name = 'PostProcess ' + str(ppID)
+                for key, value in variables.iteritems():
+                    self.SetPostProcessVariable(ppID, key, value)
+
+        if blitTexture is not None and self.fxaaEnabled:
+            rj.steps.append(self._DoFormatConversionStep(blitTexture))
+        return rj
+
+    def _DoFormatConversionStep(self, hdrTexture, msaaTexture = None):
+        job = trinity.CreateRenderJob()
+        job.name = 'DoFormatConversion'
+        if msaaTexture is not None:
+            if hdrTexture is not None:
+                job.steps.append(trinity.TriStepResolve(hdrTexture, msaaTexture))
+            else:
+                job.steps.append(trinity.TriStepResolve(self.GetBackBufferRenderTargetAL(), msaaTexture))
+        pp = trinity.Load('res:/PostProcess/saturatedBlit.red')
+        job.steps.append(trinity.TriStepRenderPostProcess(pp, None, hdrTexture))
+        return trinity.TriStepRunJob(job)
+
+    def _CreateBackgroundStep(self, scene = None):
+        if scene is None:
+            scene = self.GetScene()
+        if self.distortionEffectsEnabled:
+            distortionJob = self.CreateDistortionRenderJob()
+            backgroundPass = trinity.TriStepRenderPass(scene, trinity.TRIPASS_BACKGROUND_RENDER)
+            if distortionJob is not None:
+                distortionJob.steps.insert(0, backgroundPass)
+                self.AddStep('RENDER_BACKGROUND', trinity.TriStepRunJob(distortionJob))
+        else:
+            backgroundJob = trinity.CreateRenderJob()
+            backgroundJob.steps.append(trinity.TriStepRenderPass(scene, trinity.TRIPASS_BACKGROUND_RENDER))
+            self.AddStep('RENDER_BACKGROUND', trinity.TriStepRunJob(backgroundJob))
+
+    def _SetBackgroundScene(self, scene):
+        backgroundJob = self.GetStep('RENDER_BACKGROUND')
+        if backgroundJob is not None:
+            backgroundJob.job.steps[0].scene = scene
+
+    def _SetScene(self, scene):
+        self.currentMultiViewStageKey
+        self.SetStepAttr('UPDATE_SCENE', 'object', scene)
+        self.SetStepAttr('RENDER_MAIN_PASS', 'scene', scene)
+        self.SetStepAttr('BEGIN_RENDER', 'scene', scene)
+        self.SetStepAttr('END_RENDERING', 'scene', scene)
+        self.SetStepAttr('RENDER_MAIN_PASS', 'scene', scene)
+        self.SetStepAttr('RENDER_DEPTH_PASS', 'scene', scene)
+        self._SetBackgroundScene(scene)
+        self.ApplyPerformancePreferencesToScene()
+
+    def _CreateBasicRenderSteps(self):
+        self.AddStep('UPDATE_SCENE1', trinity.TriStepUpdate(self.GetScene1()))
+        self.AddStep('RENDER_SCENE1', trinity.TriStepRenderScene(self.GetScene1()))
+        self.AddStep('UPDATE_SCENE', trinity.TriStepUpdate(self.GetScene()))
+        self.AddStep('BEGIN_RENDER', trinity.TriStepRenderPass(self.GetScene(), trinity.TRIPASS_BEGIN_RENDER))
+        self.AddStep('END_RENDERING', trinity.TriStepRenderPass(self.GetScene(), trinity.TRIPASS_END_RENDER))
+        self.AddStep('RENDER_MAIN_PASS', trinity.TriStepRenderPass(self.GetScene(), trinity.TRIPASS_MAIN_RENDER))
+        self.AddStep('RENDER_DEPTH_PASS', trinity.TriStepRenderPass(self.GetScene(), trinity.TRIPASS_DEPTH_PASS))
+        self._CreateBackgroundStep()
+        self.AddStep('SET_SCENE1_STATES', trinity.TriStepSetStdRndStates(trinity.RM_ALPHA_ADDITIVE))
+        self.AddStep('CLEAR', trinity.TriStepClear((0.0, 0.0, 0.0, 0.0), 1.0))
+        if self.clientToolsScene is not None:
+            self.SetClientToolsScene(self.clientToolsScene.object)
+
+    def DoReleaseResources(self, level):
+        self.prepared = False
+        self.hdrEnabled = False
+        self.usePostProcessing = False
+        self.shadowQuality = 0
+        self.shadowMap = None
+        self.depthTexture = None
+        self.renderTargetList = None
+        self.customBackBuffer = None
+        self.customDepthStencil = None
+        self.depthTexture = None
+        self.hdrBlitTexture = None
+        self.distortionTexture = None
+        self._SetDistortionMap()
+        self._RefreshRenderTargets()
+
+    def NotifyResourceCreationFailed(self):
+        try:
+            eve.Message('CustomError', {'error': localization.GetByLabel('UI/Shared/VideoMemoryError')})
+        finally:
+            pass
+
+    def _DoPrepareResources(self):
+        self.prepared = True
+        self.SetSettingsBasedOnPerformancePreferences()
+
+    def ApplyBaseSettings(self):
+        if sm.IsServiceRunning('device'):
+            deviceSvc = sm.GetService('device')
+            self.hdrEnabled = bool(settings.public.device.Get('hdrEnabled', deviceSvc.GetDefaultHDRState()))
+            defaultPostProcessingQuality = deviceSvc.GetDefaultPostProcessingQuality()
+            defaultShadowQuality = deviceSvc.GetDefaultShadowQuality()
+        else:
+            presentParameters = trinity.device.GetPresentParameters()
+            self.hdrEnabled = trinity.device.hdrEnable
+            defaultPostProcessingQuality = 2
+            defaultShadowQuality = 2
+        self.bbFormat = trinity.renderContext.GetBackBufferFormat()
+        self.postProcessingQuality = settings.public.device.Get('postProcessingQuality', defaultPostProcessingQuality)
+        self.shadowQuality = settings.public.device.Get('shadowQuality', defaultShadowQuality)
+        self.aaQuality = settings.public.device.Get('antiAliasing', 0)
+        self.distortionEffectsEnabled = self.useDepth = trinity.GetShaderModel().endswith('DEPTH')
+        if 'hdrEnabled' in self.overrideSettings:
+            self.hdrEnabled = self.overrideSettings['hdrEnabled']
+        if 'bbFormat' in self.overrideSettings:
+            self.bbFormat = self.overrideSettings['bbFormat']
+        if 'aaQuality' in self.overrideSettings:
+            self.aaQuality = self.overrideSettings['aaQuality']
+
+    def OverrideSettings(self, key, value):
+        self.overrideSettings[key] = value
+
+    def _CreateRenderTargets(self):
+        if not self.prepared:
+            return
+        width, height = self.GetBackBufferSize()
+        t = trinity
+        td = trinity.DEPTH_STENCIL_FORMAT
+        pf = trinity.PIXEL_FORMAT
+        dsLookup = {t.TRIFMT_D24S8: td.D24S8,
+         t.TRIFMT_D24X8: td.D24X8,
+         t.TRIFMT_D24FS8: td.D24FS8,
+         t.TRIFMT_D32: td.D32,
+         t.TRIFMT_INTZ: td.READABLE,
+         t.TRIFMT_D16_LOCKABLE: td.D16_LOCKABLE,
+         t.TRIFMT_D15S1: td.D15S1,
+         t.TRIFMT_D24X4S4: td.D24X4S4,
+         t.TRIFMT_D16: td.D16,
+         t.TRIFMT_D32F_LOCKABLE: td.D32F_LOCKABLE,
+         t.TRIFMT_D24FS8: td.D24FS8}
+        dsFormatAL = dsLookup.get(trinity.device.depthStencilFormat, td.AUTO)
+        del t
+        del td
+        if self.hdrEnabled and self.msaaEnabled:
+            if self._TargetDiffers(self.customBackBuffer, 'trinity.Tr2RenderTarget', trinity.PIXEL_FORMAT.R16G16B16A16_FLOAT, self.msaaType, width, height):
+                self.customBackBuffer = rtm.GetRenderTargetMsaaAL(width, height, trinity.PIXEL_FORMAT.R16G16B16A16_FLOAT, msaaType=self.msaaType, msaaQuality=0)
+                if self.customBackBuffer is not None:
+                    self.customBackBuffer.name = 'sceneRenderJobSpace.customBackBuffer (hdr+MSAA)'
+        elif self.hdrEnabled:
+            if self._TargetDiffers(self.customBackBuffer, 'trinity.Tr2RenderTarget', trinity.PIXEL_FORMAT.R16G16B16A16_FLOAT, 0, width, height):
+                self.customBackBuffer = rtm.GetRenderTargetAL(width, height, 1, trinity.PIXEL_FORMAT.R16G16B16A16_FLOAT)
+                if self.customBackBuffer is not None:
+                    self.customBackBuffer.name = 'sceneRenderJobSpace.customBackBuffer (hdr)'
+        elif self.fxaaEnabled:
+            if self._TargetDiffers(self.customBackBuffer, 'trinity.Tr2RenderTarget', self.bbFormat, 0, width, height):
+                self.customBackBuffer = rtm.GetRenderTargetAL(width, height, 1, self.bbFormat)
+                if self.customBackBuffer is not None:
+                    self.customBackBuffer.name = 'sceneRenderJobSpace.customBackBuffer (fxaa)'
+        elif self.msaaEnabled:
+            if self._TargetDiffers(self.customBackBuffer, 'trinity.Tr2RenderTarget', self.bbFormat, self.msaaType, width, height):
+                self.customBackBuffer = rtm.GetRenderTargetMsaaAL(width, height, self.bbFormat, msaaType=self.msaaType, msaaQuality=0)
+                if self.customBackBuffer is not None:
+                    self.customBackBuffer.name = 'sceneRenderJobSpace.customBackBuffer (MSAA)'
+        else:
+            self.customBackBuffer = None
+        if self.msaaEnabled:
+            if self._TargetDiffers(self.customDepthStencil, 'trinity.Tr2DepthStencil', dsFormatAL, self.msaaType, width, height):
+                self.customDepthStencil = rtm.GetDepthStencilAL(width, height, dsFormatAL, self.msaaType)
+        else:
+            self.customDepthStencil = None
+        if self.useDepth:
+            if self._TargetDiffers(self.depthTexture, 'trinity.Tr2DepthStencil', trinity.DEPTH_STENCIL_FORMAT.READABLE, 0, width, height):
+                self.depthTexture = rtm.GetDepthStencilAL(width, height, trinity.DEPTH_STENCIL_FORMAT.READABLE)
+                if self.depthTexture is not None and self.depthTexture.IsReadable():
+                    self.depthTexture.name = 'sceneRenderJobSpace.depthTexture'
+                else:
+                    self.depthTexture = None
+        else:
+            self.depthTexture = None
+        if self.hdrEnabled and (self.usePostProcessing or self.distortionEffectsEnabled) and self.msaaEnabled:
+            if self._TargetDiffers(self.hdrBlitTexture, 'trinity.Tr2RenderTarget', trinity.PIXEL_FORMAT.R16G16B16A16_FLOAT, 0, width, height):
+                self.hdrBlitTexture = rtm.GetRenderTargetAL(width, height, 1, trinity.PIXEL_FORMAT.R16G16B16A16_FLOAT, index=1)
+                if self.hdrBlitTexture is not None:
+                    self.hdrBlitTexture.name = 'sceneRenderJobSpace.hdrBlitTexture (msaa)'
+        elif self.hdrEnabled and self.distortionEffectsEnabled:
+            differs = self._TargetDiffers(self.hdrBlitTexture, 'trinity.Tr2RenderTarget', trinity.PIXEL_FORMAT.R16G16B16A16_FLOAT, 0, width, height)
+            if differs or self.hdrBlitTexture == self.customBackBuffer:
+                self.hdrBlitTexture = rtm.GetRenderTargetAL(width, height, 1, trinity.PIXEL_FORMAT.R16G16B16A16_FLOAT, index=1)
+                if self.hdrBlitTexture is not None:
+                    self.hdrBlitTexture.name = 'sceneRenderJobSpace.hdrBlitTexture (distort)'
+        else:
+            self.hdrBlitTexture = None
+        if self.distortionEffectsEnabled:
+            index = 0
+            if self.fxaaEnabled and self.bbFormat == trinity.PIXEL_FORMAT.B8G8R8A8_UNORM and not self.hdrEnabled:
+                index = 1
+            if self._TargetDiffers(self.distortionTexture, 'trinity.Tr2RenderTarget', trinity.PIXEL_FORMAT.B8G8R8A8_UNORM, 0, width, height):
+                self.distortionTexture = rtm.GetRenderTargetAL(width, height, 1, trinity.PIXEL_FORMAT.B8G8R8A8_UNORM, index)
+                if self.distortionTexture:
+                    self.distortionTexture.name = 'sceneRenderJobSpace.distortionTexture'
+            self._SetDistortionMap()
+        else:
+            self.distortionTexture = None
+            self._SetDistortionMap()
+
+    def _TargetDiffers(self, target, blueType, format, msType = 0, width = 0, height = 0):
+        if target is None:
+            return True
+        if blueType != target.__bluetype__:
+            return True
+        if format != target.format:
+            return True
+        multiSampleType = getattr(target, 'multiSampleType', None)
+        if multiSampleType is not None and multiSampleType != msType:
+            return True
+        if width != 0 and target.width != width:
+            return True
+        if height != 0 and target.height != height:
+            return True
+        return False
+
+    def _RefreshRenderTargets(self):
+        self.renderTargetList = (blue.BluePythonWeakRef(self.customBackBuffer),
+         blue.BluePythonWeakRef(self.customDepthStencil),
+         blue.BluePythonWeakRef(self.depthTexture),
+         blue.BluePythonWeakRef(self.hdrBlitTexture),
+         blue.BluePythonWeakRef(self.distortionTexture))
+        renderTargets = (x.object for x in self.renderTargetList)
+        self.SetRenderTargets(*renderTargets)
+
+    def _RefreshAntiAliasing(self):
+        if 'aaQuality' not in self.overrideSettings:
+            self.antiAliasingQuality = self.aaQuality = settings.public.device.Get('antiAliasing', self.aaQuality)
+        if sm.IsServiceRunning('device'):
+            self.msaaType = sm.GetService('device').GetMSAATypeFromQuality(self.antiAliasingQuality)
+        else:
+            self.msaaType = 8
+        self.fxaaQuality = self._GetFXAAQuality(self.antiAliasingQuality)
+        if self.useFXAA:
+            self.EnableFXAA(self.antiAliasingEnabled)
+        else:
+            self.EnableMSAA(self.antiAliasingEnabled)
+
+    def UseFXAA(self, flag):
+        self.useFXAA = flag
+        if self.useFXAA:
+            self.EnableMSAA(False)
+        else:
+            self.EnableFXAA(False)
+        self._RefreshAntiAliasing()
+
+    def EnableDistortionEffects(self, enable):
+        self.distortionEffectsEnabled = enable
+
+    def EnableAntiAliasing(self, enable):
+        self.antiAliasingEnabled = enable
+        self._RefreshAntiAliasing()
+
+    def EnableFXAA(self, enable):
+        self.fxaaEnabled = enable
+        if not self.prepared:
+            return
+        if enable:
+            if getattr(self, 'fxaaEffect', None) is None:
+                self.fxaaEffect = trinity.Tr2ShaderMaterial()
+                self.fxaaEffect.highLevelShaderName = 'PostProcess'
+            self.fxaaEffect.defaultSituation = self.fxaaQuality
+            self.fxaaEffect.BindLowLevelShader([])
+            self.AddStep('FXAA', trinity.TriStepRenderFullScreenShader(self.fxaaEffect))
+            if not self.usePostProcessing:
+                self.AddStep('FXAA_CLEAR', trinity.TriStepClear((0, 0, 0, 1), 1.0))
+            self.RemoveStep('FINAL_BLIT')
+        else:
+            self.RemoveStep('FXAA')
+            self.RemoveStep('FXAA_CLEAR')
+        if not self.enabled:
+            return
+        self._CreateRenderTargets()
+        self._RefreshRenderTargets()
+
+    def EnableMSAA(self, enable):
+        self.msaaEnabled = enable
+        if not self.prepared:
+            return
+        if not self.enabled:
+            return
+        self._CreateRenderTargets()
+        self._RefreshRenderTargets()
+
+    def DoPrepareResources(self):
+        if not self.enabled or not self.canCreateRenderTargets:
+            return
+        try:
+            self._DoPrepareResources()
+        except trinity.D3DERR_OUTOFVIDEOMEMORY:
+            log.LogException()
+            self.DoReleaseResources(1)
+            self._RefreshRenderTargets()
+            uthread.new(self.NotifyResourceCreationFailed)
+
+    def _GetFXAAQuality(self, quality):
+        if quality == 3:
+            return 'FXAA_High'
+        if quality == 2:
+            return 'FXAA_Medium'
+        if quality == 1:
+            return 'FXAA_Low'
+        return ''
+
+    def SetSettingsBasedOnPerformancePreferences(self):
+        if not self.enabled:
+            return
+        self.ApplyBaseSettings()
+        self.antiAliasingEnabled = self.aaQuality > 0
+        self.antiAliasingQuality = self.aaQuality
+        if sm.IsServiceRunning('device'):
+            deviceSvc = sm.GetService('device')
+            self.msaaType = sm.GetService('device').GetMSAATypeFromQuality(self.aaQuality)
+        else:
+            self.msaaType = 8
+        self.fxaaQuality = self._GetFXAAQuality(self.aaQuality)
+        if self.shadowQuality > 0 and self.shadowMap is None:
+            self.shadowMap = trinity.TriShadowMap()
+        elif self.shadowQuality == 0:
+            self.shadowMap = None
+        if self.bloomEffect in self.postProcesses:
+            log.LogInfo('Removing bloom PP effect')
+            self.postProcesses.remove(self.bloomEffect)
+        if self.postProcessingQuality == 0:
+            self.bloomEffect = None
+        elif self.postProcessingQuality == 1:
+            log.LogInfo('Adding bloom PP effect')
+            self.bloomEffect = ('bloom',
+             'res:/PostProcess/BloomExp.red',
+             None,
+             {})
+            self.postProcesses.insert(0, self.bloomEffect)
+        elif self.postProcessingQuality == 2:
+            log.LogInfo('Adding bloom PP effect (high quality)')
+            self.bloomEffect = ('bloom',
+             'res:/PostProcess/BloomVivid.red',
+             None,
+             {})
+            self.postProcesses.insert(0, self.bloomEffect)
+        self.usePostProcessing = self.postProcessingQuality > 0
+        self._RefreshAntiAliasing()
+        self._CreateRenderTargets()
+        self._RefreshRenderTargets()
+        self.ApplyPerformancePreferencesToScene()
+
+    def ApplyPerformancePreferencesToScene(self):
+        self._SetShadowMap()
+        self._SetDepthMap()
+        self._SetDistortionMap()
+
+    def SetMultiViewStage(self, stageKey):
+        self.currentMultiViewStageKey = stageKey
+
+    def SetRenderTargets(self, customBackBuffer, customDepthStencil, depthTexture, hdrBlitTexture, distortionTexture):
+        if self.GetSwapChain() is not None:
+            self.AddStep('SET_SWAPCHAIN_RT', trinity.TriStepSetRenderTarget(self.GetBackBufferRenderTarget()))
+            self.AddStep('SET_SWAPCHAIN_DEPTH', trinity.TriStepSetDepthStencil(self.GetBackBufferDepthStencil()))
+        else:
+            self.RemoveStep('SET_SWAPCHAIN_RT')
+            self.RemoveStep('SET_SWAPCHAIN_DEPTH')
+        activePostProcessing = self.usePostProcessing and len(self.postProcesses) > 0
+        if customBackBuffer is not None:
+            if customBackBuffer.__bluetype__ == 'trinity.TriTextureRes':
+                backBuffer = self.customBackBuffer.GetSurfaceLevel(0)
+            else:
+                backBuffer = self.customBackBuffer
+            viewport = self.GetViewport()
+            self.AddStep('SET_CUSTOM_RT', trinity.TriStepPushRenderTarget(backBuffer))
+            if self.msaaEnabled and not activePostProcessing:
+                if self.hdrEnabled:
+                    self.AddStep('FINAL_BLIT', self._DoFormatConversionStep(self.hdrBlitTexture, self.customBackBuffer))
+                else:
+                    self.AddStep('FINAL_BLIT', trinity.TriStepResolve(self.GetBackBufferRenderTargetAL(), self.customBackBuffer))
+            elif self.hdrEnabled and not activePostProcessing and not self.msaaEnabled:
+                self.AddStep('FINAL_BLIT', self._DoFormatConversionStep(self.customBackBuffer))
+            else:
+                self.RemoveStep('FINAL_BLIT')
+            if self.fxaaEnabled:
+                self.AddStep('SET_VAR_GATHER', trinity.TriStepSetVariableStore('GatherMap', self.customBackBuffer))
+                self.RemoveStep('FINAL_BLIT')
+            else:
+                self.RemoveStep('SET_VAR_GATHER')
+            self.AddStep('SET_FINAL_RT', trinity.TriStepPopRenderTarget())
+        else:
+            self.RemoveStep('SET_CUSTOM_RT')
+            self.RemoveStep('FINAL_BLIT')
+            self.RemoveStep('SET_FINAL_RT')
+            self.RemoveStep('SET_VAR_GATHER')
+        if customDepthStencil is not None:
+            self.AddStep('SET_DEPTH', trinity.TriStepPushDepthStencil(customDepthStencil))
+            self.AddStep('RESTORE_DEPTH', trinity.TriStepPopDepthStencil())
+        else:
+            self.RemoveStep('RESTORE_DEPTH')
+        if self.depthTexture is not None:
+            if not self.msaaEnabled:
+                self.AddStep('SET_DEPTH', trinity.TriStepPushDepthStencil(self.depthTexture))
+                self.AddStep('RESTORE_DEPTH', trinity.TriStepPopDepthStencil())
+            self._SetDepthMap()
+            self.AddStep('SET_VAR_DEPTH', trinity.TriStepSetVariableStore('DepthMap', self.depthTexture))
+        else:
+            if not self.msaaEnabled:
+                self.RemoveStep('SET_DEPTH')
+                self.RemoveStep('RESTORE_DEPTH')
+            self.RemoveStep('SET_VAR_DEPTH')
+        if self.GetStep('RJ_POSTPROCESSING') is not None:
+            self.AddStep('RJ_POSTPROCESSING', trinity.TriStepRunJob(self.CreatePostProcessRenderJob()))
+        if distortionTexture is not None:
+            self.AddStep('DO_DISTORTIONS', trinity.TriStepRunJob(self.CreateDistortionRenderJob()))
+        else:
+            self.RemoveStep('DO_DISTORTIONS')
+        self._CreateBackgroundStep()
+
+    def GetRenderTargets(self):
+        return self.renderTargetList
+
+    def EnableSceneUpdate(self, isEnabled):
+        if isEnabled:
+            self.AddStep('UPDATE_SCENE', trinity.TriStepUpdate(self.GetScene()))
+            self.AddStep('UPDATE_SCENE1', trinity.TriStepUpdate(self.GetScene1()))
+        else:
+            self.RemoveStep('UPDATE_SCENE')
+            self.RemoveStep('UPDATE_SCENE1')
+
+    def EnableVisibilityQuery(self, isEnabled):
+        pass

@@ -1,0 +1,173 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/environment/spaceObject/ExplosionManager.py
+import blue
+import log
+import trinity
+import uthread
+from collections import deque
+SECOND = 10000000
+
+class Singleton(type):
+
+    def __init__(cls, mcs, bases, dic):
+        super(Singleton, cls).__init__(mcs, bases, dic)
+        cls.instance = None
+
+    def __call__(cls, *args, **kw):
+        if cls.instance is None:
+            cls.instance = super(Singleton, cls).__call__(*args, **kw)
+        return cls.instance
+
+
+class PooledExplosion:
+
+    def __init__(self, path):
+        self.path = path
+        self.resource = trinity.Load(path)
+        if self.resource is None:
+            log.LogError('PooledExplosion::__init__ failed to load ', path)
+        self.refCount = 0
+        self.timestamp = -1
+        self.total = 0
+        self.active = 0
+        self.inactive = 0
+        self.maxRecentUsed = deque([0], 15)
+        self.pool = []
+
+    def AddRef(self, count):
+        self.refCount += count
+
+    def DecRef(self, count):
+        self.refCount -= count
+
+    def Pop(self):
+        if self.resource is None:
+            log.LogWarn('PooledExplosion::Pop called but resource is None')
+            return
+        self.active += 1
+        if self.inactive > 0:
+            self.inactive -= 1
+            return self.pool.pop()
+        self.total += 1
+        return self.resource.CopyTo()
+
+    def Push(self, explosion):
+        if self.resource is None:
+            log.LogWarn('PooledExplosion::Push called but explosion is None')
+            return
+        self.pool.append(explosion)
+        self.active -= 1
+        self.inactive += 1
+
+    def PrunePool(self, timestamp):
+        if self.refCount > 0:
+            self.timestamp = -1
+        self.maxRecentUsed.append(self.active)
+        recentMax = max(self.maxRecentUsed)
+        if recentMax < self.total:
+            recentMax = min(self.total - recentMax, 5)
+            self.total -= recentMax
+            self.inactive -= recentMax
+            del self.pool[:recentMax]
+        if self.refCount <= 0:
+            if self.timestamp < 0:
+                self.timestamp = timestamp
+            if timestamp - self.timestamp > 15 * SECOND:
+                return True
+        return False
+
+
+class ExplosionManager(object):
+    __metaclass__ = Singleton
+
+    def __init__(self, limit = 100):
+        self.queue = []
+        self.pooledExplosions = {}
+        self.ageLimit = 20 * SECOND
+        self.limit = limit
+        self.running = True
+        self.Start()
+
+    def Run(self):
+        while self.running:
+            blue.synchro.SleepSim(1000)
+            self.Prune()
+
+    def Preload(self, path, count = 1):
+        if path not in self.pooledExplosions:
+            self.pooledExplosions[path] = PooledExplosion(path)
+        self.pooledExplosions[path].AddRef(count)
+
+    def Unload(self, path, explosion = None, count = 1):
+        if path not in self.pooledExplosions:
+            log.LogWarn('ExplosionManager::Unload ' + path + ' not loaded.')
+            return
+        self.pooledExplosions[path].DecRef(count)
+        if explosion is not None:
+            self.pooledExplosions[path].Push(explosion)
+
+    def GetExplosion(self, path):
+        if path not in self.pooledExplosions:
+            log.LogWarn('ExplosionManager::GetExplosion ' + path + ' not loaded.')
+            self.Preload(path)
+        return self.pooledExplosions[path].Pop()
+
+    def GetBoundingSphereRadius(self, path):
+        if path not in self.pooledExplosions:
+            log.LogWarn('ExplosionManager::GetBoundingSphereRadius ' + path + ' not loaded.')
+            self.Preload(path)
+        return getattr(self.pooledExplosions[path].resource, 'boundingSphereRadius', -1)
+
+    def Append(self, item, delay):
+        if delay > self.ageLimit:
+            delay = self.ageLimit
+        stamp = blue.os.GetSimTime() + delay
+        self.queue.append((stamp, item))
+        if len(self.queue) > self.limit:
+            self.Delete(self.queue.pop(0))
+
+    def Prune(self):
+        if not len(self.queue) and not len(self.pooledExplosions):
+            return
+        now = blue.os.GetSimTime()
+        if len(self.queue):
+            self.queue.sort()
+            while True:
+                blue.synchro.Yield()
+                now = blue.os.GetSimTime()
+                if not len(self.queue) or not self.running:
+                    break
+                if self.queue[0][0] < now:
+                    self.Delete(self.queue.pop(0))
+                else:
+                    break
+
+        delKeys = []
+        for val in self.pooledExplosions.itervalues():
+            if val.PrunePool(now):
+                delKeys.append(val.path)
+
+        for key in delKeys:
+            del self.pooledExplosions[key]
+
+    def Delete(self, item):
+        if item is not None:
+            item[1][0].CleanupExplosion(item[1][1])
+
+    def GetCount(self):
+        return len(self.queue)
+
+    def SetLimit(self, limit):
+        self.limit = limit
+
+    def Inspect(self):
+        print self.queue
+
+    def Start(self):
+        self.running = True
+        uthread.new(self.Run)
+
+    def Stop(self):
+        self.running = False
+
+
+exports = {'util.ExplosionManager': ExplosionManager}

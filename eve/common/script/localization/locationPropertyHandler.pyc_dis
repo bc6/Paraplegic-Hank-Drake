@@ -1,0 +1,37 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/common/script/localization/locationPropertyHandler.py
+import eveLocalization
+import localization
+import util
+
+class LocationPropertyHandler(localization.BasePropertyHandler):
+    __guid__ = 'localization.LocationPropertyHandler'
+    PROPERTIES = {localization.CODE_UNIVERSAL: ('name', 'rawName')}
+
+    def _GetName(self, locationID, languageID, *args, **kwargs):
+        return cfg.evelocations.Get(locationID).locationName or 'None'
+
+    def _GetRawName(self, locationID, languageID, *args, **kwargs):
+        return cfg.evelocations.Get(locationID).GetRawName(languageID)
+
+    def Linkify(self, locationID, linkText):
+        if util.IsRegion(locationID):
+            locationTypeID = const.typeRegion
+        elif util.IsConstellation(locationID):
+            locationTypeID = const.typeConstellation
+        elif util.IsSolarSystem(locationID):
+            locationTypeID = const.typeSolarSystem
+        else:
+            if util.IsCelestial(locationID):
+                warnText = "LOCALIZATION ERROR: 'linkify' argument used for a location of type celestial."
+                warnText += " This is not supported. Please use the 'linkinfo' tag with arguments instead. locID:"
+                localization.LogWarn(warnText, locationID)
+                return linkText
+            if util.IsStation(locationID):
+                locationTypeID = cfg.stations.Get(locationID).stationTypeID
+            else:
+                localization.LogInfo("LOCALIZATION LINK: The 'linkify' argument was used for a location whose type can not be identified.", locationID)
+                return linkText
+        return '<a href=showinfo:%d//%d>%s</a>' % (locationTypeID, locationID, linkText)
+
+
+eveLocalization.RegisterPropertyHandler(eveLocalization.VARIABLE_TYPE.LOCATION, LocationPropertyHandler())

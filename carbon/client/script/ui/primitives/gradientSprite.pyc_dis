@@ -1,0 +1,119 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/carbon/client/script/ui/primitives/gradientSprite.py
+import uicls
+import math
+import trinity
+
+class GradientConst:
+    __guid__ = 'uicls.GradientConst'
+    INTERP_LINEAR = 0
+    INTERP_COSINE = 1
+    INTERP_BEZIER = 2
+    interpModeToString = {INTERP_LINEAR: 'linear',
+     INTERP_COSINE: 'cosine',
+     INTERP_BEZIER: 'bezier'}
+
+
+class GradientSprite(uicls.Sprite):
+    __guid__ = 'uicls.GradientSprite'
+    default_rgbData = [(0.0, (1.0, 0.0, 0.0)), (0.5, (0.0, 1.0, 0.0)), (1.0, (0.0, 0.0, 1.0))]
+    default_alphaData = [(0.0, 1.0), (1.0, 1.0)]
+    default_textureSize = 128
+    default_colorInterp = GradientConst.INTERP_LINEAR
+    default_alphaInterp = GradientConst.INTERP_LINEAR
+    default_toCorners = False
+    default_radial = False
+
+    def ApplyAttributes(self, attributes):
+        self.colorData = attributes.get('rgbData', self.default_rgbData)
+        self.alphaData = attributes.get('alphaData', self.default_alphaData)
+        self.textureSize = attributes.get('textureSize', self.default_textureSize)
+        self.colorInterp = attributes.get('colorInterp', self.default_colorInterp)
+        self.alphaInterp = attributes.get('alphaInterp', self.default_alphaInterp)
+        self.toCorners = attributes.get('toCorners', self.default_toCorners)
+        self.radial = attributes.get('radial', self.default_radial)
+        uicls.Sprite.ApplyAttributes(self, attributes)
+        self.SetGradient()
+        trinity.device.RegisterResource(self)
+
+    def SetGradient(self, colorData = None, alphaData = None):
+        if colorData:
+            self.colorData = colorData
+        if alphaData:
+            self.alphaData = alphaData
+        rgbDivs = [ div for div, color in self.colorData ]
+        rgbPoints = [ color for div, color in self.colorData ]
+        alphaDivs = [ div for div, alpha in self.alphaData ]
+        alphaPoints = [ alpha for div, alpha in self.alphaData ]
+        gradientData = {'rgbInterp': uicls.GradientConst.interpModeToString[self.colorInterp],
+         'alphaInterp': uicls.GradientConst.interpModeToString[self.alphaInterp],
+         'rgbDivs': rgbDivs,
+         'rgbPoints': rgbPoints,
+         'alphaDivs': alphaDivs,
+         'alphaPoints': alphaPoints,
+         'textureSize': self.textureSize,
+         'toCorners': self.toCorners}
+        if self.radial:
+            prefixString = 'dynamic:/gradient_radial/'
+        else:
+            prefixString = 'dynamic:/gradient/'
+        self.gradientDataString = prefixString + str(gradientData)
+        self.SetTexturePath(self.gradientDataString)
+
+    @apply
+    def rotation():
+        doc = 'Set rotation of primary texture'
+
+        def fget(self):
+            return self.texture.rotation
+
+        def fset(self, value):
+            self.texture.rotation = value
+            self.texture.useTransform = bool(value)
+            if value:
+                value = value % (math.pi / 2.0)
+                diff = self.textureSize / 2.0 * (math.sin(value) + math.cos(value) - 1.0)
+                k_magic = 0.99
+                self.texture.srcWidth = (self.textureSize - 2.0 * diff) * k_magic
+                self.texture.srcX = math.ceil(diff)
+
+        return property(**locals())
+
+    def OnInvalidate(self, level):
+        if self.texture:
+            self.texture.atlasTexture = None
+
+    def OnCreate(self, dev):
+        self.SetTexturePath(self.gradientDataString)
+
+
+class Gradient2DSprite(uicls.Sprite):
+    __guid__ = 'uicls.Gradient2DSprite'
+    default_colors = [[(1.0, 0.0, 0.0), (1.0, 1.0, 1.0)], [(0.0, 1.0, 0.0), (0.0, 0.0, 1.0)]]
+    default_colorsHorizontal = [0.0, 1.0]
+    default_colorsVertical = [0.0, 1.0]
+    default_alpha = [[1.0, 0.0], [1.0, 1.0]]
+    default_alphaHorizontal = [0.0, 1.0]
+    default_alphaVertical = [0.0, 1.0]
+    default_textureSize = 128
+
+    def ApplyAttributes(self, kwargs):
+        uicls.Sprite.ApplyAttributes(self, kwargs)
+        gradientData = {'rgbPoints': kwargs.get('colors', self.default_colors),
+         'alphaPoints': kwargs.get('alpha', self.default_alpha),
+         'rgbHorizontal': kwargs.get('colorsHorizontal', self.default_colorsHorizontal),
+         'rgbVertical': kwargs.get('colorsVertical', self.default_colorsVertical),
+         'alphaHorizontal': kwargs.get('alphaHorizontal', self.default_alphaHorizontal),
+         'alphaVertical': kwargs.get('alphaVertical', self.default_alphaVertical),
+         'textureSize': kwargs.get('textureSize', self.default_textureSize),
+         'rgbInterp': uicls.GradientConst.interpModeToString[kwargs.get('colorInterp', uicls.GradientConst.INTERP_LINEAR)],
+         'alphaInterp': uicls.GradientConst.interpModeToString[kwargs.get('alphaInterp', uicls.GradientConst.INTERP_LINEAR)]}
+        self.gradientDataString = 'dynamic:/gradient2d/' + str(gradientData)
+        self.SetTexturePath(self.gradientDataString)
+        trinity.device.RegisterResource(self)
+
+    def OnInvalidate(self, level):
+        if self.texture:
+            self.texture.atlasTexture = None
+
+    def OnCreate(self, dev):
+        self.SetTexturePath(self.gradientDataString)

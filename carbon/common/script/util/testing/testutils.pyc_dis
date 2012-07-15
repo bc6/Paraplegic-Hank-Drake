@@ -1,0 +1,96 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/carbon/common/script/util/testing/testutils.py
+__lastPriority = 1
+
+def TestPriority(priority = None):
+    global __lastPriority
+    if priority is None:
+        priority = __lastPriority
+        __lastPriority += 1
+
+    def PriorityDecorator(f):
+        f.__priority__ = priority
+        return f
+
+    return PriorityDecorator
+
+
+def Assert(exp, msg = ''):
+    if not exp:
+        raise AssertionError, msg
+
+
+import util
+exports = util.AutoExports('testutils', locals())
+import unittest
+_testFlagOne = False
+_testFlagTwo = False
+
+class _ATestPriorityForTestCaseTwo(unittest.TestCase):
+    __priority__ = 2
+
+    def testFlagOneIsSet(self):
+        global _testFlagTwo
+        global _testFlagOne
+        self.assertTrue(_testFlagOne, 'test case priority one did not run before priority two')
+        _testFlagTwo = True
+
+
+class _BTestPriorityForTestCaseOne(unittest.TestCase):
+    __priority__ = 1
+
+    def testFlagTwoNotSet(self):
+        global _testFlagOne
+        self.assertFalse(_testFlagTwo, 'test case priority two ran too early')
+        _testFlagOne = True
+
+
+class _TestPriorityForTestMethod(unittest.TestCase):
+
+    @TestPriority()
+    def testMethodZero(self):
+        global _lastTestRun
+        _lastTestRun = 0
+
+    @TestPriority()
+    def testMethodOne(self):
+        global _lastTestRun
+        self.assertTrue(_lastTestRun == 0, 'lastTestRun should have been 0, but it was %d' % _lastTestRun)
+        _lastTestRun = 1
+
+    @TestPriority()
+    def testMethodTwo(self):
+        global _lastTestRun
+        self.assertTrue(_lastTestRun == 1, 'lastTestRun should have been 1, but it was %d' % _lastTestRun)
+        _lastTestRun = 2
+
+    @TestPriority()
+    def testMethodThree(self):
+        global _lastTestRun
+        self.assertTrue(_lastTestRun == 2, 'lastTestRun should have been 2, but it was %d' % _lastTestRun)
+        _lastTestRun = 3
+
+
+class _TestPriorityForTestMethodAlternate(unittest.TestCase):
+
+    @TestPriority(0)
+    def testMethodZero(self):
+        global _lastTestRun
+        _lastTestRun = 0
+
+    @TestPriority(3)
+    def testMethodThree(self):
+        global _lastTestRun
+        self.assertTrue(_lastTestRun == 2, 'lastTestRun should have been 2, but it was %d' % _lastTestRun)
+        _lastTestRun = 3
+
+    @TestPriority(1)
+    def testMethodOne(self):
+        global _lastTestRun
+        self.assertTrue(_lastTestRun == 0, 'lastTestRun should have been 0, but it was %d' % _lastTestRun)
+        _lastTestRun = 1
+
+    @TestPriority(2)
+    def testMethodTwo(self):
+        global _lastTestRun
+        self.assertTrue(_lastTestRun == 1, 'lastTestRun should have been 1, but it was %d' % _lastTestRun)
+        _lastTestRun = 2

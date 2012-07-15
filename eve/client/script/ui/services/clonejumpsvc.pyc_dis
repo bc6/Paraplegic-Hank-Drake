@@ -1,0 +1,239 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/services/clonejumpsvc.py
+import uiconst
+import service
+import moniker
+import util
+import uix
+import sys
+import form
+import localization
+
+class CloneJump(service.Service):
+    __exportedcalls__ = {'GetClones': [],
+     'GetCloneImplants': [],
+     'GetShipClones': [],
+     'GetStationClones': [],
+     'HasCloneReceivingBay': [],
+     'GetCloneAtLocation': [],
+     'GetImplantsForClone': [],
+     'DestroyInstalledClone': [],
+     'CloneJump': [],
+     'OfferShipCloneInstallation': [],
+     'LastCloneJumpTime': []}
+    __guid__ = 'svc.clonejump'
+    __displayname__ = 'Clone Jump Service'
+    __notifyevents__ = ['OnShipJumpCloneInstallationOffered',
+     'OnShipJumpCloneInstallationDone',
+     'OnJumpCloneCacheInvalidated',
+     'OnShipJumpCloneCacheInvalidated',
+     'OnStationJumpCloneCacheInvalidated',
+     'OnShipJumpCloneInstallationCanceled']
+    __dependencies__ = []
+    __update_on_reload__ = 0
+
+    def Run(self, ms):
+        service.Service.Run(self, ms)
+        self.jumpClones = None
+        self.jumpCloneImplants = None
+        self.shipJustClonesShipID = None
+        self.shipJumpClones = None
+        self.timeLastJump = None
+        self.stationJumpClones = None
+        self.cloneInstallOfferActive = 0
+        self.lastCloneJumpTime = None
+
+    def GetClones(self):
+        self.GetCloneState()
+        return self.jumpClones
+
+    def GetCloneImplants(self):
+        self.GetCloneState()
+        return self.jumpCloneImplants
+
+    def GetLM(self):
+        if session.solarsystemid:
+            return util.Moniker('jumpCloneSvc', (session.solarsystemid, const.groupSolarSystem))
+        else:
+            return util.Moniker('jumpCloneSvc', (session.stationid2, const.groupStation))
+
+    def GetCloneState(self):
+        if self.jumpClones is None:
+            lm = self.GetLM()
+            kv = lm.GetCloneState()
+            self.jumpClones = kv.clones
+            self.jumpCloneImplants = kv.implants
+            self.timeLastJump = kv.timeLastJump
+
+    def GetShipClones(self):
+        if not self.shipJumpClones or session.shipid != self.shipJustClonesShipID:
+            lm = self.GetLM()
+            self.shipJustClonesShipID = session.shipid
+            self.shipJumpClones = lm.GetShipCloneState()
+        return self.shipJumpClones
+
+    def GetStationClones(self):
+        if not self.stationJumpClones:
+            lm = self.GetLM()
+            self.stationJumpClones = lm.GetStationCloneState()
+        return self.stationJumpClones
+
+    def OfferShipCloneInstallation(self, charID):
+        lm = self.GetLM()
+        sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/CloneJump/WaitingForAck'), localization.GetByLabel('UI/CloneJump/InstallationInviteSent', player=charID), 1, 2, abortFunc=self.CancelShipCloneInstallation)
+        try:
+            lm.OfferShipCloneInstallation(charID)
+        except UserError as e:
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/CloneJump/CloneInstallAborted'), '', 1, 1)
+            raise 
+
+    def LastCloneJumpTime(self):
+        self.GetCloneState()
+        return self.timeLastJump
+
+    def DestroyInstalledClone(self, cloneID):
+        message = None
+        myClones = self.GetClones()
+        if myClones:
+            myClones = myClones.Index('jumpCloneID')
+            if cloneID in myClones:
+                if myClones[cloneID].locationID == session.stationid2:
+                    message = localization.GetByLabel('UI/CloneJump/ReallyDestroyCloneAtCurrentStation')
+                else:
+                    cfg.evelocations.Prime([myClones[cloneID].locationID])
+                    message = localization.GetByLabel('UI/CloneJump/ReallyDestroyCloneAtSomewhereElse', location=myClones[cloneID].locationID)
+        if not message:
+            if util.GetActiveShip():
+                shipClones = self.GetShipClones()
+                if shipClones:
+                    shipClones = shipClones.Index('jumpCloneID')
+                    if cloneID in shipClones:
+                        cfg.eveowners.Prime([shipClones[cloneID].ownerID])
+                        cfg.evelocations.Prime([shipClones[cloneID].locationID])
+                        message = localization.GetByLabel('UI/CloneJump/ReallyDestroyCloneInShip', owner=shipClones[cloneID].ownerID, ship=shipClones[cloneID].locationID)
+        if not message:
+            return
+        ret = eve.Message('AskAreYouSure', {'cons': message}, uiconst.YESNO)
+        if ret == uiconst.ID_YES:
+            lm = self.GetLM()
+            lm.DestroyInstalledClone(cloneID)
+
+    def InstallCloneInStation(self):
+        if not session.stationid2:
+            return
+        lm = self.GetLM()
+        ret = eve.Message('AskAcceptJumpCloneCost', {'cost': lm.GetPriceForClone()}, uiconst.YESNO)
+        if ret == uiconst.ID_YES:
+            lm.InstallCloneInStation()
+
+    def CancelShipCloneInstallation(self, *args):
+        sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/CloneJump/CloneInstallAborted'), '', 1, 1)
+        lm = self.GetLM()
+        lm.CancelShipCloneInstallation()
+
+    def CloneJump(self, destLocationID):
+        if not session.stationid2:
+            eve.Message('NotAtStation')
+            return
+        for each in uicore.registry.GetWindows()[:]:
+            if isinstance(each, form.Inventory):
+                each.CloseByUser()
+
+        lm = self.GetLM()
+        try:
+            sm.GetService('sessionMgr').PerformSessionChange('clonejump', lm.CloneJump, destLocationID, False)
+        except UserError as e:
+            if e.msg not in ('JumpCheckWillLoseExistingCloneAndImplants', 'JumpCheckWillLoseExistingClone', 'JumpCheckIntoShip'):
+                raise e
+            if eve.Message(e.msg, {}, uiconst.YESNO) == uiconst.ID_YES:
+                eve.session.ResetSessionChangeTimer('Retrying with confirmation approval')
+                sm.GetService('sessionMgr').PerformSessionChange('clonejump', lm.CloneJump, destLocationID, True)
+            sys.exc_clear()
+
+    def GetCloneAtLocation(self, locationID):
+        clones = self.GetClones()
+        if clones:
+            for c in clones:
+                if locationID == c.locationID:
+                    return c.jumpCloneID
+
+    def GetImplantsForClone(self, cloneID):
+        cloneImplants = self.GetCloneImplants()
+        if not cloneImplants:
+            return []
+        implantsByCloneID = cloneImplants.Filter('jumpCloneID')
+        return implantsByCloneID.get(cloneID, [])
+
+    def HasCloneReceivingBay(self):
+        if eve.session.shipid:
+            ship = sm.GetService('godma').GetItem(eve.session.shipid)
+            for module in ship.modules:
+                if const.typeCloneVatBayI == module.typeID:
+                    return True
+
+        return False
+
+    def ProcessSessionChange(self, isRemote, session, change):
+        if 'shipid' in change:
+            self.shipJumpClones = None
+        if 'solarsystemid2' in change or 'solarsystemid' in change or 'stationid2' in change:
+            self.stationJumpClones = None
+
+    def OnJumpCloneCacheInvalidated(self):
+        self.jumpClones = None
+        self.jumpCloneImplants = None
+        self.timeLastJump = None
+        sm.ScatterEvent('OnCloneJumpUpdate')
+
+    def OnShipJumpCloneCacheInvalidated(self, locationID, charID):
+        if eve.session.shipid == locationID:
+            self.shipJumpClones = None
+            sm.ScatterEvent('OnShipCloneJumpUpdate')
+
+    def OnStationJumpCloneCacheInvalidated(self, locationID, charID):
+        if session.stationid2 == locationID:
+            self.stationJumpClones = None
+            sm.ScatterEvent('OnStationCloneJumpUpdate')
+
+    def OnShipJumpCloneInstallationOffered(self, args):
+        offeringCharID, targetCharID, shipID, b = (args[0],
+         args[1],
+         args[2],
+         args[3])
+        self.cloneInstallOfferActive = 1
+        cfg.eveowners.Prime([offeringCharID, targetCharID])
+        offeringChar = cfg.eveowners.Get(offeringCharID)
+        cfg.evelocations.Prime([shipID])
+        ship = cfg.evelocations.Get(shipID)
+        lm = self.GetLM()
+        costs = lm.GetPriceForClone()
+        ret = eve.Message('JumpCloneInstallationOffered', {'offerer': offeringChar.name,
+         'shipname': ship.name,
+         'costs': util.FmtISK(costs)}, uiconst.YESNO)
+        try:
+            if ret == uiconst.ID_YES:
+                lm.AcceptShipCloneInstallation()
+            elif ret != uiconst.ID_CLOSE:
+                lm.CancelShipCloneInstallation()
+        except UserError as e:
+            eve.Message(e.msg, e.dict)
+            sys.exc_clear()
+
+        self.cloneInstallOfferActive = 0
+
+    def OnShipJumpCloneInstallationDone(self, args):
+        offeringCharID, targetCharID, shipID, b = (args[0],
+         args[1],
+         args[2],
+         args[3])
+        self.cloneInstallOfferActive = 0
+        sm.ScatterEvent('OnShipJumpCloneUpdate')
+        sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/CloneJump/CloneInstallFinished'), '', 1, 1)
+
+    def OnShipJumpCloneInstallationCanceled(self, args):
+        try:
+            sm.GetService('loading').ProgressWnd(localization.GetByLabel('UI/CloneJump/CloneInstallAborted'), '', 1, 1)
+            lm = self.GetLM()
+            lm.CancelShipCloneInstallation()
+        except UserError as e:
+            self.LogInfo('Ignoring usererror', e.msg, 'while cancelling ship clone installation')
+            sys.exc_clear()

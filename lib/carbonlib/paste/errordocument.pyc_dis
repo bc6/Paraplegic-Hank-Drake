@@ -1,0 +1,212 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\carbon\common\lib\paste\errordocument.py
+import warnings
+import sys
+from urlparse import urlparse
+from paste.recursive import ForwardRequestException, RecursiveMiddleware, RecursionLoop
+from paste.util import converters
+from paste.response import replace_header
+
+def forward(app, codes):
+    for code in codes:
+        if not isinstance(code, int):
+            raise TypeError('All status codes should be type int. %s is not valid' % repr(code))
+
+    def error_codes_mapper(code, message, environ, global_conf, codes):
+        if codes.has_key(code):
+            return codes[code]
+        else:
+            return None
+
+    return RecursiveMiddleware(StatusBasedForward(app, error_codes_mapper, codes=codes))
+
+
+class StatusKeeper(object):
+
+    def __init__(self, app, status, url, headers):
+        self.app = app
+        self.status = status
+        self.url = url
+        self.headers = headers
+
+    def __call__(self, environ, start_response):
+
+        def keep_status_start_response(status, headers, exc_info = None):
+            for header, value in headers:
+                if header.lower() == 'set-cookie':
+                    self.headers.append((header, value))
+                else:
+                    replace_header(self.headers, header, value)
+
+            return start_response(self.status, self.headers, exc_info)
+
+        parts = self.url.split('?')
+        environ['PATH_INFO'] = parts[0]
+        if len(parts) > 1:
+            environ['QUERY_STRING'] = parts[1]
+        else:
+            environ['QUERY_STRING'] = ''
+        try:
+            return self.app(environ, keep_status_start_response)
+        except RecursionLoop as e:
+            environ['wsgi.errors'].write('Recursion error getting error page: %s\n' % e)
+            keep_status_start_response('500 Server Error', [('Content-type', 'text/plain')], sys.exc_info())
+            return ['Error: %s.  (Error page could not be fetched)' % self.status]
+
+
+class StatusBasedForward(object):
+
+    def __init__(self, app, mapper, global_conf = None, **params):
+        if global_conf is None:
+            global_conf = {}
+        if global_conf:
+            self.debug = converters.asbool(global_conf.get('debug', False))
+        else:
+            self.debug = False
+        self.application = app
+        self.mapper = mapper
+        self.global_conf = global_conf
+        self.params = params
+
+    def __call__(self, environ, start_response):
+        url = []
+        writer = []
+
+        def change_response(status, headers, exc_info = None):
+            status_code = status.split(' ')
+            try:
+                code = int(status_code[0])
+            except (ValueError, TypeError):
+                raise Exception('StatusBasedForward middleware received an invalid status code %s' % repr(status_code[0]))
+
+            message = ' '.join(status_code[1:])
+            new_url = self.mapper(code, message, environ, self.global_conf, **self.params)
+            if not (new_url == None or isinstance(new_url, str)):
+                raise TypeError('Expected the url to internally redirect to in the StatusBasedForward mapperto be a string or None, not %r' % new_url)
+            if new_url:
+                url.append([new_url, status, headers])
+                return [].append
+            else:
+                return start_response(status, headers, exc_info)
+
+        app_iter = self.application(environ, change_response)
+        if url:
+            if hasattr(app_iter, 'close'):
+                app_iter.close()
+
+            def factory(app):
+                return StatusKeeper(app, status=url[0][1], url=url[0][0], headers=url[0][2])
+
+            raise ForwardRequestException(factory=factory)
+        else:
+            return app_iter
+
+
+def make_errordocument(app, global_conf, **kw):
+    map = {}
+    for status, redir_loc in kw.items():
+        try:
+            status = int(status)
+        except ValueError:
+            raise ValueError('Bad status code: %r' % status)
+
+        map[status] = redir_loc
+
+    forwarder = forward(app, map)
+    return forwarder
+
+
+__pudge_all__ = ['forward',
+ 'make_errordocument',
+ 'empty_error',
+ 'make_empty_error',
+ 'StatusBasedForward']
+
+def custom_forward(app, mapper, global_conf = None, **kw):
+    warnings.warn('errordocuments.custom_forward has been deprecated; please use errordocuments.StatusBasedForward', DeprecationWarning, 2)
+    if global_conf is None:
+        global_conf = {}
+    return _StatusBasedRedirect(app, mapper, global_conf, **kw)
+
+
+class _StatusBasedRedirect(object):
+
+    def __init__(self, app, mapper, global_conf = None, **kw):
+        warnings.warn('errordocuments._StatusBasedRedirect has been deprecated; please use errordocuments.StatusBasedForward', DeprecationWarning, 2)
+        if global_conf is None:
+            global_conf = {}
+        self.application = app
+        self.mapper = mapper
+        self.global_conf = global_conf
+        self.kw = kw
+        self.fallback_template = '\n            <html>\n            <head>\n            <title>Error %(code)s</title>\n            </html>\n            <body>\n            <h1>Error %(code)s</h1>\n            <p>%(message)s</p>\n            <hr>\n            <p>\n                Additionally an error occurred trying to produce an\n                error document.  A description of the error was logged\n                to <tt>wsgi.errors</tt>.\n            </p>\n            </body>\n            </html>\n        '
+
+    def __call__(self, environ, start_response):
+        url = []
+        code_message = []
+        try:
+
+            def change_response(status, headers, exc_info = None):
+                new_url = None
+                parts = status.split(' ')
+                try:
+                    code = int(parts[0])
+                except (ValueError, TypeError):
+                    raise Exception('_StatusBasedRedirect middleware received an invalid status code %s' % repr(parts[0]))
+
+                message = ' '.join(parts[1:])
+                new_url = self.mapper(code, message, environ, self.global_conf, self.kw)
+                if not (new_url == None or isinstance(new_url, str)):
+                    raise TypeError('Expected the url to internally redirect to in the _StatusBasedRedirect error_mapperto be a string or None, not %s' % repr(new_url))
+                if new_url:
+                    url.append(new_url)
+                code_message.append([code, message])
+                return start_response(status, headers, exc_info)
+
+            app_iter = self.application(environ, change_response)
+        except:
+            try:
+                import sys
+                error = str(sys.exc_info()[1])
+            except:
+                error = ''
+
+            try:
+                code, message = code_message[0]
+            except:
+                code, message = '', ''
+
+            environ['wsgi.errors'].write('Error occurred in _StatusBasedRedirect intercepting the response: ' + str(error))
+            return [self.fallback_template % {'message': message,
+              'code': code}]
+
+        if url:
+            url_ = url[0]
+            new_environ = {}
+            for k, v in environ.items():
+                if k != 'QUERY_STRING':
+                    new_environ['QUERY_STRING'] = urlparse(url_)[4]
+                else:
+                    new_environ[k] = v
+
+            class InvalidForward(Exception):
+                pass
+
+            def eat_start_response(status, headers, exc_info = None):
+                if status[:3] != '200':
+                    raise InvalidForward("The URL %s to internally forward to in order to create an error document did not return a '200' status code." % url_)
+
+            forward = environ['paste.recursive.forward']
+            old_start_response = forward.start_response
+            forward.start_response = eat_start_response
+            try:
+                app_iter = forward(url_, new_environ)
+            except InvalidForward as e:
+                code, message = code_message[0]
+                environ['wsgi.errors'].write('Error occurred in _StatusBasedRedirect redirecting to new URL: ' + str(url[0]))
+                return [self.fallback_template % {'message': message,
+                  'code': code}]
+
+            forward.start_response = old_start_response
+            return app_iter
+        else:
+            return app_iter

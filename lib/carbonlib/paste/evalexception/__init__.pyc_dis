@@ -1,0 +1,2 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\carbon\common\lib\paste\evalexception\__init__.py
+from paste.evalexception.middleware import EvalException

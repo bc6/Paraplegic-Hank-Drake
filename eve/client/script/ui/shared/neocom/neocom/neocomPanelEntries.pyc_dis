@@ -1,0 +1,255 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/shared/neocom/neocom/neocomPanelEntries.py
+import uicls
+import uiconst
+import util
+import uiutil
+import uthread
+import neocom
+import blue
+import localization
+import math
+
+class PanelEntryBase(uicls.Container):
+    __guid__ = 'neocom.PanelEntryBase'
+    __notifyevents__ = ['OnNeocomBlinkPulse']
+    isDragObject = True
+    default_state = uiconst.UI_NORMAL
+    default_align = uiconst.TOTOP
+    default_icon = None
+    default_height = 42
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        sm.RegisterNotify(self)
+        self.btnData = attributes.btnData
+        if hasattr(self.btnData, 'panelEntryHeight'):
+            self.height = self.btnData.panelEntryHeight
+        self.blinkThread = None
+        self._openNeocomPanel = None
+        self.main = uicls.Container(parent=self, name='main')
+        self.hoverBG = uicls.Frame(bgParent=self.main, texturePath='res:/UI/Texture/classes/Neocom/panelEntryBG.png', opacity=0.0)
+        self.icon = uicls.Icon(parent=self.main, name='icon', state=uiconst.UI_DISABLED, icon=self.btnData.iconPath or neocom.ICONPATH_DEFAULT, size=self.height - 4, left=10, top=2, ignoreSize=True)
+        self.label = uicls.Label(parent=self.main, align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED, text=self.GetLabel(), autowidth=True, autoheight=True, left=self.icon.left + self.icon.width + 8)
+        if settings.char.ui.Get('neocomAlign', uiconst.TOLEFT) == uiconst.TOLEFT:
+            rotation = 0.0
+        else:
+            rotation = math.pi
+        self.expanderIcon = uicls.Icon(parent=self, name='expanderIcon', align=uiconst.CENTERRIGHT, left=10, icon='ui_38_16_228', rotation=rotation)
+        self.SetExpanderState()
+        self.blinkSprite = uicls.Sprite(bgParent=self, name='blinkSprite', texturePath='res:/UI/Texture/classes/Neocom/panelEntryBG.png', state=uiconst.UI_HIDDEN, opacity=0.5)
+
+    def HasOpenPanel(self):
+        return self._openNeocomPanel is not None and not self._openNeocomPanel.destroyed
+
+    def SetExpanderState(self):
+        self.HideExpander()
+
+    def ShowExpander(self):
+        self.expanderIcon.state = uiconst.UI_DISABLED
+
+    def HideExpander(self):
+        self.expanderIcon.state = uiconst.UI_HIDDEN
+
+    def OnClick(self, *args):
+        self.btnData.CheckContinueBlinking()
+        self.OnClickCommand()
+        sm.GetService('neocom').CloseAllPanels()
+
+    def OnClickCommand(self):
+        pass
+
+    def GetLabel(self):
+        return self.btnData.label
+
+    def GetRequiredWidth(self):
+        return self.label.width + self.icon.width + 35
+
+    def GetMenu(self):
+        return self.btnData.GetMenu()
+
+    def GetHint(self):
+        return self.btnData.GetHint()
+
+    def OnMouseEnter(self, *args):
+        sm.GetService('neocom').CloseChildrenPanels(self.btnData.parent)
+        uicore.animations.FadeIn(self.hoverBG, duration=0.3)
+
+    def OnMouseExit(self, *args):
+        uicore.animations.FadeOut(self.hoverBG, duration=0.3)
+
+    def GetDragData(self, *args):
+        if self.btnData.isDraggable:
+            return [self.btnData]
+
+    def BlinkOnce(self):
+        self.blinkSprite.Show()
+        uicore.animations.SpSwoopBlink(self.blinkSprite, rotation=math.pi, duration=1.0)
+
+    def OnNeocomBlinkPulse(self):
+        if self.btnData.isBlinking:
+            self.BlinkOnce()
+
+
+class PanelEntryCmd(PanelEntryBase):
+    __guid__ = 'neocom.PanelEntryCmd'
+    default_name = 'PanelEntryCmd'
+
+    def ApplyAttributes(self, attributes):
+        PanelEntryBase.ApplyAttributes(self, attributes)
+        self.func = attributes.func
+
+    def OnClickCommand(self, *args):
+        self.func()
+
+
+class PanelEntryBookmarks(PanelEntryBase):
+    __guid__ = 'neocom.PanelEntryBookmarks'
+    default_name = 'PanelEntryBookmarks'
+
+    def OnClick(self, *args):
+        if not self.HasOpenPanel():
+            self.ToggleNeocomPanel()
+
+    def ToggleNeocomPanel(self):
+        sm.GetService('neocom').CloseChildrenPanels(self.btnData.parent)
+        if self.HasOpenPanel():
+            self._openNeocomPanel = None
+        else:
+            self._openNeocomPanel = sm.GetService('neocom').ShowPanel(self, neocom.PanelGroup, neocom.PANEL_SHOWONSIDE, parent=uicore.layer.abovemain, btnData=self.btnData)
+
+    def OnMouseEnter(self, *args):
+        PanelEntryBase.OnMouseEnter(self, *args)
+        if uicore.uilib.mouseOver == self and not self.HasOpenPanel():
+            uthread.new(self.ToggleNeocomPanel)
+
+    def SetExpanderState(self):
+        self.ShowExpander()
+
+
+class PanelEntryBookmark(PanelEntryBase):
+    __guid__ = 'neocom.PanelEntryBookmark'
+    default_name = 'PanelEntryBookmark'
+    default_height = 25
+
+    def ApplyAttributes(self, attributes):
+        self.bookmark = attributes.btnData.bookmark
+        PanelEntryBase.ApplyAttributes(self, attributes)
+
+    def OnClickCommand(self, *args):
+        uicore.cmd.OpenBrowser(url=self.bookmark.url, newTab=True)
+
+    def GetLabel(self):
+        return self.bookmark.name
+
+
+class PanelEntryText(uicls.Container):
+    __guid__ = 'neocom.PanelEntryText'
+    default_name = 'PanelEntryText'
+    default_height = 42
+    default_align = uiconst.TOTOP
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        label = attributes.label
+        self.label = uicls.Label(parent=self, state=uiconst.UI_DISABLED, text=label, align=uiconst.CENTERLEFT, left=10)
+
+    def GetRequiredWidth(self):
+        return self.label.width + 35
+
+
+class PanelEntryGroup(PanelEntryBase):
+    __guid__ = 'neocom.PanelEntryGroup'
+    default_name = 'PanelEntryGroup'
+    default_icon = neocom.ICONPATH_GROUP
+
+    def ApplyAttributes(self, attributes):
+        PanelEntryBase.ApplyAttributes(self, attributes)
+        if self.btnData.btnType == neocom.BTNTYPE_GROUP:
+            self.icon.color.SetRGB(*neocom.COLOR_GROUPDEFAULT)
+        if self.btnData.labelAbbrev:
+            label = uicls.Label(parent=self.main, align=uiconst.CENTERLEFT, text='<b><color=0xFF203d3d>' + self.btnData.labelAbbrev, fontsize=16, opacity=0.75, letterspace=-1, idx=0, left=self.height / 2)
+
+    def OnClick(self, *args):
+        if not self.HasOpenPanel():
+            self.ToggleNeocomPanel()
+
+    def OnMouseEnter(self, *args):
+        PanelEntryBase.OnMouseEnter(self, *args)
+        if uicore.uilib.mouseOver == self and not self.HasOpenPanel():
+            uthread.new(self.ToggleNeocomPanel)
+
+    def OnDropData(self, source, dropData):
+        if not sm.GetService('neocom').IsValidDropData(dropData):
+            return
+        btnData = dropData[0]
+        btnData.MoveTo(self.btnData)
+
+    def ToggleNeocomPanel(self):
+        if self.HasOpenPanel():
+            self._openNeocomPanel = None
+            sm.GetService('neocom').CloseChildrenPanels(self.btnData.parent)
+        else:
+            sm.GetService('neocom').CloseChildrenPanels(self.btnData.parent)
+            self._openNeocomPanel = sm.GetService('neocom').ShowPanel(self, neocom.PanelGroup, neocom.PANEL_SHOWONSIDE, parent=uicore.layer.abovemain, btnData=self.btnData, align=uiconst.TOPLEFT)
+
+    def SetExpanderState(self):
+        self.ShowExpander()
+
+
+class PanelEntryWindow(PanelEntryBase):
+    __guid__ = 'neocom.PanelEntryWindow'
+    default_name = 'PanelEntryWindow'
+
+    def GetLabel(self):
+        if hasattr(self.btnData, 'wnd'):
+            return self.btnData.wnd.GetCaption()
+        else:
+            return self.btnData.children[0].wnd.GetCaption()
+
+    def OnClick(self, *args):
+        if hasattr(self.btnData, 'wnd'):
+            self.btnData.wnd.Show()
+        elif len(self.btnData.children) <= 1:
+            self.btnData.children[0].wnd.Show()
+        else:
+            if self.btnData.children:
+                self.ToggleNeocomPanel()
+                return
+            if hasattr(self.btnData, 'cmdName'):
+                cmd = uicore.cmd.commandMap.GetCommandByName(self.btnData.cmdName)
+                cmd.callback()
+        sm.GetService('neocom').CloseAllPanels()
+
+    def ToggleNeocomPanel(self):
+        if self.HasOpenPanel():
+            sm.GetService('neocom').ClosePanel(self._openNeocomPanel)
+            self._openNeocomPanel = None
+        else:
+            self._openNeocomPanel = sm.GetService('neocom').ShowPanel(triggerCont=self, panelClass=neocom.PanelGroup, panelAlign=neocom.PANEL_SHOWONSIDE, parent=uicore.layer.abovemain, btnData=self.btnData)
+
+    def OnDragEnter(self, panelEntry, nodes):
+        self.OnMouseEnter()
+
+    def OnDragExit(self, *args):
+        self.OnMouseExit()
+
+    def OnDropData(self, source, nodes):
+        wnd = getattr(self.btnData, 'wnd', None)
+        if wnd and hasattr(wnd, 'OnDropData'):
+            wnd.OnDropData(source, nodes)
+            sm.GetService('neocom').CloseAllPanels()
+
+    def SetExpanderState(self):
+        if len(self.btnData.children) > 1:
+            self.ShowExpander()
+        else:
+            self.HideExpander()
+
+    def GetMenu(self):
+        return None
+
+
+class PanelChatChannel(PanelEntryWindow):
+    __guid__ = 'neocom.PanelEntryChatChannel'
+    default_name = 'PanelEntryChatChannel'
+    default_height = 25

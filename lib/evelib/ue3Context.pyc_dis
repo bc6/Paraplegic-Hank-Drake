@@ -1,0 +1,209 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\eve\common\lib\ue3Context.py
+import sys
+import logging
+import time
+import gc
+from const import TYPEID_NONE
+from catma import catmaDB, catmaConfig, catmaUtil
+from dust import stims, stimsFactory, stats, stimsExt, skillModuleFactory
+from sake.const import PLATFORM_PS3
+from dust.stats import LogMemoryUsage, GetTotalMemoryUsage
+from dust.const import APP_ROLE_BATTLESERVER
+from dust.commandHandler import CommandHandler
+import _pyunreal
+import extraCatmaConfig
+import sake.platform
+DEBUG = True
+ctx = None
+logger = logging.getLogger('dust.ue3Context')
+
+class UE3Context(object):
+
+    def __init__(self):
+        logger.info('===================== Initializing UE3 Context ========================')
+        self.ParseCmdLineOptions()
+        self._commandHandler = CommandHandler(self)
+        if not gc.isenabled():
+            logger.info('python garbage collection is disabled, enable now!')
+            gc.enable()
+        thresholds = gc.get_threshold()
+        logger.info('gc threshold0: %s, threshold1: %s, threshold2: %s' % thresholds)
+        gc.set_debug(gc.DEBUG_INSTANCES | gc.DEBUG_OBJECTS | gc.DEBUG_SAVEALL)
+        LogMemoryUsage('starting')
+        self.miniapp = None
+        self.StartMini()
+        LogMemoryUsage('mini framework started')
+        self.CheckDiskSpaceRequirements()
+        self.sequencer = stims.Sequencer()
+        self.compResult = None
+        self.sequencer.UpdateTime(time.time())
+        LogMemoryUsage('stims started')
+        catmaDB.GetDB()
+        LogMemoryUsage('CATMA DB loaded')
+        logger.info('=============================================')
+
+    def GetSequencerID(self):
+        return self.sequencer.sequencerID
+
+    def ParseCmdLineOptions(self):
+        logger.info('Parsing cmd line argument: %s' % sys.argv)
+        switches = [(['-IgnoreInventory'], 'ignoreInventory', False), (['-TrackModuleBonusCalc'], 'trackModuleBonusCalc', False), (['-EnableCatmaSync'], 'enableCatmaSync', sys.platform != PLATFORM_PS3)]
+        argv = [ arg.lower() for arg in sys.argv ]
+        for switchNames, flagName, defValue in switches:
+            value = any((name.lower() in argv for name in switchNames)) or defValue
+            setattr(sys, flagName, value)
+            logger.info(' %s = %s' % (flagName, value))
+
+    def CheckDiskSpaceRequirements(self):
+        if sys.platform == PLATFORM_PS3:
+            vaultClient = self.miniapp.GetService('vaultClient')
+            requiredSpaceKB = vaultClient.GetMaximumRequiredDiskSpaceKB()
+            requiredSpaceKB += 1048576
+            freeSpaceKB = _pyunreal.GetHddFreeSizeKB()
+            logger.info('PS3-TRC-R224 disk space; requiredKB %s freeKB %s', requiredSpaceKB, freeSpaceKB)
+            if requiredSpaceKB > freeSpaceKB:
+                ret = _pyunreal.GameContentError(_pyunreal.CELL_GAME_ERRDIALOG_NOSPACE_EXIT, requiredSpaceKB - freeSpaceKB)
+                logger.info('CheckDiskSpaceRequirements strangely returned with ret = %s', ret)
+
+    def DisplayCustomFatalDialog(self, msg):
+        dialogType = _pyunreal.CELL_MSGDIALOG_TYPE_SE_TYPE_ERROR | _pyunreal.CELL_MSGDIALOG_TYPE_BG_VISIBLE | _pyunreal.CELL_MSGDIALOG_TYPE_BUTTON_TYPE_NONE | _pyunreal.CELL_MSGDIALOG_TYPE_DISABLE_CANCEL_ON | _pyunreal.CELL_MSGDIALOG_TYPE_DEFAULT_CURSOR_NONE | _pyunreal.CELL_MSGDIALOG_TYPE_PROGRESSBAR_NONE
+        _pyunreal.MsgDialogOpen2(dialogType, msg)
+
+    def ReloadCatmaDB(self, filePath, findModifiedTypes = False, ignoreVersionCheck = False):
+        logger.info('UE3Context.ReloadCatmaDB: path <%s>, findModifiedTypes <%s>, ignoreVersionCheck <%s>' % (filePath, findModifiedTypes, ignoreVersionCheck))
+        currMemory = GetTotalMemoryUsage()
+        newCatmaDB = extraCatmaConfig.LoadCatmaDBFromFilePath(filePath)
+        currDB = catmaDB.GetDB()
+        logger.info(' current: %s' % currDB)
+        logger.info(' new one: %s' % newCatmaDB)
+        switched = False
+        if ignoreVersionCheck or newCatmaDB._bsdChangeID is None or newCatmaDB._bsdChangeID != currDB._bsdChangeID:
+            self.compResult = catmaUtil.CatmaComparisonResult(currDB, newCatmaDB) if findModifiedTypes else None
+            catmaDB.SetDB(newCatmaDB)
+            switched = True
+        else:
+            newCatmaDB.TearOff()
+            del newCatmaDB
+        self.GCCollect()
+        logger.info('Memory, CATMA DB reloaded: %s Mb increased' % (float(GetTotalMemoryUsage() - currMemory) / 1048576))
+        return switched
+
+    def GetChangedTypes(self):
+        if self.compResult:
+            return self.compResult.GetModifiedTypes()
+        return []
+
+    def CreateAdapter(self, typeID):
+        adapter = stimsFactory.CreateAdapterByID(typeID, stimsExt.AdapterExt)
+        self.sequencer.AddAdapter(adapter)
+        return adapter
+
+    def CreateModule(self, typeName):
+        module = stimsFactory.CreateModule(typeName)
+        return module
+
+    def ApplyFitting(self, adapter, moduleList, autoFitting = False):
+        moduleList = [ (int(typeID) if typeID != str(TYPEID_NONE) else None) for typeID in moduleList.split(',') ]
+        stimsFactory.ApplyFitting(catmaDB.GetDB(), adapter, moduleList, autoFitting)
+
+    def ApplyExtFitting(self, adapter, skillDataList):
+        skillDataList = skillDataList.split(',')
+        skills = []
+        for combinedData in skillDataList:
+            if combinedData:
+                skills.append(skillModuleFactory.GetSkillTypeAndLevel(int(combinedData)))
+
+        stimsExt.ApplyExtFitting(catmaDB.GetDB(), adapter, skills)
+
+    def ApplyDefaultFitting(self, adapter):
+        stimsFactory.ApplyDefaultFitting(catmaDB.GetDB(), adapter)
+
+    def GetSlotAttributeValue(self, adapterTypeID, index, attributeName):
+        return stimsFactory.GetSlotAttributeValue(adapterTypeID, index, attributeName, catmaDB.GetDB())
+
+    def GetAllSpawnedAdapterModuleType(self, adapterTypeID):
+        return stimsFactory.GetAllSpawnedAdapterModuleType(adapterTypeID)
+
+    def ClearModules(self, adapter):
+        adapter.ClearModules()
+
+    def StartMini(self):
+        import dust.startmini
+        import sake.app
+        self.miniapp = sake.app.app
+        sys.ue3_rpc_timeout = 3600.0
+        self.WaitForServicesStartup()
+
+    def WaitForServicesStartup(self):
+        self.miniapp.WaitForServicesStartup()
+
+    def TickSequencer(self):
+        with stats.MakeUE3ContextTickStimsContext():
+            changes = self.sequencer.UpdateTime(time.time())
+        with stats.MakeUE3ContextTickMiniContext():
+            if self.miniapp and self.miniapp.running:
+                self.miniapp.Pump()
+        return changes
+
+    def PreLevelReset(self):
+        logger.info('PreLevelReset called in ue3Context')
+        self.sequencer.FlushAll()
+        cdb = catmaDB.GetDB()
+        cdb.ClearCachedLookup()
+        gc.collect()
+
+    def GetNumAdapters(self):
+        numAdapter = 0
+        if self.sequencer:
+            numAdapter = len(self.sequencer.adapters)
+        return numAdapter
+
+    def _pythonExec(self, code):
+        try:
+            exec code
+        except Exception as e:
+            import traceback
+            traceback.print_exc(e)
+
+    def Exec(self, command):
+        if command.startswith('>'):
+            pythonCode = command[1:].strip()
+            from sake.app import app
+            app.process.New(self._pythonExec, pythonCode)
+        if command.lower() == 'collect':
+            self.GCCollect()
+            return
+        args = command.split(' ')
+        funcName = args.pop(0).lower()
+        for k in CommandHandler.__dict__:
+            if k.lower() == funcName:
+                func = getattr(self._commandHandler, k)
+                func(args)
+                return
+
+        return '$unhandled$'
+
+    def GetRelevantSkills(self, charID):
+        relevantSkills = []
+        if self.miniapp.HasRole(APP_ROLE_BATTLESERVER):
+            skillBattleSvc = self.miniapp.GetService('skillBattle')
+            dataCache = skillBattleSvc.GetDataCacheForCharacter(charID)
+        else:
+            skillClientSvc = self.miniapp.GetService('skillClient')
+            dataCache = skillClientSvc.GetDataCacheForCharacter()
+        relevantSkills = dataCache.GetRelevantSkills(catmaDB.GetDB())
+        return relevantSkills
+
+    def GCCollect(self):
+        numUnreachable = gc.collect()
+        logger.info('num unreachable objects: %s' % numUnreachable)
+
+
+def InitContext():
+    global ctx
+    if ctx is None:
+        ctx = UE3Context()
+
+
+def GetInstance():
+    return ctx

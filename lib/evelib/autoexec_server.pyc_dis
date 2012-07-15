@@ -1,0 +1,76 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\eve\common\lib\autoexec_server.py
+import autoexec_server_core
+import log
+import eveLog
+from logHandlers import logServer
+logServer.Init()
+startInline = ['config', 'dataconfig']
+startServices = ['http',
+ 'cache',
+ 'i2',
+ 'languageSvc',
+ 'dogmaIM',
+ 'charMgr',
+ 'ship',
+ 'station',
+ 'beyonce',
+ 'keeper',
+ 'director',
+ 'factory',
+ 'standing2',
+ 'agentMgr',
+ 'LSC',
+ 'slash',
+ 'skillMgr',
+ 'corpStationMgr',
+ 'account',
+ 'petitioner',
+ 'watchdog',
+ 'lien',
+ 'effectCompiler',
+ 'billingMgr',
+ 'corpRegistry',
+ 'pathfinder',
+ 'allianceRegistry',
+ 'warRegistry',
+ 'onlineStatus',
+ 'market',
+ 'authentication',
+ 'emailreader',
+ 'dungeonExplorationMgr',
+ 'jumpCloneSvc',
+ 'jumpbeaconsvc',
+ 'facWarMgr',
+ 'damageTracker',
+ 'wormholeMgr',
+ 'infoGatheringMgr',
+ 'sovMgr',
+ 'communityClient',
+ 'mailMgr',
+ 'calendarMgr',
+ 'contactSvc',
+ 'notificationMgr',
+ 'voiceMgr',
+ 'voiceAdminMgr',
+ 'processHealth',
+ 'taleMgr',
+ 'taleDistributionMgr',
+ 'http',
+ 'http2',
+ 'sentinel',
+ 'securityMonitor']
+if prefs.GetValue('clusterMode', None) is not None and prefs.clusterMode != 'LIVE':
+    startServices.append('localizationServer')
+if prefs.GetValue('enableDust', 0):
+    dustServices = ['catma',
+     'dustCorporationBattleMgr',
+     'dustBattleInstanceMgr',
+     'dustInventory',
+     'dustEveChat',
+     'dustOrbitalStrike',
+     'dustSkill']
+    startServices += dustServices
+import eveLocalization
+if boot.region == 'optic':
+    eveLocalization.SetTimeDelta(28800)
+autoexec_server_core.StartServer(startServices, startInline=startInline, serviceManagerClass='EveServiceManager')

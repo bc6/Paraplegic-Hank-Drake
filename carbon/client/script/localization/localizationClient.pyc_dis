@@ -1,0 +1,32 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/carbon/client/script/localization/localizationClient.py
+import service
+import localization
+import blue
+
+class LocalizationClient(service.Service):
+    __guid__ = 'svc.localizationClient'
+    __notifyevents__ = ['OnSessionChanged', 'OnUpdateLocalizationTextCache']
+
+    def __init__(self):
+        service.Service.__init__(self)
+
+    def Run(self, memStream = None):
+        service.Service.Run(self, memStream)
+
+    def OnSessionChanged(self, isremote, sess, change):
+        if 'charid' in change and change['charid'][0] is None:
+            if sess.role & service.ROLE_QA == service.ROLE_QA:
+                showMessageID = prefs.GetValue('showMessageID', 0)
+                enableBoundaryMarkers = prefs.GetValue('enableBoundaryMarkers', 0)
+                sm.RemoteSvc('localizationServer').UpdateLocalizationQASettings(showMessageID=showMessageID, enableBoundaryMarkers=enableBoundaryMarkers)
+            hashData = localization.GetHashDataDictionary()
+            if len(hashData) > 0 and not blue.pyos.packaged:
+                localization.LogInfo('Localization Client: preparing to load initial text and label data from server')
+                sm.RemoteSvc('localizationServer').GetAllTextChanges(hashData)
+                localization.LogInfo('Localization Client: done asking for initial text and label data from server')
+
+    def OnUpdateLocalizationTextCache(self, cacheData):
+        messagePerLanguage, metaDataPerLanguage, labelsDict = cacheData
+        if messagePerLanguage or metaDataPerLanguage or labelsDict:
+            localization.UpdateTextCache(messagePerLanguage, metaDataPerLanguage, labelsDict)
+            sm.GetService('gameui').Say('Your localization content has been updated.')

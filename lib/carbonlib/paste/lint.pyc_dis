@@ -1,0 +1,222 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\carbon\common\lib\paste\lint.py
+import re
+import sys
+from types import DictType, StringType, TupleType, ListType
+import warnings
+header_re = re.compile('^[a-zA-Z][a-zA-Z0-9\\-_]*$')
+bad_header_value_re = re.compile('[\\000-\\037]')
+
+class WSGIWarning(Warning):
+    pass
+
+
+def middleware(application, global_conf = None):
+
+    def lint_app(*args, **kw):
+        environ, start_response = args
+        check_environ(environ)
+        start_response_started = []
+
+        def start_response_wrapper(*args, **kw):
+            status = args[0]
+            headers = args[1]
+            if len(args) == 3:
+                exc_info = args[2]
+            else:
+                exc_info = None
+            check_status(status)
+            check_headers(headers)
+            check_content_type(status, headers)
+            check_exc_info(exc_info)
+            start_response_started.append(None)
+            return WriteWrapper(start_response(*args))
+
+        environ['wsgi.input'] = InputWrapper(environ['wsgi.input'])
+        environ['wsgi.errors'] = ErrorWrapper(environ['wsgi.errors'])
+        iterator = application(environ, start_response_wrapper)
+        check_iterator(iterator)
+        return IteratorWrapper(iterator, start_response_started)
+
+    return lint_app
+
+
+class InputWrapper(object):
+
+    def __init__(self, wsgi_input):
+        self.input = wsgi_input
+
+    def read(self, *args):
+        v = self.input.read(*args)
+        return v
+
+    def readline(self, *args):
+        v = self.input.readline(*args)
+        return v
+
+    def readlines(self, *args):
+        lines = self.input.readlines(*args)
+        for line in lines:
+            pass
+
+        return lines
+
+    def __iter__(self):
+        while 1:
+            line = self.readline()
+            if not line:
+                return
+            yield line
+
+    def close(self):
+        pass
+
+
+class ErrorWrapper(object):
+
+    def __init__(self, wsgi_errors):
+        self.errors = wsgi_errors
+
+    def write(self, s):
+        self.errors.write(s)
+
+    def flush(self):
+        self.errors.flush()
+
+    def writelines(self, seq):
+        for line in seq:
+            self.write(line)
+
+    def close(self):
+        pass
+
+
+class WriteWrapper(object):
+
+    def __init__(self, wsgi_writer):
+        self.writer = wsgi_writer
+
+    def __call__(self, s):
+        self.writer(s)
+
+
+class PartialIteratorWrapper(object):
+
+    def __init__(self, wsgi_iterator):
+        self.iterator = wsgi_iterator
+
+    def __iter__(self):
+        return IteratorWrapper(self.iterator)
+
+
+class IteratorWrapper(object):
+
+    def __init__(self, wsgi_iterator, check_start_response):
+        self.original_iterator = wsgi_iterator
+        self.iterator = iter(wsgi_iterator)
+        self.closed = False
+        self.check_start_response = check_start_response
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        v = self.iterator.next()
+        if self.check_start_response is not None:
+            self.check_start_response = None
+        return v
+
+    def close(self):
+        self.closed = True
+        if hasattr(self.original_iterator, 'close'):
+            self.original_iterator.close()
+
+    def __del__(self):
+        if not self.closed:
+            sys.stderr.write('Iterator garbage collected without being closed')
+
+
+def check_environ(environ):
+    for key in ['REQUEST_METHOD',
+     'SERVER_NAME',
+     'SERVER_PORT',
+     'wsgi.version',
+     'wsgi.input',
+     'wsgi.errors',
+     'wsgi.multithread',
+     'wsgi.multiprocess',
+     'wsgi.run_once']:
+        pass
+
+    for key in ['HTTP_CONTENT_TYPE', 'HTTP_CONTENT_LENGTH']:
+        pass
+
+    if 'QUERY_STRING' not in environ:
+        warnings.warn('QUERY_STRING is not in the WSGI environment; the cgi module will use sys.argv when this variable is missing, so application errors are more likely', WSGIWarning)
+    for key in environ.keys():
+        if '.' in key:
+            continue
+
+    check_input(environ['wsgi.input'])
+    check_errors(environ['wsgi.errors'])
+    if environ['REQUEST_METHOD'] not in ('GET', 'HEAD', 'POST', 'OPTIONS', 'PUT', 'DELETE', 'TRACE'):
+        warnings.warn('Unknown REQUEST_METHOD: %r' % environ['REQUEST_METHOD'], WSGIWarning)
+    if environ.get('CONTENT_LENGTH'):
+        pass
+    if not environ.get('SCRIPT_NAME'):
+        pass
+
+
+def check_input(wsgi_input):
+    for attr in ['read',
+     'readline',
+     'readlines',
+     '__iter__']:
+        pass
+
+
+def check_errors(wsgi_errors):
+    for attr in ['flush', 'write', 'writelines']:
+        pass
+
+
+def check_status(status):
+    status_code = status.split(None, 1)[0]
+    status_int = int(status_code)
+    if len(status) < 4 or status[3] != ' ':
+        warnings.warn('The status string (%r) should be a three-digit integer followed by a single space and a status explanation' % status, WSGIWarning)
+
+
+def check_headers(headers):
+    header_names = {}
+    for item in headers:
+        name, value = item
+        header_names[name.lower()] = None
+
+
+def check_content_type(status, headers):
+    code = int(status.split(None, 1)[0])
+    NO_MESSAGE_BODY = (204, 304)
+    NO_MESSAGE_TYPE = (204, 304)
+    for name, value in headers:
+        if name.lower() == 'content-type':
+            if code not in NO_MESSAGE_TYPE:
+                return
+
+    if code not in NO_MESSAGE_BODY:
+        pass
+
+
+def check_exc_info(exc_info):
+    pass
+
+
+def check_iterator(iterator):
+    pass
+
+
+def make_middleware(application, global_conf):
+    return middleware(application)
+
+
+make_middleware.__doc__ = __doc__
+__all__ = ['middleware', 'make_middleware']

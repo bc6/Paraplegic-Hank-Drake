@@ -1,0 +1,384 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/control/utilMenu.py
+import uiconst
+import uicls
+import uiutil
+import blue
+import base
+import weakref
+import audioConst
+import uthread
+FRAMECOLOR = (1, 1, 1, 0.155)
+BGCOLOR = (0.1, 0.1, 0.1, 1.0)
+IDLE_OPACITY = 0.8
+MOUSEOVER_OPACITY = 1.0
+TOGGLEACTIVE_OPACITY = 0.8
+TOGGLEINACTIVE_OPACITY = 0.6
+DISABLED_OPACITY = 0.2
+
+class UtilMenu(uicls.ButtonIcon):
+    __guid__ = 'uicls.UtilMenu'
+    default_name = 'UtilMenu'
+    default_align = uiconst.TOPLEFT
+    default_state = uiconst.UI_NORMAL
+    default_texturePath = 'res:/UI/Texture/Icons/77_32_30.png'
+    default_iconSize = 16
+    default_width = 20
+    default_height = 20
+    default_menuAlign = uiconst.TOPLEFT
+    _getMenuFunction = None
+    _expanded = False
+    _menu = None
+
+    def Close(self, *args):
+        self.CloseMenu()
+        self._getMenuFunction = None
+        uicls.ButtonIcon.Close(self, *args)
+
+    def ApplyAttributes(self, attributes):
+        uicls.ButtonIcon.ApplyAttributes(self, attributes)
+        self._menu = None
+        self._menuButton = None
+        if attributes.GetUtilMenu:
+            self._getMenuFunction = attributes.GetUtilMenu
+        else:
+            raise RuntimeError('GetUtilMenu has to be provided in order to use UtilMenu')
+        texturePath = attributes.get('texturePath', self.default_texturePath)
+        iconSize = attributes.get('iconSize', self.default_iconSize)
+        self.texturePath = texturePath
+        self.iconSize = iconSize
+        self.menuAlign = attributes.get('menuAlign', self.default_menuAlign)
+
+    def OnClick(self, *args):
+        if not self.enabled:
+            return
+        if audioConst.BTNCLICK_DEFAULT:
+            uicore.Message(audioConst.BTNCLICK_DEFAULT)
+        self.ExpandMenu()
+
+    def CloseMenu(self, *args):
+        if self._menu:
+            menu = self._menu()
+            if menu:
+                menu.Close()
+        if self._menuButton:
+            menuButton = self._menuButton()
+            if menuButton:
+                menuButton.Close()
+
+    def ExpandMenu(self, *args):
+        if self._menu and self._menu():
+            self.CloseMenu()
+            return
+        l, t, w, h = self.GetAbsolute()
+        buttonCopy = uicls.Container(parent=uicore.layer.utilmenu, align=uiconst.TOPLEFT, pos=(l - 1,
+         t,
+         w + 2,
+         h), state=uiconst.UI_NORMAL, idx=0)
+        buttonCopy.OnMouseDown = self.CloseMenu
+        uicls.Sprite(parent=buttonCopy, texturePath=self.texturePath, state=uiconst.UI_DISABLED, align=uiconst.CENTER, width=self.iconSize, height=self.iconSize)
+        topOrBottomLine = uicls.Line(parent=buttonCopy, color=FRAMECOLOR, align=uiconst.TOTOP)
+        if self.menuAlign in (uiconst.BOTTOMLEFT, uiconst.BOTTOMRIGHT):
+            topOrBottomLine.align = uiconst.TOBOTTOM
+        uicls.Line(parent=buttonCopy, color=FRAMECOLOR, align=uiconst.TOLEFT)
+        uicls.Line(parent=buttonCopy, color=FRAMECOLOR, align=uiconst.TORIGHT)
+        uicls.Fill(bgParent=buttonCopy, color=BGCOLOR)
+        menuParent = uicls.ExpandedUtilMenu(parent=uicore.layer.utilmenu, idx=1)
+        menuParent.OnSizeChanged = self.UpdateMenuPosition
+        menuParent.ReloadMenu = self.ReloadMenu
+        menuParent.CloseMenu = self.CloseMenu
+        getMenuFunction = self._getMenuFunction
+        if getMenuFunction:
+            menuEntries = getMenuFunction(menuParent)
+            self._menu = weakref.ref(menuParent)
+            self._menuButton = weakref.ref(buttonCopy)
+            self._mouseDownCookie = uicore.uilib.RegisterForTriuiEvents([uiconst.UI_MOUSEDOWN], self.OnGlobalMouseDown)
+            uicore.animations.MorphScalar(buttonCopy, 'opacity', startVal=0.5, endVal=1.0, duration=0.2)
+            uicore.animations.MorphScalar(menuParent, 'opacity', startVal=0, endVal=1.0, duration=0.2)
+
+    def ReloadMenu(self):
+        if self._menu:
+            menuParent = self._menu()
+            menuParent.Flush()
+            getMenuFunction = self._getMenuFunction
+            if getMenuFunction:
+                menuEntries = getMenuFunction(menuParent)
+
+    def UpdateMenuPosition(self, *args):
+        if self._menu:
+            menu = self._menu()
+            if menu:
+                l, t, w, h = self.GetAbsolute()
+                if self.menuAlign in (uiconst.TOPRIGHT, uiconst.BOTTOMRIGHT):
+                    menu.left = l - menu.width + w + 1
+                else:
+                    menu.left = l - 1
+                if self.menuAlign in (uiconst.BOTTOMLEFT, uiconst.BOTTOMRIGHT):
+                    menu.top = t - menu.height
+                else:
+                    menu.top = t + h - 1
+
+    def OnGlobalMouseDown(self, *args):
+        if self.destroyed:
+            return False
+        if self._menu:
+            menu = self._menu()
+            mo = uicore.uilib.mouseOver
+            if uiutil.IsUnder(mo, menu):
+                return True
+        self.CloseMenu()
+        return False
+
+
+class ExpandedUtilMenu(uicls.ContainerAutoSize):
+    __guid__ = 'uicls.ExpandedUtilMenu'
+    default_state = uiconst.UI_NORMAL
+    default_opacity = 0
+    OnSizeChanged = None
+    ReloadMenu = None
+    CloseMenu = None
+
+    def Close(self, *args):
+        self.OnSizeChanged = None
+        self.ReloadMenu = None
+        self.CloseMenu = None
+        uicls.ContainerAutoSize.Close(self, *args)
+
+    def _OnSizeChange_NoBlock(self, *args, **kwds):
+        uicls.ContainerAutoSize._OnSizeChange_NoBlock(self, *args, **kwds)
+        if self.OnSizeChanged:
+            self.OnSizeChanged()
+
+    def ApplyAttributes(self, attributes):
+        attributes.align = uiconst.TOPLEFT
+        attributes.width = 128
+        attributes.height = 128
+        uicls.ContainerAutoSize.ApplyAttributes(self, attributes)
+        uicls.Frame(bgParent=self, color=FRAMECOLOR)
+        uicls.Fill(bgParent=self, color=BGCOLOR)
+
+    def _SetSizeAutomatically(self):
+        width = 0
+        for each in self.children:
+            width = max(width, each.GetEntryWidth())
+
+        self.width = width
+        uicls.ContainerAutoSize._SetSizeAutomatically(self)
+
+    def VerifyCallback(self, callback):
+        if callable(callback):
+            return True
+        if isinstance(callback, tuple):
+            func = callback[0]
+            if callable(func):
+                return True
+        raise RuntimeError('Callback has to be callable or tuple with callable as first argument')
+
+    def AddHeader(self, text):
+        uicls.UtilMenuHeader(parent=self, text=text)
+
+    def AddIconEntry(self, icon, text, callback = None, hint = None):
+        if callback:
+            self.VerifyCallback(callback)
+        uicls.UtilMenuIconEntry(parent=self, icon=icon, text=text, callback=callback, hint=hint)
+
+    def AddCheckBox(self, text, checked, callback = None, icon = None, hint = None):
+        if callback:
+            self.VerifyCallback(callback)
+        uicls.UtilMenuCheckBox(parent=self, text=text, checked=checked, icon=icon, hint=hint, callback=callback)
+
+    def AddRadioButton(self, text, checked, callback = None, icon = None, hint = None):
+        if callback:
+            self.VerifyCallback(callback)
+        uicls.UtilMenuRadioBox(parent=self, text=text, checked=checked, icon=icon, hint=hint, callback=callback)
+
+    def AddText(self, text, minTextWidth = 100):
+        uicls.UtilMenuText(parent=self, text=text, minTextWidth=minTextWidth)
+
+    def AddSpace(self, height = 5):
+        uicls.UtilMenuSpace(parent=self, height=height)
+
+    def AddDivider(self, padding = 0):
+        uicls.UtilMenuDivider(parent=self, padding=padding)
+
+
+class UtilMenuEntryBase(uicls.Container):
+    __guid__ = 'uicls.UtilMenuEntryBase'
+    default_align = uiconst.TOTOP
+    default_state = uiconst.UI_NORMAL
+    _hiliteSprite = None
+    callback = None
+    isToggleEntry = False
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        self.label = uicls.Label(parent=self, text=attributes.text, align=uiconst.CENTERLEFT, left=22, state=uiconst.UI_DISABLED)
+        icon = attributes.icon
+        if icon is not None:
+            self.icon = uicls.Icon(parent=self, icon=icon, state=uiconst.UI_DISABLED, left=3, width=16, height=16, align=uiconst.CENTERLEFT, ignoreSize=True)
+        self.ResetOpacity()
+        self.UpdateEntryHeight()
+
+    def UpdateEntryHeight(self):
+        self.height = max(18, self.label.textheight + 4)
+
+    def GetEntryWidth(self):
+        return self.label.width + self.label.left + 12
+
+    def ResetOpacity(self):
+        if not self.callback:
+            self.opacity = DISABLED_OPACITY
+        elif self.isToggleEntry:
+            if self.isChecked:
+                self.opacity = TOGGLEACTIVE_OPACITY
+            else:
+                self.opacity = TOGGLEINACTIVE_OPACITY
+        else:
+            self.opacity = IDLE_OPACITY
+
+    def OnClick(self, *args):
+        callback = self.callback
+        if callback:
+            if callable(callback):
+                callback()
+            elif isinstance(callback, tuple):
+                func = callback[0]
+                if callable(func):
+                    func(*callback[1:])
+        if self.isToggleEntry:
+            self.parent.ReloadMenu()
+        else:
+            self.parent.CloseMenu()
+
+    def OnMouseEnter(self, *args):
+        if not self.callback:
+            self.opacity = DISABLED_OPACITY
+        else:
+            self.opacity = MOUSEOVER_OPACITY
+            uicore.Message('ListEntryEnter')
+            if not self._hiliteSprite:
+                self._hiliteSprite = uicls.Sprite(parent=self, name='hiliteSprite', texturePath='res:/UI/Texture/classes/UtilMenu/entryHilite.png', color=(1, 1, 1, 0.15), padding=(1, 0, 1, 0), align=uiconst.TOALL, state=uiconst.UI_DISABLED)
+                self._hiliteSprite.display = False
+            if not self._hiliteSprite.display:
+                self._hiliteSprite.display = True
+                uicore.animations.SpMaskIn(self._hiliteSprite, duration=0.25)
+                self.hiliteTimer = base.AutoTimer(1, self._CheckIfStillHilited)
+
+    def OnMouseExit(self, *args):
+        if not (uiutil.IsUnder(uicore.uilib.mouseOver, self) or uicore.uilib.mouseOver is self):
+            self.ShowNotHilited()
+
+    def ShowNotHilited(self):
+        self.ResetOpacity()
+        self.hiliteTimer = None
+        if self._hiliteSprite and self._hiliteSprite.display:
+            uicore.animations.SpMaskOut(self._hiliteSprite, duration=0.06, callback=self._hiliteSprite.Hide)
+
+    def _CheckIfStillHilited(self):
+        if uiutil.IsUnder(uicore.uilib.mouseOver, self) or uicore.uilib.mouseOver is self:
+            return
+        self.ShowNotHilited()
+
+
+class UtilMenuIconEntry(UtilMenuEntryBase):
+    __guid__ = 'uicls.UtilMenuIconEntry'
+
+    def ApplyAttributes(self, attributes):
+        self.callback = attributes.callback
+        uicls.UtilMenuEntryBase.ApplyAttributes(self, attributes)
+
+
+class UtilMenuCheckBox(UtilMenuEntryBase):
+    __guid__ = 'uicls.UtilMenuCheckBox'
+    isToggleEntry = True
+    isChecked = False
+
+    def ApplyAttributes(self, attributes):
+        self.callback = attributes.callback
+        self.isChecked = attributes.checked
+        self.isToggleEntry = True
+        if attributes.icon is None:
+            if attributes.checked:
+                attributes.icon = 'res:/UI/Texture/classes/UtilMenu/checkBoxActive.png'
+            else:
+                attributes.icon = 'res:/UI/Texture/classes/UtilMenu/checkBoxInactive.png'
+        uicls.UtilMenuEntryBase.ApplyAttributes(self, attributes)
+
+
+class UtilMenuRadioBox(UtilMenuEntryBase):
+    __guid__ = 'uicls.UtilMenuRadioBox'
+
+    def ApplyAttributes(self, attributes):
+        self.callback = attributes.callback
+        self.isChecked = attributes.checked
+        self.isToggleEntry = True
+        if attributes.icon is None:
+            if attributes.checked:
+                attributes.icon = 'res:/UI/Texture/classes/UtilMenu/radioButtonActive.png'
+            else:
+                attributes.icon = 'res:/UI/Texture/classes/UtilMenu/radioButtonInactive.png'
+        uicls.UtilMenuEntryBase.ApplyAttributes(self, attributes)
+
+
+class UtilMenuHeader(uicls.Container):
+    __guid__ = 'uicls.UtilMenuHeader'
+    default_align = uiconst.TOTOP
+    default_state = uiconst.UI_DISABLED
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        self.label = uicls.Label(parent=self, text=attributes.text, align=uiconst.CENTERLEFT, left=6, color=(1, 1, 1, 0.8), state=uiconst.UI_DISABLED, bold=True, letterspace=1)
+        uicls.Line(parent=self, color=FRAMECOLOR, align=uiconst.TOBOTTOM, padLeft=1, padRight=1)
+        uicls.Sprite(parent=self, align=uiconst.TOALL, texturePath='res:/UI/Texture/classes/UtilMenu/headerGradient.png', color=(1, 1, 1, 0.1), padLeft=1, padRight=1)
+        self.UpdateEntryHeight()
+
+    def UpdateEntryHeight(self):
+        self.height = max(18, self.label.textheight + 4)
+
+    def GetEntryWidth(self):
+        return self.label.width + self.label.left * 2
+
+
+class UtilMenuText(uicls.Container):
+    __guid__ = 'uicls.UtilMenuText'
+    default_align = uiconst.TOTOP
+    default_height = 22
+    default_minTextWidth = 100
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        self.minTextWidth = attributes.get('minTextWidth', self.default_minTextWidth)
+        self.text = uicls.EveLabelMedium(parent=self, text=attributes.text, align=uiconst.TOTOP, padding=6, color=(1, 1, 1, 0.8), state=uiconst.UI_DISABLED)
+        self.text._OnSizeChange_NoBlock = self.OnTextSizeChange
+        self.height = self.text.textheight + 12
+
+    def GetEntryWidth(self):
+        return self.minTextWidth + 12
+
+    def OnTextSizeChange(self, newWidth, newHeight):
+        uicls.EveLabelMedium._OnSizeChange_NoBlock(self.text, newWidth, newHeight)
+        self.height = self.text.textheight + 12
+
+
+class UtilMenuSpace(uicls.Container):
+    __guid__ = 'uicls.UtilMenuSpace'
+    default_align = uiconst.TOTOP
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+
+    def GetEntryWidth(self):
+        return 0
+
+
+class UtilMenuDivider(uicls.Container):
+    __guid__ = 'uicls.UtilMenuDivider'
+    default_align = uiconst.TOTOP
+
+    def ApplyAttributes(self, attributes):
+        padding = attributes.padding or 0
+        attributes.height = 1 + padding * 2
+        uicls.Container.ApplyAttributes(self, attributes)
+        uicls.Line(parent=self, align=uiconst.TOTOP, padTop=padding, padLeft=1, padRight=1, color=FRAMECOLOR)
+
+    def GetEntryWidth(self):
+        return 0

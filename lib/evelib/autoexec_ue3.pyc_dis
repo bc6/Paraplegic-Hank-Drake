@@ -1,0 +1,109 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\eve\common\lib\autoexec_ue3.py
+import sys
+import logUE3
+from sake.const import PLATFORM_PS3
+from imp import new_module
+USESEEKFREE = False
+SEEKFREENAME = 'seekfree.sfm'
+
+def Run():
+    GAMEHOME = None
+    upperCase = False
+    for sysPath in sys.path:
+        lowerPath = sysPath.lower()
+        packageSuffix = 'zip'
+        idx = lowerPath.rfind('common.sdat')
+        if idx > -1:
+            packageSuffix = 'sdat'
+        else:
+            idx = lowerPath.rfind('common.zip')
+        if idx > -1:
+            GAMEHOME = sysPath[:idx]
+            s = sysPath[idx:]
+            if s.upper() == s:
+                upperCase = True
+            break
+
+    print 'GAMEHOME', GAMEHOME
+    PACKAGES = ['python27.' + packageSuffix, 'common.' + packageSuffix]
+    if upperCase:
+        PACKAGES = [ s.upper() for s in PACKAGES ]
+    if sys.platform == 'win32' and sys.hasPyCompiler:
+        sys.path = ['../../../tool/bin']
+        import sitecustomize
+        sys.packaged = False
+        import libpaths
+        libPackages = set()
+        for pkg in libpaths.PACKAGES:
+            if 'pkgName' in pkg:
+                libPackages.add(pkg['pkgName'])
+
+        if not set(PACKAGES) <= libPackages:
+            raise RuntimeError('Package definitions differ! Please fix', libPackages, set(PACKAGES))
+        import seekfreeimp
+        if not libpaths.PKG_SEEKFREE['pkgName'] == SEEKFREENAME == seekfreeimp.SEEKFREENAME:
+            raise RuntimeError('Seek-free package name differ! Please fix.')
+        print 'Python using file modules. sys.path:'
+        for p in sys.path:
+            print '\t', p
+
+    else:
+        sys.packaged = True
+        sys.path = [ GAMEHOME + pkg for pkg in PACKAGES ]
+        print 'Python using packaged modules:', sys.path
+        if USESEEKFREE:
+            import seekfreeimp
+            if PLATFORM_PS3 == sys.platform:
+                TmpSeekFreeName = SEEKFREENAME[:-4] + '.sdat'
+            else:
+                TmpSeekFreeName = SEEKFREENAME
+            if upperCase:
+                TmpSeekFreeName = TmpSeekFreeName.upper()
+            SeekFreePkgPath = GAMEHOME + TmpSeekFreeName
+            seekfreeimp.Install(SeekFreePkgPath, testEmpty=False)
+        linecache = new_module('linecache')
+        dummy = lambda *args: ''
+        linecache.checkcache = dummy
+        linecache.getline = dummy
+        dummy = lambda *args: []
+        linecache.updatecache = dummy
+        sys.modules['linecache'] = linecache
+    try:
+        import unicodedata
+    except ImportError:
+        unicodedata = new_module('unicodedata')
+        unicodedata.ucd_3_2_0 = None
+        sys.modules['unicodedata'] = unicodedata
+
+    import unicodedata
+    import logging
+    logging.root.setLevel(logging.INFO)
+    import sake.loginit
+    sake.loginit.SetRedirectLoggerToStdOut(False)
+    sake.loginit.SetRedirectOutput(False)
+    sake.loginit.SetRedirectLoggerToNull(False)
+    if sys.noLogging:
+        nullHandler = logging.NullHandler()
+        logging.root.addHandler(nullHandler)
+    else:
+        from dust.logunreal import Init
+        Init()
+    InitWarnings()
+
+
+def InitWarnings():
+    import warnings
+    import logging
+    stdformat = warnings.formatwarning
+
+    def formatwarning_tb(message, category, filename, lineno, line = None):
+        import traceback
+        tb = ''.join(traceback.format_list(traceback.extract_stack()[:-2]))
+        return stdformat(message, category, filename, lineno, line) + 'traceback\n' + tb + 'traceback end\n'
+
+    warnings.formatwarning = formatwarning_tb
+    logging.captureWarnings(True)
+
+
+def Run2():
+    pass

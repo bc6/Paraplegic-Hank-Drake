@@ -1,0 +1,1600 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/shared/comtool/lscchannel.py
+import uix
+import uiutil
+import xtriui
+import form
+import uthread
+import blue
+import re
+import util
+import listentry
+import chat
+import sys
+import types
+import service
+import log
+import uiconst
+import uicls
+import base
+import vivoxConstants
+from itertools import izip, imap
+import localization
+import fontConst
+import bluepy
+import unicodedata
+seemsURL = re.compile('\\b\n        (                                           # Capture 1: entire matched URL\n            (?:\n                https?://                           # http or https protocol\n                |                                   #   or\n                www\\d{0,3}[.]                       # "www.", "www1.", "www2." \x85 "www999."\n                |                                   #   or\n                [a-z0-9.\\-]+[.][a-z]{2,7}/          # looks like domain name followed by a slash\n            )\n            (?:                                     # One or more:\n                [^\\s()<>]+                          #   Run of non-space, non-()<>\n                |                                   #     or\n                \\(([^\\s()<>]+|(\\([^\\s()<>]+\\)))*\\)  #   balanced parens, up to 2 levels\n            )+\n            (?:                                     # End with:\n                \\(([^\\s()<>]+|(\\([^\\s()<>]+\\)))*\\)  #   balanced parens, up to 2 levels\n                |                                   #     or\n                [^\\s`!()\\[\\]{};:\'".,<>?\xab\xbb\x93\x94\x91\x92]      #   not a space or one of these punct chars\n            )\n        )', re.X)
+alreadyURLOrTag = re.compile('(<a .*?/a>|<url.*?/url>|<.*?>)')
+showInfoComplete = re.compile("(?P<pretext>.*?<loc><url=showinfo:) # Non-greedy consomption of all text up to shoinfo tag\n                                 (?P<typeID>\\d*)                # typeID, always present\n                                 (?P<seperator>/*)              # Optional seperator, only present when itemID is\n                                 (?P<itemID>\\d*)                # optional itemID\n                                 >                              # close bracket for show info anchor\n                                 (?P<itemName>.*?)              # Supplied item name\n                                 (?P<posttext></url>)           # Close anchor. Only here to ensure the link isn't mangled.\n                                 </loc>", re.X)
+ROLE_SLASH = service.ROLE_GML | service.ROLE_LEGIONEER
+ROLE_TRANSAM = service.ROLE_TRANSLATION | service.ROLE_TRANSLATIONADMIN | service.ROLE_TRANSLATIONEDITOR
+MAXMSGS = 100
+CHANNELTYPEMODES = [{'no': localization.GetByLabel('UI/Chat/HideMemberList')}, {'recent': localization.GetByLabel('UI/Chat/MemberListRecentSpeakers')}, {'all': ''}]
+CHANNELTEXTMODES = [{'no': localization.GetByLabel('UI/Chat/ShowTextOnly')}, {'small': localization.GetByLabel('UI/Chat/ShowTextWithSmallPortrait')}, {'big': localization.GetByLabel('UI/Chat/ShowTextWithBigPortrait')}]
+_tfrom = u'1370,-_*+=^~@\u263b\u3002\u03bc\u03bf\u043c\u043e\u0441'
+_tto = u'leto...........momoc'
+_spamTrans = dict(izip(imap(ord, _tfrom), _tto))
+for ordinal in [u' ',
+ u'\\',
+ u'|',
+ u'/',
+ u'!',
+ u'(',
+ u')',
+ u'[',
+ u']',
+ u'{',
+ u'}',
+ u'<',
+ u'>',
+ u'"',
+ u"'",
+ u'`',
+ u'\xb4']:
+    _spamTrans[ord(ordinal)] = None
+
+_dotsubst = re.compile('\\.{2,}')
+
+def NormalizeForSpam(s):
+    return _dotsubst.sub('.', unicode(s).lower().translate(_spamTrans).replace('dot', '.'))
+
+
+@util.Memoized
+def GetTaboos():
+    bannedPhrasesInChat = sm.GetService('sites').GetBannedInChatList()
+    return map(NormalizeForSpam, bannedPhrasesInChat)
+
+
+def IsSpam(text):
+    normtext = NormalizeForSpam(text)
+    for taboo in GetTaboos():
+        if taboo in normtext:
+            foundSpam = True
+            idx = text.find(taboo)
+            if idx > 0:
+                foundSpam = False
+                while idx > 0:
+                    if text[idx - 1].isalnum():
+                        idx = text.find(taboo, idx + 1)
+                    else:
+                        foundSpam = True
+                        break
+
+                return foundSpam
+            return True
+    else:
+        return False
+
+
+class LSCStack(uicls.WindowStack):
+    __guid__ = 'form.LSCStack'
+    default_left = 16
+    default_width = 317
+    default_height = 200
+
+    @staticmethod
+    def default_top(*args):
+        return uicore.desktop.height - form.LSCStack.default_height - 16
+
+
+class Channel(uicls.Window):
+    __guid__ = 'form.LSCChannel'
+    __notifyevents__ = ['OnSpeakingEvent', 'OnPortraitCreated']
+    default_stackID = 'LSCStack'
+    default_windowID = 'chatchannel'
+    default_left = 16
+    default_width = 317
+    default_height = 200
+    default_open = True
+
+    @staticmethod
+    def default_top(*args):
+        return uicore.desktop.height - form.LSCChannel.default_height - 16
+
+    @classmethod
+    def Reload(cls, instance):
+        pass
+
+    def ApplyAttributes(self, attributes):
+        uicls.Window.ApplyAttributes(self, attributes)
+        channelID = attributes.channelID
+        otherID = attributes.otherID
+        self.memberCount = 0
+        self.channelID = None
+        self.output = None
+        self.userlist = None
+        self.voiceOnlyMembers = []
+        self.waiting = None
+        self.uss_w = None
+        self.uss_x = None
+        self.input = None
+        self.mode = None
+        self.scaling = 0
+        self.messages = []
+        self.closing = 0
+        self.inputs = ['']
+        self.inputIndex = None
+        self.channelInitialized = 0
+        self.loadingmessages = 0
+        self.changingfont = 0
+        self.waitingForReturn = 0
+        self.loadQueue = 0
+        self.Startup(channelID, otherID)
+
+    def Startup(self, channelID, otherID = None):
+        if channelID == -1:
+            return
+        self.attributesBunch.channelID = channelID
+        self.attributesBunch.otherID = otherID
+        self.channelID = channelID
+        chatlog = '\r\n\r\n\n        \n---------------------------------------------------------------\n\n  Channel ID:      %s\n  Channel Name:    %s\n  Listener:        %s\n  Session started: %s\n---------------------------------------------------------------\n\n' % (channelID,
+         chat.GetDisplayName(channelID),
+         cfg.eveowners.Get(eve.session.charid).name,
+         util.FmtDate(blue.os.GetWallclockTime()))
+        self.SetUserEntryType()
+        self.scope = 'all'
+        self.windowCaption = chat.GetDisplayName(channelID).split('\\')[-1]
+        try:
+            self.mode = int(settings.user.ui.Get('%s_mode' % self.name, 1))
+            self.usermode = int(settings.user.ui.Get('%s_usermode' % self.name, 1))
+        except:
+            log.LogTraceback('Settings corrupt, default mode engaged')
+            self.mode = 0
+            self.usermode = 1
+            sys.exc_clear()
+
+        self.logfile = None
+        if settings.user.ui.Get('logchat', 1):
+            try:
+                year, month, weekday, day, hour, minute, second, msec = blue.os.GetTimeParts(blue.os.GetWallclockTime())
+                timeStamp = '%d%.2d%.2d_%.2d%.2d%.2d' % (year,
+                 month,
+                 day,
+                 hour,
+                 minute,
+                 second)
+                displayName = uiutil.StripTags(chat.GetDisplayName(channelID, otherID=otherID))
+                filename = '%s_%s' % (displayName, timeStamp)
+                filename = filename.replace('\\', '_').replace('?', '_').replace('*', '_').replace(':', '').replace('.', '').replace(' ', '_')
+                filename = filename.replace('/', '_').replace('"', '_').replace('-', '_').replace('|', '_').replace('<', '_').replace('>', '_')
+                filename = blue.win32.SHGetFolderPath(blue.win32.CSIDL_PERSONAL) + '/EVE/logs/Chatlogs/%s.txt' % filename
+                self.logfile = blue.classes.CreateInstance('blue.ResFile')
+                if not self.logfile.Open(filename, 0):
+                    self.logfile.Create(filename)
+                self.logfile.Write(chatlog.encode('utf-16'))
+            except:
+                self.logfile = None
+                log.LogTraceback('Failed to instantiate log file')
+                sys.exc_clear()
+
+        self.SetWndIcon('ui_9_64_2')
+        self.HideMainIcon()
+        self.SetMinSize([250, 150])
+        if type(channelID) != types.IntType and not eve.session.role & (service.ROLE_CHTADMINISTRATOR | service.ROLE_GMH):
+            if channelID[0][0] not in ('global', 'regionid', 'constellationid'):
+                self.MakeUnKillable()
+                if self.sr.stack:
+                    self.sr.stack.Check()
+        btnparent = uicls.Container(parent=self.sr.topParent, idx=0, pos=(0, 0, 0, 16), name='btnparent', state=uiconst.UI_PICKCHILDREN, align=uiconst.TOTOP)
+        nopicture = uicls.Icon(parent=btnparent, left=38, name='nopicture', state=uiconst.UI_NORMAL, align=uiconst.TOPLEFT)
+        nopicture.icon = 'ui_38_16_158'
+        nopicture.mouseoverIcon = 'ui_38_16_174'
+        smallpicture = uicls.Icon(parent=btnparent, left=54, name='smallpicture', state=uiconst.UI_NORMAL, align=uiconst.TOPLEFT)
+        smallpicture.icon = 'ui_38_16_157'
+        smallpicture.mouseoverIcon = 'ui_38_16_173'
+        bigpicture = uicls.Icon(parent=btnparent, left=70, name='bigpicture', state=uiconst.UI_NORMAL, align=uiconst.TOPLEFT)
+        bigpicture.icon = 'ui_38_16_159'
+        bigpicture.mouseoverIcon = 'ui_38_16_175'
+        nouserlist = uicls.Icon(parent=btnparent, left=54, name='nouserlist', state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
+        nouserlist.icon = 'ui_38_16_153'
+        nouserlist.mouseoverIcon = 'ui_38_16_169'
+        recentuserlist = uicls.Icon(parent=btnparent, left=40, name='recentuserlist', state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
+        recentuserlist.icon = 'ui_38_16_154'
+        recentuserlist.mouseoverIcon = 'ui_38_16_170'
+        alluserlist = uicls.Icon(parent=btnparent, left=26, name='alluserlist', state=uiconst.UI_NORMAL, align=uiconst.TOPRIGHT)
+        alluserlist.icon = 'ui_38_16_155'
+        alluserlist.mouseoverIcon = 'ui_38_16_171'
+        self.sr.topParent.align = uiconst.TOALL
+        self.sr.topParent.padLeft = const.defaultPadding
+        self.sr.topParent.padRight = const.defaultPadding
+        self.sr.topParent.padTop = 0
+        self.sr.topParent.padBottom = const.defaultPadding
+        self.SetTopparentHeight(0)
+        iconClipper = uiutil.FindChild(self, 'iconclipper')
+        if iconClipper:
+            iconClipper.top = -1
+        self.userlist = uicls.BasicDynamicScroll(parent=self.sr.topParent, name='userlist', align=uiconst.TORIGHT)
+        self.userlist.width = settings.user.ui.Get('%s_userlistwidth' % self.name, 128)
+        self.userlist.GetContentContainer().OnDropData = self.OnDropCharacter
+        div = uicls.Container(name='userlistdiv', parent=self.sr.topParent, width=const.defaultPadding, state=uiconst.UI_NORMAL, align=uiconst.TORIGHT)
+        div.OnMouseDown = self.UserlistStartScale
+        div.OnMouseUp = self.UserlistEndScale
+        div.OnMouseMove = self.UserlistScaling
+        div.cursor = 18
+        self.sr.userlistdiv = div
+        if not sm.GetService('LSC').IsMemberless(self.channelID) and self.usermode == 1:
+            self.usermode = 2
+        if type(self.channelID) != types.IntType and self.channelID[0][0] in ('global', 'regionid', 'constellationid') and self.usermode == 2:
+            self.usermode = 1
+        self.userlistbtns = []
+        for x, mode in enumerate(CHANNELTYPEMODES):
+            displayMode = mode.items()[0][0]
+            displayHint = mode.items()[0][1]
+            btn = uiutil.GetChild(self, '%suserlist' % displayMode)
+            btn.OnClick = (self.ModeChange,
+             btn,
+             x,
+             'userlist')
+            btn.OnMouseEnter = (self.ModeBtnEnter,
+             btn,
+             x,
+             'userlist')
+            btn.OnMouseExit = (self.ModeBtnLeave,
+             btn,
+             x,
+             'userlist')
+            btn.hint = displayHint
+            self.userlistbtns.append(btn)
+
+        self.InitChannelModeButtons()
+        self.modebtns = []
+        for x, mode in enumerate(CHANNELTEXTMODES):
+            displayMode = mode.items()[0][0]
+            displayHint = mode.items()[0][1]
+            btn = uiutil.GetChild(self, '%spicture' % displayMode)
+            btn.OnClick = (self.ModeChange,
+             btn,
+             x,
+             'mode')
+            btn.OnMouseEnter = (self.ModeBtnEnter,
+             btn,
+             x,
+             'mode')
+            btn.OnMouseExit = (self.ModeBtnLeave,
+             btn,
+             x,
+             'mode')
+            btn.hint = displayHint
+            self.modebtns.append(btn)
+
+        self.output = uicls.BasicDynamicScroll(parent=self.sr.topParent, name='chatoutput_%s' % channelID)
+        self.output.stickToBottom = 1
+        self.output.OnContentResize = self.OnOutputResize
+        self.output.sr.content.GetMenu = self.GetOutputMenu
+        self.input = uicls.EditPlainText(parent=self.sr.topParent, align=uiconst.TOBOTTOM, name='input%s' % self.name, height=settings.user.ui.Get('chatinputsize_%s' % self.name, 64), maxLength=const.CHT_MAX_STRIPPED_INPUT, idx=0)
+        self.input.ValidatePaste = self.ValidatePaste
+        divider = xtriui.Divider(name='divider', align=uiconst.TOTOP, idx=1, height=const.defaultPadding, parent=self.input, state=uiconst.UI_NORMAL)
+        divider.Startup(self.input, 'height', 'y', 48, 96)
+        divider.OnSizeChanged = self.OnInputSizeChanged
+        self.input.OnReturn = self.InputKeyUp
+        self.input.CtrlUp = self.CtrlUp
+        self.input.CtrlDown = self.CtrlDown
+        self.input.RegisterFocus = self.RegisterFocus
+        uiutil.SetOrder(divider, 0)
+        btn = uicls.Icon(name='channelWndIcon', icon='ui_73_16_10', parent=self.sr.topParent, pos=(0, 0, 16, 16), align=uiconst.TOPRIGHT, hint=localization.GetByLabel('UI/Chat/OpenChannelWindow'))
+        btn.OnClick = self.OpenChannelWindow
+        self.sr.smaller = uicls.EveLabelSmall(text=localization.GetByLabel('UI/Chat/DecreaseFontSizeIcon'), parent=self.sr.topParent, left=4, state=uiconst.UI_NORMAL)
+        self.sr.smaller.OnClick = (self.ChangeFont, -1)
+        self.sr.smaller.hint = localization.GetByLabel('UI/Chat/DecreaseFontSize')
+        self.sr.smaller.top = -self.sr.smaller.textheight + 15
+        self.sr.bigger = uicls.EveLabelMedium(text=localization.GetByLabel('UI/Chat/IncreaseFontSizeIcon'), parent=self.sr.topParent, left=20, state=uiconst.UI_NORMAL)
+        self.sr.bigger.OnClick = (self.ChangeFont, 1)
+        self.sr.bigger.hint = localization.GetByLabel('UI/Chat/IncreaseFontSize')
+        self.sr.bigger.top = -self.sr.bigger.textheight + 16
+        self.ChangeFont()
+        self.UpdateUserIconHint()
+        self.SetupUserlist(self.usermode)
+        self.channelInitialized = 1
+        self.UpdateCaption(1)
+        self.IsBrowser = 1
+        try:
+            self.SpeakMOTD()
+        except:
+            log.LogException()
+            sys.exc_clear()
+
+        focus = uicore.registry.GetFocus()
+        if not (focus and (isinstance(focus, uicls.EditCore) or isinstance(focus, uicls.SinglelineEditCore))):
+            uicore.registry.SetFocus(self.input)
+        else:
+            uicore.registry.RegisterFocusItem(self.input)
+
+    def OnOutputResize(self, clipperWidth, clipperHeight, *args, **kw):
+        self.resizeTimer = base.AutoTimer(100, self.DelayedOutputResize, clipperWidth, clipperHeight)
+
+    def DelayedOutputResize(self, width, height):
+        self.resizeTimer = None
+        uicls.BasicDynamicScroll.OnContentResize(self.output, width, height)
+
+    def GetStackClass(self):
+        return form.LSCStack
+
+    def __GetMOTD(self):
+        if isinstance(self.channelID, int) or self.channelID[0][0] in ('corpid', 'allianceid'):
+            if sm.IsServiceRunning('LSC') and self.channelID in sm.services['LSC'].channels:
+                return sm.services['LSC'].channels[self.channelID].info.motd or ''
+        elif self.channelID[0][0] == 'fleetid':
+            return sm.GetService('fleet').GetMotd()
+        return ''
+
+    def SpeakMOTD(self, whine = False):
+        motd = self.__GetMOTD()
+        if motd or whine:
+            self.Speak(localization.GetByLabel('UI/Chat/ChannelMotd', motd=motd), const.ownerSystem)
+
+    def Spam(self):
+        while getattr(self, 'spam', 0) == 1:
+            self.__Output('a b c d f g h i j k l m n o p r s t u v x y z asd\xe6lf akjdf\xe6laksjdf \xe6lasdfkj \xe6al kfj\xe6laksfj \xe6laskdfjal\xe6sk fja\xe6lskdfj a\xe6lsdfkja \xe6ldfkja\xe6dkj\xe6alsdfk jadfkja\xe6lfk\xe6aldfkja\xe6slfkd a\xe6ldfkja\xe6ldfkja\xe6ldfkjadfl\xe6k ', eve.session.charid, 1)
+            blue.pyos.synchro.Yield()
+
+    def Restart(self, channelID):
+        self.channelID = channelID
+        self.windowCaption = chat.GetDisplayName(channelID).split('\\')[-1]
+        self.SetupUserlist(self.usermode)
+        if self.messages:
+            self.messages = [ msg for msg in self.messages if msg[2] != const.ownerSystem or not msg[1].startswith(localization.GetByLabel('UI/Chat/ChannelWindow/ChannelChangedTo')) ]
+            self.LoadMessages()
+        try:
+            self.InitChannelModeButtons()
+            if util.IsMemberlessLocal(channelID):
+                self.Speak(localization.GetByLabel('UI/Chat/ChannelWindow/ChannelListUnavailable'), const.ownerSystem)
+            else:
+                self.Speak(localization.GetByLabel('UI/Chat/ChannelWindow/ChannelChangedToChannelName', channelName=chat.GetDisplayName(channelID, systemOverride=1).split('\\')[-1]), const.ownerSystem)
+            self.SpeakMOTD()
+        except:
+            log.LogException()
+            sys.exc_clear()
+
+    def InitChannelModeButtons(self):
+        for x, mode in enumerate(CHANNELTYPEMODES):
+            displayMode = mode.items()[0][0]
+            displayHint = mode.items()[0][1]
+            name = '%suserlist' % displayMode
+            for btn in self.userlistbtns:
+                if btn.name == name:
+                    break
+            else:
+                continue
+
+            btn.state = uiconst.UI_NORMAL
+            btn.hint = displayHint
+            if displayMode == 'all':
+                if type(self.channelID) != types.IntType and self.channelID[0][0] in ('global', 'regionid', 'constellationid'):
+                    btn.state = uiconst.UI_DISABLED
+                elif util.IsMemberlessLocal(self.channelID):
+                    btn.state = uiconst.UI_DISABLED
+            elif displayMode == 'recent':
+                if not sm.StartService('LSC').IsMemberless(self.channelID):
+                    btn.state = uiconst.UI_DISABLED
+                    btn.hint = localization.GetByLabel('UI/Chat/NoRecentSpeakerList')
+            if self.usermode != 0 and btn.state == uiconst.UI_DISABLED and x in (1, 2):
+                idx = [1, 2][x == 1]
+                settings.user.ui.Set('%s_usermode' % self.name, idx)
+                self.SetupUserlist(idx)
+            if x == 2 and btn.state != uiconst.UI_DISABLED:
+                self.UpdateUserIconHint()
+
+    def RefreshVoiceStatus(self, statusData):
+        if len(statusData) == 0:
+            return
+        for each in statusData:
+            charID, status, uri = each
+            entry = self.GetUserEntry(int(charID))
+            if not entry:
+                continue
+            entry.voiceStatus = status
+            if entry.panel:
+                entry.panel.SetVoiceIcon(status, charID in self.voiceOnlyMembers)
+
+    def VoiceIconChange(self, charID, status):
+        if status == vivoxConstants.NOTJOINED and charID in self.voiceOnlyMembers:
+            self.voiceOnlyMembers.remove(charID)
+            self.DelMember(charID)
+            return
+        entry = self.GetUserEntry(int(charID))
+        if not entry:
+            if sm.GetService('LSC').IsMemberless(self.channelID) and status != vivoxConstants.TALKING:
+                return
+            if charID == session.charid:
+                if status != vivoxConstants.TALKING:
+                    return
+            else:
+                self.voiceOnlyMembers.append(charID)
+            self.userlist.AddEntries(-1, [listentry.Get(self.userEntry, {'charID': charID,
+              'info': cfg.eveowners.Get(charID),
+              'color': None,
+              'channelID': self.channelID,
+              'voiceStatus': status,
+              'voiceOnly': charID != session.charid})])
+            return
+        entry.voiceStatus = status
+        if entry.panel:
+            entry.panel.SetVoiceIcon(status, charID in self.voiceOnlyMembers)
+
+    def OnSpeakingEvent(self, charID, channelID, isSpeaking):
+        if isSpeaking and channelID == self.channelID and settings.public.audio.Get('talkMoveToTopBtn', 0):
+            self.MoveToTop(charID)
+
+    def OnPortraitCreated(self, charID):
+        if self.destroyed or self.state == uiconst.UI_HIDDEN or self.output is None:
+            return
+        UI_HIDDEN = uiconst.UI_HIDDEN
+        for node in self.output.GetNodes():
+            if not node.panel or node.panel.state == UI_HIDDEN:
+                continue
+            if charID == node.charid and not node.panel.picloaded:
+                node.panel.LoadPortrait(orderIfMissing=False)
+
+        if self.userlist.state != UI_HIDDEN:
+            userNode = self.GetUserEntry(charID)
+            if userNode and userNode.panel:
+                if not userNode.panel.picloaded:
+                    userNode.panel.LoadPortrait(orderIfMissing=False)
+
+    def MoveToTop(self, charid):
+        entry = self.GetUserEntry(int(charid))
+        if entry is not None:
+            self.userlist.ChangeNodeIndex(0, entry)
+
+    def GetUserEntry(self, charID):
+        for each in self.userlist.GetNodes():
+            if each.charID == charID:
+                return each
+
+    def OpenChannelWindow(self, *args):
+        form.Channels.Open()
+
+    def UpdateUserIconHint(self):
+        if type(self.channelID) != types.IntType and self.channelID[0][0] in ('global', 'regionid', 'constellationid'):
+            self.userlistbtns[2].hint = localization.GetByLabel('UI/Chat/MemberListNone')
+        elif sm.GetService('LSC').IsMemberless(self.channelID):
+            self.userlistbtns[2].hint = localization.GetByLabel('UI/Chat/MemberListDelayed')
+        else:
+            self.userlistbtns[2].hint = localization.GetByLabel('UI/Chat/MemberListImmediate')
+
+    def ChangeFont(self, add = 0, *args):
+        if self.changingfont:
+            return
+        fontsize = settings.user.ui.Get('chatfontsize_%s' % self.name, 12)
+        if add <= -1 and min(fontsize + add, fontsize - add) < 9 or add >= 1 and max(fontsize + add, fontsize - add) > 28:
+            return
+        newsize = fontsize + add
+        self.changingfont = 1
+        self.fontsize = newsize
+        self.letterSpace = 0
+        if self.fontsize <= fontConst.EVE_SMALL_FONTSIZE:
+            self.letterSpace = 1
+        self.LoadMessages()
+        self.input.SetDefaultFontSize(newsize)
+        settings.user.ui.Set('chatfontsize_%s' % self.name, newsize)
+        self.changingfont = 0
+
+    def OnEndMinimize_(self, *args):
+        self.OnTabDeselect()
+
+    def OnEndMaximize_(self, *args):
+        self.OnTabSelect()
+
+    def OnInputSizeChanged(self):
+        settings.user.ui.Set('chatinputsize_%s' % self.name, self.input.height)
+
+    def __Settings(self, *args):
+        sm.GetService('LSC').Settings(self.channelID)
+
+    def GetMenu(self, *args):
+        m = [(uiutil.MenuLabel('UI/Chat/ClearAllContent'), self.ClearContent)]
+        m += uicls.Window.GetMenu(self)
+        if isinstance(self.channelID, int) or self.channelID[0][0] in ('corpid', 'allianceid') or self.channelID[0][0] == 'fleetid':
+            m += [(uiutil.MenuLabel('UI/Chat/ReloadMOTD'), self.ShowMotdFromMenu)]
+        m += [None]
+        showSettings = False
+        if isinstance(self.channelID, int) and sm.GetService('LSC').IsOperator(self.channelID):
+            showSettings = True
+        elif isinstance(self.channelID, tuple):
+            channelType = self.channelID[0][0]
+            if channelType in ('corpid', 'allianceid'):
+                if session.corprole & const.corpRoleChatManager == const.corpRoleChatManager:
+                    showSettings = True
+            elif channelType == 'fleetid':
+                if sm.GetService('fleet').IsBoss():
+                    showSettings = True
+        if showSettings:
+            m.append((uiutil.MenuLabel('UI/Chat/Settings'), self.__Settings))
+        prefsName = 'chatCondensedUserList_%s' % self.name
+        if settings.user.ui.Get(prefsName, False):
+            m.append((uiutil.MenuLabel('UI/Chat/ShowDetailedMemberList'), self.DisplayUserList, (False,)))
+        else:
+            m.append((uiutil.MenuLabel('UI/Chat/ShowCompactMemberList'), self.DisplayUserList, (True,)))
+        prefsName = 'chatWindowBlink_%s' % self.name
+        if settings.user.ui.Get(prefsName, 1):
+            m.append((uiutil.MenuLabel('UI/Chat/BlinkOff'), settings.user.ui.Set, (prefsName, 0)))
+        else:
+            m.append((uiutil.MenuLabel('UI/Chat/BlinkOn'), settings.user.ui.Set, (prefsName, 1)))
+        if sm.GetService('vivox').Enabled() and sm.GetService('vivox').LoggedIn():
+            m += [None]
+            fleetChannels = ['fleet', 'wing', 'squad']
+            excludedFromVoiceChannels = ['regionid',
+             'solarsystemid',
+             'constellationid',
+             'allianceid',
+             'warfactionid',
+             'incursion']
+            excludedFromVoice = False
+            isFleetChannel = False
+            if type(self.channelID) == types.TupleType:
+                if util.IsNPC(self.channelID[0][1]):
+                    excludedFromVoice = True
+                for excludedChannelName in excludedFromVoiceChannels:
+                    if self.channelID[0][0].startswith(excludedChannelName):
+                        excludedFromVoice = True
+                        break
+
+                for fleetChannelName in fleetChannels:
+                    if self.channelID[0][0].startswith(fleetChannelName):
+                        isFleetChannel = True
+                        break
+
+            elif type(self.channelID) == types.IntType:
+                excludedFromVoice = self.channelID >= 0 and self.channelID <= 1000
+            else:
+                raise RuntimeError('LSC only supports channel IDs of tuple or int type.')
+            if not excludedFromVoice:
+                if sm.GetService('vivox').IsVoiceChannel(self.channelID):
+                    m.append((uiutil.MenuLabel('UI/Chat/LeaveAudio'), self.VivoxLeaveAudio))
+                    currentSpeakingChannel = sm.GetService('vivox').GetSpeakingChannel()
+                    if type(currentSpeakingChannel) is types.TupleType:
+                        currentSpeakingChannel = (currentSpeakingChannel,)
+                    if currentSpeakingChannel != self.channelID:
+                        m.append((uiutil.MenuLabel('UI/Chat/MakeSpeakingChannel'), self.VivoxSetAsSpeakingChannel))
+                elif isFleetChannel:
+                    if sm.GetService('fleet').GetOptions().isVoiceEnabled:
+                        m.append((uiutil.MenuLabel('UI/Chat/JoinAudio'), self.VivoxJoinAudio))
+                else:
+                    m.append((uiutil.MenuLabel('UI/Chat/JoinAudio'), self.VivoxJoinAudio))
+        return m
+
+    def DisplayUserList(self, condensed = False, *args):
+        prefsName = 'chatCondensedUserList_%s' % self.name
+        settings.user.ui.Set(prefsName, condensed)
+        self.SetUserEntryType()
+        self.OnTabSelect()
+
+    def VivoxJoinAudio(self, *args):
+        sm.GetService('vivox').JoinChannel(self.channelID)
+        sm.GetService('vivox').SetSpeakingChannel(self.channelID)
+
+    def VivoxLeaveAudio(self, *args):
+        sm.GetService('vivox').LeaveChannel(self.channelID)
+        self.DelVoiceUsers(self.voiceOnlyMembers)
+
+    def VivoxSetAsSpeakingChannel(self, *args):
+        sm.GetService('vivox').SetSpeakingChannel(self.channelID)
+
+    def VivoxMuteMe(self, *args):
+        sm.GetService('vivox').Mute(1)
+
+    def VivoxLeaderGag(self, *args):
+        sm.GetService('fleet').SetVoiceMuteStatus(1, self.channelID)
+
+    def VivoxLeaderUngag(self, *args):
+        sm.GetService('fleet').SetVoiceMuteStatus(0, self.channelID)
+
+    def OnDropData(self, dragObj, nodes):
+        self.OnDropCharacter(dragObj, nodes)
+
+    def OnDropCharacter(self, dragObj, nodes):
+        if not isinstance(self.channelID, int):
+            return
+        for node in nodes[:5]:
+            if node.Get('__guid__', None) not in uiutil.AllUserEntries():
+                return
+            charID = node.charID
+            if util.IsCharacter(charID):
+                sm.GetService('LSC').Invite(charID, self.channelID)
+
+    def _OnClose(self, *args):
+        if getattr(self, 'closing', 0):
+            return
+        self.closing = 1
+        self.output = None
+        self.input = None
+        self.userlist = None
+        self.messages = []
+        if self.logfile is not None:
+            self.logfile.Close()
+            self.logfile = None
+        if sm.IsServiceRunning('LSC'):
+            sm.GetService('LSC').LeaveChannel(self.channelID, destruct=0)
+            sm.GetService('vivox').LeaveChannel(self.channelID)
+
+    def RenameChannel(self, newName):
+        self.windowCaption = newName.split('\\')[-1]
+        self.UpdateCaption()
+
+    def UpdateCaption(self, startingup = 0, localEcho = 0):
+        if self.channelInitialized:
+            label = chat.GetDisplayName(self.channelID).split('\\')[-1]
+            label.replace('conversation', 'conv.')
+            label.replace('channel', 'ch.')
+            memberCount = sm.GetService('LSC').GetMemberCount(self.channelID)
+            if memberCount != self.memberCount:
+                self.memberCount = memberCount
+            if type(self.channelID) == types.IntType or self.channelID[0] not in ('global', 'regionid', 'constellationid'):
+                if self.memberCount > 2:
+                    label += ' [%d]' % self.memberCount
+            self.SetCaption(label)
+
+    def ModeBtnEnter(self, sender, idx, set, *args):
+        btns = getattr(self, set + 'btns', None)
+        mode = [self.usermode, self.mode][set == 'mode']
+        i = 0
+        for each in btns:
+            if i != mode:
+                each.LoadIcon(each.icon)
+            i = i + 1
+
+        if idx != mode:
+            sender.LoadIcon(sender.mouseoverIcon)
+
+    def ModeBtnLeave(self, sender, idx, set, *args):
+        mode = [self.usermode, self.mode][set == 'mode']
+        if idx != mode:
+            sender.LoadIcon(sender.icon)
+
+    def ModeChange(self, sender, idx, set, *args):
+        if self.destroyed:
+            return
+        if set == 'mode':
+            if self.mode == idx:
+                return
+            self.mode = idx
+            self.LoadMessages()
+            settings.user.ui.Set('%s_mode' % self.name, idx)
+            uicore.registry.SetFocus(self)
+        else:
+            settings.user.ui.Set('%s_usermode' % self.name, idx)
+            self.SetupUserlist(idx)
+
+    def SetupUserlist(self, mode):
+        if self.destroyed:
+            return
+        if mode == 0:
+            self.userlist.Clear()
+            self.userlist.state = self.sr.userlistdiv.state = uiconst.UI_HIDDEN
+        else:
+            minW = 50
+            maxW = 200
+            self.userlist.width = min(maxW, max(minW, self.userlist.width))
+            self.userlist.state = uiconst.UI_PICKCHILDREN
+            self.sr.userlistdiv.state = uiconst.UI_NORMAL
+            self.InitUsers(mode == 1)
+        if self.channelInitialized and not self.destroyed:
+            self.LoadMessages()
+        self.usermode = mode
+        for each in self.userlistbtns:
+            each.LoadIcon(each.icon)
+
+        active = self.userlistbtns[mode]
+        active.LoadIcon(active.mouseoverIcon)
+
+    def RegisterFocus(self, edit, *args):
+        sm.GetService('focus').SetFocusChannel(self)
+
+    def SetCharFocus(self, char):
+        uicore.registry.SetFocus(self.input)
+        uix.Flush(uicore.layer.menu)
+        if char is not None:
+            self.input.OnChar(char, 0)
+
+    def OnTabDeselect(self):
+        if self.channelInitialized and not self.destroyed:
+            self.UnloadMessages()
+            if getattr(self, 'unloadUserlistScrollProportion', None) is None:
+                self.unloadUserlistScrollProportion = self.userlist.GetScrollProportion()
+            self.userlist.Clear()
+
+    def OnTabSelect(self):
+        if getattr(self, 'channelInitialized', False) and not self.destroyed:
+            uicore.registry.SetFocus(self.input)
+            if self.input is not None:
+                self.input.DoSizeUpdate()
+            self.LoadMessages()
+            if self.usermode != 0:
+                self.InitUsers(self.usermode == 1)
+
+    def LoadMessages(self):
+        if not self.output or self.state == uiconst.UI_HIDDEN:
+            return
+        self.loadQueue = 1
+        if self.loadingmessages:
+            return
+        self.loadingmessages = 1
+        uthread.new(self._LoadMessages)
+        self.loadingmessages = 0
+
+    def _LoadMessages(self):
+        if self.destroyed:
+            return
+        try:
+            spammers = getattr(sm.GetService('LSC'), 'spammerList', set())
+            while not self.destroyed and self.loadQueue and self.state != uiconst.UI_HIDDEN:
+                self.loadQueue = 0
+                if self.destroyed:
+                    break
+                portion = self.output.GetScrollProportion() or getattr(self, 'unloadScrollProportion', 0.0)
+                self.unloadScrollProportion = None
+                scrollList = []
+                for each in self.messages:
+                    if each[2] not in spammers:
+                        scrollList.append(self.GetChatEntry(each, each[2] == eve.session.charid))
+
+                log.LogInfo('About to load', len(scrollList), 'entries to chat output of channel', self.channelID)
+                self.output.Clear()
+                self.output.AddNodes(0, scrollList)
+                if portion:
+                    self.output.ScrollToProportion(portion)
+                for each in self.modebtns:
+                    each.LoadIcon(each.icon)
+
+                active = self.modebtns[self.mode]
+                active.LoadIcon(active.mouseoverIcon)
+
+        finally:
+            if not self.destroyed:
+                self.loadingmessages = 0
+
+    def UnloadMessages(self):
+        if self.loadingmessages or not self.output:
+            return
+        if getattr(self, 'unloadScrollProportion', None) is None:
+            self.unloadScrollProportion = self.output.GetScrollProportion()
+        self.output.Clear()
+
+    def GetChatEntry(self, msg, localEcho = False):
+        who, txt, charid, time, colorkey = msg
+        return listentry.Get('ChatEntry', {'text': chat.FormatTxt(msg, self.mode, self.fontsize, self.letterSpace, localEcho),
+         'mode': self.mode,
+         'fontsize': self.fontsize,
+         'letterspace': self.letterSpace,
+         'charid': charid,
+         'channelid': self.channelID,
+         'msg': msg,
+         'textbuff': None,
+         'channelMenu': self.GetOutputMenu})
+
+    def __LocalEcho(self, txt):
+        self.__Output(txt, eve.session.charid, 1)
+
+    def Speak(self, txt, charid, localEcho = 0):
+        self.__Output(txt, charid, localEcho)
+
+    def __Output(self, txt, charid, localEcho):
+        blink = charid not in (eve.session.charid, const.ownerSystem)
+        colorkey = 0
+        if charid == eve.session.charid:
+            if not localEcho:
+                self.waitingForReturn = 0
+                return
+            colorkey = eve.session.role
+        elif charid == const.ownerSystem:
+            colorkey = service.ROLE_ADMIN
+        elif type(charid) not in types.StringTypes:
+            mi = sm.GetService('LSC').GetMemberInfo(self.channelID, charid)
+            if mi:
+                colorkey = mi.role
+        if not localEcho and IsSpam(txt):
+            return
+        txt = self.CompleteAutoLinks(txt)
+        self.UpdateCaption(localEcho=localEcho)
+        if isinstance(charid, basestring):
+            who = charid
+        else:
+            who = cfg.eveowners.Get(charid).name
+        time = blue.os.GetWallclockTime()
+        if self.destroyed:
+            return
+        if self.logfile is not None and self.logfile.size > 0:
+            line = '[%20s ] %s > %s\r\n' % (util.FmtDate(time), who, uiutil.StripTags(txt).replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&'))
+            try:
+                self.logfile.Write(line.encode('utf-16'))
+            except IOError:
+                log.LogException(toAlertSvc=0)
+                sys.exc_clear()
+
+        msg = [who,
+         txt,
+         charid,
+         time,
+         colorkey]
+        updateOutput = bool(self.state != uiconst.UI_HIDDEN)
+        self.messages.append(msg)
+        if len(self.messages) >= MAXMSGS:
+            self.messages.pop(0)
+            if self.output.GetNodes():
+                self.output.RemoveNodes([self.output.GetNodes()[0]])
+        if updateOutput:
+            self.output.AddNodes(-1, [self.GetChatEntry(msg, localEcho)])
+        if settings.user.ui.Get('chatWindowBlink_%s' % self.name, 1) and blink:
+            self.Blink()
+            if self.state == uiconst.UI_HIDDEN or self.IsMinimized():
+                self.SetBlinking()
+
+    def ValidatePaste(self, text):
+        text = text.replace('<t>', '  ')
+        text = uiutil.StripTags(text, ignoredTags=['b', 'i', 'u'])
+        return text
+
+    def CompleteAutoLinks(self, text):
+        filledText = ''
+        match = showInfoComplete.search(text)
+        if match is None:
+            return text
+        while match is not None:
+            pretext = match.group('pretext')
+            typeID = match.group('typeID')
+            seperator = match.group('seperator')
+            itemID = match.group('itemID')
+            itemName = match.group('itemName')
+            posttext = match.group('posttext')
+            groupID = cfg.invtypes.Get(typeID).groupID
+            if itemID == '' and typeID != '':
+                filledName = cfg.invtypes.Get(typeID).name
+            elif groupID in [const.groupCharacter, const.groupCorporation]:
+                filledName = cfg.eveowners.Get(itemID).name
+            elif groupID == const.groupSolarSystem:
+                filledName = cfg.evelocations.Get(itemID).name
+            elif groupID == const.groupStation:
+                orbitName = cfg.evelocations.Get(cfg.stations.Get(itemID).orbitID).name
+                longMoon = localization.GetByLabel('UI/Locations/LocationMoonLong')
+                shortMoon = localization.GetByLabel('UI/Locations/LocationMoonShort')
+                orbitName = orbitName.replace(longMoon, shortMoon).replace(longMoon.lower(), shortMoon.lower())
+                filledName = localization.GetByLabel('UI/Chat/StationAutoLink', orbitName=orbitName)
+            else:
+                filledName = match.group('itemName')
+            filledText += '%s%s%s%s>%s%s' % (pretext,
+             typeID,
+             seperator,
+             itemID,
+             filledName,
+             posttext)
+            text = text[match.span()[1]:]
+            match = showInfoComplete.search(text)
+
+        filledText = filledText + text
+        return filledText
+
+    def InputKeyUp(self, *args):
+        shift = uicore.uilib.Key(uiconst.VK_SHIFT)
+        if shift:
+            return
+        if self.waitingForReturn and blue.os.GetWallclockTime() - self.waitingForReturn < MIN:
+            txt = self.input.GetValue(html=0)
+            txt = txt.rstrip()
+            cursorPos = -1
+            self.input.SetValue(txt, cursorPos=cursorPos)
+            eve.Message('uiwarning03')
+            return
+        NUM_SECONDS = 4
+        if session.userType == 23 and (type(self.channelID) != types.IntType or self.channelID < 2100000000 and self.channelID > 0):
+            lastMessageTime = long(getattr(self, 'lastMessageTime', blue.os.GetWallclockTime() - 1 * MIN))
+            if blue.os.GetWallclockTime() - lastMessageTime < NUM_SECONDS * SEC:
+                eve.Message('LSCTrialRestriction_SendMessage', {'sec': (NUM_SECONDS * SEC - (blue.os.GetWallclockTime() - lastMessageTime)) / SEC})
+                return
+            setattr(self, 'lastMessageTime', blue.os.GetWallclockTime())
+        txt = self.input.GetValue(html=0)
+        self.input.SetValue('')
+        txt = txt.strip()
+        while txt.endswith('<br>'):
+            txt = txt[:-4]
+
+        txt = txt.strip()
+        while txt.startswith('<br>'):
+            txt = txt[4:]
+
+        txt = txt.strip()
+        if not txt or len(txt) <= 0:
+            return
+        if sm.GetService('LSC').IsLanguageRestricted(self.channelID):
+            try:
+                if unicode(txt) != unicode(txt).encode('ascii', 'replace'):
+                    uicore.registry.BlockConfirm()
+                    eve.Message('LscLanguageRestrictionViolation')
+                    return
+            except:
+                log.LogTraceback('Gurgle?')
+                sys.exc_clear()
+                eve.Message('uiwarning03')
+                return
+
+        if boot.region == 'optic':
+            try:
+                bw = str(localization.GetByLabel('UI/Chat/ChannelWindow/ChinaServerBannedWords')).decode('utf-7')
+                banned = [ word for word in bw.split() if word ]
+                for bword in banned:
+                    if txt.startswith('/') and not (txt.startswith('/emote') or txt.startswith('/me')):
+                        txt = txt
+                    else:
+                        txt = txt.replace(bword, '*')
+
+            except Exception:
+                log.LogTraceback('Borgle?')
+                sys.exc_clear()
+
+        if not sm.GetService('LSC').IsSpeaker(self.channelID):
+            access = sm.GetService('LSC').GetMyAccessInfo(self.channelID)
+            if access[1]:
+                if access[1].reason:
+                    reason = access[1].reason
+                else:
+                    reason = localization.GetByLabel('UI/Chat/NotSpecified')
+                if access[1].admin:
+                    admin = access[1].admin
+                else:
+                    admin = localization.GetByLabel('UI/Chat/NotSpecified')
+                if access[1].untilWhen:
+                    borki = localization.GetByLabel('UI/Chat/CannotSpeakOnChannelUntil', reason=reason, untilWhen=access[1].untilWhen, admin=admin)
+                else:
+                    borki = localization.GetByLabel('UI/Chat/CannotSpeakOnChannel', reason=reason, admin=admin)
+            else:
+                borki = localization.GetByLabel('UI/Chat/CannotSpeakOnChannel', reason=localization.GetByLabel('UI/Chat/NotSpecified'), admin=localization.GetByLabel('UI/Chat/NotSpecified'))
+            self.__LocalEcho(borki)
+        if txt != '' and txt.replace('\r', '').replace('\n', '').replace('<br>', '').replace(' ', '').replace('/emote', '').replace('/me', '') != '':
+            if txt.startswith('/me'):
+                txt = '/emote' + txt[3:]
+            spoke = 0
+            if self.inputs[-1] != txt:
+                self.inputs.append(txt)
+                self.inputIndex = None
+            nobreak = uiutil.StripTags(txt.replace('<br>', ''))
+            if nobreak.startswith('/') and not (nobreak.startswith('/emote') or nobreak == '/'):
+                for commandLine in uiutil.StripTags(txt.replace('<br>', '\n')).split('\n'):
+                    try:
+                        slashRes = uicore.cmd.Execute(commandLine)
+                        if slashRes is not None:
+                            sm.GetService('logger').AddText('slash result: %s' % slashRes, 'slash')
+                        elif nobreak.startswith('/tutorial') and eve.session and eve.session.role & service.ROLE_GML:
+                            sm.GetService('tutorial').SlashCmd(commandLine)
+                        elif eve.session and eve.session.role & ROLE_SLASH:
+                            if commandLine.lower().startswith('/mark'):
+                                sm.StartService('logger').LogError('SLASHMARKER: ', (eve.session.userid, eve.session.charid), ': ', commandLine)
+                            slashRes = sm.GetService('slash').SlashCmd(commandLine)
+                            if slashRes is not None:
+                                sm.GetService('logger').AddText('slash result: %s' % slashRes, 'slash')
+                        self.__LocalEcho('/slash: ' + commandLine)
+                    except:
+                        self.__LocalEcho('/slash failed: ' + commandLine)
+                        raise 
+
+            else:
+                stext = uiutil.StripTags(txt, ignoredTags=['b',
+                 'i',
+                 'u',
+                 'url',
+                 'br',
+                 'loc'])
+                try:
+                    if type(self.channelID) != types.IntType and self.channelID[0][0] in ('constellationid', 'regionid') and util.IsWormholeSystem(eve.session.solarsystemid2):
+                        self.__Output(localization.GetByLabel('UI/Chat/NoChannelAccessWormhole'), 1, 1)
+                        return
+                    self.waitingForReturn = blue.os.GetWallclockTime()
+                    stext = self.ConstrainChatMessage(stext)
+                    self.__LocalEcho(stext)
+                    if not IsSpam(stext):
+                        sm.GetService('LSC').SendMessage(self.channelID, stext)
+                    else:
+                        self.waitingForReturn = 0
+                except:
+                    self.waitingForReturn = 0
+                    raise 
+
+    def ConstrainChatMessage(self, message):
+        if type(message) not in types.StringTypes:
+            message = str(message)
+        strippedMessage = uiutil.StripTags(message)
+        if len(strippedMessage) > const.CHT_MAX_STRIPPED_INPUT or len(message) > const.CHT_MAX_INPUT:
+            message = strippedMessage[:const.CHT_MAX_STRIPPED_INPUT] + '...'
+        return message
+
+    def CtrlDown(self, editctrl, *args):
+        self.BrowseInputs(1)
+
+    def CtrlUp(self, editctrl, *args):
+        self.BrowseInputs(-1)
+
+    def BrowseInputs(self, updown):
+        if self.inputIndex is None:
+            self.inputIndex = len(self.inputs) - 1
+        else:
+            self.inputIndex += updown
+        if self.inputIndex < 0:
+            self.inputIndex = len(self.inputs) - 1
+        elif self.inputIndex >= len(self.inputs):
+            self.inputIndex = 0
+        self.input.SetValue(self.inputs[self.inputIndex], cursorPos=-1)
+
+    def InitUsers(self, recent):
+        members = sm.GetService('LSC').GetMembers(self.channelID, recent)
+        if getattr(self, 'userEntry', None):
+            self.SetUserEntryType()
+        if members is None:
+            self.userlist.ShowHint('List not available')
+        else:
+            idsToPrime = set()
+            for charID in members:
+                if charID not in cfg.eveowners:
+                    idsToPrime.add(charID)
+
+            if idsToPrime:
+                cfg.eveowners.Prime(idsToPrime)
+            scrollProportion = self.userlist.GetScrollProportion() or getattr(self, 'unloadUserlistScrollProportion', 0.0)
+            self.unloadUserlistScrollProportion = None
+            audioStatus = dict(sm.GetService('vivox').GetMemberVoiceStatus(self.channelID) or [])
+            try:
+                self.userlist.ShowHint()
+                scrolllist = []
+                for charID in members:
+                    member = members[charID]
+                    charinfo = cfg.eveowners.Get(member.charID)
+                    if member.charID in audioStatus:
+                        voiceStatus = audioStatus.pop(member.charID)
+                    else:
+                        voiceStatus = None
+                    scrolllist.append((charinfo.name.lower(), listentry.Get(self.userEntry, {'charID': member.charID,
+                      'corpID': member.corpID,
+                      'allianceID': member.allianceID,
+                      'warFactionID': member.warFactionID,
+                      'info': charinfo,
+                      'color': GetColor(member.role),
+                      'channelID': self.channelID,
+                      'voiceStatus': voiceStatus})))
+
+                if sm.GetService('LSC').IsMemberless(self.channelID):
+                    for charID in audioStatus.keys():
+                        if charID not in self.voiceOnlyMembers:
+                            audioStatus.pop(charID)
+
+                if len(audioStatus) > 0:
+                    cfg.eveowners.Prime(audioStatus.keys())
+                    for charID, voiceStatus in audioStatus.iteritems():
+                        if charID == session.charid:
+                            continue
+                        charinfo = cfg.eveowners.Get(charID)
+                        scrolllist.append((charinfo.name.lower(), listentry.Get(self.userEntry, {'charID': charID,
+                          'info': cfg.eveowners.Get(charID),
+                          'color': None,
+                          'channelID': self.channelID,
+                          'voiceStatus': voiceStatus,
+                          'voiceOnly': True})))
+
+                scrolllist = uiutil.SortListOfTuples(scrolllist)
+                self.userlist.Clear()
+                self.userlist.AddNodes(0, scrolllist)
+                if scrollProportion:
+                    self.userlist.ScrollToProportion(scrollProportion)
+            except RuntimeError as e:
+                if e.args[0] == 'dictionary changed size during iteration':
+                    sys.exc_clear()
+                    self.InitUsers(recent)
+                    return
+                raise e
+
+    def SetUserEntryType(self):
+        if settings.user.ui.Get('chatCondensedUserList_%s' % self.name, False):
+            self.userEntry = 'ChatUserSimple'
+        else:
+            self.userEntry = 'ChatUser'
+
+    def AddMember(self, *args, **keywords):
+        if not sm.GetService('LSC').IsMemberless(self.channelID):
+            self.__AddUser(*args, **keywords)
+
+    def AddRecentSpeaker(self, *args, **keywords):
+        if sm.GetService('LSC').IsMemberless(self.channelID):
+            self.__AddUser(*args, **keywords)
+
+    def __AddUser(self, charid, corpid, allianceid, warfactionid, refresh = 1, sort = 1, load = 1, color = None):
+        if self.destroyed or not self.channelInitialized or not self.userlist:
+            return
+        if self.state != uiconst.UI_HIDDEN and self.userlist.state != uiconst.UI_HIDDEN:
+            self.userlist.ShowHint()
+            newcharinfo = cfg.eveowners.Get(charid)
+            idx = 0
+            for each in self.userlist.GetNodes():
+                if each.charID == charid:
+                    if hasattr(each, 'voiceOnly'):
+                        try:
+                            self.DelVoiceUsers([charid])
+                        except ValueError:
+                            pass
+
+                        break
+                    return
+                if util.CaseFoldCompare(each.info.name, newcharinfo.name) > 0:
+                    break
+                idx += 1
+
+            audioStatus = dict(sm.GetService('vivox').GetMemberVoiceStatus(self.channelID) or [])
+            if charid in audioStatus:
+                voiceStatus = audioStatus[charid]
+            else:
+                voiceStatus = None
+            self.userlist.AddNodes(idx, [listentry.Get(self.userEntry, {'charID': charid,
+              'corpID': corpid,
+              'allianceID': allianceid,
+              'warFactionID': warfactionid,
+              'info': cfg.eveowners.Get(charid),
+              'color': color,
+              'channelID': self.channelID,
+              'voiceStatus': voiceStatus})])
+        self.__UpdateAfterDeletion()
+
+    def DelMember(self, *args, **keywords):
+        if not sm.GetService('LSC').IsMemberless(self.channelID):
+            self.__DelUser(*args, **keywords)
+
+    def DelRecentSpeaker(self, *args, **keywords):
+        self.__DelUser(*args, **keywords)
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def __DelUser(self, charid):
+        if self.state != uiconst.UI_HIDDEN and self.userlist.state != uiconst.UI_HIDDEN:
+            for each in self.userlist.GetNodes():
+                if each.charID == charid:
+                    self.userlist.RemoveNodes([each])
+                    break
+
+        self.__UpdateAfterDeletion()
+
+    def DelVoiceUsers(self, charids):
+        for charID in charids:
+            if charID in self.voiceOnlyMembers:
+                self.voiceOnlyMembers.remove(charID)
+
+        entries = []
+        for each in self.userlist.GetNodes():
+            if each.charID in charids:
+                entries.append(each)
+
+        if len(entries) < 1:
+            return
+        self.userlist.RemoveNodes(entries)
+        self.__UpdateAfterDeletion()
+
+    def __UpdateAfterDeletion(self):
+        self.UpdateCaption()
+
+    def UserlistStartScale(self, *args):
+        self.uss_w = self.userlist.width
+        self.uss_x = uicore.uilib.x
+        self.scaling = 1
+
+    def UserlistScaling(self, *args):
+        if self.scaling:
+            minW = 50
+            maxW = 200
+            diffx = uicore.uilib.x - self.uss_x
+            self.userlist.width = min(maxW, max(minW, self.uss_w - diffx))
+
+    def UserlistEndScale(self, *args):
+        self.scaling = 0
+        settings.user.ui.Set('%s_userlistwidth' % self.name, self.userlist.width)
+        self.LoadMessages()
+
+    def GoTo(self, URL, data = None, args = {}, scrollTo = None):
+        uicore.cmd.OpenBrowser(URL, data=data, args=args)
+
+    def GetOutputMenu(self, *args):
+        m = [(uiutil.MenuLabel('UI/Common/CopyAll'), self.CopyAll), (uiutil.MenuLabel('UI/Chat/ToggleTimestamp'), self.ToggleTimestamp)]
+        return m
+
+    def ToggleTimestamp(self, *args):
+        c = settings.user.ui.Get('timestampchat', 0)
+        settings.user.ui.Set('timestampchat', not c)
+        channelWindow = sm.GetService('LSC').GetChannelWindow(self.channelID)
+        if channelWindow:
+            channelWindow.LoadMessages()
+
+    def CopyAll(self):
+        t = ''
+        for node in self.output.GetNodes():
+            who, txt, charid, time, colorkey = node.msg
+            timestr = ''
+            if settings.user.ui.Get('timestampchat', 0):
+                year, month, wd, day, hour, min, sec, ms = util.GetTimeParts(time)
+                timestr = '[%02d:%02d:%02d] ' % (hour, min, sec)
+            t += '%s%s > %s\r\n' % (timestr, who, txt.replace('&gt;', '>').replace('&amp;', '&'))
+
+        blue.pyos.SetClipboardData(t)
+
+    def ClearContent(self, *args):
+        if self.output:
+            self.output.Clear()
+            self.messages = []
+
+    def ShowMotdFromMenu(self, *args):
+        self.SpeakMOTD()
+
+
+class ChannelMenu(list):
+
+    def __init__(self, channelID, charID):
+        self.channelID = channelID
+        self.charID = charID
+        commands = []
+        if charID != const.ownerSystem and sm.GetService('LSC').IsOperator(channelID):
+            if not sm.GetService('LSC').IsOperator(channelID, charID):
+                if sm.GetService('LSC').IsGagged(channelID, charID):
+                    commands.append((uiutil.MenuLabel('UI/Chat/Unmute'), self.__UnGag))
+                else:
+                    commands.append((uiutil.MenuLabel('UI/Chat/Mute'), self.__Gag))
+                commands.append((uiutil.MenuLabel('UI/Chat/Kick'), self.__Kick))
+        self.append((uiutil.MenuLabel('UI/Chat/ReportIskSpammer'), self.ReportISKSpammer))
+        if commands:
+            self.append((uiutil.MenuLabel('UI/Chat/Channel'), commands))
+
+    def ExcludeFromVoiceMute(self, *args):
+        sm.GetService('fleet').ExcludeFromVoiceMute(self.charID, self.channelID)
+
+    def AddToVoiceMute(self, *args):
+        sm.GetService('fleet').AddToVoiceMute(self.charID, self.channelID)
+
+    def ReportISKSpammer(self, *args):
+        sm.GetService('menu').ReportISKSpammer(self.charID, self.channelID)
+
+    def __Gag(self, *args):
+        import chat
+        format = []
+        format.append({'type': 'bbline'})
+        format.append({'type': 'push',
+         'frame': 1})
+        format.append({'type': 'edit',
+         'key': 'minutes',
+         'setvalue': 30,
+         'label': localization.GetByLabel('UI/Chat/LengthMinutes'),
+         'frame': 1,
+         'maxLength': 5,
+         'intonly': [0, 43200]})
+        format.append({'type': 'push',
+         'frame': 1})
+        format.append({'type': 'textedit',
+         'key': 'reason',
+         'label': localization.GetByLabel('UI/Chat/Reason'),
+         'frame': 1,
+         'maxLength': 255})
+        format.append({'type': 'push',
+         'frame': 1})
+        format.append({'type': 'btline'})
+        retval = uix.HybridWnd(format, localization.GetByLabel('UI/Chat/GagCharacter', char=self.charID), 1, None, uiconst.OKCANCEL, minW=300, minH=160)
+        if retval is not None:
+            if retval['minutes']:
+                untilWhen = blue.os.GetWallclockTime() + retval['minutes'] * MIN
+            else:
+                untilWhen = None
+            sm.GetService('LSC').AccessControl(self.channelID, self.charID, chat.CHTMODE_LISTENER, untilWhen, retval['reason'])
+
+    def __UnGag(self, *args):
+        import chat
+        mode = sm.GetService('LSC').GetChannelInfo(self.channelID).acl[0].mode
+        if mode == 1:
+            sm.RemoteSvc('LSC').AccessControl(self.channelID, self.charID, chat.CHTMODE_CONVERSATIONALIST)
+        else:
+            sm.GetService('LSC').AccessControl(self.channelID, self.charID, chat.CHTMODE_NOTSPECIFIED, blue.os.GetWallclockTime() - 30 * MIN, '')
+
+    def __Kick(self, *args):
+        import chat
+        format = []
+        format.append({'type': 'bbline'})
+        format.append({'type': 'push',
+         'frame': 1})
+        format.append({'type': 'edit',
+         'key': 'minutes',
+         'setvalue': 30,
+         'label': localization.GetByLabel('UI/Chat/LengthMinutes'),
+         'frame': 1,
+         'maxLength': 5,
+         'intonly': [0, 43200]})
+        format.append({'type': 'push',
+         'frame': 1})
+        format.append({'type': 'textedit',
+         'key': 'reason',
+         'label': localization.GetByLabel('UI/Chat/Reason'),
+         'frame': 1,
+         'maxLength': 255})
+        format.append({'type': 'push',
+         'frame': 1})
+        format.append({'type': 'btline'})
+        retval = uix.HybridWnd(format, localization.GetByLabel('UI/Chat/KickCharacter', char=self.charID), 1, None, uiconst.OKCANCEL, minW=300, minH=160)
+        if retval is not None:
+            if retval['minutes']:
+                untilWhen = blue.os.GetWallclockTime() + retval['minutes'] * MIN
+            else:
+                untilWhen = None
+            sm.GetService('LSC').AccessControl(self.channelID, self.charID, chat.CHTMODE_DISALLOWED, untilWhen, retval['reason'])
+
+
+class ChatUser(listentry.User):
+    __guid__ = 'listentry.ChatUser'
+    notifyevents = listentry.User.__notifyevents__[:]
+    if 'OnPortraitCreated' in notifyevents:
+        notifyevents.remove('OnPortraitCreated')
+    __notifyevents__ = notifyevents
+    ENTRYHEIGHT = 37
+
+    def Load(self, node, *args):
+        node.GetMenu = self.GetNodeMenu
+        listentry.User.Load(self, node, *args)
+        self.SetVoiceIcon(node.voiceStatus, hasattr(node, 'voiceOnly') and node.voiceOnly)
+
+    def GetNodeMenu(self, *args):
+        return [None] + ChannelMenu(self.sr.node.channelID, self.sr.node.charID)
+
+    def OnDropData(self, dragObj, nodes):
+        self.sr.node.scroll.GetContentContainer().OnDropData(dragObj, nodes)
+
+    def SetVoiceIcon(self, state, voiceOnly = False):
+        if self.sr.voiceIcon is None:
+            self.sr.voiceIcon = uicls.Sprite(texturePath='res:/UI/Texture/classes/Chat/Chat.png', name='voiceIcon', parent=self, pos=(16, 3, 12, 12), align=uiconst.TOPRIGHT, idx=0, state=uiconst.UI_DISABLED, hint='')
+        if self.sr.eveGateIcon is None:
+            self.sr.eveGateIcon = uicls.Sprite(texturePath='res:/UI/Texture/classes/Chat/Chat_EveGate.png', name='voiceIcon', parent=self, pos=(14, 2, 6, 6), align=uiconst.TOPRIGHT, idx=0, state=uiconst.UI_HIDDEN, hint='')
+        if state is None:
+            self.sr.voiceIcon.state = uiconst.UI_HIDDEN
+        else:
+            if voiceOnly:
+                self.sr.eveGateIcon.state = uiconst.UI_DISABLED
+            else:
+                self.sr.eveGateIcon.state = uiconst.UI_HIDDEN
+            color = {0: (1.0, 1.0, 1.0),
+             1: (0.0, 0.75, 0.0),
+             2: (0.75, 0.0, 0.0)}.get(state, None)
+            if color is None:
+                self.sr.voiceIcon.state = uiconst.UI_HIDDEN
+                log.LogWarn('Unsupported voice state flag', state)
+                return
+            self.sr.voiceIcon.SetRGB(*color)
+            self.sr.voiceIcon.state = uiconst.UI_NORMAL
+        return self.sr.voiceIcon
+
+
+class ChatUserSimple(ChatUser):
+    __guid__ = 'listentry.ChatUserSimple'
+    ENTRYHEIGHT = 18
+
+    def Startup(self, *args):
+        listentry.ChatUser.Startup(self, *args)
+        self.iconCont = uicls.Container(parent=self, align=uiconst.TOLEFT, width=16)
+
+    def Load(self, node, *args):
+        listentry.ChatUser.Load(self, node, *args)
+        self.sr.namelabel.left = 16
+
+    def SetRelationship(self, data):
+        if self.destroyed:
+            return
+        if not data:
+            return
+        uix.SetStateFlag(self.iconCont, data, top=4)
+
+    def LoadPortrait(self, orderIfMissing = True):
+        pass
+
+
+class ChatEntry(uicls.SE_BaseClassCore):
+    __guid__ = 'listentry.ChatEntry'
+    __notifyevents__ = []
+    defaultTextProps = {'autoDetectCharset': True,
+     'linkStyle': uiconst.LINKSTYLE_REGULAR,
+     'state': uiconst.UI_NORMAL,
+     'align': uiconst.TOTOP,
+     'padRight': 5,
+     'padLeft': 5}
+
+    @classmethod
+    def GetTextProperties(cls, node):
+        textProps = cls.defaultTextProps
+        textProps['fontsize'] = node.fontsize
+        textProps['letterspace'] = node.letterspace
+        if node.mode == 0:
+            textProps['padTop'] = 0
+            textProps['padLeft'] = 5
+            textProps['specialIndent'] = 10
+        else:
+            textProps['padTop'] = 2
+            textProps['specialIndent'] = 0
+            if type(node.charid) not in types.StringTypes:
+                if node.mode == 1:
+                    textProps['padLeft'] = 43
+                elif node.mode == 2:
+                    textProps['padLeft'] = 75
+        return (uicls.Label, textProps)
+
+    def Startup(self, *args):
+        self.sr.picParent = uicls.Container(name='picpar', parent=self, align=uiconst.TOPLEFT, width=34, height=34, left=2, top=2)
+        self.sr.pic = uicls.Icon(parent=self.sr.picParent, align=uiconst.TOALL, padLeft=1, padTop=1, padRight=1, padBottom=1)
+        uicls.Frame(parent=self.sr.picParent, color=(1.0, 1.0, 1.0, 0.125))
+
+    def Load(self, node):
+        self.picloaded = 0
+        labelClass, textProps = self.GetTextProperties(node)
+        if not self.sr.text:
+            self.sr.text = labelClass(parent=self, idx=0, **textProps)
+            self.sr.text.GetMenu = self.GetMenu
+        else:
+            self.sr.text.busy = 1
+            for k, v in textProps.iteritems():
+                setattr(self.sr.text, k, v)
+
+        if node.mode and type(self.sr.node.charid) not in types.StringTypes:
+            self.sr.picParent.width = self.sr.picParent.height = [34, 34, 66][node.mode]
+            self.sr.picParent.state = uiconst.UI_NORMAL
+            self.LoadPortrait()
+        else:
+            self.sr.picParent.state = uiconst.UI_HIDDEN
+        self.sr.text.busy = 0
+        self.sr.text.text = node.text
+
+    def LoadPortrait(self, orderIfMissing = True):
+        if self is None or self.destroyed:
+            return
+        if self.sr.node.charid == const.ownerSystem:
+            self.sr.pic.LoadIcon('ui_6_64_7')
+            return
+        size = [32, 64][self.sr.node.mode - 1]
+        if sm.GetService('photo').GetPortrait(self.sr.node.charid, size, self.sr.pic, orderIfMissing, callback=True):
+            self.picloaded = 1
+
+    def GetDynamicHeight(node, width):
+        labelClass, props = ChatEntry.GetTextProperties(node)
+        width = width - props['padLeft'] - props['padRight']
+        textWidth, textHeight = labelClass.MeasureTextSize(node.text, width=width, **props)
+        if node.mode == 0:
+            return textHeight
+        elif node.mode == 1:
+            return max(41, textHeight + props['padTop'] * 2)
+        else:
+            return max(73, textHeight + props['padTop'] * 2)
+
+    def GetMenu(self):
+        m = []
+        mouseOverUrl = self.sr.text.GetMouseOverUrl()
+        if mouseOverUrl:
+            if mouseOverUrl.startswith('showinfo:'):
+                parsedArgs = uicls.BaseLink().ParseShowInfo(mouseOverUrl)
+                if parsedArgs:
+                    typeID, itemID, data = parsedArgs
+                    try:
+                        if typeID and itemID:
+                            m = sm.StartService('menu').GetMenuFormItemIDTypeID(itemID, typeID, ignoreMarketDetails=0)
+                            if cfg.invtypes.Get(typeID).Group().id == const.groupCharacter:
+                                m += [None]
+                                m += ChannelMenu(self.sr.node.channelid, itemID)
+                        else:
+                            m = uicls.BaseLink().GetLinkMenu(self.sr.text, mouseOverUrl.replace('&amp;', '&'))
+                    except:
+                        log.LogTraceback('failed to convert string to ids in chat entry:GetMenu')
+                        sys.exc_clear()
+
+            else:
+                m = uicls.BaseLink().GetLinkMenu(self.sr.text, mouseOverUrl.replace('&amp;', '&'))
+        m += [None, (uiutil.MenuLabel('UI/Common/Copy'), self.CopyText)]
+        if self.sr.node.channelMenu:
+            m += self.sr.node.channelMenu()
+        return m
+
+    def CopyText(self):
+        who, txt, charid, time, colorkey = self.sr.node.msg
+        timestr = ''
+        if settings.user.ui.Get('timestampchat', 0):
+            year, month, wd, day, hour, min, sec, ms = util.GetTimeParts(time)
+            timestr = '[%02d:%02d:%02d] ' % (hour, min, sec)
+        t = '%s%s > %s' % (timestr, who, txt.replace('&gt;', '>').replace('&amp;', '&'))
+        blue.pyos.SetClipboardData(t)
+
+
+def GetColor(role, asInt = 0):
+    for colorkey, color, intCol in [(service.ROLE_EXPOPLAYER, '0xfff07cc7', LtoI(4293950663L)),
+     (service.ROLE_QA, '0xff0099ff', LtoI(4278229503L)),
+     (service.ROLE_WORLDMOD, '0xffac75ff', LtoI(4289492479L)),
+     (service.ROLE_GMH, '0xffee6666', LtoI(4293813862L)),
+     (service.ROLE_GML, '0xffffff20', LtoI(4294967072L)),
+     (service.ROLE_CENTURION, '0xff00ff00', LtoI(4278255360L)),
+     (service.ROLE_LEGIONEER, '0xff00ffcc', LtoI(4278255564L)),
+     (service.ROLE_ADMIN, '0xffee6666', LtoI(4293813862L))]:
+        if role & colorkey == colorkey:
+            return [color, intCol][asInt]
+
+    return ['0xffe0e0e0', LtoI(4292927712L)][asInt]
+
+
+def FormatTxt(msg, mode = 0, fontsize = 12, letterSpace = 0, localEcho = False):
+    who, txt, charid, time, colorkey = msg
+    if type(charid) in types.StringTypes:
+        return txt
+    color = GetColor(colorkey)
+    timestr = ''
+    if settings.user.ui.Get('timestampchat', 0):
+        year, month, wd, day, hour, min, sec, ms = util.GetTimeParts(time)
+        timestr = '<color=%s>[%02d:%02d:%02d]</color> ' % (color,
+         hour,
+         min,
+         sec)
+    if charid == const.ownerSystem:
+        info = 'showinfo:5//%s' % (eve.session.solarsystemid or eve.session.solarsystemid2)
+    else:
+        info = 'showinfo:1373//%s' % charid
+    if txt.startswith('/emote'):
+        return '%s<url:%s><color=%s>* %s</color></url><color=%s> %s</color>' % (timestr,
+         info,
+         color,
+         who,
+         color,
+         LinkURLs(txt[7:]))
+    if txt.startswith('/slash') and localEcho:
+        return '<color=0xff00dddd>%s</color>' % txt[1:]
+    return '%s<url:%s><color=%s>%s</color></url><color=%s> &gt; %s</color>' % (timestr,
+     info,
+     color,
+     who,
+     color,
+     LinkURLs(txt))
+
+
+def LinkURLs(text):
+    idx = 0
+    parseParts = []
+    match = alreadyURLOrTag.search(text)
+    while match:
+        start, end = match.span()
+        parse = text[idx:start]
+        if parse:
+            parseParts.append((1, parse))
+        notParse = text[start:end]
+        parseParts.append((0, notParse))
+        match = alreadyURLOrTag.search(text, end)
+        idx = end
+
+    leftOver = text[idx:]
+    if leftOver:
+        parseParts.append((1, leftOver))
+    retText = ''
+    for parseFlag, parseText in parseParts:
+        if parseFlag == 0:
+            retText += parseText
+            continue
+        normalizedText = unicodedata.normalize('NFKC', parseText)
+        match = seemsURL.search(normalizedText)
+        idx = 0
+        while match:
+            start, end = match.span()
+            url = normalizedText[start:end]
+            if not url.startswith('http'):
+                url = 'http://' + url
+            retText += parseText[idx:start] + '<url=' + url + '>' + parseText[start:end] + '</url>'
+            match = seemsURL.search(normalizedText, end)
+            idx = end
+
+        retText += parseText[idx:]
+
+    return retText
+
+
+exports = {'chat.GetColor': GetColor,
+ 'chat.FormatTxt': FormatTxt}

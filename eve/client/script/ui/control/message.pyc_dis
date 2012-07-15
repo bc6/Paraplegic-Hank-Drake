@@ -1,0 +1,43 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/control/message.py
+import blue
+import base
+import uicls
+import uiutil
+import uiconst
+
+class Message(uicls.Container):
+    __guid__ = 'uicls.Message'
+
+    def ApplyAttributes(self, attributes):
+        self.inity = 150
+        self.scope = 'station_inflight'
+        self.message = None
+        uicls.Container.ApplyAttributes(self, attributes)
+        self.minOffsetY = 225
+
+    def Prepare_Text_(self):
+        self.message = uicls.EveLabelMedium(text='', parent=self, left=6, top=5, width=288, state=uiconst.UI_DISABLED)
+
+    def Prepare_Underlay_(self):
+        border = uicls.Frame(parent=self, frameConst=uiconst.FRAME_BORDER1_CORNER5, state=uiconst.UI_DISABLED, color=(1.0, 1.0, 1.0, 0.25))
+        frame = uicls.Frame(parent=self, color=(0.0, 0.0, 0.0, 0.75), frameConst=uiconst.FRAME_FILLED_CORNER4, state=uiconst.UI_DISABLED)
+
+    def ShowMsg(self, text):
+        if self.message is None:
+            self.Prepare_Text_()
+            self.Prepare_Underlay_()
+        self.message.text = ['<center>', text]
+        self.SetAlign(uiconst.CENTERTOP)
+        self.SetSize(300, self.message.textheight + 8)
+        offset = sm.GetService('window').GetCameraLeftOffset(self.width, align=uiconst.CENTERTOP, left=0)
+        self.SetPosition(offset, max(self.minOffsetY, int(uicore.desktop.height * 0.1666) + 32))
+        self.state = uiconst.UI_DISABLED
+        uiutil.SetOrder(self, 0)
+        self.timer = base.AutoTimer(5000, self.hide)
+
+    def hide(self):
+        if self is not None and not self.destroyed:
+            self.state = uiconst.UI_HIDDEN
+
+    def kill_timer(self):
+        self.timer = None

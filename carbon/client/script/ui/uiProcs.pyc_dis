@@ -1,0 +1,82 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/carbon/client/script/ui/uiProcs.py
+import cameras
+import GameWorld
+import service
+import zaction
+
+class UIProcSvc(service.Service):
+    __guid__ = 'svc.uiProcSvc'
+    __machoresolve__ = 'location'
+    __dependencies__ = ['cameraClient']
+
+    def Run(self, *args):
+        service.Service.Run(self, *args)
+        GameWorld.RegisterPythonActionProc('PerformPythonUICallback', self._PerformUICallback, ('callbackKey',))
+        GameWorld.RegisterPythonActionProc('PlayEntityAudio', self._PlayEntityAudio, ('audioName', 'mls', 'TargetList'))
+        GameWorld.RegisterPythonActionProc('PlayTutorialVoiceover', self._PlayTutorialVoiceOver, ('messageKey',))
+        GameWorld.RegisterPythonActionProc('PushCameraWithTransition', self._PushCameraWithTransition, ('cameraName', 'behaviorNames', 'transitionSeconds', 'startHeight', 'TargetList'))
+        GameWorld.RegisterPythonActionProc('PopCameraWithTransition', self._PopCameraWithTransition, ('transitionSeconds', 'retainYaw', 'retainPitch'))
+
+    def _PushCameraWithTransition(self, cameraName, behaviorNames, transitionSeconds, startHeight, targetList):
+        entity = self.entityService.FindEntityByID(targetList[0])
+        cameraClass = getattr(cameras, cameraName)
+        camera = cameraClass()
+        camera.pushUp = startHeight
+        if hasattr(camera, 'SetEntity'):
+            camera.SetEntity(entity)
+        names = behaviorNames.split(',')
+        for name in names:
+            name = name.replace(' ', '')
+            if len(name):
+                behaviorClass = getattr(cameras, name)
+                behavior = behaviorClass()
+                camera.AddBehavior(behavior)
+
+        transition = cameras.LinearTransitionBehavior(transitionSeconds=float(transitionSeconds))
+        self.cameraClient.PushActiveCamera(camera, transitionBehaviors=[transition])
+        return True
+
+    def _PopCameraWithTransition(self, transitionSeconds, retainYaw, retainPitch):
+        activeCamera = self.cameraClient.GetActiveCamera()
+        cameraStack = self.cameraClient.GetCameraStack()
+        comingActiveCamera = cameraStack[-2]
+        if retainYaw:
+            comingActiveCamera.SetYaw(activeCamera.yaw)
+        if retainPitch:
+            comingActiveCamera.SetPitch(activeCamera.pitch)
+        transition = cameras.LinearTransitionBehavior(transitionSeconds=float(transitionSeconds))
+        self.cameraClient.PopActiveCamera(transitionBehaviors=[transition])
+        return True
+
+    def _PerformUICallback(self, callbackKey):
+        raise NotImplementedError('Each game must implement a _PerformUICallback that works with its UI.')
+
+    def _PlayEntityAudio(self, audioName, mls, targetList):
+        if mls:
+            message = cfg.GetMessage(audioName)
+            audioName = message.audio
+            if audioName.startswith('wise:/'):
+                audioName = audioName[6:]
+        for entityID in targetList:
+            entity = self.entityService.FindEntityByID(entityID)
+            audioComponent = entity.GetComponent('audioEmitter')
+            if audioComponent:
+                audioComponent.emitter.SendEvent(unicode(audioName))
+            else:
+                self.LogWarn('Entity with ID %s has no audio component. Audio file %s cannot be played from this entity.' % (entityID, audioName))
+
+        return True
+
+    def _PlayTutorialVoiceOver(self, messageKey):
+        sm.GetService('tutorial').Action_Play_MLS_Audio(messageKey)
+        return True
+
+
+exports = {'actionProcTypes.PerformPythonUICallback': zaction.ProcTypeDef(isMaster=True, procCategory='UI', properties=[zaction.ProcPropertyTypeDef('callbackKey', 'S', userDataType=None, isPrivate=True)], description='Performs a UI callback (opens a UI window, etc.). These are set per-game.'),
+ 'actionProcTypes.PlayEntityAudio': zaction.ProcTypeDef(isMaster=True, procCategory='Audio', properties=[zaction.ProcPropertyTypeDef('audioName', 'S', userDataType=None, isPrivate=True, displayName='Audio Name'), zaction.ProcPropertyTypeDef('mls', 'B', userDataType=None, isPrivate=True, displayName='MLS')], description='Plays location-based audio at the location of the *target* entity.'),
+ 'actionProcTypes.PlayTutorialVoiceover': zaction.ProcTypeDef(isMaster=True, procCategory='Audio', properties=[zaction.ProcPropertyTypeDef('messageKey', 'S', userDataType=None, isPrivate=True, displayName='MLS Message Key')], description='Plays the specified tutorial voiceover.'),
+ 'actionProcTypes.PushCameraWithTransition': zaction.ProcTypeDef(isMaster=True, procCategory='Camera', properties=[zaction.ProcPropertyTypeDef('cameraName', 'S', userDataType=None, isPrivate=True, displayName='Camera Class Name'),
+                                              zaction.ProcPropertyTypeDef('behaviorNames', 'S', userDataType=None, isPrivate=True, displayName='Behavior Class Names (comma separ.)'),
+                                              zaction.ProcPropertyTypeDef('transitionSeconds', 'F', userDataType=None, isPrivate=True, displayName='Transition Seconds'),
+                                              zaction.ProcPropertyTypeDef('startHeight', 'F', userDataType=None, isPrivate=True, displayName='Start Height From Floor')], description='Pushes a new camera onto the camera stack. THIS MAY BE DEPRECATED.'),
+ 'actionProcTypes.PopCameraWithTransition': zaction.ProcTypeDef(isMaster=True, procCategory='Camera', properties=[zaction.ProcPropertyTypeDef('transitionSeconds', 'F', userDataType=None, isPrivate=True, displayName='Transition Seconds'), zaction.ProcPropertyTypeDef('retainYaw', 'B', userDataType=None, isPrivate=True, displayName='Retain yaw between cameras'), zaction.ProcPropertyTypeDef('retainPitch', 'B', userDataType=None, isPrivate=True, displayName='Retain pitch between cameras')], description='Pops a camera off the camera stack with a transition. THIS MAY BE DEPRECATED.')}

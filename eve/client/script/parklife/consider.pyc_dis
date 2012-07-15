@@ -1,0 +1,345 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/parklife/consider.py
+import util
+import service
+import uix
+import uthread
+import moniker
+import log
+import uiconst
+import blue
+
+class ConsiderSvc(service.Service):
+    __guid__ = 'svc.consider'
+    __exportedcalls__ = {'DoAttackConfirmations': [],
+     'DoAidConfirmations': [],
+     'GetKillRights': [],
+     'GetKilledRights': [],
+     'ConfirmTakeFromContainer': [],
+     'ConfirmTakeIllicitGoods': []}
+    __notifyevents__ = ['ProcessSessionChange',
+     'DoBallRemove',
+     'DoBallClear',
+     'OnKillRightChange']
+    __dependencies__ = ['war', 'michelle']
+
+    def Run(self, *etc):
+        service.Service.Run(self, *etc)
+        self.confirmationCache = {}
+        self.pendingConfirmations = {}
+        self.containerTakeRights = {}
+        self.killRightsCache = None
+        self.killedRightsCache = None
+
+    def Stop(self, *etc):
+        service.Service.Stop(self, *etc)
+
+    def ProcessSessionChange(self, isRemote, session, change):
+        if change.has_key('solarsystemid'):
+            self.confirmationCache.clear()
+            self.pendingConfirmations.clear()
+            self.containerTakeRights.clear()
+        if session.charid and not self.IsPrimed():
+            uthread.new(self.PrimeKillRights)
+
+    def DoBallRemove(self, ball, slimItem, terminal):
+        if ball:
+            itemID = ball.id
+        elif slimItem:
+            itemID = slimItem.itemID
+        else:
+            return
+        self.LogInfo('DoBallRemove::consider', itemID)
+        if self.confirmationCache.has_key(itemID):
+            del self.confirmationCache[itemID]
+
+    def OnKillRightChange(self, set, whenTimestamp, fromID, toID):
+        self.LogInfo('OnKillRightChange', session.charid, (set,
+         whenTimestamp,
+         fromID,
+         toID), self.killRightsCache, self.killedRightsCache)
+        if set:
+            if fromID == session.charid:
+                if not self.killRightsCache.has_key(toID):
+                    self.killRightsCache[toID] = {}
+                self.killRightsCache[toID] = whenTimestamp
+            if toID == session.charid:
+                if not self.killedRightsCache.has_key(fromID):
+                    self.killedRightsCache[fromID] = {}
+                self.killedRightsCache[fromID] = whenTimestamp
+        else:
+            if fromID == session.charid:
+                if self.killRightsCache.has_key(toID):
+                    del self.killRightsCache[toID]
+            if toID == session.charid:
+                if self.killedRightsCache.has_key(fromID):
+                    del self.killedRightsCache[fromID]
+
+    def DoBallClear(self, solitem):
+        self.confirmationCache.clear()
+
+    def DoAttackConfirmations(self, targetID, effect = None):
+        item = self.michelle.GetItem(targetID)
+        allowAuraCancel = 0
+        securityClass = sm.StartService('map').GetSecurityClass(session.solarsystemid)
+        if securityClass < const.securityClassLowSec:
+            return 1
+        if not item:
+            if not effect:
+                self.LogError('DoAttackConfirmations - Neither targetID nor effect defined. This is destined to fail')
+                log.LogTraceback()
+                return 0
+            if effect.rangeAttributeID is not None:
+                if not self.ConfirmationRequest(targetID, 'AttackAreaEmpireAbort1', targetID):
+                    return 0
+                allowAuraCancel = 1
+        elif not (util.IsSystemOrNPC(item.ownerID) or self.CanAttackFreely(item)):
+            confirmID = targetID
+            if util.IsCharacter(item.ownerID):
+                confirmID = item.ownerID
+            isSameFaction = item.warFactionID and item.warFactionID == eve.session.warfactionid
+            if securityClass >= const.securityClassHighSec:
+                if isSameFaction:
+                    name = 'AttackInnocentEmpireAbort1_HighSec_OwnFaction'
+                else:
+                    name = 'AttackInnocentEmpireAbort1_HighSec'
+            elif isSameFaction:
+                name = 'AttackInnocentEmpireAbort1_OwnFaction'
+            else:
+                name = 'AttackInnocentEmpireAbort1'
+            if not self.ConfirmationRequest(confirmID, name, targetID):
+                return 0
+            allowAuraCancel = 2
+        elif util.IsNPC(item.ownerID) and not self.TypeHasAttribute(item.typeID, const.attributeEntitySecurityStatusKillBonus) and item.groupID not in [const.groupLargeCollidableObject, const.groupControlBunker]:
+            if not self.ConfirmationRequest(targetID, 'AttackGoodNPCAbort1', targetID):
+                return 0
+            allowAuraCancel = 3
+        if eve.rookieState and allowAuraCancel:
+            self.LogInfo('AttackCanceledByAura, cancel=%s, item=%s' % (allowAuraCancel, item))
+            eve.Message('AttackCanceledByAura')
+            return 0
+        return 1
+
+    def DoAidConfirmations(self, targetID):
+        item = self.michelle.GetItem(targetID)
+        secClass = sm.StartService('map').GetSecurityClass(session.solarsystemid)
+        if secClass < const.securityClassLowSec:
+            return 1
+        if item.ownerID == session.charid:
+            return 1
+        targetAggressions = self.michelle.GetPlayerAggressionsForOwner(item.ownerID)
+        if self.michelle.GetAggressionState(item.ownerID) == 2:
+            if secClass == const.securityClassHighSec:
+                return 1
+            if not self.ConfirmationRequest(targetID, 'AidGlobalCriminalEmpire2', targetID):
+                return 0
+        elif self.IsEffectivelyAnOutlaw(item):
+            if secClass == const.securityClassHighSec:
+                return 1
+            if not self.ConfirmationRequest(targetID, 'AidOutlawEmpire2', targetID):
+                return 0
+        elif secClass == const.securityClassHighSec and targetAggressions:
+            if not targetAggressions - self.michelle.GetPlayerAggressionsForOwner(session.charid):
+                return 1
+            if not self.ConfirmationRequest(targetID, 'ConfirmAidFlaggedPersonInEmpire', targetID):
+                return 0
+        elif not util.IsSystemOrNPC(item.ownerID):
+            corpID = None
+            allianceID = None
+            warFactionID = None
+            if util.IsCharacter(item.ownerID) and not util.IsNPC(item.corpID):
+                corpID = item.corpID
+                allianceID = item.allianceID
+                warFactionID = item.warFactionID
+            elif util.IsCorporation(item.ownerID):
+                corpID = item.ownerID
+                allianceID = item.allianceID
+            elif util.IsAlliance(item.ownerID):
+                allianceID = item.ownerID
+            if (corpID is not None or allianceID is not None) and (self.war.AreInAnyHostileWarStates(allianceID) or self.war.AreInAnyHostileWarStates(corpID)):
+                warEntityIDs = [ i for i in (allianceID, corpID) if i is not None ]
+                myWarEntityIDs = [ i for i in (session.allianceid, session.corpid) if i is not None ]
+                for warEntityID in warEntityIDs:
+                    wars = self.war.GetWars(warEntityID)
+                    for myWarEntityID in myWarEntityIDs:
+                        myWars = self.war.GetWars(myWarEntityID)
+                        name = 'AidWithEnemiesEmpire2'
+                        for war in wars.itervalues():
+                            enemyID = war.declaredByID if warEntityID != war.declaredByID else war.againstID
+                            if enemyID == session.corpid or enemyID == session.allianceid:
+                                name = None
+                                continue
+                            else:
+                                name = 'AidWithEnemiesEmpire2'
+                                for myWar in myWars.itervalues():
+                                    myEnemy = myWar.declaredByID if myWarEntityID != myWar.declaredByID else myWar.againstID
+                                    if enemyID == myEnemy:
+                                        name = None
+                                        break
+
+                                if name is None:
+                                    continue
+                            if eve.session.warfactionid:
+                                enemyWarFactionID = sm.StartService('facwar').GetCorporationWarFactionID(enemyID)
+                                if util.IsCorporation(enemyID) and enemyWarFactionID == session.warfactionid:
+                                    name = 'AidWithEnemiesEmpire2_OwnFaction'
+                                    break
+                                if enemyWarFactionID in sm.StartService('facwar').GetEnemies(eve.session.warfactionid):
+                                    name = None
+                                    break
+
+                        if name is not None and not self.ConfirmationRequest(targetID, name, targetID):
+                            return 0
+
+        return 1
+
+    def IsEffectivelyAnOutlaw(self, item):
+        if util.IsCharacter(item.ownerID):
+            return round(item.securityStatus, 1) <= const.outlawSecurityStatus
+        return util.IsSystemOrNPC(item.ownerID) and sm.services['godma'].GetType(item.typeID).entitySecurityStatusKillBonus > 0.0
+
+    def CanAttackFreely(self, item):
+        if util.IsSystem(item.ownerID) or item.ownerID == session.charid:
+            return 1
+        if self.michelle.GetAggressionState(item.ownerID) and item.groupID != const.groupCapsule:
+            return 1
+        if util.IsCharacter(item.ownerID) and round(item.securityStatus, 1) <= const.outlawSecurityStatus:
+            return 1
+        if self.killRightsCache.has_key(item.ownerID):
+            return 1
+        if session.warfactionid and hasattr(item, 'corpID') and sm.StartService('facwar').IsEnemyCorporation(item.corpID, session.warfactionid):
+            return 1
+        belongToPlayerCorp = not util.IsNPC(session.corpid)
+        if belongToPlayerCorp:
+            if item.ownerID == session.corpid:
+                return 1
+            otherCorpID = getattr(item, 'corpID', None)
+            if otherCorpID is not None:
+                if otherCorpID == session.corpid:
+                    return 1
+                if self.war.GetRelationship(otherCorpID) == const.warRelationshipAtWarCanFight:
+                    if item.categoryID != const.categoryShip or item.charID is not None:
+                        return 1
+                    realOtherCorpID = sm.RemoteSvc('corpmgr').GetCorporationIDForCharacter(item.ownerID)
+                    if realOtherCorpID == otherCorpID:
+                        return 1
+                    item.corpID = realOtherCorpID
+                    sm.ScatterEvent('OnStateSetupChance', 'WrongSlimCorpID')
+                    if self.war.GetRelationship(realOtherCorpID) == const.warRelationshipAtWarCanFight:
+                        return 1
+            otherAllianceID = getattr(item, 'allianceID', None)
+            if otherAllianceID is not None:
+                if self.war.GetRelationship(otherAllianceID) == const.warRelationshipAtWarCanFight:
+                    return 1
+        return 0
+
+    def ConfirmationRequest(self, targetID, msgName, actualTargetID):
+        if self.HasConfirmation(targetID, msgName):
+            return 1
+        item = self.michelle.GetItem(actualTargetID)
+        targetName = 'your target'
+        if item is not None:
+            targetName = uix.GetSlimItemName(item)
+        k = (targetID, msgName)
+        if self.pendingConfirmations.has_key(k):
+            return self.pendingConfirmations[k].receive()
+        result = 0
+        self.pendingConfirmations[k] = uthread.Channel(('consider::ConfirmationRequest', k))
+        try:
+            ret = eve.Message(msgName, {'target': targetName}, uiconst.YESNO, suppress=uiconst.ID_YES, default=uiconst.ID_NO)
+            if ret != uiconst.ID_YES:
+                result = 0
+                return 0
+            self.RememberConfirmation(targetID, msgName)
+            result = 1
+        finally:
+            if self.pendingConfirmations.has_key(k):
+                while self.pendingConfirmations[k].queue:
+                    self.pendingConfirmations[k].send(result)
+
+                del self.pendingConfirmations[k]
+
+        return result
+
+    def RememberConfirmation(self, targetID, msgName):
+        if not self.confirmationCache.has_key(targetID):
+            self.confirmationCache[targetID] = []
+        self.confirmationCache[targetID].append(msgName)
+
+    def HasConfirmation(self, targetID, msgName):
+        return self.confirmationCache.has_key(targetID) and msgName in self.confirmationCache[targetID]
+
+    def TypeHasAttribute(self, typeID, attributeID):
+        for each in cfg.dgmtypeattribs.get(typeID, []):
+            if each.attributeID == attributeID:
+                return 1
+
+        return 0
+
+    def PrimeKillRights(self):
+        self.LogInfo('Priming kill rights')
+        lockKey = 'PrimeKillRights'
+        uthread.Lock(self, lockKey)
+        try:
+            self.killRightsCache, self.killedRightsCache = sm.RemoteSvc('standing2').GetMyKillRights()
+        finally:
+            uthread.UnLock(self, lockKey)
+
+        self.LogInfo('Primed kill rights')
+
+    def IsPrimed(self):
+        return self.killRightsCache is not None
+
+    def GetKillRights(self):
+        if not self.IsPrimed():
+            self.PrimeKillRights()
+        return self.killRightsCache
+
+    def GetKilledRights(self):
+        if not self.IsPrimed():
+            self.PrimeKillRights()
+        return self.killedRightsCache
+
+    def ConfirmTakeFromContainer(self, containerID):
+        if not eve.session.solarsystemid:
+            return True
+        bp = sm.GetService('michelle').GetBallpark()
+        item = bp.GetInvItem(containerID)
+        if item is None or item.groupID in (const.groupSecureCargoContainer, const.groupAuditLogSecureContainer):
+            return True
+        ownerID = item.ownerID
+        if ownerID and not util.IsNPC(ownerID) and ownerID != session.charid and ownerID != session.corpid:
+            if bp.HaveLootRight(containerID) or sm.GetService('corp').GetMember(ownerID):
+                return True
+            if item.groupID == const.groupPlanetaryCustomsOffices:
+                return True
+            if sm.StartService('map').GetSecurityClass(eve.session.solarsystemid2) == const.securityClassZeroSec:
+                return True
+            lootRights = bp.GetLootRights(containerID)
+            if lootRights is not None:
+                ownerID, corpID, fleetID, abandoned = lootRights
+                charAggressions, corpAggressions = sm.GetService('michelle').GetCriminalFlagCountDown()
+                ownerFlagging = charAggressions.get(ownerID, None)
+                if ownerFlagging and ownerFlagging - blue.os.GetSimTime() > 12.5 * const.MIN:
+                    if util.IsNPC(corpID):
+                        self.LogInfo('ConfirmTakeFromContainer: Already flagged to the owner, the corp is NPC, so no new flaggings possible', containerID, ownerID)
+                        return True
+                    corpFlagging = charAggressions.get(corpID, None)
+                    if corpFlagging and corpFlagging - blue.os.GetSimTime() > 12.5 * const.MIN:
+                        self.LogInfo('ConfirmTakeFromContainer: Already flagged to the owner and the corp, so no new flaggings possible', containerID, corpID)
+                        return True
+            cfg.eveowners.Prime([ownerID])
+            if eve.Message('ConfirmStealItem', {'owner': ownerID}, uiconst.OKCANCEL) != uiconst.ID_OK:
+                return False
+        return True
+
+    def ConfirmTakeIllicitGoods(self, items):
+        if not session.solarsystemid:
+            return True
+        if sm.GetService('map').GetSecurityClass(eve.session.solarsystemid2) == const.securityClassZeroSec:
+            return True
+        toFactionID = sm.GetService('faction').GetFactionOfSolarSystem(session.solarsystemid)
+        for item in items:
+            if cfg.invtypes.Get(item.typeID).Illegality(toFactionID):
+                return eve.Message('ConfirmTakeIllicitGoods', {'faction': cfg.eveowners.Get(toFactionID).name}, uiconst.YESNO, suppress=uiconst.ID_YES) == uiconst.ID_YES
+
+        return True

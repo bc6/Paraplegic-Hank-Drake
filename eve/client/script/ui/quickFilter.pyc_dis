@@ -1,0 +1,87 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/quickFilter.py
+import blue
+import localization
+import uicls
+import uiconst
+import uthread
+
+class QuickFilterEdit(uicls.Container):
+    __guid__ = 'uicls.QuickFilterEdit'
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        self.width = 100
+        self.height = 18
+        self.filterThread = None
+        self.lastStrFilter = None
+        self.quickFilterInput = None
+        self.state = uiconst.UI_NORMAL
+        self.align = attributes.get('align', uiconst.TOPLEFT)
+        self.ConstructLayout()
+
+    def ConstructLayout(self):
+        self.sr.quickFilterClear = uicls.Icon(icon='ui_73_16_210', parent=self, pos=(82, 4, 16, 16), state=uiconst.UI_HIDDEN, OnClick=self.OnClearClick, hint=localization.GetByLabel('UI/Calendar/Hints/Clear'))
+        self.sr.filter = uicls.SinglelineEdit(name='filter', parent=self, maxLength=37, width=100, align=uiconst.TOPLEFT, OnChange=self.SetQuickFilterInput, OnReturn=self.RegisterInput, OnFocusLost=self.RegisterInput, hinttext=localization.GetByLabel('UI/Inventory/Filter'))
+
+    def RegisterInput(self, *args, **kwds):
+        self.sr.filter.RegisterHistory()
+        self.DoReload()
+
+    def OnClearClick(self, *args):
+        self.sr.filter.SetValue('')
+        if hasattr(self, 'OnClearQuickFilter'):
+            self.OnClearQuickFilter()
+
+    def SetQuickFilterInput(self, *args):
+        if self.filterThread is not None:
+            self.filterThread.kill()
+        self.filterThread = uthread.new(self._SetQuickFilterInput)
+
+    def _SetQuickFilterInput(self):
+        try:
+            blue.pyos.synchro.Sleep(400)
+        finally:
+            self.filterThread = None
+
+        self.DoReload()
+
+    def GetValue(self):
+        return self.sr.filter.GetValue(registerHistory=False)
+
+    def DoReload(self):
+        strFilter = self.sr.filter.GetValue(registerHistory=False)
+        if self.lastStrFilter == strFilter:
+            return
+        self.lastStrFilter = strFilter
+        if len(strFilter) > 0:
+            self.quickFilterInput = strFilter.lower()
+            self.ReloadFunction()
+            self.sr.quickFilterClear.state = uiconst.UI_NORMAL
+        else:
+            prefilter = self.quickFilterInput
+            self.quickFilterInput = None
+            if prefilter != None:
+                self.ReloadFunction()
+            self.sr.quickFilterClear.state = uiconst.UI_HIDDEN
+            self.hintText = None
+
+    def ReloadFunction(self, *args):
+        pass
+
+    def QuickFilter(self, rec):
+        if not self.quickFilterInput:
+            return False
+        name = ''
+        if hasattr(rec, 'name'):
+            name = rec.name.lower()
+        elif hasattr(rec, 'contactID'):
+            name = cfg.eveowners.Get(rec.contactID).name
+            name = name.lower()
+        elif hasattr(rec, 'invtype'):
+            name = rec.invtype.typeName.lower()
+        input = self.quickFilterInput.lower()
+        return name.find(input) + 1
+
+    def ClearQuickFilterInput(self, *args):
+        self.sr.filter.SetValue('')
+        self.ReloadFunction()

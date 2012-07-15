@@ -1,0 +1,47 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/common/script/localization/characterPropertyHandler.py
+import eveLocalization
+import localization
+
+class CharacterPropertyHandler(localization.BasePropertyHandler):
+    __guid__ = 'localization.CharacterPropertyHandler'
+    PROPERTIES = {localization.CODE_UNIVERSAL: ('name', 'rawName', 'gender'),
+     localization.LOCALE_SHORT_ENGLISH: ('nameWithPossessive',),
+     localization.LOCALE_SHORT_GERMAN: ('genitiveName',),
+     localization.LOCALE_SHORT_RUSSIAN: ('genitiveName',)}
+    GENDER_NORMALIZATION_MAPPING = {1: localization.GENDER_MALE,
+     0: localization.GENDER_FEMALE}
+
+    def _GetName(self, charID, languageID, *args, **kwargs):
+        return cfg.eveowners.Get(charID).ownerName
+
+    def _GetRawName(self, charID, languageID, *args, **kwargs):
+        return cfg.eveowners.Get(charID).GetRawName(languageID)
+
+    def _GetGender(self, charID, languageID, *args, **kwargs):
+        return self.GENDER_NORMALIZATION_MAPPING[cfg.eveowners.Get(charID).gender]
+
+    def _GetNameWithPossessiveEN_US(self, charID, *args, **kwargs):
+        characterName = self._GetName(charID, languageID=localization.LOCALE_SHORT_ENGLISH)
+        return self._PrepareLocalizationSafeString(characterName + "'s")
+
+    def _GetGenitiveNameDE(self, charID, *args, **kwargs):
+        characterName = self._GetName(charID, languageID=localization.LOCALE_SHORT_GERMAN)
+        if characterName[-1:] not in 'sxz':
+            characterName = characterName + 's'
+        return self._PrepareLocalizationSafeString(characterName)
+
+    def _GetGenitiveNameRU(self, charID, *args, **kwargs):
+        characterName = self._GetName(charID, languageID=localization.LOCALE_SHORT_RUSSIAN)
+        nameWithPossessive = self._PrepareLocalizationSafeString(characterName + '[possessive]')
+        return nameWithPossessive
+
+    def Linkify(self, charID, linkText):
+        item = cfg.eveowners.Get(charID)
+        if item.typeID:
+            data = (item.typeID, charID)
+            return '<a href=showinfo:' + '//'.join([ str(each) for each in data ]) + '>' + linkText + '</a>'
+        else:
+            return linkText
+
+
+eveLocalization.RegisterPropertyHandler(eveLocalization.VARIABLE_TYPE.CHARACTER, CharacterPropertyHandler())

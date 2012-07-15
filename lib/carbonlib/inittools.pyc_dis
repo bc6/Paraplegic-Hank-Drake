@@ -1,0 +1,109 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\carbon\common\lib\inittools.py
+import blue
+import bluepy
+
+def gettool():
+    if blue.pyos.packaged:
+        try:
+            import autoexec_tools
+        except ImportError:
+            import sys
+            sys.exc_clear()
+        except Exception:
+            import traceback
+            import log
+            traceback.print_exc()
+            log.LogException()
+            raise 
+        else:
+            return autoexec_tools
+
+        return
+    else:
+        args = blue.pyos.GetArg()[1:]
+        tool = None
+        for each in iter(args):
+            split = each.split('=')
+            if split[0].strip() == '/tools' and len(split) > 1:
+                tool = split[1].strip()
+                break
+
+        return tool
+
+
+def _run(tool):
+    if blue.pyos.packaged:
+        tool.run()
+    else:
+        args = blue.pyos.GetArg()[1:]
+        import sys
+        import os
+        silent = False
+        if '/silent' in args:
+            silent = True
+        pyver = sys.version[:3]
+        pyver = pyver[0] + pyver[-1]
+        if pyver not in ('25', '27'):
+            pyver = '27'
+        coreToolsPath = blue.paths.ResolvePath(u'root:/../carbon/tools')
+        localToolsPath = blue.paths.ResolvePath(u'root:/tools')
+        sharedToolsPath = '../../../../shared_tools/libs'
+        coreToolsLibPath = os.path.join(coreToolsPath, 'lib')
+        sys.path.append(coreToolsLibPath)
+        if '32 bit' in sys.version:
+            sys.path.append(os.path.join(coreToolsLibPath, 'bin/win32'))
+        else:
+            sys.path.append(os.path.join(coreToolsLibPath, 'bin/x64'))
+        libDir = blue.paths.ResolvePath(u'root:/') + sharedToolsPath + '/lib' + pyver
+        sys.path.append(libDir)
+        sharedDir = blue.paths.ResolvePath(u'root:/') + sharedToolsPath + '/sharedmodules'
+        sys.path.append(sharedDir)
+        import _site
+        _site.addsitedir(coreToolsPath + '/site-packages')
+        if '32 bit' in sys.version:
+            sys.path.append(libDir + '/bin/win32')
+        else:
+            sys.path.append(libDir + '/bin/x64')
+
+        def execScript(path):
+            try:
+                rf = blue.classes.CreateInstance('blue.ResFile')
+                rf.OpenAlways(path)
+                try:
+                    data = rf.Read()
+                finally:
+                    rf.Close()
+
+                data = data.replace('\r\n', '\n')
+                exec data in globals()
+                runFunc = globals().get('run', None)
+                if runFunc is not None:
+                    runFunc()
+            except Exception as e:
+                import traceback
+                import log
+                traceback.print_exc()
+                log.LogException()
+                if not silent:
+                    blue.win32.MessageBox(str(e), 'Failed to initialize %s!' % (tool,), 272)
+                bluepy.Terminate(str(e))
+
+        def execInitScript(toolsPath):
+            if '/ziplib' in args and not blue.pyos.packaged:
+                import shutil
+                shutil.copyfile(toolsPath + '/startup/%s.py' % tool, toolsPath + '/startup/autoexec_tools.py')
+                execScript(toolsPath + '/startup/%s.py' % tool)
+            else:
+                execScript(toolsPath + '/startup/%s.py' % tool)
+
+        if os.path.exists(tool):
+            execScript(tool)
+        elif os.path.exists(localToolsPath + '/startup/%s.py' % tool):
+            execInitScript(localToolsPath)
+        elif os.path.exists(coreToolsPath + '/startup/%s.py' % tool):
+            execInitScript(coreToolsPath)
+        else:
+            errStr = 'The following file was not found on your machine.\n/tools/startup/%s.py' % tool
+            if not silent:
+                blue.win32.MessageBox(errStr, 'Failed to initialize %s' % tool, 272)
+            bluepy.Terminate(errStr)

@@ -1,0 +1,298 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\eve\common\lib\seekfreeimp.py
+import sys
+import marshal
+import imp
+SEEKFREENAME = 'seekfree.sfm'
+
+def _MakeInitName(fullname):
+    if fullname.endswith('.__init__'):
+        return fullname
+    return fullname + '.__init__'
+
+
+def _GetKeyName(fullname, db):
+    if fullname in db:
+        return fullname
+    initName = _MakeInitName(fullname)
+    if initName in db:
+        return initName
+
+
+class _SeekfreeFinder(object):
+    reportExecFails = False
+
+    def __init__(self, sfmodules):
+        global log
+        self.db = sfmodules
+        self.pathEntry = '/' + SEEKFREENAME
+        self.ok = set()
+        self.fail = set()
+        if self.db:
+            sys.meta_path.append(self)
+            log.debug('SeekFreeFinder now serving module imports from %s', self.pathEntry)
+        else:
+            log.debug('SeekFreeFinder running in passive mode.')
+        self.searchpaths = [self.pathEntry]
+        self.searchpaths += [ p for p in sys.path if '.zip' in p.lower() or '.sdat' in p.lower() ]
+
+    def find_module(self, fullname, path = None):
+        try:
+            if not self.db:
+                raise RuntimeError('This finder is not available! %s', fullname)
+            path = path if path else self.pathEntry
+            keyName = _GetKeyName(fullname, self.db)
+            if keyName:
+                log.debug("find_module found '%s' as '%s'", fullname, keyName)
+                return _SeekfreeLoader(self, path)
+            log.debug("find_module did not find '%s'", fullname)
+        except:
+            log.exception('find_module blew up!')
+            raise 
+
+    def Detach(self):
+        if self.db:
+            sys.path_importer_cache.pop(self.pathEntry, None)
+            sys.meta_path.remove(self)
+            self.db.clear()
+            self.db = None
+            self.ok.clear()
+            self.fail.clear()
+
+
+class _SeekfreeLoader(object):
+
+    def __init__(self, finder, pathEntry):
+        self.finder = finder
+        self.pathEntry = pathEntry
+
+    def get_source(self, fullname):
+        return None
+
+    def load_module(self, fullname):
+        log.debug('about to load_module %s', fullname)
+        keyName = _GetKeyName(fullname, self.finder.db)
+        if keyName not in self.finder.db:
+            raise ImportError('could not find byte code  for %s' % fullname)
+        source = self.finder.db[keyName]
+        source = marshal.loads(source)
+        if fullname in sys.modules:
+            log.info('reusing existing module from previous import of "%s"', fullname)
+            mod = sys.modules[fullname]
+        else:
+            log.debug('creating a new module object for "%s"', fullname)
+            mod = sys.modules.setdefault(fullname, imp.new_module(fullname))
+        initName = _MakeInitName(fullname)
+        isPackage = initName in self.finder.db
+        filename = initName if isPackage else fullname
+        filename = filename.replace('.', '/')
+        mod.__file__ = '//{}/{}.py'.format(SEEKFREENAME, filename)
+        mod.__name__ = fullname
+        mod.__loader__ = self
+        if isPackage:
+            mod.__package__ = fullname
+            mod.__path__ = [ '{}/{}'.format(p, fullname.replace('.', '/')) for p in self.finder.searchpaths ]
+            log.debug('adding path for package: %s', mod.__path__)
+        else:
+            if '.' in fullname:
+                mod.__package__ = '.'.join(fullname.split('.')[:-1])
+            else:
+                mod.__package__ = fullname
+            mod.__path__ = None
+            log.debug('imported as regular module')
+        log.debug('Module set up:')
+        log.debug('...  __file__   : %s', mod.__file__)
+        log.debug('...  __name__   : %s', mod.__name__)
+        log.debug('...  __path__   : %s', mod.__path__)
+        log.debug('...  __package__: %s', mod.__package__)
+        try:
+            exec source in mod.__dict__
+        except:
+            if self.finder.reportExecFails:
+                log.exception("Exec failed for '%s'", fullname)
+            self.finder.fail.add(fullname)
+            raise 
+
+        self.finder.ok.add(fullname)
+        return mod
+
+
+def _BootstrapModules(sfmodules):
+    log.info('_BootstrapModules installing a seek-free package of %s modules.', len(sfmodules))
+    return _SeekfreeFinder(sfmodules)
+
+
+_leFinder = None
+
+def _InstallLogger():
+    global _gotLogger
+    global log
+    if not _gotLogger and 'logging' in sys.modules:
+        log = sys.modules['logging'].getLogger('seekfreeimp')
+        log.info('Logging for seekfreeimp re-initialized.')
+        _gotLogger = True
+
+
+def Install(sfFileName, testEmpty = False):
+    global _leFinder
+    _InstallLogger()
+    mods = sys.modules.keys()
+    mods.sort()
+    log.info('Installing loader. (Installed modules before seek-free: %s)', mods)
+    log.info('Package: %s', sfFileName)
+    if sfFileName.lower().endswith('.sdat') and sys.platform == 'PS3':
+        import _ps3
+        log.info('time since _ps3 import: %.3f ms', 1000 * (_ps3.GetSystemTime() - _ps3.importTime))
+        ret = _ps3.ReadSdataFile(sfFileName)
+        data = ret[0]
+        log.info('tOpen %s, tFstat %s, tRead %s, tClose %s', ret[1], ret[2], ret[3], ret[4])
+        sfmodules = marshal.loads(data)
+    else:
+        with open(sfFileName, 'rb') as f:
+            sfmodules = marshal.load(f)
+    if testEmpty:
+        sfmodules = {}
+    _leFinder = _BootstrapModules(sfmodules)
+    modNames = sfmodules.keys()
+    lazyimport = sys.modules.get('lazyimport')
+    if lazyimport:
+        lazyimport.set_module_manifest(set(modNames))
+    return modNames
+
+
+def _GetMemUsage():
+    if getattr(sys, 'ue3', False):
+        import _pyunreal
+        return _pyunreal.GetTotalMemoryUsage()
+
+
+def UnInstall(info = None):
+    memNow = _GetMemUsage()
+    ret = _UnInstall(info)
+    if memNow is not None:
+        memDiff = memNow - _GetMemUsage()
+    else:
+        memDiff = 0
+    lazyimport = sys.modules.get('lazyimport')
+    if lazyimport:
+        reals = len(lazyimport.reals)
+    else:
+        reals = 0
+    log.info('Seek-free utility uninstalled. Memory recovered: {:,} bytes. Reals from lazy: {}'.format(memDiff, reals))
+    return ret
+
+
+def _UnInstall(info):
+    global _leFinder
+    if not _leFinder:
+        return
+    sfmodules = _leFinder.db
+    _InstallLogger()
+    if not info:
+        log.info('Uninstalling importer. Total seek-free imports=%s', len(_leFinder.ok))
+    else:
+        others = []
+        for m in _leFinder.fail - _leFinder.ok:
+            if m in sfmodules and m not in info.absoluteFails:
+                others.append(m)
+
+        if others:
+            log.info('Failed to import for other reasons: %s', others)
+        ci = info.got
+        cf = len(info.absoluteFails)
+        cfb = len(list(info.imported - _leFinder.ok))
+        if sfmodules:
+            log.info('Failed to import seek-freely: %s', list(info.imported - _leFinder.ok - info.builtinMods))
+        co = len(others)
+        log.info('_BootstrapModules results: imports=%s, fails=%s, fall-backs=%s, others=%s', ci, cf, cfb, co)
+    _leFinder.Detach()
+    _leFinder = None
+    lazyimport = sys.modules.get('lazyimport')
+    if lazyimport:
+        lazyimport.clear_module_manifest()
+
+
+def ImportFromList(importList):
+    preimported = set(sys.modules.keys())
+    absoluteFails = set()
+    got = 0
+    builtinMods = set()
+    imported = set()
+    lazyimport = sys.modules.get('lazyimport')
+    if lazyimport and _leFinder:
+        lazyimport._modNoLazy = set(importList)
+    log.info('Importing %s modules in one go.', len(importList))
+    for modname in importList:
+        _InstallLogger()
+        if modname in preimported:
+            log.debug("Not importing '{}' as it's already imported.".format(modname))
+            got += 1
+            continue
+        try:
+            log.debug("Importing '%s'", modname)
+            m = __import__(modname)
+            if lazyimport and isinstance(m, lazyimport.ModuleProxy):
+                log.debug("Module '%s' is lazy proxy", modname)
+                getattr(m, 'dummy', None)
+                m = __import__(modname)
+                log.debug("Module '%s' is now '%s'", modname, m)
+            imported.add(modname)
+        except ImportError as e:
+            log.warn("Can't import '%s': ImportError: %s", modname, e)
+        except Exception as e:
+            log.warn("Can't import '%s': %s: %s", modname, e.__class__.__name__, e)
+            absoluteFails.add(modname)
+        else:
+            if imp.is_builtin(modname):
+                builtinMods.add(modname)
+            got += 1
+
+    return Bunch(got=got, builtinMods=builtinMods, imported=imported, absoluteFails=absoluteFails)
+
+
+class Bunch(dict):
+    __slots__ = []
+
+    def __repr__(self):
+        return 'Bunch of %s' % dict.__repr__(self)
+
+    def __getattr__(self, key):
+        try:
+            return super(Bunch, self).__getitem__(key)
+        except KeyError:
+            raise AttributeError(key)
+
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+    def __getstate__(self):
+        pass
+
+    def Copy(self):
+        return Bunch(self.copy())
+
+
+if 'logging' in sys.modules:
+    import logging
+    log = logging.getLogger('seekfreeimp')
+    _gotLogger = True
+else:
+
+    class _DummyLogger(object):
+
+        def _Dummy(self, *args, **kw):
+            pass
+
+        def _Stdout(self, msg, *args, **kw):
+            try:
+                sys.stdout.write('seekfreeimp: %s\n' % (msg % args,))
+            except:
+                sys.stdout.write('seekfreeimp: %s %s %s\n' % (msg, args, kw))
+
+        debug = _Dummy
+        info = _Stdout
+        warn = _Stdout
+        exception = _Stdout
+
+
+    log = _DummyLogger()
+    _gotLogger = False

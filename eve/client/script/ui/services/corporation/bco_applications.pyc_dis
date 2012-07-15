@@ -1,0 +1,124 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/services/corporation/bco_applications.py
+import util
+import dbutil
+import corpObject
+
+class ApplicationsO(corpObject.base):
+    __guid__ = 'corpObject.applications'
+
+    def __init__(self, boundObject):
+        corpObject.base.__init__(self, boundObject)
+        self.corpApplications = None
+        self.myApplications = None
+
+    def DoSessionChanging(self, isRemote, session, change):
+        if 'charid' in change:
+            self.myApplications = None
+        if 'corpid' in change:
+            self.corpApplications = None
+
+    def Reset(self):
+        self.corpApplications = None
+        self.myApplications = None
+
+    def OnCorporationApplicationChanged(self, applicantID, corporationID, change):
+        applications = [self.corpApplications, self.myApplications][applicantID == eve.session.charid]
+        if applications is not None:
+            bAdd, bRemove = self.GetAddRemoveFromChange(change)
+            key = (corporationID, applicantID)
+            if bAdd:
+                header = None
+                header = applications.columns
+                if header is None:
+                    header = change.keys()
+                line = []
+                for columnName in header:
+                    line.append(change[columnName][1])
+
+                application = util.Row(header, line)
+                applications[key] = application
+            elif bRemove:
+                if applications.has_key(key):
+                    del applications[key]
+            elif applications.has_key(key):
+                application = applications[key]
+                for columnName in change.iterkeys():
+                    setattr(application, columnName, change[columnName][1])
+
+                applications[key] = application
+        sm.GetService('corpui').OnCorporationApplicationChanged(applicantID, corporationID, change)
+
+    def GetMyApplications(self, corporationID = -1, forceUpdate = False):
+        if self.myApplications is None or forceUpdate:
+            self.myApplications = self.GetCorpRegistry().GetMyApplications().Index('corporationID.characterID')
+        if corporationID != -1:
+            key = (corporationID, eve.session.charid)
+            if self.myApplications.has_key(key):
+                return self.myApplications[key]
+        else:
+            try:
+                return util.Rowset(self.myApplications.columns, self.myApplications.values())
+            except AttributeError:
+                pass
+
+        return []
+
+    def GetMyApplicationsWithStatus(self, status):
+        applications = self.GetMyApplications()
+        if 0 == len(applications):
+            return applications
+        res = util.Rowset(applications.header)
+        for application in applications:
+            if application.status == status:
+                res.lines.append(application.line)
+
+        return res
+
+    def GetApplications(self, characterID = -1, forceUpdate = False):
+        if eve.session.corprole & const.corpRolePersonnelManager != const.corpRolePersonnelManager:
+            return []
+        if self.corpApplications is None or forceUpdate:
+            applications = self.GetCorpRegistry().GetApplications()
+            self.corpApplications = dbutil.CIndexedRowset(applications.header, 'corporationID.characterID')
+            self.corpApplications.Build(applications.values())
+        if characterID == -1:
+            return util.Rowset(self.corpApplications.columns, self.corpApplications.values())
+        key = (eve.session.corpid, characterID)
+        if self.corpApplications.has_key(key):
+            return self.corpApplications[key]
+        else:
+            return []
+
+    def GetApplicationsWithStatus(self, status):
+        applications = self.GetApplications()
+        if 0 == len(applications):
+            return applications
+        res = util.Rowset(applications.header)
+        for application in applications:
+            if application.status == status:
+                res.lines.append(application.line)
+
+        return res
+
+    def DeleteApplication(self, corporationID, characterID):
+        if not (eve.session.charid == characterID or eve.session.corpid == corporationID and eve.session.corprole & const.corpRolePersonnelManager == const.corpRolePersonnelManager):
+            return []
+        self.GetCorpRegistry().DeleteApplication(corporationID, characterID)
+        key = (corporationID, characterID)
+        for applications in (self.corpApplications, self.myApplications):
+            if applications and key in applications:
+                change = {}
+                row = applications[key]
+                for columnName in applications.columns:
+                    oldVal = getattr(row, columnName)
+                    change[columnName] = (oldVal, None)
+
+                del applications[key]
+                self.LogInfo('bco_applications::DeleteApplication sending fake notification')
+                sm.GetService('corpui').OnCorporationApplicationChanged(characterID, corporationID, change)
+
+    def InsertApplication(self, corporationID, applicationText):
+        return self.GetCorpRegistry().InsertApplication(corporationID, applicationText)
+
+    def UpdateApplicationOffer(self, characterID, applicationText, status, applicationDateTime = None):
+        return self.GetCorpRegistry().UpdateApplicationOffer(characterID, applicationText, status, applicationDateTime)

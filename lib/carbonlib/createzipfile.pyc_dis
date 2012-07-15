@@ -1,0 +1,59 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\carbon\common\lib\createzipfile.py
+import blue
+import log
+import zipfile
+import py_compile
+import tempfile
+import os.path
+import nasty
+
+def CreateZipFile(zipFilePath, inputFiles):
+    msgString = 'Nasty creating zipfile %s' % zipFilePath
+    print msgString
+    log.general.Log(msgString, log.LGINFO)
+    with tempfile.TemporaryFile() as tmp:
+        with CleanPyZipFile(tmp, 'w') as tmpzip:
+            for pair in inputFiles:
+                msgString = "Adding '%s' to zipfile " % pair[0]
+                print msgString
+                log.general.Log(msgString, log.LGINFO)
+                inputPathOS = blue.rot.PathToFilename(pair[0]).rstrip('/')
+                if not os.path.exists(inputPathOS):
+                    errString = "'%s' doesn't exist!" % inputPathOS
+                    log.general.Log(errString, log.LGERR)
+                tmpzip.writepy(inputPathOS.encode('cp1252'), pair[1])
+
+        tmpzip.close()
+        with zipfile.PyZipFile(tmp, 'r') as tmpzip:
+            infos = tmpzip.infolist()
+            zipFilePathOS = blue.rot.PathToFilename(zipFilePath)
+            zf = file(zipFilePathOS, 'wb')
+            with zipfile.ZipFile(zf, 'w') as pyzip:
+                for i in infos:
+                    data = tmpzip.read(i.filename)
+                    if i.filename.endswith('.pyc') or i.filename.endswith('.pyo'):
+                        i.filename = i.filename[:-1] + 'j'
+                        data = nasty.JumbleString(data, True)
+                    pyzip.writestr(i, data)
+
+
+class CleanPyZipFile(zipfile.PyZipFile):
+
+    def __init__(self, *args, **kwds):
+        zipfile.PyZipFile.__init__(self, *args, **kwds)
+        tmp = tempfile.NamedTemporaryFile(delete=False)
+        tmp.close()
+        self.tmpfilename = tmp.name
+
+    def close(self):
+        zipfile.PyZipFile.close(self)
+        tmp, self.tmpfilename = self.tmpfilename, None
+        if tmp and os.path.isfile(tmp):
+            os.unlink(tmp)
+
+    def _get_codename(self, pathname, basename):
+        archivename = os.path.split(pathname + ('.pyc' if __debug__ else '.pyo'))[1]
+        if basename:
+            archivename = '%s/%s' % (basename, archivename)
+        py_compile.compile(pathname + '.py', self.tmpfilename, None, True)
+        return (self.tmpfilename, archivename)

@@ -1,0 +1,402 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/services/skillsvc.py
+import blue
+import service
+import uiutil
+import sys
+import uthread
+import util
+import xtriui
+import skillUtil
+import uiconst
+import localization
+import localizationUtil
+import bluepy
+import operator
+from collections import defaultdict
+
+class SkillsSvc(service.Service):
+    __guid__ = 'svc.skills'
+    __exportedcalls__ = {'SkillInTraining': [],
+     'HasSkill': [],
+     'MySkills': [],
+     'MySkillLevelsByID': [],
+     'GetSkillPoints': [],
+     'GetSkillGroups': [],
+     'GetSkillCount': [],
+     'GetAllSkills': [],
+     'GetSkillHistory': [],
+     'GetFreeSkillPoints': [],
+     'SetFreeSkillPoints': []}
+    __notifyevents__ = ['ProcessSessionChange',
+     'OnGodmaSkillStartTraining',
+     'OnGodmaSkillTrainingStopped',
+     'OnSkillFinished',
+     'OnRespecInfoChanged',
+     'OnGodmaMultipleSkillsTrained',
+     'OnFreeSkillPointsChanged',
+     'OnGodmaSkillInjected',
+     'OnAdminSkillChange',
+     'OnItemChange']
+    __servicename__ = 'skills'
+    __displayname__ = 'Skill Client Service'
+    __dependencies__ = ['settings']
+
+    def Run(self, memStream = None):
+        self.LogInfo('Starting Skills')
+        self.Reset()
+
+    def Stop(self, memStream = None):
+        self.Reset()
+
+    def ProcessSessionChange(self, isremote, session, change):
+        if session.charid is None:
+            self.Stop()
+            self.Reset()
+
+    def Reset(self):
+        self.myskills = None
+        self.mySkillsByTypeID = None
+        self.allskills = None
+        self.skillGroups = None
+        self.skillHistory = None
+        self.respecInfo = None
+        self.freeSkillPoints = None
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def SkillInTraining(self, *args):
+        inTraining = [ each for each in self.GetMyGodmaItem().skills.itervalues() if each.flagID == const.flagSkillInTraining ]
+        if inTraining:
+            return inTraining[0]
+        else:
+            return None
+
+    def OnSkillFinished(self, skillID, skillTypeID = None, skillLevel = None):
+        oldNotification = settings.user.ui.Get('skills_showoldnotification', 0)
+        try:
+            self.skillHistory = None
+            skill = sm.GetService('godma').GetItem(skillID)
+            self.myskills = None
+            if oldNotification == 1:
+                eve.Message('SkillTrained', {'name': cfg.invtypes.Get(skill.typeID).name,
+                 'lvl': skill.skillLevel})
+        except:
+            sys.exc_clear()
+
+        if oldNotification == 0:
+            eve.Message('skillTrainingFanfare')
+            uthread.new(sm.StartService('neocom').ShowSkillNotification, [skill.typeID])
+
+    def OnGodmaMultipleSkillsTrained(self, skillTypeIDs):
+        oldNotification = settings.user.ui.Get('skills_showoldnotification', 0)
+        if oldNotification == 1:
+            if len(skillTypeIDs) == 1:
+                skill = self.GetMySkillsFromTypeID(skillTypeIDs[0])
+                skillLevel = skill.skillLevel if skill is not None else localization.GetByLabel('UI/Common/Unknown')
+                eve.Message('SkillTrained', {'name': cfg.invtypes.Get(skillTypeIDs[0]).name,
+                 'lvl': skillLevel})
+            else:
+                eve.Message('MultipleSkillsTrainedNotify', {'num': len(skillTypeIDs)})
+        else:
+            eve.Message('skillTrainingFanfare')
+            uthread.new(sm.StartService('neocom').ShowSkillNotification, skillTypeIDs)
+
+    def MySkills(self, renew = 0, byTypeID = False):
+        if self.myskills is None or renew:
+            self.LogInfo('MySkills::Renewing skill info')
+            self.myskills = self.GetMyGodmaItem().skills.values()
+            self.mySkillsByTypeID = self.myskills.Index('typeID')
+        if byTypeID:
+            return self.mySkillsByTypeID
+        return self.myskills
+
+    def MySkillLevelsByID(self, renew = 0):
+        skills = {}
+        for skill in self.MySkills(renew):
+            skills[skill.typeID] = skill.skillLevel
+
+        return skills
+
+    def OnGodmaSkillStartTraining(self, typeID = None, *args):
+        self.skillHistory = None
+        if self.myskills is not None and typeID is not None:
+            for skill in self.myskills:
+                if skill.typeID == typeID:
+                    return
+
+            self.MySkills(1)
+
+    def OnGodmaSkillTrainingStopped(self, *args):
+        self.skillHistory = None
+        self.MySkills(1)
+
+    def OnGodmaSkillInjected(self, *args):
+        self.MySkills(1)
+
+    def OnAdminSkillChange(self, skillItemID, skillTypeID, newSP):
+        self.MySkills(1)
+
+    def OnItemChange(self, item, change):
+        if item.categoryID != const.categorySkill:
+            return
+        if const.ixLocationID not in change or change[const.ixLocationID] != session.charid:
+            return
+        self.myskills = None
+
+    def HasSkill(self, skillID):
+        mine = self.MySkills()
+        skills = [ skill for skill in mine if skill.typeID == skillID ]
+        if len(skills):
+            return skills[0]
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetAllSkills(self):
+        if not self.allskills:
+            self.allskills = [ sm.GetService('godma').GetType(each.typeID) for each in cfg.invtypes if each.categoryID == const.categorySkill and each.published == 1 ]
+        return self.allskills
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetAllSkillGroups(self):
+        if not self.skillGroups:
+            skillgroups = [ g for g in cfg.invgroups if g.categoryID == const.categorySkill and g.groupID not in [const.groupFakeSkills] ]
+            skillgroups = localizationUtil.Sort(skillgroups, key=operator.attrgetter('groupName'))
+            self.skillGroups = skillgroups
+        return self.skillGroups
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetSkillHistory(self):
+        if self.skillHistory is None:
+            self.skillHistory = sm.GetService('godma').GetSkillHandler().GetSkillHistory()
+        return self.skillHistory
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetSkillGroups(self, advanced = False):
+        if session.charid:
+            ownSkills = self.GetMyGodmaItem().skills.values()
+            skillQueue = sm.GetService('skillqueue').GetServerQueue()
+            skillsInQueue = [ skillID for skillID, trainlevel in skillQueue ]
+        else:
+            ownSkills = []
+            skillsInQueue = []
+        ownSkillTypeIDs = []
+        ownSkillsByGroupID = defaultdict(list)
+        ownSkillsInTrainingByGroupID = defaultdict(list)
+        ownSkillsInQueueByGroupID = defaultdict(list)
+        ownSkillPointsByGroupID = defaultdict(int)
+        for mySkill in ownSkills:
+            if not mySkill:
+                continue
+            ownSkillsByGroupID[mySkill.groupID].append(mySkill)
+            if mySkill.flagID == const.flagSkillInTraining:
+                ownSkillsInTrainingByGroupID[mySkill.groupID].append(mySkill)
+            if mySkill.typeID in skillsInQueue:
+                ownSkillsInQueueByGroupID[mySkill.groupID].append(mySkill.typeID)
+            ownSkillPointsByGroupID[mySkill.groupID] += mySkill.skillPoints
+            ownSkillTypeIDs.append(mySkill.typeID)
+
+        missingSkillsByGroupID = defaultdict(list)
+        if advanced:
+            allSkills = self.GetAllSkills()
+            for aSkill in allSkills:
+                if aSkill.typeID not in ownSkillTypeIDs:
+                    missingSkillsByGroupID[aSkill.groupID].append(aSkill)
+
+        skillsByGroup = []
+        skillgroups = self.GetAllSkillGroups()
+        for invGroup in skillgroups:
+            mySkillsInGroup = ownSkillsByGroupID[invGroup.groupID]
+            skillsIDontHave = missingSkillsByGroupID[invGroup.groupID]
+            mySkillsInTraining = ownSkillsInTrainingByGroupID[invGroup.groupID]
+            mySkillsInQueue = ownSkillsInQueueByGroupID[invGroup.groupID]
+            skillPointsInGroup = ownSkillPointsByGroupID[invGroup.groupID]
+            skillsByGroup.append([invGroup,
+             mySkillsInGroup,
+             skillsIDontHave,
+             mySkillsInTraining,
+             mySkillsInQueue,
+             skillPointsInGroup])
+
+        return skillsByGroup
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetSkillGroupsIDs(self, advanced = False):
+        groupIDs = []
+        skillGroups = self.GetSkillGroups(advanced)
+        for groups, skills, untrained, intraining, inqueue, points in skillGroups:
+            groupIDs.append(groups[0])
+
+        return groupIDs
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetMySkillsFromTypeID(self, typeID):
+        return self.MySkills(byTypeID=True).get(typeID, None)
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetMyGodmaItem(self):
+        ret = sm.GetService('godma').GetItem(eve.session.charid)
+        while ret is None:
+            blue.pyos.synchro.SleepWallclock(500)
+            ret = sm.GetService('godma').GetItem(eve.session.charid)
+
+        return ret
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetSkillCount(self):
+        return len(self.GetMyGodmaItem().skills.values())
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetSkillPoints(self, groupID = None):
+        total = 0
+        skills = self.GetMyGodmaItem().skills
+        for skillID in skills:
+            skill = skills[skillID]
+            if groupID is not None:
+                if skill.groupID == groupID:
+                    total += skill.skillPoints
+            else:
+                total += skill.skillPoints
+
+        return total
+
+    def Train(self, skillX):
+        skill = self.SkillInTraining()
+        if skill and eve.Message('ConfirmResetSkillTraining', {'name': skill.type.typeName,
+         'lvl': skill.skillLevel + 1}, uiconst.OKCANCEL) != uiconst.ID_OK:
+            return
+        sm.GetService('godma').GetSkillHandler().CharStartTrainingSkill(skillX.itemID, skillX.locationID)
+
+    def InjectSkillIntoBrain(self, skillX):
+        skillIDList = [ skill.itemID for skill in skillX ]
+        if not skillIDList:
+            return
+        skillsLocation = skillX[0].locationID
+        sm.GetService('godma').GetSkillHandler().InjectSkillIntoBrain(skillIDList, skillsLocation)
+
+    def AbortTrain(self, skillX):
+        if eve.Message('ConfirmAbortSkillTraining', {}, uiconst.OKCANCEL) == uiconst.ID_OK:
+            sm.GetService('godma').GetSkillHandler().CharStopTrainingSkill()
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetRespecInfo(self):
+        if self.respecInfo is None:
+            self.respecInfo = sm.GetService('godma').GetSkillHandler().GetRespecInfo()
+        return self.respecInfo
+
+    def OnRespecInfoChanged(self, *args):
+        self.respecInfo = None
+        sm.ScatterEvent('OnRespecInfoUpdated')
+
+    def OnOpenCharacterSheet(self, skillIDs, certAvailable, *args):
+        wnd = sm.GetService('charactersheet').GetWnd(1)
+        wnd.Maximize()
+        if wnd:
+            if len(certAvailable) > 0:
+                certButton = uiutil.GetChild(wnd, 'characterSheetMenuCertificatesBtn')
+                if certButton:
+                    certButton.Blink()
+            blue.pyos.synchro.SleepWallclock(500)
+            wnd.sr.skilltabs.ShowPanelByName(localization.GetByLabel('UI/Common/History'))
+            blue.pyos.synchro.SleepWallclock(500)
+            skillIDsCopy = skillIDs[:]
+            for node in wnd.sr.scroll.GetNodes():
+                if node.id in skillIDsCopy:
+                    wnd.sr.scroll._SelectNode(node)
+                    skillIDsCopy.remove(node.id)
+
+    def ShowSkillNotification(self, skillTypeIDs, left):
+        certAvailable = sm.StartService('certificates').FindAvailableCerts()
+        data = util.KeyVal()
+        skillText = ''
+        if len(skillTypeIDs) == 1:
+            skill = sm.StartService('skills').GetMySkillsFromTypeID(skillTypeIDs[0])
+            skillLevel = skill.skillLevel if skill is not None else localization.GetByLabel('UI/Generic/Unkown')
+            skillText = localization.GetByLabel('UI/SkillQueue/Skills/SkillNameAndLevel', skill=skillTypeIDs[0], amount=skillLevel)
+        else:
+            skillText = localization.GetByLabel('UI/SkillQueue/Skills/NumberOfSkills', amount=len(skillTypeIDs))
+        certText = ''
+        if len(certAvailable) > 0:
+            certText = localization.GetByLabel('UI/SkillQueue/CertificatesAvailable', certsAvailable=len(certAvailable))
+        queue = sm.GetService('skillqueue').GetServerQueue()
+        queueText = ''
+        if len(queue) == 0:
+            queueText = localization.GetByLabel('UI/SkillQueue/NoSkillsInQueue')
+        data.headerText = localization.GetByLabel('UI/Generic/SkillTrainingComplete')
+        data.text1 = skillText
+        data.text2 = certText
+        data.text3 = queueText
+        icon = xtriui.PopupNotification(name='skillCompleted', align=uiconst.TOPLEFT, left=left, top=60, height=60, width=230, parent=None, idx=0)
+        icon.state = uiconst.UI_NORMAL
+        uicore.layer.abovemain.children.insert(0, icon)
+        icon.Startup()
+        icon.Load(data)
+        icon.OnClick = (sm.StartService('skills').OnOpenCharacterSheet, skillTypeIDs, certAvailable)
+
+    def OnFreeSkillPointsChanged(self, newFreeSkillPoints):
+        self.SetFreeSkillPoints(newFreeSkillPoints)
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetFreeSkillPoints(self):
+        if self.freeSkillPoints is None:
+            return 0
+        return self.freeSkillPoints
+
+    def ApplyFreeSkillPoints(self, skillTypeID, pointsToApply):
+        if self.freeSkillPoints is None:
+            self.GetFreeSkillPoints()
+        if self.SkillInTraining() is not None:
+            raise UserError('CannotApplyFreePointsWhileQueueActive')
+        skill = self.GetMySkillsFromTypeID(skillTypeID)
+        if skill is None:
+            raise UserError('CannotApplyFreePointsDoNotHaveSkill', {'skillName': cfg.invtypes.Get(skillTypeID).name})
+        spAtMaxLevel = skillUtil.GetSPForLevelRaw(skill.skillTimeConstant, 5)
+        if skill.skillPoints + pointsToApply > spAtMaxLevel:
+            pointsToApply = spAtMaxLevel - skill.skillPoints
+        if pointsToApply > self.freeSkillPoints:
+            raise UserError('CannotApplyFreePointsNotEnoughRemaining', {'pointsRequested': pointsToApply,
+             'pointsRemaining': self.freeSkillPoints})
+        if pointsToApply <= 0:
+            return
+        skillQueue = sm.GetService('skillqueue').GetQueue()
+        for queueTypeID, queueLevel in skillQueue:
+            if queueTypeID == skillTypeID:
+                raise UserError('CannotApplyFreePointsToQueuedSkill', {'skillName': cfg.invtypes.Get(skillTypeID).name})
+
+        newFreePoints = sm.GetService('godma').GetSkillHandler().ApplyFreeSkillPoints(skill.typeID, pointsToApply)
+        self.SetFreeSkillPoints(newFreePoints)
+
+    def SetFreeSkillPoints(self, newFreePoints):
+        if self.freeSkillPoints is None or newFreePoints != self.freeSkillPoints:
+            if self.freeSkillPoints is None or newFreePoints > self.freeSkillPoints:
+                uthread.new(self.ShowSkillPointsNotification_thread)
+            self.freeSkillPoints = newFreePoints
+            sm.ScatterEvent('OnFreeSkillPointsChanged_Local')
+
+    def ShowSkillPointsNotification(self, number = (0, 0), time = 5000, *args):
+        skillPointsNow = self.GetFreeSkillPoints()
+        skillPointsLast = settings.user.ui.Get('freeSkillPoints', -1)
+        if skillPointsLast == skillPointsNow:
+            return
+        if skillPointsNow <= 0:
+            return
+        leftSide, rightSide = uicore.layer.sidePanels.GetSideOffset()
+        data = util.KeyVal()
+        data.headerText = localization.GetByLabel('UI/Generic/SkillPointsApplied')
+        data.text1 = localization.GetByLabel('UI/SkillQueue/UnallocatedSkillPoints')
+        data.text2 = None
+        data.iconNum = 'ui_94_64_8'
+        data.time = time
+        icon = uiutil.FindChild(uicore.layer.abovemain, 'newmail')
+        if not icon:
+            icon = xtriui.PopupNotification(name='skillpointsapplied', parent=None, align=uiconst.TOPLEFT, pos=(leftSide,
+             60,
+             230,
+             60), idx=0)
+            icon.state = uiconst.UI_NORMAL
+            uicore.layer.abovemain.children.insert(0, icon)
+            icon.Startup()
+        icon.Load(data)
+        settings.user.ui.Set('freeSkillPoints', skillPointsNow)
+        return icon
+
+    def ShowSkillPointsNotification_thread(self):
+        blue.pyos.synchro.SleepWallclock(5000)
+        self.ShowSkillPointsNotification()

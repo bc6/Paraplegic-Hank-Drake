@@ -1,0 +1,17 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\eve\common\lib\dustEnums.py
+from catma.axiom import Enumerate
+
+def PopulateEnums(ax2):
+    axiomClass = ax2.CreateClass('EDustGameObjectiveType', Enumerate)
+    axiomClass.AddElement('GameObjectiveType_None')
+    axiomClass.AddElement('GameObjectiveType_Primary')
+    axiomClass.AddElement('GameObjectiveType_Secondary')
+    axiomClass = ax2.CreateClass('EKillType', Enumerate)
+    axiomClass.AddElement('KT_Enemy', description='killed by enemy')
+    axiomClass.AddElement('KT_Team', description='killed by teammate')
+    axiomClass.AddElement('KT_Suicide', description='suicide')
+    axiomClass.AddElement('KT_Accident', description='killed by entity which is not controlled by anyone. i.e. by a falling rock')
+    axiomClass.AddElement('KT_Invalid', description="the entity gets killed is not controlled by anyone, or doesn't belong to any team")
+    axiomClass = ax2.CreateClass('ESyncGroupType', Enumerate)
+    axiomClass.AddElement('GroupType_State')
+    axiomClass.AddElement('GroupType_Switch')

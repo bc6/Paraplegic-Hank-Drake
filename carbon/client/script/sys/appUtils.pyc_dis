@@ -1,0 +1,33 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/carbon/client/script/sys/appUtils.py
+import blue
+import lg
+import bluepy
+
+def Reboot(reason = ''):
+    lg.Info('appUtils.Reboot', 'About to reboot the client because:' + reason)
+    prefs.SetValue('rebootReason', reason)
+    prefs.SetValue('rebootTime', blue.os.GetWallclockTime())
+    allargs = blue.pyos.GetArg()
+    cmd = allargs[0]
+    args = []
+    for arg in allargs[1:]:
+        arg = arg.strip()
+        if arg.find(' ') >= 0 or arg.find('\t') >= 0:
+            arg = '"""' + arg + '"""'
+        args.append(arg)
+
+    args = ' '.join(args)
+    lg.Info('appUtils.Reboot', 'About to reboot the client with:' + str((0,
+     None,
+     cmd,
+     args)))
+    try:
+        blue.win32.ShellExecute(0, None, cmd, args)
+    except Exception as e:
+        lg.Error('appUtils.Reboot', 'Failed with: ' + str(e))
+        raise 
+
+    bluepy.Terminate(reason)
+
+
+exports = {'appUtils.Reboot': Reboot}

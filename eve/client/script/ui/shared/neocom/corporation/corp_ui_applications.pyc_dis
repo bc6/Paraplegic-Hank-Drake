@@ -1,0 +1,378 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/shared/neocom/corporation/corp_ui_applications.py
+import blue
+import uthread
+import util
+import xtriui
+import uix
+import form
+import dbg
+import log
+import listentry
+import uicls
+import uiconst
+import form
+import uiutil
+import localization
+
+class CorpApplications(uicls.Container):
+    __guid__ = 'form.CorpApplications'
+    __nonpersistvars__ = []
+    DEFAULT_APPLICATIONS_HEIGHT = 125
+
+    def ApplyAttributes(self, attributes):
+        super(form.CorpApplications, self).ApplyAttributes(attributes)
+        self.sr.viewingStatus = 0
+        self.corpApplicationsContainer = uicls.Container(parent=self, name='corpApplicationsContainer', align=uiconst.TOALL)
+        self.corpApplicationsLabel = uicls.EveLabelMedium(parent=self.corpApplicationsContainer, name='corpApplicationsLabel', align=uiconst.TOTOP)
+        self.sr.corpScroll = uicls.Scroll(parent=self.corpApplicationsContainer, name='corpScroll')
+        self.sr.corpScroll.multiSelect = 0
+        self.sr.corpScroll.stretchLastHeader = True
+        self.sr.corpScroll.rightAlignHeaderLabels = [localization.GetByLabel('UI/Common/Date')]
+        self.sr.corpScroll.sr.ignoreTabTrimming = True
+        self.sr.corpScroll.sr.fixedColumns = {localization.GetByLabel('UI/Common/Name'): 256}
+        self.personalApplicationsContainer = uicls.Container(parent=self, name='personalApplicationsContainer', align=uiconst.TOBOTTOM, padTop=const.defaultPadding, idx=0)
+        personalApplicationsLabel = uicls.EveLabelMedium(parent=self.personalApplicationsContainer, name='personalApplicationsLabel', align=uiconst.TOTOP, text=localization.GetByLabel('UI/Corporations/CorpApplications/MyApplications'))
+        self.sr.personalScroll = uicls.Scroll(parent=self.personalApplicationsContainer, name='personalApplications')
+        self.sr.personalScroll.multiSelect = 0
+        self.sr.personalScroll.stretchLastHeader = True
+        self.sr.personalScroll.rightAlignHeaderLabels = [localization.GetByLabel('UI/Common/Date')]
+        self.sr.personalScroll.sr.ignoreTabTrimming = True
+        self.sr.personalScroll.sr.fixedColumns = {localization.GetByLabel('UI/Common/Name'): 256}
+        self.personalApplicationsContainer.height = self.DEFAULT_APPLICATIONS_HEIGHT
+
+    def ShowCorporateApplications(self):
+        log.LogInfo('ShowCorporateApplications')
+        self.corpApplicationsLabel.SetText(localization.GetByLabel('UI/Corporations/CorpApplications/ApplicationsToCorp', corporationName=cfg.eveowners.Get(session.corpid).ownerName))
+        try:
+            sm.GetService('corpui').ShowLoad()
+            scrolllist = []
+            hint = localization.GetByLabel('UI/Corporations/CorpApplications/NoApplicationsFound')
+            if const.corpRolePersonnelManager & eve.session.corprole != const.corpRolePersonnelManager:
+                log.LogInfo('ShowCorporateApplications Invalid Callee')
+                hint = localization.GetByLabel('UI/Corporations/AccessRestrictions/RequirePersonnelManagerRole')
+            elif self is None or self.destroyed:
+                log.LogInfo('ShowCorporateApplications Destroyed or None')
+                hint = "You didn't see me."
+            else:
+                log.LogInfo('ShowCorporateApplications status', self.sr.viewingStatus)
+                applications = sm.GetService('corp').GetApplicationsWithStatus(self.sr.viewingStatus)
+                log.LogInfo('ShowCorporateApplications len(applications):', len(applications))
+                owners = []
+                for application in applications:
+                    if application.characterID not in owners:
+                        owners.append(application.characterID)
+
+                if len(owners):
+                    cfg.eveowners.Prime(owners)
+                for application in applications:
+                    self.__AddApplicationToList(application, scrolllist, isMine=False)
+
+            self.sr.corpScroll.Load(contentList=scrolllist, headers=[localization.GetByLabel('UI/Common/Name'), localization.GetByLabel('UI/Common/Date')])
+            if scrolllist:
+                self.sr.corpScroll.ShowHint(None)
+            else:
+                self.sr.corpScroll.ShowHint(hint)
+        finally:
+            sm.GetService('corpui').HideLoad()
+
+    def ShowMyApplications(self):
+        log.LogInfo('ShowMyApplications')
+        try:
+            sm.GetService('corpui').ShowLoad()
+            scrolllist = []
+            hint = localization.GetByLabel('UI/Corporations/CorpApplications/NoApplicationsFound')
+            if self is None or self.destroyed:
+                log.LogInfo('ShowMyApplications Destroyed or None')
+            else:
+                log.LogInfo('ShowMyApplications status', self.sr.viewingStatus)
+                applications = sm.GetService('corp').GetMyApplicationsWithStatus(self.sr.viewingStatus)
+                log.LogInfo('ShowMyApplications len(applications):', len(applications))
+                owners = []
+                for application in applications:
+                    if application.corporationID not in owners:
+                        owners.append(application.corporationID)
+
+                if len(owners):
+                    cfg.eveowners.Prime(owners)
+                for application in applications:
+                    self.__AddApplicationToList(application, scrolllist, isMine=True)
+
+            if scrolllist:
+                self.sr.personalScroll.Load(contentList=scrolllist, headers=[localization.GetByLabel('UI/Common/Name'), localization.GetByLabel('UI/Common/Date')])
+                self.sr.personalScroll.ShowHint(None)
+            else:
+                self.sr.personalScroll.Load(fixedEntryHeight=19, contentList=scrolllist)
+                self.sr.personalScroll.ShowHint(hint)
+        finally:
+            sm.GetService('corpui').HideLoad()
+
+    def __AddApplicationToList(self, application, scrolllist, isMine = True):
+        if application.status != self.sr.viewingStatus:
+            return
+        status = ''
+        if application.status == const.crpApplicationAppliedByCharacter:
+            status = localization.GetByLabel('UI/Corporations/CorpApplications/ApplicationUnprocessed')
+        data = util.KeyVal()
+        data.statusLabel = status
+        data.isMine = isMine
+        data.GetMenu = self.GetApplicationMenu
+        data.corporation = sm.GetService('corp').GetCorporation(application.corporationID)
+        data.application = application
+        if isMine:
+            dblClickFunc = lambda *args: self.ViewApplication(application.corporationID)
+            id = application.corporationID
+        else:
+            dblClickFunc = lambda *args: self.CorpViewApplication(application.characterID, application.applicationText)
+            id = application.characterID
+        data.charID = id
+        data.applicationDate = application.applicationDateTime
+        data.OnDblClick = dblClickFunc
+        scrolllist.append(listentry.Get('User', data=data))
+
+    def GetApplicationMenu(self, entry):
+        isMine = entry.isMine
+        application = entry.application
+        corporation = entry.corporation
+        status = entry.statusLabel
+        menu = []
+        if isMine:
+            withdraw = None
+            menu.append((localization.GetByLabel('UI/Corporations/CorpApplications/ViewApplication'), self.ViewApplication, (application.corporationID,)))
+            if not (eve.session.charid == application.characterID and eve.session.corpid == application.corporationID):
+                menu.append((localization.GetByLabel('UI/Corporations/CorpApplications/WithdrawApplication'), self.WithdrawApplication, (application.characterID, corporation.corporationID)))
+        else:
+            menu.extend([(localization.GetByLabel('UI/Corporations/CorpApplications/ViewApplication'), self.CorpViewApplication, (application.characterID, application.applicationText)), (localization.GetByLabel('UI/Corporations/CorpApplications/AcceptApplication'), self.AcceptOrRejectApplication, (application.characterID, '', const.crpApplicationAcceptedByCorporation)), (localization.GetByLabel('UI/Corporations/CorpApplications/RejectApplication'), self.AcceptOrRejectApplication, (application.characterID, '', const.crpApplicationRejectedByCorporation))])
+            menu.append(None)
+        return menu
+
+    def ShowInfo(self, typeID, itemID, *args):
+        sm.GetService('info').ShowInfo(typeID, itemID)
+
+    def OnCorporationApplicationChanged(self, applicantID, corporationID, change):
+        log.LogInfo('OnCorporationApplicationChanged applicantID', applicantID, 'corporationID', corporationID, 'change', change)
+        if self is None or self.destroyed:
+            log.LogInfo('OnCorporationApplicationChanged self is None or self.destroyed')
+            return
+        bAdd = 1
+        bRemove = 1
+        for old, new in change.itervalues():
+            if old is None and new is None:
+                continue
+            if old is not None:
+                bAdd = 0
+            if new is not None:
+                bRemove = 0
+
+        if bAdd and bRemove:
+            raise RuntimeError('applications::OnCorporationApplicationChanged WTF')
+        application = None
+        if not bRemove:
+            if eve.session.charid == applicantID:
+                application = sm.GetService('corp').GetMyApplications(corporationID, forceUpdate=True)
+            else:
+                application = sm.GetService('corp').GetApplications(applicantID, forceUpdate=True)
+            if application:
+                status = application.status
+        if 'status' in change:
+            if self.sr.viewingStatus in change['status']:
+                oldStatus, newStatus = change['status']
+                if newStatus != self.sr.viewingStatus:
+                    bRemove = True
+                if newStatus == self.sr.viewingStatus:
+                    bAdd = True
+                if bRemove or bAdd:
+                    self.ShowCorporateApplications()
+                    self.ShowMyApplications()
+
+    def WithdrawApplication(self, charid, corpid, *args):
+        try:
+            sm.GetService('corpui').ShowLoad()
+            sm.GetService('corp').DeleteApplication(corpid, charid)
+        finally:
+            sm.GetService('corpui').HideLoad()
+            uicls.Window.CloseIfOpen(windowID='viewApplicationWindow')
+
+    def ViewApplication(self, corporationID, application = None):
+        if application is None:
+            application = sm.GetService('corp').GetMyApplications(corporationID)
+        if application is None:
+            return
+        wnd = form.MyCorpApplicationWnd.Open(corpid=corporationID, application=application)
+        wnd.ShowModal()
+
+    def AcceptOrRejectApplication(self, characterID, applicationText, status):
+        sm.GetService('corp').UpdateApplicationOffer(characterID, applicationText, status)
+
+    def CorpViewApplication(self, characterID, applicationText = ''):
+        corporationID = eve.session.corpid
+        if const.corpRolePersonnelManager & eve.session.corprole != const.corpRolePersonnelManager:
+            return
+        wnd = form.ViewCorpApplicationWnd.Open(characterID=characterID, applicationText=applicationText)
+        if wnd.ShowModal() == 1:
+            retval = wnd.result
+        else:
+            retval = None
+        if retval is not None:
+            sm.GetService('corp').UpdateApplicationOffer(characterID, applicationText, retval)
+
+
+class ViewCorpApplicationWnd(uicls.Window):
+    __guid__ = 'form.ViewCorpApplicationWnd'
+    default_width = 400
+    default_height = 255
+    default_minSize = (default_width, default_height)
+
+    def ApplyAttributes(self, attributes):
+        uicls.Window.ApplyAttributes(self, attributes)
+        self.DefineButtons(uiconst.OKCANCEL, okFunc=self.Confirm, cancelFunc=self.Cancel)
+        self.charID = attributes.get('characterID')
+        self.appText = attributes.get('applicationText')
+        wndCaption = localization.GetByLabel('UI/Corporations/CorpApplications/ViewApplicationDetailCaption')
+        self.SetCaption(wndCaption)
+        self.SetTopparentHeight(0)
+        self.MakeUnResizeable()
+        self.ConstructLayout()
+
+    def ConstructLayout(self):
+        charInfoCont = uicls.Container(name='charInfo', parent=self.sr.main, align=uiconst.TOTOP, height=68, padding=const.defaultPadding)
+        charLogoCont = uicls.Container(name='charLogo', parent=charInfoCont, align=uiconst.TOLEFT, width=68)
+        charTextCont = uicls.Container(name='charName', parent=charInfoCont, align=uiconst.TOALL)
+        applicationCont = uicls.Container(name='charInfo', parent=self.sr.main, align=uiconst.TOALL, padding=(const.defaultPadding,
+         0,
+         const.defaultPadding,
+         const.defaultPadding))
+        uiutil.GetOwnerLogo(charLogoCont, self.charID, size=64, noServerCall=True)
+        charText = localization.GetByLabel('UI/Corporations/CorpApplications/ApplicationSubjectLine', player=self.charID)
+        charNameLabel = uicls.EveLabelLarge(parent=charTextCont, text=charText, top=12, align=uiconst.TOPLEFT, width=270)
+        editText = localization.GetByLabel('UI/Corporations/BaseCorporationUI/CorporationApplicationText')
+        editLabel = uicls.EveLabelSmall(parent=applicationCont, text=editText, align=uiconst.TOTOP)
+        self.acceptRb = uicls.Checkbox(text=localization.GetByLabel('UI/Corporations/CorpApplications/AcceptApplication'), parent=applicationCont, configName='accept', retval=0, checked=False, groupname='state', align=uiconst.TOBOTTOM)
+        self.rejectRb = uicls.Checkbox(text=localization.GetByLabel('UI/Corporations/CorpApplications/RejectApplication'), parent=applicationCont, configName='reject', retval=1, checked=True, groupname='state', align=uiconst.TOBOTTOM)
+        self.applicationText = uicls.EditPlainText(setvalue=self.appText, parent=applicationCont, maxLength=1000, readonly=True)
+
+    def Confirm(self, *args):
+        applicationText = self.applicationText.GetValue()
+        if len(applicationText) > 1000:
+            error = localization.GetByLabel('UI/Corporations/CorpApplications/ApplicationTextTooLong', length=len(applicationText))
+            eve.Message('CustomInfo', {'info': error})
+        else:
+            if self.rejectRb.checked:
+                rejected = const.crpApplicationRejectedByCorporation
+            else:
+                rejected = const.crpApplicationAcceptedByCorporation
+            self.result = rejected
+            self.SetModalResult(1)
+
+    def Cancel(self, *args):
+        self.result = None
+        self.SetModalResult(0)
+
+
+class MyCorpApplicationWnd(uicls.Window):
+    __guid__ = 'form.MyCorpApplicationWnd'
+    default_width = 400
+    default_height = 245
+    default_minSize = (default_width, default_height)
+
+    def ApplyAttributes(self, attributes):
+        uicls.Window.ApplyAttributes(self, attributes)
+        self.DefineButtons(uiconst.OKCANCEL, okFunc=self.Confirm, cancelLabel=localization.GetByLabel('UI/Corporations/CorpApplications/WithdrawApplication'), cancelFunc=self.WithdrawApplication)
+        self.corpid = attributes.get('corpid')
+        self.application = attributes.get('application')
+        self.windowID = 'viewApplicationWindow'
+        wndCaption = localization.GetByLabel('UI/Corporations/CorpApplications/ViewApplicationDetailCaption')
+        self.SetCaption(wndCaption)
+        self.SetTopparentHeight(0)
+        self.MakeUnResizeable()
+        self.ConstructLayout()
+
+    def ConstructLayout(self):
+        corpName = cfg.eveowners.Get(self.corpid).name
+        corpInfoCont = uicls.Container(name='corpInfo', parent=self.sr.main, align=uiconst.TOTOP, height=68, padding=const.defaultPadding)
+        corpLogoCont = uicls.Container(name='corpLogo', parent=corpInfoCont, align=uiconst.TOLEFT, width=68)
+        corpTextCont = uicls.Container(name='corpName', parent=corpInfoCont, align=uiconst.TOALL)
+        applicationCont = uicls.Container(name='corpInfo', parent=self.sr.main, align=uiconst.TOALL, padding=(const.defaultPadding,
+         0,
+         const.defaultPadding,
+         const.defaultPadding))
+        uiutil.GetOwnerLogo(corpLogoCont, self.corpid, size=64, noServerCall=True)
+        corpText = localization.GetByLabel('UI/Corporations/CorpApplications/YourApplicationToJoin', corpName=corpName)
+        corpNameLabel = uicls.EveLabelLarge(parent=corpTextCont, text=corpText, top=12, align=uiconst.TOPLEFT, width=270)
+        statusText = localization.GetByLabel('UI/Corporations/CorpApplications/ApplicationNotProcessed')
+        statusLabel = uicls.EveLabelSmall(parent=applicationCont, text=statusText, align=uiconst.TOBOTTOM)
+        editText = localization.GetByLabel('UI/Corporations/BaseCorporationUI/CorporationApplicationText')
+        editLabel = uicls.EveLabelSmall(parent=applicationCont, text=editText, align=uiconst.TOTOP)
+        if self.application.applicationText is not None:
+            appText = self.application.applicationText
+        else:
+            appText = ''
+        self.applicationText = uicls.EditPlainText(setvalue=appText, parent=applicationCont, maxLength=1000, readonly=True)
+
+    def Confirm(self, *args):
+        self.result = None
+        self.SetModalResult(0)
+
+    def WithdrawApplication(self, *args):
+        corpID = self.corpid
+        charID = self.application.characterID
+        try:
+            sm.GetService('corpui').ShowLoad()
+            sm.GetService('corp').DeleteApplication(corpID, charID)
+        finally:
+            sm.GetService('corpui').HideLoad()
+            self.result = None
+            self.SetModalResult(0)
+
+
+class ApplyToCorpWnd(uicls.Window):
+    __guid__ = 'form.ApplyToCorpWnd'
+    default_width = 400
+    default_height = 245
+    default_minSize = (default_width, default_height)
+
+    def ApplyAttributes(self, attributes):
+        uicls.Window.ApplyAttributes(self, attributes)
+        self.DefineButtons(uiconst.OKCANCEL, okFunc=self.Confirm, cancelFunc=self.Cancel)
+        self.corpid = attributes.get('corpid')
+        self.corporation = attributes.get('corporation')
+        wndCaption = localization.GetByLabel('UI/Corporations/BaseCorporationUI/JoinCorporation')
+        self.SetCaption(wndCaption)
+        self.SetTopparentHeight(0)
+        self.MakeUnResizeable()
+        self.ConstructLayout()
+
+    def ConstructLayout(self):
+        corpName = cfg.eveowners.Get(self.corpid).name
+        corpInfoCont = uicls.Container(name='corpInfo', parent=self.sr.main, align=uiconst.TOTOP, height=68, padding=const.defaultPadding)
+        corpLogoCont = uicls.Container(name='corpLogo', parent=corpInfoCont, align=uiconst.TOLEFT, width=68)
+        corpTextCont = uicls.Container(name='corpName', parent=corpInfoCont, align=uiconst.TOALL)
+        applicationCont = uicls.Container(name='corpInfo', parent=self.sr.main, align=uiconst.TOALL, padding=(const.defaultPadding,
+         0,
+         const.defaultPadding,
+         const.defaultPadding))
+        uiutil.GetOwnerLogo(corpLogoCont, self.corpid, size=64, noServerCall=True)
+        corpText = localization.GetByLabel('UI/Corporations/BaseCorporationUI/ApplyForMembership', corporation=corpName)
+        corpNameLabel = uicls.EveLabelLarge(parent=corpTextCont, text=corpText, top=12, align=uiconst.TOPLEFT, width=270)
+        editText = localization.GetByLabel('UI/Corporations/BaseCorporationUI/CorporationApplicationText')
+        editLabel = uicls.EveLabelSmall(parent=applicationCont, text=editText, align=uiconst.TOTOP)
+        tax = self.corporation.taxRate * 100
+        taxText = localization.GetByLabel('UI/Corporations/BaseCorporationUI/CurrentTaxRateForCorporation', corporation=corpName, taxRate=tax)
+        taxLabel = uicls.EveLabelSmall(parent=applicationCont, text=taxText, align=uiconst.TOBOTTOM)
+        if self.corporation and not self.corporation.isRecruiting:
+            notRecruitingText = localization.GetByLabel('UI/Corporations/BaseCorporationUI/RecruitmentMayBeClosed')
+            notRecruiting = uicls.EveLabelSmall(parent=applicationCont, text=notRecruitingText, align=uiconst.TOBOTTOM, idx=0)
+            self.SetMinSize((self.default_width, self.default_height + notRecruiting.textheight), refresh=True)
+        self.applicationText = uicls.EditPlainText(setvalue='', parent=applicationCont, align=uiconst.TOALL, maxLength=1000)
+
+    def Confirm(self, *args):
+        applicationText = self.applicationText.GetValue()
+        if len(applicationText) > 1000:
+            error = localization.GetByLabel('UI/Corporations/BaseCorporationUI/ApplicationTextTooLong', length=len(applicationText))
+            eve.Message('CustomInfo', {'info': error})
+        else:
+            self.result = applicationText
+            self.SetModalResult(1)
+
+    def Cancel(self, *args):
+        self.result = None
+        self.SetModalResult(0)

@@ -1,0 +1,63 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\carbon\common\lib\RenderTargetManager\RenderTargetManager.py
+import blue
+import trinity
+import weakref
+import bluepy
+import uthread
+import locks
+lock = locks.RLock()
+
+class RenderTargetManager(object):
+    __metaclass__ = bluepy.CCP_STATS_ZONE_PER_METHOD
+    __shared_state = {}
+
+    def __init__(self):
+        self.__dict__ = self.__shared_state
+        if not hasattr(self, 'keepAliveMS'):
+            self.targets = {}
+            self.targetsSleepCycles = {}
+            self.keepAliveMS = 3000
+        trinity.device.RegisterResource(self)
+
+    def OnCreate(self, dev):
+        pass
+
+    def OnInvalidate(self, level):
+        self.targets.clear()
+        self.targetsSleepCycles.clear()
+
+    def GetRenderTarget(self, format, width, height, level = 0, asTexture = False):
+        hashKey = self.__Hash(format, width, height, level, asTexture)
+        rt = self.targets.get(hashKey)
+        reapTasklet = None
+        while not rt:
+            try:
+                rt = trinity.Tr2RenderTarget(width, height, 1, format)
+                self.targets[hashKey] = rt
+                reapTasklet = uthread.new(self.Reaper_t, hashKey).context = 'RenderTargetMananger::Reaper'
+            except (trinity.E_OUTOFMEMORY, trinity.D3DERR_OUTOFVIDEOMEMORY):
+                raise 
+            except trinity.DeviceLostError:
+                rt = None
+                blue.synchro.SleepWallclock(100)
+
+        sleepCycles = self.targetsSleepCycles.get(hashKey, 0)
+        self.targetsSleepCycles[hashKey] = sleepCycles + 1
+        if reapTasklet:
+            uthread.schedule(reapTasklet)
+        return rt
+
+    def Reaper_t(self, hashKey):
+        if self.targetsSleepCycles.get(hashKey, 0) > 0:
+            self.targetsSleepCycles[hashKey] -= 1
+            blue.synchro.SleepWallclock(self.keepAliveMS)
+        if self.targets.get(hashKey):
+            del self.targets[hashKey]
+
+    def __Hash(self, textureFormat, width, height, level, asTexture):
+        k = (textureFormat,
+         width,
+         height,
+         level,
+         asTexture)
+        return hash(k)

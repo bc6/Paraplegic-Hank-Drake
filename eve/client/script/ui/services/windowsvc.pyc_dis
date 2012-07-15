@@ -1,0 +1,327 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/services/windowsvc.py
+import service
+import uiutil
+import localization
+import uthread
+import form
+import trinity
+import util
+import sys
+import types
+import uicls
+import uiconst
+import invCont
+import blue
+import bluepy
+import invCtrl
+
+class WindowMgr(service.Service):
+    __guid__ = 'svc.window'
+    __servicename__ = 'window'
+    __displayname__ = 'Window Service'
+    __dependencies__ = ['form']
+    __exportedcalls__ = {'LoadUIColors': [],
+     'CloseContainer': [],
+     'OpenWindows': []}
+    __notifyevents__ = ['DoSessionChanging',
+     'OnSessionChanged',
+     'ProcessRookieStateChange',
+     'OnEndChangeDevice',
+     'OnUIScalingChange',
+     'ProcessDeviceChange']
+    __startupdependencies__ = ['settings']
+
+    def Run(self, memStream = None):
+        self.LogInfo('Starting Window Service')
+        self.LoadUIColors()
+
+    def Stop(self, memStream = None):
+        self.LogInfo('Stopping Window Service')
+        service.Service.Stop(self)
+
+    def ProcessRookieStateChange(self, state):
+        if sm.GetService('connection').IsConnected():
+            self.OpenWindows()
+
+    def ProcessDeviceChange(self, *args):
+        self.PreDeviceChange_DesktopLayout = uicls.Window.GetDesktopWindowLayout()
+
+    def OnEndChangeDevice(self, change, *args):
+        if 'BackBufferHeight' in change or 'BackBufferWidth' in change:
+            self.RealignWindows()
+            sm.GetService('device').SetupUIScaling()
+
+    def OnUIScalingChange(self, change, *args):
+        pass
+
+    def ValidateWindows(self):
+        d = uicore.desktop
+        all = uicore.registry.GetValidWindows(1, floatingOnly=True)
+        for wnd in all:
+            if wnd.align != uiconst.RELATIVE:
+                continue
+            wnd.left = max(-wnd.width + 64, min(d.width - 64, wnd.left))
+            wnd.top = max(0, min(d.height - wnd.GetCollapsedHeight(), wnd.top))
+
+    def DoSessionChanging(self, isRemote, session, change):
+        if not eve.session.charid:
+            for layer in (uicore.layer.starmap,):
+                for each in layer.children:
+                    each.Close()
+
+    def OnSessionChanged(self, isRemote, session, change):
+        if sm.GetService('connection').IsConnected() and 'locationid' in change:
+            self.OpenWindows()
+
+    def ResetWindowSettings(self):
+        closeStacks = []
+        triggerUpdate = []
+        for each in uicore.registry.GetWindows():
+            if not isinstance(each, uicls.WindowCore):
+                continue
+            if each.isDialog:
+                continue
+            if each.parent != uicore.layer.main:
+                uiutil.Transplant(each, uicore.layer.main)
+            if isinstance(each, uicls.WindowStackCore):
+                closeStacks.append(each)
+            else:
+                triggerUpdate.append(each)
+                each.sr.stack = None
+                each.state = uiconst.UI_HIDDEN
+                each.align = uiconst.TOPLEFT
+                each.ShowHeader()
+                each.ShowBackground()
+
+        for each in closeStacks:
+            each.Close()
+
+        uicls.Window.ResetAllWindowSettings()
+        favorClasses = [form.LSCChannel,
+         form.ActiveItem,
+         form.OverView,
+         form.DroneView,
+         form.WatchListPanel]
+        done = []
+        for cls in favorClasses:
+            for each in triggerUpdate:
+                if each not in done and isinstance(each, cls):
+                    each.InitializeSize()
+                    each.InitializeStatesAndPosition()
+                    done.append(each)
+
+        for each in triggerUpdate:
+            if each not in done:
+                each.InitializeSize()
+                each.InitializeStatesAndPosition()
+
+        settings.user.ui.Delete('targetOrigin')
+        sm.GetService('target').ArrangeTargets()
+
+    def RealignWindows(self):
+        desktopLayout = getattr(self, 'PreDeviceChange_DesktopLayout', None)
+        if desktopLayout:
+            uicls.Window.LoadDesktopWindowLayout(desktopLayout)
+        self.PreDeviceChange_DesktopLayout = None
+        sm.GetService('target').ArrangeTargets()
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def OpenWindows(self):
+        if not (eve.rookieState and eve.rookieState < 10):
+            anywhere = [[form.MailWindow, uicore.cmd.OpenMail],
+             [form.Wallet, uicore.cmd.OpenWallet],
+             [form.Corporation, uicore.cmd.OpenCorporationPanel],
+             [form.AssetsWindow, uicore.cmd.OpenAssets],
+             [form.Channels, uicore.cmd.OpenChannels],
+             [form.Journal, uicore.cmd.OpenJournal],
+             [form.Logger, uicore.cmd.OpenLog],
+             [form.CharacterSheet, uicore.cmd.OpenCharactersheet],
+             [form.AddressBook, uicore.cmd.OpenPeopleAndPlaces],
+             [form.RegionalMarket, uicore.cmd.OpenMarket],
+             [form.Notepad, uicore.cmd.OpenNotepad]]
+            if eve.session.stationid:
+                sm.GetService('gameui').ScopeCheck(['station', 'station_inflight'])
+                uthread.new(self.OpenStationInvWindows)
+            elif eve.session.solarsystemid and eve.session.shipid:
+                sm.GetService('gameui').ScopeCheck(['inflight', 'station_inflight'])
+                anywhere += [[form.Scanner, uicore.cmd.OpenScanner]]
+            else:
+                sm.GetService('gameui').ScopeCheck()
+            for each in anywhere:
+                if len(each) == 1:
+                    windowClass = each[0]
+                    windowID = windowClass.default_windowID
+                    stackID = windowClass.GetRegisteredOrDefaultStackID()
+                    func = windowClass.Open
+                else:
+                    windowClass_or_windowID, func = each
+                    if type(windowClass_or_windowID) in types.StringTypes:
+                        windowID = windowClass_or_windowID
+                        stackID = uicls.Window.GetRegisteredOrDefaultStackID(windowID=windowClass_or_windowID)
+                    else:
+                        windowID = windowClass_or_windowID.default_windowID
+                        stackID = windowClass_or_windowID.GetRegisteredOrDefaultStackID()
+                wnd = uicls.Window.GetIfOpen(windowID)
+                if uicore.registry.GetRegisteredWindowState(windowID, 'open') and (stackID or not uicore.registry.GetRegisteredWindowState(windowID, 'minimized')) and not wnd:
+                    apply(func)
+
+        form.Lobby.CloseIfOpen()
+        if session.stationid2:
+            if not (eve.rookieState and eve.rookieState < 5):
+                form.Lobby.Open()
+
+    def OpenStationInvWindows(self):
+        while session.mutating:
+            blue.synchro.Yield()
+
+        invIDs = form.Inventory.GetStationOpenInvIDs()
+        for invID in invIDs:
+            invCtrlName = invID[0]
+            if invCtrlName in ('StationItems', 'StationShips'):
+                form.Inventory.OpenSecondary(invID=(invCtrlName, session.stationid2))
+            elif invCtrlName == 'StationCorpDelveries':
+                deliveryRoles = const.corpRoleAccountant | const.corpRoleJuniorAccountant | const.corpRoleTrader
+                if session.corprole & deliveryRoles > 0:
+                    form.Inventory.OpenSecondary(invID=(invCtrlName, session.stationid2))
+            elif invCtrlName == 'StationCorpHangar':
+                office = sm.GetService('corp').GetOffice()
+                if office:
+                    divisionID = invID[2]
+                    if invCtrl.StationCorpHangar(divisionID=divisionID).CheckCanQuery():
+                        invID = (invCtrlName, office.itemID, divisionID)
+                        form.Inventory.OpenSecondary(invID=invID)
+
+    def SetWindowColor(self, r, g, b, a, what = 'color'):
+        settings.char.windows.Set('wnd%s' % what.capitalize(), (r,
+         g,
+         b,
+         a))
+        sm.ScatterEvent('OnUIColorsChanged')
+
+    def GetWindowColors(self):
+        return (settings.char.windows.Get('wndColor', eve.themeColor),
+         settings.char.windows.Get('wndBackgroundcolor', eve.themeBgColor),
+         settings.char.windows.Get('wndComponent', eve.themeCompColor),
+         settings.char.windows.Get('wndComponentsub', eve.themeCompSubColor))
+
+    def ResetWindowColors(self, *args):
+        self.LoadUIColors(reset=True)
+
+    def LoadUIColors(self, reset = 0):
+        reset = reset or eve.session.userid is None
+        if reset:
+            self.SetWindowColor(what='Color', *eve.themeColor)
+            self.SetWindowColor(what='Background', *eve.themeBgColor)
+            self.SetWindowColor(what='Component', *eve.themeCompColor)
+            self.SetWindowColor(what='Componentsub', *eve.themeCompSubColor)
+        sm.ScatterEvent('OnUIColorsChanged')
+
+    def CheckControlAppearance(self, control):
+        wnd = uiutil.GetWindowAbove(control)
+        if wnd:
+            self.ChangeControlAppearance(wnd, control)
+
+    def ChangeControlAppearance(self, wnd, control = None):
+        haveLiteFunction = [ w for w in (control or wnd).Find('trinity.Tr2Sprite2dContainer') if hasattr(w, 'LiteMode') ]
+        haveLiteFunction += [ w for w in (control or wnd).Find('trinity.Tr2Sprite2dFrame') if hasattr(w, 'LiteMode') ]
+        for obj in haveLiteFunction:
+            obj.LiteMode(wnd.IsPinned())
+
+        wnds = [ w for w in (control or wnd).Find('trinity.Tr2Sprite2dContainer') if w.name == '_underlay' and w not in haveLiteFunction ]
+        wnd = getattr(wnd.sr, 'stack', None) or wnd
+        for w in wnds:
+            uiutil.Flush(w)
+            if wnd.IsPinned():
+                uicls.Frame(parent=w, color=(1.0, 1.0, 1.0, 0.2), padding=(-1, -1, -1, -1))
+                uicls.Fill(parent=w, color=(0.0, 0.0, 0.0, 0.3))
+            else:
+                uicls.BumpedUnderlay(parent=w)
+
+        frames = [ w for w in (control or wnd).Find('trinity.Tr2Sprite2dFrame') if w.name == '__underlay' and w not in haveLiteFunction ]
+        for f in frames:
+            self.CheckFrames(f, wnd)
+
+    def CheckFrames(self, underlay, wnd):
+        underlayParent = getattr(underlay, 'parent', None)
+        if underlayParent is None:
+            return
+        noBackground = getattr(underlayParent, 'noBackground', 0)
+        if noBackground:
+            return
+        underlayFrame = underlayParent.FindChild('underlayFrame')
+        underlayFill = underlayParent.FindChild('underlayFill')
+        if wnd.IsPinned():
+            underlay.state = uiconst.UI_HIDDEN
+            if not underlayFill:
+                underlayFill = uicls.Frame(name='underlayFill', color=(0.0, 0.0, 0.0, 0.3), frameConst=uiconst.FRAME_FILLED_CORNER0, parent=underlayParent)
+            else:
+                underlayFill.state = uiconst.UI_DISABLED
+            if not underlayFrame:
+                underlayFrame = uicls.Frame(name='underlayFrame', color=(1.0, 1.0, 1.0, 0.2), frameConst=uiconst.FRAME_BORDER1_CORNER0, parent=underlayParent, pos=(-1, -1, -1, -1))
+            else:
+                underlayFrame.state = uiconst.UI_DISABLED
+        else:
+            if not noBackground:
+                underlay.state = uiconst.UI_DISABLED
+            if underlayFrame:
+                underlayFrame.state = uiconst.UI_HIDDEN
+            if underlayFill:
+                underlayFill.state = uiconst.UI_HIDDEN
+
+    def ToggleLiteWindowAppearance(self, wnd, forceLiteState = None):
+        if forceLiteState is not None:
+            wnd._SetPinned(forceLiteState)
+        state = uiconst.UI_DISABLED
+        for each in wnd.children[:]:
+            if each.name.startswith('_lite'):
+                each.Close()
+
+        if wnd.IsPinned():
+            for align in (uiconst.TOLEFT,
+             uiconst.TOTOP,
+             uiconst.TORIGHT,
+             uiconst.TOBOTTOM):
+                uicls.Line(parent=wnd, align=align, color=(0.0, 0.0, 0.0, 0.3), idx=0, name='_liteline')
+
+            uicls.Frame(parent=wnd, color=(1.0, 1.0, 1.0, 0.2), name='_liteframe')
+            uicls.Fill(parent=wnd, color=(0.0, 0.0, 0.0, 0.3), name='_litefill')
+            state = uiconst.UI_HIDDEN
+        for each in wnd.children:
+            for _each in wnd.sr.underlay.background:
+                if _each.name in ('base', 'color', 'shadow', 'solidBackground'):
+                    _each.state = state
+
+        m = wnd.sr.maincontainer
+        if state == uiconst.UI_DISABLED:
+            m.left = m.top = m.width = m.height = 1
+        else:
+            m.left = m.top = m.width = m.height = 0
+        self.ChangeControlAppearance(wnd)
+
+    def CloseContainer(self, invID):
+        self.LogInfo('WindowSvc.CloseContainer request for id:', invID)
+        checkIDs = (('loot', invID),
+         ('lootCargoContainer', invID),
+         'shipCargo_%s' % invID,
+         'drones_%s' % invID,
+         'containerWindow_%s' % invID)
+        for windowID in checkIDs:
+            wnd = uicls.Window.GetIfOpen(windowID=windowID)
+            if wnd:
+                wnd.Close()
+                self.LogInfo('  WindowSvc.CloseContainer closing:', windowID)
+
+    def GetCameraLeftOffset(self, width, align = None, left = 0, *args):
+        if not settings.user.ui.Get('offsetUIwithCamera', False):
+            return 0
+        offset = int(settings.user.ui.Get('cameraOffset', 0))
+        if not offset:
+            return 0
+        if align in [uiconst.CENTER, uiconst.CENTERTOP, uiconst.CENTERBOTTOM]:
+            camerapush = int(offset / 100.0 * uicore.desktop.width / 3.0)
+            allowedOffset = int((uicore.desktop.width - width) / 2) - 10
+            if camerapush < 0:
+                return max(camerapush, -allowedOffset - left)
+            if camerapush > 0:
+                return min(camerapush, allowedOffset + left)
+        return 0

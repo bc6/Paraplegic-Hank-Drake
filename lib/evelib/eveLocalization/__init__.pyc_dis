@@ -1,0 +1,264 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\eve\common\lib\eveLocalization\__init__.py
+import blue
+import sys
+import unittest
+from collections import OrderedDict
+from EveLocalization import *
+
+def RunPythonUnitTests():
+    print 'Non-packaged client running Python unittests for eve localization...'
+
+    class LocalizationUnittests(unittest.TestCase):
+        testData = {'en-us': {0: (u'This is a string with no tags.', None, None),
+                   1: (u'This is a {thing} with no parameters.', {'foo': u'bar'}, OrderedDict([(u'{thing}', {'conditionalValues': [],
+                          'variableType': VARIABLE_TYPE.GENERIC,
+                          'kwargs': {},
+                          'propertyName': None,
+                          'args': 0,
+                          'variableName': 'thing'})])),
+                   2: (u'This string tests four types of modification of the latin alphabet: {string1}, {string2}, {string3}, and {string4}.', None, OrderedDict([(u'{string1}', {'conditionalValues': [],
+                          'variableType': VARIABLE_TYPE.GENERIC,
+                          'kwargs': {},
+                          'propertyName': None,
+                          'args': TOKEN_FLAG.CAPITALIZE,
+                          'variableName': 'string1'}),
+                        (u'{string2}', {'conditionalValues': [],
+                          'variableType': VARIABLE_TYPE.GENERIC,
+                          'kwargs': {},
+                          'propertyName': None,
+                          'args': TOKEN_FLAG.UPPERCASE,
+                          'variableName': 'string2'}),
+                        (u'{string3}', {'conditionalValues': [],
+                          'variableType': VARIABLE_TYPE.GENERIC,
+                          'kwargs': {},
+                          'propertyName': None,
+                          'args': TOKEN_FLAG.LOWERCASE,
+                          'variableName': 'string3'}),
+                        (u'{string4}', {'conditionalValues': [],
+                          'variableType': VARIABLE_TYPE.GENERIC,
+                          'kwargs': {},
+                          'propertyName': None,
+                          'args': TOKEN_FLAG.TITLECASE,
+                          'variableName': 'string4'})])),
+                   3: (u'You have {[numeric]numSeconds} {[numeric]numSeconds -> "second", "seconds"} to comply.', None, OrderedDict([(u'{[numeric]numSeconds}', {'conditionalValues': [],
+                          'variableType': VARIABLE_TYPE.NUMERIC,
+                          'kwargs': {},
+                          'propertyName': None,
+                          'args': 0,
+                          'variableName': 'numSeconds'}), (u'{[numeric]numSeconds -> "second", "seconds"}', {'conditionalValues': [u'second', u'seconds'],
+                          'variableType': VARIABLE_TYPE.NUMERIC,
+                          'kwargs': {},
+                          'propertyName': None,
+                          'args': TOKEN_FLAG.CONDITIONAL | TOKEN_FLAG.QUANTITY,
+                          'variableName': 'numSeconds'})])),
+                   4: (u'This is a {thing} reusing a {thing} parameter.', None, {u'{thing}': {'conditionalValues': [],
+                                     'variableType': VARIABLE_TYPE.GENERIC,
+                                     'kwargs': {},
+                                     'propertyName': None,
+                                     'args': 0,
+                                     'variableName': 'thing'}}),
+                   5: (u'Datetime formatting test: {[datetime]time, timeFormat=short}', None, {u'{[datetime]time, timeFormat=short}': {'conditionalValues': [],
+                                                                'variableType': VARIABLE_TYPE.DATETIME,
+                                                                'kwargs': {'format': u'%Y.%m.%d %H:%M'},
+                                                                'propertyName': None,
+                                                                'args': 0,
+                                                                'variableName': 'time'}}),
+                   6: (u'Datetime formatting test: {[datetime]time, timeFormat=long}', None, {u'{[datetime]time, timeFormat=long}': {'conditionalValues': [],
+                                                               'variableType': VARIABLE_TYPE.DATETIME,
+                                                               'kwargs': {'format': u'%Y.%m.%d %H:%M:%S'},
+                                                               'propertyName': None,
+                                                               'args': 0,
+                                                               'variableName': 'time'}}),
+                   7: (u'This is {[messageid]msg} within a message', None, {u'{[messageid]msg}': {'conditionalValues': [],
+                                              'variableType': VARIABLE_TYPE.MESSAGE,
+                                              'kwargs': {},
+                                              'propertyName': None,
+                                              'args': 0,
+                                              'variableName': 'msg'}}),
+                   8: (u'a message', None, None),
+                   9: (u'Datetime formatting test: {[formattedtime]time, format="%A, %B %d %Y, %I:%M:%S %p"}', None, {u'{[formattedtime]time, format="%A, %B %d %Y, %I:%M:%S %p"}': {'conditionalValues': [],
+                                                                                       'variableType': VARIABLE_TYPE.FORMATTEDTIME,
+                                                                                       'kwargs': {'format': u'%A, %B %d %Y, %I:%M:%S %p'},
+                                                                                       'propertyName': None,
+                                                                                       'args': 0,
+                                                                                       'variableName': 'time'}}),
+                   10: (u'Numeric formatting test: {[numeric]number}', None, {u'{[numeric]number}': {'conditionalValues': [],
+                                                'variableType': VARIABLE_TYPE.NUMERIC,
+                                                'kwargs': {},
+                                                'propertyName': None,
+                                                'args': 0,
+                                                'variableName': 'number'}}),
+                   11: (u'Numeric formatting test: {[numeric]number, decimalPlaces=0}', None, {u'{[numeric]number, decimalPlaces=0}': {'conditionalValues': [],
+                                                                 'variableType': VARIABLE_TYPE.NUMERIC,
+                                                                 'kwargs': {'decimalPlaces': int(0)},
+                                                                 'propertyName': None,
+                                                                 'args': TOKEN_FLAG.DECIMALPLACES,
+                                                                 'variableName': 'number'}}),
+                   12: (u'Numeric formatting test: {[numeric]number, useGrouping}', None, {u'{[numeric]number, useGrouping}': {'conditionalValues': [],
+                                                             'variableType': VARIABLE_TYPE.NUMERIC,
+                                                             'kwargs': {},
+                                                             'propertyName': None,
+                                                             'args': TOKEN_FLAG.USEGROUPING,
+                                                             'variableName': 'number'}}),
+                   13: (u'Numeric formatting test: {[numeric]number, decimalPlaces=2}', None, {u'{[numeric]number, decimalPlaces=2}': {'conditionalValues': [],
+                                                                 'variableType': VARIABLE_TYPE.NUMERIC,
+                                                                 'kwargs': {'decimalPlaces': 2},
+                                                                 'propertyName': None,
+                                                                 'args': TOKEN_FLAG.DECIMALPLACES,
+                                                                 'variableName': 'number'}}),
+                   14: (u'This is a linkinfo link: {[generic]linktext, linkinfo=linkdata}', None, {u'{[generic]linktext, linkinfo=linkdata}': {'conditionalValues': [],
+                                                                     'variableType': VARIABLE_TYPE.GENERIC,
+                                                                     'kwargs': {'linkinfo': 'linkdata'},
+                                                                     'propertyName': None,
+                                                                     'args': TOKEN_FLAG.LINKINFO,
+                                                                     'variableName': 'linktext'}})},
+         'de': {1: ()}}
+
+        def setUp(self):
+            LoadMessageData('en-us', self.testData['en-us'])
+
+        def tearDown(self):
+            UnloadMessageData('en-us')
+
+        def testInvalidMessageDataTuple(self):
+            testData = {'ru': {0: ()}}
+            self.assertRaises(TypeError, LoadMessageData, 'ru', testData['ru'])
+
+        def testCollator(self):
+            col = Collator()
+            col.locale = 'en-us'
+            self.assertTrue(col.locale == 'en-us', 'Collator has the wrong locale %s' % (col.locale,))
+            res = col.Compare(u'a', u'b')
+            self.assertTrue(res == -1, 'a is not smaller than b')
+            res = col.Compare(u'a', u'a')
+            self.assertTrue(res == 0, 'a is not a')
+            res = col.Compare(u'b', u'a')
+            self.assertTrue(res == 1, 'b is not greater than a')
+
+        def testLoadingData(self):
+            data = GetMessageDataByID(1, 'en-us')
+            self.assertTrue(data == self.testData['en-us'][1], 'message data storage does not return the same data for ID 1.')
+            data = GetMessageDataByID(2, 'en-us')
+            self.assertTrue(data == self.testData['en-us'][2], 'message data storage does not return the same data for ID 2.')
+
+        def testParser(self):
+            result = GetMessageByID(0, 'en-us')
+            expectedResult = u'This is a string with no tags.'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = GetMessageByID(1, 'en-us', thing='basic tag')
+            expectedResult = u'This is a basic tag with no parameters.'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = GetMessageByID(4, 'en-us', thing='basic tag')
+            expectedResult = u'This is a basic tag reusing a basic tag parameter.'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            tupleTimeVal = (2011, 2, 24, 11, 55, 0, 3, 55, 0)
+            blueTimeVal = blue.os.GetTimeFromParts(*tupleTimeVal[:7])
+            floatTimeVal = 1298548500.0
+            result = GetMessageByID(5, 'en-us', time=tupleTimeVal)
+            expectedResult = u'Datetime formatting test: 2011.02.24 11:55'
+            self.assertTrue(result == expectedResult, 'Result did not match input %s != %s' % (result, expectedResult))
+            result = GetMessageByID(5, 'en-us', time=blueTimeVal)
+            expectedResult = u'Datetime formatting test: 2011.02.24 11:55'
+            self.assertTrue(result == expectedResult, 'Result did not match input %s != %s' % (result, expectedResult))
+            result = GetMessageByID(5, 'en-us', time=floatTimeVal)
+            expectedResult = u'Datetime formatting test: 2011.02.24 11:55'
+            self.assertTrue(result == expectedResult, 'Result did not match input %s != %s' % (result, expectedResult))
+            result = GetMessageByID(6, 'en-us', time=tupleTimeVal)
+            expectedResult = u'Datetime formatting test: 2011.02.24 11:55:00'
+            self.assertTrue(result == expectedResult, 'Result did not match input %s != %s' % (result, expectedResult))
+            result = GetMessageByID(6, 'en-us', time=blueTimeVal)
+            expectedResult = u'Datetime formatting test: 2011.02.24 11:55:00'
+            self.assertTrue(result == expectedResult, 'Result did not match input %s != %s' % (result, expectedResult))
+            result = GetMessageByID(6, 'en-us', time=floatTimeVal)
+            expectedResult = u'Datetime formatting test: 2011.02.24 11:55:00'
+            self.assertTrue(result == expectedResult, 'Result did not match input %s != %s' % (result, expectedResult))
+            result = GetMessageByID(9, 'en-us', time=tupleTimeVal)
+            expectedResult = u'Datetime formatting test: Thursday, February 24 2011, 11:55:00 AM'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = GetMessageByID(9, 'en-us', time=blueTimeVal)
+            expectedResult = u'Datetime formatting test: Thursday, February 24 2011, 11:55:00 AM'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = GetMessageByID(9, 'en-us', time=floatTimeVal)
+            expectedResult = u'Datetime formatting test: Thursday, February 24 2011, 11:55:00 AM'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = GetMessageByID(7, 'en-us', msg=8)
+            expectedResult = u'This is a message within a message'
+            self.assertTrue(result == expectedResult, 'Result did not match input %s != %s' % (result, expectedResult))
+            result = GetMessageByID(10, 'en-us', number=9999999)
+            expectedResult = u'Numeric formatting test: 9999999'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = GetMessageByID(10, 'en-us', number=9999999L)
+            expectedResult = u'Numeric formatting test: 9999999'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = GetMessageByID(10, 'en-us', number=9999999.12)
+            expectedResult = u'Numeric formatting test: 9999999.12'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = GetMessageByID(11, 'en-us', number=9999999.12)
+            expectedResult = u'Numeric formatting test: 9999999'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = GetMessageByID(12, 'en-us', number=9999999.123)
+            expectedResult = u'Numeric formatting test: 9,999,999.12'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = GetMessageByID(13, 'en-us', number=9999999.123)
+            expectedResult = u'Numeric formatting test: 9999999.12'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = GetMessageByID(13, 'en-us', number=9999999.1)
+            expectedResult = u'Numeric formatting test: 9999999.10'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = GetMessageByID(13, 'en-us', number=-9999999.1)
+            expectedResult = u'Numeric formatting test: -9999999.10'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = GetMessageByID(3, 'en-us', numSeconds=20)
+            expectedResult = u'You have 20 seconds to comply.'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = GetMessageByID(3, 'en-us', numSeconds=1)
+            expectedResult = u'You have 1 second to comply.'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = GetMessageByID(3, 'en-us', numSeconds=1.7)
+            expectedResult = u'You have 1.70 seconds to comply.'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = GetMessageByID(14, 'en-us', linktext='Click Here!', linkdata=('linkinfo', 100, 200, 300, 400, 500))
+            expectedResult = u'This is a linkinfo link: <a href=linkinfo:100//200//300//400//500>Click Here!</a>'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+
+        def testNumericFormatter(self):
+            result = FormatNumeric(999999, 'en-us', useGrouping=False, decimalPlaces=0)
+            expectedResult = u'999999'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = FormatNumeric(999999, 'en-us', useGrouping=True, decimalPlaces=0)
+            expectedResult = u'999,999'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = FormatNumeric(999999.123, 'en-us', useGrouping=True)
+            expectedResult = u'999,999.12'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = FormatNumeric(999999.123, 'en-us', useGrouping=True, decimalPlaces=1)
+            expectedResult = u'999,999.1'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = FormatNumeric(999999.123, 'en-us', useGrouping=True, decimalPlaces=0)
+            expectedResult = u'999,999'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = FormatNumeric(-999999.123, 'en-us', useGrouping=True, decimalPlaces=0)
+            expectedResult = u'-999,999'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = FormatNumeric(-999999.123, 'en-us', useGrouping=True, decimalPlaces=2)
+            expectedResult = u'-999,999.12'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = FormatNumeric(0.0, 'en-us')
+            expectedResult = u'0.00'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = FormatNumeric(-9.123, 'en-us', useGrouping=True, decimalPlaces=2, leadingZeroes=2)
+            expectedResult = u'-09.12'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = FormatNumeric(-9000.123, 'en-us', useGrouping=True, decimalPlaces=2, leadingZeroes=5)
+            expectedResult = u'-09,000.12'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+            result = FormatNumeric(-9.123, 'en-us', useGrouping=True, decimalPlaces=2, leadingZeroes=5)
+            expectedResult = u'-00,009.12'
+            self.assertTrue(result == expectedResult, 'Result did not match input: %s != %s' % (result, expectedResult))
+
+    suite = unittest.TestLoader().loadTestsFromTestCase(LocalizationUnittests)
+    unittest.TextTestRunner(stream=sys.stderr, verbosity=2).run(suite)
+
+
+if not blue.pyos.packaged and not '/skipunittesting' in blue.pyos.GetArg()[1:]:
+    RunPythonUnitTests()

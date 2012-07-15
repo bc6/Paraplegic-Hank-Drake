@@ -1,0 +1,66 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/common/script/localization/itemPropertyHandler.py
+import eveLocalization
+import localization
+import util
+
+class ItemPropertyHandler(localization.BasePropertyHandler):
+    __guid__ = 'localization.ItemPropertyHandler'
+    PROPERTIES = {localization.CODE_UNIVERSAL: ('name', 'rawName', 'quantity', 'quantityName', 'nameWithArticle'),
+     localization.LOCALE_SHORT_ENGLISH: ('nameWithArticle',),
+     localization.LOCALE_SHORT_GERMAN: ('gender',),
+     localization.LOCALE_SHORT_RUSSIAN: ('gender',)}
+
+    def _GetName(self, typeID, languageID, *args, **kwargs):
+        return cfg.invtypes.Get(typeID).typeName or 'None'
+
+    def _GetRawName(self, typeID, languageID, *args, **kwargs):
+        return cfg.invtypes.Get(typeID).GetRawName(languageID)
+
+    def _GetQuantity(self, itemID, languageID, *args, **kwargs):
+        return kwargs.get('dereferencedQuantity', 1)
+
+    def _GetQuantityName(self, typeID, languageID, *args, **kwargs):
+        quantity = kwargs.get('dereferencedQuantity', 1)
+        if typeID == const.typeCredits:
+            return util.FmtCurrency(quantity)
+        return localization.GetByLabel('UI/Common/QuantityAndItem', quantity=quantity, item=typeID)
+
+    def _GetArticleEN_US(self, typeID, *args, **kwargs):
+        messageID = cfg.invtypes.Get(typeID).typeNameID
+        try:
+            return localization.GetMetaData(messageID, 'article', languageID=localization.LOCALE_SHORT_ENGLISH)
+        except KeyError:
+            return ''
+
+    def _GetNameWithArticle(self, itemID, languageID, *args, **kwargs):
+        return self._GetName(itemID, languageID, args, kwargs)
+
+    def _GetNameWithArticleEN_US(self, itemID, *args, **kwargs):
+        article = self._GetArticleEN_US(itemID)
+        englishName = self._GetName(itemID, localization.LOCALE_SHORT_ENGLISH)
+        if article:
+            return self._PrepareLocalizationSafeString(' '.join((article, englishName)))
+        else:
+            return englishName
+
+    def _GetGenderDE(self, typeID, *args, **kwargs):
+        messageID = cfg.invtypes.Get(typeID).typeNameID
+        try:
+            return localization.GetMetaData(messageID, 'gender', languageID=localization.LOCALE_SHORT_GERMAN)
+        except KeyError:
+            localization.LogWarn("itemID %s does not have the requested metadata 'gender' in language '%s. Returning masculine gender by default." % (typeID, localization.LOCALE_SHORT_GERMAN))
+            return localization.GENDER_MALE
+
+    def _GetGenderRU(self, typeID, *args, **kwargs):
+        messageID = cfg.invtypes.Get(typeID).typeNameID
+        try:
+            return localization.GetMetaData(messageID, 'gender', languageID=localization.LOCALE_SHORT_RUSSIAN)
+        except KeyError:
+            localization.LogWarn("itemID %s does not have the requested metadata 'gender' in language '%s. Returning masculine gender by default." % (typeID, localization.LOCALE_SHORT_RUSSIAN))
+            return localization.GENDER_MALE
+
+    def Linkify(self, typeID, linkText):
+        return '<a href=showinfo:' + str(typeID) + '>' + linkText + '</a>'
+
+
+eveLocalization.RegisterPropertyHandler(eveLocalization.VARIABLE_TYPE.ITEM, ItemPropertyHandler())

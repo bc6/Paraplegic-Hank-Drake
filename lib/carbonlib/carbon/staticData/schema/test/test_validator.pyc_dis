@@ -1,0 +1,274 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\carbon\common\lib\carbon\staticData\schema\test\test_validator.py
+if __name__ == '__main__':
+    import sys, os
+    carbonLibPath = os.path.abspath(os.path.join(__file__, '../../../../../'))
+    sys.path.append(carbonLibPath)
+import unittest
+import carbon.staticData.schema.validator as validator
+
+def Validate(data, schema):
+    errors = validator.Validate(schema, data)
+    return errors
+
+
+class StaticDataValidationTest(unittest.TestCase):
+
+    def testIntRepresentation(self):
+        schema = {'type': 'int'}
+        self.assertEquals(1, len(Validate('This is not a int', schema)))
+        self.assertEquals(1, len(Validate(4.0, schema)))
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(0, len(Validate(1, schema)))
+
+    def testTypeIDRepresentation(self):
+        schema = {'type': 'typeID'}
+        self.assertEquals(1, len(Validate('This is not a typeId', schema)))
+        self.assertEquals(1, len(Validate(4.0, schema)))
+        self.assertEquals(1, len(Validate(-1, schema)))
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(0, len(Validate(1, schema)))
+
+    def testFloatRepresentation(self):
+        schema = {'type': 'float'}
+        self.assertEquals(1, len(Validate('This is not a float', schema)))
+        self.assertEquals(1, len(Validate(1, schema)))
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(0, len(Validate(4.0, schema)))
+
+    def testVector2Representation(self):
+        schema = {'type': 'vector2'}
+        self.assertEquals(1, len(Validate('This is not a vector2', schema)))
+        self.assertEquals(1, len(Validate(1, schema)))
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(1, len(Validate(0.0, schema)))
+        self.assertEquals(1, len(Validate((0.0, 0.0, 0.0), schema)))
+        self.assertEquals(1, len(Validate((0.0, 0.0, 0.0, 0.0), schema)))
+        self.assertEquals(2, len(Validate((0.0, 'This is not a valid vector value', 0.0), schema)))
+        self.assertEquals(0, len(Validate((0.0, 2.0), schema)))
+        self.assertEquals(0, len(Validate((0, 2), schema)))
+        self.assertEquals(0, len(Validate((long(0), long(0)), schema)))
+
+    def testVector3Representation(self):
+        schema = {'type': 'vector3'}
+        self.assertEquals(1, len(Validate('This is not a vector3', schema)))
+        self.assertEquals(1, len(Validate(1, schema)))
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(1, len(Validate(0.0, schema)))
+        self.assertEquals(1, len(Validate((0.0, 0.0), schema)))
+        self.assertEquals(1, len(Validate((0.0, 0.0, 0.0, 0.0), schema)))
+        self.assertEquals(2, len(Validate(('This is not a valid vector value', 0.0), schema)))
+        self.assertEquals(0, len(Validate((0.0, 0.0, 2.0), schema)))
+        self.assertEquals(0, len(Validate((0, 0, 2), schema)))
+        self.assertEquals(0, len(Validate((long(0), long(0), long(0)), schema)))
+
+    def testVector4Representation(self):
+        schema = {'type': 'vector4'}
+        self.assertEquals(1, len(Validate('This is not a vector3', schema)))
+        self.assertEquals(1, len(Validate(1, schema)))
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(1, len(Validate(0.0, schema)))
+        self.assertEquals(1, len(Validate((0.0, 0.0), schema)))
+        self.assertEquals(1, len(Validate((0.0, 0.0, 0.0), schema)))
+        self.assertEquals(2, len(Validate(('This is not a valid vector value', 0.0), schema)))
+        self.assertEquals(0, len(Validate((0.0, 0.0, 2.0, 0.0), schema)))
+        self.assertEquals(0, len(Validate((0, 0, 2, 0), schema)))
+        self.assertEquals(0, len(Validate((long(0),
+         long(0),
+         long(0),
+         long(0)), schema)))
+
+    def testStringRepresentation(self):
+        schema = {'type': 'string'}
+        self.assertEquals(1, len(Validate(1, schema)))
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(1, len(Validate(('this is a tuple, not a string', 'still a tuple'), schema)))
+        self.assertEquals(0, len(Validate('This is a string', schema)))
+
+    def testResPathRepresentation(self):
+        schema = {'type': 'resPath'}
+        self.assertEquals(1, len(Validate(1, schema)))
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(1, len(Validate(('this is a tuple, not a string', 'still a tuple'), schema)))
+        self.assertEquals(1, len(Validate('This is a string, not a respath', schema)))
+        self.assertEquals(0, len(Validate('res:somerespath', schema)))
+
+    def testBoolRepresentation(self):
+        schema = {'type': 'bool'}
+        self.assertEquals(1, len(Validate(0, schema)))
+        self.assertEquals(1, len(Validate(1, schema)))
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(0, len(Validate(True, schema)))
+        self.assertEquals(0, len(Validate(False, schema)))
+
+    def testDictRepresentation(self):
+        schema = {'type': 'dict',
+         'keyTypes': {'type': 'int'},
+         'valueTypes': {'type': 'int'}}
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(4, len(Validate({'not int': 'not int',
+         2.0: 2.0}, schema)))
+        self.assertEquals(1, len(Validate({2: 'not int'}, schema)))
+        self.assertEquals(1, len(Validate({'not int': 2}, schema)))
+        self.assertEquals(0, len(Validate({}, schema)))
+        self.assertEquals(0, len(Validate({3: 4}, schema)))
+        self.assertEquals(0, len(Validate({3: 4,
+         5: 3,
+         10: 10,
+         1000: 1000}, schema)))
+
+    def testListRepresentation(self):
+        schema = {'type': 'list',
+         'itemTypes': {'type': 'string'}}
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(2, len(Validate([1, 2.0], schema)))
+        self.assertEquals(1, len(Validate(['list Value', 'another list value'], schema)))
+        self.assertEquals(1, len(Validate(['z', 'r', 'a'], schema)))
+        self.assertEquals(2, len(Validate(['z', 'r', 1], schema)))
+        self.assertEquals(2, len(Validate([0, 'r', 'a'], schema)))
+        self.assertEquals(0, len(Validate([], schema)))
+        self.assertEquals(0, len(Validate(['list Value'], schema)))
+        self.assertEquals(0, len(Validate(['another list value', 'list Value'], schema)))
+
+    def testEnumRepresentation(self):
+        schema = {'type': 'enum',
+         'values': {'VALUE1': 1,
+                    'VALUE2': 2,
+                    'VALUE3': 3}}
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(1, len(Validate(1, schema)))
+        self.assertEquals(0, len(Validate('VALUE1', schema)))
+        self.assertEquals(0, len(Validate('VALUE2', schema)))
+        self.assertEquals(0, len(Validate('VALUE3', schema)))
+
+    def testUnionRepresentation(self):
+        schema = {'type': 'union',
+         'optionTypes': [{'type': 'string'}, {'type': 'int'}]}
+        self.assertEquals(1, len(Validate(1.0, schema)))
+        self.assertEquals(0, len(Validate('This is valid', schema)))
+        self.assertEquals(0, len(Validate(1, schema)))
+        self.assertEquals(0, len(Validate(0, schema)))
+        self.assertEquals(0, len(Validate(-1, schema)))
+
+    def testObjectData(self):
+        schema = {'type': 'object',
+         'attributes': {'a': {'type': 'int'},
+                        'b': {'type': 'float'},
+                        'c': {'type': 'vector4'}}}
+        validValue = {'a': 19,
+         'b': 0.5,
+         'c': (2.0, 3.0, 4.0, 5.0)}
+        invalidValue1 = {'a': 0.5,
+         'b': 0.5,
+         'c': 1}
+        invalidValue2 = 3
+        self.assertEquals(2, len(Validate(invalidValue1, schema)))
+        self.assertEquals(1, len(Validate(invalidValue2, schema)))
+        self.assertEquals(0, len(Validate(validValue, schema)))
+
+    def testComplexInt(self):
+        schema = {'type': 'int',
+         'min': 10,
+         'max': 100}
+        self.assertEquals(1, len(Validate('This is not a int', schema)))
+        self.assertEquals(1, len(Validate(4.0, schema)))
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(1, len(Validate(0, schema)))
+        self.assertEquals(1, len(Validate(101, schema)))
+        self.assertEquals(0, len(Validate(10, schema)))
+        self.assertEquals(0, len(Validate(50, schema)))
+        self.assertEquals(0, len(Validate(100, schema)))
+
+    def testComplexTypeID(self):
+        schema = {'type': 'typeID',
+         'min': 10,
+         'max': 100}
+        self.assertEquals(1, len(Validate('This is not a int', schema)))
+        self.assertEquals(1, len(Validate(4.0, schema)))
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(1, len(Validate(101, schema)))
+        self.assertEquals(2, len(Validate(0, schema)))
+        self.assertEquals(0, len(Validate(10, schema)))
+        self.assertEquals(0, len(Validate(50, schema)))
+        self.assertEquals(0, len(Validate(100, schema)))
+
+    def testComplexStringWithLengthCondition(self):
+        schema = {'type': 'string',
+         'length': 10}
+        self.assertEquals(1, len(Validate(1, schema)))
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(1, len(Validate(('this is a tuple, not a string', 'still a tuple'), schema)))
+        self.assertEquals(1, len(Validate('This is a string of wrong length', schema)))
+        self.assertEquals(0, len(Validate('0123456789', schema)))
+
+    def testComplexStringWithMinMaxCondition(self):
+        schema = {'type': 'string',
+         'minLength': 5,
+         'maxLength': 10}
+        self.assertEquals(1, len(Validate(1, schema)))
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(1, len(Validate(('this is a tuple, not a string', 'still a tuple'), schema)))
+        self.assertEquals(1, len(Validate('This is a string of wrong length', schema)))
+        self.assertEquals(1, len(Validate('a', schema)))
+        self.assertEquals(0, len(Validate('01234', schema)))
+        self.assertEquals(0, len(Validate('0123456', schema)))
+        self.assertEquals(0, len(Validate('0123456789', schema)))
+
+    def testComplexStringWithMinMaxRegExCondition(self):
+        schema = {'type': 'string',
+         'minLength': 5,
+         'maxLength': 10,
+         'regex': '.*egg.*'}
+        self.assertEquals(1, len(Validate(1, schema)))
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(1, len(Validate(('this is a tuple, not a string', 'still a tuple'), schema)))
+        self.assertEquals(1, len(Validate('spamspamspamspamspambakedbeans-eggandspam', schema)))
+        self.assertEquals(2, len(Validate("This is a string of wrong length and doesn't match the regex", schema)))
+        self.assertEquals(2, len(Validate('a', schema)))
+        self.assertEquals(0, len(Validate('spam-egg', schema)))
+
+    def testComplexRegexWithMinMaxRegExCondition(self):
+        schema = {'type': 'resPath',
+         'minLength': 10,
+         'maxLength': 20,
+         'regex': '.*egg.*'}
+        self.assertEquals(1, len(Validate(1, schema)))
+        self.assertEquals(1, len(Validate(None, schema)))
+        self.assertEquals(1, len(Validate(('this is a tuple, not a string', 'still a tuple'), schema)))
+        self.assertEquals(1, len(Validate('notrespathegg', schema)))
+        self.assertEquals(2, len(Validate('spam-egg', schema)))
+        self.assertEquals(2, len(Validate('spamspamspamspamspambakedbeans-eggandspam', schema)))
+        self.assertEquals(3, len(Validate("This is a string of wrong length and doesn't match the regex and isn't a res path", schema)))
+        self.assertEquals(3, len(Validate('a', schema)))
+        self.assertEquals(0, len(Validate('res:/spam-egg', schema)))
+
+    def testComplexObjectData(self):
+        schema = {'type': 'object',
+         'attributes': {'name': {'type': 'string'},
+                        'boundingBox': {'type': 'object',
+                                        'isOptional': True,
+                                        'attributes': {'min': {'type': 'vector3'},
+                                                       'max': {'type': 'vector3'}}}}}
+        validDataWithBB = {'name': 'SomeGrandAwesomeShip',
+         'boundingBox': {'min': (-100, -100, -100),
+                         'max': (100, 100, 100)}}
+        validDataWithoutBB = {'name': 'SomeGrandAwesomeShip'}
+        invalidDataWithBB1 = {'name': 'SomeGrandAwesomeShip',
+         'boundingBox': {'min': (-100, -100, -100)}}
+        invalidDataWithBB2 = {'name': 'SomeGrandAwesomeShip',
+         'boundingBox': {'max': (-100, -100, -100)}}
+        invalidDataWithBB3 = {'name': 'SomeGrandAwesomeShip',
+         'boundingBox': {}}
+        invalidDataWithBB4 = {'name': 'SomeGrandAwesomeShip',
+         'boundingBox': {'invalidAttribute': 'this does not belong here'}}
+        self.assertEquals(1, len(Validate(invalidDataWithBB1, schema)))
+        self.assertEquals(1, len(Validate(invalidDataWithBB2, schema)))
+        self.assertEquals(2, len(Validate(invalidDataWithBB3, schema)))
+        self.assertEquals(3, len(Validate(invalidDataWithBB4, schema)))
+        self.assertEquals(0, len(Validate(validDataWithoutBB, schema)))
+        self.assertEquals(0, len(Validate(validDataWithBB, schema)))
+
+
+if __name__ == '__main__':
+    import sys
+    suite = unittest.TestLoader().loadTestsFromTestCase(StaticDataValidationTest)
+    unittest.TextTestRunner(stream=sys.stderr, verbosity=2).run(suite)

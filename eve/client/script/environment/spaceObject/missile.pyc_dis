@@ -1,0 +1,672 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/environment/spaceObject/missile.py
+import math
+import random
+import audio2
+import blue
+import bluepy
+import geo2
+import log
+import trinity
+import destiny
+import timecurves
+import uthread
+import spaceObject
+from string import split
+SECOND = 10000000
+
+class MissileOLD(spaceObject.SpaceObject):
+    __guid__ = 'spaceObject.MissileOLD'
+
+    def __init__(self):
+        spaceObject.SpaceObject.__init__(self)
+        self.exploded = False
+        self.collided = False
+        self.targetId = None
+        self.ownerID = None
+        self.gfx = None
+        self.totalWarheadCount = 0
+        self.enabled = settings.user.ui.Get('missilesEnabled', 1)
+
+    def LoadModel(self):
+        if not self.enabled:
+            return
+        bp = sm.StartService('michelle').GetBallpark()
+        slimItem = bp.GetInvItem(self.id)
+        fileName = cfg.invtypes.Get(slimItem.typeID).GraphicFile()
+        self.ownerID = slimItem.ownerID
+        self.targetId = self.followId
+        self.model = trinity.Load(fileName)
+        self.targets = [self.model]
+        self.missileFileName = fileName
+        explosionPath = 'res:/Model/Effect/Explosion/Missile/MExplosion_' + split(self.missileFileName, '/')[-1:][0][8:]
+        explosionPath = self.GetTrinityVersionFilename(explosionPath)
+        self.gfx = trinity.Load(explosionPath)
+        if self.model is None:
+            return
+        self.model.translationCurve = self
+        self.model.rotationCurve = self
+        self.model.name = 'Missile in %s' % self.id
+        self.model.useCurves = 1
+        self.model.display = False
+        if self.HasBlueInterface(self.model, 'IEveSpaceObject2'):
+            scene2 = sm.StartService('sceneManager').GetRegisteredScene2('default')
+            scene2.objects.append(self.model)
+        else:
+            scene = sm.StartService('sceneManager').GetRegisteredScene('default')
+            scene.models.append(self.model)
+
+    def Assemble(self):
+        if self.model is not None:
+            if self.model.__bluetype__ == 'trinity.TriLODGroup':
+                self.model.lodBy = trinity.TRITB_CAMERA_DISTANCE_FOV_HEIGHT
+                self.model.boundingSphereRadius = 20.0
+                self.model.treshold0 = 0.003
+                self.model.treshold1 = 0.001
+            else:
+                log.LogWarn('Missile model of suspicious type: ' + str(self.model.__bluetype__))
+        self.targets = [self.model]
+
+    def Prepare(self, spaceMgr):
+        spaceObject.SpaceObject.Prepare(self, spaceMgr)
+        if self.EstimateTimeToTarget() < 1.0:
+            self.DoCollision(self.targetId, 0.0, 0.0, 0.0, False)
+
+    def EstimateTimeToTarget(self):
+        bp = sm.StartService('michelle').GetBallpark()
+        targetBall = bp.GetBallById(self.targetId)
+        if targetBall is None:
+            return
+        now = blue.os.GetSimTime()
+        myPos = self.GetVectorAt(now)
+        targetPos = targetBall.GetVectorAt(now)
+        offset = myPos - targetPos
+        collisionTime = offset.Length() / self.maxVelocity
+        return collisionTime
+
+    def DoCollision(self, targetId, fx, fy, fz, fake = False):
+        if self.model is None:
+            return
+        bp = sm.StartService('michelle').GetBallpark()
+        if targetId < 0 and targetId != self.id:
+            targetBall = bp.GetBall(targetId)
+            if targetBall is not None:
+                if targetBall.mode == destiny.DSTBALL_MINIBALL:
+                    targetId = targetBall.ownerId
+        if targetId < 0:
+            return
+        if self.exploded or self.collided and not fake:
+            return
+        if targetId != self.id:
+            if self.mode == destiny.DSTBALL_MISSILE and self.followId != targetId:
+                return
+        now = blue.os.GetSimTime()
+        myPos = self.GetVectorAt(now)
+        myVel = self.GetVectorDotAt(now)
+        targetBall = bp.GetBallById(self.targetId)
+        if targetBall is None:
+            return
+        targetPos = targetBall.GetVectorAt(now)
+        targetVel = targetBall.GetVectorDotAt(now)
+        nullV = trinity.TriVector()
+        offset = myPos - targetPos
+        collisionTime = offset.Length() / self.maxVelocity
+        curve = trinity.TriVectorCurve()
+        curve.AddKey(0.0, offset, 3.0 * myVel, nullV, trinity.TRIINT_HERMITE)
+        curve.AddKey(collisionTime, nullV, 3.0 * targetVel, nullV, trinity.TRIINT_HERMITE)
+        curve.Sort()
+        curve.extrapolation = 1
+        curve.start = now
+        missileModel = self.model
+        missileModel.useCurves = 1
+        if hasattr(missileModel, 'translationCurve'):
+            missileModel.translationCurve = curve
+        if hasattr(missileModel, 'rotationCurve'):
+            missileModel.rotationCurve = None
+        self.model = trinity.TriTransform()
+        self.model.translationCurve = targetBall
+        self.model.useCurves = 1
+        self.model.children.append(missileModel)
+        scene = sm.StartService('sceneManager').GetRegisteredScene('default')
+        scene.models.append(self.model)
+        scene.models.fremove(missileModel)
+        missileModel.display = 1
+        self.model.display = 1
+        self.collided = True
+        if collisionTime > 2:
+            collisionTime = 2
+        uthread.pool('Missile::CollisionExplode', self.CollisionExplode, long(collisionTime * 1000), self.model.translation, fake)
+
+    def CollisionExplode(self, delay, translation, fake = False):
+        if delay > 2000:
+            delay = 2000
+        blue.pyos.synchro.SleepSim(delay)
+        scene = sm.StartService('sceneManager').GetRegisteredScene('default')
+        scene2 = sm.StartService('sceneManager').GetRegisteredScene2('default')
+        if not self.released:
+            if self.model:
+                if hasattr(self.model, 'translationCurve'):
+                    self.model.translationCurve = None
+                if hasattr(self.model, 'rotationCurve'):
+                    self.model.rotationCurve = None
+            if scene and trinity.device:
+                scene.models.fremove(self.model)
+        if fake:
+            self.exploded = True
+            sm.StartService('bracket').ClearBracket(self.id)
+            self.gfx = None
+            return
+        if self.exploded:
+            return
+        self.exploded = True
+        sm.StartService('bracket').ClearBracket(self.id)
+        if self.gfx is None:
+            return
+        gfx = self.gfx
+        self.gfx = None
+        if gfx.__bluetype__ != 'trinity.EveRootTransform':
+            root = trinity.EveRootTransform()
+            root.children.append(gfx)
+            self.explosionModel = root
+        else:
+            self.explosionModel = gfx
+        if self.enabled:
+            targetBall = sm.StartService('michelle').GetBall(self.targetId)
+            curves = timecurves.ReadTimeAndSoundCurvesF(gfx)
+            duration = int(timecurves.MaxLenF(curves) * 1000.0)
+            timecurves.ResetTimeAndSoundCurvesF(curves)
+            if targetBall is not None:
+                self.explosionModel.translationCurve = targetBall
+            else:
+                gfx.translation = (translation.x, translation.y, translation.z)
+            rndRotation = geo2.QuaternionRotationSetYawPitchRoll(random.random() * 2.0 * math.pi, random.random() * 2.0 * math.pi, random.random() * 2.0 * math.pi)
+            self.explosionModel.rotation = rndRotation
+            scene2.objects.append(self.explosionModel)
+            self.ShakeCamera(250, translation)
+            for curveSet in gfx.curveSets:
+                curveSet.Play()
+
+            if targetBall:
+                missileAudio = split(self.missileFileName, '/')[-1:][0][8:-5]
+                missileAudio = 'effects_missile_mexplosion_' + missileAudio.lower() + '_play'
+                targetBall.PlayGeneralAudioEvent(missileAudio)
+        uthread.pool('Missile::DelayedRemove', self.DelayedRemove, duration, self.explosionModel)
+
+    def DelayedRemove(self, delay, model):
+        blue.pyos.synchro.SleepSim(delay)
+        self.RemoveAndClearModel(model)
+
+    def Explode(self):
+        return self.collided
+
+    def Release(self):
+        if not self.collided and self.explodeOnRemove and self.enabled:
+            self.collided = True
+            uthread.pool('Missile::DoFakeCollision', self.DoCollision, self.targetId, 0.0, 0.0, 0.0, True)
+        sm.StartService('bracket').ClearBracket(self.id)
+        self.targets = None
+        if self.collided and self.model is not None:
+            if len(self.model.children) > 0:
+                if hasattr(self.model.children[0], 'translationCurve'):
+                    self.model.children[0].translationCurve = None
+                if hasattr(self.model.children[0], 'rotationCurve'):
+                    self.model.children[0].rotationCurve = None
+        spaceObject.SpaceObject.Release(self, 'Missile')
+
+    def Display(self, display = 1):
+        if self.enabled:
+            spaceObject.SpaceObject.Display(self, display)
+
+
+class GlobalsGlob(object):
+
+    def GetMissilesEnabled(self):
+        missilesDesired = settings.user.ui.Get('missilesEnabled', 1)
+        if missilesDesired:
+            scene2 = self.GetScene2NonBlocking()
+            if scene2 is None:
+                return False
+            updateTime = scene2.updateTime
+            now = blue.os.GetSimTime()
+            delta = blue.os.TimeDiffInMs(updateTime, now)
+            return delta < 2000
+        return missilesDesired
+
+    def Get_FileName_OwnerID_SourceShipID_SourceModuleIDList(self, missileID):
+        bp = sm.StartService('michelle').GetBallpark()
+        slimItem = bp.GetInvItem(missileID)
+        fileName = cfg.invtypes.Get(slimItem.typeID).GraphicFile()
+        ownerID = slimItem.ownerID
+        sourceShipID = slimItem.sourceShipID
+        sourceAllModulesID = slimItem.launchModules
+        return (fileName,
+         ownerID,
+         sourceShipID,
+         sourceAllModulesID)
+
+    def GetScene(self):
+        return sm.StartService('sceneManager').GetRegisteredScene('default')
+
+    def GetScene2(self):
+        return sm.StartService('sceneManager').GetRegisteredScene2('default')
+
+    def GetScene2NonBlocking(self):
+        return sm.StartService('sceneManager').registeredScenes2.get('default', None)
+
+    def ClearBracket(self, someId):
+        sm.StartService('bracket').ClearBracket(someId)
+
+    def GetTargetBall(self, targetId):
+        bp = sm.StartService('michelle').GetBallpark()
+        if bp is None:
+            return
+        targetBall = bp.GetBallById(targetId)
+        return targetBall
+
+    def GetTransCurveForBall(self, targetBall):
+        return targetBall
+
+    def SpawnClientBall(self, position):
+        bp = sm.GetService('michelle').GetBallpark()
+        if bp is None:
+            return
+        egopos = bp.GetCurrentEgoPos()
+        explosionPosition = (position[0] + egopos[0], position[1] + egopos[1], position[2] + egopos[2])
+        return bp.AddClientSideBall(explosionPosition)
+
+    def DestroyClientBall(self, ball):
+        bp = sm.GetService('michelle').GetBallpark()
+        if bp is not None:
+            bp.RemoveBall(ball.id)
+
+    def GetFallbackDuration(self):
+        return 8 * SECOND
+
+    def PrepExplosionModel(self, explosionModel):
+        pass
+
+    def GetExplosionOverride(self):
+        return None
+
+    def GetTargetId(self, missile):
+        return missile.followId
+
+    def GetLodLevel(self, position, radius):
+        cam = sm.GetService('sceneManager').GetRegisteredCamera('default')
+        if cam is None:
+            return 1
+        distance = geo2.Vec3Length(geo2.Vec3Subtract((cam.pos.x, cam.pos.y, cam.pos.z), position))
+        vp = trinity.device.viewport
+        aspectRatio = vp.GetAspectRatio()
+        fov = cam.fieldOfView
+        if aspectRatio > 1.6:
+            fov = fov * 1.6 / aspectRatio
+        lodQuality = settings.public.device.Get('lodQuality', sm.GetService('device').GetDefaultLodQuality())
+        boundingSize = radius / (math.tan(fov / 2) * distance) * vp.height
+        if boundingSize < 192 / lodQuality:
+            return 1
+        return 0
+
+
+_globalsGlob = GlobalsGlob()
+
+def EstimateTimeToTarget(mslPos, targetPos, velocity):
+    offset = mslPos - targetPos
+    collisionTime = offset.Length() / velocity
+    return collisionTime
+
+
+def GetTransformedDamageLocator(eveship, locatorInd = -1):
+    loccnt = eveship.GetDamageLocatorCount()
+    if loccnt > 0 and locatorInd == -1:
+        locatorInd = random.randint(0, loccnt - 1)
+    return eveship.GetTransformedDamageLocator(locatorInd)
+
+
+class Missile(spaceObject.SpaceObject):
+    __guid__ = 'spaceObject.Missile'
+
+    def __init__(self):
+        spaceObject.SpaceObject.__init__(self)
+        self.exploded = False
+        self.collided = False
+        self.targetId = None
+        self.ownerID = None
+        self.sourceShipID = None
+        self.sourceModuleIDList = []
+        self.delayedBall = None
+        self.explosionPath = ''
+        self.explosionPathLow = ''
+        self.explosionLOD = -1
+        self.globalsGlob = _globalsGlob
+        self.trinUseNonCached = False
+        self.warheadsReleased = 0
+        self.totalWarheadCount = 0
+        self.delayedBall = None
+        self.enabled = self.globalsGlob.GetMissilesEnabled()
+
+    def _GetExplosionPath(self, missileFilename, append = ''):
+        override = self.globalsGlob.GetExplosionOverride()
+        if override is not None:
+            return override
+        result = missileFilename.lower().replace('_missile_', '_impact_')
+        result = result.replace('_t1.red', append + '.red')
+        return result
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def LoadModel(self, fileName = None, useInstance = False, loadedModel = None):
+        if not self.enabled:
+            return
+        temp = self.globalsGlob.Get_FileName_OwnerID_SourceShipID_SourceModuleIDList(self.id)
+        self.missileFileName, self.ownerID, self.sourceShipID, self.sourceModuleIDList = temp
+        self.targetId = self.globalsGlob.GetTargetId(self)
+        self.model = trinity.Load(self.missileFileName, self.trinUseNonCached)
+        self.explosionPath = self._GetExplosionPath(self.missileFileName)
+        self.explosionPathLow = self._GetExplosionPath(self.missileFileName, append='_lo')
+        if self.model is None:
+            self.LogError('missile::LoadModel failed to load a model ' + str(self.missileFileName))
+            return
+        curves = self._GetModelTransRotCurves()
+        self.model.translationCurve, self.model.rotationCurve = curves
+        self.model.name = 'Missile in %s' % self.id
+        scene2 = self.globalsGlob.GetScene2()
+        scene2.objects.append(self.model)
+
+    def _GetModelTransRotCurves(self):
+        return (self, self)
+
+    def _GetModelTurret(self, moduleIdx):
+        if getattr(self, 'sourceModuleIDList', None) is None:
+            return
+        if len(self.sourceModuleIDList) <= moduleIdx:
+            log.LogWarn('moduleIdx: + ' + str(moduleIdx) + ' is too high to index into list!')
+            return
+        slimItemID = self.sourceModuleIDList[moduleIdx]
+        sourceShipBall = self.globalsGlob.GetTargetBall(self.sourceShipID)
+        if sourceShipBall is not None:
+            if not hasattr(sourceShipBall, 'modules'):
+                return
+            if slimItemID in sourceShipBall.modules:
+                return sourceShipBall.modules[slimItemID]
+
+    def _GetModelStartTransformAndSpeed(self, muzzleID, moduleIdx):
+        if not self.model:
+            self.LogError('Missile::_GetModelStart with no model')
+            return (None, None)
+        now = blue.os.GetSimTime()
+        q = self.model.rotationCurve.GetQuaternionAt(now)
+        v = self.model.translationCurve.GetVectorAt(now)
+        missileBallWorldTransform = geo2.MatrixAffineTransformation(1.0, (0.0, 0.0, 0.0), (q.x,
+         q.y,
+         q.z,
+         q.w), (v.x, v.y, v.z))
+        sourceShipBallWorldTransform = missileBallWorldTransform
+        firingPosWorldTransform = missileBallWorldTransform
+        sourceShipBallSpeed = (0.0, 0.0, 0.0)
+        sourceTurretSet = self._GetModelTurret(moduleIdx)
+        sourceShipBall = self.globalsGlob.GetTargetBall(self.sourceShipID)
+        if sourceShipBall is not None:
+            q = sourceShipBall.GetQuaternionAt(now)
+            v = sourceShipBall.GetVectorAt(now)
+            sourceShipBallWorldTransform = geo2.MatrixAffineTransformation(1.0, (0.0, 0.0, 0.0), (q.x,
+             q.y,
+             q.z,
+             q.w), (v.x, v.y, v.z))
+            s = sourceShipBall.GetVectorDotAt(now)
+            sourceShipBallSpeed = (s.x, s.y, s.z)
+            if sourceTurretSet is not None and len(sourceTurretSet.turretSets) > 0:
+                gfxTS = sourceTurretSet.turretSets[0]
+                firingPosWorldTransform = gfxTS.GetFiringBoneWorldTransform(gfxTS.currentCyclingFiresPos + muzzleID)
+        invMissileBallWorldTransform = geo2.MatrixInverse(missileBallWorldTransform)
+        startTransform = geo2.MatrixMultiply(firingPosWorldTransform, invMissileBallWorldTransform)
+        startSpeed = geo2.Vec3TransformNormal(sourceShipBallSpeed, invMissileBallWorldTransform)
+        return (startTransform, startSpeed)
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def Prepare(self, spaceMgr):
+        if not self.enabled:
+            return
+        if self.collided:
+            return
+        spaceObject.SpaceObject.Prepare(self, spaceMgr)
+        if self.model is None:
+            return
+        if getattr(self, 'sourceModuleIDList', None) is None:
+            self.sourceModuleIDList = [0]
+        moduleCount = len(self.sourceModuleIDList)
+        moduleCount = max(moduleCount, 1)
+        if len(self.model.warheads) != 1:
+            log.LogError('There must be one and only one warhead per missile in: ' + str(self.model.name))
+            return
+        warheadPrime = self.model.warheads[0]
+        del self.model.warheads[:]
+        for moduleIdx in range(0, moduleCount):
+            turret = self._GetModelTurret(moduleIdx)
+            if turret is not None:
+                turret.StartShooting()
+            turretSet = None
+            if turret is not None:
+                if len(turret.turretSets) > 0:
+                    turretSet = turret.turretSets[0]
+            firingDelay = 0.0
+            if turretSet is not None:
+                firingDelay = turretSet.randomFiringDelay
+            firingEffect = None
+            if turretSet is not None:
+                firingEffect = turretSet.firingEffect
+            syncWarheadsCount = 1
+            if turretSet is not None:
+                if not turretSet.hasCyclingFiringPos:
+                    if turretSet.firingEffect is not None:
+                        syncWarheadsCount = turretSet.firingEffect.GetPerMuzzleEffectCount()
+            for i in range(0, syncWarheadsCount):
+                wh = warheadPrime.CopyTo()
+                for cs in self.model.curveSets:
+                    for bindingToPrime in cs.bindings:
+                        if bindingToPrime.destinationObject == warheadPrime:
+                            bd = bindingToPrime.CopyTo()
+                            bd.destinationObject = wh
+                            cs.curves.append(bd.sourceObject)
+                            cs.bindings.append(bd)
+                            break
+
+                startTransform, startSpeed = self._GetModelStartTransformAndSpeed(i, moduleIdx)
+                muzzleDelay = getattr(firingEffect, 'firingDelay' + str(i + 1), 0.0)
+                wh.PrepareLaunch()
+                uthread.new(self._StartWarhead, wh, firingDelay + muzzleDelay, i, moduleIdx)
+                wh.id = int(moduleIdx * syncWarheadsCount + i)
+                self.model.warheads.append(wh)
+
+            timeToTarget = self.EstimateTimeToTarget()
+            if timeToTarget < 1.6:
+                self.DoCollision(self.targetId, 0, 0, 0)
+            if self.targetId:
+                targetBall = self.globalsGlob.GetTargetBall(self.targetId)
+                if targetBall is not None:
+                    self.model.target = targetBall.model
+                    self.model.targetRadius = targetBall.radius
+            self.model.explosionCallback = self.ExplosionCallback
+            self.model.Start(startSpeed, timeToTarget)
+            self.totalWarheadCount = syncWarheadsCount * moduleCount
+
+        self.explosionManager.Preload(self.explosionPath, self.totalWarheadCount)
+        self.explosionManager.Preload(self.explosionPathLow, self.totalWarheadCount)
+
+    def _StartWarhead(self, warhead, delay, warheadIdx, moduleIdx):
+        blue.synchro.SleepSim(1000.0 * delay)
+        startTransform, startSpeed = self._GetModelStartTransformAndSpeed(warheadIdx, moduleIdx)
+        if startTransform is not None:
+            warhead.Launch(startTransform)
+
+    def EstimateTimeToTarget(self):
+        targetBall = self.globalsGlob.GetTargetBall(self.targetId)
+        if targetBall is None:
+            return 5.0
+        now = blue.os.GetSimTime()
+        myPos = self.model.translationCurve.GetVectorAt(now)
+        targetPos = targetBall.GetVectorAt(now)
+        return EstimateTimeToTarget(myPos, targetPos, self.maxVelocity)
+
+    def DoCollision(self, targetId, fx, fy, fz, fake = False):
+        if self.collided:
+            return
+        self.collided = True
+        if self.model is None:
+            return
+        uthread.new(self._DoCollision)
+
+    def _DoCollision(self):
+        if self.model is None:
+            return
+        if self.model.translationCurve is None:
+            self.LogError('Missile::_DoCollision no translation curve')
+            return
+        pos = self.model.translationCurve.GetVectorAt(blue.os.GetSimTime())
+        self.delayedBall = self.globalsGlob.SpawnClientBall((pos.x, pos.y, pos.z))
+        self.model.translationCurve = self.delayedBall
+
+    def Expire(self):
+        self.exploded = True
+
+    def _GetAudioPath(self, missileFilename):
+        missileAudio = split(missileFilename, '/')[-1:][0][8:-5]
+        missileAudio = 'effects_missile_mexplosion_' + missileAudio.lower() + '_play'
+        return missileAudio
+
+    def ExplosionCallback(self, warheadIdx):
+        uthread.new(self._SpawnExplosion, warheadIdx)
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def _SpawnExplosion(self, warheadIdx):
+        if not self.model:
+            self.LogWarn('Missile::_SpawnExplosion no model')
+            return
+        modelPosition = self.model.worldPosition
+        warheadPosition = self.model.warheads[warheadIdx].explosionPosition
+        self.warheadsReleased += 1
+        if self.exploded:
+            return
+        if self.warheadsReleased == self.totalWarheadCount:
+            if self.model:
+                self.model.target = None
+                self.model.explosionCallback = None
+                self.RemoveAndClearModel(self.model, self.globalsGlob.GetScene(), self.globalsGlob.GetScene2())
+                self.model = None
+            if self.delayedBall:
+                self.globalsGlob.DestroyClientBall(self.delayedBall)
+                self.delayedBall = None
+            self.exploded = True
+            self.globalsGlob.ClearBracket(self.id)
+        if self.explosionLOD < 0:
+            radius = self.explosionManager.GetBoundingSphereRadius(self.explosionPath)
+            self.explosionLOD = self.globalsGlob.GetLodLevel(warheadPosition, radius)
+        if self.explosionLOD == 0:
+            actualModel = self.explosionManager.GetExplosion(self.explosionPath)
+        else:
+            actualModel = self.explosionManager.GetExplosion(self.explosionPathLow)
+        if actualModel is None:
+            self.explosionManager.Unload(self.explosionPath)
+            self.explosionManager.Unload(self.explosionPathLow)
+            return
+        if actualModel.__bluetype__ != 'trinity.EveRootTransform':
+            root = trinity.EveRootTransform()
+            root.children.append(actualModel)
+            actualModel = root
+        duration = 0
+        explosionBall = None
+        if self.enabled:
+            targetBall = self.globalsGlob.GetTargetBall(self.targetId)
+            curves = timecurves.ReadTimeAndSoundCurvesF(actualModel)
+            duration = int(timecurves.MaxLenF(curves) * SECOND)
+            if duration == 0:
+                duration = self.globalsGlob.GetFallbackDuration()
+            timecurves.ResetTimeAndSoundCurvesF(curves)
+            if targetBall is not None:
+                explosionPosition = warheadPosition
+            elif type(modelPosition) == tuple:
+                explosionPosition = modelPosition
+            else:
+                explosionPosition = (modelPosition.x, modelPosition.y, modelPosition.z)
+            explosionBall = self.globalsGlob.SpawnClientBall(explosionPosition)
+            actualModel.translationCurve = explosionBall
+            rndRotation = geo2.QuaternionRotationSetYawPitchRoll(random.random() * 2.0 * math.pi, random.random() * 2.0 * math.pi, random.random() * 2.0 * math.pi)
+            actualModel.rotation = rndRotation
+            scene2 = self.globalsGlob.GetScene2()
+            if scene2 is not None:
+                scene2.objects.append(actualModel)
+                audio = audio2.AudEmitter('effect_source_%s' % str(id(self)))
+                obs = trinity.TriObserverLocal()
+                obs.front = (0.0, -1.0, 0.0)
+                obs.observer = audio
+                del actualModel.observers[:]
+                actualModel.observers.append(obs)
+                for eachCild in actualModel.children:
+                    for eachSet in eachCild.curveSets:
+                        for eachCurve in eachSet.curves:
+                            if eachCurve.__typename__ == 'TriEventCurve':
+                                eachCurve.eventListener = audio
+
+                for curveSet in actualModel.Find('trinity.TriCurveSet'):
+                    curveSet.Play()
+
+        self.explosionManager.Append((self, actualModel), duration)
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def CleanupExplosion(self, model):
+        if model.translationCurve is not None:
+            self.globalsGlob.DestroyClientBall(model.translationCurve)
+        model.translationCurve = None
+        self.RemoveAndClearModel(model, self.globalsGlob.GetScene(), self.globalsGlob.GetScene2())
+        if self.explosionLOD == 0:
+            self.explosionManager.Unload(self.explosionPath, model)
+            self.explosionManager.Unload(self.explosionPathLow)
+        else:
+            self.explosionManager.Unload(self.explosionPath)
+            self.explosionManager.Unload(self.explosionPathLow, model)
+        if self.warheadsReleased == self.totalWarheadCount:
+            self.ReleaseAll()
+
+    def Explode(self, explosionURL = None, absoluteScaling = None, scaling = 1.0, randomRotation = False, explosionCleanupDelay = None):
+        return self.collided
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def Release(self, origin = None):
+        if not self.collided and self.explodeOnRemove and self.enabled:
+            self.Expire()
+            self.ReleaseAll()
+
+    def DoFinalCleanup(self):
+        spaceObject.SpaceObject.DoFinalCleanup(self)
+        self.ReleaseAll()
+
+    def ReleaseAll(self):
+        if self.model:
+            self.model.target = None
+            self.model.explosionCallback = None
+            spaceObject.SpaceObject.Release(self, 'Missile')
+        if self.delayedBall:
+            self.globalsGlob.DestroyClientBall(self.delayedBall)
+            self.delayedBall = None
+        self.globalsGlob.ClearBracket(self.id)
+        warheadsLeft = self.totalWarheadCount - self.warheadsReleased
+        if warheadsLeft != 0:
+            self.explosionManager.Unload(self.explosionPath, count=warheadsLeft)
+            self.explosionManager.Unload(self.explosionPathLow, count=warheadsLeft)
+
+    def Display(self, display = 1):
+        if self.enabled:
+            spaceObject.SpaceObject.Display(self, display)
+
+
+class Bomb(Missile):
+
+    def Release(self, explosionURL = None, absoluteScaling = None, scaling = 1.0, randomRotation = False, explosionCleanupDelay = None):
+        self._SpawnExplosion(0)
+        spaceObject.SpaceObject.Release(self, 'Bomb')
+
+    def EstimateTimeToTarget(self):
+        return 10.0
+
+
+exports = {'spaceObject.Missile': Missile,
+ 'spaceObject.Bomb': Bomb,
+ 'spaceObject.MissileOLD': MissileOLD}

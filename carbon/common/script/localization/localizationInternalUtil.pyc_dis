@@ -1,0 +1,219 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/carbon/common/script/localization/localizationInternalUtil.py
+import util
+import blue
+import bluepy
+import re
+import log
+import eveLocalization
+from collections import defaultdict
+_languagesData = [{'numericLanguageID': 1033,
+  'languageName': 'English - United States',
+  'languageID': 'en-us',
+  'MLS': 'EN',
+  'Unreal': 'ENG'},
+ {'numericLanguageID': 1034,
+  'languageName': 'Spanish',
+  'languageID': 'es',
+  'MLS': 'ES',
+  'Unreal': 'ESN'},
+ {'numericLanguageID': 1036,
+  'languageName': 'French',
+  'languageID': 'fr',
+  'MLS': 'FR',
+  'Unreal': 'FRA'},
+ {'numericLanguageID': 1040,
+  'languageName': 'Italian',
+  'languageID': 'it',
+  'MLS': 'IT',
+  'Unreal': 'ITA'},
+ {'numericLanguageID': 1041,
+  'languageName': 'Japanese',
+  'languageID': 'ja',
+  'MLS': 'JA',
+  'Unreal': 'JPN'},
+ {'numericLanguageID': 1049,
+  'languageName': 'Russian',
+  'languageID': 'ru',
+  'MLS': 'RU'},
+ {'numericLanguageID': 1050,
+  'languageName': 'German',
+  'languageID': 'de',
+  'MLS': 'DE',
+  'Unreal': 'DEU'},
+ {'numericLanguageID': 1051,
+  'languageName': 'Chinese (Simplified)',
+  'languageID': 'zh',
+  'MLS': 'ZH'}]
+localizationQASettings = {'showHardcodedStrings': 0,
+ 'showMessageID': 0,
+ 'enableBoundaryMarkers': 0,
+ 'characterReplacementMethod': 0,
+ 'enableTextExpansion': 0}
+_isWrapModeOn = False
+localizedStringRE = re.compile('(<localized.*?>|</localized>)')
+messageIDSearchRE = re.compile('(?<=messageID=).*?(?=[ >])', re.I)
+_languageMappings = defaultdict(dict)
+for _languageDictionary in _languagesData:
+    for _setNameKey, _languageValue in _languageDictionary.iteritems():
+        if _setNameKey != 'languageName':
+            if not isinstance(_languageValue, int):
+                _languageMappings[_setNameKey, _languageValue.lower()] = _languageDictionary
+            else:
+                _languageMappings[_setNameKey, _languageValue] = _languageDictionary
+
+def GetLanguagesData():
+    return _languagesData
+
+
+@bluepy.CCP_STATS_ZONE_FUNCTION
+def StandardizeLanguageID(fromLanguageID):
+    if not fromLanguageID:
+        return fromLanguageID
+    fromLanguageID = fromLanguageID.lower()
+    if _languageMappings.get(('languageID', fromLanguageID), None) is None:
+        for (setNameKey, languageValue), languageDictionary in _languageMappings.iteritems():
+            if setNameKey != 'numericLanguageID' and fromLanguageID == languageValue:
+                return languageDictionary['languageID']
+
+    return fromLanguageID
+
+
+@bluepy.CCP_STATS_ZONE_FUNCTION
+def ConvertToLanguageSet(fromSetName, toSetName, fromLanguageID):
+    if isinstance(fromLanguageID, basestring):
+        fromLanguageID = fromLanguageID.lower()
+    return _languageMappings.get((fromSetName, fromLanguageID), {}).get(toSetName, None)
+
+
+def IsLocalizationSafeString(text):
+    return text.startswith('<localized') and text.endswith('localized>')
+
+
+@bluepy.CCP_STATS_ZONE_FUNCTION
+def PrepareLocalizationSafeString(textString, messageID = None):
+    global _isWrapModeOn
+    if _isWrapModeOn:
+        return '<localized messageID=%s>%s</localized>' % (messageID, textString)
+    return textString
+
+
+@bluepy.CCP_STATS_ZONE_FUNCTION
+def WrapStringForDisplay(textString):
+    global localizationQASettings
+    if not _isWrapModeOn:
+        return textString
+    parts = localizedStringRE.split(textString)
+    for index, part in enumerate(parts):
+        if part == u'</localized>':
+            if localizationQASettings['showMessageID'] or localizationQASettings['enableBoundaryMarkers']:
+                parts[index] = '<color=0xaa999999>]</color>' + part
+        if part.startswith(u'<localized'):
+            messageID = messageIDSearchRE.findall(part)[0]
+            boundaryText = ''
+            messageIDText = ''
+            if localizationQASettings['showMessageID'] or localizationQASettings['enableBoundaryMarkers']:
+                boundaryText = '<color=0xaa999999>[</color>'
+            if localizationQASettings['showMessageID']:
+                messageIDText = '<color=0xaa6dcff6>%s: </color>' % messageID
+            parts[index] = part + boundaryText + messageIDText
+
+    return ''.join(parts)
+
+
+def PreparePlaceholderString(textString):
+    return PrepareLocalizationSafeString(textString, messageID='placeholder')
+
+
+def ApplyQASettingsToString(textString):
+    import localizationUtil
+    import localization
+    if textString and localizationUtil.IsHardcodedStringDetectionEnabled() and not IsLocalizationSafeString(textString):
+        textString = localizationUtil.WrapHardcodedString(textString)
+    elif textString and localizationUtil.GetLanguageID() == localization.LOCALE_SHORT_ENGLISH and localizationUtil.IsPseudolocalizationEnabled() and IsLocalizationSafeString(textString):
+        textString = localization.Pseudolocalize(textString)
+    return textString
+
+
+def SetWrapMode(value):
+    global _isWrapModeOn
+    old = _isWrapModeOn
+    _isWrapModeOn = value
+    return old
+
+
+def IsWrapModeOn():
+    return _isWrapModeOn
+
+
+@bluepy.CCP_STATS_ZONE_FUNCTION
+def ValidateString(sourceText, languageID, dummyData = None):
+    import localization
+    if dummyData is None:
+        dummyData = {eveLocalization.VARIABLE_TYPE.CHARACTER: 1,
+         eveLocalization.VARIABLE_TYPE.NPCORGANIZATION: 1,
+         eveLocalization.VARIABLE_TYPE.ITEM: 1,
+         eveLocalization.VARIABLE_TYPE.LOCATION: 1,
+         eveLocalization.VARIABLE_TYPE.CHARACTERLIST: [1],
+         eveLocalization.VARIABLE_TYPE.MESSAGE: 1,
+         eveLocalization.VARIABLE_TYPE.DATETIME: blue.os.GetWallclockTime(),
+         eveLocalization.VARIABLE_TYPE.FORMATTEDTIME: blue.os.GetWallclockTime(),
+         eveLocalization.VARIABLE_TYPE.TIMEINTERVAL: const.SEC,
+         eveLocalization.VARIABLE_TYPE.NUMERIC: 99.9,
+         eveLocalization.VARIABLE_TYPE.GENERIC: 'This is a test message.'}
+    errors = []
+    oldMethod = localization.LogError
+
+    def ValidationLogError(*args):
+        oldMethod(*args)
+        errors.append(args)
+
+    localization.LogError = ValidationLogError
+    openCount = sourceText.count('{')
+    closeCount = sourceText.count('}')
+    if openCount != closeCount:
+        return ["Mismatching brackets in string '" + unicode(sourceText) + "'"]
+    try:
+        tags = localization._Tokenize(sourceText)
+    except Exception as e:
+        return ["Exception occurred when attempting to tokenize string '" + unicode(sourceText) + "': " + repr(e)]
+
+    kwargs = {}
+    for tag in tags.values():
+        if tag['variableName'] and tag['variableType'] in dummyData:
+            kwargs[tag['variableName']] = dummyData[tag['variableType']]
+        if 'linkinfo' in tag['kwargs']:
+            kwargs[tag['kwargs']['linkinfo']] = ('showinfo', 1)
+        if 'quantity' in tag['kwargs']:
+            kwargs[tag['kwargs']['quantity']] = 1
+
+    result = sourceText
+    try:
+        result = eveLocalization.Parse(sourceText, languageID, tags, **kwargs)
+    except Exception as e:
+        errors = ["Exception occurred when attempting to validate string '" + unicode(sourceText) + "': " + repr(e) + repr(kwargs)]
+
+    localization.LogError = oldMethod
+    if errors:
+        return errors
+    return result
+
+
+def LoadQASettings():
+    global _isWrapModeOn
+    if boot.role == 'client':
+        localizationQASettings['showHardcodedStrings'] = prefs.GetValue('showHardcodedStrings', 0)
+        localizationQASettings['showMessageID'] = prefs.GetValue('showMessageID', 0)
+        localizationQASettings['enableBoundaryMarkers'] = prefs.GetValue('enableBoundaryMarkers', 0)
+        localizationQASettings['characterReplacementMethod'] = prefs.GetValue('characterReplacementMethod', 0)
+        localizationQASettings['enableTextExpansion'] = prefs.GetValue('enableTextExpansion', 0)
+        _isWrapModeOn = sum(localizationQASettings.values()) > 0
+    elif boot.role == 'server' and session:
+        localizationServer = sm.GetService('localizationServer')
+        if localizationServer:
+            return localizationServer.GetLocalizationQASettings()
+        logChannel = log.GetChannel('localization')
+        logChannel.log('Localization module: Couldnt get localizationServer service so we cannot apply pseudoloc settings.', logChannel.flags['ERR'])
+    return localizationQASettings
+
+
+exports = util.AutoExports('localizationInternalUtil', locals())

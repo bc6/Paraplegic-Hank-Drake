@@ -1,0 +1,1079 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/shared/neocom/locationInfoSvc.py
+import sys
+import blue
+import bluepy
+import uthread
+import uix
+import uiutil
+import xtriui
+import util
+import service
+import base
+import trinity
+import re
+import uicls
+import log
+import uiconst
+import math
+from collections import deque
+import localization
+import bookmarkUtil
+import ccConst
+FRAME_WIDTH = 20
+FRAME_SEPERATION = 10
+NEOCOM_PANELWIDTH = 328
+LOCATION_PANELWIDTH = 600
+ROUTE_MARKERSIZE = 8
+ROUTE_MARKERGAP = 2
+ROUTE_MARKERTYPE_NORMAL = 0
+ROUTE_MARKERTYPE_STATION = 1
+ROUTE_MARKERTYPE_WAYPOINT = 2
+IDLE_ROUTEMARKER_ALPHA = 0.75
+STD_TEXTSHADOWOFFSET = (0, 1)
+
+class LocationInfoSvc(service.Service):
+    __guid__ = 'svc.locationInfo'
+    __dependencies__ = ['settings', 'contracts']
+    __notifyevents__ = ['OnSessionChanged',
+     'OnAggressionChanged',
+     'OnSystemStatusChanged',
+     'OnSovereigntyChanged',
+     'OnPostCfgDataChanged',
+     'ProcessUIRefresh',
+     'OnEntitySelectionChanged',
+     'OnViewStateChanged']
+
+    def Run(self, memStream = None):
+        self.validNearBy = [const.groupAsteroidBelt,
+         const.groupMoon,
+         const.groupPlanet,
+         const.groupWarpGate,
+         const.groupStargate]
+        self.Reset()
+        self.facwarSvc = sm.GetService('facwar')
+        self.sovSvc = sm.GetService('sov')
+        if session.charid and not (eve.rookieState and eve.rookieState < 2):
+            self.UpdateLocationInfo()
+
+    def Stop(self, memStream = None):
+        self.CloseSidePanel()
+        self.Reset()
+
+    def ProcessUIRefresh(self):
+        self.Stop()
+        self.Run()
+
+    def OnSystemStatusChanged(self, *args):
+        if session.charid:
+            self.UpdateLocationInfo()
+
+    def OnSovereigntyChanged(self, solarSystemID, allianceID):
+        self.UpdateAllLocationInfo()
+
+    def OnEntitySelectionChanged(self, entityID):
+        self.UpdateAllLocationInfo()
+
+    def OnSessionChanged(self, isRemote, sess, change):
+        if session.charid is None:
+            self.CloseSidePanel()
+            self.Reset()
+        else:
+            self.UpdateLocationInfo()
+            self.UpdateSessionTimer()
+
+    def OnViewStateChanged(self, oldViewName, newViewName):
+        uthread.new(self.UpdateRouteInfo)
+
+    def CloseSidePanel(self):
+        if self.sidePanel is not None and not self.sidePanel.destroyed:
+            self.sidePanel.Close()
+            self.sidePanel = None
+
+    def ShowHideSidePanel(self, hide = 1, *args):
+        if self.sidePanel is not None and not self.sidePanel.destroyed:
+            if hide:
+                self.sidePanel.state = uiconst.UI_HIDDEN
+            else:
+                self.sidePanel.state = uiconst.UI_PICKCHILDREN
+
+    def OnAggressionChanged(self, solarsystemID, aggressors):
+        blue.pyos.synchro.Yield()
+        charcrimes, corpcrimes = sm.GetService('michelle').GetCriminalFlagCountDown()
+        if charcrimes or corpcrimes:
+            self.UpdateCrimeInfo(charcrimes, corpcrimes)
+
+    def Reset(self):
+        self.nearby = None
+        self.locationParent = None
+        self.locationInfo = None
+        self.sidePanel = None
+        self.locationTimer = None
+        self.lastLocationID = None
+        self.updating = False
+        self.mainLocationInfo = None
+        self.routeContainer = None
+        self.inited = False
+        self.criminalTimer = None
+        if not hasattr(self, 'routeData'):
+            self.routeData = None
+
+    def ConstructLayout(self):
+        self.sidePanel = uicls.Container(parent=uicore.layer.sidePanels, name='sidePanel', align=uiconst.TOLEFT, width=LOCATION_PANELWIDTH, padLeft=12)
+        self.sidePanel.cacheContents = True
+        self.locationParent = uicls.NeocomContainer(parent=self.sidePanel, name='locationInfo', padRight=0, showBackground=True, contentPadding=0)
+        self.locationInfo = self.locationParent.content
+        self.inited = 1
+
+    def UpdateSessionTimer(self):
+        if settings.user.ui.Get('showSessionTimer', 0):
+            uthread.new(self.sessionTimer.AnimSessionChange)
+
+    def GetSolarSystemTrace(self, itemID, altText = None):
+        if util.IsStation(itemID):
+            solarSystemID = cfg.stations.Get(itemID).solarSystemID
+        else:
+            solarSystemID = itemID
+        try:
+            sec, col = util.FmtSystemSecStatus(sm.GetService('map').GetSecurityStatus(solarSystemID), 1)
+            col.a = 1.0
+            securityLabel = "</b> <color=%s><hint='%s'>%s</hint></color>" % (util.StrFromColor(col), localization.GetByLabel('UI/Map/StarMap/SecurityStatus'), sec)
+        except KeyError:
+            self.LogError('Neocom failed to get security status for item', solarSystemID, 'displaying BROKEN')
+            log.LogException()
+            sys.exc_clear()
+            securityLabel = ''
+
+        constellationID = cfg.solarsystems.Get(solarSystemID).constellationID
+        regionID = cfg.constellations.Get(constellationID).regionID
+        if altText:
+            solarSystemAlt = " alt='%s'" % altText
+        else:
+            solarSystemAlt = ''
+        locationTrace = '<url=showinfo:%s//%s%s>%s</url>%s &lt; <url=showinfo:%s//%s>%s</url> &lt; <url=showinfo:%s//%s>%s</url>' % (const.typeSolarSystem,
+         solarSystemID,
+         solarSystemAlt,
+         cfg.evelocations.Get(solarSystemID).locationName,
+         securityLabel,
+         const.typeConstellation,
+         constellationID,
+         cfg.evelocations.Get(constellationID).locationName,
+         const.typeRegion,
+         regionID,
+         cfg.evelocations.Get(regionID).locationName)
+        return locationTrace
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def UpdateLocationInfo(self):
+        if self.updating:
+            return
+        self.updating = True
+        try:
+            if not session.charid:
+                return
+            if not self.inited:
+                self.ConstructLayout()
+            if not self.mainLocationInfo:
+                self.locationInfo.Flush()
+                self.criminalText = uicls.EveLabelSmall(name='criminalText', parent=self.locationInfo, left=FRAME_WIDTH, state=uiconst.UI_HIDDEN)
+                listbtn = xtriui.ListSurroundingsBtn(parent=self.locationInfo, align=uiconst.TOPLEFT, pos=(-4, 9, 24, 24), showIcon=True)
+                listbtn.hint = localization.GetByLabel('UI/Neocom/ListItemsInSystem')
+                listbtn.sr.owner = self
+                listbtn.sr.groupByType = 1
+                listbtn.filterCurrent = 1
+                listbtn.sr.itemID = session.solarsystemid2
+                listbtn.sr.typeID = const.typeSolarSystem
+                self.listbtn = listbtn
+                self.mainLocationInfo = uicls.EveCaptionMedium(name='caption', align=uiconst.TOPLEFT, parent=self.locationInfo, left=FRAME_WIDTH, top=8)
+                self.sessionTimer = uicls.SessionTimeIndicator(parent=self.locationInfo, pos=(-4, -4, 24, 24), state=uiconst.UI_HIDDEN, align=uiconst.TOPLEFT)
+                self.nearestLocationInfo = uicls.EveLabelMedium(name='nearestLocationInfo', parent=self.locationInfo, left=FRAME_WIDTH)
+                self.sovLocationInfo = uicls.EveLabelMedium(name='sovLocationInfo', hint=localization.GetByLabel('UI/Neocom/Sovereignty'), parent=self.locationInfo, left=FRAME_WIDTH)
+                bgColor = (1, 1, 1, 0.15)
+                self.routeContainer = uicls.Container(parent=self.locationInfo, align=uiconst.TOPLEFT, name='routeContainer', left=FRAME_WIDTH, width=NEOCOM_PANELWIDTH - FRAME_WIDTH - FRAME_WIDTH)
+                self.routeContainer.headerParent = uicls.Container(parent=self.routeContainer, align=uiconst.TOTOP, padTop=16, padBottom=4)
+                self.routeContainer.header = uicls.EveCaptionMedium(name='header', parent=self.routeContainer.headerParent)
+                self.routeContainer.currentParent = uicls.Container(parent=self.routeContainer, align=uiconst.TOTOP, padBottom=12, height=19)
+                self.routeContainer.currentTrace = uicls.EveLabelMedium(name='currentTrace', parent=self.routeContainer.currentParent, align=uiconst.CENTER, state=uiconst.UI_NORMAL, width=NEOCOM_PANELWIDTH - 16, lineSpacing=-0.15, left=1)
+                uicls.Fill(parent=self.routeContainer.currentParent, color=bgColor, padRight=-2)
+                currentPointer = uicls.Sprite(parent=self.routeContainer.currentParent, texturePath='res:/UI/Texture/classes/LocationInfo/pointerDown.png', pos=(0, -10, 10, 10), state=uiconst.UI_DISABLED, align=uiconst.BOTTOMLEFT, color=bgColor, idx=0)
+                frame = uicls.Frame(parent=self.routeContainer.currentParent, frameConst=ccConst.FRAME_SOFTSHADE, color=(0, 0, 0, 0.25))
+                frame.padding = (-5, -5, -5, -10)
+                self.routeContainer.markersParent = uicls.Container(parent=self.routeContainer, align=uiconst.TOTOP)
+                self.routeContainer.endParent = uicls.Container(parent=self.routeContainer, align=uiconst.TOBOTTOM, padTop=12, height=19)
+                self.routeContainer.endTrace = uicls.EveLabelMedium(name='endTrace', parent=self.routeContainer.endParent, align=uiconst.CENTER, state=uiconst.UI_NORMAL, width=NEOCOM_PANELWIDTH - 16, lineSpacing=-0.15, left=1)
+                uicls.Fill(parent=self.routeContainer.endParent, color=bgColor, padRight=-2)
+                self.routeContainer.endPointer = uicls.Sprite(parent=self.routeContainer.endParent, texturePath='res:/UI/Texture/classes/LocationInfo/pointerUp.png', pos=(0, -10, 10, 10), state=uiconst.UI_DISABLED, color=bgColor, idx=0)
+                frame = uicls.Frame(parent=self.routeContainer.endParent, frameConst=ccConst.FRAME_SOFTSHADE, color=(0, 0, 0, 0.25))
+                frame.padding = (-5, -5, -5, -10)
+                self.tidiIndicator = uicls.tidiIndicator(parent=self.locationInfo, name='tidiIndicator', align=uiconst.TOPLEFT, pos=(0, 18, 24, 24))
+                self.locationParent.UpdateStandardAppearance()
+            if eve.session.solarsystemid2:
+                self.UpdateAllLocationInfo()
+            else:
+                self.mainLocationInfo.state = uiconst.UI_HIDDEN
+                self.listbtn.state = uiconst.UI_HIDDEN
+        finally:
+            self.updating = False
+
+    def GetSolarSystemStatusText(self, systemStatus = None, returnNone = False):
+        if systemStatus is None:
+            systemStatus = sm.StartService('facwar').GetSystemStatus()
+        xtra = ''
+        if systemStatus == const.contestionStateCaptured:
+            xtra = localization.GetByLabel('UI/Neocom/SystemLost')
+        elif systemStatus == const.contestionStateVulnerable:
+            xtra = localization.GetByLabel('UI/Neocom/Vulnerable')
+        elif systemStatus == const.contestionStateContested:
+            xtra = localization.GetByLabel('UI/Neocom/Contested')
+        elif systemStatus == const.contestionStateNone and returnNone:
+            xtra = localization.GetByLabel('UI/Neocom/Uncontested')
+        return xtra
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def UpdateAllLocationInfo(self):
+        self.UpdateCrimeInfo()
+        self.UpdateMainLocationInfo()
+        self.UpdateNearestOrStationLocationInfo()
+        self.UpdateSOVLocationInfo()
+        self.UpdateRouteInfo()
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def UpdateMainLocationInfo(self):
+        if session.solarsystemid2:
+            solarSystemLabel = "<url=showinfo:%d//%d alt='%s'>%s</url>" % (const.typeSolarSystem,
+             session.solarsystemid2,
+             localization.GetByLabel('UI/Neocom/Autopilot/CurrentLocationType', itemType=const.typeSolarSystem),
+             cfg.evelocations.Get(session.solarsystemid2).name)
+            try:
+                sec, col = util.FmtSystemSecStatus(sm.GetService('map').GetSecurityStatus(session.solarsystemid2), 1)
+                col.a = 1.0
+                securityLabel = "</b> <color=%s><hint='%s'>%s</hint></color>" % (util.StrFromColor(col), localization.GetByLabel('UI/Map/StarMap/SecurityStatus'), sec)
+            except KeyError:
+                self.LogError('Neocom failed to get security status for item', session.solarsystemid2, 'displaying BROKEN')
+                log.LogException()
+                sys.exc_clear()
+                securityLabel = '</b>'
+
+            if util.IsWormholeRegion(session.regionid):
+                locationTrace = ''
+            else:
+                locationTrace = "<fontsize=14> &lt; <url=showinfo:%s//%s alt='%s'>%s</url> &lt; <url=showinfo:%s//%s alt='%s'>%s</url></fontsize>" % (const.typeConstellation,
+                 session.constellationid,
+                 localization.GetByLabel('UI/Neocom/Autopilot/CurrentLocationType', itemType=const.typeConstellation),
+                 cfg.evelocations.Get(session.constellationid).name,
+                 const.typeRegion,
+                 session.regionid,
+                 localization.GetByLabel('UI/Neocom/Autopilot/CurrentLocationType', itemType=const.typeRegion),
+                 cfg.evelocations.Get(session.regionid).name)
+            self.mainLocationInfo.text = solarSystemLabel + securityLabel + locationTrace
+            self.mainLocationInfo.state = uiconst.UI_NORMAL
+            self.tidiIndicator.left = self.mainLocationInfo.left + self.mainLocationInfo.textwidth + 4
+            solarsystemitems = sm.GetService('map').GetSolarsystemItems(session.solarsystemid2)
+            self.listbtn.sr.mapitems = solarsystemitems
+            self.listbtn.solarsystemid = session.solarsystemid2
+            self.listbtn.sr.itemID = session.solarsystemid2
+            self.listbtn.sr.typeID = const.typeSolarSystem
+            self.listbtn.state = uiconst.UI_NORMAL
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def UpdateNearestOrStationLocationInfo(self, nearestBall = None):
+        infoSettings = self.GetLocationInfoSettings()
+        nearestOrStationLabel = ''
+        if 'nearest' in infoSettings and session.solarsystemid2:
+            if session.stationid2:
+                stationName = cfg.evelocations.Get(eve.stationItem.itemID).name
+                nearestOrStationLabel = "<url=showinfo:%d//%d alt='%s'>%s</url>" % (eve.stationItem.stationTypeID,
+                 eve.stationItem.itemID,
+                 localization.GetByLabel('UI/Generic/CurrentStation'),
+                 stationName)
+            else:
+                nearestBall = nearestBall or self.GetNearestBall()
+                if nearestBall:
+                    self.nearby = nearestBall.id
+                    slimItem = sm.StartService('michelle').GetItem(nearestBall.id)
+                    if slimItem:
+                        nearestOrStationLabel = "<url=showinfo:%d//%d alt='%s'>%s</url>" % (slimItem.typeID,
+                         slimItem.itemID,
+                         localization.GetByLabel('UI/Neocom/Nearest'),
+                         cfg.evelocations.Get(nearestBall.id).locationName)
+                if self.locationTimer is None:
+                    self.locationTimer = base.AutoTimer(1313, self.CheckNearest)
+        if nearestOrStationLabel:
+            self.nearestLocationInfo.text = nearestOrStationLabel
+            self.nearestLocationInfo.state = uiconst.UI_NORMAL
+        else:
+            self.nearestLocationInfo.state = uiconst.UI_HIDDEN
+        self.UpdateLocationInfoLayout()
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def UpdateSOVLocationInfo(self):
+        sovLabel = None
+        infoSettings = self.GetLocationInfoSettings()
+        if 'sovereignty' in infoSettings and session.solarsystemid2:
+            solSovOwner = None
+            contestedState = ''
+            facwarsys = self.facwarSvc.GetFacWarSystem(session.solarsystemid2)
+            if facwarsys:
+                solSovOwner = facwarsys.get('occupierID')
+                contestedState = self.GetSolarSystemStatusText()
+            else:
+                ss = sm.RemoteSvc('stationSvc').GetSolarSystem(session.solarsystemid2)
+                if ss:
+                    solSovOwner = ss.factionID
+                    if solSovOwner is None:
+                        sovInfo = self.sovSvc.GetSystemSovereigntyInfo(session.solarsystemid2)
+                        if sovInfo:
+                            solSovOwner = sovInfo.allianceID
+                    if solSovOwner is not None:
+                        contestedState = self.sovSvc.GetContestedState(session.solarsystemid2) or ''
+            if solSovOwner is not None:
+                sovText = cfg.eveowners.Get(solSovOwner).name
+            elif util.IsWormholeRegion(session.regionid):
+                sovText = localization.GetByLabel('UI/Neocom/Unclaimable')
+            else:
+                sovText = localization.GetByLabel('UI/Neocom/Unclaimed')
+            sovLabel = "<url=localsvc:service=sov&method=GetSovOverview alt='%s'>%s</url> %s" % (localization.GetByLabel('UI/Neocom/Sovereignty'), sovText, contestedState)
+        if sovLabel is not None:
+            self.sovLocationInfo.text = sovLabel
+            self.sovLocationInfo.state = uiconst.UI_NORMAL
+        else:
+            self.sovLocationInfo.state = uiconst.UI_HIDDEN
+        self.UpdateLocationInfoLayout()
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def UpdateRouteInfo(self, jumpChange = False):
+        if not session.solarsystemid2:
+            return
+        planetView = sm.GetService('viewState').IsViewActive('planet')
+        autoPilotActive = sm.GetService('autoPilot').GetState()
+        updatingRouteData = getattr(self, 'updatingRouteData', None)
+        if updatingRouteData == (autoPilotActive, planetView, self.routeData):
+            return
+        if not self.routeData:
+            if self.routeContainer:
+                self.routeContainer.Hide()
+                self.routeContainer.markersParent.Flush()
+                self.UpdateLocationInfoLayout()
+            return
+        self.updatingRouteData = (autoPilotActive, planetView, self.routeData[:])
+        numJumps = self._GetNumJumps(self.routeData)
+        self.routeContainer.header.text = '%s <fontsize=13></b>%s %s' % (localization.GetByLabel('UI/InfoWindow/TabNames/Route'), numJumps, localization.GetByLabel('UI/Common/Jumps'))
+        self.routeContainer.headerParent.height = self.routeContainer.header.height
+        self.routeContainer.Show()
+        infoSettings = self.GetLocationInfoSettings()
+        if planetView or 'route' not in infoSettings:
+            self.routeContainer.currentParent.Hide()
+            self.routeContainer.markersParent.Hide()
+            self.routeContainer.endParent.Hide()
+        else:
+            self.routeContainer.currentParent.Show()
+            self.routeContainer.endParent.Show()
+            self.routeContainer.markersParent.Show()
+            currentTrace = self.routeContainer.currentTrace
+            currentTrace.text = '<center>' + self.GetSolarSystemTrace(self.routeData[0], localization.GetByLabel('UI/Neocom/Autopilot/NextSystemInRoute'))
+            self.routeContainer.currentParent.height = max(19, currentTrace.textheight + 4)
+            waypoints = deque(sm.GetService('starmap').GetWaypoints())
+            markersParent = self.routeContainer.markersParent
+            doBlink = autoPilotActive and jumpChange
+            routeIDs = []
+            lastStationSystemID = None
+            for i, id in enumerate(self.routeData):
+                isLast = i == len(self.routeData) - 1
+                if util.IsSolarSystem(id) and not isLast and not util.IsSolarSystem(self.routeData[i + 1]):
+                    continue
+                if util.IsSolarSystem(id) and lastStationSystemID == id:
+                    continue
+                if util.IsStation(id):
+                    lastStationSystemID = cfg.stations.Get(id).solarSystemID
+                else:
+                    lastStationSystemID = None
+                routeIDs.append(id)
+
+            if len(markersParent.children):
+                while markersParent.children and markersParent.children[0].solarSystemID != routeIDs[0]:
+                    markersParent.children[0].Close()
+
+            if len(markersParent.children) > len(routeIDs):
+                for each in markersParent.children[len(routeIDs):]:
+                    each.Close()
+
+            absWidth, absHeight = markersParent.GetAbsoluteSize()
+            markerX = 0
+            markerY = 0
+            for i, destinationID in enumerate(routeIDs):
+                if waypoints and destinationID == waypoints[0]:
+                    isWaypoint = True
+                    waypoints.popleft()
+                else:
+                    isWaypoint = False
+                if util.IsSolarSystem(destinationID):
+                    isStation = False
+                    solarSystemID = destinationID
+                elif util.IsStation(destinationID):
+                    isStation = True
+                    solarSystemID = cfg.stations.Get(destinationID).solarSystemID
+                else:
+                    self.LogError('UpdateRouteInfo: Unknown item. I can only handle solar systems and stations, you gave me', destinationID)
+                if len(markersParent.children) > i:
+                    systemIcon = markersParent.children[i]
+                    systemIcon.left = markerX
+                    systemIcon.top = markerY
+                else:
+                    systemIcon = uicls.AutopilotDestinationIcon(parent=markersParent, pos=(markerX,
+                     markerY,
+                     ROUTE_MARKERSIZE,
+                     ROUTE_MARKERSIZE), solarSystemID=solarSystemID, destinationID=destinationID, idx=i)
+                systemIcon.SetSolarSystemAndDestinationID(solarSystemID, destinationID)
+                if isStation:
+                    systemIcon.SetMarkerType(ROUTE_MARKERTYPE_STATION)
+                elif isWaypoint:
+                    systemIcon.SetMarkerType(ROUTE_MARKERTYPE_WAYPOINT)
+                else:
+                    systemIcon.SetMarkerType(ROUTE_MARKERTYPE_NORMAL)
+                self.routeContainer.endPointer.left = markerX
+                markersParent.height = markerY + ROUTE_MARKERSIZE + ROUTE_MARKERGAP
+                self.routeContainer.height = sum((each.height + each.padTop + each.padBottom for each in self.routeContainer.children if each.state != uiconst.UI_HIDDEN))
+                markerX += ROUTE_MARKERGAP + ROUTE_MARKERSIZE
+                if markerX + ROUTE_MARKERSIZE > absWidth:
+                    markerX = 0
+                    markerY += ROUTE_MARKERGAP + ROUTE_MARKERSIZE
+
+            if len(routeIDs) > 1:
+                endTrace = self.routeContainer.endTrace
+                endTrace.text = '<center>' + self.GetSolarSystemTrace(routeIDs[-1], localization.GetByLabel('UI/Neocom/Autopilot/CurrentDestination'))
+                self.routeContainer.endParent.height = max(19, endTrace.textheight + 4)
+                self.routeContainer.endParent.Show()
+            else:
+                self.routeContainer.endParent.Hide()
+        self.routeContainer.height = sum((each.height + each.padTop + each.padBottom for each in self.routeContainer.children if each.state != uiconst.UI_HIDDEN))
+        self.UpdateLocationInfoLayout()
+        self.updatingRouteData = None
+
+    def _GetNumJumps(self, routeData):
+        ids = []
+        lastID = None
+        for id in routeData:
+            if util.IsStation(id):
+                id = cfg.stations.Get(id).solarSystemID
+            if id != lastID:
+                ids.append(id)
+            lastID = id
+
+        numJumps = len(ids)
+        if ids and ids[0] == session.solarsystemid2:
+            numJumps -= 1
+        return numJumps
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def UpdateCrimeInfo(self, charcrimes = None, corpcrimes = None):
+        if getattr(self, 'criminalText', None) is None:
+            return
+        if charcrimes is None:
+            charcrimes, corpcrimes = sm.GetService('michelle').GetCriminalFlagCountDown()
+        if None in charcrimes or None in corpcrimes:
+            criminalTimer = max(charcrimes.get(None, 0), corpcrimes.get(None, 0))
+            labelPath = 'UI/Neocom/UpdateCriminalGlobalCriminal'
+        elif charcrimes and corpcrimes:
+            criminalTimer = max(max(charcrimes.values()), max(corpcrimes.values()))
+            labelPath = 'UI/Neocom/UpdateCriminalAggression'
+        elif charcrimes:
+            criminalTimer = max(charcrimes.values())
+            labelPath = 'UI/Neocom/UpdateCriminalAggression'
+        elif corpcrimes:
+            criminalTimer = max(corpcrimes.values())
+            labelPath = 'UI/Neocom/UpdateCriminalAggression'
+        else:
+            criminalTimer = 0
+        if criminalTimer > 0:
+            self.criminalText.state = uiconst.UI_NORMAL
+            self.criminalText.text = localization.GetByLabel(labelPath, countdownTimer=util.FmtTimeInterval(criminalTimer - blue.os.GetSimTime(), breakAt='min'))
+            if uicore.uilib.mouseOver == self.criminalText:
+                keystoprime = charcrimes.keys() + corpcrimes.keys()
+                while None in keystoprime:
+                    keystoprime.remove(None)
+
+                cfg.eveowners.Prime(keystoprime)
+                criminal = []
+                if None in charcrimes:
+                    string = localization.GetByLabel('UI/Neocom/CriminalFlagGlobal', timeLeft=util.FmtDate(charcrimes[None] - blue.os.GetSimTime(), 'ns'))
+                    criminal.append(string)
+                charcrimestr = []
+                for key, value in charcrimes.iteritems():
+                    if key is not None:
+                        string = localization.GetByLabel('UI/Neocom/CriminalFlagYourOrCorpCrimes', victim=cfg.eveowners.Get(key).name, timeLeft=util.FmtDate(value - blue.os.GetSimTime(), 'ns'))
+                        charcrimestr.append(string)
+
+                if charcrimestr:
+                    criminal.append(localization.GetByLabel('UI/Neocom/YourCrimes'))
+                    criminal += charcrimestr
+                corpcrimestr = []
+                for key, value in corpcrimes.iteritems():
+                    string = localization.GetByLabel('UI/Neocom/CriminalFlagYourOrCorpCrimes', victim=cfg.eveowners.Get(key).name, timeLeft=util.FmtDate(value - blue.os.GetSimTime(), 'ns'))
+                    corpcrimestr.append(string)
+
+                if corpcrimestr:
+                    criminal.append(localization.GetByLabel('UI/Neocom/YourCorpsCrimes'))
+                    criminal += corpcrimestr
+                self.criminalText.hint = '<br>'.join(criminal)
+                uicore.UpdateHint(self.criminalText)
+            if not self.criminalTimer:
+                self.criminalTimer = base.AutoTimer(1000, self.UpdateCrimeInfo)
+        else:
+            self.criminalText.hint = ''
+            self.criminalText.state = uiconst.UI_HIDDEN
+            self.criminalTimer = None
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def UpdateLocationInfoLayout(self):
+        mainInfoTop = 16
+        self.mainLocationInfo.top = mainInfoTop
+        self.listbtn.top = mainInfoTop
+        textY = self.mainLocationInfo.top + self.mainLocationInfo.textheight
+        for textControl in (self.nearestLocationInfo, self.sovLocationInfo):
+            if textControl.state == uiconst.UI_HIDDEN:
+                continue
+            textControl.top = textY
+            textY += textControl.height
+
+        if self.routeContainer.state != uiconst.UI_HIDDEN:
+            self.routeContainer.top = textY + 16
+            textY = self.routeContainer.top + self.routeContainer.height
+        self.locationParent.height = textY + FRAME_WIDTH
+
+    def CheckNearest(self):
+        if not session.solarsystemid or not self.mainLocationInfo:
+            self.locationTimer = None
+            return
+        nearestBall = self.GetNearestBall()
+        if nearestBall and self.nearby != nearestBall.id:
+            self.UpdateNearestOrStationLocationInfo(nearestBall)
+
+    def GetNearestBall(self, fromBall = None, getDist = 0):
+        ballPark = sm.GetService('michelle').GetBallpark()
+        if not ballPark:
+            return
+        lst = []
+        for ballID, ball in ballPark.balls.iteritems():
+            slimItem = ballPark.GetInvItem(ballID)
+            if slimItem and slimItem.groupID in self.validNearBy:
+                if fromBall:
+                    dist = trinity.TriVector(ball.x - fromBall.x, ball.y - fromBall.y, ball.z - fromBall.z).Length()
+                    lst.append((dist, ball))
+                else:
+                    lst.append((ball.surfaceDist, ball))
+
+        lst.sort()
+        if getDist:
+            return lst[0]
+        if lst:
+            return lst[0][1]
+
+    def FakeJump(self):
+        if self.routeData:
+            self.LoadRouteData(self.routeData[1:])
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def LoadRouteData(self, routeData = None):
+        change = routeData != self.routeData
+        if self.routeData:
+            jumpChange = routeData == self.routeData[1:]
+        else:
+            jumpChange = False
+        self.routeData = routeData
+        uthread.new(self.UpdateRouteInfo, jumpChange)
+
+    def SetLocationInfoState(self, active = 1):
+        self.locationInfo.width = [0, 256][active]
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def ConfigureLocationInfo(self):
+        label = localization.GetByLabel('UI/Neocom/ConfigureWoldInfoText')
+        setting = 'neocomLocationInfo_3'
+        valid = ['nearest',
+         'sovereignty',
+         'signature',
+         'route']
+        current = self.GetLocationInfoSettings()
+        itemMapping = [util.KeyVal(name='nearest', label='%s / %s' % (localization.GetByLabel('UI/Neocom/Nearest'), localization.GetByLabel('UI/Neocom/DockedIn'))),
+         util.KeyVal(name='sovereignty', label=localization.GetByLabel('UI/Neocom/Sovereignty')),
+         util.KeyVal(name='signature', label=localization.GetByLabel('UI/Neocom/LocusSignature')),
+         util.KeyVal(name='route', label=localization.GetByLabel('UI/InfoWindow/TabNames/Route'))]
+        format = [{'type': 'btline'},
+         {'type': 'text',
+          'text': label,
+          'frame': 1},
+         {'type': 'btline'},
+         {'type': 'push',
+          'frame': 1}]
+        for info in itemMapping:
+            if info.name not in valid:
+                continue
+            format.append({'type': 'checkbox',
+             'setvalue': bool(info.name in current),
+             'key': info.name,
+             'label': '_hide',
+             'required': 1,
+             'text': info.label,
+             'frame': 1,
+             'onchange': self.ConfigCheckboxChange})
+
+        format += [{'type': 'push',
+          'frame': 1}, {'type': 'bbline'}]
+        caption = localization.GetByLabel('UI/Neocom/UpdateLocationSettings')
+        retval = uix.HybridWnd(format, caption, 1, buttons=uiconst.OKCANCEL, minW=240, minH=100, icon='ui_2_64_16', unresizeAble=1)
+        if retval:
+            newsettings = []
+            for k, v in retval.iteritems():
+                if v == 1:
+                    newsettings.append(k)
+
+            settings.char.windows.Set(setting, newsettings)
+
+    def ConfigCheckboxChange(self, checkbox, *args):
+        if checkbox.data['key'] in ('nearest', 'sovereignty', 'signature', 'route'):
+            current = self.GetLocationInfoSettings()
+            if checkbox.GetValue():
+                if checkbox.data['key'] not in current:
+                    current.append(checkbox.data['key'])
+            elif checkbox.data['key'] in current:
+                current.remove(checkbox.data['key'])
+            settings.char.windows.Set('neocomLocationInfo_3', current)
+            self.UpdateAllLocationInfo()
+
+    def GetLocationInfoSettings(self):
+        inView = settings.char.windows.Get('neocomLocationInfo_3', None)
+        if inView is None:
+            inView = ['nearest',
+             'sovereignty',
+             'signature',
+             'route']
+        return inView
+
+    def OnPostCfgDataChanged(self, what, data):
+        if what == 'evelocations':
+            self.UpdateAllLocationInfo()
+
+
+class ListSurroundingsBtn(uicls.Container):
+    __guid__ = 'xtriui.ListSurroundingsBtn'
+    __update_on_reload__ = 1
+    isDragObject = True
+    default_name = 'ListSurroundingsBtn'
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        self.expandOnLeft = 1
+        self.itemssorted = 0
+        self.filterCurrent = 1
+        if attributes.showIcon:
+            self.icon = uicls.MenuIcon(parent=self, size=24, ignoreSize=True, state=uiconst.UI_DISABLED)
+        else:
+            self.icon = None
+
+    def GetInt(self, string):
+        value = filter(lambda x: x in '0123456789', string)
+        try:
+            value = int(value)
+        except:
+            sys.exc_clear()
+
+        return value
+
+    def CelestialMenu(self, *args):
+        return sm.GetService('menu').CelestialMenu(*args)
+
+    def ExpandCelestial(self, mapItem):
+        return sm.GetService('menu').CelestialMenu(mapItem.itemID, mapItem=mapItem)
+
+    def ExpandTypeMenu(self, items):
+        typemenu = []
+        for item in items:
+            if item.groupID == const.groupStation:
+                name = cfg.evelocations.Get(item.itemID).name
+                entryName = uix.EditStationName(name, 1)
+            else:
+                entryName = cfg.evelocations.Get(item.itemID).name or item.itemName or 'no name!'
+            escapeSorter = roman = typeName = None
+            sequence = ''
+            typemenu.append(((item.celestialIndex, item.orbitIndex, entryName), (entryName, ('isDynamic', self.ExpandCelestial, (item,)))))
+
+        typemenu = uiutil.SortListOfTuples(typemenu)
+        return typemenu
+
+    def GetMenu(self, *args):
+        if eve.rookieState and eve.rookieState < 32:
+            return []
+        m = []
+        if self.sr.Get('groupByType', 0):
+            typedict = {}
+            if self.sr.typeID and self.sr.itemID:
+                m += [(uiutil.MenuLabel('UI/Commands/ShowInfo'), sm.GetService('menu').ShowInfo, (self.sr.typeID, self.sr.itemID))]
+            menuItems = {const.groupAsteroidBelt: uiutil.MenuLabel('UI/Common/LocationTypes/AsteroidBelts'),
+             const.groupPlanet: uiutil.MenuLabel('UI/Common/LocationTypes/Planets'),
+             const.groupStargate: uiutil.MenuLabel('UI/Common/LocationTypes/Stargates'),
+             const.groupStation: uiutil.MenuLabel('UI/Common/LocationTypes/Stations')}
+            for item in self.sr.mapitems:
+                if item.groupID in (const.groupMoon, const.groupSun, const.groupSecondarySun):
+                    continue
+                if item.groupID not in typedict:
+                    typedict[item.groupID] = []
+                typedict[item.groupID].append(item)
+
+            listToSort = []
+            for groupID, itemList in typedict.iteritems():
+                menuLabel = menuItems[groupID]
+                path = menuLabel[0]
+                listToSort.append((localization.GetByLabel(path), (menuLabel, itemList)))
+
+            sortedList = uiutil.SortListOfTuples(listToSort)
+            for entry in sortedList:
+                menuLabel, itemList = entry
+                m.append((menuLabel, ('isDynamic', self.ExpandTypeMenu, (itemList,))))
+
+            bookmarks = {}
+            folders = {}
+            b, f = sm.GetService('bookmarkSvc').GetBookmarksAndFolders()
+            bookmarks.update(b)
+            folders.update(f)
+            bookmarkMenu = bookmarkUtil.GetBookmarkMenuForSystem(bookmarks, folders)
+            if bookmarkMenu:
+                m += bookmarkMenu
+            agentMenu = sm.GetService('journal').GetMyAgentJournalBookmarks()
+            if agentMenu:
+                agentMenu2 = []
+                for missionNameID, bms, agentID in agentMenu:
+                    if isinstance(missionNameID, (int, long)):
+                        missionName = localization.GetByMessageID(missionNameID)
+                    else:
+                        missionName = missionNameID
+                    agentMenuText = uiutil.MenuLabel('UI/Neocom/MissionNameSubmenu', {'missionName': missionName,
+                     'agent': agentID})
+                    tmp = [agentMenuText, []]
+                    for bm in bms:
+                        if bm.solarsystemID == session.solarsystemid2:
+                            txt = bm.hint
+                            systemName = cfg.evelocations.Get(bm.solarsystemID).name
+                            if bm.locationType == 'dungeon':
+                                txt = txt.replace(' - %s' % systemName, '')
+                            if '- Moon ' in txt:
+                                txt = txt.replace(' - Moon ', ' - M')
+                            if txt.endswith('- '):
+                                txt = txt[:-2]
+                            tmp[1].append((txt, ('isDynamic', self.CelestialMenu, (bm.itemID,
+                               None,
+                               None,
+                               0,
+                               None,
+                               None,
+                               bm))))
+
+                    if tmp[1]:
+                        agentMenu2.append(tmp)
+
+                if agentMenu2:
+                    agentMenuText = uiutil.MenuLabel('UI/Neocom/AgentMissionsSubmenu')
+                    m += [None, (agentMenuText, self.DoNothing)] + agentMenu2
+            contractsMenu = sm.GetService('contracts').GetContractsBookmarkMenu()
+            if contractsMenu:
+                m += contractsMenu
+        else:
+            if not self.itemssorted:
+                self.sr.mapitems = uiutil.SortListOfTuples([ (item.itemName.lower(), item) for item in self.sr.mapitems ])
+                self.itemssorted = 1
+            maxmenu = 25
+            if len(self.sr.mapitems) > maxmenu:
+                groups = []
+                approxgroupcount = len(self.sr.mapitems) / float(maxmenu)
+                counter = 0
+                while counter < len(self.sr.mapitems):
+                    groups.append(self.sr.mapitems[counter:counter + maxmenu])
+                    counter = counter + maxmenu
+
+                for group in groups:
+                    groupmenu = []
+                    for item in group:
+                        groupmenu.append((item.itemName or 'no name!', self.CelestialMenu(item.itemID, item)))
+
+                    if len(groupmenu):
+                        fromLetter = '???'
+                        if group[0].itemName:
+                            fromLetter = uiutil.StripTags(group[0].itemName)[0]
+                        toLetter = '???'
+                        if group[-1].itemName:
+                            toLetter = uiutil.StripTags(group[-1].itemName)[0]
+                        m.append((fromLetter + '...' + toLetter, groupmenu))
+
+                return m
+            for item in self.sr.mapitems[:30]:
+                m.append((item.itemName or 'no name!', self.CelestialMenu(item.itemID, item)))
+
+        m.append(None)
+        starmapSvc = sm.GetService('starmap')
+        showRoute = settings.user.ui.Get('neocomRouteVisible', 1)
+        infoSettings = sm.GetService('locationInfo').GetLocationInfoSettings()
+        if 'route' in infoSettings:
+            m.append((uiutil.MenuLabel('UI/Neocom/HideAutopilotRoute'), self.ShowHideRoute, (0,)))
+        else:
+            m.append((uiutil.MenuLabel('UI/Neocom/ShowAutopilotRoute'), self.ShowHideRoute, (1,)))
+        if len(starmapSvc.GetWaypoints()) > 0:
+            m.append((uiutil.MenuLabel('UI/Neocom/ClearAllAutopilotWaypoints'), starmapSvc.ClearWaypoints, (None,)))
+        m.append(None)
+        m.append((uiutil.MenuLabel('UI/Neocom/ConfigureSubmenu'), sm.GetService('locationInfo').ConfigureLocationInfo))
+        return m
+
+    def ShowHideRoute(self, show = 1):
+        current = sm.GetService('locationInfo').GetLocationInfoSettings()
+        if show:
+            if 'route' not in current:
+                current.append('route')
+        elif 'route' in current:
+            current.remove('route')
+        settings.char.windows.Set('neocomLocationInfo_3', current)
+        sm.GetService('starmap').DecorateNeocom()
+
+    def DoNothing(self):
+        pass
+
+    def DoWarpToHidden(self, instanceID):
+        bp = sm.StartService('michelle').GetRemotePark()
+        if bp is not None:
+            bp.CmdWarpToStuff('epinstance', instanceID)
+
+    def DoTutorial(self):
+        bp = sm.GetService('michelle').GetRemotePark()
+        if bp is not None and sm.GetService('space').CanWarp(forTut=True):
+            eve.Message('Command', {'command': localization.GetByLabel('UI/Neocom/WarpingToTutorialSide')})
+            bp.WarpToTutorial()
+
+    def GetDragData(self, *args):
+        itemID = self.sr.Get('itemID', None)
+        typeID = self.sr.Get('typeID', None)
+        if not itemID or not typeID:
+            return []
+        label = ''
+        if typeID in (const.typeRegion, const.typeConstellation, const.typeSolarSystem):
+            label += cfg.evelocations.Get(itemID).name
+            elabel = {const.typeRegion: localization.GetByLabel('UI/Neocom/Region'),
+             const.typeConstellation: localization.GetByLabel('UI/Neocom/Constellation'),
+             const.typeSolarSystem: localization.GetByLabel('UI/Neocom/SolarSystem')}
+            label += ' %s' % elabel.get(typeID)
+        entry = util.KeyVal()
+        entry.itemID = itemID
+        entry.typeID = typeID
+        entry.__guid__ = 'xtriui.ListSurroundingsBtn'
+        entry.label = label
+        return [entry]
+
+    def OnMouseEnter(self, *args):
+        if self.icon:
+            self.icon.OnMouseEnter()
+
+    def OnMouseExit(self, *args):
+        if self.icon:
+            self.icon.OnMouseExit()
+
+
+class AutopilotDestinationIcon(uicls.Container):
+    __guid__ = 'uicls.AutopilotDestinationIcon'
+    default_align = uiconst.TOPLEFT
+    default_state = uiconst.UI_NORMAL
+    isDragObject = True
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        self.icon = uicls.Sprite(parent=self, pos=(0, 0, 10, 10), state=uiconst.UI_DISABLED, shadowOffset=(0, 1), shadowColor=(0, 0, 0, 0.2))
+        self.markerType = None
+        self.solarSystemID = None
+        self.destinationID = None
+        self.hiliteTimer = None
+
+    def SetMarkerType(self, markerType):
+        if self.markerType == markerType:
+            return
+        if markerType == ROUTE_MARKERTYPE_WAYPOINT:
+            self.icon.LoadTexture('res:/UI/Texture/classes/LocationInfo/waypointMarker.png')
+        elif markerType == ROUTE_MARKERTYPE_STATION:
+            self.icon.LoadTexture('res:/UI/Texture/classes/LocationInfo/stationMarker.png')
+        else:
+            self.icon.LoadTexture('res:/UI/Texture/classes/LocationInfo/normalMarker.png')
+        self.markerType = markerType
+
+    def SetSolarSystemAndDestinationID(self, solarSystemID, destinationID):
+        if self.solarSystemID == solarSystemID and self.destinationID == destinationID:
+            return
+        c = sm.GetService('map').GetSystemColor(solarSystemID)
+        self.icon.SetRGB(c.r, c.g, c.b, IDLE_ROUTEMARKER_ALPHA)
+        self.solarSystemID = solarSystemID
+        self.destinationID = destinationID
+
+    def OnMouseEnter(self, *args):
+        uicore.animations.FadeTo(self.icon, startVal=self.icon.color.a, endVal=1.0, duration=0.125, loops=1)
+        if self.hiliteTimer is None:
+            self.hiliteTimer = base.AutoTimer(111, self.CheckIfMouseOver)
+
+    def CheckIfMouseOver(self, *args):
+        if uicore.uilib.mouseOver == self:
+            return
+        uicore.animations.FadeTo(self.icon, startVal=self.icon.color.a, endVal=IDLE_ROUTEMARKER_ALPHA, duration=0.5, loops=1)
+        self.hiliteTimer = None
+
+    def OnMouseExit(self, *args):
+        self.CheckIfMouseOver()
+
+    def GetHint(self, *args):
+        ret = sm.GetService('locationInfo').GetSolarSystemTrace(self.destinationID)
+        if util.IsStation(self.destinationID):
+            ret += '<br>' + cfg.evelocations.Get(self.destinationID).name
+        return ret
+
+    def GetMenu(self, *args):
+        if util.IsSolarSystem(self.destinationID):
+            return sm.GetService('menu').GetMenuFormItemIDTypeID(self.destinationID, const.typeSolarSystem)
+        if util.IsStation(self.destinationID):
+            station = sm.StartService('ui').GetStation(self.destinationID)
+            return sm.GetService('menu').GetMenuFormItemIDTypeID(self.destinationID, station.stationTypeID)
+
+    def OnClick(self, *args):
+        if util.IsSolarSystem(self.destinationID):
+            sm.GetService('info').ShowInfo(const.typeSolarSystem, self.destinationID)
+        elif util.IsStation(self.destinationID):
+            station = sm.StartService('ui').GetStation(self.destinationID)
+            sm.GetService('info').ShowInfo(station.stationTypeID, self.destinationID)
+
+    def GetDragData(self, *args):
+        entry = util.KeyVal()
+        entry.__guid__ = 'xtriui.ListSurroundingsBtn'
+        entry.itemID = self.destinationID
+        entry.label = cfg.evelocations.Get(self.destinationID).name
+        if util.IsSolarSystem(self.destinationID):
+            entry.typeID = const.typeSolarSystem
+        else:
+            station = sm.StartService('ui').GetStation(self.destinationID)
+            entry.typeID = station.stationTypeID
+        return [entry]
+
+
+class SessionTimeIndicator(uicls.Container):
+    __guid__ = 'uicls.SessionTimeIndicator'
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        size = 24
+        self.ramps = uicls.Container(parent=self, name='ramps', pos=(0,
+         0,
+         size,
+         size), align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED)
+        leftRampCont = uicls.Container(parent=self.ramps, name='leftRampCont', pos=(0,
+         0,
+         size / 2,
+         size), align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, clipChildren=True)
+        self.leftRamp = uicls.Transform(parent=leftRampCont, name='leftRamp', pos=(0,
+         0,
+         size,
+         size), align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED)
+        uicls.Sprite(parent=self.leftRamp, name='rampSprite', pos=(0,
+         0,
+         size / 2,
+         size), state=uiconst.UI_DISABLED, texturePath='res:/UI/Texture/classes/TiDiIndicator/left.png', color=(0, 0, 0, 0.5))
+        rightRampCont = uicls.Container(parent=self.ramps, name='rightRampCont', pos=(0,
+         0,
+         size / 2,
+         size), align=uiconst.TOPRIGHT, state=uiconst.UI_DISABLED, clipChildren=True)
+        self.rightRamp = uicls.Transform(parent=rightRampCont, name='rightRamp', pos=(-size / 2,
+         0,
+         size,
+         size), align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED)
+        uicls.Sprite(parent=self.rightRamp, name='rampSprite', pos=(size / 2,
+         0,
+         size / 2,
+         size), state=uiconst.UI_DISABLED, texturePath='res:/UI/Texture/classes/TiDiIndicator/right.png', color=(0, 0, 0, 0.5))
+        self.coloredPie = uicls.Sprite(parent=self, name='tidiColoredPie', pos=(0,
+         0,
+         size,
+         size), texturePath='res:/UI/Texture/classes/TiDiIndicator/circle.png', state=uiconst.UI_DISABLED, color=(1, 1, 1, 0.5))
+
+    def AnimSessionChange(self):
+        duration = session.nextSessionChange - blue.os.GetSimTime()
+        while blue.os.GetSimTime() < session.nextSessionChange:
+            timeDiff = session.nextSessionChange - blue.os.GetSimTime()
+            progress = timeDiff / float(duration)
+            self.SetProgress(1.0 - progress)
+            timeLeft = util.FmtTimeInterval(timeDiff, breakAt='sec')
+            self.hint = localization.GetByLabel('UI/Neocom/SessionChangeHint', timeLeft=timeLeft)
+            self.state = uiconst.UI_NORMAL
+            uicore.CheckHint()
+            blue.pyos.synchro.Yield()
+
+        self.SetProgress(1.0)
+        self.state = uiconst.UI_HIDDEN
+
+    def SetProgress(self, progress):
+        progress = max(0.0, min(1.0, progress))
+        leftRamp = min(1.0, max(0.0, progress * 2))
+        rightRamp = min(1.0, max(0.0, progress * 2 - 1.0))
+        self.leftRamp.SetRotation(math.pi + math.pi * leftRamp)
+        self.rightRamp.SetRotation(math.pi + math.pi * rightRamp)
+
+
+class NeocomContainer(uicls.Container):
+    __guid__ = 'uicls.NeocomContainer'
+    default_name = 'neocomContainer'
+    default_padTop = FRAME_SEPERATION
+    default_padRight = LOCATION_PANELWIDTH - NEOCOM_PANELWIDTH
+    default_align = uiconst.TOTOP
+    default_collapsable = False
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        self.collapsable = attributes.get('collapsable', self.default_collapsable)
+        if self.collapsable:
+            self.collapseContainer = uicls.Container(parent=self, name='collapseContainer', align=uiconst.TOPRIGHT, pos=(FRAME_WIDTH,
+             0,
+             15,
+             15), state=uiconst.UI_NORMAL)
+            self.collapseIcon = uicls.Sprite(name='collapseIcon', parent=self.collapseContainer, texturePath='res:/UI/Texture/Shared/expanderUp.png', pos=(1, 2, 11, 11), hint=localization.GetByLabel('UI/Neocom/Collapse'))
+            self.collapseHighlight = uicls.Fill(parent=self.collapseContainer, color=(1, 1, 1, 0.25), state=uiconst.UI_HIDDEN)
+            self.collapseIcon.OnClick = self.ToggleCollapseState
+            self.collapseIcon.OnMouseEnter = (self.CollapseButtonEnter, self.collapseIcon)
+            self.collapseIcon.OnMouseExit = (self.CollapseButtonExit, self.collapseIcon)
+            self.collapsed = False
+        contentPadding = attributes.get('contentPadding', FRAME_WIDTH)
+        self.content = uicls.Container(parent=self, name='content', align=uiconst.TOALL, padding=(contentPadding,
+         0,
+         contentPadding,
+         0))
+
+    def PostApplyAttributes(self, attributes):
+        self.UpdateStandardAppearance()
+
+    def UpdateStandardAppearance(self, *args):
+
+        def WalkContainer(container):
+            for each in container.children:
+                if getattr(each, 'children', None):
+                    WalkContainer(each)
+                elif isinstance(each, uicls.Label):
+                    each.shadowOffset = STD_TEXTSHADOWOFFSET
+
+        WalkContainer(self.content)
+
+    def Flush(self):
+        self.content.Flush()
+
+    def ToggleCollapseState(self, discard = None):
+        self.collapsed = not self.collapsed
+        if self.collapsed:
+            self.collapseIcon.LoadTexture('res:/UI/Texture/Shared/expanderDown.png')
+            self.collapseIcon.SetHint(localization.GetByLabel('UI/Neocom/Expand'))
+        else:
+            self.collapseIcon.LoadTexture('res:/UI/Texture/Shared/expanderUp.png')
+            self.collapseIcon.SetHint(localization.GetByLabel('UI/Neocom/Collapse'))
+        self.OnCollapse(self.collapsed)
+
+    def CollapseButtonEnter(self, discard):
+        self.collapseHighlight.state = uiconst.UI_DISABLED
+
+    def CollapseButtonExit(self, discard):
+        self.collapseHighlight.state = uiconst.UI_HIDDEN
+
+    def OnCollapse(self, collaspsed):
+        pass

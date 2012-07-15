@@ -1,0 +1,240 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/control/eveSinglelineEdit.py
+import weakref
+import uiconst
+import log
+import uicls
+import localization
+import util
+import uiutil
+
+class SinglelineEdit(uicls.SinglelineEditCore):
+    __guid__ = 'uicls.SinglelineEdit'
+    default_left = 0
+    default_top = 2
+    default_width = 80
+    default_height = 18
+    default_align = uiconst.TOPLEFT
+    default_dynamicHistoryWidth = False
+
+    def ApplyAttributes(self, attributes):
+        self.registerHistory = True
+        self.adjustWidth = False
+        self.sr.combo = None
+        self.label = ''
+        uicls.SinglelineEditCore.ApplyAttributes(self, attributes)
+        self.displayHistory = True
+        if self.GetAlign() == uiconst.TOALL:
+            self.height = 0
+        else:
+            self.height = self.default_height
+        self.dynamicHistoryWidth = attributes.get('dynamicHistoryWidth', self.default_dynamicHistoryWidth)
+        self.isTypeField = attributes.isTypeField
+        self.isCharacterField = attributes.isCharacterField
+
+    def Prepare_(self):
+        self.sr.text = uicls.EveLabelMedium(name='edittext', text='', parent=self.sr.content, left=self.TEXTLEFTMARGIN, state=uiconst.UI_DISABLED, maxLines=1, align=uiconst.CENTERLEFT)
+        self.sr.hinttext = uicls.EveLabelMedium(text='', parent=self.sr.content, name='hinttext', align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED, maxLines=1, left=self.TEXTLEFTMARGIN, top=1)
+        self.capsWarning = uicls.CapsHint(parent=uicore.layer.hint, align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, idx=0)
+        self.capsWarning.editControl = self
+        self.capsWarning.pointer.SetTexturePath('res:/UI/Texture/classes/Hint/pointerToTopLeft.png')
+        self.sr.background = uicls.Container(name='_underlay', parent=self, state=uiconst.UI_DISABLED)
+        self.sr.backgroundFrame = uicls.BumpedUnderlay(parent=self.sr.background)
+        sm.GetService('window').CheckControlAppearance(self)
+        self.sr.content.clipChildren = 1
+        self.sr.content.padding = (1, 0, 1, 0)
+        self.Prepare_ActiveFrame_()
+
+    def SetLabel(self, text):
+        self.sr.label = uicls.EveLabelSmall(parent=self, name='__caption', text=text, state=uiconst.UI_DISABLED, align=uiconst.TOPLEFT, idx=0)
+        self.sr.label.top = -self.sr.label.textheight
+        if self.adjustWidth:
+            self.width = max(self.width, self.sr.label.textwidth)
+
+    def LoadCombo(self, id, options, callback = None, setvalue = None, comboIsTabStop = 1):
+        for each in self.children:
+            if each.name == 'combo':
+                each.Close()
+
+        combo = uicls.Combo(parent=self, label='', options=options, name=id, select=setvalue, callback=self.OnComboChange, pos=(0, 0, 0, 0), width=15, align=uiconst.TORIGHT, idx=0)
+        combo.sr.inputCallback = callback
+        combo.isTabStop = comboIsTabStop
+        combo.name = 'combo'
+        combo.Confirm = self.ComboConfirm
+        combo.HideText()
+        self.sr.content.width = 2
+        self.sr.background.width = 2
+        self.sr.activeframe.width = 2
+        self.sr.combo = combo
+
+    def ComboConfirm(self, *args):
+        if self.sr.combo and not self.sr.combo.destroyed:
+            self.OnComboChange(self.sr.combo, self.sr.combo.GetKey(), self.sr.combo.GetValue())
+        self.sr.combo.Cleanup(setfocus=0)
+
+    def OnUp(self, *args):
+        if self.sr.combo:
+            self.sr.combo.OnUp()
+
+    def OnDown(self, *args):
+        if self.sr.combo:
+            self.sr.combo.OnDown()
+
+    def GetComboValue(self):
+        if self.sr.combo:
+            return self.sr.combo.GetValue()
+
+    def OnComboChange(self, combo, label, value, *args):
+        self.SetValue(label, updateIndex=0)
+        if combo.sr.inputCallback:
+            combo.sr.inputCallback(combo, label, value)
+
+    def ClearHistory(self, *args):
+        id, mine, all = self.GetHistory(getAll=1)
+        if id in all:
+            del all[id]
+            settings.user.ui.Set('editHistory', all)
+
+    def RegisterHistory(self, value = None):
+        if self.integermode or self.floatmode or self.passwordchar is not None or not self.registerHistory:
+            return
+        id, mine, all = self.GetHistory(getAll=1)
+        current = (value or self.GetValue(registerHistory=0)).rstrip()
+        if current not in mine:
+            mine.append(current)
+        all[id] = mine
+        settings.user.ui.Set('editHistory', all)
+
+    def CheckHistory(self):
+        if self.integermode or self.floatmode or self.passwordchar is not None or self.displayHistory == 0:
+            return
+        if self.readonly:
+            return
+        valid = self.GetValid()
+        if valid:
+            self.ShowHistoryMenu(valid[:5])
+            return 1
+        self.CloseHistoryMenu()
+        return 0
+
+    def GetValid(self):
+        current = self.GetValue(registerHistory=0)
+        id, mine = self.GetHistory()
+        valid = [ each for each in mine if each.lower().startswith(current.lower()) and each != current ]
+        valid.sort(key=lambda x: len(x))
+        return valid
+
+    def ShowHistoryMenu(self, history):
+        hadMenu = 0
+        if self.historyMenu and self.historyMenu():
+            hadMenu = 1
+        self.CloseHistoryMenu()
+        if not history:
+            return
+        l, t, w, h = self.GetAbsolute()
+        mp = uicls.Container(name='historyMenuParent', parent=uicore.layer.menu, pos=(l,
+         t + h + 2,
+         w,
+         0), align=uiconst.TOPLEFT)
+        if not hadMenu:
+            mp.opacity = 0.0
+        uicls.Frame(parent=mp, frameConst=uiconst.FRAME_BORDER1_CORNER0, color=(1.0, 1.0, 1.0, 0.2))
+        uicls.Frame(parent=mp, frameConst=uiconst.FRAME_FILLED_CORNER0, color=(0.0, 0.0, 0.0, 0.75))
+        mps = uicls.Container(name='historyMenuSub', parent=mp, idx=0)
+        self.PopulateHistoryMenu(mps, mp, history)
+        mp.sr.entries = mps
+        self.historyMenu = weakref.ref(mp)
+        if not hadMenu:
+            uicore.effect.MorphUI(mp, 'opacity', 1.0, 250.0, float=1)
+
+    def PopulateHistoryMenu(self, mps, mp, history):
+        for entry in history:
+            displayText, editText = entry if isinstance(entry, tuple) else (entry, entry)
+            self.GetHistoryMenuEntry(displayText, editText, mps, mp)
+
+    def GetHistoryMenuEntry(self, displayText, text, menuSub, mp, info = None):
+        ep = uicls.Container(name='entryParent', parent=menuSub, clipChildren=1, pos=(0, 0, 0, 16), align=uiconst.TOTOP, state=uiconst.UI_NORMAL)
+        ep.OnMouseEnter = (self.HEMouseEnter, ep)
+        ep.OnMouseDown = (self.HEMouseDown, ep)
+        ep.OnMouseUp = (self.HEMouseUp, ep)
+        uicls.Line(parent=ep, align=uiconst.TOBOTTOM)
+        t = uicls.EveLabelMedium(text=displayText, parent=ep, left=6, align=uiconst.CENTERLEFT, state=uiconst.UI_DISABLED, userEditable=True)
+        ep.height = t.textheight + 4
+        ep.sr.hilite = uicls.Fill(parent=ep, color=(1.0, 1.0, 1.0, 0.25), pos=(1, 1, 1, 1), state=uiconst.UI_HIDDEN)
+        ep.selected = 0
+        ep.sr.menu = mp
+        ep.string = text
+        mp.height += ep.height
+        if self.dynamicHistoryWidth:
+            mp.width = max(mp.width, t.width + 12)
+        ep.info = info
+
+    def HEMouseDown(self, entry, *args):
+        self.SetValue(entry.string, updateIndex=1)
+        self.OnHistoryClick(entry.string)
+
+    def HEMouseUp(self, entry, *args):
+        self.CloseHistoryMenu()
+
+    def GetHistory(self, getAll = 0):
+        id = self.GetHistoryID()
+        all = settings.user.ui.Get('editHistory', {})
+        if type(all) == list:
+            log.LogError('Singlelineedit error: all:', all)
+            log.LogTraceback('Singlelineedit error: all: %s' % all, severity=log.LGERR)
+            settings.user.ui.Delete('editHistory')
+            all = {}
+        if getAll:
+            return (id, all.get(id, []), all)
+        return (id, all.get(id, []))
+
+    def OnHistoryClick(self, clickedString, *args):
+        pass
+
+    def OnDropData(self, dragObj, nodes):
+        uicls.SinglelineEditCore.OnDropData(self, dragObj, nodes)
+        if self.isTypeField:
+            self.OnDropType(dragObj, nodes)
+        if self.isCharacterField:
+            self.OnDropCharacter(dragObj, nodes)
+
+    def OnDropType(self, dragObj, nodes):
+        node = nodes[0]
+        guid = node.Get('__guid__', None)
+        typeID = None
+        if guid in ('xtriui.ShipUIModule', 'xtriui.InvItem', 'listentry.InvItem', 'listentry.InvAssetItem'):
+            typeID = getattr(node.item, 'typeID', None)
+        elif guid in ('listentry.GenericMarketItem', 'listentry.QuickbarItem'):
+            typeID = getattr(node, 'typeID', None)
+        if typeID:
+            typeName = cfg.invtypes.Get(typeID).name
+            self.SetValue(typeName)
+
+    def OnDropCharacter(self, dragObj, nodes):
+        node = nodes[0]
+        charID = None
+        if node.Get('__guid__', None) == 'TextLink' and node.Get('url', '').startswith('showinfo'):
+            parts = node.Get('url', '').split('//')
+            charID = int(parts[-1])
+        elif node.Get('__guid__', None) not in uiutil.AllUserEntries() + ['TextLink']:
+            return
+        if charID is None:
+            charID = node.charID
+        if util.IsCharacter(charID):
+            charName = cfg.eveowners.Get(charID).name
+            self.SetValue(charName)
+
+
+class CapsHint(uicls.Hint):
+    __guid__ = 'uicls.CapsHint'
+    default_name = 'capshint'
+
+    def Prepare_(self):
+        uicls.Hint.Prepare_(self)
+        self.frame.SetRGBA(0, 0, 0, 1)
+        self.pointer = uicls.Sprite(parent=self, name='leftPointer', pos=(-8, -8, 18, 12), align=uiconst.TOPLEFT, state=uiconst.UI_DISABLED, texturePath='res:/UI/Texture/classes/Hint/pointerToTopLeft.png', color=(1, 1, 1, 1))
+
+    def ShowHint(self):
+        if self.parent:
+            self.LoadHint(localization.GetByLabel('/Carbon/UI/Common/CapsLockWarning'))
+            self.left = self.editControl.absoluteRight + 10
+            self.top = self.editControl.absoluteTop + self.pointer.height

@@ -1,0 +1,117 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/carbon/client/script/ui/primitives/stretchspritevertical.py
+import uicls
+import uiconst
+import trinity
+import uiutil
+import bluepy
+
+class StretchSpriteVertical(uicls.TexturedBase):
+    __guid__ = 'uicls.StretchSpriteVerticalCore'
+    __renderObject__ = trinity.Tr2Sprite2dStretchVertical
+    default_name = 'stretchspritevertical'
+    default_left = 0
+    default_top = 0
+    default_width = 0
+    default_height = 0
+    default_color = (1.0, 1.0, 1.0, 1.0)
+    default_align = uiconst.TOPLEFT
+    default_state = uiconst.UI_DISABLED
+    default_topEdgeSize = 6
+    default_bottomEdgeSize = 6
+    default_fillCenter = True
+    default_offset = 0
+    _topEdgeSize = 0
+    _bottomEdgeSize = 0
+    _offset = 0
+    _fillCenter = 0
+
+    def ApplyAttributes(self, attributes):
+        self.offset = attributes.get('offset', self.default_offset)
+        self.topEdgeSize = attributes.get('topEdgeSize', self.default_topEdgeSize)
+        self.bottomEdgeSize = attributes.get('bottomEdgeSize', self.default_bottomEdgeSize)
+        self.fillCenter = attributes.get('fillCenter', self.default_fillCenter)
+        uicls.TexturedBase.ApplyAttributes(self, attributes)
+
+    def SetAlign(self, align):
+        uicls.TexturedBase.SetAlign(self, align)
+        ro = self.renderObject
+        if not ro:
+            return
+        if align in (uiconst.TOLEFT,
+         uiconst.TOLEFT_NOPUSH,
+         uiconst.TOLEFT_PROP,
+         uiconst.TOPLEFT,
+         uiconst.BOTTOMLEFT,
+         uiconst.CENTERLEFT):
+            ro.dpiScaleBehavior = trinity.S2D_SSC_ALIGN_TOPLEFT
+        elif align in (uiconst.TORIGHT,
+         uiconst.TORIGHT_NOPUSH,
+         uiconst.TORIGHT_PROP,
+         uiconst.TOPRIGHT,
+         uiconst.BOTTOMRIGHT,
+         uiconst.CENTERRIGHT):
+            ro.dpiScaleBehavior = trinity.S2D_SSC_ALIGN_BOTTOMRIGHT
+        else:
+            ro.dpiScaleBehavior = trinity.S2D_SSC_SCALE
+
+    align = property(uicls.TexturedBase.GetAlign, SetAlign)
+
+    @apply
+    def topEdgeSize():
+        doc = ''
+
+        def fget(self):
+            return self._topEdgeSize
+
+        def fset(self, value):
+            self._topEdgeSize = value
+            ro = self.renderObject
+            if ro:
+                ro.topEdgeSize = value
+
+        return property(**locals())
+
+    @apply
+    def bottomEdgeSize():
+        doc = ''
+
+        def fget(self):
+            return self._bottomEdgeSize
+
+        def fset(self, value):
+            self._bottomEdgeSize = value
+            ro = self.renderObject
+            if ro:
+                ro.bottomEdgeSize = value
+
+        return property(**locals())
+
+    @apply
+    def fillCenter():
+        doc = 'If True, the center of the sprite is filled - otherwise it is left blank'
+
+        def fget(self):
+            return self._fillCenter
+
+        def fset(self, value):
+            self._fillCenter = value
+            ro = self.renderObject
+            if ro:
+                ro.fillCenter = value
+
+        return property(**locals())
+
+    @apply
+    def offset():
+        doc = '\n            Offset the sprite. Positive values will make it smaller horizontally,\n            and negative bigger. The sprite is shifted vertically by this offset.\n        '
+
+        def fget(self):
+            return self._offset
+
+        def fset(self, value):
+            self._offset = value
+            ro = self.renderObject
+            if ro:
+                ro.offset = value
+
+        return property(**locals())

@@ -1,0 +1,763 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/shared/item.py
+import uix
+import uiutil
+import xtriui
+import util
+import uiconst
+import uicls
+import log
+import trinity
+import form
+import localization
+import localizationUtil
+import invCont
+import invCtrl
+import bluepy
+import blue
+
+class InvItem(uicls.SE_BaseClassCore):
+    __guid__ = 'xtriui.InvItem'
+    __groups__ = []
+    __categories__ = []
+    __notifyevents__ = ['ProcessActiveShipChanged',
+     'OnSessionChanged',
+     'OnLockedItemChangeUI',
+     'OnInvClipboardChanged']
+    default_name = 'InvItem'
+    default_left = 64
+    default_top = 160
+    default_width = 64
+    default_height = 92
+    default_align = uiconst.TOPLEFT
+    default_state = uiconst.UI_NORMAL
+    isDragObject = True
+    highlightable = True
+    scrollEntryHilite = None
+    scrollEntrySelectionHilite = None
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def ApplyAttributes(self, attributes):
+        uicls.SE_BaseClassCore.ApplyAttributes(self, attributes)
+        sm.RegisterNotify(self)
+        self.scrollEntryHilite = None
+        self.scrollEntrySelectionHilite = None
+        self.ConstructLayout()
+        self.typeID = None
+        self.subTypeID = None
+        self.id = None
+        self.powerType = None
+        self.sr.node = None
+        self.sr.tlicon = None
+        self.rec = None
+
+    def ConstructLayout(self):
+        self.sr.mainCont = mainCont = uicls.Container(name='mainCont', parent=self)
+        self.iconCont = uicls.Container(name='iconCont', align=uiconst.TOTOP, parent=mainCont, height=self.width)
+        self.sr.label = uicls.Label(parent=mainCont, align=uiconst.TOTOP, state=uiconst.UI_DISABLED, lineSpacing=-0.2, maxLines=2)
+        self.sr.label.color = (1.0, 1.0, 1.0, 0.75)
+
+    def OnInvClipboardChanged(self):
+        if self.sr.node and sm.GetService('inv').IsOnClipboard(self.sr.node.item.itemID):
+            self.opacity = 0.35
+        else:
+            self.opacity = 1.0
+
+    def ProcessActiveShipChanged(self, shipID, oldShipID):
+        if not self.destroyed and self.sr and self.sr.node:
+            self.Load(self.sr.node)
+
+    def OnSessionChanged(self, isRemote, session, change):
+        if not self.destroyed and self.sr and self.sr.node:
+            if 'shipid' in change and getattr(self, 'isShip', 0) and self and not self.destroyed:
+                self.Load(self.sr.node)
+
+    def OnLockedItemChangeUI(self, itemID, ownerID, locationID, change):
+        if not self.destroyed and self.sr.node:
+            if itemID == self.id:
+                item = None
+                if self.rec:
+                    item = self.rec
+                elif self.sr.node.item:
+                    item = self.sr.node.item
+                if item is None:
+                    log.LogInfo('Lock issue item is None')
+                else:
+                    locked = item.flagID == const.flagLocked or sm.GetService('corp').IsItemLocked(item)
+                    log.LogInfo('Locked:', locked, 'item:', item)
+                    self.SetLockState(locked)
+
+    def SetState(self, state):
+        self.viewOnly = state
+        if state:
+            self.DisableDrag()
+        else:
+            self.EnableDrag()
+        if self.sr.node:
+            self.sr.node.viewOnly = self.sr.node.Draggable_blockDrag = state
+
+    def SetLockState(self, locked):
+        self.SetState(min(1, locked))
+        if not self.sr.icon:
+            return
+        if self.viewOnly:
+            self.sr.icon.opacity = 0.25
+        else:
+            self.sr.icon.opacity = 1.0
+
+    def Reset(self):
+        self.viewOnly = 0
+        self.subTypeID = None
+
+    def PreLoad(node):
+        if node.viewMode in ('list', 'details'):
+            label = uix.GetItemLabel(node.item, node)
+
+    def LoadMainIcon(self):
+        if self.sr.node.viewMode == 'list':
+            return
+        if not self.sr.icon:
+            uicls.Sprite(bgParent=self.iconCont, name='background', texturePath='res:/UI/Texture/classes/InvItem/bgNormal.png')
+            self.sr.icon = uicls.Icon(parent=self.iconCont, name='icon', align=uiconst.TOALL, state=uiconst.UI_DISABLED)
+        self.sr.icon.LoadIconByTypeID(typeID=self.rec.typeID, ignoreSize=True, isCopy=self.sr.node.isBlueprint and self.sr.node.isCopy)
+
+    def Load(self, node):
+        self.sr.node = node
+        data = node
+        self.sr.node.__guid__ = self.__guid__
+        self.sr.node.itemID = node.item.itemID
+        self.id = node.item.itemID
+        self.rec = node.item
+        self.typeID = node.item.typeID
+        self.isShip = self.rec.categoryID == const.categoryShip and self.rec.singleton
+        self.isUnassembledShip = self.rec.categoryID == const.categoryShip and not self.rec.singleton
+        self.isStation = self.rec.categoryID == const.categoryStation and self.rec.groupID == const.groupStation
+        self.isContainer = self.rec.groupID in (const.groupWreck,
+         const.groupCargoContainer,
+         const.groupSecureCargoContainer,
+         const.groupAuditLogSecureContainer,
+         const.groupFreightContainer) and self.rec.singleton
+        self.isUnassembledContainer = self.rec.groupID in (const.groupWreck,
+         const.groupCargoContainer,
+         const.groupSecureCargoContainer,
+         const.groupAuditLogSecureContainer,
+         const.groupFreightContainer) and not self.rec.singleton
+        self.isHardware = node.invtype.Group().Category().IsHardware()
+        self.sr.node.isBlueprint = node.invtype.Group().categoryID == const.categoryBlueprint
+        if self.sr.node.isBlueprint:
+            self.sr.node.isCopy = self.sr.node.isBlueprint and self.rec.singleton == const.singletonBlueprintCopy
+        if self.sr.node is None:
+            return
+        self.Reset()
+        self.name = uix.GetItemName(node.item, self.sr.node)
+        self.quantity = self.rec.stacksize
+        listFlag = self.sr.node.viewMode in ('list', 'details')
+        if util.GetActiveShip() == self.sr.node.item.itemID:
+            if listFlag:
+                padding = (0, 1, 0, 1)
+            else:
+                padding = -3
+            uicls.Frame(texturePath='res:/UI/Texture/Classes/InvItem/bgSelected.png', color=util.Color.GREEN, parent=self, idx=-1, padding=padding)
+            uicls.Frame(parent=self, idx=0, color=util.Color.GREEN, padding=padding, opacity=0.4)
+        if self.sr.node.Get('selected', 0):
+            self.Select()
+        else:
+            self.Deselect()
+        attribs = node.Get('godmaattribs', {})
+        self.powerType = None
+        for icon in (self.sr.ammosize_icon, self.sr.slotsize_icon, self.sr.contraband_icon):
+            if icon:
+                icon.Hide()
+
+        if self.isHardware:
+            if self.sr.node.viewMode != 'list':
+                if attribs.has_key(const.attributeChargeSize):
+                    self.ConstructAmmoSizeIcon()
+                    self.sr.ammosize_icon.rectLeft = [0,
+                     16,
+                     32,
+                     48,
+                     64][int(attribs[const.attributeChargeSize]) - 1]
+                elif attribs.has_key(const.attributeRigSize):
+                    self.ConstructAmmoSizeIcon()
+                    self.sr.ammosize_icon.rectLeft = [0,
+                     16,
+                     32,
+                     48,
+                     64][int(attribs[const.attributeRigSize]) - 1]
+            for effect in cfg.dgmtypeeffects.get(self.rec.typeID, []):
+                if effect.effectID in (const.effectRigSlot,
+                 const.effectHiPower,
+                 const.effectMedPower,
+                 const.effectLoPower):
+                    if self.sr.node.viewMode != 'list':
+                        effinfo = cfg.dgmeffects.Get(effect.effectID)
+                        iconNo = {const.effectRigSlot: 'ui_38_16_124',
+                         const.effectHiPower: 'ui_38_16_123',
+                         const.effectMedPower: 'ui_38_16_122',
+                         const.effectLoPower: 'ui_38_16_121'}[effect.effectID]
+                        self.ConstructSlotSizeIcon()
+                        self.sr.slotsize_icon.LoadIcon(iconNo, ignoreSize=True)
+                    self.powerType = effect.effectID
+                    continue
+                if self.sr.node.viewMode != 'list' and effect.effectID == const.effectSubSystem and const.attributeSubSystemSlot in attribs:
+                    subsystemFlag = attribs.get(const.attributeSubSystemSlot, None)
+                    iconNo = 'ui_38_16_42'
+                    self.ConstructSlotSizeIcon()
+                    self.sr.slotsize_icon.LoadIcon(iconNo, ignoreSize=True)
+
+        elif self.rec.groupID == const.groupVoucher:
+            if self.rec.typeID != const.typeBookmark:
+                self.subTypeID = self.sr.node.voucher.GetTypeInfo()[1]
+        elif self.rec.categoryID == const.categoryCharge and attribs.has_key(const.attributeChargeSize):
+            self.ConstructAmmoSizeIcon()
+            self.sr.ammosize_icon.rectLeft = [0,
+             16,
+             32,
+             48,
+             64][int(attribs[const.attributeChargeSize]) - 1]
+        if 0 < len(self.sr.node.invtype.Illegality()) and self.sr.node.invtype.Illegality().get(sm.GetService('map').GetItem(eve.session.solarsystemid2).factionID, None) is not None:
+            self.ConstructContrabandIcon()
+        if listFlag:
+            self.sr.label.width = uicore.desktop.width
+        if self.sr.node.viewMode == 'icons':
+            self.LoadMainIcon()
+        self.UpdateLabel()
+        self.LoadTechLevelIcon(node.item.typeID)
+        locked = node.Get('locked', 0)
+        viewOnly = node.Get('viewOnly', 0)
+        self.SetLockState(locked)
+        if not locked:
+            self.SetState(viewOnly)
+        if self.isStation:
+            self.DisableDrag()
+        elif node.Get('Draggable_blockDrag', None):
+            self.DisableDrag()
+        self.OnInvClipboardChanged()
+
+    def ConstructFlagsCont(self):
+        if self.sr.flags is None:
+            if self.sr.node.viewMode == 'details':
+                self.sr.flags = uicls.Container(parent=self, idx=0, name='flags', pos=(5, 20, 32, 16), align=uiconst.TOPLEFT, state=uiconst.UI_PICKCHILDREN)
+            elif self.sr.node.viewMode == 'icons':
+                self.sr.flags = uicls.Container(parent=self, idx=0, name='flags', pos=(0, 39, 32, 16), align=uiconst.BOTTOMRIGHT, state=uiconst.UI_PICKCHILDREN)
+
+    def ConstructSlotSizeIcon(self):
+        self.ConstructFlagsCont()
+        if not self.sr.slotsize_icon:
+            self.sr.slotsize_icon = uicls.Icon(parent=self.sr.flags, name='slotSize', pos=(0, 0, 16, 16), align=uiconst.TORIGHT, hint=localization.GetByLabel('UI/Inventory/FittingConstraint'))
+        self.sr.slotsize_icon.state = uiconst.UI_DISABLED
+
+    def ConstructAmmoSizeIcon(self):
+        self.ConstructFlagsCont()
+        if not self.sr.ammosize_icon:
+            self.sr.ammosize_icon = uicls.Sprite(parent=self.sr.flags, name='ammoSize', pos=(0, 0, 16, 16), rectWidth=16, rectHeight=16, align=uiconst.TORIGHT, texturePath='res:/UI/Texture/classes/InvItem/ammoSize.png', hint=localization.GetByLabel('UI/Inventory/AmmoSizeConstraint'))
+        self.sr.ammosize_icon.state = uiconst.UI_DISABLED
+
+    def ConstructContrabandIcon(self):
+        self.ConstructFlagsCont()
+        if not self.sr.contraband_icon:
+            self.sr.contraband_icon = uicls.Sprite(parent=self.sr.flags, name='contrabandIcon', pos=(0, 0, 16, 16), align=uiconst.TORIGHT, texturePath='res:/UI/Texture/classes/InvItem/contrabandIcon.png', hint=localization.GetByLabel('UI/Inventory/ItemIsContraband'))
+        self.sr.contraband_icon.state = uiconst.UI_DISABLED
+
+    def LoadTechLevelIcon(self, typeID = None):
+        offset = [-1, 0][self.sr.node.viewMode == 'details']
+        tlicon = uix.GetTechLevelIcon(self.sr.tlicon, offset, typeID)
+        if tlicon is not None and util.GetAttrs(tlicon, 'parent') is None:
+            self.sr.tlicon = tlicon
+            tlicon.left = 1
+            tlicon.top = 1
+            tlicon.SetParent(self, 0)
+
+    def UpdateLabel(self, new = 0):
+        label = uix.GetItemLabel(self.rec, self.sr.node, new)
+        if self.sr.node.viewMode in ('list', 'details'):
+            self.sr.label.text = label
+            return
+        self.sr.label.text = label
+        quantity = uix.GetItemQty(self.sr.node, 'ss')
+        if self.rec.singleton or self.rec.typeID in (const.typeBookmark,):
+            if self.sr.qtypar:
+                self.sr.qtypar.Close()
+                self.sr.qtypar = None
+            return
+        if not self.sr.qtypar:
+            self.sr.qtypar = uicls.Container(parent=self, idx=0, name='qtypar', pos=(0, 28, 32, 11), align=uiconst.BOTTOMRIGHT, state=uiconst.UI_DISABLED, bgColor=(0, 0, 0, 0.95))
+            self.sr.quantity_label = uicls.Label(parent=self.sr.qtypar, left=2, maxLines=1, fontsize=9)
+        self.sr.quantity_label.text = quantity
+
+    def GetMenu(self):
+        if self.sr.node:
+            containerMenu = []
+            if hasattr(self.sr.node.scroll.sr.content, 'GetMenu'):
+                containerMenu = self.sr.node.scroll.sr.content.GetMenu()
+            selected = self.sr.node.scroll.GetSelectedNodes(self.sr.node)
+            args = []
+            for node in selected:
+                if node.item:
+                    args.append((node.item, node.Get('viewOnly', 0), node.Get('voucher', None)))
+
+            return sm.GetService('menu').InvItemMenu(args) + [None] + containerMenu
+        else:
+            return sm.GetService('menu').InvItemMenu(self.rec, self.viewOnly)
+
+    def GetHeight(self, *args):
+        node, width = args
+        if node.viewMode in ('details', 'assets'):
+            node.height = 42
+        else:
+            node.height = 21
+        return node.height
+
+    def Select(self, *args):
+        self.ShowSelected()
+
+    def Deselect(self, *args):
+        self.ShowDeselected()
+
+    def ShowSelected(self):
+        if not self.scrollEntrySelectionHilite:
+            self.scrollEntrySelectionHilite = uicls.Sprite(name='selection', align=uiconst.TOALL, state=uiconst.UI_DISABLED, parent=self, opacity=0.0, padding=-1, texturePath='res:/UI/Texture/classes/InvItem/bgSelected.png')
+        uicore.animations.FadeIn(self.scrollEntrySelectionHilite, duration=0.15)
+        uicore.animations.SpColorMorphTo(self.sr.label, self.sr.label.GetRGBA(), (1.0, 1.0, 1.0, 1.0), duration=0.15)
+
+    def ShowDeselected(self):
+        if self.scrollEntrySelectionHilite is None:
+            return
+        uicore.animations.FadeOut(self.scrollEntrySelectionHilite, duration=0.15)
+        uicore.animations.SpColorMorphTo(self.sr.label, self.sr.label.GetRGBA(), (1.0, 1.0, 1.0, 0.75), duration=0.15)
+
+    def ShowHilited(self):
+        if self.scrollEntryHilite is None:
+            self.scrollEntryHilite = uicls.Sprite(name='hilite', align=uiconst.TOALL, state=uiconst.UI_DISABLED, parent=self.iconCont, texturePath='res:/UI/Texture/classes/InvItem/bgHover.png', blendMode=trinity.TR2_SBM_ADD, opacity=0.0, idx=0)
+        uicore.animations.FadeIn(self.scrollEntryHilite, duration=0.2)
+
+    def ShowNotHilited(self):
+        if self.scrollEntryHilite is None:
+            return
+        uicore.animations.FadeOut(self.scrollEntryHilite, duration=0.2)
+
+    def OnClick(self, *args):
+        if self.sr.node:
+            if self.sr.node.Get('OnClick', None):
+                self.sr.node.OnClick(self)
+            else:
+                self.sr.node.scroll.SelectNode(self.sr.node)
+                eve.Message('ListEntryClick')
+
+    def OnMouseEnter(self, *args):
+        if uicore.uilib.leftbtn:
+            return
+        self.sr.hint = ''
+        wnd = form.FittingWindow.GetIfOpen()
+        if wnd is not None:
+            if getattr(self, 'rec', None):
+                wnd.HiliteFitting(self.rec)
+        if self.sr.node:
+            if self.sr.node.viewMode == 'icons':
+                self.sr.hint = '%s%s' % ([uix.GetItemQty(self.sr.node, 'ln') + ' - ', ''][bool(self.rec.singleton)], uix.GetItemName(self.sr.node.item, self.sr.node))
+            else:
+                eve.Message('ListEntryEnter')
+            self.ShowHilited()
+
+    def GetHint(self, *args):
+        ret = uix.GetItemName(self.sr.node.item, self.sr.node)
+        if self.rec.stacksize > 1:
+            quantity = uix.GetItemQty(self.sr.node, 'ln')
+            ret = localization.GetByLabel('UI/Inventory/QuantityAndName', quantity=quantity, name=ret)
+        marketPrice = util.GetAveragePrice(self.rec)
+        if marketPrice is None:
+            marketPriceStr = localization.GetByLabel('UI/Inventory/PriceUnavailable')
+        else:
+            marketPriceStr = util.FmtISKAndRound(marketPrice)
+        ret += '<br>' + localization.GetByLabel('UI/Inventory/ItemEstimatedPrice', estPrice=marketPriceStr)
+        if self.rec.stacksize > 1 and marketPrice:
+            ret += '<br>' + localization.GetByLabel('UI/Inventory/ItemEstimatedPriceStack', estPrice=util.FmtISKAndRound(marketPrice * self.rec.stacksize))
+        return ret
+
+    def Hilite(self):
+        if not self.highlightable:
+            return
+        listFlag = self.sr.node.viewMode in ('list', 'details')
+        if listFlag:
+            padding = (0, 1, 0, 1)
+        else:
+            padding = (-5, -4, -5, -6)
+        if self.sr.hilite is None:
+            self.sr.hilite = uicls.Fill(parent=self, padding=padding)
+        else:
+            self.sr.hilite.padding = padding
+        self.sr.hilite.state = uiconst.UI_DISABLED
+
+    def Lolite(self):
+        if self.sr.hilite:
+            self.sr.hilite.state = uiconst.UI_HIDDEN
+
+    def OnMouseExit(self, *args):
+        self.ShowNotHilited()
+        if getattr(self, 'Draggable_dragging', 0):
+            return
+        wnd = form.FittingWindow.GetIfOpen()
+        if wnd is not None:
+            wnd.HiliteFitting(None)
+
+    def OnDblClick(self, *args):
+        if self.sr.node and self.sr.node.Get('OnDblClick', None):
+            self.sr.node.OnDblClick(self)
+        elif not self.viewOnly:
+            if self.isShip and session.stationid:
+                sm.StartService('station').TryActivateShip(self.rec)
+            elif self.isUnassembledShip:
+                sm.GetService('menu').AssembleShip([self.rec])
+            elif self.isContainer:
+                self.OpenContainer()
+            elif self.isUnassembledContainer:
+                sm.GetService('menu').AssembleContainer([self.rec])
+
+    def OnMouseDown(self, *args):
+        if getattr(self, 'powerType', None):
+            wnd = form.FittingWindow.GetIfOpen()
+            if wnd is not None:
+                wnd.HiliteFitting(self.rec)
+        uicls.SE_BaseClassCore.OnMouseDown(self, *args)
+
+    def GetDragData(self, *args):
+        if not self.sr.node:
+            return
+        nodes = self.sr.node.scroll.GetSelectedNodes(self.sr.node)
+        return nodes
+
+    def OnMouseUp(self, btn, *args):
+        if uicore.uilib.mouseOver != self:
+            if getattr(self, 'powerType', None):
+                main = sm.GetService('station').GetSvc('fitting')
+                if main is not None:
+                    main.Hilite(None)
+        uicls.SE_BaseClassCore.OnMouseUp(self, btn, *args)
+
+    def OpenShipCargo(self):
+        if not self.rec.ownerID == eve.session.charid:
+            eve.Message('CantDoThatWithSomeoneElsesStuff')
+            return
+        if not sm.StartService('menu').CheckSameStation(self.rec):
+            return
+        if session.stationid2:
+            if self.rec.groupID == const.groupCapsule:
+                if eve.Message('AskActivateShip', {}, uiconst.YESNO, suppress=uiconst.ID_YES) == uiconst.ID_YES:
+                    sm.GetService('station').SelectShipDlg()
+                return
+        form.Inventory.OpenOrShow(invID=('ShipCargo', self.rec.itemID))
+
+    def OpenContainer(self):
+        if self.rec.ownerID not in (eve.session.charid, eve.session.corpid):
+            eve.Message('CantDoThatWithSomeoneElsesStuff')
+            return
+        windowID = 'containerWindow_%s' % self.rec.itemID
+        name = self.sr.node.name
+        if self.rec.typeID == const.typePlasticWrap:
+            form.Inventory.OpenOrShow(invID=('StationContainer', self.rec.itemID))
+        elif sm.StartService('menu').CheckSameLocation(self.rec):
+            if self.rec.ownerID == session.corpid:
+                divisionID = const.corpDivisionByInvFlag[self.rec.flagID]
+                invID = ('StationCorpContainer', self.rec.itemID, divisionID)
+            else:
+                invID = ('StationContainer', self.rec.itemID)
+            form.Inventory.OpenOrShow(invID=invID)
+        else:
+            location = self.rec.locationID
+            if not session.stationid or util.IsStation(location) and location != session.stationid:
+                log.LogInfo('Trying to open a container in', location, 'while actor is in', session.stationid)
+                return
+            inventory = sm.GetService('invCache').GetInventoryFromId(location)
+            if not inventory:
+                return
+            item = inventory.GetItem()
+            if not item:
+                return
+            category = getattr(item, 'categoryID', None)
+            if category == const.categoryShip and item.locationID == session.stationid:
+                form.Inventory.OpenOrShow(invID=('StationContainer', self.rec.itemID))
+
+    def OnDragEnter(self, dragObj, nodes):
+        if self.sr.node.container:
+            self.sr.node.container.OnDragEnter(dragObj, nodes)
+
+    def OnDragExit(self, dragObj, nodes):
+        if self.sr.node.container:
+            self.sr.node.container.OnDragExit(dragObj, nodes)
+
+    def OnDropData(self, dragObj, nodes):
+        if len(nodes) and nodes[0].scroll:
+            nodes[0].scroll.ClearSelection()
+            if not nodes[0].rec:
+                return
+            if not hasattr(nodes[0].rec, 'locationID'):
+                return
+            if nodes[0].rec.locationID != self.rec.locationID and not sm.GetService('consider').ConfirmTakeFromContainer(nodes[0].rec.locationID):
+                return
+        if self.isShip:
+            invCtrl.ShipCargo(self.rec.itemID).OnDropData(nodes)
+            return
+        if self.isContainer:
+            invCtrl.StationContainer(self.rec.itemID).OnDropData(nodes)
+            return
+        mergeToMe = []
+        notUsed = []
+        sourceID = None
+        for node in nodes:
+            if node.Get('__guid__', None) not in ('xtriui.ShipUIModule', 'xtriui.InvItem', 'listentry.InvItem'):
+                notUsed.append(node)
+                continue
+            if node.item.itemID == self.sr.node.item.itemID:
+                notUsed.append(node)
+                continue
+            if node.item.typeID == self.sr.node.item.typeID and not isinstance(self.sr.node.item.itemID, tuple):
+                mergeToMe.append(node.item)
+            else:
+                notUsed.append(node)
+            if sourceID is None:
+                sourceID = node.rec.locationID
+
+        if sourceID is None:
+            log.LogInfo('OnDropData: Moot operation with ', nodes)
+            return
+        if mergeToMe:
+            containerItem = sm.GetService('invCache').GetInventoryFromId(self.rec.locationID).GetItem()
+            if session.solarsystemid and containerItem.itemID == mergeToMe[0].locationID and containerItem.ownerID not in (session.charid, session.corpid, session.allianceid):
+                return
+        shift = uicore.uilib.Key(uiconst.VK_SHIFT)
+        mergeData = []
+        stateMgr = sm.StartService('godma').GetStateManager()
+        dogmaLocation = sm.GetService('clientDogmaIM').GetDogmaLocation()
+        singletons = []
+        for invItem in mergeToMe:
+            if invItem.stacksize == 1:
+                quantity = 1
+            elif shift:
+                ret = uix.QtyPopup(invItem.stacksize, 1, 1, None, 'Stack items')
+                if ret is not None:
+                    quantity = ret['qty']
+                else:
+                    quantity = None
+            else:
+                quantity = invItem.stacksize
+            if not quantity:
+                continue
+            if quantity > 0:
+                mergeData.append((invItem.itemID,
+                 self.rec.itemID,
+                 quantity,
+                 invItem))
+            if invItem.categoryID == const.categoryCharge and cfg.IsShipFittingFlag(invItem.flagID):
+                if type(invItem.itemID) is tuple:
+                    flag = invItem.itemID[1]
+                    chargeIDs = dogmaLocation.GetSubLocationsInBank(invItem.locationID, invItem.itemID)
+                    if chargeIDs:
+                        for chargeID in chargeIDs:
+                            charge = dogmaLocation.dogmaItems[chargeID]
+                            if charge.flagID == flag:
+                                continue
+                            mergeData.append((charge.itemID,
+                             self.rec.itemID,
+                             dogmaLocation.GetAttributeValue(chargeID, const.attributeQuantity),
+                             charge))
+
+                else:
+                    crystalIDs = dogmaLocation.GetCrystalsInBank(invItem.locationID, invItem.itemID)
+                    if crystalIDs:
+                        for crystalID in crystalIDs:
+                            if crystalID == invItem.itemID:
+                                continue
+                            crystal = dogmaLocation.GetItem(crystalID)
+                            if crystal.singleton:
+                                singletons.append(crystalID)
+                            else:
+                                mergeData.append((crystal.itemID,
+                                 self.rec.itemID,
+                                 crystal.stacksize,
+                                 crystal))
+
+        if singletons and util.GetAttrs(self, 'sr', 'node', 'rec', 'flagID'):
+            flag = self.sr.node.rec.flagID
+            inv = sm.GetService('invCache').GetInventoryFromId(self.rec.locationID)
+            if inv:
+                inv.MultiAdd(singletons, sourceID, flag=flag, fromManyFlags=True)
+        if mergeData and util.GetAttrs(self, 'sr', 'node', 'container', 'invController', 'MultiMerge'):
+            invController = self.sr.node.container.invController
+            sm.ScatterEvent('OnInvContDragExit', invController.GetInvID(), [])
+            invController.MultiMerge(mergeData, sourceID)
+        if notUsed and util.GetAttrs(self, 'sr', 'node', 'container', 'OnDropData'):
+            self.sr.node.container.OnDropData(dragObj, notUsed)
+
+    @classmethod
+    def GetCopyData(cls, node):
+        return node.label
+
+
+class Item(InvItem):
+    __guid__ = 'listentry.InvItem'
+
+    def ConstructLayout(self):
+        self.sr.label = uicls.EveLabelMedium(parent=self, state=uiconst.UI_DISABLED, align=uiconst.CENTERLEFT, idx=3, lineSpacing=-0.2, maxLines=1)
+        container = uicls.Container(parent=self, pos=(21, 20, 16, 16), name='container', state=uiconst.UI_PICKCHILDREN, align=uiconst.RELATIVE)
+        self.iconCont = uicls.Container(parent=self, pos=(5, 0, 32, 32), align=uiconst.CENTERLEFT)
+        uicls.Line(parent=self, align=uiconst.TOBOTTOM, idx=1, color=(0.3, 0.3, 0.3, 0.3))
+
+    def Load(self, node):
+        InvItem.Load(self, node)
+        if self.sr.node.viewMode == 'details':
+            self.sr.label.left = 46
+            self.LoadMainIcon()
+        else:
+            self.sr.label.left = 12
+
+    def ShowHilited(self):
+        if not self.scrollEntryHilite:
+            self.scrollEntryHilite = uicls.Fill(name='hilite', bgParent=self, opacity=0.0)
+        uicore.animations.FadeIn(self.scrollEntryHilite, 0.3, duration=0.2)
+
+    def ShowNotHilited(self):
+        if self.scrollEntryHilite:
+            uicore.animations.FadeOut(self.scrollEntryHilite, duration=0.2)
+
+    def ShowSelected(self):
+        if not self.scrollEntrySelectionHilite:
+            self.scrollEntrySelectionHilite = uicls.Fill(name='selection', bgParent=self, color=(1.0, 1.0, 1.0, 0.25))
+        else:
+            self.scrollEntrySelectionHilite.Show()
+
+    def ShowDeselected(self):
+        if self.scrollEntrySelectionHilite:
+            self.scrollEntrySelectionHilite.Hide()
+
+    def SetLockState(self, locked):
+        self.SetState(min(1, locked))
+        if self.viewOnly:
+            self.sr.label.SetRGBA(0.5, 0.5, 0.5, 1.0)
+            self.iconCont.opacity = 0.25
+        else:
+            self.sr.label.SetRGBA(*uicls.Label.default_color)
+            self.iconCont.opacity = 1.0
+
+
+class InvBlueprintItem(Item):
+    __guid__ = 'listentry.InvBlueprintItem'
+
+    def UpdateLabel(self, new = 0):
+        xtriui.InvItem.UpdateLabel(self, new)
+        self.sr.node.label += self.GetExtraColumnsText(self.sr.node)
+        if self.sr.node.viewMode in ('list', 'details'):
+            self.sr.label.text = self.sr.node.label
+        else:
+            self.sr.name_label.text += self.sr.node.label
+
+    @classmethod
+    def GetExtraColumnsText(cls, node, *args):
+        blueprint = node.blueprint
+        if blueprint.copy:
+            isCopy = localization.GetByLabel('UI/Common/Yes')
+        else:
+            isCopy = localization.GetByLabel('UI/Common/No')
+        ml = blueprint.materialLevel
+        pl = blueprint.productivityLevel
+        lprr = blueprint.licensedProductionRunsRemaining
+        if lprr == -1:
+            lprr = ''
+        else:
+            lprr = localizationUtil.FormatNumeric(lprr, decimalPlaces=0, useGrouping=True)
+        label = '<t>%s<t><right>%s<t><right>%s<t><right>%s' % (isCopy,
+         localizationUtil.FormatNumeric(ml, decimalPlaces=0, useGrouping=True),
+         localizationUtil.FormatNumeric(pl, decimalPlaces=0, useGrouping=True),
+         lprr)
+        return label
+
+    @classmethod
+    def GetCopyData(cls, node):
+        label = uix.GetItemLabel(node.rec, node)
+        return label + cls.GetExtraColumnsText(node)
+
+
+class ItemWithVolume(Item):
+    __guid__ = 'listentry.InvItemWithVolume'
+
+    def UpdateLabel(self, new = 0):
+        xtriui.InvItem.UpdateLabel(self, new)
+        if util.GetAttrs(self, 'sr', 'node', 'remote'):
+            return
+        volume = cfg.GetItemVolume(self.rec)
+        self.sr.node.Set('sort_%s' % localization.GetByLabel('UI/Inventory/ItemVolume'), volume)
+        u = cfg.dgmunits.Get(const.unitVolume)
+        unit = u.displayName
+        label = '<t>%s %s' % (util.FmtAmt(volume), unit)
+        if self.sr.node.viewMode in ('list', 'details'):
+            self.sr.label.text += label
+            label = self.sr.label.text
+        else:
+            self.sr.label.text += label
+            label = self.sr.label.text
+        self.sr.node.label = label
+
+
+class ItemCheckbox(Item):
+    __guid__ = 'listentry.ItemCheckbox'
+
+    def Startup(self, *args):
+        cbox = uicls.Checkbox(align=uiconst.CENTERLEFT, left=4, callback=self.CheckBoxChange)
+        cbox.data = {}
+        self.children.insert(0, cbox)
+        self.sr.checkbox = cbox
+        self.sr.checkbox.state = uiconst.UI_DISABLED
+        self.iconCont.left = 25
+        self.sr.label.left = 65
+
+    def Load(self, args):
+        xtriui.InvItem.Load(self, args)
+        self.LoadMainIcon()
+        if self.sr.flags:
+            self.sr.flags.left = 25
+            self.sr.flags.top = 18
+        if self.sr.tlicon is not None:
+            self.sr.tlicon.left = 23
+            self.sr.tlicon.top = 1
+        data = self.sr.node
+        self.sr.checkbox.SetGroup(data.group)
+        self.sr.checkbox.SetChecked(data.checked, 0)
+        self.sr.checkbox.data.update({'key': data.cfgname,
+         'retval': data.retval})
+        if not data.OnChange:
+            data.OnChange = self.OnChange
+        if self.sr.tlicon:
+            self.sr.tlicon.left += 1
+            self.sr.tlicon.top += 2
+
+    def OnChange(self, checkbox):
+        pass
+
+    def CheckBoxChange(self, *args):
+        self.sr.node.checked = self.sr.checkbox.checked
+        self.sr.node.OnChange(*args)
+
+    def OnClick(self, *args):
+        if self.sr.checkbox.checked:
+            eve.Message('DiodeDeselect')
+        else:
+            eve.Message('DiodeClick')
+        if self.sr.checkbox.groupName is None:
+            self.sr.checkbox.SetChecked(not self.sr.checkbox.checked)
+            return
+        for node in self.sr.node.scroll.GetNodes():
+            if node.Get('__guid__', None) == 'listentry.Checkbox' and node.Get('group', None) == self.sr.checkbox.groupName:
+                if node.panel:
+                    node.panel.sr.checkbox.SetChecked(0, 0)
+                    node.checked = 0
+                else:
+                    node.checked = 0
+
+        if not self.destroyed:
+            self.sr.checkbox.SetChecked(1)
+
+
+class InvAssetItem(Item):
+    __guid__ = 'listentry.InvAssetItem'
+
+    def OnDropData(self, dragObj, nodes):
+        pass

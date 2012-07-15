@@ -1,0 +1,63 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/shared/planet/dust/dustPlanetModeContainer.py
+import uix
+import uiconst
+import uicls
+import util
+import planet
+import localization
+EDITMODECONTAINER_HEIGHT = 110
+
+class PlanetModeContainer(uicls.NeocomContainer):
+    __guid__ = 'planet.ui.DustPlanetModeContainer'
+    default_name = 'dustPlanetModeContainer'
+    __notifyevents__ = ['OnEditModeChanged', 'OnEditModeBuiltOrDestroyed', 'OnPlanetCommandCenterDeployedOrRemoved']
+    default_padLeft = 0
+
+    def ApplyAttributes(self, attributes):
+        self.mode = None
+        uicls.NeocomContainer.ApplyAttributes(self, attributes)
+        self.inEditMode = False
+        self.CreateLayout()
+        sm.RegisterNotify(self)
+
+    def CreateLayout(self):
+        self.headerContainer = uicls.Container(parent=self.content, name='headerContainer', align=uiconst.TOTOP, pos=(0, 0, 0, 40))
+        self.buttonContainer = uicls.Container(parent=self.content, name='buttonContainer', align=uiconst.TOALL, padTop=4)
+        self.buttonPanel = planet.ui.DustPlanetEditModeContainer(parent=self.buttonContainer)
+        self.heading = uicls.EveLabelMedium(text=localization.GetByLabel('UI/PI/Common/ViewingPlanet'), name='heading', parent=self.headerContainer, align=uiconst.TOPLEFT, height=14, state=uiconst.UI_DISABLED)
+        self.planetName = uicls.CaptionLabel(text='', align=uiconst.RELATIVE, size=14, where=self.headerContainer, top=self.heading.textheight, letterspacing=5)
+        BTNSIZE = 24
+        exitBtn = uicls.Button(parent=self.content, label=localization.GetByLabel('UI/PI/Common/Exit'), align=uiconst.TOPRIGHT, pos=(0,
+         0,
+         BTNSIZE,
+         BTNSIZE), icon='ui_73_16_45', iconSize=16, func=self.ExitPlanetMode, alwaysLite=True, color=util.Color.RED, hint=localization.GetByLabel('UI/PI/Common/ExitPlanetMode'))
+        homeBtn = uicls.Button(parent=self.content, label=localization.GetByLabel('UI/DustLink/ViewHome'), align=uiconst.TOPRIGHT, pos=(exitBtn.left + exitBtn.width + 2,
+         0,
+         BTNSIZE,
+         BTNSIZE), icon='ui_73_16_46', iconSize=16, func=self.ViewSCC, alwaysLite=True, hint=localization.GetByLabel('UI/DustLink/ViewHome'))
+        dustViewBtn = uicls.Button(parent=self.content, label=localization.GetByLabel('UI/DustLink/PIView'), align=uiconst.TOPRIGHT, pos=(homeBtn.left + homeBtn.width + 2,
+         0,
+         BTNSIZE,
+         BTNSIZE), icon='ui_73_16_44', iconSize=16, func=self.ChangeToPIView, alwaysLite=True, hint=localization.GetByLabel('UI/DustLink/PIView'))
+        self.planetUI = sm.GetService('planetUI')
+        self.UpdatePlanetText()
+
+    def UpdatePlanetText(self):
+        planetID = self.planetUI.planetID
+        self.planetName.text = '<b>%s</b>' % cfg.evelocations.Get(planetID).locationName.upper()
+
+    def ExitPlanetMode(self, *args):
+        sm.GetService('viewState').CloseSecondaryView('planet')
+
+    def ChangeToPIView(self, *args, **kwargs):
+        sm.GetService('planetUI').ChangeToPIView()
+
+    def ViewSCC(self, *args):
+        for id, pin in self.planetUI.myPinManager.pins.iteritems():
+            if pin.pinKv.typeID == const.typeTestSurfaceCommandCenter:
+                try:
+                    self.planetUI.planetNav.camera.AutoOrbit(pin.surfacePoint, newZoom=1.1, time=2.0)
+                except AttributeError:
+                    pass
+
+                return

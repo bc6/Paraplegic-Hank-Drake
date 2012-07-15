@@ -1,0 +1,75 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\carbon\common\lib\trinity\sceneRenderJobSpaceJessica.py
+from trinity.sceneRenderJobSpace import SceneRenderJobSpace
+import trinity
+
+def CreateJessicaSpaceRenderJob(name = None, stageKey = None):
+    newRJ = SceneRenderJobSpaceJessica()
+    if name is not None:
+        newRJ.ManualInit(name)
+    else:
+        newRJ.ManualInit()
+    newRJ.SetMultiViewStage(stageKey)
+    return newRJ
+
+
+class SceneRenderJobSpaceJessica(SceneRenderJobSpace):
+
+    def _ManualInit(self, name = 'SceneRenderJobSpace'):
+        SceneRenderJobSpace._ManualInit(self, name)
+        self.persistedPostProcess = {}
+        self.settings = {'aaQuality': 3,
+         'postProcessingQuality': 2,
+         'shadowQuality': 2,
+         'shadowMapSize': 1024}
+
+    def SetSettings(self, rjSettings):
+        self.settings = rjSettings
+
+    def GetSettings(self):
+        return self.settings
+
+    def GetMSAATypeFromQuality(self, aaQuality):
+        if aaQuality == 0:
+            return 0
+        return 2 ** aaQuality
+
+    def _RefreshAntiAliasing(self):
+        if self.useFXAA:
+            self.EnableFXAA(self.antiAliasingEnabled)
+        else:
+            self.EnableMSAA(self.antiAliasingEnabled)
+
+    def GetPostProcesses(self):
+        return self.postProcesses
+
+    def _GetPostProcessObject(self, pp):
+        if pp[0] not in self.persistedPostProcess:
+            self.persistedPostProcess[pp[0]] = trinity.Load(pp[1])
+        return self.persistedPostProcess[pp[0]]
+
+    def RemovePostProcess(self, ppID):
+        SceneRenderJobSpace.RemovePostProcess(self, ppID)
+        self.persistedPostProcess.pop(ppID)
+
+    def SetSettingsBasedOnPerformancePreferences(self):
+        if not self.enabled:
+            return
+        self.ApplyBaseSettings()
+        self.aaQuality = self.settings['aaQuality']
+        self.antiAliasingEnabled = self.aaQuality > 0
+        self.antiAliasingQuality = self.aaQuality
+        self.msaaType = self.GetMSAATypeFromQuality(self.aaQuality)
+        self.fxaaQuality = self._GetFXAAQuality(self.aaQuality)
+        self.shadowQuality = self.settings['shadowQuality']
+        if self.shadowQuality > 0 and self.shadowMap is None:
+            self.shadowMap = trinity.TriShadowMap()
+            self.shadowMap.size = self.settings['shadowMapSize']
+        elif self.shadowQuality == 0:
+            self.shadowMap = None
+        else:
+            self.shadowMap.size = self.settings['shadowMapSize']
+        self.usePostProcessing = True
+        self._RefreshAntiAliasing()
+        self._CreateRenderTargets()
+        self._RefreshRenderTargets()
+        self.ApplyPerformancePreferencesToScene()

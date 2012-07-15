@@ -1,0 +1,13 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\carbon\common\lib\orchestrator.py
+TEST_INDEX = 0
+TEST_NAME = 1
+TEST_BENCHMARK = 2
+NO_BENCHMARK = 0
+WATCH_MEMORY = 1
+WATCH_SNAPSHOTS = 2
+WATCH_CPU_PERCENTAGE = 4
+BENCHMARK_TYPE_TO_NAME = {WATCH_MEMORY: 'Memory',
+ WATCH_SNAPSHOTS: 'Snapshots',
+ WATCH_CPU_PERCENTAGE: 'CPUPercentage'}
+BENCHMARK_DATA_FOLDER = 'benchmarkData'
+MANUAL_BENCHMARK_LABEL = 'Manual'

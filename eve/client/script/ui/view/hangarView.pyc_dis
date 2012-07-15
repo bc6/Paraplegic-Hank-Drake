@@ -1,0 +1,427 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/view/hangarView.py
+import log
+import sys
+import blue
+import bluepy
+import util
+import types
+import uicls
+import audio2
+import trinity
+import uthread
+import viewstate
+import localization
+from sceneManager import SCENE_TYPE_SPACE
+SMALL_SHIP_SCALE_ADJUST = 0.6
+BIG_SHIP_SCALE_ADJUST = 1.0
+BIG_SHIP_RADIUS = 1500.0
+NORMAL_SCENE_SCALE = 2.0
+BIG_SHIP_DIV_ADJUST = 0.6
+SMALL_SHIP_DIV_ADJUST = 6.0
+BIG_SHIP_SCALE = 0.6
+BACKGROUND_COLOR = (0.0, 0.0, 0.0, 0.6)
+
+class StaticEnvironmentResource(object):
+
+    def __init__(self, hangarView):
+        self.hangarView = hangarView
+        trinity.device.RegisterResource(self)
+
+    def OnInvalidate(self, level):
+        pass
+
+    def OnCreate(self, dev):
+        uthread.new(self.hangarView.ResetStaticEnvironment)
+
+
+class HangarView(viewstate.StationView):
+    __guid__ = 'viewstate.HangarView'
+    __notifyevents__ = viewstate.StationView.__notifyevents__[:]
+    __notifyevents__.extend(['OnUIScalingChange'])
+    __layerClass__ = uicls.HangarLayer
+    __defaultHangarScene__ = 'res:/dx9/scene/hangar/gallenteHangar.red'
+    __racialHangarScenes__ = {1: 'res:/dx9/scene/hangar/caldariHangar.red',
+     2: 'res:/dx9/scene/hangar/minmatarHangar.red',
+     4: 'res:/dx9/scene/hangar/amarrHangar.red',
+     8: 'res:/dx9/scene/hangar/gallenteHangar.red'}
+    __racialShipPositioning__ = {const.raceAmarr: util.ReadYamlFile('res:/dx9/scene/hangar/shipPlacementAmarr.yaml'),
+     const.raceCaldari: util.ReadYamlFile('res:/dx9/scene/hangar/shipPlacementCaldari.yaml'),
+     const.raceGallente: util.ReadYamlFile('res:/dx9/scene/hangar/shipPlacementGallente.yaml'),
+     const.raceMinmatar: util.ReadYamlFile('res:/dx9/scene/hangar/shipPlacementMinmatar.yaml'),
+     const.raceJove: util.ReadYamlFile('res:/dx9/scene/hangar/shipPlacementGallente.yaml')}
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def LoadView(self, change = None, **kwargs):
+        self.station.CleanUp()
+        self.station.StopAllStationServices()
+        self.station.Setup()
+        self.staticEnv = not settings.public.device.Get('loadstationenv2', 1)
+        self.staticEnvResource = None
+        viewstate.StationView.LoadView(self, **kwargs)
+        enteringStationLabel = localization.GetByLabel('UI/Station/EnteringStation')
+        clearingCurrentStateLabel = localization.GetByLabel('UI/Station/ClearingCurrentState')
+        self.sceneManager.SetSceneType(SCENE_TYPE_SPACE)
+        self.loading.ProgressWnd(enteringStationLabel, '', 1, 5)
+        settings.user.ui.Set('defaultDockingView', 'hangar')
+        self.loading.ProgressWnd(enteringStationLabel, clearingCurrentStateLabel, 2, 5)
+        oldWorldSpaceID = newWorldSpaceID = session.worldspaceid
+        if 'worldspaceid' in change:
+            oldWorldSpaceID, newWorldSpaceID = change['worldspaceid']
+        changes = change.copy()
+        if 'stationid' not in changes:
+            changes['stationid'] = (None, newWorldSpaceID)
+        fromstation, tostation = changes['stationid']
+        if tostation is not None:
+            self.loading.ProgressWnd(enteringStationLabel, cfg.evelocations.Get(tostation).name, 3, 5)
+            if fromstation != tostation:
+                setupStationLabel = localization.GetByLabel('UI/Station/SetupStation', stationName=cfg.evelocations.Get(tostation).name)
+                self.loading.ProgressWnd(enteringStationLabel, setupStationLabel, 4, 5)
+        self.activeShip = None
+        self.activeshipmodel = None
+        self.maxZoom = 750.0
+        self.minZoom = 150.0
+        self.lastShipzoomTo = 0.0
+        try:
+            stationTypeID = eve.stationItem.stationTypeID
+            stationType = cfg.invtypes.Get(stationTypeID)
+            self.stationRace = stationType['raceID']
+            self.scenePath = self.__racialHangarScenes__[self.stationRace]
+        except:
+            self.scenePath = self.__defaultHangarScene__
+
+        self.sceneManager.LoadScene(self.scenePath, registerKey=self.name)
+        self.hangarScene = self.sceneManager.GetRegisteredScene2(self.name)
+        self.fogStart = self.hangarScene.fogStart
+        self.fogEnd = self.hangarScene.fogEnd
+        self.layer.scene = self.hangarScene
+        self.layer.camera = self.sceneManager.GetRegisteredCamera(self.name)
+        self.layer.camera.SetOrbit(0.75, -0.5)
+        doneLabel = localization.GetByLabel('UI/Common/Done')
+        self.loading.ProgressWnd(enteringStationLabel, doneLabel, 5, 5)
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def ShowView(self, **kwargs):
+        viewstate.StationView.ShowView(self, **kwargs)
+        self.sceneManager.SetRegisteredScenes(self.name)
+        if util.GetActiveShip():
+            self.ShowShip(util.GetActiveShip())
+        elif self.staticEnv:
+            self.RenderStaticEnvironment()
+        else:
+            self.RenderDynamicEnvironment()
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def HideView(self):
+        self.staticEnvResource = None
+        self.RemoveFullScreenSprite()
+        viewstate.StationView.HideView(self)
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def UnloadView(self):
+        self.layer.camera = None
+        objs = []
+        for obj in self.hangarScene.objects:
+            objs.append(obj)
+
+        for obj in objs:
+            self.hangarScene.objects.remove(obj)
+
+        self.staticEnvResource = None
+        self.RemoveFullScreenSprite()
+        viewstate.StationView.UnloadView(self)
+        self.sceneManager.UnregisterCamera(self.name)
+        self.sceneManager.UnregisterScene(self.name)
+        self.sceneManager.UnregisterScene2(self.name)
+        self.hangarScene = None
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def RenderDynamicEnvironment(self):
+        stationModel = self.hangarScene.objects[0]
+        stationModel.enableShadow = False
+        self.SetupCamera()
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def SetupCamera(self):
+        camera = self.sceneManager.GetRegisteredCamera(self.name)
+        for each in camera.zoomCurve.keys:
+            each.value = 1.0
+
+        camera.fieldOfView = 1.2
+        camera.frontClip = 10.0
+        camera.minPitch = -1.4
+        camera.maxPitch = 0.0
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def ShowActiveShip(self):
+        if sm.GetService('viewState').IsCurrentViewSecondary():
+            return
+        if getattr(self, '__alreadyShowingActiveShip', False):
+            return
+        setattr(self, '__alreadyShowingActiveShip', True)
+        try:
+            modelToRemove = None
+            if self.hangarScene:
+                for each in self.hangarScene.objects:
+                    if getattr(each, 'name', None) == str(self.activeShip):
+                        modelToRemove = each
+
+            techLevel = self.godma.GetTypeAttribute(self.activeShipItem.typeID, const.attributeTechLevel)
+            if techLevel == 3.0:
+                try:
+                    dogmaItem = self.clientDogmaIM.GetDogmaLocation().dogmaItems.get(self.activeShipItem.itemID, None)
+                    if dogmaItem is None:
+                        log.LogTraceback('Trying to show t3 ship which is not in dogma')
+                        return
+                    subSystemIds = {}
+                    for fittedItem in dogmaItem.GetFittedItems().itervalues():
+                        if fittedItem.categoryID == const.categorySubSystem:
+                            subSystemIds[fittedItem.groupID] = fittedItem.typeID
+
+                    newModel = self.t3ShipSvc.GetTech3ShipFromDict(dogmaItem.typeID, subSystemIds)
+                except:
+                    log.LogException('failed bulding modular ship')
+                    sys.exc_clear()
+                    return
+
+            else:
+                modelPath = cfg.invtypes.Get(self.activeShipItem.typeID).GraphicFile()
+                newFilename = modelPath.lower().replace(':/model', ':/dx9/model')
+                newFilename = newFilename.replace('.blue', '.red')
+                newModel = trinity.Load(newFilename)
+            self.generalAudioEntity = None
+            if newModel is not None and hasattr(newModel, 'observers'):
+                triObserver = trinity.TriObserverLocal()
+                self.generalAudioEntity = audio2.AudEmitter('spaceObject_' + str(self.activeShipItem.itemID) + '_general')
+                triObserver.observer = self.generalAudioEntity
+                newModel.observers.append(triObserver)
+            sm.ScatterEvent('OnActiveShipModelChange', newModel, self.activeShipItem.itemID)
+            newModel.FreezeHighDetailMesh()
+            zoomTo = self.GetZoomValues(newModel, 0)
+            if not self.staticEnv and hasattr(newModel, 'ChainAnimationEx'):
+                newModel.ChainAnimationEx('NormalLoop', 0, 0, 1.0)
+            self.activeShip = self.activeShipItem.itemID
+            self.activeshipmodel = newModel
+            self.AdjustHangarScale()
+            newModel.name = str(self.activeShipItem.itemID)
+            if not self.staticEnv and zoomTo > self.lastShipzoomTo and self.hangarScene is not None and modelToRemove is not None:
+                uthread.new(self.DelayedSwap, self.hangarScene, modelToRemove, newModel)
+            else:
+                newModel.display = 1
+                if modelToRemove is not None:
+                    self.hangarScene.objects.remove(modelToRemove)
+                self.hangarScene.objects.append(newModel)
+            self.generalAudioEntity.SendEvent(unicode('hangar_spin_switch_ship_play'))
+            self.lastShipzoomTo = zoomTo
+            self.Zoom(zoomTo)
+            if self.staticEnv:
+                self.RenderStaticEnvironment()
+            else:
+                self.RenderDynamicEnvironment()
+        except Exception as e:
+            log.LogException(str(e))
+            sys.exc_clear()
+        finally:
+            delattr(self, '__alreadyShowingActiveShip')
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def AdjustHangarScale(self):
+        shipPositionData = self.__racialShipPositioning__[self.stationRace]
+        shipPositionCurveRoot = shipPositionData['curveRoot']
+        shipPositionMaxSize = shipPositionData['shipMaxSize']
+        shipPositionMinSize = shipPositionData['shipMinSize']
+        radius = self.activeshipmodel.boundingSphereRadius - shipPositionMinSize
+        scaleAdjust = radius / (shipPositionMaxSize - shipPositionMinSize)
+        scaleAdjust = max(0.0, min(1.0, scaleAdjust))
+        scaleAdjust = pow(scaleAdjust, 1.0 / shipPositionCurveRoot)
+        if scaleAdjust > BIG_SHIP_SCALE:
+            scaleMultiplier = SMALL_SHIP_SCALE_ADJUST * (1 - scaleAdjust)
+        else:
+            scaleMultiplier = BIG_SHIP_SCALE_ADJUST * (1 - scaleAdjust / BIG_SHIP_DIV_ADJUST)
+        sceneScaling = NORMAL_SCENE_SCALE
+        if self.activeshipmodel.boundingSphereRadius > BIG_SHIP_RADIUS:
+            sceneScaling *= self.activeshipmodel.boundingSphereRadius / BIG_SHIP_RADIUS
+        stationModel = self.hangarScene.objects[0]
+        stationModel.modelScale = sceneScaling
+        self.hangarScene.fogEnd = self.fogEnd * sceneScaling
+        self.hangarScene.fogStart = self.fogStart * sceneScaling
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def DelayedSwap(self, scene, oldModel, newModel):
+        newModel.display = 0
+        scene.objects.append(newModel)
+        blue.pyos.synchro.SleepWallclock(1000)
+        newModel.display = 1
+        scene.objects.remove(oldModel)
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def CheckScene(self):
+        scene = self.sceneManager.GetRegisteredScene2(self.name)
+        if self.staticEnv:
+            self.RenderStaticEnvironment()
+            scene.display = False
+        else:
+            scene.display = True
+            self.RemoveFullScreenSprite()
+
+    def RemoveFullScreenSprite(self):
+        for each in uicore.uilib.desktop.children:
+            if each.name == 'fullScreenSprite':
+                uicore.uilib.desktop.children.remove(each)
+
+    def RenderStaticEnvironment(self):
+        alphaFill = trinity.Tr2Effect()
+        alphaFill.effectFilePath = 'res:/Graphics/Effect/Utility/Compositing/AlphaFill.fx'
+        trinity.WaitForResourceLoads()
+        if self.staticEnvResource is None:
+            self.staticEnvResource = StaticEnvironmentResource(self)
+        dev = trinity.GetDevice()
+        self.hangarScene.display = True
+        self.hangarScene.update = True
+        depthTexture = self.hangarScene.depthTexture
+        distortionTexture = self.hangarScene.distortionTexture
+        self.hangarScene.depthTexture = None
+        self.hangarScene.distortionTexture = None
+        clientWidth = trinity.GetDevice().width
+        clientHeight = trinity.GetDevice().height
+        renderTarget = trinity.Tr2RenderTarget(clientWidth, clientHeight, 1, trinity.PIXEL_FORMAT.B8G8R8A8_UNORM)
+        depthStencil = trinity.Tr2DepthStencil(clientWidth, clientHeight, trinity.DEPTH_STENCIL_FORMAT.AUTO)
+        self.SetupCamera()
+        camera = self.sceneManager.GetRegisteredCamera(self.name)
+        camera.idleMove = False
+        updateJob = trinity.CreateRenderJob('UpdateScene')
+        updateJob.SetView(None)
+        updateJob.Update(self.hangarScene)
+        while updateJob.status != trinity.RJ_DONE:
+            updateJob.ScheduleOnce()
+            updateJob.WaitForFinish()
+
+        eye = camera.pos
+        at = camera.intr
+        view = trinity.TriView()
+        view.SetLookAtPosition((eye.x, eye.y, eye.z), (at.x, at.y, at.z), (0.0, 1.0, 0.0))
+        projection = trinity.TriProjection()
+        fov = camera.fieldOfView
+        aspectRatio = float(clientWidth) / clientHeight
+        projection.PerspectiveFov(fov, aspectRatio, 1.0, 350000.0)
+        renderJob = trinity.CreateRenderJob('StaticScene')
+        renderJob.PushRenderTarget(renderTarget)
+        renderJob.SetProjection(projection)
+        renderJob.SetView(view)
+        renderJob.PushDepthStencil(depthStencil)
+        renderJob.Clear((0.0, 0.0, 0.0, 0.0), 1.0)
+        renderJob.RenderScene(self.hangarScene)
+        renderJob.SetStdRndStates(trinity.RM_FULLSCREEN)
+        renderJob.RenderEffect(alphaFill)
+        renderJob.PopDepthStencil()
+        renderJob.PopRenderTarget()
+        while renderJob.status != trinity.RJ_DONE:
+            renderJob.ScheduleOnce()
+            renderJob.WaitForFinish()
+
+        self.hangarScene.display = False
+        self.hangarScene.update = False
+        try:
+            rgbSource = trinity.Tr2HostBitmap(renderTarget)
+        except Exception:
+            log.LogException()
+            sys.exc_clear()
+            return
+
+        self.RemoveFullScreenSprite()
+        self.sprite = uicls.Sprite(parent=uicore.uilib.desktop, width=uicore.uilib.desktop.width, height=uicore.uilib.desktop.height, left=0, top=0)
+        self.sprite.name = 'fullScreenSprite'
+        self.sprite.texture.atlasTexture = uicore.uilib.CreateTexture(rgbSource.width, rgbSource.height)
+        self.sprite.texture.atlasTexture.CopyFromHostBitmap(rgbSource)
+        self.hangarScene.display = False
+        self.hangarScene.update = False
+        self.hangarScene.depthTexture = depthTexture
+        self.hangarScene.distortionTexture = distortionTexture
+
+    def GetZoomValues(self, model, thread):
+        rad = 300
+        camera = self.sceneManager.GetRegisteredCamera(self.name)
+        trinity.WaitForResourceLoads()
+        rad = model.GetBoundingSphereRadius()
+        center = model.boundingSphereCenter
+        localBB = model.GetLocalBoundingBox()
+        if localBB[0] is None or localBB[1] is None:
+            log.LogError("Failed to get bounding info for ship. Odds are the ship wasn't loaded properly.")
+            localBB = (trinity.TriVector(0, 0, 0), trinity.TriVector(0, 0, 0))
+        model.translationCurve = trinity.TriVectorCurve()
+        if type(center) == types.TupleType:
+            negativeCenter = (-center[0], -center[1], -center[2])
+            model.translationCurve.value = trinity.TriVector(*negativeCenter)
+        else:
+            negativeCenter = -center
+            model.translationCurve.value = negativeCenter
+        model.translationCurve.value.y = -localBB[0].y + 180.0
+        cameraparent = self.GetCameraParent()
+        if cameraparent.translationCurve is not None:
+            currentY = cameraparent.translationCurve.value.y if not self.staticEnv else 0
+            if not self.staticEnv:
+                cameraparent.translationCurve.keys[0].value.y = currentY
+            else:
+                cameraparent.translationCurve.keys[0].value.y = -localBB[0].y + 180.0
+            cameraparent.translationCurve.keys[1].value.y = -localBB[0].y + 180.0
+            cameraparent.translationCurve.start = blue.os.GetSimTime()
+        zoomMultiplier = 1.0
+        aspectRatio = trinity.GetAspectRatio()
+        if aspectRatio > 1.6:
+            zoomMultiplier = aspectRatio / 1.6
+        self.minZoom = (rad + camera.frontClip + 50) * zoomMultiplier
+        self.maxZoom = 2050.0
+        self.layer.maxZoom = self.maxZoom
+        self.layer.minZoom = self.minZoom
+        return (rad + camera.frontClip) * 2
+
+    def GetCameraParent(self):
+        scene = self.sceneManager.GetRegisteredScene(self.name)
+        for each in scene.models:
+            if each.name == 'cameraparent':
+                return each
+
+        cp = trinity.TriTransform()
+        cp.name = 'cameraparent'
+        c = trinity.TriVectorCurve()
+        c.extrapolation = trinity.TRIEXT_CONSTANT
+        for t in (0.0, 1.0):
+            k = trinity.TriVectorKey()
+            k.time = t
+            k.interpolation = trinity.TRIINT_LINEAR
+            c.keys.append(k)
+
+        c.Sort()
+        cp.translationCurve = c
+        cp.useCurves = 1
+        scene.models.append(cp)
+        return cp
+
+    def AnimateZoom(self, startVal, endVal, duration):
+        camera = self.sceneManager.GetRegisteredCamera(self.name)
+        startTime = blue.os.GetWallclockTimeNow()
+        for t in range(101):
+            elapsed = blue.os.GetWallclockTimeNow() - startTime
+            elapsedSec = elapsed / float(const.SEC)
+            perc = elapsedSec / duration
+            if perc > 1.0:
+                camera.translationFromParent.z = endVal
+                break
+            camera.translationFromParent.z = startVal * (1.0 - perc) + endVal * perc
+            blue.pyos.synchro.SleepWallclock(1)
+
+        camera.translationFromParent.z = endVal
+
+    def Zoom(self, zoomto = None):
+        camera = self.sceneManager.GetRegisteredCamera(self.name)
+        camera.parent = self.GetCameraParent()
+        if self.staticEnv:
+            camera.translationFromParent.z = min(self.maxZoom, max(zoomto, self.minZoom))
+        else:
+            uthread.new(self.AnimateZoom, camera.translationFromParent.z, min(self.maxZoom, max(zoomto, self.minZoom)), 1.0)
+
+    def ResetStaticEnvironment(self):
+        if self.staticEnv:
+            self.RenderStaticEnvironment()
+
+    def OnUIScalingChange(self, changes):
+        self.ResetStaticEnvironment()

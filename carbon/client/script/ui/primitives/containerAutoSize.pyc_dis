@@ -1,0 +1,111 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/carbon/client/script/ui/primitives/containerAutoSize.py
+import uicls
+import uiconst
+import bluepy
+ALLOWED_ALIGNMENTS = (uiconst.TOLEFT,
+ uiconst.TORIGHT,
+ uiconst.TOTOP,
+ uiconst.TOBOTTOM,
+ uiconst.TOPLEFT)
+
+class ContainerAutoSize(uicls.Container):
+    __guid__ = 'uicls.ContainerAutoSize'
+    default_name = 'containerAutoSize'
+    default_align = uiconst.TOPLEFT
+    _childrenAlign = None
+    isAutoSizeEnabled = True
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def _SetSizeAutomatically(self):
+        if not self.isAutoSizeEnabled:
+            return
+        width, height = self.GetAutoSize()
+        if width is not None:
+            self.width = width
+        if height is not None:
+            self.height = height
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def GetAutoSize(self):
+        if self._childrenAlign in (uiconst.TOLEFT, uiconst.TORIGHT):
+            width = 0
+            for child in self.children:
+                if not child.display:
+                    continue
+                width += child.width + child.left + child.padLeft + child.padRight
+
+            return (width, None)
+        elif self._childrenAlign in (uiconst.TOTOP, uiconst.TOBOTTOM):
+            height = 0
+            for child in self.children:
+                if not child.display:
+                    continue
+                height += child.height + child.top + child.padTop + child.padBottom
+
+            return (None, height)
+        elif self._childrenAlign == uiconst.TOPLEFT:
+            width = height = 0
+            for child in self.children:
+                if not child.display:
+                    continue
+                x = child.left + child.width + child.padLeft + child.padRight
+                if x > width:
+                    width = x
+                y = child.top + child.height + child.padTop + child.padBottom
+                if y > height:
+                    height = y
+
+            return (width, height)
+        else:
+            return (0, 0)
+
+    @bluepy.CCP_STATS_ZONE_METHOD
+    def _VerifyNewChild(self, child):
+        if child.align not in ALLOWED_ALIGNMENTS:
+            raise ValueError('ContainerAutoSize only supports TOLEFT, TORIGHT, TOTOP, TOBOTTOM or TOPLEFT aligned children')
+        if self.children and child.align != self._childrenAlign:
+            raise ValueError('All children of ContainerAutoSize must have the same alignment (Got %s, expecting %s)' % (child.align, self._childrenAlign))
+        if not self.children:
+            self._childrenAlign = child.align
+
+    def GetChildrenList(self):
+        return uicls.UIChildrenListAutoSize(self)
+
+    def DisableAutoSize(self):
+        self.isAutoSizeEnabled = False
+
+    def EnableAutoSize(self):
+        self.isAutoSizeEnabled = True
+        self._SetSizeAutomatically()
+
+    def FlagChildrenDirty(self):
+        uicls.Container.FlagChildrenDirty(self)
+        if not self._alignmentDirty:
+            self.FlagAlignmentDirty()
+
+    def Traverse(self, mbudget):
+        budget = uicls.Container.Traverse(self, mbudget)
+        if self._childrenAlign is not None:
+            self._SetSizeAutomatically()
+        return budget
+
+
+class UIChildrenListAutoSize(uicls.UIChildrenList):
+    __guid__ = 'uicls.UIChildrenListAutoSize'
+
+    def append(self, obj):
+        owner = self.GetOwner()
+        if owner:
+            owner._VerifyNewChild(obj)
+            uicls.UIChildrenList.append(self, obj)
+
+    def insert(self, idx, obj):
+        owner = self.GetOwner()
+        if owner:
+            owner._VerifyNewChild(obj)
+            uicls.UIChildrenList.insert(self, idx, obj)
+
+    def remove(self, obj):
+        owner = self.GetOwner()
+        if owner:
+            uicls.UIChildrenList.remove(self, obj)

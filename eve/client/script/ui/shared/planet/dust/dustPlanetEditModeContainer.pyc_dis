@@ -1,0 +1,88 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/shared/planet/dust/dustPlanetEditModeContainer.py
+import uiconst
+import uicls
+import planet
+import blue
+ICON_SIZE = 24
+
+class DustPlanetEditModeContainer(uicls.Container):
+    __guid__ = 'planet.ui.DustPlanetEditModeContainer'
+    default_name = 'dustPlanetEditMode'
+    default_align = uiconst.TOALL
+    default_state = uiconst.UI_NORMAL
+    __notifyevents__ = ['OnItemChange', 'OnSessionChanged']
+    COLOR_ENABLED = (1.0, 1.0, 1.0, 1.0)
+    COLOR_DISABLED = (0.7, 0.7, 0.7, 0.8)
+
+    def ApplyAttributes(self, attributes):
+        uicls.Container.ApplyAttributes(self, attributes)
+        self.activeBuildEntry = None
+        self.buildContainer = uicls.Container(parent=self, name='buildContainer', align=uiconst.TOTOP, pos=(0, 0, 0, 300))
+        self.CreateLayout()
+        sm.RegisterNotify(self)
+
+    def CreateLayout(self):
+        baseTypes = cfg.typesByGroups.get(const.groupCapsuleerBases)
+        for base in baseTypes:
+            self.CreateBuildEntry(cfg.invtypes.Get(base.typeID).name, 'ui_77_32_30', True, base.typeID)
+
+    def CreateBuildEntry(self, name, icon, enabled, typeID):
+        if enabled:
+            color = self.COLOR_ENABLED
+        else:
+            color = self.COLOR_DISABLED
+        buildEntry = uicls.Container(parent=self.buildContainer, name='buildEntry' + str(typeID), align=uiconst.TOTOP, pos=(0,
+         0,
+         0,
+         ICON_SIZE), state=uiconst.UI_NORMAL)
+        buildEntry.typeID = typeID
+        buildEntry.headerContainer = header = uicls.Container(parent=buildEntry, name='buildHeaderContainer', align=uiconst.TOTOP, pos=(0,
+         0,
+         0,
+         ICON_SIZE))
+        buildEntry.iconButton = iconButton = planet.ui.IconButton(parent=header, name='pin_' + str(typeID), icon=icon, align=uiconst.TOLEFT, pos=(0,
+         0,
+         ICON_SIZE,
+         0), state=uiconst.UI_NORMAL, size=ICON_SIZE, color=color)
+        iconButton.OnMouseEnter = (self.OnBuildIconButtonMouseEnter, buildEntry)
+        iconButton.OnMouseExit = (self.OnBuildIconButtonMouseExit, buildEntry)
+        if enabled:
+            iconButton.OnClick = (self.OnBuildIconButtonClicked, buildEntry)
+        buildEntry.heading = uicls.EveHeaderMedium(parent=header, text='<b>' + name + '</b>', state=uiconst.UI_NORMAL, hilightable=1, pos=(ICON_SIZE + 4,
+         6,
+         200,
+         ICON_SIZE), color=color)
+        buildEntry.heading.OnMouseEnter = (self.OnBuildIconButtonMouseEnter, buildEntry)
+        buildEntry.heading.OnMouseExit = (self.OnBuildIconButtonMouseExit, buildEntry)
+        buildEntry.heading.OnClick = (self.OnBuildIconButtonClicked, buildEntry)
+
+    def OnBuildIconButtonMouseEnter(self, buildEntry, *args):
+        buildEntry.headerContainer.fill = uicls.Fill(parent=buildEntry.headerContainer)
+
+    def OnBuildIconButtonMouseExit(self, buildEntry, *args):
+        if hasattr(buildEntry.headerContainer, 'fill'):
+            buildEntry.headerContainer.fill.Close()
+
+    def OnBuildIconButtonClicked(self, buildEntry, *args):
+        sm.GetService('planetUI').myPinManager.PlacePinOnNextClick(buildEntry.typeID)
+
+    def OnItemChange(self, item = None, change = None):
+        locationIdx = const.ixLocationID
+        if session.shipid not in (item[locationIdx], change.get(locationIdx, 'No location change')):
+            return
+        if cfg.invtypes.Get(item.typeID).groupID == const.groupCommandPins:
+            self.ResetBuildbuttons()
+
+    def ResetBuildbuttons(self):
+        uicore.effect.MorphUI(self.buildContainer, 'opacity', 0.0, time=250.0, newthread=False, float=True)
+        if not self or self.destroyed:
+            return
+        self.buildContainer.Flush()
+        self.CreateLayout()
+        blue.pyos.synchro.SleepWallclock(300)
+        if not self or self.destroyed:
+            return
+        uicore.effect.MorphUI(self.buildContainer, 'opacity', 1.0, time=250.0, newthread=False, float=True)
+
+    def OnSessionChanged(self, isRemote, sess, change):
+        self.ResetBuildbuttons()

@@ -1,0 +1,35 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\eve\common\lib\autoexec_proxy.py
+import autoexec_proxy_core
+import blue
+import eveLog
+from logHandlers import logServer
+logServer.Init()
+servicesToRun = ['counter',
+ 'tcpRawProxyService',
+ 'http',
+ 'http2',
+ 'machoNet',
+ 'objectCaching',
+ 'debug',
+ 'sessionMgr',
+ 'ramProxy',
+ 'clientStatLogger',
+ 'alert',
+ 'processHealth',
+ 'dustContentStreamingProxyMgr',
+ 'lscProxy']
+if prefs.GetValue('enableDust', 0):
+    dustServices = []
+    servicesToRun += dustServices
+if prefs.GetValue('enableApi', 1) or prefs.GetValue('enableDust', 0):
+    servicesToRun.append('API')
+arguments = blue.pyos.GetArg()[1:]
+for argument in arguments:
+    if argument.startswith('-startOrchestrator'):
+        servicesToRun += ('orchestratorSlave',)
+
+import eveLocalization
+if boot.region == 'optic':
+    eveLocalization.SetTimeDelta(28800)
+servicesToBlock = ['DB2']
+autoexec_proxy_core.StartProxy(servicesToRun, servicesToBlock=servicesToBlock, serviceManagerClass='EveServiceManager')

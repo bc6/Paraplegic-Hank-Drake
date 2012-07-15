@@ -1,0 +1,384 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\carbon\common\lib\paste\wsgiwrappers.py
+import re
+import warnings
+from pprint import pformat
+from Cookie import SimpleCookie
+from paste.request import EnvironHeaders, get_cookie_dict, parse_dict_querystring, parse_formvars
+from paste.util.multidict import MultiDict, UnicodeMultiDict
+from paste.registry import StackedObjectProxy
+from paste.response import HeaderDict
+from paste.wsgilib import encode_unicode_app_iter
+from paste.httpheaders import ACCEPT_LANGUAGE
+from paste.util.mimeparse import desired_matches
+__all__ = ['WSGIRequest', 'WSGIResponse']
+_CHARSET_RE = re.compile(';\\s*charset=([^;]*)', re.I)
+
+class DeprecatedSettings(StackedObjectProxy):
+
+    def _push_object(self, obj):
+        warnings.warn('paste.wsgiwrappers.settings is deprecated: Please use paste.wsgiwrappers.WSGIRequest.defaults instead', DeprecationWarning, 3)
+        WSGIResponse.defaults._push_object(obj)
+        StackedObjectProxy._push_object(self, obj)
+
+
+settings = DeprecatedSettings(default=dict())
+
+class environ_getter(object):
+
+    def __init__(self, key, default = '', default_factory = None):
+        self.key = key
+        self.default = default
+        self.default_factory = default_factory
+
+    def __get__(self, obj, type = None):
+        if type is None:
+            return self
+        if self.key not in obj.environ:
+            if self.default_factory:
+                val = obj.environ[self.key] = self.default_factory()
+                return val
+            else:
+                return self.default
+        return obj.environ[self.key]
+
+    def __repr__(self):
+        return '<Proxy for WSGI environ %r key>' % self.key
+
+
+class WSGIRequest(object):
+    defaults = StackedObjectProxy(default=dict(charset=None, errors='replace', decode_param_names=False, language='en-us'))
+
+    def __init__(self, environ):
+        self.environ = environ
+        self.headers = EnvironHeaders(environ)
+        defaults = self.defaults._current_obj()
+        self.charset = defaults.get('charset')
+        if self.charset:
+            browser_charset = self.determine_browser_charset()
+            if browser_charset:
+                self.charset = browser_charset
+        self.errors = defaults.get('errors', 'strict')
+        self.decode_param_names = defaults.get('decode_param_names', False)
+        self._languages = None
+
+    body = environ_getter('wsgi.input')
+    scheme = environ_getter('wsgi.url_scheme')
+    method = environ_getter('REQUEST_METHOD')
+    script_name = environ_getter('SCRIPT_NAME')
+    path_info = environ_getter('PATH_INFO')
+
+    def urlvars(self):
+        if 'paste.urlvars' in self.environ:
+            return self.environ['paste.urlvars']
+        elif 'wsgiorg.routing_args' in self.environ:
+            return self.environ['wsgiorg.routing_args'][1]
+        else:
+            return {}
+
+    urlvars = property(urlvars, doc=urlvars.__doc__)
+
+    def is_xhr(self):
+        return self.environ.get('HTTP_X_REQUESTED_WITH', '') == 'XMLHttpRequest'
+
+    is_xhr = property(is_xhr, doc=is_xhr.__doc__)
+
+    def host(self):
+        return self.environ.get('HTTP_HOST', self.environ.get('SERVER_NAME'))
+
+    host = property(host, doc=host.__doc__)
+
+    def languages(self):
+        if self._languages is not None:
+            return self._languages
+        acceptLanguage = self.environ.get('HTTP_ACCEPT_LANGUAGE')
+        langs = ACCEPT_LANGUAGE.parse(self.environ)
+        fallback = self.defaults.get('language', 'en-us')
+        if not fallback:
+            return langs
+        if fallback not in langs:
+            langs.append(fallback)
+        index = langs.index(fallback)
+        langs[index + 1:] = []
+        self._languages = langs
+        return self._languages
+
+    languages = property(languages, doc=languages.__doc__)
+
+    def _GET(self):
+        return parse_dict_querystring(self.environ)
+
+    def GET(self):
+        params = self._GET()
+        if self.charset:
+            params = UnicodeMultiDict(params, encoding=self.charset, errors=self.errors, decode_keys=self.decode_param_names)
+        return params
+
+    GET = property(GET, doc=GET.__doc__)
+
+    def _POST(self):
+        return parse_formvars(self.environ, include_get_vars=False)
+
+    def POST(self):
+        params = self._POST()
+        if self.charset:
+            params = UnicodeMultiDict(params, encoding=self.charset, errors=self.errors, decode_keys=self.decode_param_names)
+        return params
+
+    POST = property(POST, doc=POST.__doc__)
+
+    def params(self):
+        params = MultiDict()
+        params.update(self._POST())
+        params.update(self._GET())
+        if self.charset:
+            params = UnicodeMultiDict(params, encoding=self.charset, errors=self.errors, decode_keys=self.decode_param_names)
+        return params
+
+    params = property(params, doc=params.__doc__)
+
+    def cookies(self):
+        return get_cookie_dict(self.environ)
+
+    cookies = property(cookies, doc=cookies.__doc__)
+
+    def determine_browser_charset(self):
+        charset_match = _CHARSET_RE.search(self.headers.get('Content-Type', ''))
+        if charset_match:
+            return charset_match.group(1)
+
+    def match_accept(self, mimetypes):
+        return desired_matches(mimetypes, self.environ.get('HTTP_ACCEPT', '*/*'))
+
+    def __repr__(self):
+        pf = pformat
+        msg = '<%s.%s object at 0x%x method=%s,' % (self.__class__.__module__,
+         self.__class__.__name__,
+         id(self),
+         pf(self.method))
+        msg += '\nscheme=%s, host=%s, script_name=%s, path_info=%s,' % (pf(self.scheme),
+         pf(self.host),
+         pf(self.script_name),
+         pf(self.path_info))
+        msg += '\nlanguages=%s,' % pf(self.languages)
+        if self.charset:
+            msg += ' charset=%s, errors=%s,' % (pf(self.charset), pf(self.errors))
+        msg += '\nGET=%s,' % pf(self.GET)
+        msg += '\nPOST=%s,' % pf(self.POST)
+        msg += '\ncookies=%s>' % pf(self.cookies)
+        return msg
+
+
+class WSGIResponse(object):
+    defaults = StackedObjectProxy(default=dict(content_type='text/html', charset='utf-8', errors='strict', headers={'Cache-Control': 'no-cache'}))
+
+    def __init__(self, content = '', mimetype = None, code = 200):
+        self._iter = None
+        self._is_str_iter = True
+        self.content = content
+        self.headers = HeaderDict()
+        self.cookies = SimpleCookie()
+        self.status_code = code
+        defaults = self.defaults._current_obj()
+        if not mimetype:
+            mimetype = defaults.get('content_type', 'text/html')
+            charset = defaults.get('charset')
+            if charset:
+                mimetype = '%s; charset=%s' % (mimetype, charset)
+        self.headers.update(defaults.get('headers', {}))
+        self.headers['Content-Type'] = mimetype
+        self.errors = defaults.get('errors', 'strict')
+
+    def __str__(self):
+        if self._is_str_iter:
+            content = ''.join(self.get_content())
+        else:
+            content = str(self.content)
+        return '\n'.join([ '%s: %s' % (key, value) for key, value in self.headers.headeritems() ]) + '\n\n' + content
+
+    def __call__(self, environ, start_response):
+        status_text = STATUS_CODE_TEXT[self.status_code]
+        status = '%s %s' % (self.status_code, status_text)
+        response_headers = self.headers.headeritems()
+        for c in self.cookies.values():
+            response_headers.append(('Set-Cookie', c.output(header='')))
+
+        start_response(status, response_headers)
+        is_file = isinstance(self.content, file)
+        if 'wsgi.file_wrapper' in environ and is_file:
+            return environ['wsgi.file_wrapper'](self.content)
+        if is_file:
+            return iter(lambda : self.content.read(), '')
+        return self.get_content()
+
+    def determine_charset(self):
+        charset_match = _CHARSET_RE.search(self.headers.get('Content-Type', ''))
+        if charset_match:
+            return charset_match.group(1)
+
+    def has_header(self, header):
+        warnings.warn('WSGIResponse.has_header is deprecated, use WSGIResponse.headers.has_key instead', DeprecationWarning, 2)
+        return self.headers.has_key(header)
+
+    def set_cookie(self, key, value = '', max_age = None, expires = None, path = '/', domain = None, secure = None, httponly = None):
+        self.cookies[key] = value
+        for var_name, var_value in [('max_age', max_age),
+         ('path', path),
+         ('domain', domain),
+         ('secure', secure),
+         ('expires', expires),
+         ('httponly', httponly)]:
+            if var_value is not None and var_value is not False:
+                self.cookies[key][var_name.replace('_', '-')] = var_value
+
+    def delete_cookie(self, key, path = '/', domain = None):
+        self.cookies[key] = ''
+        if path is not None:
+            self.cookies[key]['path'] = path
+        if domain is not None:
+            self.cookies[key]['domain'] = domain
+        self.cookies[key]['expires'] = 0
+        self.cookies[key]['max-age'] = 0
+
+    def _set_content(self, content):
+        if hasattr(content, '__iter__'):
+            self._iter = content
+            if isinstance(content, list):
+                self._is_str_iter = True
+            else:
+                self._is_str_iter = False
+        else:
+            self._iter = [content]
+            self._is_str_iter = True
+
+    content = property(lambda self: self._iter, _set_content, doc='Get/set the specified content, where content can be: a string, a list of strings, a generator function that yields strings, or an iterable object that produces strings.')
+
+    def get_content(self):
+        charset = self.determine_charset()
+        if charset:
+            return encode_unicode_app_iter(self.content, charset, self.errors)
+        else:
+            return self.content
+
+    def wsgi_response(self):
+        status_text = STATUS_CODE_TEXT[self.status_code]
+        status = '%s %s' % (self.status_code, status_text)
+        response_headers = self.headers.headeritems()
+        for c in self.cookies.values():
+            response_headers.append(('Set-Cookie', c.output(header='')))
+
+        return (status, response_headers, self.get_content())
+
+    def write(self, content):
+        if not self._is_str_iter:
+            raise IOError, "This %s instance's content is not writable: (content is an iterator)" % self.__class__.__name__
+        self.content.append(content)
+
+    def flush(self):
+        pass
+
+    def tell(self):
+        if not self._is_str_iter:
+            raise IOError, 'This %s instance cannot tell its position: (content is an iterator)' % self.__class__.__name__
+        return sum([ len(chunk) for chunk in self._iter ])
+
+    def charset__get(self):
+        header = self.headers.get('content-type')
+        if not header:
+            return None
+        match = _CHARSET_RE.search(header)
+        if match:
+            return match.group(1)
+
+    def charset__set(self, charset):
+        if charset is None:
+            del self.charset
+            return
+        try:
+            header = self.headers.pop('content-type')
+        except KeyError:
+            raise AttributeError('You cannot set the charset when no content-type is defined')
+
+        match = _CHARSET_RE.search(header)
+        if match:
+            header = header[:match.start()] + header[match.end():]
+        header += '; charset=%s' % charset
+        self.headers['content-type'] = header
+
+    def charset__del(self):
+        try:
+            header = self.headers.pop('content-type')
+        except KeyError:
+            return
+
+        match = _CHARSET_RE.search(header)
+        if match:
+            header = header[:match.start()] + header[match.end():]
+        self.headers['content-type'] = header
+
+    charset = property(charset__get, charset__set, charset__del, doc=charset__get.__doc__)
+
+    def content_type__get(self):
+        header = self.headers.get('content-type')
+        if not header:
+            return None
+        return header.split(';', 1)[0]
+
+    def content_type__set(self, value):
+        if ';' not in value:
+            header = self.headers.get('content-type', '')
+            if ';' in header:
+                params = header.split(';', 1)[1]
+                value += ';' + params
+        self.headers['content-type'] = value
+
+    def content_type__del(self):
+        try:
+            del self.headers['content-type']
+        except KeyError:
+            pass
+
+    content_type = property(content_type__get, content_type__set, content_type__del, doc=content_type__get.__doc__)
+
+
+STATUS_CODE_TEXT = {100: 'CONTINUE',
+ 101: 'SWITCHING PROTOCOLS',
+ 200: 'OK',
+ 201: 'CREATED',
+ 202: 'ACCEPTED',
+ 203: 'NON-AUTHORITATIVE INFORMATION',
+ 204: 'NO CONTENT',
+ 205: 'RESET CONTENT',
+ 206: 'PARTIAL CONTENT',
+ 226: 'IM USED',
+ 300: 'MULTIPLE CHOICES',
+ 301: 'MOVED PERMANENTLY',
+ 302: 'FOUND',
+ 303: 'SEE OTHER',
+ 304: 'NOT MODIFIED',
+ 305: 'USE PROXY',
+ 306: 'RESERVED',
+ 307: 'TEMPORARY REDIRECT',
+ 400: 'BAD REQUEST',
+ 401: 'UNAUTHORIZED',
+ 402: 'PAYMENT REQUIRED',
+ 403: 'FORBIDDEN',
+ 404: 'NOT FOUND',
+ 405: 'METHOD NOT ALLOWED',
+ 406: 'NOT ACCEPTABLE',
+ 407: 'PROXY AUTHENTICATION REQUIRED',
+ 408: 'REQUEST TIMEOUT',
+ 409: 'CONFLICT',
+ 410: 'GONE',
+ 411: 'LENGTH REQUIRED',
+ 412: 'PRECONDITION FAILED',
+ 413: 'REQUEST ENTITY TOO LARGE',
+ 414: 'REQUEST-URI TOO LONG',
+ 415: 'UNSUPPORTED MEDIA TYPE',
+ 416: 'REQUESTED RANGE NOT SATISFIABLE',
+ 417: 'EXPECTATION FAILED',
+ 500: 'INTERNAL SERVER ERROR',
+ 501: 'NOT IMPLEMENTED',
+ 502: 'BAD GATEWAY',
+ 503: 'SERVICE UNAVAILABLE',
+ 504: 'GATEWAY TIMEOUT',
+ 505: 'HTTP VERSION NOT SUPPORTED'}

@@ -1,0 +1,46 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/common/script/localization/benchmark.py
+import blue
+import bluepy
+import math
+import timeit
+
+def RunBenchmark():
+    mls.LoadTranslations(session.languageID)
+    blue.statistics.StartTelemetry('localhost')
+    blue.synchro.Yield()
+    WithoutMarkup()
+    DateTimeFormatMarkup()
+    FormatDistInAU()
+    blue.synchro.Yield()
+    blue.statistics.StopTelemetry()
+
+
+@bluepy.CCP_STATS_ZONE_FUNCTION
+def WithoutMarkup(number = 1000):
+    t0 = timeit.Timer('mls.UI_CAL_ADDINVITEE')
+    t1 = timeit.Timer('localization.GetByLabel("UI/Common/Unknown")', 'import localization')
+    print '------ Without Markup ------'
+    print 'MLS:', t0.timeit(number=number)
+    print 'Cerberus:', t1.timeit(number=number)
+
+
+@bluepy.CCP_STATS_ZONE_FUNCTION
+def DateTimeFormatMarkup(number = 1000):
+    t0 = timeit.Timer('getattr(mls, "UI_GENERIC_"+"anchoring".upper()) + "...<br>" + util.FmtDateEng(long(timeLeft), "ss")', '\nimport util\nimport const\nimport localization\ntimeLeft = const.HOUR * 1 + const.MIN * 23 + const.SEC * 45 + const.MSEC * 67\nstateName = localization.GetByLabel("Entities/States/Anchored")\n')
+    t1 = timeit.Timer('localization.GetByLabel("UI/Inflight/Brackets/StructureProgress", \n                         stateName=stateName, timeRemaining=long(timeLeft))', 'import util;import const;import localization;\ntimeLeft = const.HOUR * 1 + const.MIN * 23 + const.SEC * 45 + const.MSEC * 67;\nstateName = localization.GetByLabel("Entities/States/Anchored")')
+    print '------ DateTimeFormat Markup ------'
+    print 'MLS:', t0.timeit(number=number)
+    print 'Cerberus:', t1.timeit(number=number)
+
+
+@bluepy.CCP_STATS_ZONE_FUNCTION
+def FormatDistInAU(number = 1000):
+    t0 = timeit.Timer('FmtDist(dist, maxdemicals=1)', formatDistInAUCode)
+    t1 = timeit.Timer('util.FmtDist(dist, maxdemicals=1)', 'import util;dist=const.AU*1.5')
+    print '------ FormatDistInAU Markup ------'
+    print 'MLS:', t0.timeit(number=number)
+    print 'Cerberus:', t1.timeit(number=number)
+
+
+formatDistInAUCode = '\nimport const\ndist = const.AU*1.5\n# -----------------------------------------------------------------------------------\n# FmtAmt\n# -----------------------------------------------------------------------------------\n# Returns a formatted amount value.\n# \'fmt\' works in the same manner as in FmtDate here above.\n#\n# fmt[0] is the format of the value itself. It can be:\n# "s" for as-short-as-possible,\n# "l" for dot every 3 decimals.\n#\n# "ln": 1,234,567,890\n# "sn": always 4-5 characters  (plus optional sign) using 3 digits + optional digit\n# separator and 1 scale indicator (which is T, B, M, or K, for pow. 12, 9, 6 and 3):\n#       1.23B   1.23 billions\n#       0.15B    150 millions\n#       0.23M    230 thousand\n#       1.29K    one thousand two hundred ninety\n#       -68.1K  -68 thousand one hundred\n#       0.95K   ca. 950\n#       76.3T   76.3 Trillions\n#\n#   showFraction > determines how many xtraletters are shown in "l" mode\n#\n# -----------------------------------------------------------------------------------\ndef FmtAmt(amount, fmt="ln", showFraction=0, fillWithZero=0):\n    if amount == None:\n        amount = 0\n\n    orgamount = amount\n    try:\n        amount = long(amount)\n    except:\n        raise RuntimeError("AmountMustBeInteger", (amount))\n\n    minus = ["","-"][float(orgamount)<0.0]\n    fraction = ""\n    ret = ""\n    fractionNumber = None    \n    if fmt[0] == "l":\n\n        if showFraction:\n            fraction = abs(math.fmod(orgamount, 1.0))\n            fraction = round(fraction, showFraction)\n            if fraction >= 1.0:\n                amount += [-1, 1][amount >= 0.0]\n                fraction = 0.0\n            fraction = str(fraction)[2:]\n            if fillWithZero:\n                while len(fraction) < showFraction:\n                    fraction += "0"\n\n            # this will make the fractionNumber in the format X.Y, which can be turned into a float\n            fractionNumber = float("%s.%s"%(amount,fraction))\n            fraction = DECIMAL + str(fraction)\n        digit = ""\n        amt = "%d" % abs(amount)\n        for i in xrange(len(amt) % 3, len(amt)+3, 3):\n            if i < 3:\n                ret = ret + amt[:i]\n            else:\n                ret = ret + digit + amt[i-3:i]\n            if i != 0:\n                digit = DIGIT\n\n    elif fmt[0] == "s":\n        val = abs(amount)\n        fractionNumber = val\n        if val < 1e4:\n            ret = str(val)\n        elif val < 1e5:\n            ret = TruncateAmt(val, long(1e3)) + [mls.K_FOR_THOUSAND,[mls.THOUSAND.lower(),mls.THOUSANDS.lower()] [str(val)[0]!="1"]][fmt[1]=="l"]\n        elif val < 1e8:\n            ret = TruncateAmt(val, long(1e6)) +[mls.M_FOR_MILLION,[mls.MILLION.lower(),mls.MILLIONS.lower()][str(val)[0]!="1"]][fmt[1]=="l"]\n        elif val < 1e11:\n            ret = TruncateAmt(val, long(1e9)) +[mls.B_FOR_BILLION,[mls.BILLION.lower(),mls.BILLIONS.lower()][str(val)[0]!="1"]][fmt[1]=="l"]\n        elif val < 1e14:\n            ret = TruncateAmt(val, long(1e12)) +[mls.T_FOR_TRILLION,[mls.TRILLION.lower(), mls.TRILLIONS.lower()][str(val)[0]!="1"]][fmt[1]=="l"]\n        else:\n            raise UserError("WhatKindOfAmountIsThis", {"amount":amount})\n    else:\n        ret = "%d" % abs(amount)\n\n    if fractionNumber == 0:\n        minus = ""\n\n    return minus+ret+fraction\n\n\n\n# -----------------------------------------------------------------------------------\ndef TruncateAmt(val, unit):\n    rest = (val % unit) / (unit/100L)\n    ret = str(val / unit)\n    if rest > 0:\n        ret = ret + \'%s%02d\' % (DECIMAL, rest)\n        if ret[-1:]==\'0\':\n            ret = ret[:-1]\n    return ret\n\n\n# -----------------------------------------------------------------------------------\n# FmtDist\n# -----------------------------------------------------------------------------------\n# Returns a formatted distance.\n# -----------------------------------------------------------------------------------\ndef FmtDist(dist, maxdemicals=3, signed=False):\n    # dist cannot be negative, strictly speaking, but this function is also used to\n    # format the elements in coordinate vectors, see FmtVec\n    if signed and dist < 0.0:\n        formatString = "-%s %s"\n        dist = abs(dist)\n    else:\n        formatString = "%s %s"\n    dist = max(0, dist)\n    if dist < 1.0:\n        return "%s %s" % (TruncateDemicals(str(dist)[:5], maxdemicals), mls.M_IN_METER)\n    if dist < 10000.0:\n        return "%s %s" % (TruncateDemicals(FmtAmt(long(dist)), maxdemicals), mls.M_IN_METER)\n\n    elif dist < 10000000000.0:\n        return "%s %s" % (TruncateDemicals(FmtAmt(long(dist/1000.0)), maxdemicals), mls.KM)\n    else:\n        return "%s %s" % (TruncateDemicals(str(round(dist / const.AU, maxdemicals)), maxdemicals), mls.AU_FOR_LIGHTYEAR)\n\n\nDECIMAL = prefs.GetValue("decimal", ".")\nDIGIT = prefs.GetValue("digit", ",")\n\n\ndef TruncateDemicals(dist, maxdemicals):\n    if dist.find(DECIMAL) == -1 or maxdemicals is None:\n        return dist\n    dist = dist.split(DECIMAL)\n    dist = DECIMAL.join(dist[:-1]) + DECIMAL + dist[-1][:maxdemicals]\n    return dist\n'
+exports = {'localization.RunBenchmark': RunBenchmark}

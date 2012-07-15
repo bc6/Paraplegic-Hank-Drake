@@ -1,0 +1,360 @@
+#Embedded file name: c:\depot\games\branches\release\EVE-TRANQUILITY\carbon\common\lib\trinity\__init__.py
+import blue
+import blue.win32
+import bluepy
+import sys
+import os
+import log
+
+def GetEnumValueName(enumName, value):
+    if enumName in globals():
+        enum = globals()[enumName]
+        result = ''
+        for enumKeyName, (enumKeyValue, enumKeydocString) in enum.values.iteritems():
+            if enumKeyValue == value:
+                if result != '':
+                    result += ' | '
+                result += enumKeyName
+
+        return result
+
+
+def GetEnumValueNameAsBitMask(enumName, value):
+    if enumName in globals():
+        enum = globals()[enumName]
+        result = ''
+        for enumKeyName, (enumKeyValue, enumKeydocString) in enum.values.iteritems():
+            if enumKeyValue & value == enumKeyValue:
+                if result != '':
+                    result += ' | '
+                result += enumKeyName
+
+        return result
+
+
+def ConvertTriFileToGranny(path):
+    helper = TriGeometryRes()
+    return helper.ConvertTriFileToGranny(path)
+
+
+def Load(path, nonCached = False):
+    if nonCached:
+        blue.resMan.loadObjectCache.Delete(path)
+    obj = blue.resMan.LoadObject(path)
+    return obj
+
+
+def LoadDone(evt):
+    evt.isDone = True
+
+
+def WaitForResourceLoads():
+    blue.resMan.Wait()
+
+
+def WaitForUrgentResourceLoads():
+    blue.resMan.WaitUrgent()
+
+
+def LoadUrgent(path):
+    blue.resMan.SetUrgentResourceLoads(True)
+    obj = Load(path)
+    blue.resMan.SetUrgentResourceLoads(False)
+    return obj
+
+
+def GetResourceUrgent(path, extra = ''):
+    blue.resMan.SetUrgentResourceLoads(True)
+    obj = blue.resMan.GetResource(path, extra)
+    blue.resMan.SetUrgentResourceLoads(False)
+    return obj
+
+
+def Save(obj, path):
+    blue.motherLode.Delete(path)
+    if path.endswith('.red'):
+        return blue.resMan.SaveObject(obj, path)
+    else:
+        return obj.SaveTo(path)
+
+
+def SavePurple(obj, path):
+    blue.motherLode.Delete(path)
+    blue.resMan.SaveObject(obj, path)
+
+
+def PlayBinkVideo(path):
+    effect = Tr2Effect()
+    effect.effectFilePath = 'res:/Effect/Post_Bink.fxo'
+    effect.technique = 'Main'
+    r = TriTextureBinkParameter()
+    r.name = 'video'
+    player = TriBinkPlayer()
+    r.resource = player
+    player.resourcePath = path
+    effect.resources.append(r)
+    device.videoOverlayEffect = effect
+    player.Play()
+    return (effect, player)
+
+
+def InstallSystemBinaries(fileName):
+    installMsg = 'Executing %s ...' % fileName
+    print installMsg
+    log.general.Log(installMsg)
+    oldDir = os.getcwdu()
+    os.chdir(blue.paths.ResolvePath(u'bin:/'))
+    exitStatus = os.system(fileName)
+    os.chdir(oldDir)
+    retString = 'Execution of ' + fileName
+    if exitStatus:
+        retString += ' failed (exit code %d)' % exitStatus
+        log.general.Log(retString, log.LGERR)
+    else:
+        retString += ' succeeded'
+        log.general.Log(retString)
+
+
+def RobustImport(moduleName, moduleNameForFallback = None):
+    try:
+        mod = __import__(moduleName, fromlist=['*'])
+    except ImportError:
+        import imp
+        if imp.get_suffixes()[0][0] == '_d.pyd':
+            InstallSystemBinaries('DirectXRedistForDebug.exe')
+        else:
+            InstallSystemBinaries('DirectXRedist.exe')
+        try:
+            mod = __import__(moduleName, fromlist=['*'])
+        except ImportError:
+            if moduleNameForFallback:
+                print 'Import failed on %s, falling back to %s ...' % (moduleName, moduleNameForFallback)
+                mod = __import__(moduleNameForFallback, fromlist=['*'])
+            else:
+                log.Quit('Failed to import trinity DLL')
+
+    for memberName in dir(mod):
+        globals()[memberName] = getattr(mod, memberName)
+
+    del mod
+
+
+def main():
+    args = blue.pyos.GetArg()
+    if boot.role in ('server', 'proxy') and '/jessica' not in args and '/minime' not in args:
+        raise RuntimeError("Don't import trinity on the proxy or server")
+    dev = None
+    nvperfhud = None
+    trinitymem = None
+    rightHanded = None
+    deploy = None
+    for arg in args:
+        if arg.startswith('/trinitydeploy'):
+            deploy = 1
+        if arg.startswith('/trinitydev'):
+            dev = 1
+            if ':' in arg:
+                dev = arg.split(':')[1]
+        if arg == '/nvperfhud':
+            nvperfhud = 1
+        if arg == '/trinitymem':
+            trinitymem = 1
+        if arg == '/righthanded':
+            rightHanded = True
+    else:
+        if boot.keyval.get('trinitydev', None):
+            dev = boot.keyval['trinitydev'].split('=', 1)[1]
+
+    if isinstance(dev, str):
+        dev = dev.lower()
+    if dev not in (None, '9', '10', '11', 'gles2'):
+        dev = '9'
+    if blue.pyos.packaged or deploy:
+        print 'Starting up Trinity through _trinity_deploy.dll ...'
+        RobustImport('_trinity_deploy')
+    elif dev:
+        target = '_trinity_dev%s' % dev
+        print 'Starting up Trinity through %s.dll ...' % target
+        RobustImport(target, '_trinity')
+    elif nvperfhud:
+        print 'Starting up Trinity through _trinity_nvperfhud.dll ...'
+        RobustImport('_trinity_nvperfhud', '_trinity')
+    elif trinitymem:
+        print 'Starting up Trinity through _trinity_dev9_mem.dll ...'
+        RobustImport('_trinity_dev9_mem', '_trinity')
+    else:
+        RobustImport('_trinity')
+    if rightHanded:
+        SetRightHanded(True)
+        settings.SetValue('geometryResNormalizeOnLoad', True)
+        print 'Trinity is using a right-handed coordinate system'
+    if hasattr(blue.memoryTracker, 'd3dHeap1'):
+        if GetD3DCreatedHeapCount() > 0:
+            blue.memoryTracker.d3dHeap1 = GetD3DCreatedHeap(0)
+        if GetD3DCreatedHeapCount() > 1:
+            blue.memoryTracker.d3dHeap2 = GetD3DCreatedHeap(1)
+
+
+main()
+
+def GetDevice():
+    return blue.rot.GetInstance('tri:/dev', 'trinity.TriDevice')
+
+
+def GetDirect3D():
+    return blue.rot.GetInstance('tri:/Direct3D', 'trinity.TriDirect3D')
+
+
+device = GetDevice()
+renderContext = device.GetRenderContext()
+d3d = GetDirect3D()
+app = blue.rot.GetInstance('app:/App', 'triui.App')
+if hasattr(blue, 'CcpStatistics'):
+    statistics = blue.CcpStatistics()
+
+def TriSurfaceManaged(method, *args):
+
+    def Create():
+        return method(*args)
+
+    surface = Create()
+    surface.prepareCallback = Create
+    return surface
+
+
+from trinity.renderJob import CreateRenderJob
+from trinity.renderJobUtils import *
+
+def IsFpsEnabled():
+    return bool('FPS' in (j.name for j in device.scheduledRecurring))
+
+
+def SetFpsEnabled(enable, viewPort = None):
+    if enable:
+        if IsFpsEnabled():
+            return
+        fpsJob = CreateRenderJob('FPS')
+        fpsJob.SetViewport(viewPort)
+        fpsJob.RenderFps()
+        fpsJob.ScheduleRecurring(insertFront=False)
+    else:
+        for job in device.scheduledRecurring:
+            if job.name == 'FPS':
+                device.scheduledRecurring.remove(job)
+
+
+def AddRenderJobText(text, x, y, renderJob, color = 4278255360L):
+    steps = [ step for step in renderJob.steps if step.name == 'RenderDebug' ]
+    step = None
+    if len(steps) > 0:
+        step = steps[0]
+    else:
+        return
+    step.Print2D(x, y, color, text)
+    return renderJob
+
+
+def CreateDebugRenderJob(renderJobName, viewPort, renderJobIndex = -1):
+    renderJob = trinity.CreateRenderJob(renderJobName)
+    renderJob.SetViewport(viewPort)
+    step = renderJob.RenderDebug()
+    step.name = 'RenderDebug'
+    step.autoClear = False
+    if renderJobIndex is -1:
+        renderJob.ScheduleRecurring()
+    else:
+        trinity.device.scheduledRecurring.insert(renderJobIndex, renderJob)
+    return renderJob
+
+
+from trinity.GraphManager import GraphManager
+graphs = GraphManager()
+
+def SetupDefaultGraphs():
+    graphs.Clear()
+    graphs.AddGraph('frameTime')
+    graphs.AddGraph('devicePresent')
+    graphs.AddGraph('primitiveCount')
+    graphs.AddGraph('batchCount')
+    graphs.AddGraph('pendingLoads')
+    graphs.AddGraph('pendingPrepares')
+    graphs.AddGraph('textureResBytes')
+
+
+def AddFrameTimeMarker(name):
+    line = GetLineGraphFrameTime()
+    if line is not None:
+        line.AddMarker(name)
+
+
+class FrameTimeMarkerStopwatch(object):
+
+    def __init__(self, stopwatchName):
+        self.started = blue.os.GetCycles()[0]
+        self.stopwatchName = stopwatchName
+
+    def __str__(self):
+        return '%s %i ms' % (self.stopwatchName, int(1000 * ((blue.os.GetCycles()[0] - self.started) / float(blue.os.GetCycles()[1]))))
+
+    def __del__(self):
+        AddFrameTimeMarker(str(self))
+
+
+def CreateBinding(cs, src, srcAttr, dst, dstAttr):
+    binding = TriValueBinding()
+    binding.sourceObject = src
+    binding.sourceAttribute = srcAttr
+    binding.destinationObject = dst
+    binding.destinationAttribute = dstAttr
+    if cs:
+        cs.bindings.append(binding)
+    return binding
+
+
+def CreatePythonBinding(cs, src, srcAttr, dst, dstAttr):
+    binding = Tr2PyValueBinding()
+    binding.sourceObject = src
+    binding.sourceAttribute = srcAttr
+    binding.destinationObject = dst
+    binding.destinationAttribute = dstAttr
+    if cs:
+        cs.bindings.append(binding)
+    return binding
+
+
+if not blue.pyos.packaged:
+    SetFpsEnabled(True)
+if blue.win32.IsTransgaming():
+    settings.SetValue('strictShaderCompilation', True)
+shaderManager = GetShaderManager()
+try:
+    d3d = GetDirect3D()
+    adapterInfo = d3d.GetAdapterIdentifier()
+    blue.SetCrashKeyValues(u'GPU_Description', unicode(adapterInfo['Description']))
+    blue.SetCrashKeyValues(u'GPU_Driver', unicode(adapterInfo['Driver']))
+    blue.SetCrashKeyValues(u'GPU_Driver_Version', unicode(adapterInfo['DriverVersion']))
+    blue.SetCrashKeyValues(u'GPU_VendorId', unicode(adapterInfo['VendorId']))
+    blue.SetCrashKeyValues(u'GPU_DeviceId', unicode(adapterInfo['DeviceId']))
+except RuntimeError:
+    pass
+
+@bluepy.CCP_STATS_ZONE_FUNCTION
+def PopulateShaderLibrary():
+    for path, dirs, files in bluepy.walk('res:/Graphics/Shaders/ShaderDescriptions'):
+        for f in files:
+            filepath = path + '/' + f
+            if filepath.endswith('.red') or filepath.endswith('.black'):
+                highLevelShader = Load(filepath)
+                if highLevelShader is not None:
+                    try:
+                        shaderManager.shaderLibrary.append(highLevelShader)
+                    except blue.error as e:
+                        log.general.Log('Exception loading High Level Shader: %s' % filepath, log.LGERR)
+                        log.LogException()
+                        sys.exc_clear()
+
+                else:
+                    log.general.Log('Unable to find shader library object: %s' % filepath, log.LGERR)
+
+
+PopulateShaderLibrary()

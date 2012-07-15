@@ -1,0 +1,397 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/paperDoll/paperDollSpawnWrappers.py
+import trinity
+import uthread
+import paperDoll as PD
+import blue
+import bluepy
+import yaml
+import log
+
+class PaperDollManager(object):
+    __metaclass__ = bluepy.CCP_STATS_ZONE_PER_METHOD
+    __guid__ = 'paperDoll.PaperDollManager'
+
+    def __init__(self, factory, keyFunc = None):
+        self.factory = factory
+        self.keyFunc = keyFunc
+        self.__pdc = {}
+
+    def __del__(self):
+        self.ClearDolls()
+
+    def __iter__(self):
+        for pdc in self.__pdc.itervalues():
+            yield pdc
+
+    def Count(self):
+        return len(self.__pdc)
+
+    def GetPaperDollCharacterByDoll(self, doll):
+        for pdc in iter(self):
+            if PD.Doll.InstanceEquals(pdc.doll, doll):
+                return pdc
+
+    def GetPaperDollCharacterByAvatar(self, avatar):
+        for pdc in iter(self):
+            if pdc.avatar == avatar:
+                return pdc
+
+    def GetPaperDollCharacterByKey(self, key):
+        return self.__pdc.get(key)
+
+    def RemovePaperDollCharacter(self, pdc):
+        key = self.__GetKey(pdc)
+        if key in self.__pdc:
+            del self.__pdc[key]
+
+    def ClearDolls(self):
+        self.__pdc.clear()
+
+    def __GetKey(self, pdc):
+        doll = pdc.GetDoll()
+        if self.keyFunc:
+            return self.keyFunc(doll)
+        else:
+            return doll.instanceID
+
+    def SpawnPaperDollCharacterFromDNA(self, scene, dollName, dollDNA, position = None, rotation = None, lodEnabled = False, compressionSettings = None, gender = PD.GENDER.FEMALE, usePrepass = False, textureResolution = None, updateDoll = True, spawnAtLOD = 0):
+        pdc = PaperDollCharacter(self.factory)
+        pdc.LoadDollFromDNA(dollDNA, dollName=dollName, lodEnabled=lodEnabled, compressionSettings=compressionSettings)
+        if textureResolution:
+            pdc.doll.SetTextureSize(textureResolution)
+        if lodEnabled:
+            pdc.SpawnLOD(scene, point=position, rotation=rotation, gender=gender, usePrepass=usePrepass)
+        else:
+            pdc.Spawn(scene, point=position, rotation=rotation, gender=gender, usePrepass=usePrepass, updateDoll=updateDoll, lod=spawnAtLOD)
+        self.__pdc[self.__GetKey(pdc)] = pdc
+        sm.ScatterEvent('OnDollCreated', self.__GetKey(pdc))
+        return pdc
+
+    def SpawnRandomDoll(self, scene, **kwargs):
+        pdc = PaperDollCharacter(self.factory)
+        pdc.MakeRandomDoll()
+        autoLod = kwargs.get('autoLOD')
+        if autoLod:
+            pdc.SpawnLOD(scene, **kwargs)
+        else:
+            pdc.Spawn(scene, **kwargs)
+        self.__pdc[self.__GetKey(pdc)] = pdc
+        sm.ScatterEvent('OnDollCreated', self.__GetKey(pdc))
+        return pdc
+
+    def SpawnDoll(self, scene, **kwargs):
+        doll = kwargs.get('doll')
+        autoLod = kwargs.get('autoLOD')
+        pdc = PaperDollCharacter(self.factory, doll=doll)
+        if autoLod:
+            pdc.SpawnLOD(scene, **kwargs)
+        else:
+            pdc.Spawn(scene, **kwargs)
+        self.__pdc[self.__GetKey(pdc)] = pdc
+        sm.ScatterEvent('OnDollCreated', self.__GetKey(pdc))
+        return pdc
+
+    def SpawnDollFromRes(self, scene, resPath, **kwargs):
+        pdc = PaperDollCharacter(self.factory)
+        pdc.LoadFromRes(resPath)
+        pdc.Spawn(scene, **kwargs)
+        self.__pdc[self.__GetKey(pdc)] = pdc
+        sm.ScatterEvent('OnDollCreated', self.__GetKey(pdc))
+        return pdc
+
+    def GetAllDolls(self):
+        dolls = []
+        for dc in self.__pdc.itervalues():
+            dollInfo = {}
+            dollInfo['name'] = dc.doll.name
+            dollInfo['translation'] = dc.avatar.translation
+            dollInfo['rotation'] = dc.avatar.rotation
+            dollInfo['dna'] = dc.GetDNA()
+            dollInfo['doll'] = dc
+            dolls.append(dollInfo)
+
+        return dolls
+
+    def RestoreDollsFromDnaToScene(self, dolls, scene):
+        for dc in dolls:
+            self.SpawnPaperDollCharacterFromDNA(scene, dc['name'], dc['dna'], position=dc['translation'], rotation=dc['rotation'])
+
+    def WaitForAllDolls(self):
+        for dc in self.__pdc.itervalues():
+            dc.WaitForUpdate()
+
+
+class PaperDollCharacter(object):
+    __metaclass__ = bluepy.CCP_STATS_ZONE_PER_METHOD
+    __guid__ = 'paperDoll.PaperDollCharacter'
+    __DEFAULT_NAME = 'Spawned Character'
+
+    def setscene(self, scene):
+        self.__scene = blue.BluePythonWeakRef(scene)
+
+    scene = property(fget=lambda self: self.__scene.object, fset=lambda self, x: self.setscene(x))
+
+    def __init__(self, factory, doll = None, avatar = None, visualModel = None):
+        self.factory = factory
+        self.factory.WaitUntilLoaded()
+        self.doll = doll
+        self.avatar = avatar
+        self.visualModel = visualModel
+        if not visualModel and hasattr(avatar, 'visualModel'):
+            self.visualModel = avatar.visualModel
+        self.__scene = blue.BluePythonWeakRef(None)
+        self.autoLod = False
+        self.disableDel = False
+        self.animationOffsets = {}
+        trinity.device.RegisterResource(self)
+
+    def __del__(self):
+        if self.disableDel:
+            return
+        del self.doll
+        del self.visualModel
+        if self.scene:
+            self.factory.RemoveAvatarFromScene(self.avatar, self.scene)
+        if self.avatar:
+            self.avatar.visualModel = None
+        if self.autoLod:
+            PD.AbortAllLod(self.avatar)
+        del self.avatar
+
+    def OnInvalidate(self, dev):
+        pass
+
+    def OnCreate(self, dev):
+        if self.doll and self.avatar:
+            self.doll.KillUpdate()
+            self.doll.mapBundle.ReCreate()
+            for modifier in self.doll.buildDataManager.GetModifiersAsList():
+                modifier.IsDirty |= modifier.decalData is not None or modifier.IsMeshDirty()
+
+            self.doll.decalBaker = None
+            if PD.SkinSpotLightShadows.instance is not None:
+                PD.SkinSpotLightShadows.instance.RefreshLights()
+            uthread.new(self.doll.Update, self.factory, self.avatar)
+
+    def ExportCharacter(self, resPath):
+
+        def fun():
+            path = resPath
+
+            def GetMapResourcePath(map):
+                return path + '/' + PD.MAPNAMES[map] + '.dds'
+
+            for map in PD.MAPS:
+                texture = self.doll.mapBundle[map]
+                texture.SaveToDDS(GetMapResourcePath(map))
+                texture.WaitForSave()
+
+            meshGeometryResPaths = {}
+            for modifier in self.doll.buildDataManager.GetSortedModifiers():
+                meshGeometryResPaths.update(modifier.meshGeometryResPaths)
+
+            for mesh in self.avatar.visualModel.meshes:
+                mesh.geometryResPath = meshGeometryResPaths.get(mesh.name, '')
+                for fx in PD.GetEffectsFromMesh(mesh):
+                    for resource in fx.resources:
+                        if resource.name in PD.MAPNAMES:
+                            resource.resourcePath = GetMapResourcePath(PD.MAPNAMES.index(resource.name))
+
+            trinity.Save(self.avatar, path + '/unique.red')
+            morphTargets = {}
+            for modifier in self.doll.buildDataManager.GetSortedModifiers():
+                if modifier.categorie in PD.BLENDSHAPE_CATEGORIES:
+                    morphTargets[modifier.name] = modifier.weight
+
+            bsFilePath = blue.rot.PathToFilename(path + '/blendshapes.yaml')
+            f = file(bsFilePath, 'w')
+            yaml.dump(morphTargets, f)
+            f.close()
+            animOffsets = {}
+            for bone in self.doll.boneOffsets:
+                trans = self.doll.boneOffsets[bone]['translation']
+                animOffsets[bone] = trans
+
+            aoFilePath = blue.rot.PathToFilename(path + '/animationOffsets.yaml')
+            f = file(aoFilePath, 'w')
+            yaml.dump(animOffsets, f)
+            f.close()
+
+        uthread.new(fun)
+
+    @staticmethod
+    def ImportCharacter(factory, scene, resPath, **kwargs):
+        blocking = kwargs.get('blocking')
+        callBack = kwargs.get('callBack')
+        rotation = kwargs.get('rotation')
+        position = kwargs.get('point')
+        pdc = PaperDollCharacter(factory)
+        pdc.scene = scene
+        pdc.avatar = trinity.Load(resPath + '/unique.red')
+        if pdc.avatar is None:
+            log.LogInfo('Import failed on ' + resPath + '/unique.red')
+            return
+        if position:
+            pdc.avatar.translation = position
+        if rotation:
+            pdc.avatar.rotation = rotation
+        scene.AddDynamic(pdc.avatar)
+        pdc.visualModel = pdc.avatar.visualModel
+        slash = resPath.rfind('/')
+        pdc.avatar.name = str(resPath[slash + 1:] + ' (import)')
+        rf = blue.ResFile()
+        bsPath = resPath + '/blendshapes.yaml'
+        meshes = None
+        if rf.FileExists(bsPath):
+            f = rf.open(bsPath)
+            morphTargets = yaml.load(f, Loader=yaml.CLoader)
+            f.close()
+            if morphTargets:
+                meshes = pdc.visualModel.meshes
+
+        def fun():
+            if meshes:
+                factory.ApplyMorphTargetsToMeshes(meshes, morphTargets, None, None)
+                if trinity.GetShaderModel() == 'SM_2_0_LO':
+                    PD.PortraitTools.RebindDXT5ShadersForSM2(meshes)
+            if callBack:
+                callBack()
+
+        if blocking:
+            fun()
+        else:
+            uthread.worker('paperDoll::PaperDollCharacter::ImportCharacter', fun)
+        rf = blue.ResFile()
+        aoPath = resPath + '/animationOffsets.yaml'
+        if rf.FileExists(aoPath):
+            f = rf.open(aoPath)
+            animOffsets = yaml.load(f, Loader=yaml.CLoader)
+            f.close()
+            pdc.animationOffsets = animOffsets
+            pdc.ApplyAnimationOffsets()
+        pdc.avatar.explicitMinBounds = (-5, -5, -5)
+        pdc.avatar.explicitMaxBounds = (5, 5, 5)
+        pdc.avatar.useExplicitBounds = True
+        if PD.SkinSpotLightShadows.instance is not None:
+            for mesh in pdc.visualModel.meshes:
+                PD.SkinSpotLightShadows.instance.CreateEffectParamsForMesh(mesh)
+
+        return pdc
+
+    def ApplyAnimationOffsets(self):
+        if self.avatar.animationUpdater and str(type(self.avatar.animationUpdater)) == "<type 'GameWorld.GWAnimation'>" and self.avatar.animationUpdater.network:
+            for a in self.animationOffsets:
+                self.avatar.animationUpdater.network.boneOffset.SetOffset(a, self.animationOffsets[a][0], self.animationOffsets[a][1], self.animationOffsets[a][2])
+
+    def GetDoll(self):
+        return self.doll
+
+    def GetAvatar(self):
+        return self.avatar
+
+    def MakeRandomDoll(self):
+        self.doll = PD.CreateRandomDoll(self.doll.name if self.doll else PaperDollCharacter.__DEFAULT_NAME, self.factory)
+        if self.avatar:
+            self.doll.Update(self.factory, self.avatar)
+
+    def MakeDollNude(self):
+        self.doll.buildDataManager = PD.BuildDataManager()
+        if self.avatar:
+            self.doll.Update(self.factory, self.avatar)
+
+    def LoadFromRes(self, resPath):
+        self.doll = PD.Doll(PaperDollCharacter.__DEFAULT_NAME)
+        while not self.factory.IsLoaded:
+            PD.Yield()
+
+        self.doll.Load(resPath, self.factory)
+        if self.avatar:
+            self.doll.Update(self.factory, self.avatar)
+
+    def LoadDollFromDNA(self, dollDNA, dollName = None, lodEnabled = True, compressionSettings = None):
+        name = dollName if dollName is not None else PaperDollCharacter.__DEFAULT_NAME
+        self.doll = PD.Doll(name)
+        self.doll.LoadDNA(dollDNA, self.factory)
+        if compressionSettings:
+            self.doll.compressionSettings = compressionSettings
+        if self.avatar:
+            gender = PD.GENDER.MALE if self.doll.gender else PD.GENDER.FEMALE
+            networkToLoad = const.FEMALE_MORPHEME_PATH if gender == PD.GENDER.FEMALE else const.MALE_MORPHEME_PATH
+            if lodEnabled:
+                uthread.worker('^PaperDollCharacter::LoadFromDNA', PD.SetupLODFromPaperdoll, self.avatar, self.doll, self.factory, networkToLoad)
+            else:
+                uthread.worker('^PaperDollCharacter::LoadFromDNA', self.doll.Update, self.factory, self.avatar)
+
+    def GetDNA(self):
+        return self.doll.GetDNA()
+
+    def __PrepareAvatar(self, scene, point = None, rotation = None):
+        if scene is None:
+            raise ValueError('None type passed as scene to paperDoll::__PrepareAvatar!')
+        oldAnimation = None
+        sceneTypesDifferent = getattr(self.scene, '__typename__', None) != getattr(scene, '__typename__', None)
+        if self.avatar:
+            oldAnimation = self.avatar.animationUpdater
+            if self.scene:
+                self.factory.RemoveAvatarFromScene(self.avatar, self.scene)
+            if sceneTypesDifferent:
+                PD.AbortAllLod(self.avatar)
+                del self.avatar
+        if type(scene) in (trinity.Tr2InteriorScene, trinity.WodExteriorScene, trinity.WodBakingScene) and type(self.scene) is not type(scene):
+            self.avatar = trinity.Tr2IntSkinnedObject()
+            self.doll.avatarType = 'interior'
+        self.factory.AddAvatarToScene(self.avatar, scene)
+        if point:
+            self.avatar.translation = point
+        if rotation:
+            self.avatar.rotation = rotation
+            self.avatar.animationUpdater = oldAnimation
+        if getattr(self.avatar.animationUpdater, 'network', None):
+            if self.doll.gender == PD.GENDER.MALE and self.avatar.animationUpdater.network.GetAnimationSetCount() > 1:
+                self.avatar.animationUpdater.network.SetAnimationSetIndex(1)
+            else:
+                self.avatar.animationUpdater.network.SetAnimationSetIndex(0)
+
+    def SpawnLOD(self, scene, **kwargs):
+        self.Spawn(scene, spawnLod=True, **kwargs)
+
+    def Spawn(self, scene, **kwargs):
+        gender = PD.GENDER.FEMALE
+        if 'gender' in kwargs:
+            gender = kwargs['gender']
+        if self.doll is None:
+            self.doll = PD.Doll(PaperDollCharacter.__DEFAULT_NAME, gender=gender)
+        else:
+            gender = self.doll.gender
+        spawnLod = kwargs.get('spawnLod', False)
+        usePrepass = kwargs.get('usePrepass', False)
+        self.doll.SetUsePrepass(usePrepass)
+        if 'lod' in kwargs and not spawnLod:
+            self.doll.overrideLod = kwargs['lod']
+        if self.visualModel is None:
+            self.visualModel = self.factory.CreateVisualModel(gender=gender)
+        self.__PrepareAvatar(scene, point=kwargs.get('point'), rotation=kwargs.get('rotation'))
+        self.scene = scene
+        self.avatar.visualModel = self.visualModel
+        if spawnLod:
+            networkToLoad = const.FEMALE_MORPHEME_PATH if gender == PD.GENDER.FEMALE else const.MALE_MORPHEME_PATH
+            PD.SetupLODFromPaperdoll(self.avatar, self.doll, self.factory, networkToLoad)
+        elif kwargs.get('updateDoll', True):
+            self.doll.Update(self.factory, self.avatar)
+
+    def MoveToScene(self, scene, point = None):
+        if scene and self.doll:
+            if getattr(self.scene, '__typename__', None) != getattr(scene, '__typename__', None):
+                self.doll.buildDataManager.SetAllAsDirty(clearMeshes=True)
+            self.Spawn(scene, point=point)
+
+    def Update(self):
+        self.doll.Update(self.factory, self.avatar)
+
+    def UpdateClothSimulationStatus(self):
+        self.doll.buildDataManager.SetAllAsDirty(clearMeshes=True)
+        self.Update()
+
+    def WaitForUpdate(self):
+        while self.doll.busyUpdating:
+            PD.Yield()

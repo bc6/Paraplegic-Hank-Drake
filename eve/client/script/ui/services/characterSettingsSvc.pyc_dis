@@ -1,0 +1,32 @@
+#Embedded file name: c:/depot/games/branches/release/EVE-TRANQUILITY/eve/client/script/ui/services/characterSettingsSvc.py
+import service
+import svc
+
+class CharacerSettingsSvc(service.Service):
+    __guid__ = 'svc.characterSettings'
+
+    def Run(self, *args):
+        self.settings = {}
+        self.charMgr = session.ConnectToRemoteService('charMgr')
+        settings = self.charMgr.GetCharacterSettings()
+        for setting in settings:
+            self.settings[setting.settingKey] = setting.settingValue
+
+    def Get(self, settingKey):
+        try:
+            return self.settings[settingKey]
+        except KeyError:
+            return None
+
+    def Save(self, settingKey, value):
+        if value is None:
+            self.Delete(settingKey)
+        if len(value) > 102400:
+            raise RuntimeError("I don't wan't to send so large character setting to the server", _charid, settingKey, len(value))
+        self.charMgr.SaveCharacterSetting(None, settingKey, value)
+        self.settings[settingKey] = value
+
+    def Delete(self, settingKey):
+        if settingKey in self.settings:
+            self.charMgr.DeleteCharacterSetting(None, settingKey)
+            del self.settings[settingKey]
